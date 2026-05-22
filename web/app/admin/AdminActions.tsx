@@ -6,7 +6,7 @@
  * to the matching admin API route and then refreshes the page so the
  * server-rendered list re-fetches.
  *
- * The server-side requireAdmin() check is the actual gate — these
+ * The server-side requireAdmin() check is the actual gate, these
  * buttons are just convenience UI; nothing they do is authoritative
  * client-side.
  */

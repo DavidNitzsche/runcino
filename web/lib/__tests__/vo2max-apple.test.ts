@@ -1,5 +1,5 @@
 /**
- * vo2max-apple — wellness-signal isolation coverage.
+ * vo2max-apple, wellness-signal isolation coverage.
  *
  * THE PRINCIPLE (locked):
  *   Apple Health VO2max is a WELLNESS signal. It MUST NEVER drive
@@ -42,10 +42,10 @@ describe('coldStartVdotFromAppleVo2Max', () => {
   });
 });
 
-describe('resolveVdotWithColdStart — tiered fallback', () => {
+describe('resolveVdotWithColdStart, tiered fallback', () => {
   it('Tier 1 wins: race-derived VDOT beats Apple cold-start even when both present', () => {
     // User has VDOT 50 from a race AND an Apple value of 65 (which
-    // would cold-start to 55). Race wins — the principle is "race
+    // would cold-start to 55). Race wins, the principle is "race
     // performance is training signal, period".
     const apple = buildVo2MaxApple(65, null);
     const resolved = resolveVdotWithColdStart(50, apple, null);
@@ -75,7 +75,7 @@ describe('resolveVdotWithColdStart — tiered fallback', () => {
   });
 });
 
-describe('checkVo2MaxDataQuality — fires only at >20 point gap', () => {
+describe('checkVo2MaxDataQuality, fires only at >20 point gap', () => {
   it('returns null when no Apple value is set (nothing to check)', () => {
     const apple = buildVo2MaxApple(null, null);
     expect(checkVo2MaxDataQuality(apple, 50)).toBeNull();
@@ -113,7 +113,7 @@ describe('checkVo2MaxDataQuality — fires only at >20 point gap', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-// Spec scenarios — the 5 canonical cases from the build prompt.
+// Spec scenarios, the 5 canonical cases from the build prompt.
 // These exercise the FULL cold-start + data-quality flow end to end.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -156,7 +156,7 @@ describe('spec scenarios (canonical)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-// Isolation canary — the module must not import anything from the
+// Isolation canary, the module must not import anything from the
 // pace pipeline. If somebody adds an import that violates the
 // principle, this static check catches it.
 // ─────────────────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ describe('isolation canary', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-// buildVo2MaxApple — null/undefined handling for the snapshot factory
+// buildVo2MaxApple, null/undefined handling for the snapshot factory
 // ─────────────────────────────────────────────────────────────────────
 
 describe('buildVo2MaxApple', () => {
@@ -208,7 +208,7 @@ describe('buildVo2MaxApple', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-// Integration snapshot — the locked principle in action.
+// Integration snapshot, the locked principle in action.
 //
 // When race-derived VDOT AND Apple VO2max BOTH exist, the pace
 // prescription path MUST consume ONLY the race-derived VDOT. The
@@ -226,7 +226,7 @@ import { paceTargetFromVdot } from '../vdot';
 import type { CoachState } from '../coach-state';
 
 describe('snapshot · race VDOT + Apple VO2max both present → paces use ONLY race VDOT', () => {
-  // AFC half marathon 2025: 13.26 mi in 1:36:31 — known to derive VDOT ≈ 47.
+  // AFC half marathon 2025: 13.26 mi in 1:36:31, known to derive VDOT ≈ 47.
   const HM_DISTANCE_MI = 13.26;
   const HM_TIME_S = 1 * 3600 + 36 * 60 + 31;
 
@@ -270,7 +270,7 @@ describe('snapshot · race VDOT + Apple VO2max both present → paces use ONLY r
     expect(apple.value).toBe(65);
     expect(coldStartVdotFromAppleVo2Max(apple)).toBe(55);
 
-    // The pace pipeline is fed by CoachState only — Apple value lives
+    // The pace pipeline is fed by CoachState only, Apple value lives
     // in profile-store, never injected into the state shape consumed
     // by paceTargetFromVdot. So the prescribed paces are identical.
     const afterEasy = paceTargetFromVdot(stateWithRace, 'general_aerobic');
@@ -285,7 +285,7 @@ describe('snapshot · race VDOT + Apple VO2max both present → paces use ONLY r
   });
 
   it('canary: paceTargetFromVdot signature never accepts Vo2MaxApple', () => {
-    // Static signature check — if somebody adds a Vo2MaxApple parameter
+    // Static signature check, if somebody adds a Vo2MaxApple parameter
     // to paceTargetFromVdot, this test snapshot needs an explicit edit
     // and a re-review of the principle.
     expect(paceTargetFromVdot.length).toBeLessThanOrEqual(2);

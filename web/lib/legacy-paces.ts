@@ -1,5 +1,5 @@
 /**
- * Legacy pace formula — kept ONLY for the pace-migration banner's
+ * Legacy pace formula, kept ONLY for the pace-migration banner's
  * before/after display.
  *
  * The historical formula (race-pace-derived) used:

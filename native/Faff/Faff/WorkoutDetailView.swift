@@ -2,10 +2,10 @@
 //  WorkoutDetailView.swift
 //  Faff
 //
-//  Workout detail (handoff §2) — slides up from Today. Eyebrow, big
+//  Workout detail (handoff §2), slides up from Today. Eyebrow, big
 //  title, the Structure card (real describeWorkout steps), the coach's
 //  Why + Focus, then Start Run (primary) + Move/Skip/Swap. "Start Run"
-//  replaces the old "Send to Watch" — it hands today's workout to the
+//  replaces the old "Send to Watch", it hands today's workout to the
 //  watch to record (the watch is the tracker).
 //
 
@@ -54,7 +54,7 @@ struct WorkoutDetailView: View {
                 CoachVerdict("Focus", dw?.detail?.effort ?? dw?.guidance ?? "Controlled, sustainable work for today's phase.",
                              color: Faff.C.milestone)
 
-                // No "Start Run" here — the watch is the tracker and already
+                // No "Start Run" here, the watch is the tracker and already
                 // has today's workout via WatchConnectivity. The phone just
                 // manages the plan: move / skip / swap.
                 HStack(spacing: 8) {
@@ -186,7 +186,7 @@ struct RescheduleSheet: View {
     }
 
     private func weekday(_ iso: String?) -> String {
-        guard let iso, iso.count >= 10 else { return "—" }
+        guard let iso, iso.count >= 10 else { return ", " }
         let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
         guard let dt = inF.date(from: String(iso.prefix(10))) else { return iso }
         let out = DateFormatter(); out.dateFormat = "EEEE, MMM d"; out.timeZone = TimeZone(identifier: "UTC")

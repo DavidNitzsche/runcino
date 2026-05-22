@@ -1,5 +1,5 @@
 /**
- * EmptyZone — drop-in card-body that replaces a data-driven region
+ * EmptyZone, drop-in card-body that replaces a data-driven region
  * when the user has no data yet (no runs, no check-ins, etc).
  *
  * Source spec: designs/empty-states-v4.html §Generic empty-zone treatment.
@@ -15,7 +15,7 @@ interface Props {
   icon?: ReactNode;
   title: string;
   sub?: ReactNode;
-  /** Optional action row — provide one or more buttons. */
+  /** Optional action row, provide one or more buttons. */
   actions?: ReactNode;
 }
 

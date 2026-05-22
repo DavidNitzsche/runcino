@@ -8,7 +8,7 @@
  *     `detail` column on demand by the activity-detail endpoint.
  *   - Sync metadata (last fetch time) lives in `strava_sync_state`.
  *
- * Survives Railway redeploys + cold starts — the whole app rides one
+ * Survives Railway redeploys + cold starts, the whole app rides one
  * 100-req/15-min Strava budget across all pages and all sessions.
  */
 
@@ -93,7 +93,7 @@ export async function refreshActivities(): Promise<{ activities: StravaActivity[
 /** Pull cached Strava activities, optionally scoped to a user.
  *  Multi-tenant pattern matches races: when userId is supplied, returns
  *  rows where user_uuid matches OR user_uuid IS NULL (un-migrated legacy
- *  rows still visible — no regression). Without userId, returns all
+ *  rows still visible, no regression). Without userId, returns all
  *  activities (admin/back-compat). */
 export async function getCachedActivities(userId?: string): Promise<{ activities: NormalizedActivity[]; fetchedAt: number }> {
   const state = await getSyncState();

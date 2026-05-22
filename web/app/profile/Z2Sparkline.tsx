@@ -3,7 +3,7 @@
  *
  * Tiny inline SVG showing 8-week trend of weighted Z2 pace. Reads
  * Z2SparklineResult; renders nothing when hasSignal=false (insufficient
- * data — typically requires ≥3 weeks with Z2 splits).
+ * data, typically requires ≥3 weeks with Z2 splits).
  *
  * VISUAL CONVENTION
  *   - Y-axis is INVERTED (faster pace = up). A descending line on
@@ -23,7 +23,7 @@ interface Props {
 }
 
 function fmtPace(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}`;
@@ -142,9 +142,9 @@ export function Z2Sparkline({ data }: Props) {
           paddingRight: padX,
         }}
       >
-        <span>{firstPace != null ? `${fmtPace(firstPace)}/mi` : '—'}</span>
+        <span>{firstPace != null ? `${fmtPace(firstPace)}/mi` : '-'}</span>
         <span style={{ color: '#E85D26', fontWeight: 600 }}>
-          {lastPace != null ? `${fmtPace(lastPace)}/mi` : '—'} now
+          {lastPace != null ? `${fmtPace(lastPace)}/mi` : '-'} now
         </span>
       </div>
 
@@ -175,7 +175,7 @@ export function Z2Sparkline({ data }: Props) {
             </>
           ) : (
             <>
-              Zones recalibrated this window — {' '}
+              Zones recalibrated this window, {' '}
               <a
                 href={data.crossRef.href}
                 style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}

@@ -1,5 +1,5 @@
 /**
- * v4 stat pill — one of the four pills in the hero card's stats row.
+ * v4 stat pill, one of the four pills in the hero card's stats row.
  *
  *   ┌─────────────┐
  *   │ 5.5 mi      │  ← value + unit (Bebas Neue + Inter)
@@ -10,7 +10,7 @@
  * 13px Inter aligned to the baseline, stat-label 12px uppercase.
  *
  * Renders an em-dash when value is null so the layout stays put when
- * data is missing — the trust contract is "honest NO DATA YET," not a
+ * data is missing, the trust contract is "honest NO DATA YET," not a
  * fake zero.
  */
 
@@ -23,13 +23,13 @@ export interface StatPillProps {
   unit?: string;
   /** Uppercase label below the value. */
   label: string;
-  /** Optional override for the full pill — useful for grouping (e.g.
+  /** Optional override for the full pill, useful for grouping (e.g.
    *  spanning the row). */
   style?: React.CSSProperties;
 }
 
 export function StatPill({ value, unit, label, style }: StatPillProps) {
-  const display: ReactNode = value == null || value === '' ? '—' : String(value);
+  const display: ReactNode = value == null || value === '' ? ', ' : String(value);
   return (
     <div
       style={{

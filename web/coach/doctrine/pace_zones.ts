@@ -1,5 +1,5 @@
 /**
- * Doctrine — Pace zones and VDOT prescription.
+ * Doctrine, Pace zones and VDOT prescription.
  *
  * Source: Research/01-pace-zones-vdot.md
  *
@@ -15,7 +15,7 @@
  *
  * Heat/altitude/wind/treadmill/hill adjustments live in this Research
  * doc but the engine extracts them in Stage 2 (`weather.ts`) and Stage
- * 6 (`course.ts`) — keeping pace_zones.ts focused on the pace
+ * 6 (`course.ts`), keeping pace_zones.ts focused on the pace
  * prescription itself rather than environmental modifiers.
  */
 import { cite, type Cited } from './cite';
@@ -281,7 +281,7 @@ export const DANIELS_DOSING_RULES: Cited<Record<DanielsPace, {
     },
   },
   citations: [
-    cite('Daniels training paces › Dosing rules — Daniels\' caps', 'Single-workout cap, weekly cap, rep length range, recovery between reps for E/M/T/I/R', 'research', '01'),
+    cite('Daniels training paces › Dosing rules, Daniels\' caps', 'Single-workout cap, weekly cap, rep length range, recovery between reps for E/M/T/I/R', 'research', '01'),
   ],
 };
 
@@ -343,7 +343,7 @@ export const PFITZINGER_ZONES: Cited<Record<PfitzingerZone, {
       typicalUse: '100-300m strides, neuromuscular',
     },
   },
-  note: 'Slower runners (≥4-hour marathon) anchor LT to 15K race pace; faster runners anchor to half-marathon pace. Pfitzinger long-run pace is faster than Daniels E pace in absolute terms — closer to mid-E to low-M.',
+  note: 'Slower runners (≥4-hour marathon) anchor LT to 15K race pace; faster runners anchor to half-marathon pace. Pfitzinger long-run pace is faster than Daniels E pace in absolute terms, closer to mid-E to low-M.',
   citations: [
     cite('Pfitzinger pace ranges', 'Pete Pfitzinger ("Advanced Marathoning," with Scott Douglas) uses a marathon-pace-anchored system rather than a VDOT lookup. Six primary zones plus speedwork.', 'research', '01'),
   ],

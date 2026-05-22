@@ -1,5 +1,5 @@
 /**
- * Row — 12-column grid row.
+ * Row, 12-column grid row.
  *
  * The May 2026 design system rests on a 12-column grid. `Row` is a thin
  * wrapper around `<div class="row">` which defaults to

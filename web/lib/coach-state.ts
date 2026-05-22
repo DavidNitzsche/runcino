@@ -1,7 +1,7 @@
 /**
  * Coach state aggregator.
  *
- * One function — gatherCoachState() — that walks Postgres and produces
+ * One function, gatherCoachState(), that walks Postgres and produces
  * the single typed object the coaching engine needs to make decisions.
  * Everything Coach reads goes through here so we don't accidentally
  * scatter half the data picture across multiple routes.
@@ -33,7 +33,7 @@ export interface CoachState {
   /** ISO date the state was gathered. Engine should treat this as "today". */
   now: string;
 
-  /** Pre-resolved aggregate VDOT — when populated, vdotSnapshot and
+  /** Pre-resolved aggregate VDOT, when populated, vdotSnapshot and
    *  paceTargetFromVdot prefer this over the single-best-race picker.
    *  Aligns engine pace decisions with what the user sees on
    *  /profile's Coach Reads card (computeAggregateVdot in
@@ -41,7 +41,7 @@ export interface CoachState {
    *  compat with test fixtures that don't supply it. */
   aggregateVdotValue?: number;
 
-  /** Race calendar — calendar-aware decisions cascade off here. */
+  /** Race calendar, calendar-aware decisions cascade off here. */
   races: {
     /** Next A race in the future (closest by date). null = base mode candidate. */
     nextA: NextRace | null;
@@ -51,7 +51,7 @@ export interface CoachState {
     inWindow: NextRace[];
     /** Races finished in the last 28 days, newest first. */
     recent: PastRace[];
-    /** Best race performances within the last 180 days — used for VDOT
+    /** Best race performances within the last 180 days, used for VDOT
      *  inference. Wider window catches fast efforts that predate a recovery
      *  or maintenance block. Optional for backwards compat with test fixtures. */
     bestForVdot?: PastRace[];
@@ -59,27 +59,27 @@ export interface CoachState {
     raceCount30d: number;
   };
 
-  /** Volume signals — pulled from Strava activities. */
+  /** Volume signals, pulled from Strava activities. */
   volume: {
     last7Mi: number;
     last28Mi: number;
     /** Daily totals for the CURRENT calendar week (Mon → Sun in LA tz),
      *  including future days (miles=0). Built via `currentWeekDays`.
      *
-     *  ⚠ Despite the name, this is NOT a sliding 7-day window — it's
+     *  ⚠ Despite the name, this is NOT a sliding 7-day window, it's
      *  the user's Mon-Sun work week. Consumers that want a true rolling
      *  7-day rollup must either (a) sum activities directly, or (b)
      *  fall back to `last7Mi` (which IS the rolling sum). Matching
      *  planned dates from `simulateRange(today-6, today)` against this
      *  array silently fails for any planned date that falls in last
-     *  week — those dates are not in the map. */
+     *  week, those dates are not in the map. */
     last7Days: Array<{ date: string; miles: number; runs: number }>;
     weeklyAvg4w: number;
     weeklyAvg8w: number;
-    /** Longest single activity in last 28 days — INCLUDES races. NEVER
+    /** Longest single activity in last 28 days, INCLUDES races. NEVER
      *  use as +10% spike baseline. Use `longestTrainingRunLast28Mi`. */
     longestLast28Mi: number;
-    /** Longest TRAINING run in last 28 days — races excluded. Anchor
+    /** Longest TRAINING run in last 28 days, races excluded. Anchor
      *  for the +10% spike rule. @research Research/00a §13.1 */
     longestTrainingRunLast28Mi: number;
     /** Longest TRAINING run in 28 days BEFORE the most recent race.
@@ -111,7 +111,7 @@ export interface CoachState {
      *  if the user runs after the morning prescription, the coach
      *  reads this to revise the day's voice + adjust tomorrow. */
     today: { distMi: number; paceSPerMi: number; avgHr: number | null; name: string; activityId: number } | null;
-    /** M2 — HealthKit-driven. */
+    /** M2, HealthKit-driven. */
     hrv7dAvgMs: number | null;
     rhrBpm: number | null;
     sleep7dAvgHrs: number | null;
@@ -120,7 +120,7 @@ export interface CoachState {
      *  real HR ceiling for Karvonen zones instead of a hardcoded default.
      *  Optional so older fixtures/callers omit it (treated as unknown). */
     maxHrBpm?: number | null;
-    /** Latest body weight (kg) from Apple Health — for W/kg + fueling
+    /** Latest body weight (kg) from Apple Health, for W/kg + fueling
      *  context. Optional/null when no smart-scale data. */
     weightKg?: number | null;
     /** Strength sessions logged in the current calendar week. Sourced
@@ -134,7 +134,7 @@ export interface CoachState {
     /** True when ANY of: 2+ races in 14 days; a marathon-distance race
      *  in the last 14 days; 3+ races in 21 days; sustained ≥1.5× weekly
      *  average for 3+ weeks. Drives a deeper rest schedule than a
-     *  single-race POST_RACE — Big Sur + Sombrero (8 days apart)
+     *  single-race POST_RACE, Big Sur + Sombrero (8 days apart)
      *  qualifies and means the coach holds on running for longer. */
     heavyBlockSuspected: boolean;
     /** Last-7-day mileage ≤ 30% of 28-day average → coming back from a break. */
@@ -143,7 +143,7 @@ export interface CoachState {
     healthKitAvailable: boolean;
     /** Runner-initiated skips in the last 14 days. Each row is one
      *  explicit Skip Today click. Empty when no skips. Engine treats
-     *  this as ground truth, not a fuzzy signal — the runner said
+     *  this as ground truth, not a fuzzy signal, the runner said
      *  "today didn't happen." adaptPlan fires a `runner-skip` trigger
      *  when a skip lands on a planned quality day. */
     recentSkips: Array<{
@@ -154,10 +154,10 @@ export interface CoachState {
   };
 
   /** 7-day daily_checkin rollup (energy / soreness / stress, each 1-10).
-   *  Null when no rows in the window — the engine treats it as a
+   *  Null when no rows in the window, the engine treats it as a
    *  missing signal, not zeroed-out.
    *
-   *  @research Research/00b §Warning Signs of Incomplete Recovery —
+   *  @research Research/00b §Warning Signs of Incomplete Recovery, 
    *            Qualitative Signals · Decision Matrix */
   checkin: CheckinAggregate | null;
 
@@ -175,31 +175,31 @@ export interface CoachState {
    *    5K:           3 days */
   recoveryWindowEndsISO: string | null;
 
-  /** Raw activity list — surfaced for plan adaptation triggers that need
+  /** Raw activity list, surfaced for plan adaptation triggers that need
    *  per-run execution signals (e.g., quality session pace scoring).
    *  Optional for backwards compat with test fixtures. */
   activities?: NormalizedActivity[];
 
   /** User-configured weekly cadence parsed from the `user_prefs` table.
-   *  Every day-of-week comparison in the engine reads from this block —
+   *  Every day-of-week comparison in the engine reads from this block, 
    *  hardcoded weekdays in the engine encoded `isDefaults: true` behavior
    *  and ignored what the user actually wanted.
    *
    *  Days are JS `Date.getDay()` integers: 0=Sun, 1=Mon, ..., 6=Sat.
    *
    *  Defaults (when no row exists OR a field is null/garbage):
-   *    longRunDow: 6 (Saturday) — runner-standard default
+   *    longRunDow: 6 (Saturday), runner-standard default
    *    qualityDows: [2, 4] (Tue / Thu)
    *    restDow: 1 (Monday)
    *
-   *  Saturday — not Sunday — is the long-run default. Most adult runners
+   *  Saturday, not Sunday, is the long-run default. Most adult runners
    *  with Mon-Fri jobs run their long on Saturday so Sunday is open for
    *  recovery + the rest of life; coaching doctrine (Pfitzinger, Daniels,
    *  Hudson) all default to Saturday in their published plans. */
   prefs: {
     longRunDow: number;
     qualityDows: number[];
-    /** null means "engine decides" — engine derives the rest day
+    /** null means "engine decides", engine derives the rest day
      *  relative to the long run when this is null. */
     restDow: number | null;
     /** Explicit level set by the user in their profile. null = auto-detect
@@ -207,7 +207,7 @@ export interface CoachState {
      *  auto-detect and drives the plan-template lookup directly. */
     level: 'beginner' | 'intermediate' | 'advanced' | null;
     /** True when no user_prefs row existed (or every parsed field fell
-     *  back to a default). Lets the UI surface "Using defaults — set
+     *  back to a default). Lets the UI surface "Using defaults, set
      *  yours" without re-querying. */
     isDefaults: boolean;
   };
@@ -250,7 +250,7 @@ function buildWindowDays(distanceMi: number): number {
   return 6 * 7;
 }
 
-/** Options for gatherCoachState — opaque struct so we can add fields
+/** Options for gatherCoachState, opaque struct so we can add fields
  *  without breaking call sites. When `userId` is passed, the aggregate
  *  VDOT is pre-loaded into state.aggregateVdotValue so the engine's
  *  pace decisions match what /profile shows. */
@@ -259,7 +259,7 @@ export interface GatherCoachStateOpts {
 }
 
 /** Recovery biometrics from HealthKit ingest (health_samples), averaged
- *  over the last 7 days. Only resolves for an authenticated user — anon
+ *  over the last 7 days. Only resolves for an authenticated user, anon
  *  ('me'-legacy) reads return nulls so nothing fake surfaces. */
 async function gatherHealthBiometrics(userId: string | undefined): Promise<{
   hrv7dAvgMs: number | null;
@@ -298,7 +298,7 @@ async function gatherHealthBiometrics(userId: string | undefined): Promise<{
 }
 
 export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise<CoachState> {
-  // "Today" in LA — server runs in UTC and would otherwise flip a day
+  // "Today" in LA, server runs in UTC and would otherwise flip a day
   // early in the evening. todayDate() is anchored at noon UTC of the
   // LA calendar date so isoDateOffset's setDate/getDate math is safe.
   const today = todayDate();
@@ -307,22 +307,22 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
   const [savedRaces, { activities }, checkinAgg, prefsRow, recentSkipsRaw, healthBio] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
-    // whatever data is available — empty races just means no A/B race surfaces.
+    // whatever data is available, empty races just means no A/B race surfaces.
     // When userId is provided, races scoped to that user (legacy rows with
-    // null user_uuid stay visible for now — additive migration).
+    // null user_uuid stay visible for now, additive migration).
     listRacesDB(opts.userId).catch(() => [] as Awaited<ReturnType<typeof listRacesDB>>),
     getCachedActivities(opts.userId).catch(() => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 })),
     // gatherCheckinAggregate swallows DB failures internally so this
     // resolves to a 0-rows aggregate when Postgres is unavailable.
     gatherCheckinAggregate(todayISO),
-    // Prefs are optional — when the user_prefs table is unreachable or
+    // Prefs are optional, when the user_prefs table is unreachable or
     // has no row, parsePrefsRow(null) returns the engine-wide defaults.
     // Prefs are user-scoped via user_id text (legacy 'me' for single-
     // tenant rows). prefs-store accepts a string user_id; passing the
     // resolved userId when available, otherwise falls back to 'me' so
     // existing single-tenant data still reads.
     getUserPrefs(opts.userId ?? 'me').catch(() => null),
-    // Skips are optional — empty list when the table is unreachable or
+    // Skips are optional, empty list when the table is unreachable or
     // when the runner hasn't ever clicked Skip Today.
     listRecentSkips({ sinceISO: isoDateOffset(today, -14) }).catch(
       () => [] as SkippedWorkout[],
@@ -331,7 +331,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     gatherHealthBiometrics(opts.userId),
   ]);
 
-  // Null `state.checkin` means "no rows in the last 7 days" — the
+  // Null `state.checkin` means "no rows in the last 7 days", the
   // engine treats it as a missing signal, not zeroed-out.
   const checkin: CheckinAggregate | null = checkinAgg.rowsCount > 0 ? checkinAgg : null;
 
@@ -423,7 +423,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
   const deltaPct4v4 = prior4wkMi > 0 ? (recent4wkMi - prior4wkMi) / prior4wkMi : null;
   const longestLast28Mi = last28.length > 0 ? round1(Math.max(...last28.map(a => a.distanceMi))) : 0;
 
-  // Training-only longest — excludes races. Detection unions Strava
+  // Training-only longest, excludes races. Detection unions Strava
   // workout_type/isProbablyRace name pattern with the user's `races`
   // table. Safe baseline for the +10% single-session spike rule.
   const savedRaceDates = new Set(savedRaces.map(r => r.meta.date));
@@ -489,7 +489,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
   for (let i = 0; i < 60; i++) {
     const d = isoDateOffset(today, -i);
     if (activities.some(a => a.date === d)) consecutiveRunDays++;
-    else if (i === 0) continue;  // today might have no run yet — start streak from yesterday
+    else if (i === 0) continue;  // today might have no run yet, start streak from yesterday
     else break;
   }
 
@@ -524,7 +524,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     }
   }
 
-  // Pre-load the aggregate VDOT — the ONE canonical current-VDOT used
+  // Pre-load the aggregate VDOT, the ONE canonical current-VDOT used
   // everywhere (it's the SAME value /profile's Coach Reads card and the
   // web race page show). Threading it into state.aggregateVdotValue
   // makes vdotSnapshot + paceTargetFromVdot pick that number, so the
@@ -613,7 +613,7 @@ function recoveryDaysForDistance(distMi: number): number {
 // User-preference parsing
 // The `user_prefs` table stores days as free-form strings: "Saturday",
 // "Sat", "SAT" all mean dow=6. Quality days arrive as "Tue / Thu" (slash
-// + spaces) or sometimes "Tue, Thu". Tolerant parsing — fall back to
+// + spaces) or sometimes "Tue, Thu". Tolerant parsing, fall back to
 // defaults on anything we can't decode rather than throwing.
 // ─────────────────────────────────────────────────────────────────
 
@@ -626,7 +626,7 @@ export const DEFAULT_QUALITY_DOWS = [2, 4];   // Tue / Thu
 export const DEFAULT_REST_DOW = 1;            // Monday
 
 /** Parse one day-name string into a JS `getDay()` integer.
- *  Returns null when the string can't be decoded — caller falls back
+ *  Returns null when the string can't be decoded, caller falls back
  *  to a default and (optionally) logs a warning. */
 export function parseDayName(raw: string | null | undefined): number | null {
   if (!raw) return null;
@@ -655,7 +655,7 @@ function isValidDow(v: number | null | undefined): v is number {
 }
 
 /** Parse a comma-separated list of dow ints ("2,4") into a sorted
- *  dedup list. Tolerant — invalid entries are dropped. */
+ *  dedup list. Tolerant, invalid entries are dropped. */
 function parseIntList(raw: string | null | undefined): number[] {
   if (!raw) return [];
   const out = new Set<number>();
@@ -680,7 +680,7 @@ export function parseDayCombo(raw: string | null | undefined): number[] {
 }
 
 /** Translate a `user_prefs` row (or null = no row) into the engine's
- *  `prefs` block. Tolerant — every field individually falls back to a
+ *  `prefs` block. Tolerant, every field individually falls back to a
  *  default. `isDefaults` is true only when nothing custom survived. */
 export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
   if (!row) {
@@ -699,16 +699,16 @@ export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
   const qualityParsed = qualityFromInt.length > 0 ? qualityFromInt : parseDayCombo(row.quality_days);
   const restParsed = isValidDow(row.rest_dow) ? row.rest_dow : parseDayName(row.rest_day);
 
-  // Warn on unparseable input so DB rot is visible in logs — don't
+  // Warn on unparseable input so DB rot is visible in logs, don't
   // throw, fall back silently in production-ish behavior.
   if (row.long_run_day && longParsed == null) {
-    console.warn(`[coach-state] Could not parse user_prefs.long_run_day=${JSON.stringify(row.long_run_day)} — using default Saturday`);
+    console.warn(`[coach-state] Could not parse user_prefs.long_run_day=${JSON.stringify(row.long_run_day)}, using default Saturday`);
   }
   if (row.quality_days && qualityParsed.length === 0) {
-    console.warn(`[coach-state] Could not parse user_prefs.quality_days=${JSON.stringify(row.quality_days)} — using default [Tue, Thu]`);
+    console.warn(`[coach-state] Could not parse user_prefs.quality_days=${JSON.stringify(row.quality_days)}, using default [Tue, Thu]`);
   }
   if (row.rest_day && restParsed == null) {
-    console.warn(`[coach-state] Could not parse user_prefs.rest_day=${JSON.stringify(row.rest_day)} — using default Monday`);
+    console.warn(`[coach-state] Could not parse user_prefs.rest_day=${JSON.stringify(row.rest_day)}, using default Monday`);
   }
 
   const longRunDow = longParsed ?? DEFAULT_LONG_RUN_DOW;
@@ -717,7 +717,7 @@ export function parsePrefsRow(row: PrefsRow | null): CoachState['prefs'] {
   const level = row.level ?? null;
 
   // isDefaults: every parsed field landed on its default. A row may
-  // exist but be all-null — that still counts as defaults from the
+  // exist but be all-null, that still counts as defaults from the
   // engine's perspective.
   const isDefaults =
     longParsed == null &&

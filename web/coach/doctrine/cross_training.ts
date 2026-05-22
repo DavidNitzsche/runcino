@@ -1,5 +1,5 @@
 /**
- * Doctrine — Cross-training substitution and equivalent stimulus.
+ * Doctrine, Cross-training substitution and equivalent stimulus.
  *
  * Source: Research/09-cross-training.md
  *
@@ -94,7 +94,7 @@ export const XT_TIME_EQUIVALENT_RATIOS: Cited<Array<{
   notes: string;
 }>> = {
   value: [
-    { modality: 'altergreens',           timeRatioVsRunLow: 1.0, timeRatioVsRunHigh: 1.0, notes: '1:1 — running motion at reduced body weight' },
+    { modality: 'altergreens',           timeRatioVsRunLow: 1.0, timeRatioVsRunHigh: 1.0, notes: '1:1, running motion at reduced body weight' },
     { modality: 'deep_water_running',    timeRatioVsRunLow: 1.0, timeRatioVsRunHigh: 1.0, notes: '1:1 with HR/RPE matching' },
     { modality: 'elliptical',            timeRatioVsRunLow: 1.0, timeRatioVsRunHigh: 1.2, notes: 'Approx 1:1; slight time bonus for matching aerobic load' },
     { modality: 'cycling',               timeRatioVsRunLow: 1.3, timeRatioVsRunHigh: 1.5, notes: 'Cycling typically requires 1.3-1.5× time of replaced run for equal stress' },

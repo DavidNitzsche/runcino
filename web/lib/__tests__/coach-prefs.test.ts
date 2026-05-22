@@ -2,9 +2,9 @@
  * Tests for user-preference plumbing through the coach engine.
  *
  * Covers:
- *   1. parsePrefsRow — day-name parsing + tolerant fallback to defaults.
- *   2. simulateRange — long-run lands on state.prefs.longRunDow.
- *   3. simulateRange — quality lands on state.prefs.qualityDows.
+ *   1. parsePrefsRow, day-name parsing + tolerant fallback to defaults.
+ *   2. simulateRange, long-run lands on state.prefs.longRunDow.
+ *   3. simulateRange, quality lands on state.prefs.qualityDows.
  *
  * Wave U installed `state.prefs` so the engine stops hardcoding
  * Sat/Tue+Thu/Mon for every runner. These tests guard the three core
@@ -146,10 +146,10 @@ function isoDow(iso: string): number {
   return new Date(iso + 'T12:00:00Z').getUTCDay();
 }
 
-describe('simulateRange — long-run day honors state.prefs.longRunDow', () => {
+describe('simulateRange, long-run day honors state.prefs.longRunDow', () => {
   it('with default prefs (Saturday), long runs land on Saturday', () => {
     // Walk forward 4 weeks. STATE_MID_BUILD_WEEK_4 is a healthy
-    // BUILD-phase runner — long runs should appear weekly.
+    // BUILD-phase runner, long runs should appear weekly.
     const state = STATE_MID_BUILD_WEEK_4;
     const start = state.now;
     const endDate = new Date(start + 'T12:00:00Z');
@@ -160,7 +160,7 @@ describe('simulateRange — long-run day honors state.prefs.longRunDow', () => {
     const longRunDays = days.filter(d => d.isLong);
     expect(longRunDays.length).toBeGreaterThan(0);
     for (const d of longRunDays) {
-      expect(isoDow(d.date), `Long run on ${d.date} (dow=${isoDow(d.date)}) — expected Saturday (6)`).toBe(6);
+      expect(isoDow(d.date), `Long run on ${d.date} (dow=${isoDow(d.date)}), expected Saturday (6)`).toBe(6);
     }
   });
 
@@ -175,15 +175,15 @@ describe('simulateRange — long-run day honors state.prefs.longRunDow', () => {
     const longRunDays = days.filter(d => d.isLong);
     expect(longRunDays.length).toBeGreaterThan(0);
     for (const d of longRunDays) {
-      expect(isoDow(d.date), `Long run on ${d.date} (dow=${isoDow(d.date)}) — expected Sunday (0)`).toBe(0);
+      expect(isoDow(d.date), `Long run on ${d.date} (dow=${isoDow(d.date)}), expected Sunday (0)`).toBe(0);
     }
   });
 });
 
-describe('simulateRange — quality days honor state.prefs.qualityDows', () => {
+describe('simulateRange, quality days honor state.prefs.qualityDows', () => {
   it('with unusual prefs.qualityDows=[3, 6] (Wed/Sat), no quality lands on Tue or Thu', () => {
     // Move quality off Tue/Thu so any Tue/Thu quality day is a
-    // regression. Sat is both long-run AND quality here — the engine
+    // regression. Sat is both long-run AND quality here, the engine
     // resolves that to a long-on-Sat (long wins).
     const state = withPrefs(STATE_MID_BUILD_WEEK_4, { qualityDows: [3, 6] });
     const start = state.now;

@@ -8,14 +8,14 @@
  * monitoring right now, with a freshness/state value and a colour
  * variant that reflects how that signal is reading.
  *
- * Source mockup: Wave G goal — "make the coach feel always on" without
+ * Source mockup: Wave G goal, "make the coach feel always on" without
  * inventing numbers.
  *
  * Data flows in via `_alive-coach.ts`'s `loadAliveCoachData()` →
  * `AliveCoachData.watching` (WatchingChip[]).
  *
  * No file in this component edits data.ts, page.tsx, TodayCard, or the
- * plan-adapted card — Wave F owns those. Integration into /overview/
+ * plan-adapted card, Wave F owns those. Integration into /overview/
  * page.tsx happens in a follow-up after Wave F lands.
  */
 
@@ -26,7 +26,7 @@ export interface CoachWatchingStripProps {
   chips: WatchingChip[];
 }
 
-/** Per-variant CSS — drives the chip background + accent stripe.
+/** Per-variant CSS, drives the chip background + accent stripe.
  *  Mirrors the existing card-pin palette so the strip reads as a
  *  natural extension of the page's design system. */
 const VARIANT_STYLES: Record<WatchingChip['variant'], {
@@ -76,7 +76,7 @@ export function CoachWatchingStrip({ chips }: CoachWatchingStripProps) {
       }}
       aria-label="Coach is watching"
     >
-      {/* The pulse dot — implies the coach is live, scanning all
+      {/* The pulse dot, implies the coach is live, scanning all
           signals. CSS keyframe lives in globals.css; here we set the
           base styles. */}
       <span
@@ -127,7 +127,7 @@ export function CoachWatchingStrip({ chips }: CoachWatchingStripProps) {
                 flexShrink: 0,
               }}
             >
-              {/* Left accent bar — louder for fresh signals so the eye
+              {/* Left accent bar, louder for fresh signals so the eye
                   is drawn to whatever the coach just acted on. */}
               <span
                 style={{

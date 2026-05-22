@@ -1,16 +1,16 @@
 'use client';
 
 /**
- * v4 week strip card — the bottom-most surface on /overview.
+ * v4 week strip card, the bottom-most surface on /overview.
  *
  * Header row:                                           [View Full Schedule →]
  *   [THIS WEEK]   15.3 / 38.5 mi · 3 / 6 workouts · +0.9 over plan
  *   [Base Week 3]
- *   [progress bar — 40% green fill]
+ *   [progress bar, 40% green fill]
  *
  * Day grid: 7 equal columns Mon → Sun.
  *   Each column shows: day name, date, workout name, distance,
- *   status pill ("Done" / "Today" / planned / "—" for rest).
+ *   status pill ("Done" / "Today" / planned / ", " for rest).
  *
  * The today column gets an amber top border + amber-wash background.
  */
@@ -123,7 +123,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                   <strong>{loggedMi.toFixed(1)}</strong> / {plannedMi.toFixed(1)} mi
                 </>
               ) : (
-                <span style={{ color: 'rgba(8,8,8,.35)' }}>—</span>
+                <span style={{ color: 'rgba(8,8,8,.35)' }}>, </span>
               )}
             </Stat>
             <Dot />
@@ -133,7 +133,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                   {loggedWorkouts} / {totalWorkouts} workouts
                 </>
               ) : (
-                <span style={{ color: 'rgba(8,8,8,.35)' }}>—</span>
+                <span style={{ color: 'rgba(8,8,8,.35)' }}>, </span>
               )}
             </Stat>
             {deltaLabel && (
@@ -321,7 +321,7 @@ function DayColumn({
             marginTop: '4px',
           }}
         >
-          —
+, 
         </div>
       ) : null}
       {day.status === 'done' && (

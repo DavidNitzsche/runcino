@@ -1,7 +1,7 @@
 /**
  * GET /api/plan/workout?date=YYYY-MM-DD
  *
- * The structured, described workout for one plan day — the SAME
+ * The structured, described workout for one plan day, the SAME
  * describeWorkout the web /workout modal and the iPhone today-card render,
  * so a future day's detail sheet shows the real steps (warmup / N×reps /
  * cooldown with paces + zones) + effort + why, not just prose.

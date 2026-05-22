@@ -97,7 +97,7 @@ export function ConnectorsCard() {
   }
 
   async function disconnect(provider: string) {
-    if (!confirm(`Disconnect ${PROVIDER_INFO[provider]?.name || provider}? Your run history stays — re-connect any time to resume syncing.`)) return;
+    if (!confirm(`Disconnect ${PROVIDER_INFO[provider]?.name || provider}? Your run history stays, re-connect any time to resume syncing.`)) return;
     setBusy(true);
     try {
       await fetch(`/api/connectors/${provider}/disconnect`, { method: 'POST' });
@@ -116,7 +116,7 @@ export function ConnectorsCard() {
       const j = await res.json();
       if (!res.ok) {
         if (j?.needsReconnect) {
-          setSyncMsg('Token expired — reconnect Strava');
+          setSyncMsg('Token expired, reconnect Strava');
         } else {
           setSyncMsg(j?.error || 'Sync failed');
         }
@@ -151,7 +151,7 @@ export function ConnectorsCard() {
 
         <div className="faff-conn-section-label">Connected</div>
 
-        {/* Strava row — either connected (with sync info + disconnect) or
+        {/* Strava row, either connected (with sync info + disconnect) or
             available (with connect button). */}
         {stravaConn ? (
           <>
@@ -171,7 +171,7 @@ export function ConnectorsCard() {
               <button className="faff-conn-btn danger" type="button" disabled={busy} onClick={() => disconnect('strava')}>Disconnect</button>
             </div>
           </div>
-          {/* Writeback toggle — auto-names Strava activities to match the planned workout */}
+          {/* Writeback toggle, auto-names Strava activities to match the planned workout */}
           <div className="faff-conn-subrow">
             <label className="faff-writeback-toggle">
               <input
@@ -203,7 +203,7 @@ export function ConnectorsCard() {
           </div>
         )}
 
-        {/* Apple Health — connected when the iPhone app has ingested
+        {/* Apple Health, connected when the iPhone app has ingested
             biometrics (writes a connector marker on each sync). */}
         {appleConn && (
           <div className="faff-conn-row connected">

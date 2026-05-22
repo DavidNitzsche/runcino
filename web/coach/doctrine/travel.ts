@@ -1,5 +1,5 @@
 /**
- * Doctrine — Travel and time-zone protocols.
+ * Doctrine, Travel and time-zone protocols.
  *
  * Source: Research/12-travel-timezone.md
  *
@@ -72,7 +72,7 @@ export const IN_FLIGHT_PROTOCOL: Cited<{
       'Key medications + electrolytes',
       'Compression sleeves',
     ],
-    watchAdjustment: 'Set watch to destination time on takeoff — psychological pre-shift.',
+    watchAdjustment: 'Set watch to destination time on takeoff, psychological pre-shift.',
   },
   citations: [
     cite('§In-Flight Hydration + Travel Compression + Pre/In/Post-Flight Running Adjustments', 'In-flight hydration + DVT prevention + carry-on must-haves + watch adjustment', 'research', '12'),

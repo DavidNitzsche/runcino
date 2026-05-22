@@ -137,7 +137,7 @@ describe('coach.pathToRace', () => {
       raceName: state.races.nextA!.name,
       raceDateISO: state.races.nextA!.date,
       raceDistanceMi: state.races.nextA!.distanceMi,
-      goalTimeS: 6600, // 1:50 half — easy for a 1:36 runner
+      goalTimeS: 6600, // 1:50 half, easy for a 1:36 runner
     });
 
     expect(decision.answer.feasibility).toBe('ahead');
@@ -156,7 +156,7 @@ describe('coach.pathToRace', () => {
       raceName: state.races.nextA!.name,
       raceDateISO: state.races.nextA!.date,
       raceDistanceMi: state.races.nextA!.distanceMi,
-      goalTimeS: 4800, // 1:20 half — way faster than VDOT 49 can support
+      goalTimeS: 4800, // 1:20 half, way faster than VDOT 49 can support
     });
 
     expect(decision.answer.feasibility).toBe('behind');
@@ -199,7 +199,7 @@ describe('coach.pathToRace', () => {
       raceName: 'AFC Half',
       raceDateISO: '2026-08-16',
       raceDistanceMi: 13.1,
-      goalTimeS: 7200, // 2:00 — well slower than predicted
+      goalTimeS: 7200, // 2:00, well slower than predicted
     });
     expect(decision.answer.weeksNeeded).toBe(0);
   });

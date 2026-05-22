@@ -1,5 +1,5 @@
 /**
- * ElevationGradient — smooth-grade-gradient elevation chart.
+ * ElevationGradient, smooth-grade-gradient elevation chart.
  *
  * Locked technique from the May 2026 run-detail template:
  *
@@ -17,7 +17,7 @@
  *      opacity (no mask).
  *   5. Optional peak marker (filled circle, warn color).
  *
- * Caller supplies `points` — an array of {mile, elev, grade}. The
+ * Caller supplies `points`, an array of {mile, elev, grade}. The
  * component projects them into a 1400×90 viewBox (preserveAspectRatio
  * = "none" so the path stretches horizontally to fit any width).
  */
@@ -27,7 +27,7 @@ import type { CSSProperties } from 'react';
 export interface ElevationPoint {
   /** Mile-position. 0 ≤ mile ≤ totalMiles. */
   mile: number;
-  /** Elevation in feet (or any unit — only the relative range matters). */
+  /** Elevation in feet (or any unit, only the relative range matters). */
   elev: number;
   /** Grade percent at this point (-100..100). */
   grade?: number;
@@ -44,7 +44,7 @@ export interface ElevationGradientProps {
   points: ElevationPoint[];
   /** When set, marks the peak with a red dot. */
   peak?: ElevationPeak;
-  /** Total course distance — used to project mile→x. Defaults to last point's mile. */
+  /** Total course distance, used to project mile→x. Defaults to last point's mile. */
   totalMiles?: number;
   /** Override the viewBox height (default 90). */
   height?: number;

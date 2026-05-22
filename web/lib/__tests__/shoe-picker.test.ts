@@ -1,5 +1,5 @@
 /**
- * shoe-picker — auto-assign rule + ambiguity handling.
+ * shoe-picker, auto-assign rule + ambiguity handling.
  *
  * The picker drives the sync-time shoe auto-assign in
  * syncSingleActivity. The contract is: pick a shoe iff there's a single
@@ -8,7 +8,7 @@
  * to leave shoe_id NULL and have the user tap once than to log miles
  * against the wrong pair.
  *
- * Tests use the pure pickFromShoes() variant so we don't need a DB —
+ * Tests use the pure pickFromShoes() variant so we don't need a DB, 
  * the async pickShoeForWorkout() wrapper is a thin listShoes() +
  * pickFromShoes() composition.
  *

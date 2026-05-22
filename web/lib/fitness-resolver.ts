@@ -1,5 +1,5 @@
 /**
- * Fitness resolver — SINGLE source of truth for a user's fitness
+ * Fitness resolver, SINGLE source of truth for a user's fitness
  * signals at request time. See lib/fitness-types.ts for the bundle
  * shape; this module is server-only because it hits Postgres.
  *
@@ -77,7 +77,7 @@ async function getRestingHr(userId: string): Promise<FitnessRestingHr> {
   } catch { return { value: null, source: 'none' }; }
 }
 
-/** Pick the user's "active" race — the one currently driving training.
+/** Pick the user's "active" race, the one currently driving training.
  *  Rule: NEAREST upcoming race, regardless of priority. Training paces
  *  follow what's actually coming up next, not the season's biggest
  *  goal. A B-race in 6 weeks dictates near-term workout pacing; the
@@ -179,7 +179,7 @@ async function resolveVdot(userId: string, level: string): Promise<FitnessVdot> 
  *      Factor) so climbing miles render slower and descents faster,
  *      but the TIME-WEIGHTED AVERAGE still equals goalFinishS. The
  *      race-plan UI shows phase-by-phase paces that can sit OUTSIDE
- *      this ±10s band on individual hills — that's by design, not a
+ *      this ±10s band on individual hills, that's by design, not a
  *      bug. Training workouts say "hold race-pace effort"; the race
  *      plan says "here's how that effort distributes across the
  *      course."

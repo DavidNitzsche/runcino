@@ -3,7 +3,7 @@
  *
  * A Radix-powered select that fully replaces the native browser dropdown.
  * The native popup paints with OS-default colors (light gray, serif) which
- * clashes with the dark JetBrains/Oswald/Jost aesthetic — this component
+ * clashes with the dark JetBrains/Oswald/Jost aesthetic, this component
  * paints every part itself.
  *
  * The closed-state trigger mimics `.rc-select` exactly so it slots into
@@ -132,7 +132,7 @@ export function DropdownSeparator() {
   return <Select.Separator className="rc-dropdown-separator" />;
 }
 
-/** Same chevron geometry as the .rc-select background-image — drawn in SVG so the popper version can match. */
+/** Same chevron geometry as the .rc-select background-image, drawn in SVG so the popper version can match. */
 function ChevronGlyph() {
   return (
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">

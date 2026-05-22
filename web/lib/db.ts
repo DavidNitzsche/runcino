@@ -3,7 +3,7 @@
  *
  * Single shared `pg.Pool` for the app. Schema lives here too: tables
  * are created on first query via `ensureSchema()`, idempotent. No
- * separate migration runner — the schema is small enough that
+ * separate migration runner, the schema is small enough that
  * conditional CREATEs cover us through M0/M1.
  *
  * Connection comes from DATABASE_URL (Railway sets this automatically
@@ -13,7 +13,7 @@
  *
  * SSL: Railway's internal Postgres routing requires no SSL between
  * services in the same project, but external connections do. We
- * detect by URL host — `*.railway.internal` skips SSL, anything else
+ * detect by URL host, `*.railway.internal` skips SSL, anything else
  * uses `rejectUnauthorized:false` (matching Neon/Railway public certs).
  */
 
@@ -27,7 +27,7 @@ function getPool(): Pool {
   if (pool) return pool;
   const url = process.env.DATABASE_URL;
   if (!url) {
-    throw new Error('DATABASE_URL not set — Postgres is required. Locally, point it at any Postgres; on Railway, reference the Postgres service from faff.');
+    throw new Error('DATABASE_URL not set, Postgres is required. Locally, point it at any Postgres; on Railway, reference the Postgres service from faff.');
   }
   const isInternal = /\.railway\.internal/.test(url);
   pool = new Pool({
@@ -47,7 +47,7 @@ export async function query<T = unknown>(
 ): Promise<T[]> {
   await ensureSchema();
   // pg's QueryResult generic wants a row shape, but we want callers to
-  // be free to pass non-index-signatured types — cast through unknown.
+  // be free to pass non-index-signatured types, cast through unknown.
   const res = await getPool().query(sql, params);
   return res.rows as unknown as T[];
 }
@@ -82,7 +82,7 @@ async function bootstrap(): Promise<void> {
     `);
     // Multi-tenant: add user_uuid to races so each user's races are
     // scoped to them. Existing rows have user_uuid=NULL and remain
-    // visible to all users until backfilled — query pattern is
+    // visible to all users until backfilled, query pattern is
     // `WHERE (user_uuid = $1 OR user_uuid IS NULL)` so no regression.
     await client.query(`
       ALTER TABLE races
@@ -131,7 +131,7 @@ async function bootstrap(): Promise<void> {
     `);
     // Auto-assign attribution: when syncSingleActivity's shoe-picker
     // assigned the row, the timestamp is set here. Manual user picks
-    // CLEAR this column — once the user touches the field, the row
+    // CLEAR this column, once the user touches the field, the row
     // is no longer auto-attributed even if they pick the same shoe.
     // The /runs/[id] UI reads `auto_assigned = (shoe_auto_assigned_at
     // IS NOT NULL)` to render the "auto-assigned as your easy-day
@@ -209,7 +209,7 @@ async function bootstrap(): Promise<void> {
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
-    // Apple Health VO2max — WELLNESS signal (never a training signal).
+    // Apple Health VO2max, WELLNESS signal (never a training signal).
     // Range 25-90 covers untrained → elite. Stored manually because
     // HealthKit integration is M2; written via /api/profile/vo2-max.
     // NOT used by VDOT / pace / feasibility / zone code; only cold-start
@@ -350,7 +350,7 @@ async function bootstrap(): Promise<void> {
     //   • coach.adaptPlan (a skip on a planned quality day fires a
     //     `runner-skip` mutation trigger per Research/00b §Decision Matrix)
     //
-    // Uniqueness: (user_id, date) — re-clicking Skip on the same day
+    // Uniqueness: (user_id, date), re-clicking Skip on the same day
     // updates the row instead of duplicating. Undo deletes the row.
     await client.query(`
       CREATE TABLE IF NOT EXISTS skipped_workouts (
@@ -381,7 +381,7 @@ async function bootstrap(): Promise<void> {
     await client.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
     await client.query(`CREATE EXTENSION IF NOT EXISTS citext;`);
 
-    // users — one row per signed-up account
+    // users, one row per signed-up account
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -406,7 +406,7 @@ async function bootstrap(): Promise<void> {
       );
     `);
 
-    // Approval gate — private beta until SIGNUP_REQUIRES_APPROVAL=false.
+    // Approval gate, private beta until SIGNUP_REQUIRES_APPROVAL=false.
     // New signups land as 'pending' (unless email matches LEGACY_OWNER_EMAIL,
     // which auto-approves + auto-admins). Existing rows default to 'active'
     // so anyone already signed up doesn't get locked out by the rollout.
@@ -441,7 +441,7 @@ async function bootstrap(): Promise<void> {
     // Split: max_hr / resting_hr are the AUTO values (Apple Health ingest
     // ratchets them); *_override are the runner's MANUAL override, which
     // wins until cleared. Previously the manual edit and Apple ingest both
-    // wrote max_hr, so whichever ran last won — overrides got clobbered.
+    // wrote max_hr, so whichever ran last won, overrides got clobbered.
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr_override INTEGER
         CHECK (max_hr_override IS NULL OR (max_hr_override >= 100 AND max_hr_override <= 230));
@@ -456,7 +456,7 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT
         CHECK (accent_color IS NULL OR accent_color ~ '^#[0-9A-Fa-f]{6}$');
     `);
-    // Pace-migration acknowledgment — set when the user confirms the
+    // Pace-migration acknowledgment, set when the user confirms the
     // one-time pace-band correction from the legacy race-pace-derived
     // formula to canonical Daniels Table 2. While NULL, /profile's
     // Coach Reads card surfaces a migration banner explaining the
@@ -473,13 +473,13 @@ async function bootstrap(): Promise<void> {
     //   Set when the user clicks Apply on an adaptive-VDOT-bump banner.
     //   compute-vdot uses this value INSTEAD of the race-derived
     //   aggregate, until a new race result lands AFTER override_at
-    //   (the new race result then clears the override automatically —
+    //   (the new race result then clears the override automatically, 
     //   race-first source-of-truth still wins long term, but training
     //   evidence can move the displayed VDOT between races).
     //
     // vdot_manual_override_at:
     //   Timestamp the override was set. Used to detect "new race
-    //   since override" — if any race result post-dates this, the
+    //   since override", if any race result post-dates this, the
     //   override is considered stale and ignored.
     //
     // adaptive_vdot_dismissed_at:
@@ -553,7 +553,7 @@ async function bootstrap(): Promise<void> {
     // Caches Open-Meteo historical archive lookups for (lat, lon, date)
     // triples so the adaptive-VDOT signal evaluator doesn't refetch
     // weather every render. lat/lon are stored rounded to 0.1° (~10 km
-    // grid) — workouts near each other share a row, neighbourhood noise
+    // grid), workouts near each other share a row, neighbourhood noise
     // collapses to a single cache entry. See lib/workout-weather.ts.
     await client.query(`
       CREATE TABLE IF NOT EXISTS workout_weather_cache (
@@ -565,7 +565,7 @@ async function bootstrap(): Promise<void> {
         PRIMARY KEY (lat_round, lon_round, date)
       );
     `);
-    // Adaptive-recommendation dismissals — when the user clicks
+    // Adaptive-recommendation dismissals, when the user clicks
     // "Keep current" on a max-HR validation prompt, the timestamp
     // here suppresses the banner for 30 days OR until new evidence
     // overrides (validated peak ≥ stored+3 bpm). See
@@ -583,7 +583,7 @@ async function bootstrap(): Promise<void> {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);`);
 
-    // health_samples — time-series storage for HealthKit ingest data
+    // health_samples, time-series storage for HealthKit ingest data
     // (Phase 1 item 3 of the iPhone-bridge work).  Stores anything the
     // iPhone bridge pushes from HealthKit: sleep hours per night,
     // workout average HR, etc.  Dedicated columns (users.resting_hr,
@@ -608,14 +608,14 @@ async function bootstrap(): Promise<void> {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_health_samples_user_type_date ON health_samples (user_id, sample_type, sample_date DESC);`);
 
-    // workout_completions — structured result of executing a watch
+    // workout_completions, structured result of executing a watch
     // workout (docs/native/01-watchos-scoping.md §6).  The companion
     // endpoint POST /api/watch/workouts/complete writes here; distinct
     // from health_samples (biometric time-series).  Stores prescribed-
     // vs-executed per-interval data in the phases JSONB so coaching
     // surfaces can compare on next render.
     //
-    // Idempotent: UNIQUE(user_id, workout_id) — the iPhone HealthKit
+    // Idempotent: UNIQUE(user_id, workout_id), the iPhone HealthKit
     // observer can fire more than once for the same completed workout,
     // so re-POSTing the same workoutId UPSERTs rather than duplicating.
     await client.query(`
@@ -638,7 +638,7 @@ async function bootstrap(): Promise<void> {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_workout_completions_user_date ON workout_completions (user_id, completed_at DESC);`);
 
-    // workout_routes — GPS route + per-mile splits read from an Apple Health
+    // workout_routes, GPS route + per-mile splits read from an Apple Health
     // HKWorkoutRoute (watch-only runs that never reach Strava). The iPhone
     // POSTs to /api/watch/route; /api/runs/by-date serves the polyline + splits
     // so the recap shows a map for watch-only runs. Keyed by start time to
@@ -673,7 +673,7 @@ async function bootstrap(): Promise<void> {
       [legacyOwner],
     );
 
-    // sessions — cookie-token lookup (server-side session store)
+    // sessions, cookie-token lookup (server-side session store)
     await client.query(`
       CREATE TABLE IF NOT EXISTS sessions (
         id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -697,7 +697,7 @@ async function bootstrap(): Promise<void> {
     //   · 'refresh' · native refresh token · 90d TTL
     //
     // All three are opaque 32-byte tokens stored hashed at rest.  No
-    // JWT, no separate table — single auth machinery serves all three
+    // JWT, no separate table, single auth machinery serves all three
     // surfaces.  revoked_at marks a token as no longer valid (refresh
     // rotation, logout, suspected leak).
     //
@@ -711,7 +711,7 @@ async function bootstrap(): Promise<void> {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_sessions_user_kind ON sessions (user_id, kind);`);
 
-    // connector_tokens — per-user OAuth credentials for every source
+    // connector_tokens, per-user OAuth credentials for every source
     await client.query(`
       CREATE TABLE IF NOT EXISTS connector_tokens (
         id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -750,7 +750,7 @@ async function bootstrap(): Promise<void> {
       await client.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS user_uuid UUID REFERENCES users(id) ON DELETE CASCADE;`);
     }
 
-    // Data-migration tracking table — guards one-shot data fixups so
+    // Data-migration tracking table, guards one-shot data fixups so
     // they run exactly once across deploys.
     await client.query(`
       CREATE TABLE IF NOT EXISTS data_migrations (
@@ -773,7 +773,7 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
   // ── 2026-05-21 · claim legacy 'me' connector_tokens to the owner ──
   //
   // The signup backfill (maybeBackfillLegacyOwner) reassigned the user_uuid
-  // tables and the user_id-text tables, but MISSED connector_tokens — which
+  // tables and the user_id-text tables, but MISSED connector_tokens, which
   // is keyed by user_id (text). So the owner's Strava OAuth row stayed under
   // 'me' while strava_activities got claimed to the owner's UUID. Result:
   // listUserConnectors(ownerId) returned nothing, and every client showed
@@ -781,7 +781,7 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
   //
   // Reassign each legacy 'me' connector to the owner, per-provider, skipping
   // any provider the owner already holds (so we never violate the
-  // (user_id, provider) uniqueness — e.g. an apple_health row from ingest).
+  // (user_id, provider) uniqueness, e.g. an apple_health row from ingest).
   // Self-gated by its own name so it runs regardless of the block below.
   const CONN_MIG = '2026-05-21-claim-connector-tokens';
   const connDone = await client.query<{ name: string }>(
@@ -833,10 +833,10 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
   //
   //   3. Auto-acknowledge the pace migration banner for the admin
   //      user. Sim sweep was clean; David said "ship the pace band
-  //      migration based on it" — so set users.pace_migration_ack_at
+  //      migration based on it", so set users.pace_migration_ack_at
   //      automatically rather than requiring a click.
   // Round 2 extension (David 2026-05-19): "Big Sur still at 17%
-  // weight, VDOT 42.9 — eats ~0.7 VDOT points. L2 (hilly-course
+  // weight, VDOT 42.9, eats ~0.7 VDOT points. L2 (hilly-course
   // exclusion) remains the highest-leverage remaining unlock. Ship
   // it." The UI for hilly-excluded was shipped in ec5d5b6; this
   // migration also applies it for Big Sur so David doesn't have to
@@ -850,7 +850,7 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
   if (already.rows.length > 0) return;
 
   try {
-    // 1a. Priority bumps. Match by slug (primary key) — works without
+    // 1a. Priority bumps. Match by slug (primary key), works without
     //     user_uuid scoping because slugs are globally unique.
     await client.query(
       `UPDATE races
@@ -873,7 +873,7 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
         WHERE slug = 'big-sur-marathon'`,
     );
 
-    // 2. Rose Bowl seed — only if not already present.
+    // 2. Rose Bowl seed, only if not already present.
     const roseExists = await client.query<{ slug: string }>(
       `SELECT slug FROM races WHERE slug = 'rose-bowl-half-2026' LIMIT 1`,
     );
@@ -965,7 +965,7 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
 
     // 3. Auto-acknowledge pace migration for the admin user. The sim
     //    sweep (docs/2026-05-19-sim-sweep.md) cleared the canonical
-    //    Daniels migration — David said "ship it based on the sim
+    //    Daniels migration, David said "ship it based on the sim
     //    sweep alone" so we apply the ack automatically rather than
     //    waiting for a click.
     await client.query(
@@ -980,7 +980,7 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
       [MIG_NAME],
     );
   } catch (e) {
-    // Don't crash the bootstrap on migration failure — log and skip.
+    // Don't crash the bootstrap on migration failure, log and skip.
     // If the migration fails partially, the next request will retry
     // (since data_migrations name wasn't recorded).
     console.error('[data-migrations] 2026-05-19 migration failed:', e);
@@ -988,7 +988,7 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
 }
 
 /**
- * Backfill claim — runs once on first signup. If the new user's email
+ * Backfill claim, runs once on first signup. If the new user's email
  * matches LEGACY_OWNER_EMAIL (set via env var; defaults to dnitch85@me.com),
  * every existing user_id='me' row is reassigned to their UUID.
  *
@@ -1005,11 +1005,11 @@ export async function maybeBackfillLegacyOwner(userId: string, email: string): P
       for (const tbl of ['daily_checkin', 'personal_goals', 'profile', 'user_prefs', 'training_plans', 'skipped_workouts']) {
         await client.query(`UPDATE ${tbl} SET user_uuid = $1 WHERE user_id = 'me' AND user_uuid IS NULL;`, [userId]);
       }
-      // Tables that have no user_id column — claim everything that's still unclaimed
+      // Tables that have no user_id column, claim everything that's still unclaimed
       for (const tbl of ['recovery_sessions', 'shoes', 'strava_activities', 'races']) {
         await client.query(`UPDATE ${tbl} SET user_uuid = $1 WHERE user_uuid IS NULL;`, [userId]);
       }
-      // connector_tokens is keyed by user_id (text) — reassign legacy 'me'
+      // connector_tokens is keyed by user_id (text), reassign legacy 'me'
       // rows, skipping any provider the new owner already holds so the
       // (user_id, provider) uniqueness is never violated.
       await client.query(
@@ -1028,7 +1028,7 @@ export async function maybeBackfillLegacyOwner(userId: string, email: string): P
   });
 }
 
-/** Test helper — drops all app tables. Never call in production. */
+/** Test helper, drops all app tables. Never call in production. */
 export async function _resetSchemaForTests(): Promise<void> {
   if (process.env.NODE_ENV === 'production') throw new Error('refusing to reset schema in production');
   const client = await getPool().connect();

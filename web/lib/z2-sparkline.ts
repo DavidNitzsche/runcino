@@ -32,7 +32,7 @@ export interface Z2SparklinePoint {
 export interface Z2SparklineResult {
   z2Band: { lo: number; hi: number } | null;
   points: Z2SparklinePoint[];
-  /** Pace range across the visible window — used by the renderer
+  /** Pace range across the visible window, used by the renderer
    *  to scale the Y axis. Null when no data. */
   paceRange: { min: number; max: number } | null;
   /** True when the data tells a meaningful story (≥3 weeks with data). */

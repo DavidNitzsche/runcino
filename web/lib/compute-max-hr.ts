@@ -9,9 +9,9 @@
  *
  * Strategy:
  *   1. Pull all strava_activities for the user where maxHr is set
- *   2. Sanity-filter — drop anything <140 (likely a glitch) or >220
+ *   2. Sanity-filter, drop anything <140 (likely a glitch) or >220
  *      (likely a glitch)
- *   3. Take the highest value — that's the measured max ceiling
+ *   3. Take the highest value, that's the measured max ceiling
  *   4. Bias note: if highest came from a race, that's the most
  *      trustworthy. If from an easy run, the user probably had a
  *      bad reading.
@@ -33,7 +33,7 @@ export interface ComputedMaxHr {
     workoutType: number | null;
     distanceMi: number;
   };
-  /** Top-N peak HR readings — for showing "confirmed across N runs"
+  /** Top-N peak HR readings, for showing "confirmed across N runs"
    *  in the UI. Empty if only one or two valid sources. */
   topReadings: Array<{
     id: string;
@@ -87,7 +87,7 @@ export async function computeMaxHrFromActivities(userId: string): Promise<Comput
   }
 
   const d = best.data;
-  // Build top-N readings list — useful for "confirmed across N runs"
+  // Build top-N readings list, useful for "confirmed across N runs"
   // confidence UI. Only include readings within 8 bpm of the peak
   // (anything further is a different effort level, not a peak).
   const bestHr = Math.round(Number(d.maxHr) || 0);
@@ -131,7 +131,7 @@ export async function resolveEffectiveMaxHr(userId: string): Promise<{
   computed?: ComputedMaxHr | null;
   /** The automatic value (Apple-ingest `max_hr` → computed activity peak),
    *  regardless of whether a manual override is winning. Lets the UI offer
-   *  "Apple Health now sees N — use it" when a higher peak appears. */
+   *  "Apple Health now sees N, use it" when a higher peak appears. */
   autoValue?: number | null;
 }> {
   const rows = await query<{ max_hr: number | null; max_hr_override: number | null }>(

@@ -1,5 +1,5 @@
 /**
- * Coach Reads card — surfaces the fitness-resolver output so you can
+ * Coach Reads card, surfaces the fitness-resolver output so you can
  * verify the whole app is reading from the same numbers.
  *
  * If a workout shows 7:30/mi instead of 6:52/mi, the answer is on
@@ -22,7 +22,7 @@ import { FALSIFIER_PREFIX, INJURY_SUSPENDED } from '@/lib/coach-voice';
 import { legacyPaceCenters } from '@/lib/legacy-paces';
 
 function fmtFinish(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
@@ -38,7 +38,7 @@ function fmtDate(iso: string): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
-/** Natural-language aggregate explainer — written from the
+/** Natural-language aggregate explainer, written from the
  *  contributor data, not hand-coded. The voice goal: explain WHY
  *  VDOT lands where it does so the user can see the cycle-aware
  *  weighting + goal-tier exemption + chip-time correction in
@@ -79,7 +79,7 @@ function aggregateExplainer(vdot: FitnessVdot): string | null {
     );
   }
 
-  // Other contributors summary — no asterisks; provenance is in the
+  // Other contributors summary, no asterisks; provenance is in the
   // per-contributor badge row below the explainer. Inlining "(chip
   // time)" reads as confirmation of curated source without dragging
   // an unexplained * into the prose.
@@ -126,12 +126,12 @@ export function CoachReadsCard({
   adaptiveVdotVerdict?: AdaptiveVdotVerdictForUI | null;
   /** V7 item 5 · true when the L7 verdict short-circuited because
    *  the user has marked themselves injured.  Renders an explicit
-   *  "signals suspended" notice in place of the banner — coaching
+   *  "signals suspended" notice in place of the banner, coaching
    *  voice acknowledging system state, so the runner never wonders
    *  "why isn't the system firing?". */
   adaptiveSignalsSuspended?: boolean;
   /** Ongoing large-shift guard. When set, banner renders above the
-   *  L7 banner — represents aggregate-level review, not per-workout
+   *  L7 banner, represents aggregate-level review, not per-workout
    *  evidence. */
   vdotShift?: VdotShiftBannerProps | null;
   /** C2 · 8-week Z2 pace trend. Renders under the HR section when
@@ -187,7 +187,7 @@ export function CoachReadsCard({
             <div className="coach-reads-meta">
               All HM/race-pace workouts target this band: <strong>{fmtPaceBand(fitness.racePaceBand)}</strong>
             </div>
-            {/* Race feasibility banner — surfaces stretch / aggressive
+            {/* Race feasibility banner, surfaces stretch / aggressive
                 / conservative verdicts with evidence + falsifier. */}
             {raceFeasibility && raceFeasibility.hasFinding && raceFeasibility.predicted && (
               <div className={`coach-reads-feasibility coach-reads-feasibility-${raceFeasibility.verdict}`}>
@@ -226,7 +226,7 @@ export function CoachReadsCard({
               </span>
             )}
           </div>
-          {/* Natural-language aggregate explainer — surfaces WHY this
+          {/* Natural-language aggregate explainer, surfaces WHY this
               VDOT lands here. Built from contributor data, not
               hand-coded. */}
           {explainer && (
@@ -291,7 +291,7 @@ export function CoachReadsCard({
               })}
             </div>
           )}
-          {/* L7 adaptive-VDOT banner — fires when training execution
+          {/* L7 adaptive-VDOT banner, fires when training execution
               evidence (3+ faster T workouts at controlled HR, or 2+
               slower) suggests fitness has moved between races. Same
               shape as the suspect-ceiling banner: evidence,
@@ -304,7 +304,7 @@ export function CoachReadsCard({
           ) && (
             <AdaptiveVdotBanner verdict={adaptiveVdotVerdict} />
           )}
-          {/* V7 item 5 · explicit suspension notice — the L7 verdict
+          {/* V7 item 5 · explicit suspension notice, the L7 verdict
               short-circuited because the user marked themselves
               injured.  Without this, the banner disappears silently
               and the runner wonders why the system has gone quiet.
@@ -327,7 +327,7 @@ export function CoachReadsCard({
             </div>
           )}
 
-          {/* Cycle-window explainer — small note explaining the C3
+          {/* Cycle-window explainer, small note explaining the C3
               cycle-aware exemption in plain language. */}
           {fitness.vdot.cycleStartIso && fitness.vdot.contributors.some((c) => c.isGoalTier && c.isInCycle) && (
             <div className="coach-reads-cycle-note">
@@ -397,7 +397,7 @@ export function CoachReadsCard({
         <div className="coach-reads-row">
           <div className="coach-reads-headline">
             <span className="coach-reads-bignum">
-              {fitness.maxHr.value ?? '—'}
+              {fitness.maxHr.value ?? '-'}
             </span>
             <span className="coach-reads-unit">bpm max</span>
             <span className="coach-reads-tag coach-reads-tag-source">{fitness.maxHr.source}</span>
@@ -415,7 +415,7 @@ export function CoachReadsCard({
           )}
           {!fitness.maxHr.value && (
             <div className="coach-reads-meta" style={{ color: '#FC4D64' }}>
-              No max HR — HR zones won&rsquo;t show on the debrief and the coach falls
+              No max HR, HR zones won&rsquo;t show on the debrief and the coach falls
               back to qualitative HR bands. Set it on the Heart Rate Zones card below.
             </div>
           )}

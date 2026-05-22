@@ -21,22 +21,22 @@ import {
   formatCrossReference,
 } from '../coach-voice';
 
-describe('canonical constants — locked phrasing', () => {
+describe('canonical constants, locked phrasing', () => {
   it('FALSIFIER_PREFIX is the exact lead-in three banners already use', () => {
     // AdaptiveVdotBanner.tsx, CoachReadsCard.tsx, MaxHrValidationBanner.tsx
     // all render this string verbatim. If this string ever changes, the
-    // banners need a coordinated update — that's the point.
+    // banners need a coordinated update, that's the point.
     expect(FALSIFIER_PREFIX).toBe('What would change our mind:');
   });
 
   it('COLLECTING_EVIDENCE names the "not enough data yet" state', () => {
-    // Different state from SIGNALS_CONFLICTED — path forward is more
+    // Different state from SIGNALS_CONFLICTED, path forward is more
     // data, not resolution. Conflating them flattens diagnostic info.
     expect(COLLECTING_EVIDENCE).toBe('Collecting evidence');
   });
 
   it('SIGNALS_CONFLICTED names the "data sufficient but signals disagree" state', () => {
-    // Different state from COLLECTING_EVIDENCE — path forward is
+    // Different state from COLLECTING_EVIDENCE, path forward is
     // resolution (third corroborating signal), not more of the same.
     expect(SIGNALS_CONFLICTED).toBe('Signals are mixed');
   });
@@ -55,7 +55,7 @@ describe('canonical constants — locked phrasing', () => {
   });
 });
 
-describe('formatFalsifier — single observation', () => {
+describe('formatFalsifier, single observation', () => {
   it('wraps a single observation with the canonical prefix + trailing period', () => {
     const out = formatFalsifier(['A reversal in any firing signal in the next 2 weeks']);
     expect(out).toBe(
@@ -78,7 +78,7 @@ describe('formatFalsifier — single observation', () => {
   });
 });
 
-describe('formatFalsifier — multiple observations', () => {
+describe('formatFalsifier, multiple observations', () => {
   it('joins multiple observations with " OR " (caps) so the disjunction reads as real', () => {
     const out = formatFalsifier([
       'A single faster threshold in the next 2 weeks',
@@ -90,7 +90,7 @@ describe('formatFalsifier — multiple observations', () => {
     );
   });
 
-  it('only the first observation gets lower-cased — later ones keep author casing', () => {
+  it('only the first observation gets lower-cased, later ones keep author casing', () => {
     // Author may capitalize for proper nouns (race names, brand-of-effort
     // labels) in later observations; we don't second-guess them.
     const out = formatFalsifier(['Z2 share drops below 30%', 'PR-based Signal 4 reverses']);
@@ -98,12 +98,12 @@ describe('formatFalsifier — multiple observations', () => {
     expect(out).toContain('OR PR-based Signal 4 reverses.');
   });
 
-  it('throws on empty input — empty falsifier violates Rule 2', () => {
+  it('throws on empty input, empty falsifier violates Rule 2', () => {
     expect(() => formatFalsifier([])).toThrow(/at least one/);
   });
 });
 
-describe('formatRevisionThreshold — verdict-flip frame', () => {
+describe('formatRevisionThreshold, verdict-flip frame', () => {
   it('builds the canonical "we\'d revise to X if Y pushes Z to W" shape', () => {
     const out = formatRevisionThreshold({
       trigger: 'a race in the next 4 weeks',
@@ -130,7 +130,7 @@ describe('formatRevisionThreshold — verdict-flip frame', () => {
   });
 });
 
-describe('formatReversal — evidence-strength frame', () => {
+describe('formatReversal, evidence-strength frame', () => {
   it('appends the canonical "would weaken this read" suffix', () => {
     const out = formatReversal('A single slow threshold workout');
     expect(out).toBe('A single slow threshold workout would weaken this read');
@@ -142,7 +142,7 @@ describe('formatReversal — evidence-strength frame', () => {
   });
 });
 
-describe('formatCrossReference — V7-ready cross-surface acknowledgment', () => {
+describe('formatCrossReference, V7-ready cross-surface acknowledgment', () => {
   it('returns { text, href } structure for renderer link-wrapping', () => {
     const out = formatCrossReference({
       relatedLabel: 'Z2 stimulus check',
@@ -154,7 +154,7 @@ describe('formatCrossReference — V7-ready cross-surface acknowledgment', () =>
     });
   });
 
-  it('default relation is "consistent with" — the safest (no causal claim)', () => {
+  it('default relation is "consistent with", the safest (no causal claim)', () => {
     const out = formatCrossReference({
       relatedLabel: 'gap surface',
       surface: '/overview',
@@ -164,7 +164,7 @@ describe('formatCrossReference — V7-ready cross-surface acknowledgment', () =>
 
   it('produces lower-case text so the clause embeds mid-sentence', () => {
     // V7's whole point: don't restate the related finding, just
-    // acknowledge it. The text is a clause, not a sentence —
+    // acknowledge it. The text is a clause, not a sentence, 
     // capitalization would force a sentence break.
     const out = formatCrossReference({
       relatedLabel: 'gap surface',
@@ -223,7 +223,7 @@ describe('formatCrossReference — V7-ready cross-surface acknowledgment', () =>
     expect(out.href).toBe('/races');
   });
 
-  it('text and href are independent — text formatting does not affect href', () => {
+  it('text and href are independent, text formatting does not affect href', () => {
     // Specifically: "contributing to" subject-inversion changes text
     // but href stays clean (surface or surface#anchor).
     const out = formatCrossReference({
@@ -237,7 +237,7 @@ describe('formatCrossReference — V7-ready cross-surface acknowledgment', () =>
   });
 });
 
-describe('formatDiagnosis — observation + evidence pair', () => {
+describe('formatDiagnosis, observation + evidence pair', () => {
   it('joins observation and evidence with sentence-cap discipline', () => {
     const out = formatDiagnosis({
       observation: 'Your easy runs are too hard',
@@ -248,7 +248,7 @@ describe('formatDiagnosis — observation + evidence pair', () => {
     );
   });
 
-  it('idempotent on trailing periods — caller can be sloppy', () => {
+  it('idempotent on trailing periods, caller can be sloppy', () => {
     const out = formatDiagnosis({
       observation: 'Your easy runs are too hard.',
       evidence: '<40% Z2 over 4 weeks.',

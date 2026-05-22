@@ -3,8 +3,8 @@
  *
  * Most of the literature-anchored constants in this file have moved to
  * the doctrine layer (web/coach/doctrine/*.ts). This file now layers
- * engine-specific organization on top — sub-phase fractions, easy-share
- * targets per phase, post-race recovery curves — that aren't direct
+ * engine-specific organization on top, sub-phase fractions, easy-share
+ * targets per phase, post-race recovery curves, that aren't direct
  * doctrine values but are computed from doctrine principles.
  *
  * **Source-of-truth rule:** if you need to change a number in this
@@ -70,7 +70,7 @@ export function raceSubPhase(daysAway: number, distanceMi: number): RaceSubPhase
 
 /* ── 3. Intensity distribution by sub-phase (§3.1) ───────────────
    Targets for the 14-day rolling easy-share metric. The doc says
-   pyramidal in build, polarized in peak — translated to "easy share":
+   pyramidal in build, polarized in peak, translated to "easy share":
    pyramidal ≈ 75% easy (more time at threshold), polarized ≈ 80%
    easy (less middle, more VO2). Maintenance defaults to 80%. */
 export interface IntensityTarget {
@@ -204,7 +204,7 @@ export interface StrengthCadence {
 export function strengthCadence(phase: Phase, daysToRace: number | null): StrengthCadence {
   // In the final 7-10 days before an A race, no strength.
   if (daysToRace != null && daysToRace <= 10 && (phase === 'TAPER')) {
-    return { perWeek: 0, composition: [], notes: 'No strength in final 10 days — preserve freshness for race day.' };
+    return { perWeek: 0, composition: [], notes: 'No strength in final 10 days, preserve freshness for race day.' };
   }
   switch (phase) {
     case 'BASE':
@@ -212,7 +212,7 @@ export function strengthCadence(phase: Phase, daysToRace: number | null): Streng
     case 'BUILD':
       return { perWeek: 2, composition: ['heavy', 'power'], notes: 'One heavy session + one power/plyometric. Volume trims as run intensity rises.' };
     case 'PEAK':
-      return { perWeek: 1, composition: ['maintenance'], notes: 'Maintain — low volume, intensity preserved. Goal is preservation, not gain.' };
+      return { perWeek: 1, composition: ['maintenance'], notes: 'Maintain, low volume, intensity preserved. Goal is preservation, not gain.' };
     case 'TAPER':
       return { perWeek: 1, composition: ['maintenance'], notes: 'One light session in first taper week. Drop entirely in final 7-10 days.' };
     case 'BASE_MAINTENANCE':
@@ -226,7 +226,7 @@ export function strengthCadence(phase: Phase, daysToRace: number | null): Streng
 
 /* ── 14. Sleep / HRV thresholds (Research 03 §10) ────────────────
    Doctrine: SLEEP in coach/doctrine/recovery.ts. HRV threshold pulls
-   from Research 03 §10 HRV_INTERPRETATION_PATTERNS — daily drop ~20%
+   from Research 03 §10 HRV_INTERPRETATION_PATTERNS, daily drop ~20%
    below baseline triggers easy/rest. The 12% used here is the
    engine's recovery-day flag (more sensitive than the rest threshold). */
 export const SLEEP_HOURS_FLOOR = SLEEP.value.generalHoursLow;
@@ -238,7 +238,7 @@ export const HRV_DROP_FLAG_PCT = 0.12;  // 12 % drop from baseline = recovery da
    Now user-specific: lib/hr-zones.ts hardEffortFloorBpm() computes it
    via Karvonen %HRR when the runner's max + resting HR are known
    (state.recovery.maxHrBpm landed via gatherCoachState). This constant
-   is the FALLBACK only — 152 bpm ≈ 80% of HRmax 190, for runners whose
+   is the FALLBACK only, 152 bpm ≈ 80% of HRmax 190, for runners whose
    max HR isn't known yet. */
 export const HARD_EFFORT_HR_DEFAULT_BPM = 152;
 

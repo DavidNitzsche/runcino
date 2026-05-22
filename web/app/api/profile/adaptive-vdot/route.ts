@@ -46,7 +46,7 @@ export async function POST(req: Request) {
         );
       }
       // Apply also acknowledges the shift-guard review at the new
-      // value — applying an L7 bump is a deliberate "I see this and
+      // value, applying an L7 bump is a deliberate "I see this and
       // accept it" action, which satisfies the aggregate-level guard.
       await query(
         `UPDATE users

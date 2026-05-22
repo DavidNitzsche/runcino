@@ -1,5 +1,5 @@
 /**
- * Adaptive simulations — end-to-end scenarios run through the
+ * Adaptive simulations, end-to-end scenarios run through the
  * adaptive modules to verify the "alive but not nervous" guarantee.
  *
  * Each test models a real runner experience and asserts the system
@@ -10,7 +10,7 @@
  *   - One bad workout → no fitness downgrade
  *   - One hot day → outlier dampened
  *   - Three sustained good workouts → propose fitness bump (would,
- *     once VDOT updater ships — for now, evidence threshold passes)
+ *     once VDOT updater ships, for now, evidence threshold passes)
  *   - Three sustained poor check-ins → already covered by engine 3+ rule
  *   - Single peak HR above stored → does NOT bump (needs ≥2 or 5+ bpm)
  *   - Sustained race-anchored discrepancy → DOES propose bump
@@ -76,7 +76,7 @@ describe('SIMULATION · runner has one bad day', () => {
     expect(filteredWeight).toBeLessThan(0.5);
 
     const evidence: EvidenceItem[] = [
-      obs('Easy run was 8:13/mi vs 8:49 target — pace creep', filteredWeight, '2026-07-15'),
+      obs('Easy run was 8:13/mi vs 8:49 target, pace creep', filteredWeight, '2026-07-15'),
     ];
     const verdict = buildVerdict({
       direction: 'down',
@@ -160,7 +160,7 @@ describe('SIMULATION · engine 2+ poor-day requirement', () => {
   });
 
   it('2 poor check-ins but HEALTHY easy-share does NOT trigger', () => {
-    // Two poor days alone aren't enough — the low easy-share is the
+    // Two poor days alone aren't enough, the low easy-share is the
     // corroborating second signal. With a healthy 80% easy share,
     // 2 poor days could be a stress-week and not training-related.
     const poorDaysCount = 2;

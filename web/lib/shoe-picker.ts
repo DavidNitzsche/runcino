@@ -11,7 +11,7 @@
  *
  * Source: ported from `claude/build-runcino-app-OIRJr` commit
  *   29887d6 ("feat(sync): shoe-picker with preferred-wins +
- *   ambiguity bailout") — adapted to main's module layout. The dev
+ *   ambiguity bailout"), adapted to main's module layout. The dev
  *   branch's plan-match.ts dependency is inlined here as
  *   `runTypeForWorkout` since plan-match doesn't exist on main.
  *
@@ -27,7 +27,7 @@
  *   5. Still ambiguous (>1) → null. Ambiguity is the user's call.
  *
  * Recovery rollup: a 'recovery' (or 'general_aerobic') workout type
- * also accepts shoes tagged 'easy' — recovery days run on easy shoes
+ * also accepts shoes tagged 'easy', recovery days run on easy shoes
  * when the rotation doesn't carry a dedicated recovery pair.
  */
 
@@ -65,7 +65,7 @@ function eligibleShoeRunTypes(workoutType: string): RunType[] {
 
 /** Find the user's preferred shoe for the given workout type, or null
  *  when no shoe matches OR multiple match with no clear preference.
- *  The _userId arg is reserved for future multi-tenant filtering —
+ *  The _userId arg is reserved for future multi-tenant filtering, 
  *  listShoes() on main is currently single-tenant. */
 export async function pickShoeForWorkout(
   _userId: string,
@@ -75,7 +75,7 @@ export async function pickShoeForWorkout(
   return pickFromShoes(shoes, workoutType);
 }
 
-/** Pure variant — same logic against a caller-supplied shoe list.
+/** Pure variant, same logic against a caller-supplied shoe list.
  *  Exposed for tests + for callers that already loaded the rotation. */
 export function pickFromShoes(shoes: Shoe[], workoutType: string): number | null {
   const eligibleTypes = eligibleShoeRunTypes(workoutType);
@@ -87,7 +87,7 @@ export function pickFromShoes(shoes: Shoe[], workoutType: string): number | null
   let candidates = active.filter(matchesTypes);
 
   if (candidates.length === 0) {
-    // Fall back to 'as_needed' shoes — the user's catch-all rotation
+    // Fall back to 'as_needed' shoes, the user's catch-all rotation
     // entry. Same preferred-narrowing + ambiguity rules apply.
     candidates = active.filter(s => s.run_types.includes('as_needed'));
     if (candidates.length === 0) return null;

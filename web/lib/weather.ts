@@ -1,5 +1,5 @@
 /**
- * NOAA weather fetcher — free, no auth.
+ * NOAA weather fetcher, free, no auth.
  *
  * Two-step flow:
  *   1. GET https://api.weather.gov/points/{lat},{lon} → forecast URL
@@ -14,7 +14,7 @@ const USER_AGENT = 'faff/0.1 (personal use; david nitzsche)';
 export interface WeatherSummary {
   location: { lat: number; lon: number; city?: string };
   start_period: WeatherPeriod;
-  /** Second period — typically afternoon, useful for finish-line temp */
+  /** Second period, typically afternoon, useful for finish-line temp */
   second_period: WeatherPeriod | null;
   narrative: string;
   fetched_at: string;   // ISO
@@ -92,7 +92,7 @@ export async function fetchNoaaWeather(lat: number, lon: number): Promise<Weathe
 }
 
 /**
- * Open-Meteo historical weather fetcher — free, no auth.
+ * Open-Meteo historical weather fetcher, free, no auth.
  *
  * Used to surface "what the weather was like last year on this date
  * at this race" before we're close enough for a real NOAA forecast.
@@ -102,7 +102,7 @@ export async function fetchNoaaWeather(lat: number, lon: number): Promise<Weathe
  * Endpoint: https://archive-api.open-meteo.com/v1/archive
  * Coverage: global, 1940-present, hourly. No API key required.
  *
- * Race start is assumed to be 7am local — typical for road races.
+ * Race start is assumed to be 7am local, typical for road races.
  * We pull the start hour + 2 hours later to approximate start +
  * mid-race conditions, mirroring how NOAA's "morning / afternoon"
  * periods feed the brief.
@@ -152,7 +152,7 @@ export async function fetchHistoricalWeather(
       wind_speed_mph_max: wind,
       wind_direction: dir,
       short_forecast: weatherCodeToText(code),
-      precipitation_pct: precip > 0 ? 100 : 0,    // historical actuals — fell or didn't
+      precipitation_pct: precip > 0 ? 100 : 0,    // historical actuals, fell or didn't
     };
   };
 
@@ -190,7 +190,7 @@ function weatherCodeToText(code: number): string {
 }
 
 /* ─────────────────────────────────────────────────────────────────
- * Per-run weather — compact conditions at a run's GPS start + time,
+ * Per-run weather, compact conditions at a run's GPS start + time,
  * for run recaps + the coach take. Open-Meteo, no key. Recent dates
  * come from the forecast endpoint (serves recent past), older from the
  * archive endpoint. Exposes humidity (the archive WeatherSummary path
@@ -207,7 +207,7 @@ export interface RunWeather {
   isHot: boolean;
 }
 
-/** Fetch weather at a run's start. null on any failure — enrichment only. */
+/** Fetch weather at a run's start. null on any failure, enrichment only. */
 export async function fetchRunWeather(
   lat: number | null | undefined,
   lon: number | null | undefined,

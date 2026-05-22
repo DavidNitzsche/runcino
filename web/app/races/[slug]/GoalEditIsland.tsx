@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * GoalEditIsland — inline-editable Goal Time in the race plan hero.
+ * GoalEditIsland, inline-editable Goal Time in the race plan hero.
  *
  * Renders as a normal stat tile until clicked, then becomes an input
  * that accepts H:MM:SS or M:SS. On save, POSTs the new goal time to
@@ -32,7 +32,7 @@ function parseGoalInput(input: string): number | null {
   return null;
 }
 function fmtPace(sPerMi: number): string {
-  if (!sPerMi || sPerMi <= 0) return '—';
+  if (!sPerMi || sPerMi <= 0) return ', ';
   const m = Math.floor(sPerMi / 60);
   const s = sPerMi % 60;
   return `${m}:${String(s).padStart(2, '0')}`;

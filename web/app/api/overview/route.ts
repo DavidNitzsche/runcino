@@ -1,5 +1,5 @@
 /**
- * /api/overview — server-side bundle of every Coach call the Overview
+ * /api/overview, server-side bundle of every Coach call the Overview
  * page needs.
  *
  * The Overview page is a client component (because it owns modal /
@@ -61,8 +61,8 @@ type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutD
 interface OverviewApiOk {
   ok: true;
   /** Whether the request resolved an authenticated user (Bearer/cookie).
-   *  /overview is auth-OPTIONAL — it serves the single-tenant 'me' plan
-   *  even anonymously — so userId-gated fields (readiness, connectors)
+   *  /overview is auth-OPTIONAL, it serves the single-tenant 'me' plan
+   *  even anonymously, so userId-gated fields (readiness, connectors)
    *  silently go empty when a token is expired. Native clients read this
    *  to detect a stale-token downgrade and refresh+retry. */
   authenticated: boolean;
@@ -75,23 +75,23 @@ interface OverviewApiOk {
   weekDeltas: CoachDecision<WeekDeltasReport>;
   raceFitnessA: CoachDecision<RaceFitnessPrediction> | null;
   raceFitnessB: CoachDecision<RaceFitnessPrediction> | null;
-  /** Per-signal freshness map — drives the "Coach is watching" UI
+  /** Per-signal freshness map, drives the "Coach is watching" UI
    *  strip. Six signals: strava / checkin / vdotAnchor / profile /
    *  raceCal / healthkit. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
-  /** 7-day plan-adjustments rollup — drives the PLAN ADAPTED card. */
+  /** 7-day plan-adjustments rollup, drives the PLAN ADAPTED card. */
   recentAdjustments: CoachDecision<RecentAdjustmentsReport>;
   /** AdjustForReality applied to today's prescription. Drives the
    *  COACH ADJUSTED pin + "why" line on the TodayCard. */
   adjustedToday: CoachDecision<AdjustedPlan>;
-  /** Wave G · PATH TO RACE — null when no A-race with goal time. */
+  /** Wave G · PATH TO RACE, null when no A-race with goal time. */
   pathToRace: CoachDecision<PathToRaceResult> | null;
-  /** Wave G · NEXT PUSH — always present, may have 0 pushes. */
+  /** Wave G · NEXT PUSH, always present, may have 0 pushes. */
   nextPushes: CoachDecision<NextPushesReport>;
   /** Wave J · one-sentence narrative line. Null when no signal fires. */
   narrative: NarrativeLine | null;
   /** v4 · multi-sentence daily briefing the coach delivers at the top
-   *  of /overview. Always present — composed from real signals. */
+   *  of /overview. Always present, composed from real signals. */
   briefing: CoachDecision<DailyBriefing>;
   /** Plan-artifact workouts for the current Mon→Sun week. Enriched with
    *  a `label` + computed `description` (pace band + structured steps +
@@ -103,7 +103,7 @@ interface OverviewApiOk {
   planCurrentPhase: string | null;
   /** Runner display name from the profile table. null when no profile row. */
   profileName: string | null;
-  /** The day-aware coach line — the SAME generateBriefing the /overview
+  /** The day-aware coach line, the SAME generateBriefing the /overview
    *  web page renders, so the iPhone app and the website show identical
    *  coach copy. null when no plan / on any compute failure. */
   coachLine: string | null;
@@ -112,7 +112,7 @@ interface OverviewApiOk {
    *  planned), instead of assuming any past day is complete. Empty for
    *  anonymous reads. */
   completedByDate: Record<string, number>;
-  /** Dates the runner deliberately SKIPPED — distinct from "missed/not
+  /** Dates the runner deliberately SKIPPED, distinct from "missed/not
    *  logged" so clients can mark them differently. */
   skippedDates: string[];
   /** Recent coach plan adaptations (last 7d), grouped by reason, for the
@@ -122,7 +122,7 @@ interface OverviewApiOk {
   coachAdaptations: Array<{ reason: string; citation: string | null; count: number; days: string[]; ts: string }>;
   adaptationsLatestTs: string | null;
   /** BIG adaptations awaiting the runner's approve/skip. These are NOT yet
-   *  applied to the plan — the workout keeps its current values until the
+   *  applied to the plan, the workout keeps its current values until the
    *  runner accepts. Each carries the mutation ids to POST to
    *  /api/plan/adaptations/act. Empty for anon reads. */
   pendingAdaptations: Array<{
@@ -138,14 +138,14 @@ interface OverviewApiOk {
    *  hardcoded "Connect". Empty for anonymous reads. */
   connectors: string[];
   /** Daily readiness score (0–100) + state for the Today/Health ring,
-   *  from computeReadinessScore. null when suppressed/silent or anon —
+   *  from computeReadinessScore. null when suppressed/silent or anon, 
    *  the client renders a dashed "No data" ring then. Surface-only;
    *  never auto-edits the plan. */
   readinessScore: number | null;
   readinessState: 'green' | 'yellow' | 'red' | null;
   readinessRecommendation: string | null;
-  /** The transparent score breakdown — each signal that moved the score
-   *  off baseline (75) with its delta + plain-language note — so the client
+  /** The transparent score breakdown, each signal that moved the score
+   *  off baseline (75) with its delta + plain-language note, so the client
    *  can render a "what goes into this" detail view instead of an opaque
    *  number. Empty when no score. */
   readinessInputs: Array<{ name: string; delta: number; note: string }>;
@@ -153,7 +153,7 @@ interface OverviewApiOk {
    *  listed so the detail view is honest about gaps. */
   readinessMissing: string[];
   /** The runner's HR zones (Karvonen %HRR when resting HR known, %max
-   *  fallback) — drives the zone scale on Health + the readiness sheet.
+   *  fallback), drives the zone scale on Health + the readiness sheet.
    *  Null when max HR is unknown. */
   hrZones: HrZonesBundle | null;
   /** A-race fitness projection for the Race detail (from raceFitnessA).
@@ -404,7 +404,7 @@ export async function GET(req: Request): Promise<Response> {
       todayMonthDay: `${monthNames[todayDate.getUTCMonth()]} ${todayDate.getUTCDate()}`,
     });
 
-    // Day-aware coach line — assembled exactly like the /overview web
+    // Day-aware coach line, assembled exactly like the /overview web
     // page so the iPhone app and the website render identical copy (one
     // source of truth). Replaces the app's old client-side compose, and
     // sidesteps dailyBriefing's stale "cleaning up from the race" clause.
@@ -454,7 +454,7 @@ export async function GET(req: Request): Promise<Response> {
 
     // Actual miles logged per day this week, so clients show real
     // completion (≥60% of planned) instead of "any past day is done".
-    // Authenticated only — the query is keyed to the user's UUID.
+    // Authenticated only, the query is keyed to the user's UUID.
     // Computed for anonymous (demo) reads too: getCompletedMileageByDate
     // binds null → reads the legacy 'me' activities, so past days that
     // were actually run show as DONE (green) instead of "not logged".
@@ -543,13 +543,13 @@ export async function GET(req: Request): Promise<Response> {
     // Daily readiness score for the Today/Health ring. Real, surface-only.
     let readinessScore: number | null = null;
     let readinessState: 'green' | 'yellow' | 'red' | null = null;
-    // The SAME recommendation string the web overview ring shows — shipped
+    // The SAME recommendation string the web overview ring shows, shipped
     // so the iPhone renders the coach's readiness voice verbatim instead
     // of composing its own. Null when there's no health-derived score.
     let readinessRecommendation: string | null = null;
     let readinessInputs: Array<{ name: string; delta: number; note: string }> = [];
     let readinessMissing: string[] = [];
-    // The runner's Karvonen HR zones (Research/03 §4 + §5) — drives the zone
+    // The runner's Karvonen HR zones (Research/03 §4 + §5), drives the zone
     // scale on Health + the readiness sheet. Null when max HR is unknown.
     let hrZones: HrZonesBundle | null = null;
     try {

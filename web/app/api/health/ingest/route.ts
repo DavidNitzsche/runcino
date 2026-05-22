@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
   // Mark Apple Health as a connected source so every surface (the
   // /profile connectors card, /api/overview connectors, the iPhone More
   // tab) reflects that the phone is syncing. apple_health is device-
-  // driven, not OAuth — the access_token is a placeholder. Non-fatal.
+  // driven, not OAuth, the access_token is a placeholder. Non-fatal.
   if (result.ingested > 0) {
     try {
       await query(

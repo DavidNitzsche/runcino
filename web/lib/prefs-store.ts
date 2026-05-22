@@ -4,7 +4,7 @@
  * Single-row-per-user (user_id PK, defaults to 'me'). All preference
  * fields are nullable. When a row doesn't exist the API returns
  * defaults explicitly tagged via `isDefault`, so the UI can show
- * "Using defaults — set yours".
+ * "Using defaults, set yours".
  */
 
 import { query } from './db';

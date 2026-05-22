@@ -6,7 +6,7 @@
  * Shows the resolved max HR with provenance:
  *   - "Manual override · 187 bpm"
  *   - "Computed from Big Sur Marathon · 185 bpm (apr 26)"
- *   - "No data yet — sync more Strava activities"
+ *   - "No data yet, sync more Strava activities"
  *
  * Edit button reveals an input that lets the user set or clear the
  * manual override. Saving updates users.max_hr.
@@ -54,7 +54,7 @@ export interface MaxHrInitialState {
  *  data) and the useEffect still re-fetches on mount to pick up the
  *  full computed-source detail. Catches the David 2026-05-19 round 3
  *  bug where the top max HR card showed 175 while Coach Reads showed
- *  181 after Apply — the island's useState lagged behind the
+ *  181 after Apply, the island's useState lagged behind the
  *  server-rendered cousin. */
 export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
   const [state, setState] = useState<State | null>(
@@ -127,7 +127,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
       {!editing && (
         <>
           <div className="max-hr-row">
-            <span className="max-hr-val">{state.value ?? '—'}</span>
+            <span className="max-hr-val">{state.value ?? '-'}</span>
             {state.value && <span className="max-hr-unit">bpm</span>}
           </div>
           <div className="max-hr-source">
@@ -143,7 +143,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
                   // near-max across multiple sustained runs is evidence
                   // the stored max is TOO LOW, not confirmation that
                   // it's correct. A true physiological max is a rare,
-                  // brief reading from a terminal effort — not a value
+                  // brief reading from a terminal effort, not a value
                   // routinely reached on threshold or HM races.
                   //
                   // When the ceiling cluster is suspiciously dense
@@ -154,7 +154,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
                   if (close >= 3) {
                     return (
                       <>
-                        <strong style={{ color: '#b3450a' }}>⚠ Suspect ceiling</strong> — hit within 3 bpm of {state.computed.value} on <strong>{close} runs</strong>. A true max usually appears on ONE terminal-effort reading, not regularly during sustained races. Investigate avg-HR-to-peak ratio before trusting; your true max may be higher.
+                        <strong style={{ color: '#b3450a' }}>⚠ Suspect ceiling</strong>, hit within 3 bpm of {state.computed.value} on <strong>{close} runs</strong>. A true max usually appears on ONE terminal-effort reading, not regularly during sustained races. Investigate avg-HR-to-peak ratio before trusting; your true max may be higher.
                       </>
                     );
                   }
@@ -172,7 +172,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
               </>
             )}
             {state.source === 'none' && (
-              <>No data — sync a hard workout or set manually</>
+              <>No data, sync a hard workout or set manually</>
             )}
           </div>
           {state.source === 'computed' && state.computed && (

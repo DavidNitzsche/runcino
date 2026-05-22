@@ -7,13 +7,13 @@ export const metadata: Metadata = {
   description: 'Personal Apple Watch race pacing tool.',
 };
 
-/** Canonical faff.run brand accent — matches `--orange` in profile-v4.css. */
+/** Canonical faff.run brand accent, matches `--orange` in profile-v4.css. */
 const DEFAULT_ACCENT = '#E85D26';
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Resolve the logged-in user's accent so the whole app paints correctly
   // on first byte. Anonymous / unauthenticated pages (login, signup) just
-  // get the default — no harm done.
+  // get the default, no harm done.
   let accent = DEFAULT_ACCENT;
   try {
     const u = await getCurrentUser();
@@ -21,7 +21,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       accent = u.accent_color;
     }
   } catch {
-    // DB unavailable / cold start — fall back to default
+    // DB unavailable / cold start, fall back to default
   }
 
   const accentStyle = {

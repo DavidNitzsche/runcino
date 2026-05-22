@@ -1,5 +1,5 @@
 /**
- * Doctrine — Mental training, sport psychology applied to running.
+ * Doctrine, Mental training, sport psychology applied to running.
  *
  * Source: Research/20-mental-training.md
  *
@@ -23,9 +23,9 @@ export const GOAL_SETTING_FRAMEWORKS: Cited<{
     abc: {
       A: 'A goal: stretch goal. <30% probability. Galvanizes effort, accepts risk of failure.',
       B: 'B goal: realistic goal. 50-70% probability. Most likely actual outcome.',
-      C: 'C goal: insurance goal. 95%+ probability. Race-saving floor — finish, no injury.',
+      C: 'C goal: insurance goal. 95%+ probability. Race-saving floor, finish, no injury.',
     },
-    outcomeProcessPerformance: 'Outcome goals (place, time) are external — uncontrollable factors weigh heavily. Process goals (pacing, fueling, form) are controllable; performance goals (PR, time benchmarks) are intermediate.',
+    outcomeProcessPerformance: 'Outcome goals (place, time) are external, uncontrollable factors weigh heavily. Process goals (pacing, fueling, form) are controllable; performance goals (PR, time benchmarks) are intermediate.',
   },
   citations: [
     cite('§Goal Setting', 'SMART (Locke & Latham); A/B/C tiers (Daniels); outcome vs process vs performance goals', 'research', '20'),
@@ -40,14 +40,14 @@ export const PETTLEP_VISUALIZATION: Cited<{
   protocol: string;
 }> = {
   value: {
-    framework: 'PETTLEP imagery (Holmes & Collins 2001) — most validated visualization model in sport psychology',
+    framework: 'PETTLEP imagery (Holmes & Collins 2001), most validated visualization model in sport psychology',
     components: [
       { letter: 'P', element: 'Physical',     description: 'Wear race kit while imagining; assume race posture' },
       { letter: 'E', element: 'Environment',   description: 'Imagine actual course; pre-trip drive-through helps' },
       { letter: 'T', element: 'Task',          description: 'Imagery matches actual race demand (pace, terrain, weather)' },
       { letter: 'T', element: 'Timing',        description: 'Real-time, not slow-motion. Hard miles in real elapsed time.' },
       { letter: 'L', element: 'Learning',      description: 'Update with each session and race experience' },
-      { letter: 'E', element: 'Emotion',       description: 'Include nerves, doubt, joy — full emotional palette' },
+      { letter: 'E', element: 'Emotion',       description: 'Include nerves, doubt, joy, full emotional palette' },
       { letter: 'P', element: 'Perspective',   description: 'First-person ("I see the finish") not third-person' },
     ],
     protocol: '5-10 min daily for 2 weeks pre-race. Rehearse start, body of race, finish; specifically the hard miles (marathon 18-23, half 9-12, 10K 4-5, 5K mile 2). Rehearse correct response to setbacks: GI distress, missed gel, off-pace early miles, weather change.',
@@ -105,7 +105,7 @@ export const ANXIETY_ARROUSAL_REGULATION: Cited<{
 }> = {
   value: {
     invertedU: 'Inverted-U (Yerkes-Dodson 1908): performance peaks at moderate arousal. Too low = sluggish; too high = panicky, tight, over-pacing. Race-specific calibration.',
-    reframing: '"I\'m excited" beats "I\'m nervous" — same physiological state, different cognitive label. Brooks 2014 found reappraisal as excitement improved performance vs suppression.',
+    reframing: '"I\'m excited" beats "I\'m nervous", same physiological state, different cognitive label. Brooks 2014 found reappraisal as excitement improved performance vs suppression.',
     boxBreathing: {
       protocol: '4 sec inhale, 4 sec hold, 4 sec exhale, 4 sec hold. Repeat 4-6 cycles.',
       useCase: '2-3 min pre-gun for over-aroused runners. Activates parasympathetic, drops HR ~5-10 bpm.',
@@ -161,7 +161,7 @@ export const PAIN_TOLERANCE_FRAMEWORK: Cited<{
     trainingTransfer: 'Pain tolerance trained in workouts transfers to racing. Tempo runs and threshold sessions are pain-tolerance practice as much as physiological training. Sit with discomfort; don\'t bail early.',
     acceptanceBuildingProtocol: [
       'Hard intervals: stay with the rep through the discomfort, not around it',
-      'After the workout, name what was hard — desensitization through articulation',
+      'After the workout, name what was hard, desensitization through articulation',
       'Mental rehearsal of late-race fatigue weekly during build',
       'Avoid catastrophizing internal narratives ("this is killing me")',
     ],
@@ -183,7 +183,7 @@ export const POST_RACE_BLUES: Cited<{
 }> = {
   value: {
     whatItIs: 'Mood drop after a goal race regardless of outcome. Driven by neurochemical shift (dopamine/endorphin reset post-buildup) + identity vacuum (training structure removed).',
-    prevalence: 'Common — most marathoners report some post-race mood drop within 1-7 days of an A race.',
+    prevalence: 'Common, most marathoners report some post-race mood drop within 1-7 days of an A race.',
     durationDaysLow: 1, durationDaysHigh: 14,
     protectiveFactors: [
       'Plan a non-running activity 2-7 days post-race (travel, social event, project)',
@@ -194,7 +194,7 @@ export const POST_RACE_BLUES: Cited<{
     ],
     whenToReferToTherapy: [
       'Mood drop persists >2 weeks',
-      'Suicidal ideation — emergency referral, not coaching',
+      'Suicidal ideation, emergency referral, not coaching',
       'Loss of pleasure in non-running activities (anhedonia)',
       'Sleep disturbance >2 weeks',
       'Significant appetite or weight change',
@@ -218,12 +218,12 @@ export const DNF_DECISION_RULES: Cited<{
       'Race-day course conditions deemed unsafe (lightning, flooding, extreme heat exceeding bail thresholds)',
     ],
     illegitimateReasons: [
-      '"This is hard" — racing IS hard',
-      'Off-pace by 2-5% — adjust the goal, not the day',
-      'Mid-race blow-up — walk through aid, fuel, restart at adjusted pace',
-      'Mental fatigue without physical limit — segment the rest of the race',
+      '"This is hard", racing IS hard',
+      'Off-pace by 2-5%, adjust the goal, not the day',
+      'Mid-race blow-up, walk through aid, fuel, restart at adjusted pace',
+      'Mental fatigue without physical limit, segment the rest of the race',
     ],
-    decisionFramework: 'If continuing risks lasting injury or medical event, DNF. If continuing only feels bad, finish — even at adjusted pace. The line: structural damage vs discomfort.',
+    decisionFramework: 'If continuing risks lasting injury or medical event, DNF. If continuing only feels bad, finish, even at adjusted pace. The line: structural damage vs discomfort.',
   },
   citations: [
     cite('§DNF Decisions', 'Legitimate vs illegitimate DNF reasons; structural damage vs discomfort line', 'research', '20'),
@@ -275,8 +275,8 @@ export const MANTRAS_AND_CUES: Cited<{
   value: {
     effectiveMantraTraits: [
       'Short (≤5 words)',
-      'Rhythmic — matches cadence',
-      'Personal — resonates with the runner',
+      'Rhythmic, matches cadence',
+      'Personal, resonates with the runner',
       'Process-focused, not outcome-focused',
       'Tested in training before race day',
     ],
@@ -322,7 +322,7 @@ export const THERAPY_REFERRAL_CRITERIA: Cited<string[]> = {
     'Burnout symptoms that persist after a 4-week unstructured break',
     'Loss of identity or purpose tied to inability to run (injury, life change)',
     'Substance use that affects training or daily functioning',
-    'Suicidal ideation — emergency referral, not coaching',
+    'Suicidal ideation, emergency referral, not coaching',
   ],
   note: 'Coaches are not therapists. The job is to recognize warning signs and refer. A sport-psychologist consult is normal preventive maintenance for serious athletes, not a sign of failure.',
   citations: [

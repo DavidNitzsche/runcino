@@ -1,5 +1,5 @@
 /**
- * RouteMap — stylized GPS canvas from the locked run-detail template.
+ * RouteMap, stylized GPS canvas from the locked run-detail template.
  *
  * Renders a SVG (viewBox 600×260) showing:
  *   · A subtle contour pattern (rotated, very low opacity)
@@ -14,7 +14,7 @@
  * project lat/lon → viewBox before passing in.)
  *
  * If `points` is omitted, the canvas renders the contour + bay backdrop
- * only — useful as a placeholder while the GPX is loading.
+ * only, useful as a placeholder while the GPX is loading.
  */
 
 import type { ReactNode } from 'react';
@@ -25,7 +25,7 @@ export interface RouteMapPoint {
 }
 
 export interface RouteMapMarker extends RouteMapPoint {
-  /** Display number — typically the mile number. */
+  /** Display number, typically the mile number. */
   n: number | string;
   /** Render this marker a touch bigger (used to highlight peak / midway). */
   emphasize?: boolean;
@@ -193,7 +193,7 @@ export function RouteMap({
           </text>
         </g>
 
-        {/* Scale bar — fixed at 100 viewBox-units wide */}
+        {/* Scale bar, fixed at 100 viewBox-units wide */}
         <g transform="translate(24, 230)">
           <line x1="0" y1="0" x2="100" y2="0" stroke="rgba(244,246,248,.4)" strokeWidth="1.5" />
           <line x1="0" y1="-3" x2="0" y2="3" stroke="rgba(244,246,248,.4)" strokeWidth="1.5" />

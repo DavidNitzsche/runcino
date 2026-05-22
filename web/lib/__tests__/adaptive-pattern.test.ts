@@ -1,8 +1,8 @@
 /**
- * Tests for the adaptive-pattern philosophy — the principles that
+ * Tests for the adaptive-pattern philosophy, the principles that
  * every adaptive module in the app must obey.
  *
- * These tests are CONTRACT-LEVEL — if they regress, the app is
+ * These tests are CONTRACT-LEVEL, if they regress, the app is
  * starting to over-react to single events or chase noise. The whole
  * "alive but not nervous" guarantee depends on this passing.
  */
@@ -110,7 +110,7 @@ describe('adaptive-pattern · rule 2 (context filters)', () => {
     expect(m).toBe(0.6);
   });
 
-  it('stacks multipliers — heat + race + bad sleep compounds', () => {
+  it('stacks multipliers, heat + race + bad sleep compounds', () => {
     const m = contextMultiplier('2026-05-10', {
       lastRaceDate: '2026-05-05',
       ambientTempF: 88,
@@ -120,7 +120,7 @@ describe('adaptive-pattern · rule 2 (context filters)', () => {
     expect(m).toBe(0.1);
   });
 
-  it('never zeros out — floors at 0.1 so single noisy days do not erase signal', () => {
+  it('never zeros out, floors at 0.1 so single noisy days do not erase signal', () => {
     const m = contextMultiplier('2026-05-10', {
       lastRaceDate: '2026-05-09',
       ambientTempF: 95,
@@ -218,7 +218,7 @@ describe('adaptive-pattern · over-reaction guards', () => {
       ev({ weight: 1, when: '2026-07-16' }),  // hot day
       ev({ weight: 1, when: '2026-07-17' }),  // hot day
     ];
-    // Apply heat context (90°F) — each item drops to 0.25 weight
+    // Apply heat context (90°F), each item drops to 0.25 weight
     const filtered = items.map((e) => ({ ...e, weight: e.weight * 0.25 }));
     const r = meetsEvidenceThreshold(filtered, 'up');
     // Total weight = 0.75 < 2.5 → does not fire
@@ -416,7 +416,7 @@ describe('adaptive-pattern · large-shift gate is the safety net', () => {
     });
     expect(shift.requiresConfirmation).toBe(true);
 
-    // Both gates pass through the user's confirmation —
+    // Both gates pass through the user's confirmation, 
     // evidenceVerdict tells them WHY, shift.bannerMessage tells
     // them HOW MUCH.
   });

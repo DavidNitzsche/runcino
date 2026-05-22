@@ -1,5 +1,5 @@
 /**
- * Doctrine — Course-specific training adjustments.
+ * Doctrine, Course-specific training adjustments.
  *
  * Source: Research/11-course-specific-training.md
  *
@@ -25,10 +25,10 @@ export const HILL_TRAINING_ADAPTATIONS: Cited<{
       'Calf-Achilles complex loading (concentric)',
       'Stride length training under load',
       'VO2max stimulus at high effort',
-      'Reduced impact load (vs flat at same HR/effort) — joint-protective',
+      'Reduced impact load (vs flat at same HR/effort), joint-protective',
     ],
     downhillAdaptations: [
-      'Eccentric quad loading — quad fatigue resistance',
+      'Eccentric quad loading, quad fatigue resistance',
       'Stride control + cadence under speed',
       'Tendon stiffness adaptation (Achilles, patellar)',
       'BUT: connective-tissue damage that takes 5-10 days to recover',
@@ -70,7 +70,7 @@ export const HILLY_ROAD_RACE_PREP: Cited<{
       { flatWorkout: '6 × 1 mi @ T (flat)',           hillSubstitute: '6 × 3-5 min @ T effort on rolling hills, equal jog down' },
       { flatWorkout: '5 × 1000m @ I (flat)',          hillSubstitute: '5 × 600-800m on 3-5% grade @ I effort' },
       { flatWorkout: '20 mi MP long run',             hillSubstitute: 'Course-profile-mimicking long run with MP segments on uphills + downhills' },
-      { flatWorkout: 'Tempo flat 5 mi',                hillSubstitute: 'Tempo on rolling course — hold T effort up + down regardless of pace' },
+      { flatWorkout: 'Tempo flat 5 mi',                hillSubstitute: 'Tempo on rolling course, hold T effort up + down regardless of pace' },
     ],
   },
   citations: [
@@ -93,7 +93,7 @@ export const DOWNHILL_QUAD_PROTECTION: Cited<{
     damageTimeline: 'CK/DOMS peaks 24-48h post; full recovery 5-10 days. Insufficient quad-protective training = mile 18-24 collapse.',
     trainingProtocol: [
       'Downhill long runs: 1× every 2 weeks, building from 6 mi total downhill exposure to 12-14 mi over 8-12 weeks',
-      'Eccentric strength: split squats, single-leg step-downs, Spanish squats — 2-3×/wk',
+      'Eccentric strength: split squats, single-leg step-downs, Spanish squats, 2-3×/wk',
       'Long runs that mimic race profile (start downhill, finish flat or uphill)',
       'Pace controlled on downhills: target HR/effort, not pace. Let pace be a result.',
       'Race-week: dial back eccentric load; preserve freshness',
@@ -149,9 +149,9 @@ export const ALTITUDE_RACE_TIMING: Cited<{
 }> = {
   value: {
     arrivalStrategies: [
-      { strategy: 'A — Arrive late',                  arrivalDays: '≤24 h before race', rationale: 'Avoid acute-phase decline (hyperventilation, hemoconcentration)' },
-      { strategy: 'B — Arrive early',                  arrivalDays: '≥14 days before',    rationale: 'Capture acclimatization gains (Hbmass +1-3% by day 14)' },
-      { strategy: 'AVOID — 2-7 days before',           arrivalDays: '2-7 days',           rationale: 'Worst window: hyperventilation + bicarbonate loss without RBC gain' },
+      { strategy: 'A, Arrive late',                  arrivalDays: '≤24 h before race', rationale: 'Avoid acute-phase decline (hyperventilation, hemoconcentration)' },
+      { strategy: 'B, Arrive early',                  arrivalDays: '≥14 days before',    rationale: 'Capture acclimatization gains (Hbmass +1-3% by day 14)' },
+      { strategy: 'AVOID, 2-7 days before',           arrivalDays: '2-7 days',           rationale: 'Worst window: hyperventilation + bicarbonate loss without RBC gain' },
     ],
     acclimatizationTimeline: [
       { daysAtAltitude: 'Days 1-3',    effect: 'Hyperventilation, ↑HR, hemoconcentration. Worst performance.' },

@@ -7,7 +7,7 @@
  *
  *   1. When NO recovery signals fire, the engine returns
  *      `changed: false` with `adjustedFor: []`. The TodayCard renders
- *      unchanged — no fake COACH ADJUSTED pin.
+ *      unchanged, no fake COACH ADJUSTED pin.
  *   2. When recovery signals fire (gap + check-in + ACWR), the engine
  *      returns `changed: true` with a non-empty `adjustedFor` array
  *      so the TodayCard can render the pin + the "WHY" line.
@@ -95,7 +95,7 @@ describe('coach.adjustForReality · check-in escalation', () => {
         daysSinceLastRun: 1,
         missedRunsLast7d: 0,
         acwr: 1.6, // first signal
-        checkinPoorDaysLast7d: 2, // second signal — doctrine count threshold
+        checkinPoorDaysLast7d: 2, // second signal, doctrine count threshold
       },
     });
     // Two signals firing on a quality day → defer.

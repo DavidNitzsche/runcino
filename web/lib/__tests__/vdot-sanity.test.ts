@@ -20,7 +20,7 @@ function paceStr(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-describe('VDOT sanity — AFC half marathon 2025 actual', () => {
+describe('VDOT sanity, AFC half marathon 2025 actual', () => {
   it('infers a believable VDOT', () => {
     const vdot = vdotFromRace(HM_DISTANCE_MI, HM_TIME_S);
     expect(vdot).not.toBeNull();

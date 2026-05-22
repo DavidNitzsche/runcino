@@ -1,5 +1,5 @@
 /**
- * /api/weather — weather data for race-day planning.
+ * /api/weather, weather data for race-day planning.
  *
  *   ?lat=<>&lon=<>                → NOAA forecast (CONUS only, free)
  *   ?lat=<>&lon=<>&date=YYYY-MM-DD → Open-Meteo historical archive

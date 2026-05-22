@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * RouteMapIsland — thin client-side wrapper around RouteMap.
+ * RouteMapIsland, thin client-side wrapper around RouteMap.
  *
  * RouteMap relies on Leaflet (window-only), so it has to be loaded
  * via `next/dynamic({ ssr: false })`. Next 16 disallows `ssr: false`

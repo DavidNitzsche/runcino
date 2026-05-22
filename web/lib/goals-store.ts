@@ -27,7 +27,7 @@ const COLS = `id, user_id, goal_type, target, current, deadline::text AS deadlin
   tolerance, rationale, created_at::text AS created_at, updated_at::text AS updated_at`;
 
 /** List active personal goals for a user, newest first. Returns []
- *  when nothing has been added — caller renders the empty CTA. */
+ *  when nothing has been added, caller renders the empty CTA. */
 export async function listPersonalGoals(userId = 'me'): Promise<GoalRow[]> {
   return query<GoalRow>(
     `SELECT ${COLS} FROM personal_goals

@@ -8,9 +8,9 @@
  *   - 26.8 × 1.10 = 29.5
  *
  * Fix:
- *   Q1 — state.volume.longestTrainingRunLast28Mi (NEW) excludes races.
+ *   Q1, state.volume.longestTrainingRunLast28Mi (NEW) excludes races.
  *        Engine reads this for all progression math.
- *   Q2 — POST_RACE phase anchors on state.volume.preRaceLongestTrainingMi
+ *   Q2, POST_RACE phase anchors on state.volume.preRaceLongestTrainingMi
  *        × 0.50 (50% restart, ramping back 2-3 weeks per Research/00b
  *        §Recovery by Effort + marathon-specific recovery).
  *
@@ -69,7 +69,7 @@ function makeBaseState(): CoachState {
   };
 }
 
-describe('long-run cap — Q1 · training-only baseline (races excluded)', () => {
+describe('long-run cap, Q1 · training-only baseline (races excluded)', () => {
   it('post-marathon: cap reads from training-only longest, not race', () => {
     // Bug-replica scenario: runner ran a 26.8mi marathon 5 days ago,
     // training long was 14mi prior. Pre-fix: cap = 26.8 × 1.10 = 29.5mi.
@@ -97,20 +97,20 @@ describe('long-run cap — Q1 · training-only baseline (races excluded)', () =>
   });
 
   it('training-only longest is what progression math reads', () => {
-    // Even outside POST_RACE — e.g., race was 28 days ago but recovery
-    // window has closed — the training-only baseline is still the
+    // Even outside POST_RACE, e.g., race was 28 days ago but recovery
+    // window has closed, the training-only baseline is still the
     // safe anchor. Race shouldn't lift the +10% cap.
     const state = makeBaseState();
     state.volume.longestLast28Mi = 26.8;
     state.volume.longestTrainingRunLast28Mi = 13;   // pre-race
     state.volume.preRaceLongestTrainingMi = null;   // no recent race
-    // No POST_RACE, no recovery window — runner is on BASE_MAINTENANCE.
+    // No POST_RACE, no recovery window, runner is on BASE_MAINTENANCE.
     const cap = maxLongRunMi(state);
     expect(cap, 'cap from 13mi × 1.10 = 14.3').toBeCloseTo(14.3, 0);
   });
 });
 
-describe('long-run cap — Q2 · post-race 50% restart', () => {
+describe('long-run cap, Q2 · post-race 50% restart', () => {
   it('POST_RACE: long-run target ≈ 50% of pre-race training long', () => {
     const state = makeBaseState();
     state.volume.longestLast28Mi = 26.8;
@@ -157,7 +157,7 @@ describe('long-run cap — Q2 · post-race 50% restart', () => {
   });
 });
 
-describe('long-run cap — invariant', () => {
+describe('long-run cap, invariant', () => {
   it('peakLast for training-progression purposes excludes race distances', () => {
     // Anchor invariant: maxLongRunMi must never reflect a race effort.
     // Any state where longestLast28Mi >> longestTrainingRunLast28Mi

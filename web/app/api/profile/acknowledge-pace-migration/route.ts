@@ -9,7 +9,7 @@
  *
  * After acknowledgment, ongoing pace-band shifts (e.g., from new
  * race results that move VDOT) fall under the standard large-shift
- * guard at the prescription layer — not the migration banner.
+ * guard at the prescription layer, not the migration banner.
  *
  * Empty body. Returns the ack timestamp.
  */

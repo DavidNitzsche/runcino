@@ -1,7 +1,7 @@
 /**
  * DatePicker · custom <input type="date"> replacement
  *
- * Native date pickers paint with the OS theme — light gray on macOS, blue on
+ * Native date pickers paint with the OS theme, light gray on macOS, blue on
  * Chrome, calendar-emoji on iOS. None of these match the May 2026 dark system.
  * This component uses `react-day-picker` for the calendar grid wrapped in a
  * Radix Popover for positioning and focus management.
@@ -36,7 +36,7 @@ export interface DatePickerProps {
 
 function isoToDate(iso: string | undefined): Date | undefined {
   if (!iso) return undefined;
-  // Parse as local time, not UTC — `new Date('2026-05-11')` shifts by TZ.
+  // Parse as local time, not UTC, `new Date('2026-05-11')` shifts by TZ.
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return undefined;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));

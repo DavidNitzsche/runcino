@@ -4,7 +4,7 @@
  * Read-only diagnostic: runs computeReadinessScore for the owner (the same
  * userId the iPhone resolves to) and returns the full finding plus the raw
  * inputs that fed it, so we can see EXACTLY why the readiness ring is null
- * vs a number — without guessing from the client.
+ * vs a number, without guessing from the client.
  *
  * Auth: admin session OR Authorization: Bearer <ADMIN_OPERATIONAL_TOKEN>
  * (binds to the legacy owner). Opt-in per requireAdminOrOpToken scope.
@@ -55,7 +55,7 @@ export async function GET(req: Request) {
     out.stravaGapError = e instanceof Error ? e.message : String(e);
   }
 
-  // Last-7-day runs with HR + workout type — to see exactly what gets
+  // Last-7-day runs with HR + workout type, to see exactly what gets
   // flagged "hard" and why (HR >= Z4 floor, or Strava workout-type 3).
   try {
     const runs = await query<{ date: string; avg_hr: string | null; wt: string | null; dist: string }>(
@@ -87,8 +87,8 @@ export async function GET(req: Request) {
   }
 
   // Two findings, to confirm web/iPhone parity:
-  //   findingNoHr  — old /api/overview behaviour (maxHr=null) → inflated
-  //   finding      — NEW behaviour, matching the web ring (real maxHr + Z2)
+  //   findingNoHr, old /api/overview behaviour (maxHr=null) → inflated
+  //   finding, NEW behaviour, matching the web ring (real maxHr + Z2)
   try {
     out.findingNoHr = await computeReadinessScore(admin.id, today, null, null);
   } catch (e) {

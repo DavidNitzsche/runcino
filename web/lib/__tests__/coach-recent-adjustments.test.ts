@@ -7,12 +7,12 @@
  *   2. A fixture where today's signals trip adjustForReality returns
  *      at least one item with `changed: true` (today's real
  *      adjustment).
- *   3. NO retroactive synthesis — past days NEVER emit items just
+ *   3. NO retroactive synthesis, past days NEVER emit items just
  *      because last7Days is empty. The adaptive layer has no
  *      persistence yet, so historical adjustments are 0 by design.
  *      Item count is bounded by {0, 1}: today's adjustForReality fires
  *      or doesn't.
- *   4. Honest "Run not logged" — when the user has populated
+ *   4. Honest "Run not logged", when the user has populated
  *      Strava activities in the current calendar week, the past-day
  *      false-positive that triggered the original bug never surfaces.
  *
@@ -44,7 +44,7 @@ function makeLast7Days(runDays: Set<number>): Array<{ date: string; miles: numbe
 
 describe('coach.recentAdjustments · no signals', () => {
   it('returns empty items when runner hit every planned day and no signals fire', async () => {
-    // Steady runner — every day ran, ACWR in sweet spot, no check-in
+    // Steady runner, every day ran, ACWR in sweet spot, no check-in
     // signals. The engine should hold the plan steady.
     const state: CoachState = {
       ...STATE_MID_BUILD_WEEK_4,
@@ -108,7 +108,7 @@ describe('coach.recentAdjustments · today\'s adjustForReality signal', () => {
     // The single item must be today's, not a retroactive past day.
     for (const item of out.answer.items) {
       expect(item.changed, 'rollup items only when the engine actually moved').toBe(true);
-      expect(item.dateISO, 'no retroactive synthesis — only today').toBe(TODAY_ISO);
+      expect(item.dateISO, 'no retroactive synthesis, only today').toBe(TODAY_ISO);
       expect(item.dateDisplay).toBe('TODAY');
     }
     expect(out.answer.rationale.length).toBeGreaterThan(0);
@@ -119,18 +119,18 @@ describe('coach.recentAdjustments · Bug 1 regression: no retroactive synthesis'
   it('returns 0 items when last7Days is empty and no live signals fire (the original bug)', async () => {
     // This was the exact bug the user caught on /overview: the adaptive
     // layer JUST shipped, but the card was showing "5 ADJUSTMENTS THIS
-    // WEEK" — five fabricated rows for SUN/SAT/FRI/THU/WED all saying
+    // WEEK", five fabricated rows for SUN/SAT/FRI/THU/WED all saying
     // "Run not logged · week-volume target adjusts down." The engine
     // wasn't operating on those days; there are no real adjustments to
     // report.
     //
-    // After the fix: 0 items. UI renders "Plan held steady — Coach
+    // After the fix: 0 items. UI renders "Plan held steady, Coach
     // didn't need to move anything this week."
     const state: CoachState = {
       ...STATE_MID_BUILD_WEEK_4,
       volume: {
         ...STATE_MID_BUILD_WEEK_4.volume,
-        // Empty last7Days — simulates a fresh user / no Strava history
+        // Empty last7Days, simulates a fresh user / no Strava history
         // / the exact "no data" path that should NOT fabricate items.
         last7Days: makeLast7Days(new Set()),
         last7Mi: 0,
@@ -138,7 +138,7 @@ describe('coach.recentAdjustments · Bug 1 regression: no retroactive synthesis'
       },
       recovery: {
         ...STATE_MID_BUILD_WEEK_4.recovery,
-        // 0 days since last run — adjustForReality won't trip rebuild.
+        // 0 days since last run, adjustForReality won't trip rebuild.
         daysSinceLastRun: 0,
       },
       checkin: null,
@@ -161,7 +161,7 @@ describe('coach.recentAdjustments · Bug 2 regression: honest "run logged" check
       ...STATE_MID_BUILD_WEEK_4,
       volume: {
         ...STATE_MID_BUILD_WEEK_4.volume,
-        // Every day populated — the user has been running.
+        // Every day populated, the user has been running.
         last7Days: makeLast7Days(new Set([-6, -5, -4, -3, -2, -1, 0])),
         last7Mi: 35,
         weeklyAvg8w: 30,

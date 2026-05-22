@@ -6,7 +6,7 @@
  *
  * Real sources are wired where they exist (Strava cache, saved races,
  * Coach engine state, Coach methods). Surfaces whose feeding source
- * doesn't exist yet resolve to `null` — the page renders an explicit
+ * doesn't exist yet resolve to `null`, the page renders an explicit
  * NO DATA YET empty-state.
  */
 
@@ -46,7 +46,7 @@ export type { TrainingApiHrZoneTime as HrZoneTime, TrainingApiZoneDay as HrZoneD
 export interface TrainingData {
   /** ISO "today". Locked once per load. */
   today: string;
-  /** Profile snapshot — name + greeting tone. */
+  /** Profile snapshot, name + greeting tone. */
   profile: ProfileSnapshot;
   /** Coach engine state. */
   state: CoachState;
@@ -74,10 +74,10 @@ export interface TrainingData {
   readyToRun: ReadyToRunSnapshot | null;
   /** Today conditions + coach note. null until weather wiring lands. */
   conditions: ConditionsSnapshot | null;
-  /** Goal tracking — PR / Goal / Stretch tiles + fitness now vs goal.
+  /** Goal tracking, PR / Goal / Stretch tiles + fitness now vs goal.
    *  null when no A-race is set (page prompts the user to set one). */
   goalTracking: GoalTrackingSnapshot | null;
-  /** Plan-adapted (Coach Read) — null when nothing has changed in the
+  /** Plan-adapted (Coach Read), null when nothing has changed in the
    *  last 7 days. */
   planAdapted: PlanAdaptedReport | null;
   /** AdjustForReality output for today; null when the plan held. */
@@ -90,7 +90,7 @@ export interface TrainingData {
   /** Wave J · one-sentence coach voice. Same component as /overview. */
   narrative: NarrativeLine | null;
   /** Wave G · "Coach is watching" chips reusing the alive-coach loader.
-   *  Only the watching strip is rendered on /training — PathToRace and
+   *  Only the watching strip is rendered on /training, PathToRace and
    *  NextPush live on /overview where they anchor the hero rows. */
   aliveCoach: AliveCoachData;
   /** Wave L · per-signal freshness map. */
@@ -127,7 +127,7 @@ export interface ReadyToRunSnapshot {
   headline: string;
   /** Headline color token. */
   headlineColor: string;
-  /** Individual signals — each is null until that sensor stream is live. */
+  /** Individual signals, each is null until that sensor stream is live. */
   sleep: { value: string; delta: string; color: string } | null;
   hrv: { value: string; unit: string; delta: string; color: string } | null;
   rhr: { value: string; unit: string; delta: string; color: string } | null;
@@ -298,7 +298,7 @@ export async function loadTrainingData(
       }
     : null;
 
-  // Wave J · narrative line — computed server-side; client just renders.
+  // Wave J · narrative line, computed server-side; client just renders.
   const narrative = api.narrative ?? null;
 
   // Wave G · alive-coach payload. PathToRace + NextPushes were computed
@@ -404,7 +404,7 @@ function getProfileSnapshot(today: string, profileName: string | null): ProfileS
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Today workout structure — synthesized split until Coach returns it
+// Today workout structure, synthesized split until Coach returns it
 // ─────────────────────────────────────────────────────────────────────
 
 function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBlock[] {
@@ -445,7 +445,7 @@ function getWorkoutStructure(workout: WorkoutPrescription): WorkoutStructureBloc
 // ─────────────────────────────────────────────────────────────────────
 
 function getReadyToRun(readiness: ReadinessAssessment): ReadyToRunSnapshot {
-  // The headline is the only thing the Coach surfaces today — the
+  // The headline is the only thing the Coach surfaces today, the
   // individual signals (sleep / HRV / RHR / soreness) come from
   // HealthKit + a daily check-in we haven't wired. Each is null until
   // its source goes live; the page renders an AWAITING HEALTHKIT body.
@@ -482,7 +482,7 @@ function getConditions(): ConditionsSnapshot | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Goal tracking — pulls from Coach.raceFitnessPrediction (A race)
+// Goal tracking, pulls from Coach.raceFitnessPrediction (A race)
 // ─────────────────────────────────────────────────────────────────────
 
 function getGoalTracking(
@@ -504,11 +504,11 @@ function getGoalTracking(
   const stretchTime = raceFitnessA.answer.stretchDisplay;
   const days = daysToA ?? 0;
 
-  // VDOT line — real snapshot or null. We don't yet track a delta so
+  // VDOT line, real snapshot or null. We don't yet track a delta so
   // the line is just the current VDOT.
   const vdotLine = vdotLib ? `VDOT ${vdotLib.vdot.toFixed(1)}` : null;
 
-  // PR tile — pull the closest-distance PR from naivePRs.
+  // PR tile, pull the closest-distance PR from naivePRs.
   const distLabel = labelForDistanceFromMi(nextA.meta.distanceMi);
   const prBucket = pickPrForRaceDistance(prs, nextA.meta.distanceMi);
   const prTile =
@@ -516,11 +516,11 @@ function getGoalTracking(
       ? {
           label: `PR · ${distLabel}`,
           time: fmtDuration(prBucket.bestS),
-          meta: prBucket.date ? formatShortDate(prBucket.date) : '—',
+          meta: prBucket.date ? formatShortDate(prBucket.date) : '-',
         }
       : null;
 
-  // Stretch pace — raceFitnessPrediction already gives a stretchDisplay
+  // Stretch pace, raceFitnessPrediction already gives a stretchDisplay
   // but no pace; compute from goalPace - typical stretch delta.
   const stretchPaceS = Math.max(0, goalPaceS - 8);
 
@@ -599,7 +599,7 @@ function getPlanAdapted(
 function _getPlanAdaptedLegacy(): PlanAdaptedReport | null {
   // The engine doesn't yet surface a 7-day "what the plan moved"
   // history. coach.adjustForReality returns a single-day AdjustedPlan
-  // — useful for today's prescription but not for the weekly Coach
+  //, useful for today's prescription but not for the weekly Coach
   // Read card. Until a method like coach.recentAdjustments() lands,
   // this is null and the page hides the card.
   return null;
@@ -610,7 +610,7 @@ function _getPlanAdaptedLegacy(): PlanAdaptedReport | null {
 // ─────────────────────────────────────────────────────────────────────
 
 function fmtPace(sPerMi: number): string {
-  if (!isFinite(sPerMi) || sPerMi <= 0) return '—';
+  if (!isFinite(sPerMi) || sPerMi <= 0) return ', ';
   const mm = Math.floor(sPerMi / 60);
   const ss = Math.round(sPerMi - mm * 60);
   return `${mm}:${ss.toString().padStart(2, '0')}/mi`;
@@ -624,7 +624,7 @@ function fmtClock(secs: number): string {
 }
 
 function fmtDuration(s: number): string {
-  if (!isFinite(s) || s <= 0) return '—';
+  if (!isFinite(s) || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s - h * 3600) / 60);
   const sec = Math.round(s - h * 3600 - m * 60);

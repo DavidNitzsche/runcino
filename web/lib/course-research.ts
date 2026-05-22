@@ -1,5 +1,5 @@
 /**
- * Course research — turn a race name into a draft CourseFacts file.
+ * Course research, turn a race name into a draft CourseFacts file.
  *
  * Uses the Anthropic API with the `web_search` tool enabled. The model
  * is constrained by a system prompt to:
@@ -9,7 +9,7 @@
  *   - Classify source confidence
  *   - Default to the lowest plausible confidence tier
  *
- * Output is written as `data/courses/<slug>.draft.json` — the human
+ * Output is written as `data/courses/<slug>.draft.json`, the human
  * reviews each claim and promotes the file to `<slug>.json` only
  * after checking against the official race bible.
  *
@@ -38,11 +38,11 @@ export interface ResearchOutput {
 const RESEARCH_SYSTEM_PROMPT = `
 You are a research assistant for faff.run, a personal race pacing tool. Your job is to build a CourseFacts JSON for a given race using the web_search tool.
 
-## Hard rules — violating any is a failure
+## Hard rules, violating any is a failure
 
 1. **Never invent a fact.** If you cannot find a claim in a source you can cite, omit it. Omission is always preferred to fabrication.
 2. **Every claim must include a source URL.** No exceptions.
-3. **Include a verified_quote field** (short quote from the page) whenever you can — this is how humans will check your work.
+3. **Include a verified_quote field** (short quote from the page) whenever you can, this is how humans will check your work.
 4. **Classify confidence conservatively:**
    - "primary_source_verified" → ONLY when the URL is on the official race domain (e.g. bigsurmarathon.org, ncmrunning.com)
    - "secondary_source" → Wikipedia, reputable running publications (runnersworld.com, letsrun.com), race review blogs
@@ -61,7 +61,7 @@ Return a JSON object matching this TypeScript interface exactly:
   slug: string,              // kebab-case, e.g. "big-sur-marathon"
   facts: CourseFacts,        // see CourseFacts schema below
   reasoning: string,         // your approach and any conflicts encountered
-  unresolvedQuestions: string[]  // anything you couldn't nail down — flag these for the human reviewer
+  unresolvedQuestions: string[]  // anything you couldn't nail down, flag these for the human reviewer
 }
 \`\`\`
 
@@ -90,7 +90,7 @@ Return a JSON object matching this TypeScript interface exactly:
     sources: SourceCitation[]
   },
   phases: PhaseFact[],       // 4-8 logical sections of the course
-  landmarks: LandmarkFact[], // notable points — climbs, aid stations, iconic features
+  landmarks: LandmarkFact[], // notable points, climbs, aid stations, iconic features
   notes_from_sources: { [key: string]: { status, ... } },  // edge cases you want the reviewer to see
   warnings: { [key: string]: string }  // race-specific warnings
 }
@@ -153,7 +153,7 @@ export async function researchCourse(input: ResearchInput): Promise<ResearchOutp
   const userMessage = `
 Research the "${input.raceName}" course.
 
-${input.officialUrl ? `User-suggested official URL: ${input.officialUrl}` : 'No official URL provided — find it via web search.'}
+${input.officialUrl ? `User-suggested official URL: ${input.officialUrl}` : 'No official URL provided, find it via web search.'}
 ${input.typicalDate ? `Typical race date: ${input.typicalDate}` : ''}
 ${input.expectedDistanceMi ? `Expected distance: ${input.expectedDistanceMi} mi (verify)` : ''}
 
@@ -162,7 +162,7 @@ Today's date: ${new Date().toISOString().slice(0, 10)}.
 `;
 
   // Note: web_search tool interface may vary by SDK version. The user's
-  // AGENTS.md warns about SDK drift — this implementation targets the
+  // AGENTS.md warns about SDK drift, this implementation targets the
   // server-tool web_search beta that ships with Claude SDK 0.90+.
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -171,7 +171,7 @@ Today's date: ${new Date().toISOString().slice(0, 10)}.
       { type: 'text', text: RESEARCH_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
     ],
     messages: [{ role: 'user', content: userMessage }],
-    // Tool enablement — if the SDK/model surface doesn't support this exact
+    // Tool enablement, if the SDK/model surface doesn't support this exact
     // shape, the caller will get a clear error and we iterate.
     tools: [
       {
@@ -190,7 +190,7 @@ Today's date: ${new Date().toISOString().slice(0, 10)}.
     else traces.push(block);
   }
 
-  // Extract JSON (permissive — strip code fences if present)
+  // Extract JSON (permissive, strip code fences if present)
   const jsonText = raw.replace(/```json\s*/i, '').replace(/```\s*$/i, '').trim();
   let parsed: {
     slug: string;

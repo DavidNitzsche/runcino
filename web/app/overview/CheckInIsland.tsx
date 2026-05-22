@@ -44,7 +44,7 @@ export function CheckInIsland({ today }: { today: string }) {
     }
   }
 
-  // Confirmed state — solid green card with a checkmark + the logged stats.
+  // Confirmed state, solid green card with a checkmark + the logged stats.
   if (logged && !editing) {
     const stat = (label: string, val: number) => (
       <div style={{ textAlign: 'center', flex: 1 }}>
@@ -53,7 +53,7 @@ export function CheckInIsland({ today }: { today: string }) {
       </div>
     );
     return (
-      // The whole card turns green — no inner box. Overrides .coach-right's
+      // The whole card turns green, no inner box. Overrides .coach-right's
       // white background / right-alignment so it reads as one solid card.
       <div className="coach-right" style={{ background: 'var(--recovery, #3EBD41)', color: '#fff', alignItems: 'stretch', justifyContent: 'flex-start', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>

@@ -3,7 +3,7 @@
  *
  * Reasons about glycogen depletion curves, pre-climb loading, aid station
  * water availability, heat/sweat adjustments, and gut sensitivity to place
- * gels where they'll actually help — not just evenly spaced.
+ * gels where they'll actually help, not just evenly spaced.
  *
  * Falls back to the rule-based planFueling() if no API key or if Claude
  * fails, so build-plan always completes.
@@ -21,7 +21,7 @@ You are faff.run's fueling strategist. You place gels on a race course to maximi
 - Carbs take 15-30 min to absorb. Place gels BEFORE hard efforts, not during.
 - For 3:00-4:30 efforts, target 60-90g carbs/hr (default 60g if gut tolerance unknown).
 - First gel: 45-60 minutes in.
-- Never place a gel mid-climb — hard to open, swallow, and breathe. Place 1-2 miles before.
+- Never place a gel mid-climb, hard to open, swallow, and breathe. Place 1-2 miles before.
 - Aid stations provide water. Snap gel timing to within 0.5 mi of an aid station when possible.
 - In heat (>65°F finish), increase carb target by ~10g/hr.
 - Final gel: no later than 4 miles from finish.

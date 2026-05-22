@@ -11,7 +11,7 @@
  *   - Label phases using a course-facts file when one is available;
  *     fall back to geometry-based labels ("Long climb", etc.) otherwise
  *
- * Phase labels and notes are ONLY taken from a course-facts file —
+ * Phase labels and notes are ONLY taken from a course-facts file, 
  * there is no code path that invents a landmark name. See course-facts.ts.
  */
 
@@ -56,7 +56,7 @@ function gradeOfRawPhase(p: RawPhase): number {
 }
 
 /** Classify grade with a dead-zone. Grades within ±GRADE_DEADZONE_PCT
- *  count as "flat" — prevents GPS noise from generating spurious phases. */
+ *  count as "flat", prevents GPS noise from generating spurious phases. */
 const GRADE_DEADZONE_PCT = 1.0;
 function gradeSign(gradePct: number): -1 | 0 | 1 {
   if (gradePct > GRADE_DEADZONE_PCT) return 1;
@@ -87,7 +87,7 @@ function splitSegmentsIntoRawPhases(
     if (sign !== 0 && lastSign !== 0 && sign !== lastSign) {
       oppositeRunM += seg.distanceM;
     } else if (sign !== lastSign && sign !== 0) {
-      // Coming out of flat in a new direction — start counting
+      // Coming out of flat in a new direction, start counting
       oppositeRunM = seg.distanceM;
     } else {
       oppositeRunM = 0;
@@ -186,17 +186,17 @@ function collapseToTarget(
   return phases;
 }
 
-/** Geometric fallback labels — never invent a landmark name. */
+/** Geometric fallback labels, never invent a landmark name. */
 function geometricLabel(gradePct: number): { label: string; note: string } {
-  if (gradePct > 3.5) return { label: 'Long climb', note: 'Steep grade — hold effort, not pace.' };
-  if (gradePct > 1.5) return { label: 'Gradual climb', note: 'Sustained incline — settle in.' };
-  if (gradePct < -3.5) return { label: 'Long descent', note: "Protect quads — don't overstride." };
+  if (gradePct > 3.5) return { label: 'Long climb', note: 'Steep grade, hold effort, not pace.' };
+  if (gradePct > 1.5) return { label: 'Gradual climb', note: 'Sustained incline, settle in.' };
+  if (gradePct < -3.5) return { label: 'Long descent', note: "Protect quads, don't overstride." };
   if (gradePct < -1.5) return { label: 'Gradual descent', note: 'Relax and let the course run you.' };
   return { label: 'Rolling', note: 'Mixed terrain. Hold target pace through the rollers.' };
 }
 
 /** Assemble phases using the fact-file's canonical boundaries. Each
- *  segment is assigned to exactly one phase by its midpoint — prevents
+ *  segment is assigned to exactly one phase by its midpoint, prevents
  *  double-counting of boundary-crossing segments. Pace is derived from
  *  sum-of-times over sum-of-distances, never from an unweighted average. */
 function groupPhasesByFacts(
@@ -217,7 +217,7 @@ function groupPhasesByFacts(
       }
     }
     if (!placed) {
-      // Midpoint past the last phase end — stick in the final bucket
+      // Midpoint past the last phase end, stick in the final bucket
       buckets[buckets.length - 1].push(seg);
     }
   }
@@ -265,7 +265,7 @@ function groupPhasesByFacts(
   return out;
 }
 
-/** Geometric auto-grouping — used when no course-facts file is available. */
+/** Geometric auto-grouping, used when no course-facts file is available. */
 function groupPhasesGeometric(
   segments: Segment[],
   targetPhases: number,

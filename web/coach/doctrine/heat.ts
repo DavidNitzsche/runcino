@@ -1,5 +1,5 @@
 /**
- * Doctrine §11 — Heat and altitude as training tools.
+ * Doctrine §11, Heat and altitude as training tools.
  *
  * Extracted from docs/coaching-research.md §11.1, §11.2.
  * For most amateurs heat acclimation is the practical, comparable-
@@ -7,7 +7,7 @@
  */
 import { cite, type Cited } from './cite';
 
-/** Heat acclimation block — produces hematological gains comparable
+/** Heat acclimation block, produces hematological gains comparable
  *  to altitude (Rønnestad and colleagues, Scandinavian cycling/skiing). */
 export const HEAT_ACCLIMATION_BLOCK: Cited<{
   durationWeeksLow: number;
@@ -37,7 +37,7 @@ export const HEAT_ACCLIMATION_BLOCK: Cited<{
   ],
 };
 
-/** Adaptation timing — what changes when. */
+/** Adaptation timing, what changes when. */
 export const HEAT_ADAPTATION_TIMING: Cited<{
   plasmaVolumeExpandsByEndOf: 'week_1';
   rbcMassAdaptsWeeksLow: number;
@@ -57,7 +57,7 @@ export const HEAT_METHODS: Cited<string[]> = {
   citations: [cite('§11.1', 'Practical methods: sauna sessions of 20 to 40 minutes post-run, heat suit runs, or training in the warmest part of the day during summer months.')],
 };
 
-/** Altitude — gold standard, but reverses fast. For most amateurs,
+/** Altitude, gold standard, but reverses fast. For most amateurs,
  *  heat is the practical alternative. */
 export const ALTITUDE_PROTOCOL: Cited<{
   liveHighSleepAltitudeMLow: number;
@@ -66,7 +66,7 @@ export const ALTITUDE_PROTOCOL: Cited<{
   reverseAfterReturnWeeksHigh: number;
 }> = {
   value: { liveHighSleepAltitudeMLow: 2000, liveHighSleepAltitudeMHigh: 2500, reverseAfterReturnWeeksLow: 1, reverseAfterReturnWeeksHigh: 2 },
-  note: 'Live-high / train-low. Hematological gains reverse within 1–2 weeks of returning to sea level — timing matters.',
+  note: 'Live-high / train-low. Hematological gains reverse within 1–2 weeks of returning to sea level, timing matters.',
   citations: [
     cite('§11.2', 'sleep at 2,000 to 2,500m, train at lower altitude or at lower intensities at altitude'),
     cite('§11.2', 'The hematological gains reverse within 1 to 2 weeks of returning to sea level'),

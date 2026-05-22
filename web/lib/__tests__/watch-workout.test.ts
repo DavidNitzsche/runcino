@@ -135,7 +135,7 @@ describe('buildWatchWorkout · structured interval workouts', () => {
 
   it('haptic on first phase is always "start" regardless of phase type', () => {
     // Even structured workouts whose first phase is "warmup" should
-    // have haptic="start" — it's the workout-opening cue.
+    // have haptic="start", it's the workout-opening cue.
     const out = buildWatchWorkout(
       day('quality', 'Intervals', 6),
       TODAY,

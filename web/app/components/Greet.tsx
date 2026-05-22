@@ -10,7 +10,7 @@
  *
  * Used by every main page (Overview, Training, Races, Health, Log,
  * Profile) AND by detail views (the run-detail template uses Greet for
- * the page hero — eyebrow + run name on the left, 5 KPI tiles on the
+ * the page hero, eyebrow + run name on the left, 5 KPI tiles on the
  * right).
  */
 
@@ -24,9 +24,9 @@ export function Greet({ children }: GreetProps) {
 }
 
 export interface GreetIdProps {
-  /** Eyebrow text shown above the title — uppercase, mono, muted. */
+  /** Eyebrow text shown above the title, uppercase, mono, muted. */
   eyebrow: ReactNode;
-  /** Main title — uppercase display font. */
+  /** Main title, uppercase display font. */
   title: ReactNode;
 }
 export function GreetId({ eyebrow, title }: GreetIdProps) {

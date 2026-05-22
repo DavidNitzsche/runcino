@@ -1,5 +1,5 @@
 /**
- * Doctrine — Race-day pacing strategy.
+ * Doctrine, Race-day pacing strategy.
  *
  * Source: Research/08-pacing-and-race-week.md §§2-8
  *
@@ -32,16 +32,16 @@ export const SPLIT_STRATEGY_BY_TIER: Cited<{
     recreationalMarathon: {
       positivePct: 77, negativePct: 18,
       recommendedStrategy: 'controlled_even_or_slight_negative',
-      rationale: 'Glycogen sparing — early conservation cuts anaerobic burn, delaying the 30-35 km crisis.',
+      rationale: 'Glycogen sparing, early conservation cuts anaerobic burn, delaying the 30-35 km crisis.',
     },
     shorterRaces: { distance: '5K_to_HM', dominantStrategy: 'even_or_slight_positive' },
   },
   citations: [
-    cite('§2.1 Even, negative, or positive — what wins', 'Elite marathoners: even pacing (CV 1.5-3%). Recreational: 77% positive, 18% negative; sub-elites benefit from slight negative or controlled even pace. 5K-HM: even or slight positive dominate.', 'research', '08'),
+    cite('§2.1 Even, negative, or positive, what wins', 'Elite marathoners: even pacing (CV 1.5-3%). Recreational: 77% positive, 18% negative; sub-elites benefit from slight negative or controlled even pace. 5K-HM: even or slight positive dominate.', 'research', '08'),
   ],
 };
 
-/** Diaz / Hettinga 5-km segment framework — pacing CV by performance
+/** Diaz / Hettinga 5-km segment framework, pacing CV by performance
  *  tier. The 4th 5-km segment (15-20 km) is most prognostic for the
  *  wall. */
 export const PACING_CV_BY_TIER: Cited<Array<{
@@ -60,7 +60,7 @@ export const PACING_CV_BY_TIER: Cited<Array<{
     { tier: '3:30-4:00',                         cv5kMenPctLow: 8,   cv5kMenPctHigh: 12,   cv5kWomenPctLow: 7,   cv5kWomenPctHigh: 11,   lateRacePattern: 'Wall around 32-37 km' },
     { tier: '4:00-5:00+',                        cv5kMenPctLow: 10,  cv5kMenPctHigh: 15,   cv5kWomenPctLow: 10,  cv5kWomenPctHigh: 14,   lateRacePattern: 'Major slowdown after 25 km' },
   ],
-  note: 'The 4th 5-km segment (15-20 km) is most prognostic — runners who hit the wall typically begin decelerating here, often 1-3 km before they perceive it.',
+  note: 'The 4th 5-km segment (15-20 km) is most prognostic, runners who hit the wall typically begin decelerating here, often 1-3 km before they perceive it.',
   citations: [
     cite('§2.2 Diaz / Hettinga 5-km segment framework', 'Performance tier → 5-km CV (men/women) + late-race pattern', 'research', '08'),
   ],
@@ -115,7 +115,7 @@ export const PACING_TEMPLATE_5K: Cited<Array<{
 }>> = {
   value: [
     { segment: 'Mile 1',         paceVsGp: 'Hit GP within 1-2 sec; never more than 3 sec faster',  cue: 'Controlled' },
-    { segment: 'Mile 2',         paceVsGp: 'Hold GP — the mental dark zone where most fades happen', cue: 'Stay with the rhythm' },
+    { segment: 'Mile 2',         paceVsGp: 'Hold GP, the mental dark zone where most fades happen', cue: 'Stay with the rhythm' },
     { segment: 'Mile 3',         paceVsGp: 'Maintain or accelerate slightly',                       cue: 'Press' },
     { segment: 'Final 400m',     paceVsGp: 'Kick, empty the tank',                                  cue: 'Empty' },
   ],
@@ -149,9 +149,9 @@ export const PACING_TEMPLATE_HALF: Cited<Array<{
   cue: string;
 }>> = {
   value: [
-    { segment: 'Mile 1',          paceVsGpSPerMiLow: 10,  paceVsGpSPerMiHigh: 15,  cue: 'Slower than goal — controlled' },
+    { segment: 'Mile 1',          paceVsGpSPerMiLow: 10,  paceVsGpSPerMiHigh: 15,  cue: 'Slower than goal, controlled' },
     { segment: 'Miles 2-3',       paceVsGpSPerMiLow: 5,   paceVsGpSPerMiHigh: 10,  cue: 'Settling toward GP' },
-    { segment: 'Miles 4-10',      paceVsGpSPerMiLow: 0,   paceVsGpSPerMiHigh: 0,   cue: 'At GP — "comfortably hard"' },
+    { segment: 'Miles 4-10',      paceVsGpSPerMiLow: 0,   paceVsGpSPerMiHigh: 0,   cue: 'At GP, "comfortably hard"' },
     { segment: 'Miles 11-13.1',   paceVsGpSPerMiLow: 0,   paceVsGpSPerMiHigh: 0,   cue: 'At GP; push final mile' },
   ],
   note: 'A correctly paced half feels "comfortably hard" through 10 km, "hard" through 16 km, "very hard" in the final 5 km. If miles 1-3 feel "hard," pace is wrong. HM runs at ~88-92% VO2max.',
@@ -196,7 +196,7 @@ export const PACING_TEMPLATE_MARATHON: Cited<Record<MarathonStrategy, {
       bestFor: 'Advanced marathoners with marathon-specific block + tactical race',
     },
   },
-  note: 'Key rule: second 10K should never be slower than first 10K by more than 1-2%. A 4:00 marathon as 1:55/2:05 is botched; the same fitness as 2:00/2:00 finishes 5+ minutes faster. Marathon runs at 78-88% VO2max — glycogen is the dominant limiter.',
+  note: 'Key rule: second 10K should never be slower than first 10K by more than 1-2%. A 4:00 marathon as 1:55/2:05 is botched; the same fitness as 2:00/2:00 finishes 5+ minutes faster. Marathon runs at 78-88% VO2max, glycogen is the dominant limiter.',
   citations: [
     cite('§3.5 The marathon', '10-10-10, Pfitzinger conservative, Canova specificity strategies', 'research', '08'),
   ],
@@ -222,12 +222,12 @@ export const HILLY_PACE_ADJUSTMENT: Cited<Array<{
   ],
   note: 'Hold heart rate or RPE constant rather than pace. On a 5% uphill at marathon effort, expect 30-45 sec/km slower while HR holds.',
   citations: [
-    cite('§4.4 Hilly courses — effort-based, not pace-based', 'Grade → pace adjustment vs flat GP', 'research', '08'),
+    cite('§4.4 Hilly courses, effort-based, not pace-based', 'Grade → pace adjustment vs flat GP', 'research', '08'),
   ],
 };
 
 /** Net-downhill course-specific pacing. Eccentric quad damage during
- *  downhill braking surfaces 60-90 min later — early downhills must
+ *  downhill braking surfaces 60-90 min later, early downhills must
  *  be paced conservatively. */
 export const NET_DOWNHILL_COURSE_PACING: Cited<Array<{
   course: 'boston' | 'big_sur' | 'cim_revel_st_george';
@@ -256,11 +256,11 @@ export const NET_DOWNHILL_COURSE_PACING: Cited<Array<{
     },
     {
       course: 'cim_revel_st_george',
-      description: 'CIM, Revel, Tucson, St. George — true net-downhill PR courses',
+      description: 'CIM, Revel, Tucson, St. George, true net-downhill PR courses',
       rules: [
         'Course-PR potential is real but only with quad-protective training (downhill long runs) and conservative early pacing.',
         'Expected gain vs flat: 1-3% for trained downhill runners; 0% or negative for untrained.',
-        'Do not chase early miles — 6:30/mile through mile 6 of CIM feels like 7:00/mile flat but eccentric load is double.',
+        'Do not chase early miles, 6:30/mile through mile 6 of CIM feels like 7:00/mile flat but eccentric load is double.',
       ],
     },
   ],
@@ -411,11 +411,11 @@ export const THE_WALL: Cited<{
   },
   note: '4:00+ marathoners disproportionately affected (more time at intensities above fat-oxidation capacity); sub-3:00 hit fewer walls but more catastrophic ones.',
   citations: [
-    cite('§8.2 The wall — mechanism and prevention', 'What it is + mechanism + prevalence + 7 prevention levers', 'research', '08'),
+    cite('§8.2 The wall, mechanism and prevention', 'What it is + mechanism + prevalence + 7 prevention levers', 'research', '08'),
   ],
 };
 
-/** Late-race rescue protocol — if the wall hits. */
+/** Late-race rescue protocol, if the wall hits. */
 export const LATE_RACE_RESCUE: Cited<Array<{
   step: number;
   action: string;

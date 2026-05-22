@@ -1,5 +1,5 @@
 /**
- * Run debrief generator — produces a 1-3 sentence coach response to a
+ * Run debrief generator, produces a 1-3 sentence coach response to a
  * completed run by comparing the actuals to the planned workout.
  *
  * Tone: direct, specific, no hedging. Cite the numbers. The coach is
@@ -39,7 +39,7 @@ export interface DebriefInput {
   maxHr?: number | null;
   /** The morning's recovery vitals + 30-day baselines (Apple Health). When
    *  present, an elevated-HR / off-day read names the actual cause instead
-   *  of "possible fatigue — worth a check". */
+   *  of "possible fatigue, worth a check". */
   recovery?: RecoveryContext | null;
   /** Weather at the run's start. Heat/humidity is cited as a cause of an
    *  elevated HR before blaming fatigue. */
@@ -99,14 +99,14 @@ export function recoveryRead(r?: RecoveryContext | null): {
 }
 
 function fmtPace(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 /**
  * Parse a paceTarget string like "9:00 – 9:30 per mile" into a [low, high]
  * tuple of seconds per mile. Returns nulls when the string is text-only
- * ("Half-marathon goal pace", "Race pace", "—").
+ * ("Half-marathon goal pace", "Race pace", ", ").
  */
 export function parsePaceBounds(paceTarget: string): [number | null, number | null] {
   if (!paceTarget) return [null, null];
@@ -115,7 +115,7 @@ export function parsePaceBounds(paceTarget: string): [number | null, number | nu
   );
   if (matches.length === 0) return [null, null];
   if (matches.length === 1) return [matches[0], matches[0]];
-  // Range or progressive — use min as low, max as high
+  // Range or progressive, use min as low, max as high
   return [Math.min(...matches), Math.max(...matches)];
 }
 
@@ -193,15 +193,15 @@ export function generateRunDebrief(input: DebriefInput): string {
   if (planDistanceMi > 0) {
     const pct = Math.round((actualDistanceMi / planDistanceMi) * 100);
     if (pct >= 90 && pct <= 110) {
-      sentences.push(`Hit the planned distance — ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} mi.`);
+      sentences.push(`Hit the planned distance, ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} mi.`);
     } else if (pct < 60) {
-      sentences.push(`Well short — ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} planned mi (${pct}%).`);
+      sentences.push(`Well short, ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} planned mi (${pct}%).`);
     } else if (pct < 90) {
-      sentences.push(`Shorter than planned — ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} mi (${pct}%).`);
+      sentences.push(`Shorter than planned, ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} mi (${pct}%).`);
     } else if (pct <= 130) {
-      sentences.push(`Over plan — ${actualDistanceMi.toFixed(1)} mi vs ${planDistanceMi} planned (${pct}%).`);
+      sentences.push(`Over plan, ${actualDistanceMi.toFixed(1)} mi vs ${planDistanceMi} planned (${pct}%).`);
     } else {
-      sentences.push(`Way over plan — ${actualDistanceMi.toFixed(1)} mi vs ${planDistanceMi} planned (${pct}%).`);
+      sentences.push(`Way over plan, ${actualDistanceMi.toFixed(1)} mi vs ${planDistanceMi} planned (${pct}%).`);
     }
   } else if (actualDistanceMi > 0) {
     sentences.push(`Ran ${actualDistanceMi.toFixed(1)} mi off plan.`);
@@ -210,7 +210,7 @@ export function generateRunDebrief(input: DebriefInput): string {
   // ── PACE + HR (cross-referenced for easy/long) ──────────────
   // Different logic per workout type:
   //   - easy/long: pace + HR cross-referenced into ONE narrative
-  //     (so we don't say "ran too fast" AND "clean aerobic" — those
+  //     (so we don't say "ran too fast" AND "clean aerobic", those
   //     contradict; the joint read is "fitness gain, target needs
   //     to update")
   //   - quality: avg pace is misleading, look at splits instead
@@ -250,59 +250,59 @@ export function generateRunDebrief(input: DebriefInput): string {
     const target = `${fmtPace(paceLow)}–${fmtPace(paceHigh)}/mi`;
     const hr = actualAvgHr ?? 0;
     // Any pace sentence that interpolates `${hrPctSuffix}` will mention
-    // HR with %max — set the flag so the HR section knows the data is
+    // HR with %max, set the flag so the HR section knows the data is
     // already in the response.
     if (hr > 0 && hrPctSuffix) paceSentenceHadHr = true;
 
     // Cross-referenced narrative
     if (paceStatus === 'on-target') {
       if (hrStatus === 'aerobic') {
-        sentences.push(`${pace}/mi at HR ${hr}${hrPctSuffix} — textbook easy execution.`);
+        sentences.push(`${pace}/mi at HR ${hr}${hrPctSuffix}, textbook easy execution.`);
       } else if (hrStatus === 'moderate') {
-        sentences.push(`Pace held in target at ${pace}/mi but HR averaged ${hr}${hrPctSuffix} — moderate effort. Probably fine, but flag a check-in if it keeps trending up.`);
+        sentences.push(`Pace held in target at ${pace}/mi but HR averaged ${hr}${hrPctSuffix}, moderate effort. Probably fine, but flag a check-in if it keeps trending up.`);
       } else if (hrStatus === 'elevated') {
         const causes = [...rec.offFactors];
         if (heat) causes.push(heat);
         if (causes.length > 0) {
-          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix} — and the data shows why: ${joinList(causes)}. Not the run.`);
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}, and the data shows why: ${joinList(causes)}. Not the run.`);
         } else if (rec.hasData) {
-          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}, yet recovery looks normal (${joinList(rec.normalFactors)})${weather ? ` and it was a mild ${weather.tempF}°F` : ''} — likely in-run dehydration, not fatigue.`);
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}, yet recovery looks normal (${joinList(rec.normalFactors)})${weather ? ` and it was a mild ${weather.tempF}°F` : ''}, likely in-run dehydration, not fatigue.`);
         } else {
-          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}${heat ? ` — and ${heat}, which alone can do it` : ' — possible heat, fatigue, or sleep deficit. Worth a check'}.`);
+          sentences.push(`Pace was right at ${pace}/mi but HR ran hot at ${hr}${hrPctSuffix}${heat ? `, and ${heat}, which alone can do it` : ', possible heat, fatigue, or sleep deficit. Worth a check'}.`);
         }
       } else {
         sentences.push(`Pace held in the target band at ${pace}/mi.`);
       }
     } else if (paceStatus === 'slightly-fast') {
-      sentences.push(`Slightly quick at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''} — within reason.`);
+      sentences.push(`Slightly quick at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''}, within reason.`);
     } else if (paceStatus === 'fast') {
       if (hrStatus === 'aerobic') {
-        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — well below the ${target} target but HR stayed firmly aerobic. That reads as a fitness gain, not "running too fast." Time to update your training paces — log a recent race to recalibrate.`);
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix}, well below the ${target} target but HR stayed firmly aerobic. That reads as a fitness gain, not "running too fast." Time to update your training paces, log a recent race to recalibrate.`);
       } else if (hrStatus === 'moderate') {
-        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — faster than easy target with moderate HR. Borderline aerobic; recovery should still be normal but watch for cumulative fatigue.`);
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix}, faster than easy target with moderate HR. Borderline aerobic; recovery should still be normal but watch for cumulative fatigue.`);
       } else if (hrStatus === 'elevated') {
-        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — that's a tempo, not an easy day. Recovery will take longer than a normal easy run.`);
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix}, that's a tempo, not an easy day. Recovery will take longer than a normal easy run.`);
       } else {
-        sentences.push(`Ran ${pace}/mi — below the ${target} target. Easy days work best when they stay easy; watch that creep.`);
+        sentences.push(`Ran ${pace}/mi, below the ${target} target. Easy days work best when they stay easy; watch that creep.`);
       }
     } else if (paceStatus === 'very-fast') {
       if (hrStatus === 'aerobic') {
-        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix} — way faster than the ${target} target but HR stayed aerobic. The pace target is clearly out of sync with your fitness. Update it.`);
+        sentences.push(`Ran ${pace}/mi at HR ${hr}${hrPctSuffix}, way faster than the ${target} target but HR stayed aerobic. The pace target is clearly out of sync with your fitness. Update it.`);
       } else {
-        sentences.push(`Ran ${pace}/mi${hr ? ` at HR ${hr}${hrPctSuffix}` : ''} — way faster than the ${target} target. That's a hard workout, not an easy day. Recovery tomorrow.`);
+        sentences.push(`Ran ${pace}/mi${hr ? ` at HR ${hr}${hrPctSuffix}` : ''}, way faster than the ${target} target. That's a hard workout, not an easy day. Recovery tomorrow.`);
       }
     } else if (paceStatus === 'slightly-slow') {
-      sentences.push(`Slightly slower than target at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''} — probably terrain or freshness.`);
+      sentences.push(`Slightly slower than target at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''}, probably terrain or freshness.`);
     } else {
       // slow
       if (hrStatus === 'elevated') {
         if (rec.offFactors.length > 0) {
-          sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}) — and the data backs it up: ${joinList(rec.offFactors)}. That's a real off day; recovery needed.`);
+          sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}), and the data backs it up: ${joinList(rec.offFactors)}. That's a real off day; recovery needed.`);
         } else {
-          sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}) — strong signal of an off day. Sleep, hydration, or accumulated fatigue. Real recovery needed.`);
+          sentences.push(`Slower than target at ${pace}/mi WITH elevated HR (${hr}${hrPctSuffix}), strong signal of an off day. Sleep, hydration, or accumulated fatigue. Real recovery needed.`);
         }
       } else {
-        sentences.push(`Slower than target at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''} — possibly fatigue, heat, or terrain. Worth a check.`);
+        sentences.push(`Slower than target at ${pace}/mi${hr ? `, HR ${hr}${hrPctSuffix}` : ''}, possibly fatigue, heat, or terrain. Worth a check.`);
       }
     }
   } else if (planType === 'quality' && actualPaceSPerMi > 0) {
@@ -315,16 +315,16 @@ export function generateRunDebrief(input: DebriefInput): string {
         ? `${fmtPace(ivl.workingPaceLow)}/mi`
         : `${fmtPace(ivl.workingPaceLow)}–${fmtPace(ivl.workingPaceHigh)}/mi`;
       sentences.push(
-        `${ivl.workingMiles} working mile${ivl.workingMiles === 1 ? '' : 's'} at ${range} — intervals landed on target.`,
+        `${ivl.workingMiles} working mile${ivl.workingMiles === 1 ? '' : 's'} at ${range}, intervals landed on target.`,
       );
     } else if (splits.length > 0 && paceLow && paceHigh) {
-      // Splits exist but none fall in the interval band — workout didn't land
+      // Splits exist but none fall in the interval band, workout didn't land
       const fastestSplit = Math.min(...splits.map((s) => s.paceSPerMi));
       sentences.push(
-        `Intervals didn't land — fastest split was ${fmtPace(fastestSplit)}/mi vs the ${fmtPace(paceLow)}–${fmtPace(paceHigh)}/mi target. Either you bailed or the pace target's too aggressive.`,
+        `Intervals didn't land, fastest split was ${fmtPace(fastestSplit)}/mi vs the ${fmtPace(paceLow)}–${fmtPace(paceHigh)}/mi target. Either you bailed or the pace target's too aggressive.`,
       );
     } else if (paceLow && actualPaceSPerMi > paceLow + 90) {
-      sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi suggests the interval targets weren't hit — check splits to confirm.`);
+      sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi suggests the interval targets weren't hit, check splits to confirm.`);
     } else {
       sentences.push(`Avg pace ${fmtPace(actualPaceSPerMi)}/mi. Splits column shows the per-mile detail.`);
     }
@@ -341,7 +341,7 @@ export function generateRunDebrief(input: DebriefInput): string {
   //
   // If the pace sentence above ALREADY mentioned HR + %max, suppress
   // the duplicate `HR averaged X (Y% max · Zn)` sentence and replace
-  // it with the target-HR reference — that's the missing info.
+  // it with the target-HR reference, that's the missing info.
   if (actualAvgHr && actualAvgHr > 0) {
     const pct = hrPctOf(actualAvgHr);
     if (pct !== null && maxHr) {
@@ -365,7 +365,7 @@ export function generateRunDebrief(input: DebriefInput): string {
 
         if (paceSentenceHadHr) {
           if (zone === 'Z1' || zone === 'Z2') {
-            sentences.push(`Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm) — landed it.`);
+            sentences.push(`Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm), landed it.`);
           } else {
             const delta = Math.round(actualAvgHr - tgtHigh);
             const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
@@ -373,20 +373,20 @@ export function generateRunDebrief(input: DebriefInput): string {
           }
         } else {
           if (zone === 'Z1' || zone === 'Z2') {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — clean aerobic effort. Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm).`);
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), clean aerobic effort. Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm).`);
           } else if (zone === 'Z3') {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — moderate, above the easy zone. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), moderate, above the easy zone. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
           } else {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — high for an easy day. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), high for an easy day. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
           }
         }
       } else if (planType === 'quality') {
         const tLow = z4?.lowBpm ?? Math.round(maxHr * 0.85);
         const tHigh = z4?.highBpm ?? Math.round(maxHr * 0.92);
         if (zone === 'Z4' || zone === 'Z5') {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — the work showed up. Target Z4 (${tLow}–${tHigh} bpm).`);
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), the work showed up. Target Z4 (${tLow}–${tHigh} bpm).`);
         } else {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — lower than expected for threshold. Target Z4: ${tLow}–${tHigh} bpm.`);
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), lower than expected for threshold. Target Z4: ${tLow}–${tHigh} bpm.`);
         }
       } else if (planType === 'race') {
         sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}).`);
@@ -395,14 +395,14 @@ export function generateRunDebrief(input: DebriefInput): string {
       // Fallback: qualitative bands
       if (isContinuous) {
         if (actualAvgHr < 145) {
-          sentences.push(`HR averaged ${actualAvgHr} — clean aerobic effort.`);
+          sentences.push(`HR averaged ${actualAvgHr}, clean aerobic effort.`);
         } else if (actualAvgHr < 160) {
-          sentences.push(`HR averaged ${actualAvgHr} — moderate effort, on the upper edge of easy.`);
+          sentences.push(`HR averaged ${actualAvgHr}, moderate effort, on the upper edge of easy.`);
         } else {
-          sentences.push(`HR averaged ${actualAvgHr} — high for an easy day.`);
+          sentences.push(`HR averaged ${actualAvgHr}, high for an easy day.`);
         }
       } else if (planType === 'quality' || planType === 'race') {
-        sentences.push(`Avg HR ${actualAvgHr}${actualAvgHr >= 160 ? ' — the work showed up' : ''}.`);
+        sentences.push(`Avg HR ${actualAvgHr}${actualAvgHr >= 160 ? ', the work showed up' : ''}.`);
       }
     }
   }
@@ -412,6 +412,6 @@ export function generateRunDebrief(input: DebriefInput): string {
     sentences.push(`Logged ${actualDistanceMi.toFixed(1)} mi at ${fmtPace(actualPaceSPerMi)}/mi${actualAvgHr ? `, HR ${actualAvgHr}` : ''}.`);
   }
 
-  // Keep first 2-3 sentences max — concise > exhaustive
+  // Keep first 2-3 sentences max, concise > exhaustive
   return sentences.slice(0, 3).join(' ');
 }

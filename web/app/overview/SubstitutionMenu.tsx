@@ -5,7 +5,7 @@
  *
  * "If today's session isn't going to happen, here are 2-3 ways to
  * keep something useful while honoring the constraint." Each option
- * lists what it PRESERVES and what it SACRIFICES — honest trade-offs,
+ * lists what it PRESERVES and what it SACRIFICES, honest trade-offs,
  * not silent auto-modification.
  */
 
@@ -81,7 +81,7 @@ export function SubstitutionMenu({ menu }: Props) {
                 color: 'rgba(8,8,8,.62)',
                 marginLeft: 8,
               }}>
-                {' — '}
+                {', '}
                 <a
                   href={menu.crossRef.href}
                   style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
@@ -157,7 +157,7 @@ export function SubstitutionMenu({ menu }: Props) {
             }}
           >
             Pick the substitution that matches your constraint. The system doesn't
-            auto-modify the plan — you choose what to do.
+            auto-modify the plan, you choose what to do.
           </div>
         </div>
       )}

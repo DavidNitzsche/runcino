@@ -8,16 +8,16 @@
  *
  * Two layers, in order:
  *
- *   1. KNOWN_GELS — hand-curated lookup table for the popular brands.
+ *   1. KNOWN_GELS, hand-curated lookup table for the popular brands.
  *      Fast, deterministic, no API call. Add to this any time the
  *      Claude lookup returns a confident answer.
  *
- *   2. Claude lookup — when the brand isn't in KNOWN_GELS and an API
+ *   2. Claude lookup, when the brand isn't in KNOWN_GELS and an API
  *      key is available, ask Claude to identify the gel's spec from
  *      its public product info. Returns null if Claude isn't
  *      confident or there's no API key.
  *
- * The caller decides what to do on a miss — typically falls back to
+ * The caller decides what to do on a miss, typically falls back to
  * a 40 g default (the most common serving size) so the plan still
  * builds.
  */
@@ -34,7 +34,7 @@ export interface GelSpec {
 }
 
 /** Hand-curated lookup for the most common race gels.
- *  Match keys are lowercase substrings — first hit wins. */
+ *  Match keys are lowercase substrings, first hit wins. */
 const KNOWN_GELS: Array<{ patterns: string[]; spec: { brand: string; carbsG: number } }> = [
   { patterns: ['maurten gel 100', 'maurten 100'],     spec: { brand: 'Maurten Gel 100',     carbsG: 25 } },
   { patterns: ['maurten gel 160', 'maurten 160'],     spec: { brand: 'Maurten Gel 160',     carbsG: 40 } },
@@ -57,7 +57,7 @@ const KNOWN_GELS: Array<{ patterns: string[]; spec: { brand: string; carbsG: num
   { patterns: ['honey stinger'],                       spec: { brand: 'Honey Stinger Gel',    carbsG: 28 } },
 ];
 
-/** Try the local cache first — returns null on miss. */
+/** Try the local cache first, returns null on miss. */
 export function lookupGelKnown(brandRaw: string): GelSpec | null {
   const q = brandRaw.trim().toLowerCase();
   if (!q) return null;
@@ -101,7 +101,7 @@ export async function lookupGelWithClaude(brandRaw: string, apiKey: string): Pro
       messages: [
         {
           role: 'user',
-          content: `Identify this race-fueling product and report its carbs per serving: "${q}". If it could be one of several products (e.g. just "Maurten"), pick the most common road-race choice — for Maurten that's Gel 100.`,
+          content: `Identify this race-fueling product and report its carbs per serving: "${q}". If it could be one of several products (e.g. just "Maurten"), pick the most common road-race choice, for Maurten that's Gel 100.`,
         },
       ],
     });
@@ -119,7 +119,7 @@ export async function lookupGelWithClaude(brandRaw: string, apiKey: string): Pro
 }
 
 /** Resolve a gel spec using known cache first, then Claude if an API
- *  key is available. Always returns SOMETHING — falls back to a
+ *  key is available. Always returns SOMETHING, falls back to a
  *  generic 40 g default so the planner can still build. */
 export async function resolveGelSpec(brandRaw: string, apiKey: string | undefined): Promise<GelSpec> {
   const known = lookupGelKnown(brandRaw);

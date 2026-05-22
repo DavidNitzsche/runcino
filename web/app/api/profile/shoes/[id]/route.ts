@@ -1,5 +1,5 @@
 /**
- * /api/profile/shoes/[id] — edit / delete a single shoe.
+ * /api/profile/shoes/[id], edit / delete a single shoe.
  *
  *   GET    → return the row (used by the edit modal to pre-fill)
  *   PATCH  → partial update (brand/model/color/purposes/mileage/cap/preferred)
@@ -9,7 +9,7 @@
  * All handlers require auth so anonymous callers can't poke at the
  * legacy single-user 'me' rows. The shoes table is currently shared
  * (one row per shoe, not per user), so we don't filter by user_uuid
- * here — that's a follow-up once the backfill is complete.
+ * here, that's a follow-up once the backfill is complete.
  */
 
 import { requireUser } from '@/lib/auth';

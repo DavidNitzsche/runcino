@@ -2,7 +2,7 @@
 //  ShoeEditSheet.swift
 //  Faff
 //
-//  Add / edit a shoe — mirrors the web /profile shoe modal: brand, model,
+//  Add / edit a shoe, mirrors the web /profile shoe modal: brand, model,
 //  color, mileage, cap, run types, preferred, retired. Saves via
 //  POST /api/shoes (new) or PUT /api/shoes/[id] (edit).
 //

@@ -1,7 +1,7 @@
 import { query } from '../../../../../../lib/db';
 import { addMileage } from '../../../../../../lib/shoe-store';
 
-/** GET — return current shoe_id for this activity plus an
+/** GET, return current shoe_id for this activity plus an
  *  `auto_assigned` flag (true iff the row was set by the sync-time
  *  shoe-picker and never touched by the user). The UI uses
  *  auto_assigned to render an "auto-assigned as your easy-day shoe"
@@ -23,7 +23,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-/** PUT — assign a shoe to this activity, adjust mileage */
+/** PUT, assign a shoe to this activity, adjust mileage */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -52,7 +52,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       await addMileage(shoe_id, distanceMi);
     }
 
-    // Update the activity. Clear shoe_auto_assigned_at — once the
+    // Update the activity. Clear shoe_auto_assigned_at, once the
     // user touches the field manually, the row is no longer auto-
     // attributed (even if they pick the same shoe). The "auto-assigned
     // as your easy-day shoe" caption disappears.

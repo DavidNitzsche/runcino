@@ -19,7 +19,7 @@
  *   }
  *
  * REST DAYS · returns { workoutId: null, ... } so the watch app can
- * render "Rest day — no workout today" without erroring.
+ * render "Rest day, no workout today" without erroring.
  *
  * RACE DAYS · same · returns null workout · race-day pacing strategy
  * is deferred from MVP per the scoping doc.
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
 
-  // Find today's workout in the REAL plan artifact — the same source
+  // Find today's workout in the REAL plan artifact, the same source
   // /overview, /training and /api/overview read from, so the watch pushes
   // the runner's actual workout. No synthetic fallback: an empty plan just
   // yields the honest "no-plan-window" response below.
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       workoutId: null,
       reason: 'rest',
-      message: 'Rest day — no workout today.',
+      message: 'Rest day, no workout today.',
     });
   }
 
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       workoutId: null,
       reason: 'race-day',
-      message: 'Race day — pacing strategy is on the web app for now.',
+      message: 'Race day, pacing strategy is on the web app for now.',
     });
   }
 

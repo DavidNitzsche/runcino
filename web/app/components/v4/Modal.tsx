@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * v4 modal shell — backdrop-blur overlay, centered card, ESC + backdrop
+ * v4 modal shell, backdrop-blur overlay, centered card, ESC + backdrop
  * click to close. Used by WorkoutDetailModal and ScheduleModal.
  *
  * Two affordances:

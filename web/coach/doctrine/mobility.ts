@@ -1,5 +1,5 @@
 /**
- * Doctrine — Mobility, warmup, cooldown, drills.
+ * Doctrine, Mobility, warmup, cooldown, drills.
  *
  * Source: Research/10-mobility-warmup.md
  *
@@ -44,7 +44,7 @@ export const DYNAMIC_WARMUP_PROTOCOL: Cited<Array<{
     { step: 'Workout',                  duration: 'Per session',         exercises: undefined },
     { step: 'Cool-down jog',             duration: '5-15 min',           exercises: undefined },
   ],
-  note: 'For easy runs (E pace, 30-60 min), warmup can be brief — just 5 min easy jog + a few leg swings. For workouts (T, I, R), full protocol is essential.',
+  note: 'For easy runs (E pace, 30-60 min), warmup can be brief, just 5 min easy jog + a few leg swings. For workouts (T, I, R), full protocol is essential.',
   citations: [
     cite('§Pre-Run Dynamic Warmup + Drills + Strides', 'Standard 6-step warmup', 'research', '10'),
   ],
@@ -140,7 +140,7 @@ export const FOAM_ROLLING_PROTOCOL: Cited<{
       areas: ['Quads', 'IT band', 'Glutes', 'Calves (gastroc + soleus)', 'Hamstrings', 'Adductors', 'Upper back/lats'],
     },
     whenToUse: 'Pre-run as part of warmup (60-90 sec/area), post-run cool-down (focus on tight areas), evening recovery.',
-    whenNotToUse: 'Avoid rolling acutely injured tissue (strain ≤72h, BSI, tendon reactive phase). Direct rolling over IT band has weak evidence — focus on hip/glute drivers.',
+    whenNotToUse: 'Avoid rolling acutely injured tissue (strain ≤72h, BSI, tendon reactive phase). Direct rolling over IT band has weak evidence, focus on hip/glute drivers.',
   },
   citations: [
     cite('§Foam Rolling Protocols', 'B-moderate evidence; effects + protocol + when (not) to use', 'research', '10'),

@@ -1,7 +1,7 @@
 /**
  * Coach-decided carb intake rate.
  *
- * The user shouldn't have to pick "60 g/hr vs 90 g/hr" — that's the
+ * The user shouldn't have to pick "60 g/hr vs 90 g/hr", that's the
  * coach's job. The rate scales with effort duration, with a floor at
  * 30 g/hr (any race under ~60 min doesn't really benefit from gels)
  * and a ceiling at 90 g/hr (the upper bound most guts tolerate).

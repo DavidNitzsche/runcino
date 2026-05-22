@@ -1,5 +1,5 @@
 /**
- * POST /api/strava/sync-me — refresh THIS user's Strava activities now.
+ * POST /api/strava/sync-me, refresh THIS user's Strava activities now.
  *
  * Thin wrapper around lib/sync-strava-user.ts. Used by the "Sync now"
  * button on /profile.

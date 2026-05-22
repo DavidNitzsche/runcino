@@ -1,5 +1,5 @@
 /**
- * /api/races-page — server-side Coach bundle for the Races tab.
+ * /api/races-page, server-side Coach bundle for the Races tab.
  *
  * Mirrors /api/training/route.ts. The Coach engine pulls in node-only
  * modules so every Coach method runs here on the server; the client
@@ -43,7 +43,7 @@ import type { FreshnessMap } from '../../../lib/freshness-types';
 export interface RacesApiRacePrediction {
   slug: string;
   prediction: CoachDecision<RaceFitnessPrediction>;
-  /** Days until race date (negative for past — but only future races
+  /** Days until race date (negative for past, but only future races
    *  are predicted; past races never appear here). */
   daysToRace: number;
 }
@@ -68,16 +68,16 @@ interface RacesApiOk {
   predictions: RacesApiRacePrediction[];
   /** Taper depth per imminent race (≤21 days). May be empty. */
   tapers: RacesApiTaperReport[];
-  /** Body-systems readiness — only surfaced if next A race is ≤14 days.
+  /** Body-systems readiness, only surfaced if next A race is ≤14 days.
    *  Null otherwise. */
   bodySystems: CoachDecision<BodySystemsReport> | null;
   /** 14-week trajectory for the phase backbone (BASE → BUILD → PEAK
    *  → TAPER segments along the season timeline). */
   trajectory: CoachDecision<Trajectory14wk>;
   /** Runner's display name from the `profile` table. null when no row
-   *  exists or `full_name` is blank — UI renders "Runner" in that case. */
+   *  exists or `full_name` is blank, UI renders "Runner" in that case. */
   profileName: string | null;
-  /** Per-signal freshness map — drives the "Coach is watching" UI
+  /** Per-signal freshness map, drives the "Coach is watching" UI
    *  strip. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
 }
@@ -98,7 +98,7 @@ export async function GET(): Promise<Response> {
     const today = state.now.slice(0, 10);
 
     // No races yet → empty array. The /races page handles the empty case
-    // with a "NO RACES YET — ADD ONE" CTA; we never synthesize fake races.
+    // with a "NO RACES YET, ADD ONE" CTA; we never synthesize fake races.
     const rawRaces = await listRacesDB(userId).catch(() => []);
     const allRaces = rawRaces;
     const upcoming = allRaces.filter((r) => r.meta.date >= today);
@@ -131,7 +131,7 @@ export async function GET(): Promise<Response> {
 
     // Taper depth for races ≤21 days away. coach.taperDepth currently
     // throws (Stage 2 stub) so we capture the error and surface a stub
-    // shape — when the engine lands, only the body of this block changes.
+    // shape, when the engine lands, only the body of this block changes.
     const tapers: RacesApiTaperReport[] = [];
     for (const r of upcoming) {
       const daysToRace = daysUntilISO(today, r.meta.date);
@@ -152,7 +152,7 @@ export async function GET(): Promise<Response> {
       }
     }
 
-    // Body systems — only surfaced if the next A race is close enough
+    // Body systems, only surfaced if the next A race is close enough
     // for tissue recovery to matter (≤14 days).
     let bodySystems: CoachDecision<BodySystemsReport> | null = null;
     if (nextA) {
@@ -169,7 +169,7 @@ export async function GET(): Promise<Response> {
     // Season-timeline phase backbone.
     const trajectory = await coach.trajectory14wk({ today, state });
 
-    // Profile name — null when no profile row exists or `full_name` is
+    // Profile name, null when no profile row exists or `full_name` is
     // blank. The /races page renders "Runner" in that case.
     const profile = await getProfile().catch(() => null);
     const profileName = profile?.full_name?.trim() || null;

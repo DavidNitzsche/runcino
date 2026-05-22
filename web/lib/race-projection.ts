@@ -19,7 +19,7 @@
  *   goalVdot:      VDOT needed to hit goal time at race distance,
  *                  via inverse vdotRow lookup.
  *
- * NO FAKE PROJECTION — when there's no goal time OR the goal is at
+ * NO FAKE PROJECTION, when there's no goal time OR the goal is at
  * or easier than current VDOT, plan line equals maintain line. The
  * projection is honest about what it does and doesn't know.
  */

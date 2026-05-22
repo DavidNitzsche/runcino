@@ -1,5 +1,5 @@
 /**
- * v4 intensity bar — linear gradient green→amber→orange with a black
+ * v4 intensity bar, linear gradient green→amber→orange with a black
  * tick marking today's effort and a white fade over the unused portion.
  *
  * Below the bar: zone name + an italic coach note explaining the zone
@@ -17,7 +17,7 @@ export interface IntensityBarProps {
   note?: string;
   /** Compact mode for inside modals (smaller bar height). */
   compact?: boolean;
-  /** Rest day — hide the gradient bar entirely + swap copy.
+  /** Rest day, hide the gradient bar entirely + swap copy.
    *  Source spec: designs/overview-v4.html §intensity-section.rest. */
   isRest?: boolean;
 }

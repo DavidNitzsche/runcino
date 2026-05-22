@@ -1,16 +1,16 @@
 /**
- * Doctrine — Training plan templates by distance and level.
+ * Doctrine, Training plan templates by distance and level.
  *
  * Source: Research/22-plan-templates.md
  *
  * Generic plan scaffolding the coach can adapt to any user. Paces are
- * written as zones (E/M/T/I/R) — actual paces come from the user's
+ * written as zones (E/M/T/I/R), actual paces come from the user's
  * VDOT-derived pace_zones.ts.
  *
  * **Stage 4 behavior change unlock:** the engine instantiates a
  * template based on user goal race + experience tier + weeks-to-race,
  * then renders each day from current state. Templates are scaffolds,
- * not schedules — engine fills the slots based on phase, ACWR,
+ * not schedules, engine fills the slots based on phase, ACWR,
  * recovery state, missed days, etc. Always-alive planning.
  *
  * Engine consumers:
@@ -526,7 +526,7 @@ export type PhaseName = 'base' | 'build' | 'peak' | 'taper' | 'race_week' | 'mai
 export interface PhaseDefinition {
   /** Quality sessions (threshold + VO2) per week. */
   qualitySessionsPerWeek: { low: number; high: number };
-  /** Strides sessions per week — appended to easy runs. */
+  /** Strides sessions per week, appended to easy runs. */
   stridesPerWeek: { low: number; high: number };
   /** Primary workout families for the phase. */
   primaryWorkoutFamilies: string[];
@@ -585,7 +585,7 @@ export const PHASE_DEFINITIONS: Cited<Record<PhaseName, PhaseDefinition>> = {
       volumeRelativeToPeak: { low: 0.50, high: 0.70 },
     },
   },
-  note: 'Phase definitions drive session selection — base avoids VO2 work, build/peak introduce it, taper cuts volume while preserving intensity touches.',
+  note: 'Phase definitions drive session selection, base avoids VO2 work, build/peak introduce it, taper cuts volume while preserving intensity touches.',
   citations: [
     cite('§Plan skeletons + Volume progression rules', 'BASE: aerobic only. BUILD: threshold + VO2 introduced. PEAK: race-specific. TAPER: volume drops 50-70%, intensity preserved.', 'research', '00a'),
     cite('§3 Half Marathon Plans', 'HM intermediate phases: Endurance build → LT focus + LR with HMP segments → Race-specific → Taper.', 'research', '22'),

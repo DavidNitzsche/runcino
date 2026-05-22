@@ -6,13 +6,13 @@
  * different places before stepping out:
  *
  *   - Weather forecast (NOAA, anchored to user's most-recent
- *     workout start coords — that's the de-facto "where I run from")
+ *     workout start coords, that's the de-facto "where I run from")
  *   - Recommended shoe from the rotation (lib/shoe-picker.ts)
- *   - Last similar session (same workout type) — how it went, when
+ *   - Last similar session (same workout type), how it went, when
  *   - The workout's target pace range (already in the calling
  *     scope as todayPace string)
  *
- * Returns null when there's nothing useful to surface — caller skips
+ * Returns null when there's nothing useful to surface, caller skips
  * the briefing render rather than showing an empty/half-empty card.
  *
  * Server-only (hits DB + Open-Meteo network). Caller awaits in the
@@ -47,7 +47,7 @@ export interface PreWorkoutBriefing {
     distanceMi: number;
     paceSPerMi: number;
     avgHr: number | null;
-    /** Plain-English age — "yesterday", "5 days ago", "3 weeks ago". */
+    /** Plain-English age, "yesterday", "5 days ago", "3 weeks ago". */
     ageLabel: string;
   } | null;
   /** Has any data → render. False = skip the whole card. */
@@ -137,7 +137,7 @@ async function getLastSimilarSession(
   // distance heuristics for class match.
   //   - Long: workoutType=2 OR distance > 9 mi
   //   - Quality: workoutType=3 OR (avg pace fast AND distance 4-10 mi)
-  //     — pure quality detection is the L7 signal's job. Here we just
+  //, pure quality detection is the L7 signal's job. Here we just
   //     pick the most recent workout-tagged session as a proxy.
   //   - Easy: default bucket.
   let where = '';
@@ -149,7 +149,7 @@ async function getLastSimilarSession(
   } else if (isQuality) {
     where = `AND COALESCE((data->>'workoutType')::INTEGER, 0) = 3`;
   } else {
-    // Easy — exclude races + workouts + longs
+    // Easy, exclude races + workouts + longs
     where = `AND COALESCE((data->>'workoutType')::INTEGER, 0) NOT IN (1, 2, 3)
              AND (data->>'distanceMi')::NUMERIC < 9`;
   }
@@ -176,7 +176,7 @@ async function getLastSimilarSession(
   );
   const r = rows[0];
   if (!r) return null;
-  // Used `isEasy` only as a documentation aid above — the `where` branch
+  // Used `isEasy` only as a documentation aid above, the `where` branch
   // covers it. Reference it once so eslint doesn't ding the unused.
   void isEasy;
   return {
@@ -201,7 +201,7 @@ export async function buildPreWorkoutBriefing(
     getLastSimilarSession(userId, todayWorkoutType, todayIso).catch(() => null),
   ]);
 
-  // Weather — only if we have coords. fetchNoaaWeather can be slow or
+  // Weather, only if we have coords. fetchNoaaWeather can be slow or
   // fail; never block the briefing on it.
   let weather: PreWorkoutBriefing['weather'] = null;
   if (coords) {

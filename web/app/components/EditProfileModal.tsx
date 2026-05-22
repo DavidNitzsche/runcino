@@ -1,5 +1,5 @@
 /**
- * EditProfileModal — wires the + ADD YOUR INFO / EDIT button on the
+ * EditProfileModal, wires the + ADD YOUR INFO / EDIT button on the
  * IdentityHeroCard.
  *
  * Same modal handles both create and edit:
@@ -246,7 +246,7 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
                   </button>
                 ))}
               </div>
-              <div className="field-help">Used by /health metrics (M/F lines) — defaults to Prefer not to say.</div>
+              <div className="field-help">Used by /health metrics (M/F lines), defaults to Prefer not to say.</div>
             </div>
           </div>
 
@@ -272,13 +272,13 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
                 max={250}
                 value={hrmax}
                 onChange={(e) => setHrmax(e.target.value)}
-                placeholder="—"
+                placeholder=", "
               />
               <span className="unit">BPM</span>
             </div>
             <div className="field-help">
               Leave empty to use the Tanaka estimate (208 − 0.7 × age). Enter a measured value
-              once you have one — it overrides the estimate everywhere.
+              once you have one, it overrides the estimate everywhere.
             </div>
           </div>
 
@@ -299,9 +299,9 @@ export function EditProfileModal({ open, onClose, onSaved }: EditProfileModalPro
               ))}
             </div>
             <div className="field-help">
-              {level === 'beginner' && 'Beginner — under 20 mpw / typical weeks.'}
-              {level === 'intermediate' && 'Intermediate — 20-40 mpw / 5 days/wk.'}
-              {level === 'advanced' && 'Advanced — 40+ mpw / 6-7 days/wk.'}
+              {level === 'beginner' && 'Beginner, under 20 mpw / typical weeks.'}
+              {level === 'intermediate' && 'Intermediate, 20-40 mpw / 5 days/wk.'}
+              {level === 'advanced' && 'Advanced, 40+ mpw / 6-7 days/wk.'}
             </div>
           </div>
 

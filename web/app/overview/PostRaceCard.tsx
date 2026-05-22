@@ -21,7 +21,7 @@ function stageLabel(stage: PostRaceFinding['stage']): string {
     case 'rest':  return 'Rest';
     case 'light': return 'Light recovery';
     case 'easy':  return 'Easy aerobic';
-    default:      return '—';
+    default:      return ', ';
   }
 }
 

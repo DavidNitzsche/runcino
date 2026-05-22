@@ -4,13 +4,13 @@
  * Daily time-series for one health metric, for the iPhone metric-detail
  * trend chart (7D / 30D / 90D toggle). Reads health_samples directly.
  *
- * type  — one of SAMPLE_TYPES (hrv, resting_hr, sleep_hours, vo2_max, …)
- * days  — window length, clamped 1..365 (default 30)
+ * type, one of SAMPLE_TYPES (hrv, resting_hr, sleep_hours, vo2_max, …)
+ * days, window length, clamped 1..365 (default 30)
  *
  * Response: { ok, type, days, series: [{ date: 'YYYY-MM-DD', value }] }
  *
  * Auth optional: anonymous callers (demo) have no UUID-keyed samples, so
- * they get an empty series (honest — the chart shows its no-data state).
+ * they get an empty series (honest, the chart shows its no-data state).
  */
 
 import { NextRequest, NextResponse } from 'next/server';

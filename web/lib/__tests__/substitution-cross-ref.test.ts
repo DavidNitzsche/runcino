@@ -9,7 +9,7 @@
  *    with."
  *
  * The "BEHIND → ON TRACK same render" test below proves the relation
- * is structural — V3 state literally changes the menu output.  Without
+ * is structural, V3 state literally changes the menu output.  Without
  * that, the relation would have to be downgraded to 'consistent with'.
  */
 import { describe, expect, it } from 'vitest';
@@ -24,7 +24,7 @@ describe('buildSubstitutionMenu · trajectory-BEHIND structural derivation', () 
     const behindMenu = buildSubstitutionMenu('threshold', 'Cruise Intervals', 7, true);
     const ontrackMenu = buildSubstitutionMenu('threshold', 'Cruise Intervals', 7, false);
 
-    // Same workout, same distance — ONLY trajectory state differs.
+    // Same workout, same distance, ONLY trajectory state differs.
     // The output MUST differ for 'tied to' to be honest.
     expect(behindMenu.recommendedIndex).not.toBe(ontrackMenu.recommendedIndex);
     expect(behindMenu.crossRef).toBeDefined();
@@ -96,7 +96,7 @@ describe('buildSubstitutionMenu · cross-reference shape', () => {
     expect(out.crossRef!.href).toBe('/races#trajectory-read');
   });
 
-  it('keeps existing substitution array unchanged — only adds metadata', () => {
+  it('keeps existing substitution array unchanged, only adds metadata', () => {
     // Critical: V3 state DOESN'T change the list of options or their
     // order.  It changes the RECOMMENDATION metadata on top of the
     // unchanged list.  This keeps the substitutions stable while

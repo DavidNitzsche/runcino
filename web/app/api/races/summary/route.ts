@@ -2,7 +2,7 @@
  * GET /api/races/summary
  *
  * Lightweight list of every race (upcoming + recent) for the iPhone
- * Races tab — slug, name, date, distance, goal, priority, days-away,
+ * Races tab, slug, name, date, distance, goal, priority, days-away,
  * and the actual result for past races. Deliberately omits the heavy
  * gpxText + plan that /api/races returns (those are ~1.6 MB each).
  *

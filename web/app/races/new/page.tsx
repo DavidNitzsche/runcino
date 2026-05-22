@@ -81,7 +81,7 @@ function isValidUrl(s: string): boolean {
 export default function NewRacePage() {
   const router = useRouter();
 
-  // — Form fields —
+  //, Form fields, 
   const [raceName, setRaceName] = useState('');
   const [raceDate, setRaceDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 7);
@@ -97,19 +97,19 @@ export default function NewRacePage() {
   const [guideUrl, setGuideUrl] = useState('');
   const [usatfCert, setUsatfCert] = useState('');
 
-  // — GPX —
+  //, GPX, 
   const [gpxName, setGpxName] = useState<string | null>(null);
   const [gpxText, setGpxText] = useState<string | null>(null);
   const [manualPaste, setManualPaste] = useState('');
   const [showPaste, setShowPaste] = useState(false);
 
-  // — Flow state —
+  //, Flow state, 
   const [phase, setPhase] = useState<FormPhase>('input');
   const [processResult, setProcessResult] = useState<ProcessResult | null>(null);
   const [processError, setProcessError] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
 
-  // — Misc —
+  //, Misc, 
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [takenSlugs, setTakenSlugs] = useState<Set<string>>(new Set());
@@ -156,7 +156,7 @@ export default function NewRacePage() {
     return gpxDistanceMi ?? 13.1;
   }, [distanceId, gpxDistanceMi]);
 
-  // — File handling —
+  //, File handling, 
   function handleFile(file: File) {
     setProcessError(null);
     setProcessResult(null);
@@ -171,13 +171,13 @@ export default function NewRacePage() {
     reader.readAsText(file);
   }
 
-  // — Can we run Process? —
+  //, Can we run Process?, 
   const canProcess = Boolean(
     raceName.trim() && raceDate && goalFinishS && gpxText && courseSlug &&
     officialUrl && isValidUrl(officialUrl)
   );
 
-  // — Process Race Data —
+  //, Process Race Data, 
   // Analyze the GPX in-browser (StravaGPX-calibrated threshold gain/loss)
   // and extract aid stations from the official race URL in parallel.
   async function handleProcess() {
@@ -220,7 +220,7 @@ export default function NewRacePage() {
     }
   }
 
-  // — Re-run extraction with pasted text —
+  //, Re-run extraction with pasted text, 
   async function handleRunPaste() {
     if (!manualPaste.trim() || !processResult) return;
     try {
@@ -246,7 +246,7 @@ export default function NewRacePage() {
     } catch { /* keep existing rows */ }
   }
 
-  // — Aid station row mutations —
+  //, Aid station row mutations, 
   function toggleAidStatus(idx: number) {
     setProcessResult(r => {
       if (!r) return r;
@@ -271,8 +271,8 @@ export default function NewRacePage() {
     });
   }
 
-  // — Build Race Plan —
-  // Feeds the analyzed track to /api/build-plan as the "demTrack" — the
+  //, Build Race Plan, 
+  // Feeds the analyzed track to /api/build-plan as the "demTrack", the
   // pacing engine reads point eleM directly, so the StravaGPX-calibrated
   // elevations stand in for the old DEM-corrected channel.
   async function handleBuild() {
@@ -523,7 +523,7 @@ export default function NewRacePage() {
                     onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                 </div>
                 <div className="hint" style={{ marginTop: 10, fontSize: 11.5 }}>
-                  StravaGPX exports work best — elevations are already terrain-corrected.
+                  StravaGPX exports work best, elevations are already terrain-corrected.
                 </div>
               </div>
 
@@ -615,7 +615,7 @@ export default function NewRacePage() {
               {/* ── Review panel ── */}
               {(phase === 'review' || phase === 'building') && processResult && (
                 <>
-                  {/* Course preview — full GPX analysis. Replaces the
+                  {/* Course preview, full GPX analysis. Replaces the
                       old DEM elevation card. */}
                   <div className="tile">
                     <div className="tile-h">
@@ -705,7 +705,7 @@ export default function NewRacePage() {
                         The USATF cert page is JavaScript-rendered and can&apos;t be fetched automatically.
                         Open <a href={`https://www.certifiedroadraces.com/course/?cert=${usatfCert}`} target="_blank" rel="noreferrer"
                           style={{ color: 'var(--color-attention)' }}>certifiedroadraces.com/course/?cert={usatfCert}</a> and
-                        note the <b>start elevation</b>, <b>finish elevation</b>, and <b>net drop</b> — then paste them into the
+                        note the <b>start elevation</b>, <b>finish elevation</b>, and <b>net drop</b>, then paste them into the
                         overrides sidecar after the plan is created.
                       </p>
                     </div>
@@ -738,7 +738,7 @@ export default function NewRacePage() {
               <div className="tile" style={{ background: 'rgba(0,143,236,.06)', borderColor: 'rgba(0,143,236,.2)' }}>
                 <div className="tile-sub" style={{ marginBottom: 8, color: 'var(--color-corporate)' }}>How elevation is measured</div>
                 <p style={{ fontSize: 13, color: 'var(--color-t1)', lineHeight: 1.5, margin: 0 }}>
-                  GPX is parsed in-browser. Gain/loss use a 2 m threshold filter calibrated against Strava on StravaGPX exports — typically within ~2% of Strava&apos;s reported number. For best accuracy, export from Strava routes (already DEM-corrected).
+                  GPX is parsed in-browser. Gain/loss use a 2 m threshold filter calibrated against Strava on StravaGPX exports, typically within ~2% of Strava&apos;s reported number. For best accuracy, export from Strava routes (already DEM-corrected).
                 </p>
               </div>
 

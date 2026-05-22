@@ -21,10 +21,10 @@ export interface ProfileRow {
   /** Measured HRmax in bpm. null when not entered (Tanaka estimate
    *  derived from age is the fallback). */
   hrmax: number | null;
-  /** Resting HR — requires HealthKit or manual entry. null today. */
+  /** Resting HR, requires HealthKit or manual entry. null today. */
   rhr: number | null;
   /** Apple Health VO2max estimate (manual entry today; HealthKit M2).
-   *  WELLNESS signal — physiological capacity. NEVER used for pace
+   *  WELLNESS signal, physiological capacity. NEVER used for pace
    *  prescription. Range 25-90. See lib/vo2max-apple.ts. */
   vo2max_apple: number | null;
   /** ISO timestamp the manual VO2max was last written. Drives the
@@ -60,7 +60,7 @@ export interface ValidatedProfile {
   rhr: number | null;
 }
 
-/** Pure validator — exported so unit tests can exercise it without a
+/** Pure validator, exported so unit tests can exercise it without a
  *  live DB. Throws Error on invalid input. */
 export function validateProfileInput(input: ProfileInput): ValidatedProfile {
   const nameRaw = (input.full_name ?? '').toString().trim();

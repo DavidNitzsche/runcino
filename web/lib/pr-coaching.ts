@@ -2,7 +2,7 @@
  * C5 · PR coaching lines
  *
  * Per-PR coaching copy on the /races Personal Records grid. Each PR
- * card carries a one-line classifier under the source pill — "Most
+ * card carries a one-line classifier under the source pill, "Most
  * recent goal-distance effort", "Pre-cycle PR", etc.
  *
  * Consolidated here (was originally inline in app/races/page.tsx) so
@@ -12,13 +12,13 @@
  * to specific PR cards).
  *
  * VOICE (per lib/coach-voice.ts):
- *   Impersonal observation — these are data classifications, not
+ *   Impersonal observation, these are data classifications, not
  *   coach verdicts addressed to the runner. No "you", no "we".
  *   Each line states what the PR IS (its role in the VDOT computation)
  *   and may include a short qualifier on its trustworthiness.
  *
  * RULE 2 NOTE:
- *   PR coaching lines are NOT adaptive verdicts — they're static
+ *   PR coaching lines are NOT adaptive verdicts, they're static
  *   classifications based on PR age + distance match. No falsifier
  *   required. (If the system ever starts WEIGHTING PRs adaptively
  *   based on a model output, that would change.)
@@ -35,9 +35,9 @@ export type PRRole =
  *  import this map rather than hard-coding strings. */
 export const PR_COACHING_LINES: Record<PRRole, string> = {
   'goal-distance':  'Your sharpest recent effort at this distance.',
-  'pre-cycle':      'An older PR — still part of your story.',
+  'pre-cycle':      'An older PR, still part of your story.',
   'adjacent-tier':  'A strong effort at another distance.',
-  'strava-effort':  'A training best — race it to make it official.',
+  'strava-effort':  'A training best, race it to make it official.',
 };
 
 /** Threshold (days) above which a race PR is considered "pre-cycle". */
@@ -65,7 +65,7 @@ export function classifyPR(args: {
 }
 
 /** Look up the coaching line for a role. Thin wrapper but documents
- *  the canonical surface — future callers import this rather than
+ *  the canonical surface, future callers import this rather than
  *  reaching into PR_COACHING_LINES directly. */
 export function coachingLineForPR(role: PRRole): string {
   return PR_COACHING_LINES[role];

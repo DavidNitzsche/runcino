@@ -1,5 +1,5 @@
 /**
- * /api/races/[slug]/rebuild — re-run the pacing pipeline against the
+ * /api/races/[slug]/rebuild, re-run the pacing pipeline against the
  * race\'s saved GPX with updated meta, then persist.
  *
  * Body: {
@@ -9,7 +9,7 @@
  * }
  *
  * Anything not sent falls back to the existing meta. The GPX itself is
- * never re-uploaded — we read it from the row in Postgres. After the
+ * never re-uploaded, we read it from the row in Postgres. After the
  * plan rebuilds, the row\'s plan + meta are upserted in place.
  *
  * actualResult is preserved untouched. The point of rebuild is to
@@ -31,7 +31,7 @@ interface RebuildBody {
   strategy?: 'even_effort' | 'even_split' | 'negative_split';
   toleranceSPerMi?: number;
   distanceMi?: number;
-  // Fueling — the user types ONLY which gel they're using. The coach
+  // Fueling, the user types ONLY which gel they're using. The coach
   // figures out carbs per serving (via known-gel cache → Claude
   // lookup) and the right carb rate (driven by race effort, not the
   // user). Sending `null` for gelCarbsG or carbTargetGPerHr clears
@@ -58,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const existing = await getRaceDB(slug, userId);
   if (!existing) return new Response('Not found', { status: 404 });
 
-  // Resolve effective inputs — caller-provided values override the
+  // Resolve effective inputs, caller-provided values override the
   // existing meta; anything not sent stays as it was.
   const goalFinishS = body.goalFinishS ?? parseGoalHMS(existing.meta.goalDisplay);
   if (goalFinishS == null) return new Response('Missing or invalid goalFinishS', { status: 400 });
@@ -68,7 +68,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const toleranceSPerMi = body.toleranceSPerMi ?? 10;
   const headlineDistance = body.distanceMi ?? existing.meta.distanceMi;
 
-  // Fueling — let the coach figure it out from the brand alone.
+  // Fueling, let the coach figure it out from the brand alone.
   //   - When the user types a brand, look it up (cache → Claude) to get
   //     carbs per serving. The user never types carbs.
   //   - When the user explicitly sends gelCarbsG (legacy/admin path),
@@ -96,7 +96,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   // Reuse the build-plan endpoint over loopback so we don't duplicate
   // its assembly logic. On Railway, req.url's origin is the internal
   // 0.0.0.0:$PORT host which isn't reachable via fetch from inside
-  // the same container — fall back to the public domain set in env.
+  // the same container, fall back to the public domain set in env.
   const origin = process.env.RAILWAY_PUBLIC_DOMAIN
     ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
     : new URL(req.url).origin;
@@ -136,7 +136,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const data = await buildRes.json() as { planJsonText: string; summary: { raceName: string; courseSlug: string; goalDisplay: string } };
   const plan = JSON.parse(data.planJsonText) as FaffPlan;
 
-  // Persist — preserve actualResult, refresh plan + meta. Pass userId
+  // Persist, preserve actualResult, refresh plan + meta. Pass userId
   // so rebuilds stamp user_uuid on legacy rows (additive backfill).
   await saveRaceDB({
     slug,

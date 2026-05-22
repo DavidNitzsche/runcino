@@ -1,12 +1,12 @@
 /**
- * /overview — fresh React port of designs/overview-v4.html.
+ * /overview, fresh React port of designs/overview-v4.html.
  *
  * Three sections matching the approved mockup:
- *   1. Coach strip — left coach voice + right Today's Check-In sliders
- *   2. Hero card — left today's workout (or rest day) + right readiness
+ *   1. Coach strip, left coach voice + right Today's Check-In sliders
+ *   2. Hero card, left today's workout (or rest day) + right readiness
  *      ring + 5 trend rows + Today's Intensity bar (rest-day variant
  *      hides the gradient bar)
- *   3. Week strip — Base Week N header + 7-day grid + View Full Schedule
+ *   3. Week strip, Base Week N header + 7-day grid + View Full Schedule
  *
  * Replaces the prior /overview implementation. Backup at
  * page.tsx.pre-v4-port-bak.
@@ -29,7 +29,6 @@ import { getRealPlanWeeks } from '@/lib/plan-weeks';
 import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { listRecentSkips } from '@/lib/skip-store';
 import { generateBriefing } from '@/lib/coach-briefing';
-import { generateWeeklyInsights } from '@/lib/weekly-insights';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { describeWorkout } from '@/lib/workout-descriptions';
 import { resolvePlanUserId } from '@/lib/plan-user';
@@ -41,6 +40,7 @@ import { PostRaceCard } from './PostRaceCard';
 import { computeStravaGap } from '@/lib/strava-gap';
 import { StravaGapCard } from './StravaGapCard';
 import { computeReadinessScore } from '@/lib/readiness-score';
+import { approxDuration } from '@/lib/duration';
 import { buildWhyThisWorkout } from '@/lib/why-this-workout';
 import { buildSubstitutionMenu } from '@/lib/workout-substitutions';
 import { computeRaceTrajectory } from '@/lib/race-trajectory';
@@ -65,12 +65,12 @@ const READINESS_INPUT_LABELS: Record<string, string> = {
 
 interface IntensityCfg { pos: number; label: string; color: string; copy: string; }
 const INTENSITY_CFG: Record<string, IntensityCfg> = {
-  // Easy bucket covers everything that used to be "recovery" too —
+  // Easy bucket covers everything that used to be "recovery" too, 
   // they're the same physiological zone (Z1/Z2 conversational pace).
-  easy:     { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout — if you can’t hold a sentence, slow down. This is where the aerobic engine gets built.' },
-  recovery: { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout — if you can’t hold a sentence, slow down. This is where the aerobic engine gets built.' },
+  easy:     { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout, if you can’t hold a sentence, slow down. This is where the aerobic engine gets built.' },
+  recovery: { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout, if you can’t hold a sentence, slow down. This is where the aerobic engine gets built.' },
   long:     { pos: 30, label: 'Long · Zone 2',     color: 'var(--green)',  copy: 'Aerobic time on feet. Hold conversational pace; the duration is the stimulus, not the speed.' },
-  quality:  { pos: 68, label: 'Threshold · Zone 4',color: 'var(--amber)',  copy: 'Comfortably hard — controlled effort at lactate threshold. You should feel work, not pain.' },
+  quality:  { pos: 68, label: 'Threshold · Zone 4',color: 'var(--amber)',  copy: 'Comfortably hard, controlled effort at lactate threshold. You should feel work, not pain.' },
   race:     { pos: 88, label: 'Race · Zone 4–5',   color: 'var(--orange)', copy: 'Race day. Execute the plan; conserve early, commit late.' },
 };
 
@@ -89,7 +89,7 @@ export default async function OverviewPage() {
   const user = await requireActiveUser();
 
   // Auto-sync Strava if it's been more than 5 min since last refresh.
-  // Awaited so the user always sees current data — no manual Sync Now
+  // Awaited so the user always sees current data, no manual Sync Now
   // button click required. Failures fall through silently; we show
   // whatever's in the DB regardless.
   await syncStravaIfStale(user.id);
@@ -99,7 +99,7 @@ export default async function OverviewPage() {
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
   // The runner's REAL coach-generated plan (same artifact /api/overview
-  // serves). No synthetic fallback — if there's no plan yet, say so.
+  // serves). No synthetic fallback, if there's no plan yet, say so.
   const weeks = await getRealPlanWeeks(await resolvePlanUserId());
   if (weeks.length === 0) {
     return (
@@ -112,7 +112,7 @@ export default async function OverviewPage() {
               <div className="coach-label"><span className="dot-green"></span><span>Today</span></div>
               <p className="coach-briefing">
                 No active training plan yet. Set a goal race in your profile and your coach will
-                build your plan — today&apos;s session will appear here.
+                build your plan, today&apos;s session will appear here.
               </p>
             </div>
           </div>
@@ -130,13 +130,13 @@ export default async function OverviewPage() {
   const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
 
   // Per-date mileage map so a workout is only "done" if the actual
-  // activity covered at least 60% of the planned distance — a 3-mi
+  // activity covered at least 60% of the planned distance, a 3-mi
   // shake-out doesn't complete a 10-mi long-run day.
   const completedMileage = await getCompletedMileageByDate(user.id, currentWeek.startDate, today);
   const isComplete = (dateISO: string, plannedMi: number) =>
     isWorkoutComplete(dateISO, plannedMi, completedMileage);
 
-  // Skipped workouts this week (the runner explicitly skipped) — so the
+  // Skipped workouts this week (the runner explicitly skipped), so the
   // hero + week strip can mark them, not show them as unaddressed.
   const weekSkips = await listRecentSkips({ sinceISO: currentWeek.startDate, untilISO: currentWeek.endDate }).catch(() => []);
   const skippedDates = weekSkips.map((s) => s.dateISO);
@@ -168,14 +168,21 @@ export default async function OverviewPage() {
   const sessionsDone = weekDaysWithWork.filter((d) => isComplete(d.date, d.distanceMi)).length;
   const sessionsTotal = weekDaysWithWork.length;
   // Actual miles logged this week THROUGH TODAY, summed from the SAME
-  // per-date map that drives the DONE marks — so the Mileage bar reconciles
+  // per-date map that drives the DONE marks, so the Mileage bar reconciles
   // with the week strip. (thisWeekSoFar stops at yesterday for the coach
   // briefing; the progress bar must include today's run and use one source.)
   const weekActualMi = Math.round(
     currentWeek.days.reduce((s, d) => s + (completedMileage.get(d.date) ?? 0), 0) * 10,
   ) / 10;
+  // How far into the plan week we are. Mileage is only judged "behind" once
+  // the week is essentially over (6th/7th day), before that you're just
+  // partway, not behind.
+  const daysIntoWeek = Math.floor(
+    (Date.parse(today + 'T00:00:00Z') - Date.parse(currentWeek.startDate + 'T00:00:00Z')) / 86_400_000,
+  );
+  const weekEssentiallyComplete = daysIntoWeek >= 5;
 
-  // Resolve fitness ONCE — paces and duration come from the same
+  // Resolve fitness ONCE, paces and duration come from the same
   // source the modal + race plan use. Kills the legacy
   // paceTargetByType map that hardcoded 9:15 easy / 7:30 quality
   // regardless of the user's VDOT or race goal.
@@ -201,7 +208,7 @@ export default async function OverviewPage() {
   const durMin = todayDay && !todayDay.isRest && todayDay.distanceMi && paceSec > 0
     ? Math.round((paceSec * todayDay.distanceMi) / 60) : null;
 
-  // V5 · Z2 stimulus check — coaching finding when easy-run Z2
+  // V5 · Z2 stimulus check, coaching finding when easy-run Z2
   // coverage drops below 40% over 3+ recent easy runs. Fires only
   // when HRR framework is calibrated (max HR + resting HR set) and
   // we're outside race-week / post-race recovery. Same SSR pass.
@@ -213,7 +220,7 @@ export default async function OverviewPage() {
     fitness.vdot.value,
   ).catch(() => null);
 
-  // E2 · Post-race awareness — surfaces day-by-day reverse-taper
+  // E2 · Post-race awareness, surfaces day-by-day reverse-taper
   // guidance the day after a race. Distance-aware stage windows
   // (marathon 14d, HM 9d, shorter 5d). Reads races.actual_result.
   const postRaceFinding = await computePostRaceFinding(user.id, today).catch(() => null);
@@ -226,7 +233,7 @@ export default async function OverviewPage() {
 
   // C6 · Daily readiness score (0-100). Composite from yesterday's
   // load + last-7d hard sessions + Signal 2 HR-pace drift. Surface-
-  // only — never auto-modifies the plan. Suspended when user marked
+  // only, never auto-modifies the plan. Suspended when user marked
   // injured.  z2Finding is threaded through for the V7 cross-reference
   // (V5 → C6 fires when both fatigue inputs and V5 are active).
   const readiness = await computeReadinessScore(
@@ -241,7 +248,7 @@ export default async function OverviewPage() {
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
   const titleBucket = lenBucket(titleLabel);
 
-  // Plain-language workout explanation — shown inline (always present, no
+  // Plain-language workout explanation, shown inline (always present, no
   // expander): where you are in the plan + what the run is for.
   const why = !isRest && todayDay
     ? buildWhyThisWorkout(
@@ -266,7 +273,7 @@ export default async function OverviewPage() {
     : null;
   const trajectoryBehind = trajectory?.state === 'behind';
 
-  // C8 · Workout substitution menu — populated when we have a real
+  // C8 · Workout substitution menu, populated when we have a real
   // workout. Surface as "⇄ Substitute" button alongside HeroActions.
   const substitutionMenu = !isRest && todayDay
     ? buildSubstitutionMenu(
@@ -277,7 +284,7 @@ export default async function OverviewPage() {
       )
     : null;
 
-  // Race countdown — race is week 14, last day
+  // Race countdown, race is week 14, last day
   const raceDate = weeks[13]?.days[6]?.date ?? '2026-08-16';
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
 
@@ -304,26 +311,12 @@ export default async function OverviewPage() {
     localHour,
   });
 
-  // Weekly insights — plan-aware pattern detection. The coach measures
-  // adherence vs the PLAN, not vs the runner's past behavior (so coming
-  // off a recovery week with low volume isn't a 'spike' next week).
-  //
-  // Easy-pace target comes from the SAME fitness bundle every other
-  // surface uses — fixes the "below the 9:00–9:30 plan target" alert
-  // that ignored the user's actual VDOT-derived easy band.
-  const insights = await generateWeeklyInsights(user.id, today, {
-    thisWeekPlannedMi: currentWeek.plannedMi,
-    easyPaceLowSec: fitness.easyPaceBand.lowS,
-    easyPaceHighSec: fitness.easyPaceBand.highS,
-    phase: currentWeek.phase,
-  });
-
   // Today's Intensity config
   const intensity = isRest
     ? null
     : INTENSITY_CFG[todayDay?.type ?? 'easy'] ?? INTENSITY_CFG.easy;
 
-  // Week-progress bar — % of planned sessions actually completed this
+  // Week-progress bar, % of planned sessions actually completed this
   // week (matching Strava activity present), NOT % of days that have
   // ticked by. An empty week reads 0%, not 60% just because it's Friday.
   const weekProgressPct = sessionsTotal > 0 ? Math.round((sessionsDone / sessionsTotal) * 100) : 0;
@@ -336,7 +329,7 @@ export default async function OverviewPage() {
 
       <div className="page">
 
-        {/* Coach adaptations — dismissible, only when something changed */}
+        {/* Coach adaptations, dismissible, only when something changed */}
         <CoachAdaptedIsland />
 
         {/* ── SECTION 1 · COACH STRIP ── */}
@@ -353,20 +346,10 @@ export default async function OverviewPage() {
           <CheckInIsland today={today} />
         </div>
 
-        {/* Insights row — its own band, sits BETWEEN coach strip and the
-            hero card so it doesn't stretch the check-in card. */}
-        {insights.length > 0 && (
-          <div className="coach-insights">
-            {insights.map((ins, i) => (
-              <div key={i} className={`coach-insight ${ins.tone}`}>
-                <span className="coach-insight-dot" />
-                <span>{ins.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* (No separate insights banner, anything worth saying is in the
+            coach line above, not a second floating box.) */}
 
-        {/* E1 + E4 · Activity gap surface — fires at 3d/5d/8d/15d
+        {/* E1 + E4 · Activity gap surface, fires at 3d/5d/8d/15d
             thresholds. Renders above E2 so the gap acknowledgment
             comes before any post-race recovery guidance. */}
         {stravaGap && stravaGap.state !== 'silent' && stravaGap.daysSinceLastRun != null && (
@@ -377,7 +360,7 @@ export default async function OverviewPage() {
           />
         )}
 
-        {/* E2 · Post-race awareness — renders above hero TodayCard
+        {/* E2 · Post-race awareness, renders above hero TodayCard
             when within reverse-taper window of most recent race */}
         {postRaceFinding && <PostRaceCard finding={postRaceFinding} />}
 
@@ -418,10 +401,10 @@ export default async function OverviewPage() {
                 <div className="stats-row">
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayDay?.distanceMi}</span><span className="stat-unit">mi</span></div><div className="stat-label">Distance</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayPace}</span><span className="stat-unit">/mi</span></div><div className="stat-label">Pace</div></div>
-                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">~{durMin}</span><span className="stat-unit">min</span></div><div className="stat-label">Duration</div></div>
-                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</span></div><div className="stat-label">Heart Rate</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{approxDuration(durMin).value}</span>{approxDuration(durMin).unit && <span className="stat-unit">{approxDuration(durMin).unit}</span>}</div><div className="stat-label">Duration</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
-                {/* One clean, always-present explanation — what this run is
+                {/* One clean, always-present explanation, what this run is
                     for, in plain language. No expander, no stacked blocks. */}
                 {why && (
                   <div style={{ marginTop: 22, maxWidth: 560 }}>
@@ -433,7 +416,7 @@ export default async function OverviewPage() {
                     </p>
                     {todayPace && (todayDay?.type === 'long' || (todayDay && !(['quality', 'race'] as string[]).includes(todayDay.type))) && (
                       <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, lineHeight: 1.55, color: 'var(--t2)', margin: '8px 0 0' }}>
-                        Aim for <strong style={{ color: 'var(--t1)' }}>{todayPace}/mi</strong> — and let it drift slower if your legs are heavy or it&rsquo;s hot. On easy days the slow end of the range is the right call.
+                        Aim for <strong style={{ color: 'var(--t1)' }}>{todayPace}/mi</strong>, and let it drift slower if your legs are heavy or it&rsquo;s hot. On easy days the slow end of the range is the right call.
                       </p>
                     )}
                   </div>
@@ -449,12 +432,12 @@ export default async function OverviewPage() {
           <div className="hero-right">
             <div className="readiness-section">
               {/* C6 · Readiness score with three-state ring. Surface-only
-                  per the locked spec — never auto-modifies plan. Falls
+                  per the locked spec, never auto-modifies plan. Falls
                   back to "Waiting on data" when score is null
                   (suspended via injury mark OR no activity history). */}
               {readiness && readiness.score != null ? (
                 <>
-                  {/* No "READINESS · GREEN" header — the ring + score + the
+                  {/* No "READINESS · GREEN" header, the ring + score + the
                       recommendation line below already say it. */}
                   <div className="readiness-ring-wrap">
                     {(() => {
@@ -502,7 +485,7 @@ export default async function OverviewPage() {
                     {readiness.recommendation}
                     {readiness.crossRef && (
                       <span style={{ fontSize: 13, color: 'rgba(8,8,8,.65)' }}>
-                        {' — '}
+                        {', '}
                         <a
                           href={readiness.crossRef.href}
                           style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
@@ -515,8 +498,8 @@ export default async function OverviewPage() {
                     {readiness.missingInputs.length > 0 && (
                       <div style={{ fontSize: 11, color: 'rgba(8,8,8,.55)', marginTop: 4, fontStyle: 'italic' }}>
                         {readiness.missingInputs.length === 1
-                          ? `${readiness.missingInputs[0]} unavailable — score uses other inputs.`
-                          : `${readiness.missingInputs.length} inputs unavailable — score uses what's available.`}
+                          ? `${readiness.missingInputs[0]} unavailable, score uses other inputs.`
+                          : `${readiness.missingInputs.length} inputs unavailable, score uses what's available.`}
                       </div>
                     )}
                   </div>
@@ -532,7 +515,7 @@ export default async function OverviewPage() {
                   <div className="readiness-ring-wrap">
                     <svg width="300" height="300" viewBox="0 0 300 300">
                       <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(8,8,8,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
-                      <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(8,8,8,.32)" textAnchor="middle">—</text>
+                      <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(8,8,8,.32)" textAnchor="middle">, </text>
                       <text x="150" y="200" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(8,8,8,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
                     </svg>
                   </div>
@@ -543,14 +526,18 @@ export default async function OverviewPage() {
               )}
             </div>
 
-            {/* What actually moved the score — the real readiness inputs (not
+            {/* What actually moved the score, the real readiness inputs (not
                 placeholder factor names). Mileage stays as a separate real
                 trend. Honest: shows the signals the engine used + their deltas. */}
             <div className="trend-rows">
               <TrendRow
                 label="Mileage"
                 value={`${weekActualMi} / ${currentWeek.plannedMi} mi`}
-                tone={weekActualMi >= currentWeek.plannedMi * 0.7 ? 'green' : 'amber'}
+                /* Progress toward the week's mileage, only flag amber once the
+                   week is essentially over AND you came up short. Mid-week
+                   you're naturally partway, so it stays green ("on track")
+                   rather than reading like a warning next to a green readiness. */
+                tone={(weekEssentiallyComplete && weekActualMi < currentWeek.plannedMi * 0.85) ? 'amber' : 'green'}
                 width={Math.min(100, Math.round((weekActualMi / Math.max(1, currentWeek.plannedMi)) * 100))}
               />
               {(readiness?.inputs ?? []).map((inp) => (
@@ -564,7 +551,7 @@ export default async function OverviewPage() {
               ))}
             </div>
 
-            {/* Today's Intensity — rest-day variant hides gradient bar */}
+            {/* Today's Intensity, rest-day variant hides gradient bar */}
             <div className={`intensity-section${isRest ? ' rest' : ''}`}>
               <div className="intensity-heading">Today&apos;s Intensity</div>
               {!isRest && intensity && (

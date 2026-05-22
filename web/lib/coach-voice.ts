@@ -1,8 +1,8 @@
 /**
  * V6 · Coach voice rules + shared phrase constants
  *
- * ONE coach across all surfaces. Three voice modes — each tied to a
- * specific function — and a small set of shared phrases that lock in
+ * ONE coach across all surfaces. Three voice modes, each tied to a
+ * specific function, and a small set of shared phrases that lock in
  * what already works in the surfaces that get it right.
  *
  * Imported anywhere coach-voice copy is emitted. Future surfaces MUST
@@ -12,7 +12,7 @@
  *                      THE THREE VOICE MODES
  * ─────────────────────────────────────────────────────────────────────
  *
- * The coach speaks in three modes. They aren't different coaches — they
+ * The coach speaks in three modes. They aren't different coaches, they
  * are one coach doing different things. Humans do this too: a doctor
  * uses "you" when asking how you feel, "we" when proposing treatment,
  * and impersonal voice when reading the chart aloud.
@@ -27,22 +27,22 @@
  *    · V5 Z2:       "Your easy runs are too hard"
  *
  *    Do NOT use second-person to report a data finding. "You ran 3
- *    threshold workouts faster" is the wrong frame — let the data
+ *    threshold workouts faster" is the wrong frame, let the data
  *    speak in impersonal voice and let "you" be reserved for the
  *    runner's body/state.
  *
  * 2. IMPERSONAL OBSERVATION
- *    Used when REPORTING WHAT THE DATA SHOWS. No "you", no "we" —
+ *    Used when REPORTING WHAT THE DATA SHOWS. No "you", no "we", 
  *    let the math carry the weight.
  *
  *    Examples that already work:
  *    · L7 signals: "3 threshold workouts trended faster at controlled HR"
- *    · V3:         "Two corroborating signals — fitness moving up"
+ *    · V3:         "Two corroborating signals, fitness moving up"
  *    · C8:         "Preserves: Aerobic stimulus · Sacrifices: 3 mi of time-on-feet"
  *
  *    Quantify when possible. Numbers are durable; adjectives aren't.
  *
- * 3. "WE" / "OUR" — COACH AS NARRATOR
+ * 3. "WE" / "OUR", COACH AS NARRATOR
  *    Used when THE COACH is making a recommendation, verdict, or
  *    revision. "We'd" is the marker that the coach is taking a stance.
  *
@@ -51,14 +51,14 @@
  *    · L7 verdict:        "What would change our mind: a reversal in any firing signal"
  *    · Max HR validation: "We'd raise the estimate if a validated peak comes in 3+ bpm above current"
  *
- *    "We" is the verdict voice. Use it sparingly — only when the coach
+ *    "We" is the verdict voice. Use it sparingly, only when the coach
  *    is actively proposing or revising. Otherwise prefer impersonal.
  *
  * ─────────────────────────────────────────────────────────────────────
  *                      THE FALSIFIER CONTRACT
  * ─────────────────────────────────────────────────────────────────────
  *
- * Per CLAUDE.md Rule 2, every adaptive verdict carries a falsifier — a
+ * Per CLAUDE.md Rule 2, every adaptive verdict carries a falsifier, a
  * named observation that would change the coach's mind. Three surfaces
  * already converge on the canonical prefix:
  *
@@ -72,7 +72,7 @@
  *   Use ONLY `revise` (when the verdict itself would change category) or
  *   `weaken` (when evidence strength would drop without changing
  *   category). Drop the other five we found in audit: reconsider, switch,
- *   raise, drop, lift, flag. One verb per job — pick one.
+ *   raise, drop, lift, flag. One verb per job, pick one.
  *
  * Surfacing discipline:
  *   Inline text, not tooltip. HTML title-attribute falsifiers fail Rule 2
@@ -90,12 +90,12 @@
  * NB: the "investigate" family splits into TWO distinct states, not
  * one. Conflating them flattens real diagnostic information:
  *
- *   COLLECTING_EVIDENCE  — system hasn't seen enough yet to call it.
+ *   COLLECTING_EVIDENCE, system hasn't seen enough yet to call it.
  *                          Path forward is more data. ("a second
  *                          corroborating signal would lift this to
  *                          a stronger read")
  *
- *   SIGNALS_CONFLICTED   — system sees enough data but the signals
+ *   SIGNALS_CONFLICTED, system sees enough data but the signals
  *                          disagree. Path forward is resolution, not
  *                          more data. ("[Signal A] suggests fitness
  *                          up, [Signal B] suggests fitness flat.
@@ -114,7 +114,7 @@
  * system stops sounding like a stack of independent cards and starts
  * sounding like one coach speaking across multiple aspects of training.
  *
- * THREE RULES — read these before adding any cross-reference:
+ * THREE RULES, read these before adding any cross-reference:
  *
  *   1. EARNED, NOT DECORATIVE.
  *      Cross-references fire when one surface's finding INFORMS another's
@@ -147,14 +147,14 @@
  *                      WHAT THIS MODULE IS NOT
  * ─────────────────────────────────────────────────────────────────────
  *
- * This is NOT a content templating engine. The coach's actual words —
+ * This is NOT a content templating engine. The coach's actual words, 
  * the noun for the observation, the specific number, the runner's race
- * name — those belong in the surface module. This file owns the SHAPE
+ * name, those belong in the surface module. This file owns the SHAPE
  * of the sentence (prefix, verb choice, falsifier structure), not the
  * content of the observation.
  *
  * If you need to add a fourth voice mode or fourth verb, that's a real
- * change — discuss before adding. The point of this file is to STOP the
+ * change, discuss before adding. The point of this file is to STOP the
  * drift, not to grow a vocabulary.
  */
 
@@ -233,7 +233,7 @@ export const EVIDENCE_SOURCES = {
  * Rules enforced:
  *   · Prefix is FALSIFIER_PREFIX (canonical).
  *   · First observation gets lower-cased initial letter so the prefix flows.
- *   · Multiple observations joined with " OR " (caps OR — the runner sees
+ *   · Multiple observations joined with " OR " (caps OR, the runner sees
  *     it as a real disjunction, not buried prose).
  *   · Trailing period if not already terminated.
  *
@@ -252,7 +252,7 @@ export function formatFalsifier(observations: string[]): string {
 }
 
 /**
- * Build a "we'd revise if..." threshold falsifier — the most common
+ * Build a "we'd revise if..." threshold falsifier, the most common
  * verdict-flip frame across race feasibility + max HR validation.
  *
  *   formatRevisionThreshold({
@@ -263,7 +263,7 @@ export function formatFalsifier(observations: string[]): string {
  *   })
  *     → "we'd revise to 'aggressive' if a race in the next 4 weeks pushes VDOT +2."
  *
- * Returns the observation only — wrap with formatFalsifier(...) if it's
+ * Returns the observation only, wrap with formatFalsifier(...) if it's
  * the whole falsifier line, or combine with other observations.
  */
 export function formatRevisionThreshold(args: {
@@ -280,7 +280,7 @@ export function formatRevisionThreshold(args: {
 }
 
 /**
- * Build a "would weaken this read" reversal observation — the most
+ * Build a "would weaken this read" reversal observation, the most
  * common evidence-strength frame across L7 + V3.
  *
  *   formatReversal('a single slow threshold workout')
@@ -300,7 +300,7 @@ export type CrossReferenceRelation =
   | 'contributing to'  // Related finding plausibly causes the current.
   | 'tied to';         // Shared underlying data event.
 
-/** Structured result of formatCrossReference — text plus navigation
+/** Structured result of formatCrossReference, text plus navigation
  *  target.  The text is the lower-case clause to embed mid-sentence;
  *  the href is the link target for web (anchor) or iPhone (deep link).
  *  Renderers wrap the text in a link element using href. */
@@ -308,7 +308,7 @@ export interface CrossReference {
   /** Lower-case clause designed to be embedded mid-sentence. */
   text: string;
   /** Navigation target: surface path, optionally with #anchor fragment.
-   *  Web: anchor link; iPhone: deep link URI.  Always present — the
+   *  Web: anchor link; iPhone: deep link URI.  Always present, the
    *  related surface is by definition reachable.  Renderers can ignore
    *  if the link UX isn't ready. */
   href: string;
@@ -316,7 +316,7 @@ export interface CrossReference {
 
 /**
  * Build a cross-reference clause acknowledging a related finding from
- * another surface — V7 building block.
+ * another surface, V7 building block.
  *
  * The point: when one surface's finding INFORMS another's recommendation,
  * the informed surface should ACKNOWLEDGE the informant without
@@ -326,34 +326,34 @@ export interface CrossReference {
  * RELEVANCE CHECK REQUIRED.  Cross-references are earned, not decorative
  * (see "CROSS-REFERENCE DISCIPLINE" section at top of file).  Every
  * caller must demonstrate that the two findings inform each other.  If
- * the check is missing, the cross-reference is wrong — even if the
+ * the check is missing, the cross-reference is wrong, even if the
  * topics match.
  *
  * FREQUENCY CAP.  At most one cross-reference per surface per render.
  * If two would fire, the surface picks the strongest relation and drops
- * the rest.  Enforced by convention in caller code — the helper itself
+ * the rest.  Enforced by convention in caller code, the helper itself
  * builds one at a time.
  *
  * ─────────────────────────────────────────────────────────────────────
  * RELATION STRENGTH USAGE RULES (locked in V7 round)
  * ─────────────────────────────────────────────────────────────────────
  *
- * `see also` — INFORMATIONAL POINTER.  Same training aspect, no causal
+ * `see also`, INFORMATIONAL POINTER.  Same training aspect, no causal
  *     claim.  Use when the related finding gives the runner additional
  *     context but doesn't explain or modify the current finding.
  *     Example: V3 trajectory ON-TRACK + C9 projection chart →
  *     "see also the projection chart on /races" (both describe race
  *     trajectory; neither informs the other).
  *
- * `consistent with` — CORROBORATION (default).  Independent surfaces
- *     producing compatible findings.  No causal claim — just that they
+ * `consistent with`, CORROBORATION (default).  Independent surfaces
+ *     producing compatible findings.  No causal claim, just that they
  *     agree.  Use when both surfaces observe the same pattern from
  *     different angles.
  *     Example: V5 firing + C6 yellow + V5 plausibly contributes →
  *     "consistent with the Z2 stimulus check on /overview" (both
  *     register elevated effort; corroboration without causation).
  *
- * `contributing to` — CAUSAL, REQUIRES EVIDENCE.  Related finding
+ * `contributing to`, CAUSAL, REQUIRES EVIDENCE.  Related finding
  *     plausibly causes the current.  Only fires when the caller can
  *     point to concrete evidence (timing, mechanism) supporting the
  *     causal claim.  Grammatically asymmetric: the related finding
@@ -362,7 +362,7 @@ export interface CrossReference {
  *     shows "the [PR name] on /races is contributing to this" (the
  *     PR directly fed the bump-points calculation).
  *
- * `tied to` — STRUCTURAL LINK.  Shared underlying data event causes
+ * `tied to`, STRUCTURAL LINK.  Shared underlying data event causes
  *     both findings to change together.  Use when both surfaces read
  *     from the same data source and a change there ripples through.
  *     Example: max HR validation accepted → Z2 sparkline notes
@@ -391,10 +391,10 @@ export interface CrossReference {
  *         href: '/races' }
  *
  * Used inside C6 readiness copy:
- *   "Yellow. Watch effort if HR runs high — {text}."
+ *   "Yellow. Watch effort if HR runs high, {text}."
  *
  * Used in VDOT explainer:
- *   "L7 verdict bumped +0.6 VDOT — {text}."
+ *   "L7 verdict bumped +0.6 VDOT, {text}."
  */
 export function formatCrossReference(args: {
   /** Brief noun-phrase naming the related finding.  Should be the same
@@ -408,7 +408,7 @@ export function formatCrossReference(args: {
    *  query parameter.  When omitted, href is just the surface path. */
   anchor?: string;
   /** How the related finding relates to the current one.  Default:
-   *  'consistent with' (corroboration without causation — safest). */
+   *  'consistent with' (corroboration without causation, safest). */
   relation?: CrossReferenceRelation;
 }): CrossReference {
   const relation: CrossReferenceRelation = args.relation ?? 'consistent with';
@@ -428,7 +428,7 @@ export function formatCrossReference(args: {
 }
 
 /**
- * Build a diagnosis line — observation + evidence pair. Used by
+ * Build a diagnosis line, observation + evidence pair. Used by
  * surfaces that NAME what they see and then cite the supporting
  * observation.
  *
@@ -438,7 +438,7 @@ export function formatCrossReference(args: {
  *   })
  *     → "Your easy runs are too hard. <40% of easy mileage landed in Z2 across the last 4 weeks."
  *
- * Just structural — keeps the period-then-space + sentence-cap discipline.
+ * Just structural, keeps the period-then-space + sentence-cap discipline.
  */
 export function formatDiagnosis(args: {
   observation: string;

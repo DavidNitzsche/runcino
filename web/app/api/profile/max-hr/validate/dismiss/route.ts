@@ -3,7 +3,7 @@
  *
  * Suppresses the max-HR validation banner for 30 days. The validator
  * (lib/validate-max-hr.ts) still re-fires within the window if a NEW
- * validated peak exceeds stored max by 3+ bpm — that's the "new
+ * validated peak exceeds stored max by 3+ bpm, that's the "new
  * evidence" override.
  */
 

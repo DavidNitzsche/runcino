@@ -1,7 +1,7 @@
 /**
  * Plan week-grid helpers + shared plan types.
  *
- * The synthetic/template plan generator that used to live here was removed —
+ * The synthetic/template plan generator that used to live here was removed, 
  * the app renders only the real coach-generated plan (getCurrentPlan →
  * buildPlan, grounded in /Research). See lib/plan-weeks.ts (getRealPlanWeeks),
  * which is the single entry point every surface uses.
@@ -11,7 +11,7 @@
  * isoAdd, fmtShortDate), timezone resolution, and findCurrentWeek/
  * findTodayWorkout. No fabricated plan data.
  *
- * NOTE: filename is legacy ("synthetic-plan") — there is nothing synthetic
+ * NOTE: filename is legacy ("synthetic-plan"), there is nothing synthetic
  * left in it. Rename to plan-format.ts when convenient (touches many imports).
  */
 
@@ -50,7 +50,7 @@ function isoAdd(iso: string, days: number): string {
 /**
  * Today's date in the given timezone (YYYY-MM-DD).
  *
- * Without a timezone, the server defaults to UTC — which means at 6 PM
+ * Without a timezone, the server defaults to UTC, which means at 6 PM
  * Sunday in LA, the page shows Monday because UTC is already 1 AM.
  * Pages should pass the user's tz (derived from their location) so
  * "today" matches what's on their wall clock.

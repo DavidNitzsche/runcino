@@ -7,20 +7,20 @@
  *
  * Cross-references three independent signals against the stored max HR:
  *
- *   1. PEAK SCAN — top HR readings across 18 months, filtered through
+ *   1. PEAK SCAN, top HR readings across 18 months, filtered through
  *      the spike rules below. A "validated peak" that exceeds stored
  *      max means stored is certainly wrong.
  *
- *   2. RACE-ANCHORED LTHR — average HR sustained over an HM or 10K
+ *   2. RACE-ANCHORED LTHR, average HR sustained over an HM or 10K
  *      is a strong proxy for LTHR. Back-calculate max from the
  *      research-anchored ratio bands. A race-derived estimate that's
  *      meaningfully higher than stored means stored is probably wrong.
  *
- *   3. CURRENT-MAX SANITY — if HM avg HR / stored max > 92%, the
+ *   3. CURRENT-MAX SANITY, if HM avg HR / stored max > 92%, the
  *      runner sustained an implausible % of true max for 13.1 miles.
  *      LTHR caps at ~92% for trained runners and ~95% for elites.
  *
- * Returns a structured verdict. Never mutates the stored max — that
+ * Returns a structured verdict. Never mutates the stored max, that
  * requires explicit user confirmation per spec.
  *
  * ── SPIKE FILTER RULES (R1–R4) ───────────────────────────────────
@@ -29,26 +29,26 @@
  * avgHr; we don't fetch per-second streams yet, so some checks can
  * only be partially enforced. The rules:
  *
- *   R1 — VALIDATED-EFFORT CONTEXT (enforced)
+ *   R1, VALIDATED-EFFORT CONTEXT (enforced)
  *     The peak must come from an activity classified as a real hard
  *     effort: workoutType 1 (race) or 3 (workout), OR name matches
  *     /race|interval|repeat|track|tempo|threshold|hill/i. Easy-run
  *     spikes are dropped because the wrist sensor commonly correlates
  *     with cadence + GPS jitter on relaxed runs.
  *
- *   R2 — PLAUSIBLE RANGE (enforced)
+ *   R2, PLAUSIBLE RANGE (enforced)
  *     Peak must be in [140, 220] bpm. Outside that range = sensor
  *     failure. (140 is below any race max for a trained runner; 220
  *     is the theoretical ceiling.)
  *
- *   R3 — SUSTAIN ≥5 SECONDS (deferred to streams)
+ *   R3, SUSTAIN ≥5 SECONDS (deferred to streams)
  *     A real peak holds for several heartbeats. Single-sample spikes
- *     are artifacts. Requires per-second HR stream data — TODO once
+ *     are artifacts. Requires per-second HR stream data, TODO once
  *     /activities/{id}/streams is wired into the cache.
  *
- *   R4 — WITHIN 15 BPM OF PRECEDING 30s ROLLING AVG (deferred to streams)
+ *   R4, WITHIN 15 BPM OF PRECEDING 30s ROLLING AVG (deferred to streams)
  *     A real peak ramps into existence. A jump of >15 bpm in seconds
- *     is a sensor glitch. Also stream-dependent — TODO.
+ *     is a sensor glitch. Also stream-dependent, TODO.
  *
  * Until R3+R4 land, we apply a coarser heuristic from summary data:
  * if max_hr - avg_hr > 50 bpm AND the activity is NOT validated-effort,
@@ -70,7 +70,7 @@
  * If the user clicks "Keep current," the banner suppresses for 30
  * days OR until a new validated peak exceeds stored max by 3+ bpm,
  * whichever comes first. Dismissal stored in
- * users.max_hr_validation_dismissed_at — set on dismiss, cleared
+ * users.max_hr_validation_dismissed_at, set on dismiss, cleared
  * when banner re-fires.
  */
 
@@ -97,7 +97,7 @@ export interface MaxHrValidationVerdict {
     estimateLow: number;
     /** High end (LTHR / 0.88 for HM, 0.92 for 10K). */
     estimateHigh: number;
-    /** Midpoint — see "SUGGESTED MIDPOINT RULE" in module header. */
+    /** Midpoint, see "SUGGESTED MIDPOINT RULE" in module header. */
     estimateMid: number;
     /** The ratio band used ('HM' = 88-92%, '10K' = 92-95%). */
     ratioBand: 'HM' | '10K' | 'race';
@@ -229,7 +229,7 @@ async function checkDismissal(
     const at = rows[0]?.dismissed_at;
     if (!at) return false;
     const ageDays = (Date.now() - new Date(at).getTime()) / 86_400_000;
-    // Hard expiry — 30 days
+    // Hard expiry, 30 days
     if (ageDays > 30) return false;
     // New-evidence override: if a validated peak has appeared SINCE
     // the dismissal AND it exceeds current max by 3+ bpm, re-fire.
@@ -242,7 +242,7 @@ async function checkDismissal(
     }
     return true;
   } catch {
-    return false; // schema not migrated yet — show banner
+    return false; // schema not migrated yet, show banner
   }
 }
 
@@ -262,7 +262,7 @@ export async function validateMaxHr(
   //     → max = avgHr / 0.92 (LOW)  to  avgHr / 0.88 (HIGH)
   //   10K avg HR sits at 92–95% of true max.
   //     → max = avgHr / 0.95 (LOW)  to  avgHr / 0.92 (HIGH)
-  //   "race" fallback (other distances) uses HM band — conservative.
+  //   "race" fallback (other distances) uses HM band, conservative.
   let raceEstimate: MaxHrValidationVerdict['raceEstimate'] = null;
   if (anchor && anchor.data.avgHr) {
     const avgHr = Math.round(Number(anchor.data.avgHr) || 0);
@@ -296,12 +296,12 @@ export async function validateMaxHr(
   // Per the adaptive-pattern philosophy (lib/adaptive-pattern.ts):
   // single observations don't fire. Each rule below requires either
   // multiple corroborating peaks, a very-clear single-peak signal
-  // (≥5 bpm above stored — unambiguous), OR a race-anchored signal
+  // (≥5 bpm above stored, unambiguous), OR a race-anchored signal
   // backed by physiology math. The cost of bumping max HR on a
   // sensor glitch is real (it widens Z2 ceiling and lets the runner
   // ride too hard on easy days), so the threshold has to be high.
 
-  // 1. Validated peaks ABOVE stored — fires when either:
+  // 1. Validated peaks ABOVE stored, fires when either:
   //    (a) ≥2 validated peaks exceed stored, OR
   //    (b) Top validated peak exceeds stored by ≥5 bpm (unambiguous)
   //    NOT just any single peak ≥ stored+1.
@@ -320,7 +320,7 @@ export async function validateMaxHr(
             .map((p) => `${p.hr} (${p.name})`)
             .join(', ')}.`
         : `Your highest validated HR is ${topValidated.hr} bpm during ` +
-          `"${topValidated.name}" (${topValidated.date}) — that's ` +
+          `"${topValidated.name}" (${topValidated.date}), that's ` +
           `${topValidated.hr - currentMaxHr} bpm above stored ${currentMaxHr}, ` +
           `clear enough to flag.`;
       return {
@@ -345,7 +345,7 @@ export async function validateMaxHr(
     }
   }
 
-  // 2. Race-derived estimate ≥5 bpm above stored — stored is probably wrong.
+  // 2. Race-derived estimate ≥5 bpm above stored, stored is probably wrong.
   if (currentMaxHr && raceEstimate && raceEstimate.estimateLow > currentMaxHr + 4) {
     const sustainedPct = Math.round(raceEstimate.avgHrInRace / currentMaxHr * 100);
     const ratioCap = raceEstimate.ratioBand === '10K' ? '95%' : '92%';
@@ -365,16 +365,16 @@ export async function validateMaxHr(
           `Your ${raceEstimate.sourceRaceName} avg HR of ${raceEstimate.avgHrInRace} ` +
           `implies a true max of ${raceEstimate.estimateLow}–${raceEstimate.estimateHigh} bpm. ` +
           `Stored max ${currentMaxHr} means you held ${sustainedPct}% of max for ${distLabel} ` +
-          `— LTHR caps at ~${ratioCap} for most runners. ` +
+          `, LTHR caps at ~${ratioCap} for most runners. ` +
           `Suggested ${raceEstimate.estimateMid} bpm (midpoint of estimated range).`,
         falsifier:
           `We'd revise if your next HM-effort run shows avg HR > ${Math.round(currentMaxHr * 0.94)} ` +
-          `— that'd mean you really can hold a higher %max than the rule of thumb.`,
+          `, that'd mean you really can hold a higher %max than the rule of thumb.`,
       },
     };
   }
 
-  // 2b. Suspect ceiling — N≥3 validated peaks cluster within 3 bpm
+  // 2b. Suspect ceiling, N≥3 validated peaks cluster within 3 bpm
   //     of stored max. The pattern of "you hit 175 six times during
   //     HM-effort runs" is DISCONFIRMING evidence, not confirming:
   //     a true physiological max is a rare, brief reading from a
@@ -390,7 +390,7 @@ export async function validateMaxHr(
       (p) => p.isValidatedEffort && p.hr >= currentMaxHr - 3 && p.hr <= currentMaxHr + 1,
     );
     if (nearStored.length >= 3) {
-      // Highest avg HR among the cluster — gives the most aggressive
+      // Highest avg HR among the cluster, gives the most aggressive
       // (lowest) implied true max via avg / 0.90.
       const withAvg = nearStored.filter((p): p is typeof p & { avgHrInActivity: number } =>
         p.avgHrInActivity != null && p.avgHrInActivity > 0,
@@ -417,13 +417,13 @@ export async function validateMaxHr(
               clusterCount: nearStored.length,
               reason:
                 `${nearStored.length} validated runs peaked within 3 bpm of stored ${currentMaxHr}: ${clusterSummary}. ` +
-                `A true physiological max is a rare, brief reading from a terminal effort — not a value ` +
+                `A true physiological max is a rare, brief reading from a terminal effort, not a value ` +
                 `routinely reached during sustained races. Your "${top.name}" averaged ${top.avgHrInActivity} ` +
                 `bpm (${sustainedPct}% of stored max), which implies a true max around ${suggested} bpm via ` +
                 `avg / 0.90. Suggest reviewing the stored ceiling.`,
               falsifier:
                 `We'd revise if your next all-out interval session peaks at ${currentMaxHr - 2} bpm or ` +
-                `below — that'd be evidence ${currentMaxHr} really is your ceiling. The cluster pattern is ` +
+                `below, that'd be evidence ${currentMaxHr} really is your ceiling. The cluster pattern is ` +
                 `the strongest signal here.`,
             },
           };
@@ -442,7 +442,7 @@ export async function validateMaxHr(
       dismissed,
       recommendation: {
         kind: 'insufficient-data',
-        reason: 'No max HR set yet — log a hard workout or set it manually.',
+        reason: 'No max HR set yet, log a hard workout or set it manually.',
         falsifier: 'Any race or interval session with HR data will give the validator something to work with.',
       },
     };
@@ -460,7 +460,7 @@ export async function validateMaxHr(
       reason: raceEstimate
         ? `Stored ${currentMaxHr} bpm is consistent with ` +
           `${raceEstimate.sourceRaceName} avg ${raceEstimate.avgHrInRace} ` +
-          `(${Math.round(raceEstimate.avgHrInRace / currentMaxHr * 100)}% of max — within ` +
+          `(${Math.round(raceEstimate.avgHrInRace / currentMaxHr * 100)}% of max, within ` +
           `the ${raceEstimate.ratioBand === '10K' ? '92-95%' : '88-92%'} LTHR band).`
         : `Stored ${currentMaxHr} bpm; log a half or 10K with HR data ` +
           `to validate against race performance.`,

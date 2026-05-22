@@ -1,8 +1,8 @@
 /**
- * Plan validator — runs declarative integrity checks against the
+ * Plan validator, runs declarative integrity checks against the
  * engine's generated week-shape and surfaces issues for the runner.
  *
- * Pure module — no DB, no Postgres, no fetch. Takes the engine's
+ * Pure module, no DB, no Postgres, no fetch. Takes the engine's
  * already-computed plan + state, returns an array of issues.
  *
  * Rules covered (each cites Research/):
@@ -12,7 +12,7 @@
  *   4. Easy-share polarized ratio drift (Research/00a §Polarized)
  *
  * The engine's `enforceWeekStreakCap` already MAY prevent rule 1
- * from firing in practice — this validator runs as a second line of
+ * from firing in practice, this validator runs as a second line of
  * defense, surfacing any rules that slipped through OR aren't enforced
  * by the engine. Empty array = clean plan.
  */
@@ -33,7 +33,7 @@ export interface PlanIssue {
   severity: PlanIssueSeverity;
   /** Human-readable explanation including the offending number(s). */
   message: string;
-  /** Where in the plan this fired — date range, day index, week. */
+  /** Where in the plan this fired, date range, day index, week. */
   location: string;
   /** Research doc that motivates the rule. */
   citation: string;
@@ -107,12 +107,12 @@ export function validatePlan(
   }
 
   // ── Rule 4: easy-share drift ──────────────────────────────────
-  // Polarized 80/20 — easy share should sit ≥0.78 (78%).
+  // Polarized 80/20, easy share should sit ≥0.78 (78%).
   if (state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < 0.75) {
     issues.push({
       rule: 'easy_share_drift',
       severity: 'warn',
-      message: `Easy share is ${Math.round(state.intensity.easyShare14d * 100)}% over the last 14 days — below the 80% polarized target. More easy miles, fewer moderate ones.`,
+      message: `Easy share is ${Math.round(state.intensity.easyShare14d * 100)}% over the last 14 days, below the 80% polarized target. More easy miles, fewer moderate ones.`,
       location: 'last 14 days',
       citation: 'Research/00a §Training Intensity Distribution (TID)',
     });

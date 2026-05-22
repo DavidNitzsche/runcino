@@ -20,9 +20,9 @@ export interface EmptyStateProps {
   /** Override the default glyph. */
   glyph?: ReactNode;
   title: ReactNode;
-  /** Body text — short paragraph beneath the title. */
+  /** Body text, short paragraph beneath the title. */
   body?: ReactNode;
-  /** Optional CTA — typically a <button className="btn-flat btn-primary">. */
+  /** Optional CTA, typically a <button className="btn-flat btn-primary">. */
   cta?: ReactNode;
 }
 

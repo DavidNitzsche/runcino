@@ -1,5 +1,5 @@
 /**
- * /api/plan/active — returns the active plan after lifecycle + adapt
+ * /api/plan/active, returns the active plan after lifecycle + adapt
  * have run. This is the single source of truth for the UI:
  *
  *   - /overview TodayCard reads today's PlanWorkout from this.

@@ -8,16 +8,16 @@
  * 5-minute window pay ~10 % of the input-token cost.
  *
  * Scopes:
- *   • 'running'  — voice + coaching-research. Race-morning brief, daily
+ *   • 'running', voice + coaching-research. Race-morning brief, daily
  *                  prescription rationale, plan adjustments, retros.
- *   • 'strength' — voice + amp-research. Strength-day prescription, Amp-
+ *   • 'strength', voice + amp-research. Strength-day prescription, Amp-
  *                  specific advice.
- *   • 'full'     — voice + both. Comprehensive retrospectives that
+ *   • 'full', voice + both. Comprehensive retrospectives that
  *                  span run + strength training across a cycle.
  *
- * Don't include amp-research in calls that don't touch strength —
+ * Don't include amp-research in calls that don't touch strength, 
  * burns tokens and confuses the model. Don't include coaching-research
- * in pure strength calls — same reason.
+ * in pure strength calls, same reason.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'node:fs';
@@ -64,19 +64,19 @@ response must match exactly this shape:
 
 {
   "answer": <the answer to the user's request, type depends on the call>,
-  "rationale": <one short sentence in your voice — see voice doc>,
+  "rationale": <one short sentence in your voice, see voice doc>,
   "citations": [{ "section": "§N.M", "snippet": "<short prose excerpt>" }, …]
 }
 
 The "rationale" field is what the user reads. Write it in the voice
 defined in the voice doc. NEVER include section numbers in the rationale
-— citations live in the separate "citations" array, surfaced only when
+, citations live in the separate "citations" array, surfaced only when
 the user taps a "why?" affordance.
 
 The "citations" array points back at the section(s) of the research
 doc that justify your answer. Use the §N or §N.M heading numbers from
 the research doc. Include at least one citation. Use 1-3 short
-snippets — verbatim phrases from the research are best.
+snippets, verbatim phrases from the research are best.
 
 If the user's request is for plain text (a brief, a rationale, a
 narrative), put the text directly in "answer" as a string. If the
@@ -125,13 +125,13 @@ export interface CallCoachLLMArgs<T> {
    *  message verbatim. Be specific: include schema if asking for
    *  structured output. */
   userPrompt: string;
-  /** Schema description for the `answer` field — the model writes its
+  /** Schema description for the `answer` field, the model writes its
    *  output to match. Default: 'a string in the Coach voice'. */
   answerSchema?: string;
-  /** Maximum tokens for the response. Default 1024 — enough for a
+  /** Maximum tokens for the response. Default 1024, enough for a
    *  paragraph + citations. Bump for retrospectives. */
   maxTokens?: number;
-  /** Override the model. Default: Sonnet 4.6 — fast, voice-faithful,
+  /** Override the model. Default: Sonnet 4.6, fast, voice-faithful,
    *  cheap with prompt caching. */
   model?: string;
 }
@@ -140,7 +140,7 @@ let _client: Anthropic | null = null;
 function client(): Anthropic {
   if (_client) return _client;
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set — Coach LLM brain unavailable.');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set, Coach LLM brain unavailable.');
   _client = new Anthropic({ apiKey });
   return _client;
 }
@@ -172,7 +172,7 @@ export async function callCoachLLM<T = string>(args: CallCoachLLMArgs<T>): Promi
     .join('\n')
     .trim();
 
-  // Extract JSON — model sometimes wraps in code fences despite the
+  // Extract JSON, model sometimes wraps in code fences despite the
   // "JSON only" instruction. Be liberal in what we accept.
   const jsonText = extractJson(text);
   let parsed: { answer: T; rationale: string; citations: Array<{ section: string; snippet?: string }> };

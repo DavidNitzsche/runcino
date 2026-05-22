@@ -1,5 +1,5 @@
 /**
- * /api/strava/activities — full normalized list of Strava runs YTD.
+ * /api/strava/activities, full normalized list of Strava runs YTD.
  *
  * Drives the /log feed, the / Overview rollups (weekly miles, YTD,
  * fun stats), the /health HR + cadence trends, and the /training
@@ -19,7 +19,7 @@ export async function GET() {
     return Response.json({
       activities: [],
       fetchedAt: null,
-      error: 'STRAVA_REFRESH_TOKEN not set — visit /api/strava/connect to capture it.',
+      error: 'STRAVA_REFRESH_TOKEN not set, visit /api/strava/connect to capture it.',
     }, { status: 200 });
   }
   try {

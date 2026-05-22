@@ -1,12 +1,12 @@
 /**
- * /log — fresh React port of designs/log-v4.html.
+ * /log, fresh React port of designs/log-v4.html.
  *
  * Five sections matching approved mockup:
- *   1. Coach strip — YTD recap (left) + Strava-sync card (right)
- *   2. YTD Hero — "The Year So Far" + 4 hero stats
- *   3. Monthly Volume Chart — 12 bars, current month outlined in amber
- *   4. Year in Running heatmap — 5 rows (Jan-May), variable days
- *   5. Recent Runs — custom shoe-picker column, ordered: date · type ·
+ *   1. Coach strip, YTD recap (left) + Strava-sync card (right)
+ *   2. YTD Hero, "The Year So Far" + 4 hero stats
+ *   3. Monthly Volume Chart, 12 bars, current month outlined in amber
+ *   4. Year in Running heatmap, 5 rows (Jan-May), variable days
+ *   5. Recent Runs, custom shoe-picker column, ordered: date · type ·
  *      name · shoes · time · miles
  *
  * Replaces the 786-line May-2026 implementation.
@@ -89,7 +89,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
     }));
   } catch {}
 
-  // Strava activities — pulled into the unified run feed
+  // Strava activities, pulled into the unified run feed
   let recentRuns: RunRow[] = [];
   let totalRuns = 0;
   let totalMiles = 0;
@@ -132,7 +132,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           sub: tag === 'easy' ? 'Easy · base mileage' : tag === 'long' ? 'Long' : 'Race',
           mi: Math.round(mi * 10) / 10,
           min: Math.round(moving / 60),
-          pace: paceSec > 0 ? `${paceM}:${String(paceS).padStart(2, '0')}/mi` : '—',
+          pace: paceSec > 0 ? `${paceM}:${String(paceS).padStart(2, '0')}/mi` : '-',
           avgHr: Number(d.avgHr) || 0,
           shoeId: a.shoe_id,
         };
@@ -178,7 +178,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
         if (m >= 0 && m < 12) monthlyMi[m] = Math.round(Number(r.mi));
       });
 
-      // Heatmap — sum per date (YYYY-MM-DD prefix of startLocal)
+      // Heatmap, sum per date (YYYY-MM-DD prefix of startLocal)
       const heatRows = await query<{ date: string; mi: string }>(
         `SELECT LEFT(data->>'startLocal', 10) AS date,
                 COALESCE(SUM((data->>'distanceMi')::NUMERIC), 0) AS mi
@@ -204,7 +204,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
 }
 
 function timeAgo(d: Date | null): string {
-  if (!d) return '—';
+  if (!d) return ', ';
   const sec = Math.floor((Date.now() - d.getTime()) / 1000);
   if (sec < 60) return `${sec}s ago`;
   if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
@@ -213,7 +213,7 @@ function timeAgo(d: Date | null): string {
 }
 
 function fmtDateShort(iso: string): string {
-  if (!iso) return '—';
+  if (!iso) return ', ';
   const d = new Date(iso + 'T00:00:00Z');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
@@ -309,18 +309,18 @@ export default async function LogPage() {
               <div className="hero-stat-label">Total Miles</div>
               <div className="hero-stat-val">{data.totalMiles}<span className="unit">mi</span></div>
               <div className="hero-stat-sub">
-                {data.totalRuns > 0 ? <>On pace for <strong>{onPace.toLocaleString()} mi</strong></> : '—'}
+                {data.totalRuns > 0 ? <>On pace for <strong>{onPace.toLocaleString()} mi</strong></> : '-'}
               </div>
             </div>
             <div className="hero-stat">
               <div className="hero-stat-label">Longest Run</div>
-              <div className="hero-stat-val">{data.longestRun?.mi ?? '—'}{data.longestRun && <span className="unit">mi</span>}</div>
-              <div className="hero-stat-sub">{data.longestRun ? <><strong>{data.longestRun.name}</strong> · {fmtDateShort(data.longestRun.date)}</> : '—'}</div>
+              <div className="hero-stat-val">{data.longestRun?.mi ?? '-'}{data.longestRun && <span className="unit">mi</span>}</div>
+              <div className="hero-stat-sub">{data.longestRun ? <><strong>{data.longestRun.name}</strong> · {fmtDateShort(data.longestRun.date)}</> : '-'}</div>
             </div>
             <div className="hero-stat">
               <div className="hero-stat-label">Peak Month</div>
-              <div className="hero-stat-val">{data.peakMonth?.miles ?? '—'}{data.peakMonth && <span className="unit">mi</span>}</div>
-              <div className="hero-stat-sub">{data.peakMonth ? <><strong>{data.peakMonth.month}</strong></> : '—'}</div>
+              <div className="hero-stat-val">{data.peakMonth?.miles ?? '-'}{data.peakMonth && <span className="unit">mi</span>}</div>
+              <div className="hero-stat-sub">{data.peakMonth ? <><strong>{data.peakMonth.month}</strong></> : '-'}</div>
             </div>
           </div>
         </div>
@@ -442,7 +442,7 @@ export default async function LogPage() {
                   </div>
                   <div>
                     <div className="run-num">{r.min}<span style={{ fontSize: 12, color: 'var(--t2)' }}>min</span></div>
-                    <div className="run-num-unit">avg {r.avgHr || '—'} HR</div>
+                    <div className="run-num-unit">avg {r.avgHr || '-'} HR</div>
                   </div>
                   <div>
                     <div className="run-num">{r.mi}<span style={{ fontSize: 12, color: 'var(--t2)' }}>mi</span></div>

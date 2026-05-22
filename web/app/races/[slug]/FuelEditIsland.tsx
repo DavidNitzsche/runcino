@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * FuelEditIsland — type your gel, the coach fills in the rest.
+ * FuelEditIsland, type your gel, the coach fills in the rest.
  *
  * The user only tells us WHICH gel they're using. Total carbs and
  * carb rate are coach-decided (carbs from the gel's spec, rate from
@@ -55,7 +55,7 @@ export function FuelEditIsland({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gelBrand: brand.trim(),
-          // Don't pass carbs or rate — let the coach decide based on
+          // Don't pass carbs or rate, let the coach decide based on
           // the gel's spec and the race effort. Sending nullish/omit
           // for these clears any prior override.
           gelCarbsG: null,

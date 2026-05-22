@@ -1,13 +1,13 @@
 /**
- * "Why this workout" — a short, plain-English reason for today's run.
+ * "Why this workout", a short, plain-English reason for today's run.
  *
  * Three lines, no jargon, no hedging:
- *   1. WHAT  — the kind of run, in normal words
- *   2. WHY NOW — where you are in the plan and what this block is for
- *   3. THE POINT — what this run actually does for you
+ *   1. WHAT, the kind of run, in normal words
+ *   2. WHY NOW, where you are in the plan and what this block is for
+ *   3. THE POINT, what this run actually does for you
  *
  * Pulls from the plan/coach data we already have. No fabricated science,
- * no "what the system knows vs doesn't" disclaimers — just a clear answer.
+ * no "what the system knows vs doesn't" disclaimers, just a clear answer.
  */
 
 export interface WhyThisWorkout {
@@ -44,12 +44,12 @@ function whatForType(type: string, label: string, distanceMi: number): string {
 
 function whereInPlanFor(phase: string, phaseWeekIdx: number): string {
   const p = (phase ?? '').toLowerCase();
-  if (p === 'base')   return `Base week ${phaseWeekIdx} — building your foundation.`;
-  if (p === 'build')  return `Build week ${phaseWeekIdx} — adding miles and harder days.`;
-  if (p === 'peak')   return `Peak week ${phaseWeekIdx} — your biggest, most race-like work.`;
-  if (p === 'taper')  return `Taper week ${phaseWeekIdx} — easing back so you arrive fresh.`;
-  if (p === 'race_week' || p === 'race week') return 'Race week — sharpening up for the big day.';
-  if (p === 'post_race' || p === 'rebuild') return 'Recovery block — letting your body absorb the last race.';
+  if (p === 'base')   return `Base week ${phaseWeekIdx}, building your foundation.`;
+  if (p === 'build')  return `Build week ${phaseWeekIdx}, adding miles and harder days.`;
+  if (p === 'peak')   return `Peak week ${phaseWeekIdx}, your biggest, most race-like work.`;
+  if (p === 'taper')  return `Taper week ${phaseWeekIdx}, easing back so you arrive fresh.`;
+  if (p === 'race_week' || p === 'race week') return 'Race week, sharpening up for the big day.';
+  if (p === 'post_race' || p === 'rebuild') return 'Recovery block, letting your body absorb the last race.';
   return `${phase} week ${phaseWeekIdx}`;
 }
 
@@ -57,12 +57,12 @@ function thePointForType(type: string): string {
   switch (type) {
     case 'easy':
     case 'general_aerobic':
-      return 'Builds your aerobic engine — the base everything else is built on. Keep it relaxed.';
+      return 'Builds your aerobic engine, the base everything else is built on. Keep it relaxed.';
     case 'long':
       return 'Time on your feet. Trains your body to keep going when the miles add up.';
     case 'recovery':
     case 'shakeout':
-      return 'Keeps the blood moving and helps you recover. No pace targets — just shake the legs out.';
+      return 'Keeps the blood moving and helps you recover. No pace targets, just shake the legs out.';
     case 'tempo':
     case 'threshold':
     case 'sub_threshold':
@@ -73,7 +73,7 @@ function thePointForType(type: string): string {
     case 'mp':
       return 'Rehearses goal race pace so it feels familiar on the day.';
     case 'race':
-      return 'Race day — run your plan.';
+      return 'Race day, run your plan.';
     default:
       return 'Steady training that keeps your fitness moving forward.';
   }

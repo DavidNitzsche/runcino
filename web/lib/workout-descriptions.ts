@@ -1,5 +1,5 @@
 /**
- * Workout descriptions — recipe-style breakdown per workout, with
+ * Workout descriptions, recipe-style breakdown per workout, with
  * paces DERIVED FROM THE USER'S FITNESS instead of hardcoded.
  *
  * Each workout template carries zone refs ('E', 'T', 'I', 'race-pace'),
@@ -19,7 +19,7 @@ import { pacesFromVdot, type DanielsPaceSet } from './vdot';
 import { fmtPaceBand, type ResolvedFitness, type FitnessHrZones } from './fitness-types';
 
 /** Daniels pace zone → HR zone mapping. Both anchor to physiological
- *  effort thresholds — easy aerobic pace lives in Z2 HR; threshold
+ *  effort thresholds, easy aerobic pace lives in Z2 HR; threshold
  *  pace lives in Z4; VO2max intervals live in Z5. */
 function hrZoneForPaceZone(zoneRef: ZoneRef, hrZones: FitnessHrZones | null): { lowBpm: number; highBpm: number } | null {
   if (!hrZones) return null;
@@ -31,7 +31,7 @@ function hrZoneForPaceZone(zoneRef: ZoneRef, hrZones: FitnessHrZones | null): { 
     case 'R':         return hrZones.z5;
     case 'race-pace': return hrZones.z4;  // HM-pace effort lives in Z4
     case 'fast':              return hrZones.z5;
-    case 'powerful':          return null; // strides — HR lags too much to be meaningful
+    case 'powerful':          return null; // strides, HR lags too much to be meaningful
     case 'mixed-easy-to-race':return null; // headline-only ref
   }
 }
@@ -81,7 +81,7 @@ export interface WorkoutDescription {
   why: string;
 }
 
-// ── Internal template types — what the catalog stores ─────────────
+// ── Internal template types, what the catalog stores ─────────────
 
 type ZoneRef = 'E' | 'M' | 'T' | 'I' | 'R' | 'race-pace' | 'fast' | 'powerful' | 'mixed-easy-to-race';
 
@@ -137,7 +137,7 @@ const FALLBACK_RACE_PACE_S = 7 * 60 + 30; // 7:30/mi
 interface FitnessBands {
   paces: DanielsPaceSet;
   racePaceBand: { lowS: number; highS: number; label: string };
-  /** HR zone bands derived from max HR — null when max HR isn't set
+  /** HR zone bands derived from max HR, null when max HR isn't set
    *  (manual override absent + no Strava peak high enough). Consumers
    *  use this to attach "105-122 bpm" alongside pace targets. */
   hrZones: FitnessHrZones | null;
@@ -183,7 +183,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     steps: [
       { kind: 'simple', name: 'Easy Run', duration: 'Full distance', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'Conversational — you should be able to hold a full sentence the whole way. If breathing makes that hard, slow down.',
+    effort: 'Conversational, you should be able to hold a full sentence the whole way. If breathing makes that hard, slow down.',
     why: 'Easy days are where your aerobic engine builds. Protect them from creeping into "medium-hard."',
   },
   'Easy + Strides': {
@@ -202,7 +202,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
         ],
       },
     ],
-    effort: 'Easy throughout the run. Strides are quick and smooth — about the speed you could just barely hold for a full mile race. Focus on form and turnover.',
+    effort: 'Easy throughout the run. Strides are quick and smooth, about the speed you could just barely hold for a full mile race. Focus on form and turnover.',
     why: 'Strides keep your legs feeling fast and your turnover sharp without adding fatigue.',
   },
   'Hill Strides': {
@@ -221,7 +221,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
         ],
       },
     ],
-    effort: 'Easy on the flat. Strides are powerful and controlled — drive your knees, stay tall. Don\'t sprint.',
+    effort: 'Easy on the flat. Strides are powerful and controlled, drive your knees, stay tall. Don\'t sprint.',
     why: 'Sharpens leg power and tendon stiffness without the volume cost of intervals.',
   },
 
@@ -232,7 +232,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     steps: [
       { kind: 'simple', name: 'Long Run', duration: 'Full distance', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'Conversational throughout. Time on feet is the stimulus — don\'t chase pace. Last 20 min can drift slightly faster if it feels natural.',
+    effort: 'Conversational throughout. Time on feet is the stimulus, don\'t chase pace. Last 20 min can drift slightly faster if it feels natural.',
     why: 'Endurance builds through duration, not speed.',
   },
   'Long Run · HM Finish': {
@@ -242,7 +242,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       { kind: 'simple', name: 'Easy Aerobic', duration: 'First ⅔ of run', zoneRef: 'E', zoneLabel: 'easy' },
       { kind: 'simple', name: 'HM Finish',    duration: 'Final 3–4 mi',  zoneRef: 'race-pace', zoneLabel: 'half-marathon goal' },
     ],
-    effort: 'Easy for two-thirds. Then disciplined race pace through the finish — same fatigue you\'ll have on race day.',
+    effort: 'Easy for two-thirds. Then disciplined race pace through the finish, same fatigue you\'ll have on race day.',
     why: 'Practice goal pace on tired legs. Pacing discipline is the work.',
   },
   'Long Run · Progression': {
@@ -255,7 +255,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       { kind: 'simple', name: 'Final Third',   duration: 'Last ⅓',   zoneRef: 'race-pace', zoneLabel: 'progressing' },
     ],
     effort: 'Steady, controlled increase. You should feel stronger as the run develops, not blown out at the end.',
-    why: 'Teaches you to push tempo as fatigue builds — race-day pacing without the race.',
+    why: 'Teaches you to push tempo as fatigue builds, race-day pacing without the race.',
   },
   'Long Run · Taper': {
     zone: 'Long · Zone 2',
@@ -284,7 +284,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       },
       { kind: 'simple', name: 'Cool Down', duration: '10 min', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'Comfortably hard — roughly your 10K race pace. You can say 2–3 words at a time, but not a full sentence.',
+    effort: 'Comfortably hard, roughly your 10K race pace. You can say 2–3 words at a time, but not a full sentence.',
     why: 'Controlled, sustainable threshold work. Stay steady at the edge of comfortable; don\'t push harder.',
   },
   'Threshold · HM Blocks': {
@@ -304,7 +304,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       },
       { kind: 'simple', name: 'Cool Down', duration: '10 min', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'Goal half-marathon pace — sustainable but pressing. Steady, not surging.',
+    effort: 'Goal half-marathon pace, sustainable but pressing. Steady, not surging.',
     why: 'Race-specific endurance. Teaches your body to hold goal pace for extended chunks.',
   },
   'Threshold · HM Cruise': {
@@ -324,7 +324,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       },
       { kind: 'simple', name: 'Cool Down', duration: '10 min', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'Steady half-marathon pace — feels like work but never out of control.',
+    effort: 'Steady half-marathon pace, feels like work but never out of control.',
     why: 'Solid threshold dose at race pace. Long enough to feel like work, short enough not to overreach.',
   },
   'Threshold · HM Tempo': {
@@ -336,7 +336,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       { kind: 'simple', name: 'HM Tempo', duration: '25 min', zoneRef: 'race-pace', zoneLabel: 'half-marathon goal · continuous' },
       { kind: 'simple', name: 'Cool Down',duration: '10 min', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'The hardest sustained effort of the week. If pace slips, finish controlled — don\'t blow up.',
+    effort: 'The hardest sustained effort of the week. If pace slips, finish controlled, don\'t blow up.',
     why: 'Pure race-day specificity. Practice holding goal pace under fatigue.',
   },
   'Threshold Touch': {
@@ -355,7 +355,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       },
       { kind: 'simple', name: 'Cool Down', duration: '10 min', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'Comfortably hard. Brief — should feel sharp, not depleted.',
+    effort: 'Comfortably hard. Brief, should feel sharp, not depleted.',
     why: 'Reminds your body what hard feels like during taper without compromising race day.',
   },
   'Threshold · Race Week Tune': {
@@ -376,7 +376,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       { kind: 'simple', name: 'Cool Down', duration: '10 min', zoneRef: 'E', zoneLabel: 'easy' },
     ],
     effort: 'Sharp but easy. Wake the system up.',
-    why: 'Race-week primer. Don\'t leave anything on the table — save it for race day.',
+    why: 'Race-week primer. Don\'t leave anything on the table, save it for race day.',
   },
 
   // ── VO₂max / Intervals ────────────────────────────────────────
@@ -396,7 +396,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       },
       { kind: 'simple', name: 'Cool Down', duration: '10 min', zoneRef: 'E', zoneLabel: 'easy' },
     ],
-    effort: 'Hard — faster than 5K pace. Breathing is the limiter, not your legs.',
+    effort: 'Hard, faster than 5K pace. Breathing is the limiter, not your legs.',
     why: 'VO₂max work pushes your aerobic ceiling.',
   },
 
@@ -420,7 +420,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       { kind: 'simple', name: 'Settle In',         duration: 'Miles 4–10',         zoneRef: 'race-pace', zoneLabel: 'lock in and hold' },
       { kind: 'simple', name: 'Commit',            duration: 'Mile 10 → finish',   zoneRef: 'race-pace', zoneLabel: 'the last 5K is where the race is won', paceOverride: 'goal pace or faster' },
     ],
-    effort: 'Race effort. Trust the training — your legs know what to do.',
+    effort: 'Race effort. Trust the training, your legs know what to do.',
     why: 'Race day. Execute the plan; conserve early, commit late.',
   },
 
@@ -428,7 +428,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
   'Rest': {
     zone: 'Rest',
     headlineZoneRef: 'E',
-    headlineOverride: () => '—',
+    headlineOverride: () => ', ',
     steps: [],
     effort: 'Sleep, hydrate, gentle mobility if you want. Cross-train lightly only if you feel restless.',
     why: 'Rest is when your body absorbs the work and gets stronger. Take it.',

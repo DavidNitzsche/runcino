@@ -12,7 +12,7 @@
  * `docs/amp-research.md`) are no longer used.
  *
  * The `rc()` / `ar()` helpers below remain only as compatibility
- * shims for any external caller — internal mappings use `cite(...,
+ * shims for any external caller, internal mappings use `cite(...,
  * 'research', 'NN')` from `./doctrine/cite`. Same pattern as the
  * Stage-1+ doctrine modules (pace_zones.ts, hr_zones.ts,
  * weather.ts, workouts.ts).
@@ -20,14 +20,14 @@
 import { cite } from './doctrine/cite';
 import type { Citation } from './types';
 
-/** Legacy shim — build a coaching-research citation from a §-prefixed
+/** Legacy shim, build a coaching-research citation from a §-prefixed
  *  section ID. Kept for any external caller; the helpers below now
  *  issue canonical `Research/` citations directly. */
 export function rc(section: string, snippet?: string): Citation {
   return { doc: 'docs/coaching-research.md', section, snippet };
 }
 
-/** Legacy shim — build an amp-research citation. See `rc()`. */
+/** Legacy shim, build an amp-research citation. See `rc()`. */
 export function ar(section: string, snippet?: string): Citation {
   return { doc: 'docs/amp-research.md', section, snippet };
 }
@@ -46,7 +46,7 @@ export function citationsForWorkoutType(type: string): Citation[] {
         ),
         cite(
           '§In-Week Recovery › Recovery Run vs. Easy Run',
-          'Recovery run: RPE 2-3, ≤60% HRmax, 60-90 s/mi slower than easy, 20-45 min — purpose is circulation, not adaptation.',
+          'Recovery run: RPE 2-3, ≤60% HRmax, 60-90 s/mi slower than easy, 20-45 min, purpose is circulation, not adaptation.',
           'research', '00b',
         ),
       ];
@@ -100,7 +100,7 @@ export function citationsForWorkoutType(type: string): Citation[] {
         ),
         cite(
           '§Training Intensity Distribution (TID)',
-          'Polarized (~80/5/15) for 5K/10K specific; pyramidal (~80/15/5) for HM and marathon — both elite distributions converge on ≥75% Z1.',
+          'Polarized (~80/5/15) for 5K/10K specific; pyramidal (~80/15/5) for HM and marathon, both elite distributions converge on ≥75% Z1.',
           'research', '00a',
         ),
       ];
@@ -118,7 +118,7 @@ export function citationsForWorkoutType(type: string): Citation[] {
       return [
         cite(
           '§11 Marathon-specific workouts',
-          'Defining sessions of the marathon specific phase — Canova special block, Canova 2K repeats, long MP runs, pre-fatigue MP work.',
+          'Defining sessions of the marathon specific phase, Canova special block, Canova 2K repeats, long MP runs, pre-fatigue MP work.',
           'research', '04',
         ),
       ];
@@ -151,7 +151,7 @@ export function citationsForWorkoutType(type: string): Citation[] {
       return [
         cite(
           '§9.3 Day-by-day race week templates',
-          'Tuesday race-week tune-up — short sharpener (e.g. HM: 4-5 mi w/ 4 × 1K at HMP, 90s recovery). Sharpens neuromuscular readiness without adding training fatigue; not a quality stimulus.',
+          'Tuesday race-week tune-up, short sharpener (e.g. HM: 4-5 mi w/ 4 × 1K at HMP, 90s recovery). Sharpens neuromuscular readiness without adding training fatigue; not a quality stimulus.',
           'research', '08',
         ),
       ];
@@ -174,7 +174,7 @@ export function citationsForWorkoutType(type: string): Citation[] {
   }
 }
 
-/** Citations for the readiness signal — references the doctrine
+/** Citations for the readiness signal, references the doctrine
  *  sections that govern green / yellow / red bands. */
 export function citationsForReadiness(level: 'green' | 'yellow' | 'red'): Citation[] {
   // Same doctrine regardless of level; the rationale text varies.
@@ -186,7 +186,7 @@ export function citationsForReadiness(level: 'green' | 'yellow' | 'red'): Citati
     ),
     cite(
       '§Training Intensity Distribution (TID)',
-      'All elite distance runners converge on ≥75% of training volume in Z1 — easy volume is uniquely sustainable.',
+      'All elite distance runners converge on ≥75% of training volume in Z1, easy volume is uniquely sustainable.',
       'research', '00a',
     ),
     ...(level !== 'green' ? [
@@ -204,13 +204,13 @@ export function citationsForReadiness(level: 'green' | 'yellow' | 'red'): Citati
 export function citationsForLoadAdjustment(): Citation[] {
   return [
     cite(
-      '§Training Load and Injury Risk › The 10% rule — reconsidered',
+      '§Training Load and Injury Risk › The 10% rule, reconsidered',
       'Single-run length spike >110% of longest run in prior 30 d → 64% increased overuse injury risk (BJSM 5,200-runner cohort). Weekly mileage change correlated weakly with injury.',
       'research', '00a',
     ),
     cite(
       '§Training Load and Injury Risk › Practical load rules',
-      'Long-run cap rule: single long run should not exceed 110% of the longest run in the prior 30 days. Add stress one-at-a-time — mileage OR intensity, not both.',
+      'Long-run cap rule: single long run should not exceed 110% of the longest run in the prior 30 days. Add stress one-at-a-time, mileage OR intensity, not both.',
       'research', '00a',
     ),
   ];
@@ -226,7 +226,7 @@ export function citationsForTaper(): Citation[] {
     ),
     cite(
       '§9.1 Taper duration by distance',
-      'Run frequency is maintained at ~80% of normal — do not suddenly add rest days. Add no novel workout types in the final 10 days.',
+      'Run frequency is maintained at ~80% of normal, do not suddenly add rest days. Add no novel workout types in the final 10 days.',
       'research', '08',
     ),
   ];

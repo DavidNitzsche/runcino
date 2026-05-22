@@ -1,10 +1,10 @@
 /**
- * /api/profile — server-side Coach bundle for the Profile tab.
+ * /api/profile, server-side Coach bundle for the Profile tab.
  *
  * Mirrors /api/log/route.ts. The Profile surface is the runner's
  * identity, goals, training preferences, gear, and engine details.
  * Most of this data is stable across days; Coach methods are NOT
- * heavily called here — Profile is read-mostly with respect to
+ * heavily called here, Profile is read-mostly with respect to
  * what the runner has chosen.
  *
  * Real data sources:
@@ -17,7 +17,7 @@
  *
  * No demo / mockup fallbacks remain. When a signal is unavailable,
  * the wire shape returns null / [] / honest defaults and the page
- * renders "NO DATA YET" or "—".
+ * renders "NO DATA YET" or ", ".
  */
 
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
@@ -43,7 +43,7 @@ import {
 // Wire shapes
 // ─────────────────────────────────────────────────────────────────────
 
-/** Identity hero — name, age, city, plus 4 lifetime KPIs. */
+/** Identity hero, name, age, city, plus 4 lifetime KPIs. */
 export interface ProfileApiIdentity {
   /** Display name. null when no profile row exists. */
   fullName: string | null;
@@ -53,18 +53,18 @@ export interface ProfileApiIdentity {
   bioLine: string | null;
   /** Runner ID label. */
   idLabel: string;
-  /** "SINCE 2019" eyebrow — null when no since_year. */
+  /** "SINCE 2019" eyebrow, null when no since_year. */
   sinceLabel: string | null;
-  /** "7 YEARS RUNNING" pin label — null when no since_year. */
+  /** "7 YEARS RUNNING" pin label, null when no since_year. */
   yearsRunningPin: string | null;
-  /** 4 KPI quads — lifetime miles / races / days run / peak year. */
+  /** 4 KPI quads, lifetime miles / races / days run / peak year. */
   kpis: ProfileApiKpi[];
 }
 
 export interface ProfileApiKpi {
   /** Display label ("LIFETIME MI"). */
   label: string;
-  /** Hero number ("12.4"). "—" when no data. */
+  /** Hero number ("12.4"). ", " when no data. */
   value: string;
   /** Small suffix on the value ("k" / "mi"). */
   unit: string | null;
@@ -92,7 +92,7 @@ export interface ProfileApiLifetimePr {
   isEmpty: boolean;
 }
 
-/** A personal goal row — drives the canonical goals card. */
+/** A personal goal row, drives the canonical goals card. */
 export interface ProfileApiGoal {
   /** Stable id (one of the 6 categories). */
   id: 'volume' | 'speed' | 'distance' | 'habit' | 'strength' | 'health';
@@ -169,7 +169,7 @@ export interface ProfileApiConnection {
   pinTone: 'green' | 'muted' | 'warn';
 }
 
-/** Apple Health VO2max — WELLNESS signal display block.
+/** Apple Health VO2max, WELLNESS signal display block.
  *
  *  NEVER feeds pace prescription. Surfaced only for trend display +
  *  cold-start fallback when no race exists. The `appleSuffix` naming
@@ -183,15 +183,15 @@ export interface ProfileApiVo2MaxApple {
   updatedLabel: string | null;
   /** Source label ("MANUAL"). null when no value. */
   sourceLabel: string | null;
-  /** Status line — always frames this as wellness, not training. */
+  /** Status line, always frames this as wellness, not training. */
   statusLine: string;
-  /** Data-quality flag — present ONLY when the Apple↔VDOT gap exceeds
+  /** Data-quality flag, present ONLY when the Apple↔VDOT gap exceeds
    *  20 points (8-15 is normal for trained runners with low RHR). The
    *  message NEVER suggests training implications. */
   dataQualityWarning: string | null;
 }
 
-/** VDOT block. Every field is nullable — when there's no race history
+/** VDOT block. Every field is nullable, when there's no race history
  *  to derive a VDOT from, the entire block reads "NO DATA YET". */
 export interface ProfileApiVdot {
   /** VDOT value (string for display). null when uninferable. */
@@ -220,7 +220,7 @@ export interface ProfileApiHrBlock {
   rhr: number | null;
   /** True when this block has anything to show. */
   hasAny: boolean;
-  /** 5-zone breakdown — empty when no HR signal at all. */
+  /** 5-zone breakdown, empty when no HR signal at all. */
   zones: ProfileApiHrZone[];
 }
 
@@ -257,17 +257,17 @@ export interface ProfileApiEngineBlock {
   /** 4 tile rows (pace zones, long-run cap, easy share, cutback). */
   tiles: ProfileApiEngineDetail[];
   /** Pace zones table (rendered inside the first tile). Empty when
-   *  no VDOT signal — UI surfaces "NO DATA YET". */
+   *  no VDOT signal, UI surfaces "NO DATA YET". */
   paceZones: Array<{ label: string; accent: string; value: string }>;
   /** Plan-integrity validation. Null when the engine doesn't yet
-   *  expose a real validation surface — UI renders NO DATA YET. */
+   *  expose a real validation surface, UI renders NO DATA YET. */
   integrity: {
     passed: number;
     total: number;
     headline: string;
     body: string;
   } | null;
-  /** Apple Health VO2max informational row — sits UNDER the engine
+  /** Apple Health VO2max informational row, sits UNDER the engine
    *  tiles, deliberately styled away from VDOT to signal "wellness
    *  data, not training data". Always present so the surface can
    *  render an explicit "Not used for pace targets" disclosure even
@@ -277,9 +277,9 @@ export interface ProfileApiEngineBlock {
     valueLabel: string;
     /** Updated stamp ("Updated MAY 14") or null. */
     updatedLabel: string | null;
-    /** Status copy — explicitly frames as wellness, not training. */
+    /** Status copy, explicitly frames as wellness, not training. */
     statusLine: string;
-    /** Data-quality flag — present ONLY at >20pt gap. NEVER suggests
+    /** Data-quality flag, present ONLY at >20pt gap. NEVER suggests
      *  training implications. */
     dataQualityWarning: string | null;
   };
@@ -291,7 +291,7 @@ interface ProfileApiOk {
   state: CoachState;
   identity: ProfileApiIdentity;
   lifetimePrs: ProfileApiLifetimePr[];
-  /** Number of NEW PRs in the lifetimePrs list — drives header pin. */
+  /** Number of NEW PRs in the lifetimePrs list, drives header pin. */
   newPrCount: number;
   /** True when at least one historic PR was set this year. */
   hasPrThisYear: boolean;
@@ -299,12 +299,12 @@ interface ProfileApiOk {
   /** Number of goals "on track" / "met". */
   goalsActive: number;
   vdot: ProfileApiVdot;
-  /** Apple Health VO2max — wellness signal, NOT used for pace. */
+  /** Apple Health VO2max, wellness signal, NOT used for pace. */
   vo2MaxApple: ProfileApiVo2MaxApple;
   hrBlock: ProfileApiHrBlock;
   tier: ProfileApiTier;
   prefs: ProfileApiPref[];
-  /** True when no user_prefs row exists — UI surfaces "Using defaults". */
+  /** True when no user_prefs row exists, UI surfaces "Using defaults". */
   prefsAreDefaults: boolean;
   connections: ProfileApiConnection[];
   /** Active + retired shoes joined into a single list (retired hidden). */
@@ -312,7 +312,7 @@ interface ProfileApiOk {
   /** "1 RETIRE · 1 NEAR CAP" pin or null. */
   shoeWarnLabel: string | null;
   engine: ProfileApiEngineBlock;
-  /** Per-signal freshness map — drives the "Coach is watching" UI
+  /** Per-signal freshness map, drives the "Coach is watching" UI
    *  strip. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
 }
@@ -347,21 +347,21 @@ export async function GET(): Promise<Response> {
 
     const identity = buildIdentity(allRuns, year, profileRow);
 
-    // Lifetime PRs — naive across all activity history. Empty when no
+    // Lifetime PRs, naive across all activity history. Empty when no
     // runs are loaded; the page renders "No PRs logged yet".
     const lifetimePrs = buildLifetimePrs(allRuns, year);
     const newPrCount = lifetimePrs.filter((p) => p.isNew && !p.isEmpty).length;
     const hasPrThisYear = newPrCount > 0;
 
-    // Personal goals — DB-backed. Empty when no rows.
+    // Personal goals, DB-backed. Empty when no rows.
     const goals = goalRows.map(goalRowToApi);
     const goalsActive = goals.length;
 
-    // VDOT — real coach signal. Returns null block when state has no
+    // VDOT, real coach signal. Returns null block when state has no
     // valid recent race.
     const vdot = buildVdot(state);
 
-    // Apple Health VO2max — WELLNESS signal. Built into its own block
+    // Apple Health VO2max, WELLNESS signal. Built into its own block
     // for the VO2maxIsland on /profile and the Apple-row in the engine
     // card. The data-quality check fires ONLY at >20pt gap from VDOT;
     // 8-15 points is normal Apple over-estimation for trained runners.
@@ -371,20 +371,20 @@ export async function GET(): Promise<Response> {
     );
     const vo2MaxApple = buildVo2MaxApiBlock(appleSnapshot, vdot);
 
-    // HR — profile-backed for measured HRmax; Tanaka estimate from age.
+    // HR, profile-backed for measured HRmax; Tanaka estimate from age.
     // RHR + actual HRmax require HealthKit (M2) → null today.
     const hrBlock = buildHrBlock(profileRow);
 
     const tier = buildTier(state, year);
 
-    // Prefs — DB-backed. App-wide defaults surface when nothing logged.
+    // Prefs, DB-backed. App-wide defaults surface when nothing logged.
     const { prefs, prefsAreDefaults } = buildPrefs(prefsRow);
 
-    // Connections — Strava is real (we have activity cache); HealthKit
+    // Connections, Strava is real (we have activity cache); HealthKit
     // is currently not wired (M2). Garmin is "SOON".
     const connections = buildConnections(allRuns.length);
 
-    // Shoes — real DB-backed. Empty list when no rows (page renders
+    // Shoes, real DB-backed. Empty list when no rows (page renders
     // "no shoes logged" empty state).
     const shoes = buildShoeRows(dbShoes);
     const overCap = shoes.filter((s) => s.fraction >= 1).length;
@@ -393,7 +393,7 @@ export async function GET(): Promise<Response> {
       ? `${overCap > 0 ? `${overCap} RETIRE` : ''}${overCap > 0 && nearCap > 0 ? ' · ' : ''}${nearCap > 0 ? `${nearCap} NEAR CAP` : ''}`
       : null;
 
-    // Engine details — derived deterministic facts from state +
+    // Engine details, derived deterministic facts from state +
     // doctrine. Long-run cap reads state.volume.longestLast28Mi
     // and applies the 10% bump per Research/00a.
     const engine = buildEngineBlock(state, vdot, vo2MaxApple);
@@ -468,7 +468,7 @@ function buildIdentity(
   if (sinceLabel) runnerIdBits.push(sinceLabel);
   const idLabel = runnerIdBits.join(' · ');
 
-  // Lifetime stats — pulled from activities when available.
+  // Lifetime stats, pulled from activities when available.
   const lifetimeMi = runs.reduce((s, r) => s + r.distanceMi, 0);
   const lifetimeMiDisplay = lifetimeMi >= 1000
     ? (Math.round(lifetimeMi / 100) / 10).toFixed(1)
@@ -501,7 +501,7 @@ function buildIdentity(
       ? `${daysRun} UNIQUE DAYS`
       : 'NO DATA YET';
 
-  // Peak year — group by year, find max.
+  // Peak year, group by year, find max.
   const byYear = new Map<number, number>();
   for (const r of runs) {
     const y = Number(r.date.slice(0, 4));
@@ -521,14 +521,14 @@ function buildIdentity(
     }
   }
 
-  // Lifetime elevation gain — sum elevGainFt across every recorded activity.
+  // Lifetime elevation gain, sum elevGainFt across every recorded activity.
   const lifetimeElevFt = runs.reduce((sum, a) => sum + (a.elevGainFt ?? 0), 0);
   const everestCount = lifetimeElevFt > 0 ? lifetimeElevFt / 29029 : 0;
   const elevDisplay = lifetimeElevFt > 0
     ? lifetimeElevFt >= 1_000_000
       ? `${(lifetimeElevFt / 1_000_000).toFixed(1)}M`
       : `${Math.round(lifetimeElevFt / 1000)}K`
-    : '—';
+    : '-';
   const elevDetail = lifetimeElevFt > 0
     ? everestCount >= 1
       ? `~${everestCount.toFixed(1)}× EVEREST`
@@ -538,25 +538,25 @@ function buildIdentity(
   const kpis: ProfileApiKpi[] = [
     {
       label: 'LIFETIME MI',
-      value: runs.length > 0 ? lifetimeMiDisplay : '—',
+      value: runs.length > 0 ? lifetimeMiDisplay : '-',
       unit: runs.length > 0 ? lifetimeUnit : null,
       detail: sinceLabel ?? (runs.length > 0 ? 'ALL TIME' : 'NO DATA YET'),
     },
     {
       label: 'RACES',
-      value: raceCount > 0 ? String(raceCount) : '—',
+      value: raceCount > 0 ? String(raceCount) : '-',
       unit: null,
       detail: raceBreakdown,
     },
     {
       label: 'DAYS RUN',
-      value: daysRun > 0 ? daysRun.toLocaleString('en-US') : '—',
+      value: daysRun > 0 ? daysRun.toLocaleString('en-US') : '-',
       unit: null,
       detail: daysRunDetail,
     },
     {
       label: 'PEAK YEAR',
-      value: peakYearLabel != null && peakYearMi > 0 ? peakYearMi.toLocaleString('en-US') : '—',
+      value: peakYearLabel != null && peakYearMi > 0 ? peakYearMi.toLocaleString('en-US') : '-',
       unit: peakYearMi > 0 ? 'mi' : null,
       detail: peakYearLabel ?? 'NO DATA YET',
     },
@@ -580,10 +580,10 @@ function buildIdentity(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Lifetime PRs — produces 5 rows (5K, 10K, HALF, MARATHON, 50K).
+// Lifetime PRs, produces 5 rows (5K, 10K, HALF, MARATHON, 50K).
 // Uses naivePRs across all activity history. If a category was set
 // this year, it's marked NEW. Otherwise renders the AGE label.
-// No demo fallback — when there's no race history, every row is empty.
+// No demo fallback, when there's no race history, every row is empty.
 // ─────────────────────────────────────────────────────────────────────
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -660,7 +660,7 @@ function displayLabel(label: string): string {
 // `personal_goals` stores the raw fields (target/current/etc. as strings
 // chosen by the runner). The wire shape adds presentation: accent
 // colors, status pills, progress fractions. Status defaults to "ACTIVE"
-// until we run a status-evaluator against state — that lives in Coach
+// until we run a status-evaluator against state, that lives in Coach
 // engine territory and will land separately.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -703,7 +703,7 @@ function goalRowToApi(row: GoalRow): ProfileApiGoal {
     accent,
     statusLabel: 'ACTIVE',
     statusTone: 'coach',
-    currentValue: hasCurrent ? (row.current ?? '') : '—',
+    currentValue: hasCurrent ? (row.current ?? '') : '-',
     currentUnit: hasCurrent ? units.current : '',
     targetValue: row.target,
     targetUnit: units.target,
@@ -714,7 +714,7 @@ function goalRowToApi(row: GoalRow): ProfileApiGoal {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// VDOT — derived from coach state's race history.
+// VDOT, derived from coach state's race history.
 // ─────────────────────────────────────────────────────────────────────
 
 function buildVdot(state: CoachState): ProfileApiVdot {
@@ -757,7 +757,7 @@ function buildVo2MaxApiBlock(
       sourceLabel: null,
       statusLine:
         'Add your Apple Health VO2max for a trend display. ' +
-        'NOT used for training pace — race results drive your pace bands.',
+        'NOT used for training pace, race results drive your pace bands.',
       dataQualityWarning: null,
     };
   }
@@ -785,7 +785,7 @@ function buildVo2MaxApiBlock(
     sourceLabel: 'MANUAL',
     statusLine:
       'Tracked for trend display only. Apple Watch over-estimates VO2max by ' +
-      '8-15 points for trained runners — NOT used for pace targets.',
+      '8-15 points for trained runners, NOT used for pace targets.',
     dataQualityWarning: flag?.message ?? null,
   };
 }
@@ -800,19 +800,19 @@ function distanceLabel(distMi: number): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// HR block — Tanaka HRmax estimate from age. RHR + measured HRmax
+// HR block, Tanaka HRmax estimate from age. RHR + measured HRmax
 // require HealthKit (M2) → null today.
 // ─────────────────────────────────────────────────────────────────────
 
 function buildHrBlock(profile: ProfileRow | null): ProfileApiHrBlock {
-  // Tanaka et al. 2001 — HRmax = 208 − 0.7·age. Population-level
+  // Tanaka et al. 2001, HRmax = 208 − 0.7·age. Population-level
   // estimate; individual variance is ~10 bpm so this is a STARTING
   // point, not a replacement for a measured max.
   const hrMaxEstimate = profile?.age != null && profile.age > 0
     ? Math.round(208 - 0.7 * profile.age)
     : null;
   const hrMaxMeasured = profile?.hrmax ?? null;
-  // RHR requires HealthKit or manual entry — not on the profile row
+  // RHR requires HealthKit or manual entry, not on the profile row
   // path today. The `profile.rhr` column exists for forward-compat.
   const rhr = profile?.rhr ?? null;
 
@@ -844,7 +844,7 @@ function buildHrBlock(profile: ProfileRow | null): ProfileApiHrBlock {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Mileage tier — straight read of state.volume.
+// Mileage tier, straight read of state.volume.
 // ─────────────────────────────────────────────────────────────────────
 
 function buildTier(state: CoachState, year: number): ProfileApiTier {
@@ -859,7 +859,7 @@ function buildTier(state: CoachState, year: number): ProfileApiTier {
     ? `${delta >= 0 ? '▲' : '▼'} ${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(0)}% V8W`
     : null;
 
-  // Year-peak: scan state.volume.last7Days windows isn't enough — we
+  // Year-peak: scan state.volume.last7Days windows isn't enough, we
   // need the highest weekly rollup. Without a per-week year history in
   // state, we say "NO PEAK DATA YET" rather than fabricate.
   // weeklyAvg8w gives us a soft read but isn't a year peak.
@@ -964,7 +964,7 @@ function buildConnections(stravaActivityCount: number): ProfileApiConnection[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Shoes — real DB rows mapped into the row shape. Empty list when no
+// Shoes, real DB rows mapped into the row shape. Empty list when no
 // shoes have been logged.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -1019,9 +1019,9 @@ function buildShoeRows(shoes: Shoe[]): ProfileApiShoeRow[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Coach engine details — pace zones + long-run cap + easy share +
+// Coach engine details, pace zones + long-run cap + easy share +
 // cutback cadence. Long-run cap reads longestTrainingRunLast28Mi
-// (training-only — a 26mi race × 1.10 = unsafe 29mi prescription).
+// (training-only, a 26mi race × 1.10 = unsafe 29mi prescription).
 // In POST_RACE the cap anchors on preRaceLongestTrainingMi × 0.50
 // (50% restart, ramping back 2-3 weeks per Research/00b §Recovery
 // by Effort + marathon-specific recovery).
@@ -1069,14 +1069,14 @@ function buildEngineBlock(
       lead: longRunCap == null
         ? 'Long-run cap needs a recent training run. Log one to unlock the +10% bump.'
         : usePostRaceAnchor
-          ? `Post-race window — Coach holds next week's long to ${longRunCap.toFixed(1)} mi (~50% of pre-race long).`
-          : `The Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week — keeps the jump safe.`,
+          ? `Post-race window, Coach holds next week's long to ${longRunCap.toFixed(1)} mi (~50% of pre-race long).`
+          : `The Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week, keeps the jump safe.`,
       footEyebrow: longRunCap != null ? (usePostRaceAnchor ? 'WHY' : 'HOW') : '',
       footBody: longRunCap == null
         ? ''
         : usePostRaceAnchor && preRaceTraining != null
-          ? `You just raced — race efforts don't count as training progression. Pre-race longest training run was ${preRaceTraining.toFixed(1)} mi; the long rebuilds at ~50% (${longRunCap.toFixed(1)} mi) and ramps back over 2-3 weeks.`
-          : `Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi. Coach caps the next at +10% — races are excluded from this baseline.`,
+          ? `You just raced, race efforts don't count as training progression. Pre-race longest training run was ${preRaceTraining.toFixed(1)} mi; the long rebuilds at ~50% (${longRunCap.toFixed(1)} mi) and ramps back over 2-3 weeks.`
+          : `Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi. Coach caps the next at +10%, races are excluded from this baseline.`,
     },
     {
       eyebrow: 'EASY-PACE TARGET',
@@ -1101,7 +1101,7 @@ function buildEngineBlock(
     },
   ];
 
-  // Pace zone table — now computed from the numeric aggregate VDOT
+  // Pace zone table, now computed from the numeric aggregate VDOT
   // (state.aggregateVdotValue → pacesFromVdot), the same source the
   // training page + plan workouts use. Empty only when there's no VDOT.
   const paceSet = state.aggregateVdotValue ? pacesFromVdot(state.aggregateVdotValue) : null;
@@ -1113,13 +1113,13 @@ function buildEngineBlock(
     { label: 'Rep',       accent: 'red',    value: `${fmtPaceBand(paceSet.R)}/mi` },
   ] : [];
 
-  // Plan integrity — Wave H caught the prior hardcoded "12 of 12" pass
+  // Plan integrity, Wave H caught the prior hardcoded "12 of 12" pass
   // count, which never came from the engine. Until coach.engineDetails()
   // (or coach.weekValidation()) exposes a real validation surface, this
   // returns null and the UI renders NO DATA YET. Synthesizing pass/total
   // here would risk shipping a green checkmark when the engine has
   // silently regressed.
-  // TODO (Wave K — coach validation): wire to coach.engineDetails(state)
+  // TODO (Wave K, coach validation): wire to coach.engineDetails(state)
   // or count simulateWeek() outputs passing coach.weekValidation.
   const appleValueLabel = vo2MaxApple.value != null
     ? `${vo2MaxApple.value}${vo2MaxApple.sourceLabel ? ` · ${vo2MaxApple.sourceLabel}` : ''}`

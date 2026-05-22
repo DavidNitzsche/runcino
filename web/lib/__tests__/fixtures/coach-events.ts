@@ -1,5 +1,5 @@
 /**
- * Event-driven CoachState fixtures (Wave K) — what the coach does when
+ * Event-driven CoachState fixtures (Wave K), what the coach does when
  * *something happens mid-cycle*. The 7 archetypes in coach-states.ts
  * cover positions in a training cycle (post-race / build / peak / etc.);
  * this file covers the disruptions that actually test whether adaptive
@@ -19,15 +19,15 @@
  *   - We re-export the canonical CoachState type from web/lib/coach-state.
  *   - For the daily-checkin aggregate (state.checkin) we reference the
  *     CheckinAggregate shape from web/lib/checkin-aggregate and attach
- *     it as a structural augmentation — that field is in-flight (Wave F)
+ *     it as a structural augmentation, that field is in-flight (Wave F)
  *     and currently optional on the runtime path that reads it
  *     (`input.state.checkin?.poorDaysCount`). When the type formally
  *     lands we'll drop the `as CoachState` cast.
  *
  * Research grounding:
- *   - Research/00b §Warning Signs of Incomplete Recovery — qualitative
+ *   - Research/00b §Warning Signs of Incomplete Recovery, qualitative
  *     count → Decision Matrix (drives K1, K2, K6, K9).
- *   - Research/05 §1.4-1.5 — "volume before intensity"; rebuild after
+ *   - Research/05 §1.4-1.5, "volume before intensity"; rebuild after
  *     break; weeks-off ≈ weeks-to-rebuild-base (K3, K8, K9).
  *   - Research/02 §2 Riegel + Research/01 §VDOT calibration windows
  *     (K4, K5, K10).
@@ -37,7 +37,7 @@ import type { CoachState } from '../../coach-state';
 import type { CheckinAggregate } from '../../checkin-aggregate';
 
 // CoachState.checkin is required (Wave F). Every fixture in this file
-// sets it explicitly — null when the runner has no recent rows,
+// sets it explicitly, null when the runner has no recent rows,
 // populated when the event fixture leans on the check-in signal.
 type CoachStateWithCheckin = CoachState;
 
@@ -59,10 +59,10 @@ export function dayOffsetISO(daysFromToday: number, anchor: Date = new Date()): 
 export const TODAY_ISO = dayOffsetISO(0);
 
 // ─────────────────────────────────────────────────────────────────
-// Shared scaffolding — mid-build runner baseline shared across K1, K2,
+// Shared scaffolding, mid-build runner baseline shared across K1, K2,
 // K3, K6. Mirrors STATE_MID_BUILD_WEEK_4 (30 mpw, 10w to A-half).
 // Each event fixture derives from this so the only delta vs the baseline
-// is the triggering signal — failures point at the adaptive path.
+// is the triggering signal, failures point at the adaptive path.
 // ─────────────────────────────────────────────────────────────────
 /** Exported variant of the mid-build baseline so partner tests can use
  *  it as the apples-to-apples comparison point (e.g. "with bad checkins
@@ -126,10 +126,10 @@ function emptyCheckin(): CheckinAggregate {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// K1 — Bad single check-in mid-build.
+// K1, Bad single check-in mid-build.
 //   Yesterday's check-in: sleep ~4h proxied via low energy, soreness
 //   8/10, mood proxy = low energy too. poorDaysCount = 1 (just yesterday).
-//   Assertion: Coach is aware via state.checkin even at count=1 — but
+//   Assertion: Coach is aware via state.checkin even at count=1, but
 //   doctrine (Research/00b §Decision Matrix) only triggers the adaptive
 //   ladder at count≥2. K1 documents the count=1 case so K2 (count≥2)
 //   has a clean comparison point.
@@ -148,12 +148,12 @@ export const STATE_BAD_CHECKIN_TODAY: CoachStateWithCheckin = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K2 — Bad WEEK of check-ins mid-build.
+// K2, Bad WEEK of check-ins mid-build.
 //   Last 7 check-ins all "poor" (energy ≤4 OR soreness ≥7 OR stress ≥7).
-//   poorDaysCount = 7 — well past the Decision-Matrix cutback threshold
+//   poorDaysCount = 7, well past the Decision-Matrix cutback threshold
 //   (3+ signals → 50% cutback). Recovery also reflects: yesterday's run
 //   was hard (avgHr above the HARD_EFFORT default), and easyShare14d is
-//   under the build-phase target (0.70 vs 0.80 target) — so multiple
+//   under the build-phase target (0.70 vs 0.80 target), so multiple
 //   signals are firing in concert with the qualitative count.
 // ─────────────────────────────────────────────────────────────────
 export const STATE_BAD_WEEK_CHECKINS: CoachStateWithCheckin = (() => {
@@ -174,10 +174,10 @@ export const STATE_BAD_WEEK_CHECKINS: CoachStateWithCheckin = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K3 — Three skipped runs in a row mid-build.
-//   Same build baseline, but last7Mi cratered (12 instead of 30 — the
+// K3, Three skipped runs in a row mid-build.
+//   Same build baseline, but last7Mi cratered (12 instead of 30, the
 //   3 missed runs removed ~18mi). weeklyAvg4w stays at 31 (the prior
-//   weeks are unaffected). deltaPct4v4 negative — the engine should
+//   weeks are unaffected). deltaPct4v4 negative, the engine should
 //   read the volume gap, not paper over it. recovery.daysSinceLastRun
 //   = 3 + last7Days reflects the gap days.
 // ─────────────────────────────────────────────────────────────────
@@ -212,34 +212,34 @@ export const STATE_THREE_SKIPPED_RUNS: CoachState = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K4 — Bad B-race result (raced ~30s/mi slower than VDOT predicted).
+// K4, Bad B-race result (raced ~30s/mi slower than VDOT predicted).
 //   Runner has a prior 5K (12 weeks ago) that pegged VDOT ~49 (20:00).
-//   B-race was a 10K 2 days ago — VDOT 49 predicts ~41:35 (~6:42/mi).
+//   B-race was a 10K 2 days ago, VDOT 49 predicts ~41:35 (~6:42/mi).
 //   Actual 7:12/mi = 44:43 (~30 s/mi slow). Engine should flag this
 //   in retrospect + soften the next 14 days.
 //
 //   Implementation note: vdotSnapshot picks the STRONGEST recent race
 //   by computed VDOT. With both 5K and 10K present in `recent`, the
-//   slow 10K computes to a lower VDOT and gets dropped — so vdotSnapshot
+//   slow 10K computes to a lower VDOT and gets dropped, so vdotSnapshot
 //   will still return the 5K's VDOT. That's actually the bug we're
 //   testing for K4: retrospect needs to ALSO read state.races.recent
 //   for "what just happened" vs vdotSnapshot's "current fitness signal".
 // ─────────────────────────────────────────────────────────────────
 export const STATE_BAD_B_RACE_RESULT: CoachState = (() => {
   const base = buildMidBuildBase();
-  // Prior 5K — strong, 20:00 → VDOT ≈ 49
+  // Prior 5K, strong, 20:00 → VDOT ≈ 49
   const prior5k = {
     slug: 'spring-5k', activityId: 100, name: 'Spring 5K',
     date: dayOffsetISO(-26),  // inside the 28d recent window
     distanceMi: 3.1, finishS: 1200, daysAgo: 26,
   };
-  // Bad 10K — 44:43 (predicted ~41:35 → ~30s/mi slow)
+  // Bad 10K, 44:43 (predicted ~41:35 → ~30s/mi slow)
   const slow10k = {
     slug: 'bad-10k', activityId: 101, name: 'Off-Day 10K',
     date: dayOffsetISO(-2),
     distanceMi: 6.2, finishS: 2683, daysAgo: 2,
   };
-  // Move base A-race further out — we want runner to be in a building
+  // Move base A-race further out, we want runner to be in a building
   // posture, not tapering, so retrospect actually has a next cycle to
   // soften.
   const nextA = {
@@ -260,13 +260,13 @@ export const STATE_BAD_B_RACE_RESULT: CoachState = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K5 — Good B-race (raced ~20s/mi faster than VDOT predicted).
+// K5, Good B-race (raced ~20s/mi faster than VDOT predicted).
 //   Prior 5K 12wks ago at VDOT 49 (20:00). 10K B-race 2 days ago at
 //   38:30 (~6:13/mi) → predicted at VDOT 49 was 41:35 (~6:42/mi). So
 //   ~30s/mi faster, computing to VDOT ~53 from the 10K alone.
 //   Assertion: retrospect acknowledges; vdotSnapshot updates to the
 //   new 10K-derived ~53; but the engine must NOT linearly project a
-//   +4 VDOT jump — Daniels caps ~1.0/cycle for trained runners.
+//   +4 VDOT jump, Daniels caps ~1.0/cycle for trained runners.
 // ─────────────────────────────────────────────────────────────────
 export const STATE_GOOD_B_RACE_RESULT: CoachState = (() => {
   const base = buildMidBuildBase();
@@ -295,12 +295,12 @@ export const STATE_GOOD_B_RACE_RESULT: CoachState = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K6 — Heatwave / disruption.
+// K6, Heatwave / disruption.
 //   No env-disruption field exists on CoachState today. Modelled via
 //   poor check-in pattern (heat → poor sleep → low energy) +
 //   `last7Mi` at 60% of weeklyAvg4w (the runner couldn't log planned
 //   volume). The engine's adaptive layer should read both signals.
-//   Real env-flag is a documented GAP — surfaces in the final report.
+//   Real env-flag is a documented GAP, surfaces in the final report.
 // ─────────────────────────────────────────────────────────────────
 export const STATE_HEATWAVE_DISRUPTION: CoachStateWithCheckin = (() => {
   const base = buildMidBuildBase();
@@ -328,7 +328,7 @@ export const STATE_HEATWAVE_DISRUPTION: CoachStateWithCheckin = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K7 — Two B-races stacked within a week of an A-race.
+// K7, Two B-races stacked within a week of an A-race.
 //   A-race 14 days out. B-race day 7 (half the way there), B-race day
 //   10. Engine should:
 //     (a) decline to load up around the B-races, and
@@ -372,7 +372,7 @@ export const STATE_STACKED_B_RACES: CoachState = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K8 — Long streak then 5-day break.
+// K8, Long streak then 5-day break.
 //   60 consecutive run-days then a 5-day gap. Today: runner is back.
 //   Engine should: recognize the runner is fit (high last28Mi /
 //   weeklyAvg8w), but not pretend the streak is intact. Today gets a
@@ -385,10 +385,10 @@ export const STATE_STACKED_B_RACES: CoachState = (() => {
 // ─────────────────────────────────────────────────────────────────
 export const STATE_LONG_STREAK_THEN_BREAK: CoachState = (() => {
   const base = buildMidBuildBase();
-  // Prior fitness was strong — 50mpw average from the 60-day streak.
+  // Prior fitness was strong, 50mpw average from the 60-day streak.
   const weeklyAvg4w = 50, weeklyAvg8w = 50;
   // Last 7 days: 2 run days then a 5-day gap. Total ~12mi vs typical 50.
-  // 12 ≤ 100/4 * 0.30 = 7.5? No — 12 > 7.5. Need to drop more aggressively.
+  // 12 ≤ 100/4 * 0.30 = 7.5? No, 12 > 7.5. Need to drop more aggressively.
   // Use 6mi over the 2 active days only. 6 ≤ 50/4*0.30 = 3.75? Still not.
   // The trigger formula: last7Mi ≤ last28Mi/4 * 0.30 → last7Mi ≤ 200/4 * 0.30 = 15.
   // With last28Mi = 200 (4 weeks at 50mpw), last7Mi must be ≤15.
@@ -420,7 +420,7 @@ export const STATE_LONG_STREAK_THEN_BREAK: CoachState = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K9 — Returning from illness.
+// K9, Returning from illness.
 //   No `illness` flag exists on CoachState today (GAP). Modeled via
 //   strong proxy: 4 consecutive poor check-ins (low energy + high
 //   stress) + 0 runs in last 4 days. Engine should prescribe easy /
@@ -463,7 +463,7 @@ export const STATE_ILLNESS_RETURN: CoachStateWithCheckin = (() => {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-// K10 — First race in a new distance.
+// K10, First race in a new distance.
 //   Runner has 4 half-marathon races on file (best ~1:35 = VDOT ~50).
 //   No prior marathons. A-race is a MARATHON 12 weeks out.
 //   Assertion: raceFitnessPrediction should still produce a target
@@ -476,7 +476,7 @@ export const STATE_ILLNESS_RETURN: CoachStateWithCheckin = (() => {
 export const STATE_FIRST_MARATHON: CoachState = (() => {
   const base = buildMidBuildBase();
   const halfPRTime = 5700; // 1:35
-  // 4 halves — recent one within 28d so vdotSnapshot has a current source.
+  // 4 halves, recent one within 28d so vdotSnapshot has a current source.
   const halves = [
     { slug: 'h1', activityId: 200, name: 'Late Half', date: dayOffsetISO(-20), distanceMi: 13.1, finishS: halfPRTime, daysAgo: 20 },
     { slug: 'h2', activityId: 201, name: 'Earlier Half', date: dayOffsetISO(-25), distanceMi: 13.1, finishS: halfPRTime + 60, daysAgo: 25 },

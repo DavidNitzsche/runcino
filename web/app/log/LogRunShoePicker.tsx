@@ -4,7 +4,7 @@
  * /log · Custom designed shoe picker for the Recent Runs feed.
  *
  * Replaces the native <select> in designs/log-v4.html with a v4-styled
- * dropdown — trigger + panel + colored shoe dots + status pill. POSTs
+ * dropdown, trigger + panel + colored shoe dots + status pill. POSTs
  * the new assignment to /api/runs/:id/shoe on selection.
  */
 
@@ -95,7 +95,7 @@ export function LogRunShoePicker({ runId, currentShoeId, shoes }: Props) {
             <div>
               <div className="shoe-picker-option-name">{sh.name}</div>
               <div className="shoe-picker-option-meta">
-                {sh.purposes.map((p) => PURPOSE_LABEL[p] ?? p).join(' · ') || '—'}
+                {sh.purposes.map((p) => PURPOSE_LABEL[p] ?? p).join(' · ') || '-'}
               </div>
             </div>
             <span></span>

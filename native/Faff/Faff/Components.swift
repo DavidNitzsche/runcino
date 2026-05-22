@@ -31,7 +31,7 @@ enum FaffTab: String, CaseIterable {
     }
 }
 
-/// Bottom tab bar — 5 items, active = race orange (components.md §5).
+/// Bottom tab bar, 5 items, active = race orange (components.md §5).
 struct FaffTabBar: View {
     let active: FaffTab
     var onSelect: (FaffTab) -> Void = { _ in }
@@ -58,7 +58,7 @@ struct FaffTabBar: View {
     }
 }
 
-// MARK: - Sheet chrome (grab handle + close) — every sheet must be exitable
+// MARK: - Sheet chrome (grab handle + close), every sheet must be exitable
 
 struct SheetCloseButton: View {
     var action: () -> Void
@@ -276,7 +276,7 @@ struct ReadinessRing: View {
                     .rotationEffect(.degrees(135))
                 Text("\(score)").font(Faff.F.display(size * 0.46)).foregroundStyle(Faff.C.ink)
             } else {
-                Text("—").font(Faff.F.display(size * 0.42)).foregroundStyle(Faff.C.textFaint)
+                Text(", ").font(Faff.F.display(size * 0.42)).foregroundStyle(Faff.C.textFaint)
             }
         }
         .frame(width: size, height: size)
@@ -326,7 +326,7 @@ struct SignalRow: View {
 
 struct MetricTile: View {
     let label: String
-    var value: String           // "—" when no data
+    var value: String           // ", " when no data
     var unit: String? = nil
     var delta: String? = nil    // "↑ 6 · 7d" / "No data"
     enum DeltaTone { case good, watch, flat }

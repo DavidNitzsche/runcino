@@ -1,5 +1,5 @@
 /**
- * Doctrine — Race week protocol (taper + nutrition + sleep + warmup +
+ * Doctrine, Race week protocol (taper + nutrition + sleep + warmup +
  * caffeine + race kit + travel).
  *
  * Source: Research/08-pacing-and-race-week.md §§9-17
@@ -33,7 +33,7 @@ export const TAPER_BY_DISTANCE: Cited<Record<RaceDistanceTaper, {
     marathon:   { taperDaysLow: 14, taperDaysHigh: 21,  volumeReductionPctLow: 40, volumeReductionPctHigh: 60 },
     ultra:      { taperDaysLow: 14, taperDaysHigh: 28,  volumeReductionPctLow: 50, volumeReductionPctHigh: 70 },
   },
-  note: 'Largest cut is to easy mileage; intensity is preserved through the taper. Run frequency stays at ~80% of normal — don\'t suddenly add rest days. Add no novel workout types in final 10 days (creates fatigue without adaptation).',
+  note: 'Largest cut is to easy mileage; intensity is preserved through the taper. Run frequency stays at ~80% of normal, don\'t suddenly add rest days. Add no novel workout types in final 10 days (creates fatigue without adaptation).',
   citations: [
     cite('§9.1 Taper duration by distance', '5K 5-7d / 10K 7-10d / Half 10-14d / Marathon 14-21d / Ultra 14-28d. Volume reduction 25-70%.', 'research', '08'),
   ],
@@ -91,7 +91,7 @@ export const RACE_WEEK_TEMPLATES: Cited<Record<'marathon_sunday' | 'half_sunday'
       { day: 'Thu', workout: 'Easy + 4-6 strides',                                                  durationMinLow: 30, durationMinHigh: 40 },
       { day: 'Fri', workout: 'Shakeout: 20 min easy + 3 strides + 2 × 100m at 5K pace',            durationMinLow: 25, durationMinHigh: 30 },
       { day: 'Sat', workout: 'RACE',                                                                durationMinLow: 0,  durationMinHigh: 0  },
-      { day: 'Sun', workout: '(after race) — rest or recovery jog',                                durationMinLow: 0,  durationMinHigh: 30 },
+      { day: 'Sun', workout: '(after race), rest or recovery jog',                                durationMinLow: 0,  durationMinHigh: 30 },
     ],
     '5K_saturday': [
       { day: 'Mon', workout: 'Easy + 6 strides',                                                   durationMinLow: 35, durationMinHigh: 45 },
@@ -100,10 +100,10 @@ export const RACE_WEEK_TEMPLATES: Cited<Record<'marathon_sunday' | 'half_sunday'
       { day: 'Thu', workout: 'Easy + 4 strides',                                                    durationMinLow: 25, durationMinHigh: 35 },
       { day: 'Fri', workout: '15-20 min easy + 3 strides + 1 × 200m at race pace',                 durationMinLow: 20, durationMinHigh: 25 },
       { day: 'Sat', workout: 'RACE',                                                                durationMinLow: 0,  durationMinHigh: 0  },
-      { day: 'Sun', workout: '(after race) — rest or recovery jog',                                durationMinLow: 0,  durationMinHigh: 30 },
+      { day: 'Sun', workout: '(after race), rest or recovery jog',                                durationMinLow: 0,  durationMinHigh: 30 },
     ],
   },
-  note: '"Taper crud" / "taper madness" — fatigue, sluggish legs, irritability, sleeplessness, phantom pains — is normal. Resist the urge to test fitness. The work is done.',
+  note: '"Taper crud" / "taper madness", fatigue, sluggish legs, irritability, sleeplessness, phantom pains, is normal. Resist the urge to test fitness. The work is done.',
   citations: [
     cite('§9.3 Day-by-day race week templates', 'Marathon / half (Sunday race) + 10K / 5K (Saturday race) day-by-day templates', 'research', '08'),
   ],
@@ -128,7 +128,7 @@ export const CARB_LOAD_BY_DISTANCE: Cited<Record<RaceDistanceTaper, {
   },
   note: 'Glycogen supercompensation matters for races >90 min. Below that, normal training nutrition suffices. Marathon example (70 kg, 3-day load): T-3: 7-8 g/kg = 490-560 g; T-2: 9-10 g/kg = 630-700 g; T-1: 9-10 g/kg = 630-700 g. Errors: all-you-can-eat pasta dinner before (carbs store slowly, GI distress); high-fiber the day before; novel foods.',
   citations: [
-    cite('§10.1 Carb loading — by distance', '5K/10K normal 5-7 g/kg; HM 7-8 g/kg × 24-36h; Marathon 8-12 g/kg × 36-48h; Ultra 8-12 g/kg × 48-72h.', 'research', '08'),
+    cite('§10.1 Carb loading, by distance', '5K/10K normal 5-7 g/kg; HM 7-8 g/kg × 24-36h; Marathon 8-12 g/kg × 36-48h; Ultra 8-12 g/kg × 48-72h.', 'research', '08'),
   ],
 };
 
@@ -149,7 +149,7 @@ export const PRE_RACE_MEAL_PROTOCOL: Cited<{
       { hoursBeforeRace: 3,    carbsGPerKgLow: 2,   carbsGPerKgHigh: 3,   example: 'Oatmeal + banana + honey + coffee' },
       { hoursBeforeRace: 2,    carbsGPerKgLow: 1,   carbsGPerKgHigh: 2,   example: 'English muffin + jam + small banana' },
       { hoursBeforeRace: 1,    carbsGPerKgLow: 0.5, carbsGPerKgHigh: 1,   example: 'Banana + half bagel or 1 gel + sports drink' },
-      { hoursBeforeRace: 0.25, carbsGPerKgLow: 0.3, carbsGPerKgHigh: 0.4, example: 'One gel (25-30 g) — topping off' },
+      { hoursBeforeRace: 0.25, carbsGPerKgLow: 0.3, carbsGPerKgHigh: 0.4, example: 'One gel (25-30 g), topping off' },
     ],
     templates: [
       'Bagel + PB + jam + banana + coffee (3 h out)',
@@ -446,7 +446,7 @@ export const RACE_KIT_BY_WEATHER: Cited<Array<{
     { conditions: 'Heavy rain',                top: 'As above + body glide on chafe points', bottom: 'Shorts',                           accessories: 'Hat with brim' },
     { conditions: 'Snow / ice',                top: 'Long-sleeve base + lightweight wind',    bottom: 'Tights',                          accessories: 'Gloves, hat, screw-traction shoes if icy' },
   ],
-  note: 'Race shoe must have ≥40 miles of training use, ideally with at least one MP long run. For marathon, race shoe should have ≤200-250 miles to preserve foam responsiveness. Backup shoe ready at gear check. Socks tested, mid-thickness, wool or synthetic blend — never cotton.',
+  note: 'Race shoe must have ≥40 miles of training use, ideally with at least one MP long run. For marathon, race shoe should have ≤200-250 miles to preserve foam responsiveness. Backup shoe ready at gear check. Socks tested, mid-thickness, wool or synthetic blend, never cotton.',
   citations: [
     cite('§17.2-17.3 Kit selection by weather + Shoe selection', '8 weather conditions → kit. Shoe ≥40 mi training, ≤200-250 mi race. Cotton sock prohibition.', 'research', '08'),
   ],

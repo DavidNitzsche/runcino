@@ -1,5 +1,5 @@
 /**
- * POST /api/profile/writeback — toggle the strava_writeback setting.
+ * POST /api/profile/writeback, toggle the strava_writeback setting.
  * Body: { enabled: boolean }
  */
 

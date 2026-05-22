@@ -6,7 +6,7 @@
  *   - cratered volume
  *   - rebuild-after-break
  *   - B-race in window
- *   - bad race result (negative path — no fabrication)
+ *   - bad race result (negative path, no fabrication)
  *   - idempotency: running twice produces same plan
  */
 
@@ -63,7 +63,7 @@ async function buildTestPlan(state: CoachState): Promise<Plan> {
   });
 }
 
-const TODAY = '2026-05-12'; // Tuesday in this fixture — falls inside week 0 quality slot
+const TODAY = '2026-05-12'; // Tuesday in this fixture, falls inside week 0 quality slot
 
 describe('isCrateredVolume', () => {
   it('fires when last7 < 70% of avg4', () => {
@@ -90,11 +90,11 @@ describe('isCrateredVolume', () => {
   });
 });
 
-describe('adaptPlan — checkin triggers', () => {
+describe('adaptPlan, checkin triggers', () => {
   it('checkin.poorDaysCount = 4 → today quality becomes recovery + citation', async () => {
     const state = makeState({ now: TODAY, checkin: makeCheckin(4) });
     const plan = await buildTestPlan(state);
-    // Find today's workout — make sure it's quality first so the test is meaningful.
+    // Find today's workout, make sure it's quality first so the test is meaningful.
     const todayBefore = plan.weeks.flatMap(w => w.workouts).find(w => w.dateISO === TODAY)!;
     expect(todayBefore).toBeDefined();
     // Force today's workout to be a quality (Tue should already be one).
@@ -121,7 +121,7 @@ describe('adaptPlan — checkin triggers', () => {
     expect(todayAfter.mutations.length).toBe(0);
   });
 
-  it('idempotent — running adaptPlan twice produces same final state', async () => {
+  it('idempotent, running adaptPlan twice produces same final state', async () => {
     const state = makeState({ now: TODAY, checkin: makeCheckin(4) });
     const plan = await buildTestPlan(state);
     const once = await adaptPlan(plan, state, TODAY, { persist: false });
@@ -134,7 +134,7 @@ describe('adaptPlan — checkin triggers', () => {
   });
 });
 
-describe('adaptPlan — volume crater', () => {
+describe('adaptPlan, volume crater', () => {
   it('next week ramps from last7 × 1.10', async () => {
     const state = makeState({
       now: TODAY,
@@ -165,7 +165,7 @@ describe('adaptPlan — volume crater', () => {
   });
 });
 
-describe('adaptPlan — rebuild after break', () => {
+describe('adaptPlan, rebuild after break', () => {
   it('next 3-5 days suppress quality', async () => {
     const state = makeState({
       now: TODAY,
@@ -174,7 +174,7 @@ describe('adaptPlan — rebuild after break', () => {
     const plan = await buildTestPlan(state);
     // Find a quality workout in the next 5 days. In BASE phase there is
     // one quality (Tue) per week. May 12 is Tue (TODAY); look at next Tue
-    // May 19 — but that's >5 days out. So pick TODAY's quality and
+    // May 19, but that's >5 days out. So pick TODAY's quality and
     // confirm it gets suppressed.
     const todayWk = plan.weeks.flatMap(w => w.workouts).find(w => w.dateISO === TODAY)!;
     expect(todayWk.isQuality).toBe(true);
@@ -230,7 +230,7 @@ describe('detectPositiveDrift', () => {
   });
 });
 
-describe('adaptPlan — positive drift', () => {
+describe('adaptPlan, positive drift', () => {
   it('bumps next week workouts when running well above plan', async () => {
     const plan = await buildTestPlan(makeState({ now: TODAY }));
     const prescribedMi = plan.weeks[0].workouts.reduce((s, w) => s + w.distanceMi, 0);
@@ -261,7 +261,7 @@ describe('adaptPlan — positive drift', () => {
     expect(driftMuts[0].citation).toContain('Research/00a');
   });
 
-  it('is idempotent — double-apply does not compound the bump', async () => {
+  it('is idempotent, double-apply does not compound the bump', async () => {
     const plan = await buildTestPlan(makeState({ now: TODAY }));
     const prescribedMi = plan.weeks[0].workouts.reduce((s, w) => s + w.distanceMi, 0);
     const state = makeState({
@@ -286,7 +286,7 @@ describe('adaptPlan — positive drift', () => {
   });
 });
 
-describe('adaptPlan — B-race in window', () => {
+describe('adaptPlan, B-race in window', () => {
   it('B-race day → race workout; ±2 → no quality', async () => {
     const bRaceISO = '2026-05-23';  // Saturday inside week 2 of plan
     const state = makeState({

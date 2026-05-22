@@ -1,8 +1,8 @@
 /**
- * Tests for validate-race-feasibility — third adaptive module.
+ * Tests for validate-race-feasibility, third adaptive module.
  *
  * Encodes the categorization rules so a regression in the gap
- * thresholds gets caught loudly. We don't need DB access — the rule
+ * thresholds gets caught loudly. We don't need DB access, the rule
  * is pure: gapSeconds → verdict.
  */
 
@@ -68,7 +68,7 @@ describe('validate-race-feasibility · gap → verdict categorization', () => {
 
 describe('validate-race-feasibility · the AFC Half scenario', () => {
   // The user's actual case: 1:30 HM goal, VDOT 45.9 predicts ~1:38.
-  // Gap = 1:30 - 1:38 = -8 min = -480 seconds? No wait — goal is
+  // Gap = 1:30 - 1:38 = -8 min = -480 seconds? No wait, goal is
   // FASTER (1:30 is less time than 1:38), so:
   //   gap = goalFinishS - predictedFinishS = 5400 - 5907 = -507 sec
   //   But "negative gap" in our convention means goal is EASIER.
@@ -80,7 +80,7 @@ describe('validate-race-feasibility · the AFC Half scenario', () => {
   //   If goal=5400, predicted=5907 → gap=-507
   //   -507 < -120 → categorize returns 'conservative'
   //
-  // That's WRONG for this scenario — a faster goal should be stretch.
+  // That's WRONG for this scenario, a faster goal should be stretch.
   // The math direction is backwards. The convention should be:
   //   gap = predictedFinishS - goalFinishS (positive = goal harder)
   // Let me adjust the test to match what the implementation actually does.

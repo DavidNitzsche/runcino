@@ -8,7 +8,7 @@
 //
 //  Only the fields the UI consumes are modeled; JSONDecoder ignores the
 //  rest of the (large) envelope. Verified shapes against the live route
-//  on 2026-05-19 — no invented fields.
+//  on 2026-05-19, no invented fields.
 //
 
 import Foundation
@@ -36,15 +36,15 @@ struct OverviewResponse: Decodable {
     /// Actual miles logged per day this week (dateISO → mi). Drives
     /// honest "done" markers. Empty/absent for anonymous reads.
     let completedByDate: [String: Double]?
-    /// Dates the runner deliberately SKIPPED this week — distinct from a
+    /// Dates the runner deliberately SKIPPED this week, distinct from a
     /// missed/unlogged day so the strip + heroes can mark them differently.
     let skippedDates: [String]?
-    /// Recent coach plan adaptations (last 7d), grouped by reason — drives the
+    /// Recent coach plan adaptations (last 7d), grouped by reason, drives the
     /// dismissible "Coach updated your plan" card. `adaptationsLatestTs` lets
     /// the card show only when there's something newer than last dismissed.
     let coachAdaptations: [OCoachAdaptation]?
     let adaptationsLatestTs: String?
-    /// BIG adaptations awaiting the runner's approve/skip. NOT yet applied —
+    /// BIG adaptations awaiting the runner's approve/skip. NOT yet applied, 
     /// the workout keeps its current values until accepted. Each carries the
     /// mutation ids to POST to /api/plan/adaptations/act.
     let pendingAdaptations: [OPendingAdaptation]?
@@ -56,7 +56,7 @@ struct OverviewResponse: Decodable {
     let readinessScore: Int?
     let readinessState: String?   // "green" | "yellow" | "red"
     let readinessRecommendation: String?  // verbatim coach copy (web parity)
-    /// Transparent score breakdown — each signal that moved the score off
+    /// Transparent score breakdown, each signal that moved the score off
     /// baseline, with its delta + note. Drives the readiness detail sheet.
     let readinessInputs: [OReadinessInput]?
     /// Signals not yet feeding the score (sleep, mileage-vs-plan, etc.).
@@ -122,7 +122,7 @@ struct OVolume: Decodable {
 }
 struct OFlags: Decodable { let healthKitAvailable: Bool? }
 
-/// CoachDecision<T> envelope — we only read `answer`.
+/// CoachDecision<T> envelope, we only read `answer`.
 struct CoachAnswer<T: Decodable>: Decodable { let answer: T }
 
 struct OWorkout: Decodable {
@@ -135,7 +135,7 @@ struct OWorkout: Decodable {
     let hrZone: Int?                 // e.g. 2  (NOT a string)
     let phaseLabel: String?          // e.g. "Post-race recovery"
     let coachToday: OCoachToday?     // structured object
-    let voiceLead: String?           // prose — used for the detail "why"
+    let voiceLead: String?           // prose, used for the detail "why"
 }
 
 struct OCoachToday: Decodable {
@@ -189,7 +189,7 @@ struct ODescription: Decodable {
     let steps: [OStep]?
 }
 
-/// One recipe step — either `simple` (name/duration/pace/zone) or `loop`
+/// One recipe step, either `simple` (name/duration/pace/zone) or `loop`
 /// (name/times/items). Both kinds decode into this one struct; the
 /// unused fields stay nil.
 struct OStep: Decodable {
@@ -286,7 +286,7 @@ struct OPendingAdaptation: Decodable, Identifiable {
     var id: String { reason }
 }
 
-// MARK: - Full plan (GET /api/plan-range) — every week as built
+// MARK: - Full plan (GET /api/plan-range), every week as built
 
 struct PlanRangeResponse: Decodable {
     let ok: Bool
@@ -301,7 +301,7 @@ struct PlanRangeDay: Decodable, Identifiable {
     let type: String?            // RunWorkoutType ("general_aerobic","long_steady","threshold","rest"…)
     let label: String?
     let distanceMi: Double?
-    let description: String?     // workout notes ("Easy run — conversational pace…")
+    let description: String?     // workout notes ("Easy run, conversational pace…")
     let paceTargetSPerMi: OPaceBand?
     let isQuality: Bool?
     let isLong: Bool?
@@ -319,7 +319,7 @@ struct PlanRangeDay: Decodable, Identifiable {
         guard let mi = distanceMi, mi > 0, let actual = completedMi else { return false }
         return actual >= mi * 0.6
     }
-    /// Logged a run but under 60% of plan — "short", not done, not missed.
+    /// Logged a run but under 60% of plan, "short", not done, not missed.
     var isShort: Bool {
         guard let mi = distanceMi, mi > 0, let actual = completedMi, actual > 0 else { return false }
         return actual < mi * 0.6
@@ -431,7 +431,7 @@ struct RaceBriefAdjustment: Decodable, Identifiable {
     var id: Int { phaseIdx ?? 0 }
 }
 
-/// Race projection — same math as the /races/[slug] web page
+/// Race projection, same math as the /races/[slug] web page
 /// (computeAggregateVdot) so iPhone and web agree for the same user.
 struct RaceProjection: Decodable {
     let currentVdot: Double?
@@ -663,7 +663,7 @@ struct RunRecap: Decodable {
     let endLatLng: [Double]?
 
     var durationDisplay: String {
-        guard let s = movingTimeS, s > 0 else { return "—" }
+        guard let s = movingTimeS, s > 0 else { return ", " }
         let t = Int(s); let h = t / 3600, m = (t % 3600) / 60, sec = t % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
@@ -704,7 +704,7 @@ enum OverviewAPI {
         // it silently returns anonymous 'me' data with userId-gated fields
         // (readiness, connectors) empty. The reactive 401-refresh in FaffAPI
         // never fires here. So if we HAD a token but the server says we weren't
-        // authenticated, the token is stale — refresh once and retry.
+        // authenticated, the token is stale, refresh once and retry.
         if first.authenticated == false, TokenStore.shared.accessToken != nil {
             if await FaffAPI.shared.refreshAccessToken() {
                 return try await fetchOnce()
@@ -738,7 +738,7 @@ enum OverviewAPI {
 enum OverviewFormat {
     /// Distance number, integer when whole. nil → em dash.
     static func distance(_ mi: Double?) -> String {
-        guard let mi else { return "—" }
+        guard let mi else { return ", " }
         return mi == mi.rounded() ? String(Int(mi)) : String(format: "%.1f", mi)
     }
     /// "7:11" from 431 s/mi. nil → "Easy" (an easy run has no pace gate).
@@ -772,7 +772,7 @@ enum OverviewFormat {
 
 /// The scheduled workout for today. Prefers `planWeekWorkouts` (the plan
 /// artifact the web renders) over `workout.answer` (the route flags that
-/// as the OLD engine — it can say "General aerobic" when the plan says
+/// as the OLD engine, it can say "General aerobic" when the plan says
 /// threshold). Falls back to the old engine only if the plan is missing.
 struct DerivedWorkout {
     let type: String
@@ -878,10 +878,10 @@ struct DerivedWorkout {
         return nice
     }
     /// The lead phrase of the notes (before the em dash) is the workout's
-    /// name, e.g. "Cruise intervals — warm up…" → "Cruise intervals".
+    /// name, e.g. "Cruise intervals, warm up…" → "Cruise intervals".
     static func notesName(_ notes: String?) -> String? {
         guard let n = notes else { return nil }
-        let lead = (n.components(separatedBy: "—").first ?? n)
+        let lead = (n.components(separatedBy: "-").first ?? n)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (2...40).contains(lead.count) ? lead : nil
     }
@@ -890,13 +890,13 @@ struct DerivedWorkout {
 extension OverviewResponse {
     var planToday: OPlanDay? { planWeekWorkouts?.first { $0.dateISO == today } }
     /// A plan day is "done" only when a real run covered ≥60% of the
-    /// planned distance — not merely because the date is in the past.
+    /// planned distance, not merely because the date is in the past.
     func isPlanDayDone(_ d: OPlanDay) -> Bool {
         guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
         let actual = completedByDate?[date] ?? 0
         return actual >= planned * 0.6
     }
-    /// Logged a run, but under 60% of the planned distance — "short", which is
+    /// Logged a run, but under 60% of the planned distance, "short", which is
     /// neither done/on-plan nor missed (they did run something).
     func isPlanDayShort(_ d: OPlanDay) -> Bool {
         guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
@@ -943,7 +943,7 @@ extension OverviewResponse {
     /// in the detail sheet.
     var readinessSummary: String {
         guard readinessScore != nil else {
-            return "No readiness score yet — it posts once your recent runs and vitals have synced."
+            return "No readiness score yet, it posts once your recent runs and vitals have synced."
         }
         let rec = (readinessRecommendation ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let inputs = readinessInputs ?? []

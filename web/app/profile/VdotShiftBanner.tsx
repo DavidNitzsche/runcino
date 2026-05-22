@@ -66,7 +66,7 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
         throw new Error(j?.error || `HTTP ${res.status}`);
       }
       // Soft hide for dismiss/investigate so the page doesn't reload
-      // for a 30-day or 24-hour suppression — the banner already
+      // for a 30-day or 24-hour suppression, the banner already
       // marked itself dismissed server-side. Apply reloads to refresh
       // the aggregate-VDOT-display surfaces (Coach Reads pace bands).
       if (action === 'apply') {
@@ -116,8 +116,8 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
 
       <div style={{ marginBottom: 12, color: 'rgba(8,8,8,.70)', fontSize: 12.5 }}>
         {isUp
-          ? `A ${absShift.toFixed(1)}-point bump usually means a fresh race result landed faster than your aggregate. Worth checking what changed — every aggregate contributor is visible below.`
-          : `A ${absShift.toFixed(1)}-point drop usually means a recent race underperformed your aggregate. Worth checking the context — sickness, heat, hilly course, race effort — before accepting the new value.`}
+          ? `A ${absShift.toFixed(1)}-point bump usually means a fresh race result landed faster than your aggregate. Worth checking what changed, every aggregate contributor is visible below.`
+          : `A ${absShift.toFixed(1)}-point drop usually means a recent race underperformed your aggregate. Worth checking the context, sickness, heat, hilly course, race effort, before accepting the new value.`}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>

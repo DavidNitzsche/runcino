@@ -34,7 +34,7 @@ interface RaceHrRow {
 }
 
 function fmtTime(s: number | null): string {
-  if (s == null || s <= 0) return '—';
+  if (s == null || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);
@@ -87,7 +87,7 @@ export async function GET() {
     const ratio = avg && storedMaxHr ? avg / storedMaxHr : null;
     const ratioPct = ratio != null ? Math.round(ratio * 100) : null;
 
-    // LTHR thresholds — trained runners sustain at most ~92% of true
+    // LTHR thresholds, trained runners sustain at most ~92% of true
     // max for HM, ~95% for 10K, ~98% for 5K. Above those caps, the
     // stored max is suspect.
     let lthrCap: number | null = null;
@@ -118,9 +118,9 @@ export async function GET() {
       lthrCapBpm: lthrCap,
       suspect,
       note: suspect && lthrCap
-        ? `avg HR ${avg} > LTHR cap ${lthrCap} (${lthrCapPct}% of stored ${storedMaxHr}) — stored max is probably too low`
+        ? `avg HR ${avg} > LTHR cap ${lthrCap} (${lthrCapPct}% of stored ${storedMaxHr}), stored max is probably too low`
         : ratio != null
-        ? `avg ${ratioPct}% of stored max — within LTHR band`
+        ? `avg ${ratioPct}% of stored max, within LTHR band`
         : null,
     };
   });
@@ -132,7 +132,7 @@ export async function GET() {
       racesAnalyzed: races.length,
       suspectRaces: races.filter((r) => r.suspect).length,
       hint: races.some((r) => r.suspect)
-        ? 'At least one race shows avg HR above the LTHR cap for its distance — stored max HR is probably too low. Review the suspect rows.'
+        ? 'At least one race shows avg HR above the LTHR cap for its distance, stored max HR is probably too low. Review the suspect rows.'
         : 'All races show avg HR within the LTHR cap. Stored max HR looks consistent with race performance.',
     },
   });

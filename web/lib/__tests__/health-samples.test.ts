@@ -2,7 +2,7 @@
  * Tests for the HealthKit ingest validation layer.
  *
  * Storage paths (DB writes) are exercised via integration; this file
- * locks the validation rules — what's accepted vs rejected — so a
+ * locks the validation rules, what's accepted vs rejected, so a
  * future agent can't quietly broaden the plausibility ranges or
  * relax the date-format check.
  */

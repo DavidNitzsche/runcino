@@ -1,5 +1,5 @@
 /**
- * Doctrine §7 — Marathon nutrition and fueling.
+ * Doctrine §7, Marathon nutrition and fueling.
  *
  * Extracted from docs/coaching-research.md §7.1, §7.2, §7.3, §7.4.
  * Carb intake during, before, and around training; hydration; daily
@@ -89,7 +89,7 @@ export const HYDRATION: Cited<{
   ],
 };
 
-/** Hot-day adjustment — bump carb target. */
+/** Hot-day adjustment, bump carb target. */
 export const HEAT_CARB_BUMP: Cited<{
   ifTempFAbove: number;
   bumpGPerHr: number;
@@ -114,7 +114,7 @@ export const DAILY_TRAINING_NUTRITION: Cited<{
     carbsGPerKgHighVolumeWeek: 10,
     proteinGPerKgPerDayLow: 1.6, proteinGPerKgPerDayHigh: 2.0,
   },
-  note: 'Underfueling daily training is the most common nutrition mistake — primary contributor to injury, illness, stalled progress, and RED-S.',
+  note: 'Underfueling daily training is the most common nutrition mistake, primary contributor to injury, illness, stalled progress, and RED-S.',
   citations: [
     cite('§7.4', '5 to 8 g/kg/day of carbohydrate for general training, up to 10 g/kg/day for high-volume weeks'),
     cite('§7.4', 'Protein 1.6 to 2.0 g/kg/day to support recovery'),

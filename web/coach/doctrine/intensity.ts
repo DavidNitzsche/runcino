@@ -1,5 +1,5 @@
 /**
- * Doctrine §3 — Training intensity distribution.
+ * Doctrine §3, Training intensity distribution.
  *
  * Extracted from docs/coaching-research.md §3.1 and §3.2.
  *
@@ -7,16 +7,16 @@
  * pyramidal, threshold) and the rule for selecting between them based
  * on training phase, race distance, and weekly volume.
  *
- * No logic here. This file is data — every number is followed by a
+ * No logic here. This file is data, every number is followed by a
  * Citation pointing to the research line that justifies it.
  */
 import { cite, type Cited } from './cite';
 
 /** Percentage breakdown of weekly training time across intensity zones.
  *  Zones follow the LT1 / LT2 boundaries the research uses:
- *    easyPct      — below LT1 (Z1)
- *    thresholdPct — between LT1 and LT2 (Z2)
- *    hardPct      — above LT2 (Z3) */
+ *    easyPct, below LT1 (Z1)
+ *    thresholdPct, between LT1 and LT2 (Z2)
+ *    hardPct, above LT2 (Z3) */
 export interface IntensityDistribution {
   easyPct: number;
   thresholdPct: number;
@@ -87,7 +87,7 @@ export const PHASE_DISTRIBUTION_RECOMMENDATION: Cited<{
 /** Volume thresholds at which Seiler observed model self-selection.
  *  Below ~350 hr/yr, athletes naturally drift to threshold-heavy
  *  distributions; above ~750 hr/yr they trend polarized/pyramidal.
- *  Used as a sanity check — if the user's total volume is far below
+ *  Used as a sanity check, if the user's total volume is far below
  *  350 hr/yr the coach may downweight pure polarized prescriptions. */
 export const VOLUME_MODEL_THRESHOLDS: Cited<{
   thresholdModelBelowHrPerYr: number;
@@ -107,7 +107,7 @@ export const VOLUME_MODEL_THRESHOLDS: Cited<{
 
 /** Bakken/Ingebrigtsen double-threshold rule. Documented for the
  *  Coach to reference when an athlete asks for "two threshold sessions
- *  today" — the rule says they must be deliberately sub-LT2, not two
+ *  today", the rule says they must be deliberately sub-LT2, not two
  *  tempos. The split-singles fallback is what we'd actually prescribe
  *  for an amateur. */
 export const NORWEGIAN_DOUBLE_THRESHOLD: Cited<{

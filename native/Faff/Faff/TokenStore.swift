@@ -3,7 +3,7 @@
 //  Faff
 //
 //  Secure storage for auth tokens.  Uses Keychain (the Apple-canonical
-//  pattern for credentials) — not UserDefaults, which is plaintext-
+//  pattern for credentials), not UserDefaults, which is plaintext-
 //  readable by anyone with filesystem access.
 //
 //  Two tokens are managed here:
@@ -12,7 +12,7 @@
 //    refreshToken · long-lived rotation · 90d TTL · used when access expires
 //
 //  Both are stored under the same service identifier ("run.faff.app").
-//  Clearing one clears both — logout is atomic.
+//  Clearing one clears both, logout is atomic.
 //
 //  Created on 2026-05-19 · Phase 2 iPhone bridge work.
 //

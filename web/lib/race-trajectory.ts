@@ -2,8 +2,8 @@
  * V3 · Race countdown trajectory directional indicator
  *
  * Surfaces "ahead / on-track / behind / collecting-evidence" on the
- * A-race hero card. Reads the L7 signal evidence layer — same verdict
- * the /profile Coach Reads card consumes — and reduces it to one of
+ * A-race hero card. Reads the L7 signal evidence layer, same verdict
+ * the /profile Coach Reads card consumes, and reduces it to one of
  * four states for the race-page display.
  *
  * STATES + GATING (locked with David round 5):
@@ -18,7 +18,7 @@
  *                          Gap not closing OR widening.
  *   COLLECTING_EVIDENCE  · Insufficient data, OR signals disagree, OR
  *                          all signals silent. Honest "we don't know yet"
- *                          state — DOES NOT default to a confident
+ *                          state, DOES NOT default to a confident
  *                          positive read.
  *
  * Per CLAUDE.md Rule 2 (falsifier-required): each state carries a
@@ -61,7 +61,7 @@ export async function computeRaceTrajectory(
   today: Date = new Date(),
 ): Promise<RaceTrajectory> {
   // Pull the same verdict the Coach Reads card uses. This is the
-  // single source of truth for L7 signal fire state — V3 doesn't
+  // single source of truth for L7 signal fire state, V3 doesn't
   // re-evaluate signals, it reads the existing verdict's signal
   // shape.
   const agg = await computeAggregateVdot(userId);
@@ -77,7 +77,7 @@ export async function computeRaceTrajectory(
       state: 'collecting-evidence',
       signals: { s1: 'silent', s2: 'silent', s3: 'silent' },
       headline: COLLECTING_EVIDENCE,
-      falsifier: `${COLLECTING_EVIDENCE} — need 3+ threshold workouts (Signal 1), 10+ Z2 mile-splits per 4-week window (Signal 2), or 3+ interval sessions (Signal 3) to read trajectory.`,
+      falsifier: `${COLLECTING_EVIDENCE}, need 3+ threshold workouts (Signal 1), 10+ Z2 mile-splits per 4-week window (Signal 2), or 3+ interval sessions (Signal 3) to read trajectory.`,
     };
   }
 
@@ -105,7 +105,7 @@ export async function computeRaceTrajectory(
       state: 'collecting-evidence',
       signals,
       headline: 'Collecting evidence · signals disagree',
-      falsifier: `${SIGNALS_CONFLICTED} — ${upCount} pointing up, ${downCount} pointing down this period. Resolution pending: a third corroborating observation in either direction would break the tie. Most likely one window had a non-representative sample.`,
+      falsifier: `${SIGNALS_CONFLICTED}, ${upCount} pointing up, ${downCount} pointing down this period. Resolution pending: a third corroborating observation in either direction would break the tie. Most likely one window had a non-representative sample.`,
     };
   }
 
@@ -124,7 +124,7 @@ export async function computeRaceTrajectory(
       state: 'ahead',
       signals,
       headline: 'Ahead · trending faster than goal pace requires',
-      falsifier: 'A reversal in any firing signal — single slow threshold OR 5+ s/mi Z2 regression OR slower interval — would weaken this read.',
+      falsifier: 'A reversal in any firing signal, single slow threshold OR 5+ s/mi Z2 regression OR slower interval, would weaken this read.',
     };
   }
 
@@ -133,7 +133,7 @@ export async function computeRaceTrajectory(
       state: 'on-track',
       signals,
       headline: 'On track · single corroborating signal',
-      falsifier: "A second corroborating signal — we'd revise to 'ahead.' A reversal in the firing signal — we'd revise to 'collecting evidence.'",
+      falsifier: "A second corroborating signal, we'd revise to 'ahead.' A reversal in the firing signal, we'd revise to 'collecting evidence.'",
     };
   }
 
@@ -142,6 +142,6 @@ export async function computeRaceTrajectory(
     state: 'collecting-evidence',
     signals,
     headline: `${COLLECTING_EVIDENCE} · signals stable`,
-    falsifier: `${COLLECTING_EVIDENCE} — signals are within noise floor (±5 s/mi for pace, gating thresholds for HR). Trajectory direction requires at least one signal to fire above its threshold.`,
+    falsifier: `${COLLECTING_EVIDENCE}, signals are within noise floor (±5 s/mi for pace, gating thresholds for HR). Trajectory direction requires at least one signal to fire above its threshold.`,
   };
 }

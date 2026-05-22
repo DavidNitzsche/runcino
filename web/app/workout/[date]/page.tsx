@@ -1,5 +1,5 @@
 /**
- * /workout/[date] — single-session workout detail.
+ * /workout/[date], single-session workout detail.
  *
  * Reads the active plan from the DB and shows the actual scheduled
  * workout for the requested date. Falls back gracefully when no plan
@@ -7,6 +7,7 @@
  */
 
 import Link from 'next/link';
+import { approxDuration } from '@/lib/duration';
 import { Caption } from '../../../components/nav';
 import { Topbar } from '../../components/Topbar';
 import { TopbarClock } from '../../components/TopbarClock';
@@ -87,7 +88,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
     ? fmtPace(workout.paceTargetSPerMi)
     : paces?.E
     ? `${fmtPace(paces.E.lowS)}–${fmtPace(paces.E.highS)}`
-    : '—';
+    : '-';
 
   // Breadcrumb date display.
   const dateObj = new Date(date + 'T12:00:00Z');
@@ -104,7 +105,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
   const subLabel = workout?.subLabel;
 
   // Structure + effort + why from the SAME describeWorkout the overview
-  // modal and the iPhone use — no bespoke warm-up/main/cool-down split.
+  // modal and the iPhone use, no bespoke warm-up/main/cool-down split.
   const fitness: ResolvedFitness | null = paces
     ? ({
         paces,
@@ -141,7 +142,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
           {workout ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 14 }}>
 
-              {/* LEFT — workout body */}
+              {/* LEFT, workout body */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
                 {/* Hero */}
@@ -185,8 +186,8 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                     }}>
                       <Kpi value={totalMi.toFixed(1)} unit="mi" label="Distance" />
                       <Kpi
-                        value={`~${Math.round((totalMi * (workout.paceTargetSPerMi ?? easyPaceS)) / 60)}`}
-                        unit="min"
+                        value={approxDuration((totalMi * (workout.paceTargetSPerMi ?? easyPaceS)) / 60).value}
+                        unit={approxDuration((totalMi * (workout.paceTargetSPerMi ?? easyPaceS)) / 60).unit}
                         label="Duration"
                       />
                       <Kpi value={paceDisplay} unit="/mi" label="Pace target" accent={isQuality} />
@@ -218,7 +219,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                   </div>
                 )}
 
-                {/* Structure — from describeWorkout (same source as the
+                {/* Structure, from describeWorkout (same source as the
                     overview modal + iPhone), not a bespoke split. */}
                 {workout.type !== 'rest' && totalMi > 0 && desc && desc.steps.length > 0 && (
                   <div className="tile">
@@ -243,7 +244,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                           <div style={{ fontSize: 13.5, lineHeight: 1.5, color: 'var(--color-t1)' }}>
                             {s.kind === 'simple' ? (
                               <span>
-                                <strong>{s.name}</strong> — <strong>{s.duration}</strong> at <strong>{s.pace}</strong>{' '}
+                                <strong>{s.name}</strong>, <strong>{s.duration}</strong> at <strong>{s.pace}</strong>{' '}
                                 <span style={{ color: 'var(--color-t3)' }}>({s.zone})</span>
                                 {s.hrTarget && <span style={{ color: 'var(--color-t3)' }}> · HR <strong>{s.hrTarget}</strong></span>}
                               </span>
@@ -305,7 +306,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                 )}
               </div>
 
-              {/* RIGHT — context column (stubs until M3) */}
+              {/* RIGHT, context column (stubs until M3) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div className="tile" style={{
                   background: 'var(--color-corporate)', borderRadius: 13, padding: '20px 22px',
@@ -320,14 +321,14 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                     lineHeight: 1, textTransform: 'uppercase', marginTop: 8,
                   }}>Send to Watch</div>
                   <div style={{ fontSize: 12.5, lineHeight: 1.5, opacity: 0.8, marginTop: 10 }}>
-                    Watch integration coming in M3 — Garmin Connect IQ export with per-rep targets and audio cues.
+                    Watch integration coming in M3, Garmin Connect IQ export with per-rep targets and audio cues.
                   </div>
                   <button disabled style={{
                     marginTop: 14, padding: '10px 20px', borderRadius: 100,
                     background: 'rgba(255,255,255,.16)', color: '#fff',
                     border: '1px solid rgba(255,255,255,.18)',
                     fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'not-allowed',
-                  }}>Send — coming soon</button>
+                  }}>Send, coming soon</button>
                 </div>
 
                 <div className="tile">
@@ -344,10 +345,10 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                       {[
-                        { label: 'Easy (E)', range: paces.E ? `${fmtPace(paces.E.lowS)}–${fmtPace(paces.E.highS)}` : '—' },
-                        { label: 'Marathon (M)', range: paces.M ? `${fmtPace(paces.M.lowS)}–${fmtPace(paces.M.highS)}` : '—' },
-                        { label: 'Threshold (T)', range: paces.T ? `${fmtPace(paces.T.lowS)}–${fmtPace(paces.T.highS)}` : '—' },
-                        { label: 'Interval (I)', range: paces.I ? `${fmtPace(paces.I.lowS)}–${fmtPace(paces.I.highS)}` : '—' },
+                        { label: 'Easy (E)', range: paces.E ? `${fmtPace(paces.E.lowS)}–${fmtPace(paces.E.highS)}` : '-' },
+                        { label: 'Marathon (M)', range: paces.M ? `${fmtPace(paces.M.lowS)}–${fmtPace(paces.M.highS)}` : '-' },
+                        { label: 'Threshold (T)', range: paces.T ? `${fmtPace(paces.T.lowS)}–${fmtPace(paces.T.highS)}` : '-' },
+                        { label: 'Interval (I)', range: paces.I ? `${fmtPace(paces.I.lowS)}–${fmtPace(paces.I.highS)}` : '-' },
                       ].map(({ label, range }) => (
                         <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontFamily: 'var(--font-data)', fontSize: 10.5, letterSpacing: '1.2px', color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase' }}>{label}</span>

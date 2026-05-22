@@ -115,11 +115,11 @@ describe('aggregateVdotFromInputs · sanity check against David\'s locked spec',
 
   it('produces VDOT 47.2 for David\'s HM+Marathon+10K scenario', () => {
     const bests: RaceBest[] = [
-      // Disney HM 2026-02-01 — chip time 1:34:54 (5694s), goal-tier
+      // Disney HM 2026-02-01, chip time 1:34:54 (5694s), goal-tier
       { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: '17250968534', source: 'races' },
-      // LA Marathon 2026-03-08 — chip time 3:31:40 (12700s), adjacent
+      // LA Marathon 2026-03-08, chip time 3:31:40 (12700s), adjacent
       { label: 'Marathon', canonicalMi: 26.219, finishS: 12700, date: '2026-03-08', activityId: '17654375467', source: 'races' },
-      // Hypothetical 10K 2026-03-25 — 44:57 (2697s)
+      // Hypothetical 10K 2026-03-25, 44:57 (2697s)
       { label: '10K', canonicalMi: 6.214, finishS: 2697, date: '2026-03-25', activityId: 'synthetic-10k', source: 'strava' },
     ];
 
@@ -149,19 +149,19 @@ describe('aggregateVdotFromInputs · sanity check against David\'s locked spec',
   it('produces ~45.8 with full curated race set (no dedup by canonical distance)', () => {
     // Real-world scenario after the 2026-05-19 strict Option-B fix:
     // David's curated races table holds 4 past races. None get deduped
-    // by canonical distance — both HMs (Disney + Sombrero) and both
+    // by canonical distance, both HMs (Disney + Sombrero) and both
     // marathons (LA + Big Sur) each contribute. The aggregate lands
     // around 45.8 with the Sombrero tune-up pulling it down from the
     // Disney HM peak. Tomorrow's race-effort-level flag will let
     // tune-ups carry lower weight; for now, all races weighted normal.
     const bests: RaceBest[] = [
-      // Disney HM 2026-02-01 — 1:34:54 chip, goal-tier exempt
+      // Disney HM 2026-02-01, 1:34:54 chip, goal-tier exempt
       { label: 'Half', canonicalMi: 13.109, finishS: 5694, date: '2026-02-01', activityId: '17250968534', source: 'races' },
-      // LA Marathon 2026-03-08 — 3:31:40 chip, adjacent tier
+      // LA Marathon 2026-03-08, 3:31:40 chip, adjacent tier
       { label: 'Marathon', canonicalMi: 26.219, finishS: 12700, date: '2026-03-08', activityId: '17654375467', source: 'races' },
-      // Big Sur Marathon 2026-04-26 — 3:36:55, adjacent tier
+      // Big Sur Marathon 2026-04-26, 3:36:55, adjacent tier
       { label: 'Marathon', canonicalMi: 26.219, finishS: 13015, date: '2026-04-26', activityId: '18270567015', source: 'races' },
-      // Sombrero Half 2026-05-03 — 1:40:57, goal-tier exempt (most recent)
+      // Sombrero Half 2026-05-03, 1:40:57, goal-tier exempt (most recent)
       { label: 'Half', canonicalMi: 13.109, finishS: 6057, date: '2026-05-03', activityId: '18362267811', source: 'races' },
     ];
 
@@ -316,7 +316,7 @@ describe('aggregateVdotFromInputs · goal-tier exemption boundary', () => {
       { label: 'Marathon', canonicalMi: 26.219, finishS: 12700, date: '2026-02-20', activityId: 'a', source: 'races' },
     ];
     const result = aggregateVdotFromInputs({ bests, cycleStart, goalTier: 'HM_ISH', today: TODAY });
-    // Marathon is adjacent to HM goal — gets tier 1.0 but normal recency decay.
+    // Marathon is adjacent to HM goal, gets tier 1.0 but normal recency decay.
     expect(result!.sources[0].weightBreakdown.recency).toBeLessThan(1.0);
     expect(result!.sources[0].weightBreakdown.tier).toBe(1.0);
     expect(result!.sources[0].isGoalTier).toBe(false);

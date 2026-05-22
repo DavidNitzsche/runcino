@@ -3,7 +3,7 @@
  *
  * The companion to L7's per-workout adaptive bumps. Where L7 watches
  * training execution between races for fitness drift, this guard
- * watches the AGGREGATE VDOT itself — the resolved value rendered
+ * watches the AGGREGATE VDOT itself, the resolved value rendered
  * on /profile and consumed by every prescription. If a fresh race
  * result lands and shifts aggregate VDOT by >2 points without the
  * user reviewing, the banner surfaces:
@@ -22,7 +22,7 @@
  *   aggregate VDOT (no banner on day one). Subsequent shifts >2pts
  *   trigger the banner.
  *
- * CONTEXT FILTERS (per CLAUDE.md rule #5 — per-finding context filters)
+ * CONTEXT FILTERS (per CLAUDE.md rule #5, per-finding context filters)
  *   - race-week suppression (within 7 days of any race)
  *   - 30-day Dismiss respected
  *   - 24-hour Investigate snooze respected
@@ -104,11 +104,11 @@ export async function computeVdotShiftFinding(
   const direction: VdotShiftFinding['direction'] =
     shiftPoints > 0 ? 'up' : shiftPoints < 0 ? 'down' : null;
 
-  // Race-week suppression — reuse same calendar query approach as L7.
+  // Race-week suppression, reuse same calendar query approach as L7.
   // Per CLAUDE.md rule #5: this surface applies its OWN race-recency
   // check (doesn't inherit from any parent). If a race sits within
   // ±RACE_RECENCY_DAYS of today, the VDOT may have just shifted from
-  // a fresh result — give the runner a moment to absorb the race
+  // a fresh result, give the runner a moment to absorb the race
   // before pushing the review prompt.
   try {
     const padDays = RACE_RECENCY_DAYS;
@@ -186,7 +186,7 @@ export async function computeVdotShiftFinding(
   };
 }
 
-/** Record a review event — clears snooze + dismiss, writes the
+/** Record a review event, clears snooze + dismiss, writes the
  *  current VDOT as the new baseline. Called by the Apply action. */
 export async function recordVdotReview(userId: string, currentVdot: number): Promise<void> {
   await query(

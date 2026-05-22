@@ -6,7 +6,7 @@
  *   backfill (claims all single-user data for the configured owner email).
  * Returns: { user: { id, email, name, onboarding_complete } }
  *
- * No email verification — defer is the v1 choice. New users are
+ * No email verification, defer is the v1 choice. New users are
  * immediately logged in and redirected to /onboarding by the client.
  */
 

@@ -1,5 +1,5 @@
 /**
- * Coach narrative line — signal-priority tests.
+ * Coach narrative line, signal-priority tests.
  *
  * The contract under test:
  *   1. narrativeLine returns null for a steady runner with no
@@ -7,7 +7,7 @@
  *      build, no streak milestone, no stale long run / quality).
  *   2. Each priority level fires on its own trigger and produces a
  *      sentence that references a real number / date / event.
- *   3. No two priority levels share a `basedOn` source label — each
+ *   3. No two priority levels share a `basedOn` source label, each
  *      level has its own signal class.
  *
  * Assertion style mirrors `coach-engine-scenarios.test.ts`:
@@ -68,7 +68,7 @@ function makeBaseState(): CoachState {
     volume: {
       last7Mi: 30,
       last28Mi: 120,
-      // Long run ≥ 10mi happened 5 days ago — keeps Priority 9 from firing
+      // Long run ≥ 10mi happened 5 days ago, keeps Priority 9 from firing
       // but Priority 6 (≥12mi in 7d) also doesn't fire because we cap at 10.
       last7Days: [
         { date: isoOffset(-6), miles: 4, runs: 1 },
@@ -117,7 +117,7 @@ function withFreshCheckin(state: CoachState): CoachState {
   };
 }
 
-describe('narrativeLine — null when no signal fires', () => {
+describe('narrativeLine, null when no signal fires', () => {
   it('returns null for a steady runner with no triggering signals', async () => {
     const state = withFreshCheckin(makeBaseState());
     const line = await narrativeLine(state, TODAY);
@@ -125,7 +125,7 @@ describe('narrativeLine — null when no signal fires', () => {
   });
 });
 
-describe('narrativeLine — Priority 1: Race-week imminent', () => {
+describe('narrativeLine, Priority 1: Race-week imminent', () => {
   it('fires when an A-race is within 7 days', async () => {
     const state = withFreshCheckin(makeBaseState());
     state.races.nextA = {
@@ -165,7 +165,7 @@ describe('narrativeLine — Priority 1: Race-week imminent', () => {
   });
 });
 
-describe('narrativeLine — Priority 2: Coach adjusted today', () => {
+describe('narrativeLine, Priority 2: Coach adjusted today', () => {
   it('fires when deps.adjustment.changed is true (softening)', async () => {
     const state = withFreshCheckin(makeBaseState());
     const line = await narrativeLine(state, TODAY, {
@@ -190,7 +190,7 @@ describe('narrativeLine — Priority 2: Coach adjusted today', () => {
   });
 });
 
-describe('narrativeLine — Priority 3: Streak milestone', () => {
+describe('narrativeLine, Priority 3: Streak milestone', () => {
   it('fires when consecutiveRunDays === 60', async () => {
     const state = withFreshCheckin(makeBaseState());
     state.recovery.consecutiveRunDays = 60;
@@ -209,7 +209,7 @@ describe('narrativeLine — Priority 3: Streak milestone', () => {
   });
 });
 
-describe('narrativeLine — Priority 4: Stale check-in (>72h)', () => {
+describe('narrativeLine, Priority 4: Stale check-in (>72h)', () => {
   it('fires when last check-in is 4 days ago', async () => {
     const state: CoachState = {
       ...makeBaseState(),
@@ -240,7 +240,7 @@ describe('narrativeLine — Priority 4: Stale check-in (>72h)', () => {
   });
 });
 
-describe('narrativeLine — Priority 6: Recent long run', () => {
+describe('narrativeLine, Priority 6: Recent long run', () => {
   it('fires when long run ≥ 12mi happened in last 7 days', async () => {
     const state = withFreshCheckin(makeBaseState());
     // Replace one day with a real long run yesterday.
@@ -257,7 +257,7 @@ describe('narrativeLine — Priority 6: Recent long run', () => {
   });
 });
 
-describe('narrativeLine — Priority 8: Stale quality', () => {
+describe('narrativeLine, Priority 8: Stale quality', () => {
   it('fires when hardMi14d < 1 and A-race > 21 days out', async () => {
     const state = withFreshCheckin(makeBaseState());
     state.intensity = { easyMi14d: 50, hardMi14d: 0, easyShare14d: 1 };
@@ -278,7 +278,7 @@ describe('narrativeLine — Priority 8: Stale quality', () => {
   });
 });
 
-describe('narrativeLine — Priority 9: Stale long run (>21 days)', () => {
+describe('narrativeLine, Priority 9: Stale long run (>21 days)', () => {
   it('fires when no run ≥ 10mi in last 28 days and no recovery window', async () => {
     const state = withFreshCheckin(makeBaseState());
     // Wipe the long run from the base fixture.
@@ -308,7 +308,7 @@ describe('narrativeLine — Priority 9: Stale long run (>21 days)', () => {
   });
 });
 
-describe('narrativeLine — basedOn uniqueness across priorities', () => {
+describe('narrativeLine, basedOn uniqueness across priorities', () => {
   it('each priority level produces a distinct basedOn label', async () => {
     const labels = new Set<string>();
 
@@ -370,7 +370,7 @@ describe('narrativeLine — basedOn uniqueness across priorities', () => {
       labels.add(line!.basedOn);
     }
 
-    // Six priorities, six distinct labels (P5/P7 not exercised — P5 is
+    // Six priorities, six distinct labels (P5/P7 not exercised, P5 is
     // deferred, P7's basedOn ('volume trend · 4w vs prior 4w') is
     // distinct by construction.)
     expect(

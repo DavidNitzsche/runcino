@@ -1,5 +1,5 @@
 /**
- * POST /api/runs/:id/shoe — assign or clear a shoe for a Strava activity.
+ * POST /api/runs/:id/shoe, assign or clear a shoe for a Strava activity.
  *
  * Body: { shoeId: number | null }
  * Auth required. Currently writes to the legacy strava_activities table

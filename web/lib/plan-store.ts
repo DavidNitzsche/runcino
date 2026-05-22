@@ -319,7 +319,7 @@ export async function actOnMutations(
   if (ids.length === 0) return { updated: 0 };
 
   // 'dismiss' acts on ALREADY-applied changes (clearing the "Coach updated
-  // your plan" card) — flip them to 'seen' so they don't re-surface on any
+  // your plan" card), flip them to 'seen' so they don't re-surface on any
   // device. accept/decline act on 'proposed' changes awaiting sign-off.
   if (action === 'dismiss') {
     const res = await query<{ id: string }>(

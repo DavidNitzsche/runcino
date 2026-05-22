@@ -11,7 +11,7 @@
  *
  * Source data: `coach.nextPushes()` → `NextPushesReport`.
  * No file in this component edits data.ts, page.tsx, TodayCard, or the
- * plan-adapted card — Wave F owns those.
+ * plan-adapted card, Wave F owns those.
  */
 
 import { Card, CardHeader, CardLabel, CardPin, CardFoot } from '@/app/components';
@@ -80,7 +80,7 @@ export function NextPushCard({ decision }: NextPushCardProps) {
               lineHeight: 1.25,
             }}
           >
-            Plan steady — keep executing this week.
+            Plan steady, keep executing this week.
           </p>
           <p
             style={{
@@ -136,7 +136,7 @@ export function NextPushCard({ decision }: NextPushCardProps) {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {/* The action — what the coach wants you to do. */}
+                  {/* The action, what the coach wants you to do. */}
                   <p
                     style={{
                       margin: 0,
@@ -150,7 +150,7 @@ export function NextPushCard({ decision }: NextPushCardProps) {
                     Coach wants you to: {p.action}
                   </p>
 
-                  {/* The signal — what fired the push. */}
+                  {/* The signal, what fired the push. */}
                   <p
                     style={{
                       margin: 0,

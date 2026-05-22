@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * RouteMap — Leaflet map showing the Strava activity's route.
+ * RouteMap, Leaflet map showing the Strava activity's route.
  *
- * Renders OpenStreetMap tiles (CartoDB Voyager — cleaner styling
+ * Renders OpenStreetMap tiles (CartoDB Voyager, cleaner styling
  * than vanilla OSM) with the polyline trace in Strava-orange and
  * green/orange circle markers at the start + end.
  *
@@ -15,7 +15,7 @@ import { useEffect, useRef } from 'react';
 
 interface Props {
   /** Strava `summary_polyline` (encoded with Google polyline algo).
-   *  Optional — pass either this or `coords`. */
+   *  Optional, pass either this or `coords`. */
   polyline?: string;
   /** Pre-decoded coordinates as [lat, lon] pairs. Used when we have
    *  direct GPX trackpoint data instead of an encoded polyline. */
@@ -66,11 +66,11 @@ export default function RouteMap({ polyline, coords: coordsProp, startLatLng, en
     if (mapRef.current) return; // already initialized
 
     let cancelled = false;
-    // Lazy-import Leaflet (it needs window — safe to do here in a client
+    // Lazy-import Leaflet (it needs window, safe to do here in a client
     // component effect). Also import the CSS.
     (async () => {
       const L = (await import('leaflet')).default;
-      // CSS via link tag — leaflet/dist/leaflet.css ships with the package
+      // CSS via link tag, leaflet/dist/leaflet.css ships with the package
       if (!document.querySelector('link[data-leaflet-css]')) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
@@ -94,9 +94,9 @@ export default function RouteMap({ polyline, coords: coordsProp, startLatLng, en
       });
       mapRef.current = map;
 
-      // CartoDB Voyager tiles — clean, readable, free.
+      // CartoDB Voyager tiles, clean, readable, free.
       // Attribution suppressed in the visual; OSM/CARTO require it per
-      // ToS for production use — keep their credit somewhere in the UI
+      // ToS for production use, keep their credit somewhere in the UI
       // (footer / about page) before going public.
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         subdomains: 'abcd',

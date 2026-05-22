@@ -1,5 +1,5 @@
 /**
- * Doctrine — Workout vocabulary and structures.
+ * Doctrine, Workout vocabulary and structures.
  *
  * Source: Research/04-workout-vocabulary.md
  *
@@ -16,7 +16,7 @@
  *                          is needed
  *
  * The original (Stage-0) constants RECOVERY_RUN, GENERAL_AEROBIC,
- * MEDIUM_LONG, LONG_RUN, etc. remain — they're typed lookups the
+ * MEDIUM_LONG, LONG_RUN, etc. remain, they're typed lookups the
  * engine already consumes by name. Their citations are migrated from
  * the legacy `coaching-research.md §5.x` to Research/04.
  */
@@ -43,7 +43,7 @@ export type WorkoutType =
   | 'strides'
   | 'hill_sprints';
 
-/** Recovery run — circulation, not adaptation. */
+/** Recovery run, circulation, not adaptation. */
 export const RECOVERY_RUN: Cited<{
   durationMinLow: number;
   durationMinHigh: number;
@@ -60,7 +60,7 @@ export const RECOVERY_RUN: Cited<{
   ],
 };
 
-/** General aerobic / easy run — bread and butter aerobic adaptation. */
+/** General aerobic / easy run, bread and butter aerobic adaptation. */
 export const GENERAL_AEROBIC: Cited<{
   durationMinLow: number;
   durationMinHigh: number;
@@ -80,7 +80,7 @@ export const GENERAL_AEROBIC: Cited<{
   ],
 };
 
-/** Pfitzinger medium-long run — second weekly run, distinct from long. */
+/** Pfitzinger medium-long run, second weekly run, distinct from long. */
 export const MEDIUM_LONG: Cited<{
   distanceMiLow: number;
   distanceMiHigh: number;
@@ -94,7 +94,7 @@ export const MEDIUM_LONG: Cited<{
   ],
 };
 
-/** Long run — distance + duration anchors and the variants. */
+/** Long run, distance + duration anchors and the variants. */
 export const LONG_RUN: Cited<{
   distanceMiLow: number;
   distanceMiHigh: number;
@@ -139,7 +139,7 @@ export const LONG_PROGRESSION: Cited<{
   ],
 };
 
-/** Marathon-pace long run — most race-specific workout. */
+/** Marathon-pace long run, most race-specific workout. */
 export const LONG_MP_BLOCK: Cited<{
   totalMiLow: number;
   totalMiHigh: number;
@@ -178,7 +178,7 @@ export const LONG_FAST_FINISH: Cited<{
   ],
 };
 
-/** Marathon dress rehearsal — final equipment + fueling check. */
+/** Marathon dress rehearsal, final equipment + fueling check. */
 export const LONG_DRESS_REHEARSAL: Cited<{
   totalMiLow: number;
   totalMiHigh: number;
@@ -197,7 +197,7 @@ export const LONG_DRESS_REHEARSAL: Cited<{
   ],
 };
 
-/** Continuous tempo — sustained T-pace block. */
+/** Continuous tempo, sustained T-pace block. */
 export const TEMPO_CONTINUOUS: Cited<{
   miLow: number;
   miHigh: number;
@@ -216,13 +216,13 @@ export const TEMPO_CONTINUOUS: Cited<{
     warmupMiLow: 1.5, warmupMiHigh: 2,
     cooldownMiLow: 1, cooldownMiHigh: 1.5,
   },
-  note: '"Comfortably hard" — sustainable for ~1 hour in a race. 20 min minimum for stimulus. WU/CD miles are easy and counted in total session distance.',
+  note: '"Comfortably hard", sustainable for ~1 hour in a race. 20 min minimum for stimulus. WU/CD miles are easy and counted in total session distance.',
   citations: [
     cite('§5.2 Continuous tempo', '3-8 mi at T pace. 20-40 min sweet spot. Include 1-2 mi WU + 1 mi CD.', 'research', '04'),
   ],
 };
 
-/** Daniels cruise intervals — broken-tempo at T. */
+/** Daniels cruise intervals, broken-tempo at T. */
 export const THRESHOLD_INTERVALS: Cited<{
   miReps: number;
   repsLow: number;
@@ -266,7 +266,7 @@ export const THRESHOLD_INTERVALS: Cited<{
   ],
 };
 
-/** Sub-threshold (Norwegian) intervals — large weekly threshold volume. */
+/** Sub-threshold (Norwegian) intervals, large weekly threshold volume. */
 export const SUB_THRESHOLD: Cited<{
   /** 1K reps (most common). */
   reps1KLow: number;
@@ -289,7 +289,7 @@ export const SUB_THRESHOLD: Cited<{
     slowerThanTSPerMiLow: 10, slowerThanTSPerMiHigh: 15,
     lactateMmolLLow: 2.5, lactateMmolLHigh: 3.5,
   },
-  note: 'The Norwegian-singles adaptation. Lactate target 2.5-3.5 mmol/L (below LT2). Requires honest pace discipline — going too hard collapses the model.',
+  note: 'The Norwegian-singles adaptation. Lactate target 2.5-3.5 mmol/L (below LT2). Requires honest pace discipline, going too hard collapses the model.',
   citations: [
     cite('§5.4 Sub-threshold (Norwegian) intervals', '5-10 × 1K, or 4-6 × 2K, or 4-6 × 6 min. ~10-15 s/mi slower than T. 60-90 s jog (short, by design).', 'research', '04'),
   ],
@@ -315,28 +315,28 @@ export const THRESHOLD_SESSION_PROGRESSION: Cited<Record<
   value: {
     BASE: {
       label: 'Cruise Intervals',
-      prescription: 'Cruise intervals — warm up 1.5 mi easy, then 5 × 1K at threshold (comfortably hard, 1 min jog between). Finish with 1 mi easy. If 1K feels too short, swap to 4 × 1 mile at the same effort. This is where your body learns to clear lactate while moving fast — it won\'t feel dramatic, but it compounds. (Research/04 §5.3)',
-      citation: 'Research/04 §5.3 Cruise intervals — 3-6 × 1 mi with 1 min jog, or 5 × 1K.',
+      prescription: 'Cruise intervals, warm up 1.5 mi easy, then 5 × 1K at threshold (comfortably hard, 1 min jog between). Finish with 1 mi easy. If 1K feels too short, swap to 4 × 1 mile at the same effort. This is where your body learns to clear lactate while moving fast, it won\'t feel dramatic, but it compounds. (Research/04 §5.3)',
+      citation: 'Research/04 §5.3 Cruise intervals, 3-6 × 1 mi with 1 min jog, or 5 × 1K.',
     },
     BUILD_EARLY: {
       label: 'HM Cruise Intervals',
-      prescription: '3 × 2 miles at goal half-marathon effort, 90 sec jog between. Warm up 1.5 mi, cool down 1 mi. This is the pace that needs to feel almost boring on race day — controlled, strong, sustainable. If it feels too hard right now, the pace target is right and your fitness will catch up. (Research/22 §3)',
-      citation: 'Research/22 §3 — HM threshold: 3×2 mi at HM effort, 90 sec jog.',
+      prescription: '3 × 2 miles at goal half-marathon effort, 90 sec jog between. Warm up 1.5 mi, cool down 1 mi. This is the pace that needs to feel almost boring on race day, controlled, strong, sustainable. If it feels too hard right now, the pace target is right and your fitness will catch up. (Research/22 §3)',
+      citation: 'Research/22 §3, HM threshold: 3×2 mi at HM effort, 90 sec jog.',
     },
     BUILD_LATE: {
       label: 'HM Threshold Blocks',
-      prescription: '2 × 3 miles at goal HM effort, 2 min jog between. Warm up 1.5 mi, cool down 1 mi. Controlled discomfort — short phrases, not sentences. Longer blocks teach your body to hold race-pace economy when you\'re actually tired. Nail this and the race-pace miles in the long run will feel familiar. (Research/22 §3)',
-      citation: 'Research/22 §3 — HM threshold: 2×3 mi at HM effort, 2 min jog.',
+      prescription: '2 × 3 miles at goal HM effort, 2 min jog between. Warm up 1.5 mi, cool down 1 mi. Controlled discomfort, short phrases, not sentences. Longer blocks teach your body to hold race-pace economy when you\'re actually tired. Nail this and the race-pace miles in the long run will feel familiar. (Research/22 §3)',
+      citation: 'Research/22 §3, HM threshold: 2×3 mi at HM effort, 2 min jog.',
     },
     PEAK: {
       label: 'HM Continuous Tempo',
-      prescription: '4–5 miles continuous at goal HM effort — no rep structure, no breaks. Warm up 1.5 mi easy, cool down 1 mi. This is as close to racing as you get before taper. Your legs should be a little tired going in; that\'s what makes it specific. If you nail this one, race day gets a lot less mysterious. (Research/04 §5.2, Research/22 §3)',
-      citation: 'Research/04 §5.2 + Research/22 §3 — PEAK: 4-5 mi continuous near HMP.',
+      prescription: '4–5 miles continuous at goal HM effort, no rep structure, no breaks. Warm up 1.5 mi easy, cool down 1 mi. This is as close to racing as you get before taper. Your legs should be a little tired going in; that\'s what makes it specific. If you nail this one, race day gets a lot less mysterious. (Research/04 §5.2, Research/22 §3)',
+      citation: 'Research/04 §5.2 + Research/22 §3, PEAK: 4-5 mi continuous near HMP.',
     },
     TAPER: {
       label: 'Threshold Touch',
-      prescription: 'Short threshold touch — 2 × 1.5 miles at T-pace, 90 sec jog between. The work is in the bank; this just keeps the engine warm. Don\'t add reps because you feel good. Feeling good is the taper doing its job — protect it. (Research/04 §5.3)',
-      citation: 'Research/04 §5.3 — taper: cut volume, keep intensity.',
+      prescription: 'Short threshold touch, 2 × 1.5 miles at T-pace, 90 sec jog between. The work is in the bank; this just keeps the engine warm. Don\'t add reps because you feel good. Feeling good is the taper doing its job, protect it. (Research/04 §5.3)',
+      citation: 'Research/04 §5.3, taper: cut volume, keep intensity.',
     },
   },
   note: 'Threshold session progression: BASE cruise intervals → BUILD HM-specific blocks → PEAK continuous near HMP → TAPER short touch. Every session at Research-cited pace targets.',
@@ -346,7 +346,7 @@ export const THRESHOLD_SESSION_PROGRESSION: Cited<Record<
   ],
 };
 
-/** Long tempo — HM-pace continuous. */
+/** Long tempo, HM-pace continuous. */
 export const LONG_TEMPO: Cited<{
   miLow: number;
   miHigh: number;
@@ -354,15 +354,15 @@ export const LONG_TEMPO: Cited<{
 }> = {
   value: {
     miLow: 8, miHigh: 12,
-    paceNote: 'Slightly slower than T — typically HM pace to T-minus-5 s/mi',
+    paceNote: 'Slightly slower than T, typically HM pace to T-minus-5 s/mi',
   },
-  note: 'Marathon-specific aerobic stress; HM race rehearsal. High accumulated fatigue cost — schedule ≥2 easy days after.',
+  note: 'Marathon-specific aerobic stress; HM race rehearsal. High accumulated fatigue cost, schedule ≥2 easy days after.',
   citations: [
     cite('§5.5 Long tempo', '8-12 mi continuous, slightly slower than T pace.', 'research', '04'),
   ],
 };
 
-/** VO2max work — secondary importance for marathon training. */
+/** VO2max work, secondary importance for marathon training. */
 export const VO2_INTERVALS: Cited<{
   totalWorkMiLow: number;
   totalWorkMiHigh: number;
@@ -415,7 +415,7 @@ export const VO2_INTERVALS: Cited<{
   ],
 };
 
-/** Strides — short bursts of fast running, neuromuscular maintenance. */
+/** Strides, short bursts of fast running, neuromuscular maintenance. */
 export const STRIDES: Cited<{
   distanceMLow: number;
   distanceMHigh: number;
@@ -425,9 +425,9 @@ export const STRIDES: Cited<{
   repsHigh: number;
   perWeekLow: number;
   perWeekHigh: number;
-  /** Full walk-back or ~90 s jog — no accumulated fatigue. */
+  /** Full walk-back or ~90 s jog, no accumulated fatigue. */
   recoveryNote: string;
-  /** When to tag strides onto a run — end of easy, or standalone after warmup. */
+  /** When to tag strides onto a run, end of easy, or standalone after warmup. */
   timingNote: string;
   /** Per-phase frequency. Research/22 §3 sample weeks show strides on Sat in every level. */
   perPhase: {
@@ -443,7 +443,7 @@ export const STRIDES: Cited<{
     durationSLow: 15, durationSHigh: 30,
     repsLow: 4, repsHigh: 8,
     perWeekLow: 2, perWeekHigh: 4,
-    recoveryNote: 'Full walk-back (60-90 s) — no accumulated fatigue between reps.',
+    recoveryNote: 'Full walk-back (60-90 s), no accumulated fatigue between reps.',
     timingNote: 'Append to end of easy run or Saturday run. Not before a hard workout.',
     perPhase: {
       base:        { perWeekLow: 2, perWeekHigh: 2 },
@@ -453,14 +453,14 @@ export const STRIDES: Cited<{
       maintenance: { perWeekLow: 2, perWeekHigh: 3 },
     },
   },
-  note: 'Accelerate to mile-to-5K race pace; ~85-95% max effort, relaxed. Full walk-back recovery — no fatigue between strides. Tagged onto Saturday easy runs per Research/22 sample weeks.',
+  note: 'Accelerate to mile-to-5K race pace; ~85-95% max effort, relaxed. Full walk-back recovery, no fatigue between strides. Tagged onto Saturday easy runs per Research/22 sample weeks.',
   citations: [
     cite('§7.2 Strides', '50-100m or 15-30 s each. 4-8 reps. Full walk-back or 60-90 s jog. 2-4×/week. End of an easy run, mid-warmup, or standalone.', 'research', '04'),
     cite('§3 Half Marathon Plans', 'HM intermediate peak: Sat 5 mi E + 6×ST. HM advanced peak: Sat 6 mi E + 8×ST.', 'research', '22'),
   ],
 };
 
-/** Hill sprints — same neuromuscular stimulus, lower injury risk. */
+/** Hill sprints, same neuromuscular stimulus, lower injury risk. */
 export const HILL_SPRINTS: Cited<{
   durationSLow: number;
   durationSHigh: number;
@@ -479,7 +479,7 @@ export const HILL_SPRINTS: Cited<{
   },
   note: 'Build leg power, tendon stiffness, neuromuscular drive; injury-resilient speed work. Steepest hill manageable with form.',
   citations: [
-    cite('§7.3 Hill sprints', '8-15 s, all-out, on a steep (8-15%) hill. Walk down — full recovery. Start 4-6, build to 8-12.', 'research', '04'),
+    cite('§7.3 Hill sprints', '8-15 s, all-out, on a steep (8-15%) hill. Walk down, full recovery. Start 4-6, build to 8-12.', 'research', '04'),
   ],
 };
 
@@ -571,7 +571,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: 'n/a',
       frequency: '3-5 days per week; bulk of weekly volume',
       cyclePlacement: ['all_phases'],
-      contraindications: 'Drift toward M pace defeats the purpose — keep effort honest',
+      contraindications: 'Drift toward M pace defeats the purpose, keep effort honest',
       variations: 'Pure easy, general aerobic (slightly faster end), with strides appended',
       researchSection: '§2',
     },
@@ -584,7 +584,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: 'n/a',
       frequency: '1×/week during marathon and HM specific phases',
       cyclePlacement: ['base', 'specific_support', 'race_specific'],
-      contraindications: 'Don\'t run too hard — should not compete with the long run for recovery',
+      contraindications: 'Don\'t run too hard, should not compete with the long run for recovery',
       variations: 'Plain MLR, MLR with strides, MLR with embedded T segment (advanced)',
       researchSection: '§3',
     },
@@ -605,7 +605,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       purpose: 'Train the neuromuscular and metabolic skill of running faster while fatigued',
       paceAnchor: 'Start E, finish M to T',
       structure: 'First 1/3-1/2 at E, middle at strong E or M, final 1/4-1/3 at M to T. Example 16 mi: 6 mi E + 6 mi M + 4 mi T',
-      recovery: 'None — continuous',
+      recovery: 'None, continuous',
       frequency: 'Every 2-3 weeks in specific phase',
       cyclePlacement: ['specific_support', 'race_specific'],
       contraindications: 'Skip if accumulated fatigue is high; don\'t pair with other quality work in same week',
@@ -614,12 +614,12 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
     {
       id: 'mp_long_run', family: 'long', name: 'Marathon-pace long run',
       purpose: 'Marathon-specific stimulus; rehearse race pace under fatigue',
-      paceAnchor: 'MP exactly — not faster',
+      paceAnchor: 'MP exactly, not faster',
       structure: '14-22 mi total: easy warmup (2-4 mi) + 8-16 mi at MP + optional easy cooldown',
       recovery: 'n/a',
       frequency: 'Every 2-3 weeks during marathon specific phase',
       cyclePlacement: ['race_specific'],
-      contraindications: 'Don\'t run if calf/Achilles/hip is flagging — MP is high-stress for soft tissue',
+      contraindications: 'Don\'t run if calf/Achilles/hip is flagging, MP is high-stress for soft tissue',
       variations: 'MP locked in second half (harder), MP from the start (hardest), MP with surges',
       researchSection: '§4.4',
     },
@@ -641,7 +641,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: 'n/a',
       frequency: 'Once, 3 weeks pre-marathon',
       cyclePlacement: ['sharpening_taper'],
-      contraindications: 'Not a fitness builder — keep effort controlled',
+      contraindications: 'Not a fitness builder, keep effort controlled',
       researchSection: '§4.6',
     },
     // §5 Threshold
@@ -650,10 +650,10 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       purpose: 'Raise lactate threshold; build mental tolerance to sustained discomfort',
       paceAnchor: 'T pace (86-88% VO2max, 88-90% HRmax)',
       structure: '3-8 mi continuous, 20-40 min sweet spot. WU 2-3 mi E + tempo + CD 2-3 mi E',
-      recovery: 'None — single block',
+      recovery: 'None, single block',
       frequency: '1×/week or alternating with cruise intervals',
       cyclePlacement: ['base', 'specific_support', 'race_specific'],
-      contraindications: 'Skip if HR/perceived effort elevated — pace will lie',
+      contraindications: 'Skip if HR/perceived effort elevated, pace will lie',
       variations: 'Cutdown tempo (start MP, finish T), wave tempo (alternate ±10 s/mi around T)',
       researchSection: '§5.2',
     },
@@ -665,7 +665,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: '1 min jog per mile of work segment',
       frequency: '1×/week',
       cyclePlacement: ['specific_support', 'race_specific', 'sharpening_taper'],
-      contraindications: 'Lengthening rest changes the workout — keep recoveries short',
+      contraindications: 'Lengthening rest changes the workout, keep recoveries short',
       variations: 'Cruise + threshold (4 × 1 mi + 2 mi continuous), cruise pyramid (1-2-1-2-1)',
       researchSection: '§5.3',
     },
@@ -684,12 +684,12 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
     {
       id: 'long_tempo', family: 'threshold', name: 'Long tempo',
       purpose: 'Marathon-specific aerobic stress; HM race rehearsal',
-      paceAnchor: 'Slightly slower than T — typically HM pace to T-minus-5 s/mi',
+      paceAnchor: 'Slightly slower than T, typically HM pace to T-minus-5 s/mi',
       structure: '8-12 mi continuous. WU/CD 1-2 mi E each side',
       recovery: 'None',
       frequency: 'Every 2-3 weeks in specific phase',
       cyclePlacement: ['race_specific'],
-      contraindications: 'High accumulated fatigue cost — schedule ≥2 easy days after',
+      contraindications: 'High accumulated fatigue cost, schedule ≥2 easy days after',
       variations: '2 × 5 mi at HM with 3 min jog (split version), 8 mi MP + 2 mi T (combo)',
       researchSection: '§5.5',
     },
@@ -708,7 +708,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
     },
     {
       id: '1000m_repeats', family: 'vo2max', name: '1000m repeats',
-      purpose: 'Classic VO2max workout — ideal interval duration (3-4 min) for maxing out aerobic power',
+      purpose: 'Classic VO2max workout, ideal interval duration (3-4 min) for maxing out aerobic power',
       paceAnchor: 'I pace',
       structure: '5-8 × 1K',
       recovery: '2:00-3:00 jog (≈ rep time, 200-400m jog)',
@@ -725,7 +725,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: '2:00-3:00 jog (≈ rep time)',
       frequency: 'Weekly during VO2 block',
       cyclePlacement: ['race_specific'],
-      contraindications: 'Avoid running first reps too fast — first rep should not be the fastest',
+      contraindications: 'Avoid running first reps too fast, first rep should not be the fastest',
       variations: '8 × 800 at 5K pace (classic), Yasso 800s, 800s descending',
       researchSection: '§6.4',
     },
@@ -759,7 +759,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: 'Jog the same time it took to run the 800 (~400m)',
       frequency: '1×/week during build',
       cyclePlacement: ['race_specific'],
-      contraindications: 'Don\'t substitute for marathon-specific work — VO2max session, not MP-specific. Last benchmark 10-14 days before goal marathon.',
+      contraindications: 'Don\'t substitute for marathon-specific work, VO2max session, not MP-specific. Last benchmark 10-14 days before goal marathon.',
       researchSection: '§6.7',
     },
     // §7 Speed
@@ -768,10 +768,10 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       purpose: 'Neuromuscular activation; recruit fast-twitch fibers; refine form on easy days',
       paceAnchor: 'Mile to 5K race pace; ~85-95% max effort, relaxed',
       structure: '50-100m or 15-30s each. 4-8 reps',
-      recovery: 'Full walk-back or 60-90 s jog — no fatigue between strides',
+      recovery: 'Full walk-back or 60-90 s jog, no fatigue between strides',
       frequency: '2-4×/week',
       cyclePlacement: ['all_phases'],
-      contraindications: 'Not a workout — back off if form deteriorates',
+      contraindications: 'Not a workout, back off if form deteriorates',
       variations: 'Hill strides, in-and-out strides (accelerate-cruise-accelerate), strides on grass for impact-sensitive runners',
       researchSection: '§7.2',
     },
@@ -780,7 +780,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       purpose: 'Build leg power, tendon stiffness, neuromuscular drive; injury-resilient speed work',
       paceAnchor: 'Max effort, all-out',
       structure: '8-15 s on steep (8-15%) hill. Start 4-6 reps, build to 8-12',
-      recovery: 'Walk down — full recovery (2-3 min)',
+      recovery: 'Walk down, full recovery (2-3 min)',
       frequency: '1-2×/week',
       cyclePlacement: ['all_phases'],
       contraindications: 'Not for first-month-back runners; require base of easy running',
@@ -804,7 +804,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       purpose: 'Pure speed; turnover; mechanics',
       paceAnchor: 'R pace or faster',
       structure: '8-16 × 100m',
-      recovery: '100m walk or jog — full recovery',
+      recovery: '100m walk or jog, full recovery',
       frequency: '1×/week or as part of warmup for longer sessions',
       cyclePlacement: ['all_phases'],
       variations: '10 × 100 alternating fast/relaxed, 100m fly-ins',
@@ -874,7 +874,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: 'Floats are recovery jogs (not stops)',
       frequency: 'Weekly or every 10 days',
       cyclePlacement: ['base', 'specific_support', 'race_specific'],
-      contraindications: 'Can be sandbagged or overcooked easily — keep efforts honest',
+      contraindications: 'Can be sandbagged or overcooked easily, keep efforts honest',
       variations: 'Half Mona, Mona on hills, Mona with extended floats',
       researchSection: '§9.2',
     },
@@ -917,10 +917,10 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       purpose: 'Marathon-specific lactate-clearance training; teaches surging at race pace',
       paceAnchor: 'Faster segments at 10K to HM pace; recovery segments at MP (NOT easy)',
       structure: 'Long: 1 mi MP / 1 mi 10K, ×5-8. Entry: 1 mi MP / 400m 10K, ×6-10. Total 8-15 mi continuous',
-      recovery: 'None — continuous',
+      recovery: 'None, continuous',
       frequency: 'Every 2-3 weeks',
       cyclePlacement: ['race_specific'],
-      contraindications: 'High accumulated stress — full easy day before and after',
+      contraindications: 'High accumulated stress, full easy day before and after',
       variations: 'Progressive (faster segments lengthen), Nate Jenkins MP/HM alternations',
       researchSection: '§10.1',
     },
@@ -932,7 +932,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: '2-3 min between blocks; standard recoveries within each block',
       frequency: 'Every 2-3 weeks specific',
       cyclePlacement: ['race_specific'],
-      contraindications: 'Don\'t combine zones if either system is undertrained — practice each in isolation first',
+      contraindications: 'Don\'t combine zones if either system is undertrained, practice each in isolation first',
       researchSection: '§10.2',
     },
     {
@@ -940,7 +940,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       purpose: 'Continuous threshold with rhythmic pace variation',
       paceAnchor: 'Average comes out near T',
       structure: '4-8 mi continuous, alternating ±5-15 s/mi around T pace, 30 s to 2 min per segment',
-      recovery: 'None — continuous',
+      recovery: 'None, continuous',
       frequency: 'Every 2-3 weeks',
       cyclePlacement: ['race_specific'],
       researchSection: '§10.3',
@@ -966,7 +966,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
       recovery: '2-3 min jog (60-90 s for advanced)',
       frequency: 'Every 10-14 days in specific phase',
       cyclePlacement: ['race_specific'],
-      contraindications: 'Pacing requirement: even pace within each rep — Canova/Arcelli emphasize a tempo trainer',
+      contraindications: 'Pacing requirement: even pace within each rep, Canova/Arcelli emphasize a tempo trainer',
       variations: '2 × 3K + 3 × 2K (Kipsang pre-WR), 5 × 2K all at MP, 6 × 2K cutdown',
       researchSection: '§11.2',
     },
@@ -1114,7 +1114,7 @@ export const WORKOUT_CATALOG: Cited<CatalogEntry[]> = {
 
 // ── Family overviews ───────────────────────────────────────────────
 
-/** Long-run family — the cornerstone weekly session in distance training. */
+/** Long-run family, the cornerstone weekly session in distance training. */
 export const LONG_RUN_FAMILY: Cited<Array<{
   variant: string;
   distanceOrDuration: string;
@@ -1134,7 +1134,7 @@ export const LONG_RUN_FAMILY: Cited<Array<{
   ],
 };
 
-/** Threshold workout family — LT2 and the band just below it. */
+/** Threshold workout family, LT2 and the band just below it. */
 export const THRESHOLD_FAMILY: Cited<Array<{
   workout: string;
   volume: string;
@@ -1153,7 +1153,7 @@ export const THRESHOLD_FAMILY: Cited<Array<{
   ],
 };
 
-/** VO2max family — max aerobic power. */
+/** VO2max family, max aerobic power. */
 export const VO2MAX_FAMILY: Cited<Array<{
   workout: string;
   repsXDistance: string;
@@ -1317,7 +1317,7 @@ export const COMBINATIONS_TO_AVOID: Cited<Array<{
  * Duration and effort tiers per phase (Research/04 §Supplemental work):
  *   BASE/BUILD:  2 sessions/week, 30 min, effort 7/10.
  *   PEAK:        2 sessions/week, 30 min, effort 6/10.
- *   TAPER:       1 session/week, 20 min, effort 5/10 — maintenance only.
+ *   TAPER:       1 session/week, 20 min, effort 5/10, maintenance only.
  *   RACE_WEEK:   Skip entirely. */
 export const STRENGTH_SCHEDULE: Cited<{
   sessionsPerWeek: { BASE: number; BUILD: number; PEAK: number; TAPER: number; RACE_WEEK: number };
@@ -1331,10 +1331,10 @@ export const STRENGTH_SCHEDULE: Cited<{
     sessionsPerWeek: { BASE: 2, BUILD: 2, PEAK: 2, TAPER: 1, RACE_WEEK: 0 },
     durationMin:     { BASE: 30, BUILD: 30, PEAK: 30, TAPER: 20, RACE_WEEK: 0 },
     effortOutOf10:   { BASE: 7, BUILD: 7, PEAK: 6, TAPER: 5, RACE_WEEK: 0 },
-    monFocus: 'Lower body + core — glutes, hips, single-leg work. This is runner strength: the stuff that keeps form together when you\'re tired.',
-    friFocus: 'Upper body + core, light lower. Support strength — nothing that loads the legs hard going into the weekend.',
+    monFocus: 'Lower body + core, glutes, hips, single-leg work. This is runner strength: the stuff that keeps form together when you\'re tired.',
+    friFocus: 'Upper body + core, light lower. Support strength, nothing that loads the legs hard going into the weekend.',
     rules: [
-      'Always run first — strength after running, never before.',
+      'Always run first, strength after running, never before.',
       'Never the day before or after a quality session or long run.',
       'Monday = lower/core. Friday = upper/core (light lower). These slots are fixed.',
       'Default 30 min. On low-stress weeks (cutback, base) you can go 45 if legs feel good.',
@@ -1342,7 +1342,7 @@ export const STRENGTH_SCHEDULE: Cited<{
       'Race week: skip entirely.',
     ],
   },
-  note: 'Strength supports the running — it doesn\'t compete with it. Two sessions a week on Mon and Fri, after the run, targeting the movements that actually matter for half marathon performance.',
+  note: 'Strength supports the running, it doesn\'t compete with it. Two sessions a week on Mon and Fri, after the run, targeting the movements that actually matter for half marathon performance.',
   citations: [
     cite('§Supplemental work', 'Strength 2-3x/week, easy days only, after runs. Reduce in taper.', 'research', '04'),
   ],
@@ -1350,7 +1350,7 @@ export const STRENGTH_SCHEDULE: Cited<{
 
 // ── Easy pace floor ───────────────────────────────────────────────
 
-/** Easy-pace floor — the threshold below which an "easy" run drifted
+/** Easy-pace floor, the threshold below which an "easy" run drifted
  *  too fast. Used in pacing.ts. */
 export const EASY_PACE_FLOOR: Cited<{
   minSlowerThanMpSPerMi: number;

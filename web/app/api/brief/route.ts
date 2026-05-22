@@ -1,13 +1,13 @@
 /**
- * /api/brief — race-morning brief generator.
+ * /api/brief, race-morning brief generator.
  *
  * Stage 2 wired: delegates to `coach.briefRaceMorning(...)`. The Coach
  * routes the call through the LLM brain when `ANTHROPIC_API_KEY` is
  * present (with voice.md + coaching-research.md cached), and falls
  * back to a deterministic stub when not.
  *
- * The legacy response shape — `{ narrative, plan_adjustments, stub }`
- * — is preserved so the existing BriefTile keeps working. The richer
+ * The legacy response shape, `{ narrative, plan_adjustments, stub }`
+ *, is preserved so the existing BriefTile keeps working. The richer
  * `CoachDecision` (rationale + citations) is delivered in a `coach`
  * sub-object the tile picks up incrementally.
  */
@@ -53,7 +53,7 @@ function parseWeather(text: string): { tempF?: number; dewpointF?: number; windM
   // Pull all temperature-shaped tokens for disambiguation
   const tempMatch = text.match(/(?:^|[^/\d])(\d{2,3})\s*°?\s*F/i);
   const windMatch = text.match(/(\d{1,3})\s*mph/i);
-  // Dewpoint heuristics — try several common phrasings.
+  // Dewpoint heuristics, try several common phrasings.
   let dewpointF: number | undefined;
   const dpPatterns = [
     /dew[\s-]?point[^\d]*(\d{2,3})/i,
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
   // that surfaces the rationale + citations.
   return Response.json({
     narrative: decision.answer,
-    plan_adjustments: [], // Brief no longer prescribes pace deltas — voice rules call for run-the-plan.
+    plan_adjustments: [], // Brief no longer prescribes pace deltas, voice rules call for run-the-plan.
     stub: decision.brain === 'deterministic',
     coach: {
       rationale: decision.rationale,

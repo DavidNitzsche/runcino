@@ -1,12 +1,12 @@
 /**
- * /api/races/[slug] — read / delete a single race, plus PATCH for
+ * /api/races/[slug], read / delete a single race, plus PATCH for
  * meta + actualResult.
  *
  * GET    → SavedRace | 404
  * DELETE → { ok: true }
  * PATCH  → updates meta and/or actual_result. Both fields optional;
  *          send only what you want to change. The plan + GPX are
- *          NEVER touched here — use /rebuild for that.
+ *          NEVER touched here, use /rebuild for that.
  */
 
 import { deleteRaceDB, getRaceDB, setActualResultDB, saveRaceDB } from '../../../../lib/race-store';
@@ -44,7 +44,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ slug: 
     try { userId = (await requireActiveUser()).id; } catch { /* anon ok */ }
     const existing = await getRaceDB(slug, userId);
     if (!existing) return new Response('Not found', { status: 404 });
-    // Merge — don\'t let a partial meta erase fields the caller didn\'t send.
+    // Merge, don\'t let a partial meta erase fields the caller didn\'t send.
     const mergedMeta = { ...existing.meta, ...body.meta };
     await saveRaceDB({ ...existing, meta: mergedMeta }, userId);
   }

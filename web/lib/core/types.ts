@@ -6,13 +6,13 @@
  *
  * Nullability rules:
  *   - Required fields (distance_mi, course_type) are never null.
- *     If research can't determine them, it throws — we can't build a plan.
+ *     If research can't determine them, it throws, we can't build a plan.
  *   - Optional facts (elevation, coords, aid stations) are null when
  *     Claude could not verify them from a primary source.
  *     The planner renders the plan anyway and flags the gaps visibly.
  *   - source_urls[] is always present, may be empty on total failure.
  *   - flagged_fields[] names every field that is null due to missing
- *     primary-source verification — not every null field (some are
+ *     primary-source verification, not every null field (some are
  *     legitimately absent, e.g. a loop course has no finish_coords
  *     different from start_coords).
  */
@@ -59,7 +59,7 @@ export interface WatchCoord {
   lon: number;
 }
 
-/** A gel trigger — fires when within trigger_radius_m of coord (if available),
+/** A gel trigger, fires when within trigger_radius_m of coord (if available),
  *  otherwise falls back to at_mile distance estimate. */
 export interface WatchGelTrigger {
   number: number;
@@ -70,7 +70,7 @@ export interface WatchGelTrigger {
   trigger_radius_m: number;       // 80m for official GPX, 150m for OSRM
 }
 
-/** A phase boundary trigger — advance to next phase when runner passes this point. */
+/** A phase boundary trigger, advance to next phase when runner passes this point. */
 export interface WatchPhase {
   index: number;
   name: string;
@@ -86,7 +86,7 @@ export interface WatchPhase {
   end_coord: WatchCoord | null;   // coordinate of phase end
 }
 
-/** Mile marker coordinates — used for the Watch calibration screen.
+/** Mile marker coordinates, used for the Watch calibration screen.
  *  Runner taps official marker → app snaps to this coord. */
 export interface WatchMileMarker {
   mile: number;
@@ -115,33 +115,33 @@ export interface CourseResearch {
   race_name: string;              // Canonical name from official site
   slug: string;                   // kebab-case
 
-  // Geometry — distance is required; plan cannot proceed without it
+  // Geometry, distance is required; plan cannot proceed without it
   distance_mi: number;
   distance_m: number;
   course_type: 'point_to_point' | 'loop' | 'out_and_back';
 
-  // Elevation — null if not found on primary source
+  // Elevation, null if not found on primary source
   total_gain_ft: number | null;
   total_loss_ft: number | null;
   net_elevation_ft: number | null;
 
-  // Location — null if coords not verified
+  // Location, null if coords not verified
   start_coords: { lat: number; lon: number } | null;
   finish_coords: { lat: number; lon: number } | null;
   start_location_name: string | null;   // e.g. "Dodger Stadium"
   finish_location_name: string | null;  // e.g. "Avenue of the Stars, Century City"
 
-  // Aid stations — null means not found; [] means verified none
+  // Aid stations, null means not found; [] means verified none
   aid_station_miles: number[] | null;
 
-  // Course route — null if not found during research
+  // Course route, null if not found during research
   gpx_url: string | null;        // URL to official or public GPX file
 
   // Context
   typical_date: string | null;          // e.g. "third Sunday of March"
   course_warnings: string[];            // Notable features, hazards, recent changes
 
-  // Research integrity — always populated
+  // Research integrity, always populated
   source_urls: string[];                // Every URL consulted
   primary_source_url: string | null;    // Must be on official race domain
   flagged_fields: string[];             // Fields that are null due to missing primary source
@@ -153,7 +153,7 @@ export interface CourseResearch {
 export interface PlanRequest {
   race_name: string;
   race_date: string;          // YYYY-MM-DD
-  goal_time: string;          // "h:mm:ss" — validated by the route before use
+  goal_time: string;          // "h:mm:ss", validated by the route before use
   nutrition_notes: string;    // Free text: "SiS GO Isotonic and GO Caffeine 75mg"
 }
 
@@ -208,11 +208,11 @@ export interface RacePlan {
   miles: MilePlan[];
   gels: GelPlacement[];
 
-  // Integrity flags — rendered visibly in the UI
+  // Integrity flags, rendered visibly in the UI
   missing_fields: string[];    // Human-readable descriptions of what's missing
   warnings: string[];          // Research warnings + course_warnings
 
-  // Watch payload — self-contained, ready for WatchConnectivity transfer
+  // Watch payload, self-contained, ready for WatchConnectivity transfer
   watch_payload: WatchPayload;
 
   // Meta

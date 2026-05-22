@@ -7,7 +7,7 @@
  * its actual results alongside the plan.
  *
  * If multiple activities ran the same date (e.g. two-a-day), returns
- * the one with the greatest distance — best proxy for "the main run".
+ * the one with the greatest distance, best proxy for "the main run".
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -24,7 +24,7 @@ interface ActivityRow {
 }
 
 export async function GET(req: NextRequest) {
-  // Auth optional — anonymous callers (simulator preview) fall back to
+  // Auth optional, anonymous callers (simulator preview) fall back to
   // the legacy 'me' demo account, mirroring /api/overview + /api/races.
   const user = await getCurrentUser(req);
   const uid = user?.id ?? 'me';
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   );
   const row = rows[0];
   if (!row) {
-    // No Strava activity for this date — fall back to an Apple-Watch
+    // No Strava activity for this date, fall back to an Apple-Watch
     // completion that never synced to Strava. The watch workoutId is
     // "YYYY-MM-DD-<slug>", so we match the date off its prefix (timezone-
     // proof, unlike completed_at). Gives the Today hero its actuals +
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     const dur = Number(c.total_duration_sec) || 0;
     const maxHrEff = await resolveEffectiveMaxHr(uid).catch(() => ({ value: null as number | null }));
     // Map + per-mile splits from the Apple-Health route (if the iPhone has
-    // uploaded one for this date) — gives watch-only runs a recap map.
+    // uploaded one for this date), gives watch-only runs a recap map.
     const route = user?.id ? await getRouteForDate(user.id, date).catch(() => null) : null;
     const splits = (route?.splits ?? []).map((s) => {
       const m = Math.floor(s.paceSPerMi / 60), sec = s.paceSPerMi % 60;
@@ -206,7 +206,7 @@ export async function GET(req: NextRequest) {
     runPower: dayMap.get('run_power') ?? null,
   };
 
-  // Weather at the run's start (Open-Meteo) — surfaced on the recap and
+  // Weather at the run's start (Open-Meteo), surfaced on the recap and
   // fed to the coach take (heat/humidity explains an elevated HR).
   const { fetchRunWeather } = await import('@/lib/weather');
   const runStartISO = (d.startLocal as string | undefined) || (d.date ? `${d.date}T07:00:00` : null);
@@ -214,7 +214,7 @@ export async function GET(req: NextRequest) {
     ? await fetchRunWeather(startLatLng[0], startLatLng[1], runStartISO)
     : null;
 
-  // Max HR — prefer the user's manual override, fall back to the
+  // Max HR, prefer the user's manual override, fall back to the
   // value computed from their activity history (peak max_heartrate
   // across runs). null when neither is available.
   const maxHr = await resolveEffectiveMaxHr(uid);

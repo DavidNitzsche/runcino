@@ -1,15 +1,15 @@
 /**
- * Wave K — event-driven scenario tests.
+ * Wave K, event-driven scenario tests.
  *
  * The 7 archetype fixtures (coach-states.ts) test what the engine does
  * at different *positions* in a training cycle. This suite tests what
- * the engine does when *something happens mid-cycle* — bad check-ins,
+ * the engine does when *something happens mid-cycle*, bad check-ins,
  * skipped runs, a bad race, a heatwave, a B-race stack, an illness
  * return, a first-distance race.
  *
  * Each test exercises the adaptive path (state.checkin, recent races,
  * volume crater, etc.) and asserts the engine actually changes its
- * answer — not just renders the same plan it would have rendered with
+ * answer, not just renders the same plan it would have rendered with
  * a clean state.
  *
  * If an assertion exposes a real engine bug, the assertion stays; a
@@ -17,9 +17,9 @@
  * regression.
  *
  * @research
- *   Research/00b §Warning Signs of Incomplete Recovery — qualitative
+ *   Research/00b §Warning Signs of Incomplete Recovery, qualitative
  *     count → Decision Matrix (K1, K2, K6, K9).
- *   Research/05 §1.4-1.5 — volume before intensity; rebuild after
+ *   Research/05 §1.4-1.5, volume before intensity; rebuild after
  *     break (K3, K8, K9).
  *   Research/01 §VDOT calibration windows · Research/02 §Riegel (K4,
  *     K5, K10).
@@ -82,9 +82,9 @@ function todayAsScheduled(today: CoachToday): WorkoutPrescription {
 }
 
 // ──────────────────────────────────────────────────────────────
-// K1 — Bad single check-in mid-build
+// K1, Bad single check-in mid-build
 // ──────────────────────────────────────────────────────────────
-describe('K1 — bad check-in mid-build (single day)', () => {
+describe('K1, bad check-in mid-build (single day)', () => {
   it('engine state carries a poorDaysCount of 1 from the check-in aggregate', () => {
     // CoachState.checkin is in-flight (Wave F) so we read structurally.
     const s = STATE_BAD_CHECKIN_TODAY as unknown as { checkin?: { poorDaysCount: number } };
@@ -92,7 +92,7 @@ describe('K1 — bad check-in mid-build (single day)', () => {
   });
 
   it('adjustForReality returns the same plan when only 1 check-in fires (below 2+ threshold)', async () => {
-    // Doctrine: Research/00b §Decision Matrix — single qualitative signal
+    // Doctrine: Research/00b §Decision Matrix, single qualitative signal
     // is below the cutback threshold. Engine should continue today.
     const today = coachDaily(STATE_BAD_CHECKIN_TODAY);
     const scheduled = todayAsScheduled(today);
@@ -102,7 +102,7 @@ describe('K1 — bad check-in mid-build (single day)', () => {
         daysSinceLastRun: STATE_BAD_CHECKIN_TODAY.recovery.daysSinceLastRun,
         missedRunsLast7d: 0,
         acwr: STATE_BAD_CHECKIN_TODAY.volume.last7Mi / STATE_BAD_CHECKIN_TODAY.volume.weeklyAvg8w,
-        // GAP — checkinPoorDaysLast7d field is in flight (Wave F); engine
+        // GAP, checkinPoorDaysLast7d field is in flight (Wave F); engine
         // currently does not key on it. Test relies on the other signals.
         // poorDaysCount would have been:1,
       },
@@ -131,7 +131,7 @@ describe('K1 — bad check-in mid-build (single day)', () => {
         missedRunsLast7d: 0,
         acwr: 1.6,                    // > 1.5 → fires
         sleepDebtMin: 100,            // > 90 → fires
-        // GAP — checkinPoorDaysLast7d field is in flight (Wave F); engine
+        // GAP, checkinPoorDaysLast7d field is in flight (Wave F); engine
         // currently does not key on it. Test relies on the other signals.
         // poorDaysCount would have been:2,     // may or may not fire depending on engine state
       },
@@ -143,9 +143,9 @@ describe('K1 — bad check-in mid-build (single day)', () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// K2 — Bad WEEK of check-ins mid-build
+// K2, Bad WEEK of check-ins mid-build
 // ──────────────────────────────────────────────────────────────
-describe('K2 — bad WEEK of check-ins (poorDaysCount=7)', () => {
+describe('K2, bad WEEK of check-ins (poorDaysCount=7)', () => {
   it('check-in aggregate reflects a week of poor days', () => {
     const s = STATE_BAD_WEEK_CHECKINS as unknown as { checkin?: { poorDaysCount: number } };
     expect(s.checkin?.poorDaysCount).toBe(7);
@@ -172,7 +172,7 @@ describe('K2 — bad WEEK of check-ins (poorDaysCount=7)', () => {
         missedRunsLast7d: 3,        // ≥ 3 → fires
         acwr: 1.6,                  // > 1.5 → fires
         sleepDebtMin: 120,          // > 90 → fires
-        hrvBaselineDelta: -12,      // < -10 → fires (4th signal — belt + suspenders)
+        hrvBaselineDelta: -12,      // < -10 → fires (4th signal, belt + suspenders)
       },
       scheduledWorkout: qualityScheduled,
     });
@@ -187,7 +187,7 @@ describe('K2 — bad WEEK of check-ins (poorDaysCount=7)', () => {
     // clean fixture and the bad-week fixture. With Wave-F-style check-in
     // adaptation, the bad-week week should contain less quality. The
     // engine does NOT currently consume state.checkin inside the daily
-    // prescription — only Coach.adjustForReality does. So today, this
+    // prescription, only Coach.adjustForReality does. So today, this
     // assertion would PASS only if the engine path itself reads checkin.
     //
     // Documenting the gap: with current behavior, weekly quality miles
@@ -204,26 +204,26 @@ describe('K2 — bad WEEK of check-ins (poorDaysCount=7)', () => {
     // alone. We still assert: badQ should be ≤ cleanQ. When the gap closes,
     // this assertion will sharpen to the 70% target (commented marker).
     expect(badQ).toBeLessThanOrEqual(cleanQ);
-    // Future target — uncomment when state.checkin lands in pickRun:
+    // Future target, uncomment when state.checkin lands in pickRun:
     // expect(badQ).toBeLessThanOrEqual(cleanQ * 0.70);
   });
 });
 
 // ──────────────────────────────────────────────────────────────
-// K3 — Three skipped runs in a row
+// K3, Three skipped runs in a row
 // ──────────────────────────────────────────────────────────────
-describe('K3 — three skipped runs in a row', () => {
+describe('K3, three skipped runs in a row', () => {
   it('volume.last7Mi reflects the skipped runs (well below weeklyAvg4w)', () => {
     expect(STATE_THREE_SKIPPED_RUNS.volume.last7Mi).toBeLessThan(
       STATE_THREE_SKIPPED_RUNS.volume.weeklyAvg4w * 0.7,
     );
   });
 
-  // FIXED (Wave K2-2) — coach-engine.baseEasyMi + longRunTarget now
+  // FIXED (Wave K2-2), coach-engine.baseEasyMi + longRunTarget now
   // detect a crater (last7Mi < 70% × weeklyAvg4w with weeklyAvg4w ≥10)
-  // and plan from last7Mi × 1.10 — the 10% rule per Research/00a
-  // §"Volume progression rules" — not from the pre-crater average.
-  it('upcoming 7 days are NOT a catch-up week — weekly miles ≤ 1.15× weeklyAvg4w', () => {
+  // and plan from last7Mi × 1.10, the 10% rule per Research/00a
+  // §"Volume progression rules", not from the pre-crater average.
+  it('upcoming 7 days are NOT a catch-up week, weekly miles ≤ 1.15× weeklyAvg4w', () => {
     const days = simulateRange(STATE_THREE_SKIPPED_RUNS, TODAY_ISO, dayOffsetISO(6));
     const wkMi = weekMiles(days);
     const cap = STATE_THREE_SKIPPED_RUNS.volume.weeklyAvg4w * 1.15;
@@ -248,7 +248,7 @@ describe('K3 — three skipped runs in a row', () => {
     expect(qDays.length).toBeLessThanOrEqual(2);
   });
 
-  it('long run is NOT inflated — within 110% of longestLast28Mi', () => {
+  it('long run is NOT inflated, within 110% of longestLast28Mi', () => {
     const days = simulateRange(STATE_THREE_SKIPPED_RUNS, TODAY_ISO, dayOffsetISO(6));
     const longest = Math.max(0, ...days.map(d => d.distanceMi));
     expect(longest).toBeLessThanOrEqual(STATE_THREE_SKIPPED_RUNS.volume.longestLast28Mi * 1.15);
@@ -256,14 +256,14 @@ describe('K3 — three skipped runs in a row', () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// K4 — Bad B-race result (slower than VDOT predicted)
+// K4, Bad B-race result (slower than VDOT predicted)
 // ──────────────────────────────────────────────────────────────
-describe('K4 — bad B-race result', () => {
+describe('K4, bad B-race result', () => {
   it('vdotSnapshot returns the STRONGEST recent race (5K, not the slow 10K)', () => {
     const snap = vdotSnapshot(STATE_BAD_B_RACE_RESULT);
     expect(snap).not.toBeNull();
     // Strong 5K (20:00 → VDOT ≈ 49) should win over the slow 10K (44:43).
-    // Documents the existing behavior — Coach.retrospect must read
+    // Documents the existing behavior, Coach.retrospect must read
     // state.races.recent[0] for "what just happened", not vdotSnapshot.
     expect(snap!.vdot).toBeGreaterThan(45);
     expect(snap!.source.name).toMatch(/5K/i);
@@ -277,7 +277,7 @@ describe('K4 — bad B-race result', () => {
       plan: { goalFinishS: 2400, distanceMi: 6.2 },       // goal 40:00
       actual: { finishS: 2683, distanceMi: 6.2 },         // 44:43
     });
-    // 283s slow on 6.2mi = ~46 s/mi off — well past the 30s "off goal"
+    // 283s slow on 6.2mi = ~46 s/mi off, well past the 30s "off goal"
     // band. Verdict must NOT be "goal-line execution".
     expect(ret.answer.narrative).not.toMatch(/Goal-line execution/i);
     expect(ret.answer.narrative).toMatch(/off goal|slow side|tough back|conservative|miscalibration|build/i);
@@ -294,9 +294,9 @@ describe('K4 — bad B-race result', () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// K5 — Good B-race result (faster than predicted)
+// K5, Good B-race result (faster than predicted)
 // ──────────────────────────────────────────────────────────────
-describe('K5 — good B-race result', () => {
+describe('K5, good B-race result', () => {
   it('vdotSnapshot updates to the breakthrough 10K VDOT (~53)', () => {
     const snap = vdotSnapshot(STATE_GOOD_B_RACE_RESULT);
     expect(snap).not.toBeNull();
@@ -307,12 +307,12 @@ describe('K5 — good B-race result', () => {
 
   it('VDOT is in the right neighborhood for a 38:30 10K (~54)', () => {
     // Daniels caps VDOT upgrades at ~1 point per cycle for trained
-    // runners, but per-race VDOT can move further — the constraint is
+    // runners, but per-race VDOT can move further, the constraint is
     // on how the engine consumes the new value, not on the lookup.
     // We document the GAP: vdotSnapshot returns the raw new VDOT
     // (~54.3). The engine does not currently dampen this jump from
     // VDOT 49 → 54. Dampening is a coach-side doctrine guard that
-    // lives outside vdotSnapshot — flagged in the final report.
+    // lives outside vdotSnapshot, flagged in the final report.
     const snap = vdotSnapshot(STATE_GOOD_B_RACE_RESULT);
     expect(snap).not.toBeNull();
     // Sanity range: 38:30 10K maps to ~54 ± 0.5 in our table.
@@ -323,16 +323,16 @@ describe('K5 — good B-race result', () => {
     const ret = await coach.retrospect({
       today: TODAY_ISO,
       plan: { goalFinishS: 2500, distanceMi: 6.2 },   // goal 41:40
-      actual: { finishS: 2310, distanceMi: 6.2 },    // 38:30 — 190s under
+      actual: { finishS: 2310, distanceMi: 6.2 },    // 38:30, 190s under
     });
     expect(ret.answer.narrative).toMatch(/beat goal|Beat goal|fitness is ahead|leaner|negative split|conservative/i);
   });
 });
 
 // ──────────────────────────────────────────────────────────────
-// K6 — Heatwave / disruption (env signal via check-in proxy)
+// K6, Heatwave / disruption (env signal via check-in proxy)
 // ──────────────────────────────────────────────────────────────
-describe('K6 — heatwave / disruption', () => {
+describe('K6, heatwave / disruption', () => {
   it('check-in aggregate captures the 5 disruption days', () => {
     const s = STATE_HEATWAVE_DISRUPTION as unknown as { checkin?: { poorDaysCount: number } };
     expect(s.checkin?.poorDaysCount).toBe(5);
@@ -364,10 +364,10 @@ describe('K6 — heatwave / disruption', () => {
     expect(adj.answer.changed).toBe(true);
   });
 
-  // FIXED (Wave K2-2) — same crater-aware ramp covers the heatwave
+  // FIXED (Wave K2-2), same crater-aware ramp covers the heatwave
   // disruption pattern. last7Mi at 60% of weeklyAvg4w triggers the
   // crater guard; the engine plans from last7Mi × 1.10.
-  it('upcoming-week mileage does not snap back to weeklyAvg4w — engine accepts the lower baseline', () => {
+  it('upcoming-week mileage does not snap back to weeklyAvg4w, engine accepts the lower baseline', () => {
     const days = simulateRange(STATE_HEATWAVE_DISRUPTION, TODAY_ISO, dayOffsetISO(6));
     const wkMi = weekMiles(days);
     expect(wkMi).toBeLessThanOrEqual(STATE_HEATWAVE_DISRUPTION.volume.weeklyAvg4w * 1.15);
@@ -385,16 +385,16 @@ describe('K6 — heatwave / disruption', () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// K7 — Two B-races within a week of an A-race
+// K7, Two B-races within a week of an A-race
 // ──────────────────────────────────────────────────────────────
-describe('K7 — two B-races stacked into an A-race week', () => {
-  it('state has 3 races inWindow (2 B + 1 A) — but engine only acts on nextA', () => {
+describe('K7, two B-races stacked into an A-race week', () => {
+  it('state has 3 races inWindow (2 B + 1 A), but engine only acts on nextA', () => {
     expect(STATE_STACKED_B_RACES.races.inWindow.length).toBe(3);
     const bs = STATE_STACKED_B_RACES.races.inWindow.filter(r => r.priority === 'B');
     expect(bs.length).toBe(2);
   });
 
-  // FIXED (Wave K2-4) — pickRun now applies a B-race shield via
+  // FIXED (Wave K2-4), pickRun now applies a B-race shield via
   // findBRaceShield(state): scans state.races.inWindow for B-priority
   // races within ±2 days of today (day-by-day via advanceState). B-race
   // day → race type; ±1 day → recovery; ±2 days → general_aerobic or
@@ -431,14 +431,14 @@ describe('K7 — two B-races stacked into an A-race week', () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// K8 — Long streak then 5-day break
+// K8, Long streak then 5-day break
 // ──────────────────────────────────────────────────────────────
-describe('K8 — long streak then 5-day break (still fit, not fresh)', () => {
+describe('K8, long streak then 5-day break (still fit, not fresh)', () => {
   it('rebuildAfterBreak flag is set in the fixture', () => {
     expect(STATE_LONG_STREAK_THEN_BREAK.flags.rebuildAfterBreak).toBe(true);
   });
 
-  // FIXED (Wave K2-3) — pickRun's rebuildAfterBreak branch now fires
+  // FIXED (Wave K2-3), pickRun's rebuildAfterBreak branch now fires
   // for ALL volume tiers, not just weeklyAvg4w<8. Research/05 §1.4
   // "Return-to-Volume Guidelines" + §1.5 "Volume before intensity,
   // always" scales independent of baseline. Combined with K2-2's
@@ -449,7 +449,7 @@ describe('K8 — long streak then 5-day break (still fit, not fresh)', () => {
     expect(today.today.distanceMi).toBeLessThan(13);
   });
 
-  it('rebuild ramp is gradual — week-1 miles ≤ 65% of pre-break weeklyAvg4w', () => {
+  it('rebuild ramp is gradual, week-1 miles ≤ 65% of pre-break weeklyAvg4w', () => {
     const days = simulateRange(STATE_LONG_STREAK_THEN_BREAK, TODAY_ISO, dayOffsetISO(6));
     const wkMi = weekMiles(days);
     expect(wkMi).toBeLessThanOrEqual(STATE_LONG_STREAK_THEN_BREAK.volume.weeklyAvg4w * 0.65);
@@ -470,20 +470,20 @@ describe('K8 — long streak then 5-day break (still fit, not fresh)', () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// K9 — Returning from illness
+// K9, Returning from illness
 // ──────────────────────────────────────────────────────────────
-describe('K9 — returning from illness (proxy via 4 poor check-ins + 0 runs)', () => {
+describe('K9, returning from illness (proxy via 4 poor check-ins + 0 runs)', () => {
   it('check-in aggregate matches the illness pattern', () => {
     const s = STATE_ILLNESS_RETURN as unknown as { checkin?: { poorDaysCount: number; avgEnergy: number | null } };
     expect(s.checkin?.poorDaysCount).toBe(4);
     expect(s.checkin?.avgEnergy).toBe(2);
   });
 
-  // FIXED (Wave K2-1) — pickRun now reads state.checkin?.poorDaysCount
+  // FIXED (Wave K2-1), pickRun now reads state.checkin?.poorDaysCount
   // and applies the Decision Matrix from Research/00b §Warning Signs of
   // Incomplete Recovery. With 4 poor-checkin days, the 3+ cutback path
   // fires regardless of phase: no quality, easy/long/recovery only.
-  it('next 5 days are easy / recovery / rest only — no quality', () => {
+  it('next 5 days are easy / recovery / rest only, no quality', () => {
     const days = simulateRange(STATE_ILLNESS_RETURN, TODAY_ISO, dayOffsetISO(4));
     const offenders = days.filter(d => !EASY_OR_REST.has(d.type) && !d.type.startsWith('long_'));
     expect(offenders.map(d => `${d.date}:${d.type}`)).toEqual([]);
@@ -493,7 +493,7 @@ describe('K9 — returning from illness (proxy via 4 poor check-ins + 0 runs)', 
 
   it('engine still respects today-as-non-quality when fed through adjustForReality', async () => {
     // Even though pickRun doesn't read state.checkin, the adjustForReality
-    // layer DOES — when 3+ signals fire (4 missed runs + 4 poor checkin +
+    // layer DOES, when 3+ signals fire (4 missed runs + 4 poor checkin +
     // optionally low ACWR), the cutback path kicks in. We verify the
     // adjustForReality output is non-quality. This is the wired-today
     // safety net while pickRun's check-in awareness is still pending.
@@ -510,7 +510,7 @@ describe('K9 — returning from illness (proxy via 4 poor check-ins + 0 runs)', 
         missedRunsLast7d: 4,
         acwr: 0.0,
         sleepDebtMin: 120,
-        // GAP — checkinPoorDaysLast7d field is in flight (Wave F); engine
+        // GAP, checkinPoorDaysLast7d field is in flight (Wave F); engine
         // currently does not key on it. Test relies on the other signals.
         // poorDaysCount would have been:4,
       },
@@ -548,9 +548,9 @@ describe('K9 — returning from illness (proxy via 4 poor check-ins + 0 runs)', 
 });
 
 // ──────────────────────────────────────────────────────────────
-// K10 — First marathon (no prior benchmark at distance)
+// K10, First marathon (no prior benchmark at distance)
 // ──────────────────────────────────────────────────────────────
-describe('K10 — first marathon (Riegel from half VDOT, lower confidence)', () => {
+describe('K10, first marathon (Riegel from half VDOT, lower confidence)', () => {
   it('vdotSnapshot returns the recent half VDOT (~50)', () => {
     const snap = vdotSnapshot(STATE_FIRST_MARATHON);
     expect(snap).not.toBeNull();
@@ -571,7 +571,7 @@ describe('K10 — first marathon (Riegel from half VDOT, lower confidence)', () 
     });
     expect(pred.answer.predictedTimeS).toBeGreaterThan(0);
     expect(['low', 'medium', 'high']).toContain(pred.answer.confidence);
-    // GAP — there's no first-distance caveat surfacing in
+    // GAP, there's no first-distance caveat surfacing in
     // raceFitnessPrediction today. Documented in the report. We assert
     // the predicted time exists and is in a sane range for a VDOT-50
     // runner targeting their first marathon (rough Riegel: 1:35 →
@@ -584,7 +584,7 @@ describe('K10 — first marathon (Riegel from half VDOT, lower confidence)', () 
     // 12 weeks out → BASE phase in race mode; engine's long-run target
     // should already exceed the runner's longestLast28Mi (14mi) so the
     // build ramps toward 18-22mi over the cycle. We assert the engine
-    // permits growth — the longest scheduled long-run in the next 8
+    // permits growth, the longest scheduled long-run in the next 8
     // weeks should exceed the recent peak.
     const days = simulateRange(STATE_FIRST_MARATHON, TODAY_ISO, dayOffsetISO(7 * 8));
     const longest = Math.max(0, ...days.map(d => d.distanceMi));

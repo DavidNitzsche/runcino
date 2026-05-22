@@ -2,9 +2,9 @@
  * Aid station extraction pipeline.
  *
  * Three adapters in priority order:
- *   1. Athlete guide PDF — fetch + text extract (best available)
- *   2. Official race HTML — static text fetch + regex parse
- *   3. Manual paste — David pastes text into the form's textarea
+ *   1. Athlete guide PDF, fetch + text extract (best available)
+ *   2. Official race HTML, static text fetch + regex parse
+ *   3. Manual paste, David pastes text into the form's textarea
  *
  * All three use the same regex parse pass. Returns [] on failure; the
  * caller shows a manual-paste prompt when fewer than 3 stations are found.
@@ -27,8 +27,8 @@ export interface ExtractionResult {
 // Patterns that indicate an aid station in text
 const AID_PATTERNS = [
   /(?:aid\s+station|water\s+(?:stop|station)|hydration\s+station|fluid\s+station)\s*(?:#\s*\d+)?[^0-9]*(\d+\.?\d*)\s*mi(?:le)?/gi,
-  /(?:mile|mi\.?)\s*(\d+\.?\d*)\s*[-–—:·]?\s*(?:aid|water|gel|hydration)/gi,
-  /(\d+\.?\d*)\s*mi(?:le)?\s*[-–—:·]?\s*(?:aid\s+station|water|hydration)/gi,
+  /(?:mile|mi\.?)\s*(\d+\.?\d*)\s*[-–, :·]?\s*(?:aid|water|gel|hydration)/gi,
+  /(\d+\.?\d*)\s*mi(?:le)?\s*[-–, :·]?\s*(?:aid\s+station|water|hydration)/gi,
 ];
 
 const NUMBERED_STATION = /(?:aid\s+station|water\s+stop)\s*(?:#\s*)?(\d+)/gi;
@@ -100,7 +100,7 @@ async function fetchText(url: string): Promise<string | null> {
     if (ct.includes('pdf') || url.toLowerCase().endsWith('.pdf')) {
       const buf = await res.arrayBuffer();
       const text = new TextDecoder('utf-8', { fatal: false }).decode(buf);
-      // Extract readable ASCII sequences — crude but works for text-layer PDFs
+      // Extract readable ASCII sequences, crude but works for text-layer PDFs
       return text.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s{3,}/g, '\n');
     }
     return null;

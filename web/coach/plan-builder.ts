@@ -16,13 +16,13 @@
  * Marathon training is durability-dominant.
  *
  * When the user explicitly selects a level, the plan starts from at
- * least 70% of that level's peak volume — so an Advanced runner who
+ * least 70% of that level's peak volume, so an Advanced runner who
  * selected Advanced but has a stale Strava cache doesn't get a
  * 1.5-mile easy-run plan.
  *
  * Two modes:
- *   race-prep   — A-race within ~16 weeks. BASE → BUILD → PEAK → TAPER → RACE_WEEK.
- *   maintenance — No A-race. 16 weeks flat aerobic, 1 quality/week.
+ *   race-prep, A-race within ~16 weeks. BASE → BUILD → PEAK → TAPER → RACE_WEEK.
+ *   maintenance, No A-race. 16 weeks flat aerobic, 1 quality/week.
  */
 
 import type { CoachState } from '../lib/coach-state';
@@ -66,7 +66,7 @@ export interface BuildPlanInputs {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Proportion constants — grounded in the research example weeks.
+// Proportion constants, grounded in the research example weeks.
 // Advanced HM 60 mpw: Long 16 (27%) + T 10 (17%) + I 8 (13%) + Easy 26 (43%)
 // ─────────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ export function autoDetectLevel(weeklyAvg4w: number): Level {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Doctrine-grounded lookups — all volume targets come from
+// Doctrine-grounded lookups, all volume targets come from
 // doctrine/plan_templates.ts which is the authoritative source.
 // ─────────────────────────────────────────────────────────────────
 
@@ -151,7 +151,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'MAINTENANCE',
       startWeekIdx: 0,
       endWeekIdx: totalWeeks - 1,
-      rationale: 'No A-race — holding aerobic base with 1 quality session/week.',
+      rationale: 'No A-race, holding aerobic base with 1 quality session/week.',
       citation: 'Advanced training research §13 Periodization',
     }];
   }
@@ -161,7 +161,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'RACE_WEEK',
       startWeekIdx: 0,
       endWeekIdx: 0,
-      rationale: 'Race week — shakeout + race only.',
+      rationale: 'Race week, shakeout + race only.',
       citation: 'Advanced training research §12 Tapering',
     }];
   }
@@ -180,7 +180,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'BASE',
       startWeekIdx: 0,
       endWeekIdx: baseEnd,
-      rationale: 'Aerobic base — durability before the quality load climbs.',
+      rationale: 'Aerobic base, durability before the quality load climbs.',
       citation: 'Advanced training research §13.1 Phase 1: Base / speed support',
     });
   }
@@ -189,7 +189,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'BUILD',
       startWeekIdx: baseEnd + 1,
       endWeekIdx: buildEnd,
-      rationale: 'Threshold-dominant block — LT continuous + VO2max introduction.',
+      rationale: 'Threshold-dominant block, LT continuous + VO2max introduction.',
       citation: 'Advanced training research §13.2 Phase 2: Threshold build',
     });
   }
@@ -198,7 +198,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'PEAK',
       startWeekIdx: buildEnd + 1,
       endWeekIdx: peakEnd,
-      rationale: 'Race-specific — long runs with race-pace finish + sharpening.',
+      rationale: 'Race-specific, long runs with race-pace finish + sharpening.',
       citation: 'Advanced training research §13.3 Phase 3: Race-specific',
     });
   }
@@ -207,7 +207,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
       label: 'TAPER',
       startWeekIdx: taperWeekIdx,
       endWeekIdx: taperWeekIdx,
-      rationale: 'Volume −40%, intensity touches preserved. Not rest — fatigue reduction.',
+      rationale: 'Volume −40%, intensity touches preserved. Not rest, fatigue reduction.',
       citation: 'Advanced training research §12 Tapering',
     });
   }
@@ -227,7 +227,7 @@ export function planPhases(totalWeeks: number, mode: PlanMode): PhaseSlice[] {
 
 /** Compute volume target per week. Ramps startMpw → peakMpw at ≤5%/wk
  *  inside BUILD and ≤10%/wk inside PEAK (BUILD ramps gently, PEAK takes
- *  the steep climb — Daniels §13). Cutback every 3rd week (−18%),
+ *  the steep climb, Daniels §13). Cutback every 3rd week (−18%),
  *  taper −40%, race week ballpark. */
 export function weeklyVolumeCurve(
   weeksTotal: number,
@@ -365,7 +365,7 @@ export function weekShape(
       } else if ((raceDow - i + 7) % 7 === 1) {
         days[i] = { type: 'shakeout', isQuality: false, isLong: false };
       } else if (isHmRace && i === 2) {
-        // Tuesday tune-up: short sharpener — not a quality stimulus.
+        // Tuesday tune-up: short sharpener, not a quality stimulus.
         // Daniels + Pfitzinger treat the race-week tune-up as a
         // neuromuscular primer with negligible training fatigue, so
         // isQuality is false and the day-after suppression rules
@@ -438,7 +438,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     : Math.max(4, round1(state.volume.longestTrainingRunLast28Mi * 0.5));
 
   // When the user explicitly sets their level, honour the level's minimum
-  // starting volume — avoids embarrassingly tiny runs from stale Strava data.
+  // starting volume, avoids embarrassingly tiny runs from stale Strava data.
   const actualMpw = Math.max(8, state.volume.weeklyAvg4w);
   const startMpw = prefs.level != null
     ? Math.max(actualMpw, levelMinStartMpw(raceDist, level))
@@ -485,12 +485,12 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     // ── Long run ────────────────────────────────────────────────
     // Anchor early long runs to the athlete's recent longest *training*
     // run (excludes races), so the plan progresses FROM proven fitness
-    // instead of ramping up to a distance they already cover — e.g. an
+    // instead of ramping up to a distance they already cover, e.g. an
     // 11 mi runner shouldn't be prescribed a 10.5 mi "build-up" long.
     // Capped at peakLongTarget (never start above the plan's peak) and
     // suppressed on cutback/taper weeks, which intentionally pull back.
     // The single-jump ceiling stays governed by the 110%-of-recent rule
-    // (Research/00a §"The 10% rule — reconsidered": a single long run
+    // (Research/00a §"The 10% rule, reconsidered": a single long run
     // should not exceed 110% of the longest run in the prior 30 days).
     const recentLongFloor = Math.min(
       round1(state.volume.longestTrainingRunLast28Mi ?? 0),
@@ -536,7 +536,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     if (intervalMi > 0) intervalMi = Math.max(4, intervalMi);
 
     // Race-week tune-up: warmup + 4×1K work + cooldown ≈ 4.5 mi
-    // (Research/08 §9.3 — "4-5 mi w/ 4 × 1K at HMP").
+    // (Research/08 §9.3, "4-5 mi w/ 4 × 1K at HMP").
     const tuneupMi = shape.some(d => d.type === 'race_week_tuneup') ? 4.5 : 0;
 
     // ── Easy days ───────────────────────────────────────────────
@@ -616,7 +616,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     // ── Strength training annotations ────────────────────────────
     // Adaptive placement: score each easy day by its circular distance from
     // quality sessions and the long run. Pick the best N slots per phase.
-    // Research/07 §12.3, §13, §21 Rule 7 — "pair hard with hard."
+    // Research/07 §12.3, §13, §21 Rule 7, "pair hard with hard."
     const ss = STRENGTH_SCHEDULE.value;
     const maxStr: number =
       phaseSlice.label === 'RACE_WEEK' ? ss.sessionsPerWeek.RACE_WEEK :
@@ -634,18 +634,18 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
     // Effort cue per phase.
     const effortCue =
       phaseSlice.label === 'TAPER' || phaseSlice.label === 'RACE_WEEK'
-        ? '4–5/10 effort — maintenance only.'
+        ? '4–5/10 effort, maintenance only.'
         : phaseSlice.label === 'PEAK'
-        ? '6/10 effort — strong but controlled.'
-        : '7/10 effort — work hard, leave something in the tank.';
+        ? '6/10 effort, strong but controlled.'
+        : '7/10 effort, work hard, leave something in the tank.';
 
     const strSlots = selectStrengthSlots(workouts, maxStr);
     for (const slot of strSlots) {
       const focusLabel = slot.focus === 'lower' ? 'Lower + Core' : 'Upper + Core';
       const focusNote  = slot.focus === 'lower'
-        ? `Lower body + core — squats, deadlifts, single-leg work, planks. ${effortCue} Run first, always.`
-        : `Upper body + core — rows, presses, pull-ups, carries. ${effortCue} Keep it controlled.`;
-      slot.workout.notes += `\n\nStrength: ${focusLabel} — ${strDurMin} min Amp Fitness session after your run. ${focusNote}`;
+        ? `Lower body + core, squats, deadlifts, single-leg work, planks. ${effortCue} Run first, always.`
+        : `Upper body + core, rows, presses, pull-ups, carries. ${effortCue} Keep it controlled.`;
+      slot.workout.notes += `\n\nStrength: ${focusLabel}, ${strDurMin} min Amp Fitness session after your run. ${focusNote}`;
       slot.workout.hasStrength = true;
     }
 
@@ -710,11 +710,11 @@ function paceTargetFor(type: WorkoutType, paceSet: DanielsPaceSet | null): numbe
     case 'shakeout':  return paceCenter(paceSet.E);
     // HM tune-up work intervals are at HMP ≈ T pace (Research/08 §9.3).
     case 'race_week_tuneup': return paceCenter(paceSet.T);
-    default:          return null; // rest, race — no target
+    default:          return null; // rest, race, no target
   }
 }
 
-/** Short tile label for the calendar — null means use the type default. */
+/** Short tile label for the calendar, null means use the type default. */
 function subLabelFor(t: WorkoutType, phase: PhaseLabel, weekIdx: number, isCutback: boolean): string | null {
   if (t === 'long') {
     if (phase === 'TAPER') return 'Long Run · Taper';
@@ -743,40 +743,40 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
   const tsp = THRESHOLD_SESSION_PROGRESSION.value;
   switch (t) {
     case 'rest':
-      return 'Full rest. Don\'t sneak in a "light walk" or bonus core work — the adaptation happens when you\'re not moving. Let the work land.';
+      return 'Full rest. Don\'t sneak in a "light walk" or bonus core work, the adaptation happens when you\'re not moving. Let the work land.';
 
     case 'easy':
-      if (isCutback) return 'Cutback easy — shorter, slower, no agenda. Your job is to move blood through the legs and get out of the way of recovery. If you feel great, that\'s the cutback working. Don\'t fix it.';
-      if (phase === 'BASE') return 'Easy run — conversational pace, full stop. If you can\'t hold a sentence, you\'re running someone else\'s workout. Base miles are compounding interest: boring now, pays off in July.';
-      if (phase === 'BUILD') return 'Easy run — keep it honest. The threshold and long run sessions are where adaptation happens; easy days just need to not cost you anything. Run slow enough that the hard days stay hard.';
-      if (phase === 'PEAK') return 'Easy run in a peak week. The volume around this one is the real load — treat this as active recovery, not a run you try to make worth something. Slow is correct.';
-      if (phase === 'TAPER') return 'Taper easy — legs might feel stiff or flat right now. That\'s normal. Don\'t race this run trying to "feel ready." The fitness is banked; trust it.';
-      return 'Easy / conversational pace. No watch-staring — if you can\'t hold a sentence, slow down.';
+      if (isCutback) return 'Cutback easy, shorter, slower, no agenda. Your job is to move blood through the legs and get out of the way of recovery. If you feel great, that\'s the cutback working. Don\'t fix it.';
+      if (phase === 'BASE') return 'Easy run, conversational pace, full stop. If you can\'t hold a sentence, you\'re running someone else\'s workout. Base miles are compounding interest: boring now, pays off in July.';
+      if (phase === 'BUILD') return 'Easy run, keep it honest. The threshold and long run sessions are where adaptation happens; easy days just need to not cost you anything. Run slow enough that the hard days stay hard.';
+      if (phase === 'PEAK') return 'Easy run in a peak week. The volume around this one is the real load, treat this as active recovery, not a run you try to make worth something. Slow is correct.';
+      if (phase === 'TAPER') return 'Taper easy, legs might feel stiff or flat right now. That\'s normal. Don\'t race this run trying to "feel ready." The fitness is banked; trust it.';
+      return 'Easy / conversational pace. No watch-staring, if you can\'t hold a sentence, slow down.';
 
     case 'recovery':
-      return 'Recovery run — genuinely easy, below easy. This exists to move blood through legs that are tired from real work, not to add fitness. If you feel worse at the end than the start, you ran too fast.';
+      return 'Recovery run, genuinely easy, below easy. This exists to move blood through legs that are tired from real work, not to add fitness. If you feel worse at the end than the start, you ran too fast.';
 
     case 'shakeout':
-      return 'Short shakeout — 15–20 min to get the legs moving the day before the race. Four light strides if you want them, nothing more. You are not getting fitter today. You are just reminding your body what running feels like.';
+      return 'Short shakeout, 15–20 min to get the legs moving the day before the race. Four light strides if you want them, nothing more. You are not getting fitter today. You are just reminding your body what running feels like.';
 
     case 'race':
-      return 'Race day. The training is done — you can\'t add fitness now, only spend what you\'ve built. Go out controlled, trust your pacing plan, and run the second half faster than the first.';
+      return 'Race day. The training is done, you can\'t add fitness now, only spend what you\'ve built. Go out controlled, trust your pacing plan, and run the second half faster than the first.';
 
     case 'mp':
-      return 'Marathon pace block — find the rhythm, practice fueling, show restraint. If it feels easy in the first half, good. That\'s exactly how this is supposed to feel.';
+      return 'Marathon pace block, find the rhythm, practice fueling, show restraint. If it feels easy in the first half, good. That\'s exactly how this is supposed to feel.';
 
     case 'long': {
-      if (phase === 'TAPER') return 'Last long run before race day — keep it easy and cut the distance. You\'re not banking fitness here, you\'re staying sharp. Run relaxed, finish feeling like you held back.';
-      if (phase === 'PEAK' && !isCutback) return 'Peak long run — this one matters. Easy throughout unless the structure calls for a finish push. You\'ll feel the volume from this week; that\'s the point. Sleep more than you think you need to.';
-      if (isCutback) return 'Cutback long run — shorter, easier, no workout within it. Let the body absorb the last block of work. If you feel surprisingly good, that\'s the cutback doing its job. Don\'t extend it.';
+      if (phase === 'TAPER') return 'Last long run before race day, keep it easy and cut the distance. You\'re not banking fitness here, you\'re staying sharp. Run relaxed, finish feeling like you held back.';
+      if (phase === 'PEAK' && !isCutback) return 'Peak long run, this one matters. Easy throughout unless the structure calls for a finish push. You\'ll feel the volume from this week; that\'s the point. Sleep more than you think you need to.';
+      if (isCutback) return 'Cutback long run, shorter, easier, no workout within it. Let the body absorb the last block of work. If you feel surprisingly good, that\'s the cutback doing its job. Don\'t extend it.';
 
       // BUILD non-cutback: alternate HM-finish vs progression. Research/22 §3.
       const isSpecificWeek = !isCutback && phase === 'BUILD';
       if (isSpecificWeek) {
         if (weekIdx % 6 < 3) {
-          return 'Long run with HM finish — first two-thirds easy, then close the last 3–5 miles at goal half-marathon effort. This teaches your legs to run fast when they\'re already tired, which is exactly what mile 10 of the race asks for. Negative-split the whole thing. (Research/22 §3)';
+          return 'Long run with HM finish, first two-thirds easy, then close the last 3–5 miles at goal half-marathon effort. This teaches your legs to run fast when they\'re already tired, which is exactly what mile 10 of the race asks for. Negative-split the whole thing. (Research/22 §3)';
         }
-        return 'Progression long run — three gears: first third easy, middle third steady (marathon effort), final third squeezing toward HM goal pace. Not a race. A controlled fade-in. If you go out too fast, you\'ll feel it in the back third and learn the same lesson the hard way. (Research/22 §3)';
+        return 'Progression long run, three gears: first third easy, middle third steady (marathon effort), final third squeezing toward HM goal pace. Not a race. A controlled fade-in. If you go out too fast, you\'ll feel it in the back third and learn the same lesson the hard way. (Research/22 §3)';
       }
       return 'Long run at easy conversational pace. Duration builds durability; pace is irrelevant today. Run slow enough to make tomorrow\'s easy run actually easy.';
     }
@@ -792,15 +792,15 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
     case 'race_week_tuneup': {
       const tuneUp = RACE_WEEK_TEMPLATES.value.half_sunday.find(d => d.day === 'Tue');
       return tuneUp
-        ? `Race week tune-up — ${tuneUp.workout}. Sharp legs, not tired legs. This is a sharpener, not a stimulus — get in, get out, don\'t add reps because it felt good. (Research/08 §9.3)`
-        : 'Race week tune-up — 4–5 mi with 4 × 1K at goal HMP, 90 sec jog. Sharp, not draining. Get in, get out. (Research/08 §9.3)';
+        ? `Race week tune-up, ${tuneUp.workout}. Sharp legs, not tired legs. This is a sharpener, not a stimulus, get in, get out, don\'t add reps because it felt good. (Research/08 §9.3)`
+        : 'Race week tune-up, 4–5 mi with 4 × 1K at goal HMP, 90 sec jog. Sharp, not draining. Get in, get out. (Research/08 §9.3)';
     }
 
     case 'interval': {
-      if (phase === 'BASE') return 'VO₂max intervals — warm up 1.5 mi easy, then 5 × 800m at 5K effort, jog equal distance between. You should finish each rep feeling like you could have gone one more. If you\'re destroyed after rep 3, the pace is too fast. (Research/04 §I-pace)';
-      if (phase === 'BUILD') return 'VO₂max intervals — 5–6 × 1K at 5K effort, 90 sec jog between. Fast and controlled. These exist to protect your top-end speed while threshold mileage is the main story — don\'t skip them, but don\'t race them either. (Research/04 §I-pace, Research/22 §3)';
-      if (phase === 'PEAK') return 'Controlled VO₂ fartlek — 8–10 × 1 min fast / 1 min easy, or 5 × 3 min at 10K effort / 2 min easy. This sits between big long runs on purpose. You want pop, not damage. If you\'re still sore from the long run, back off the pace and prioritize the leg turnover. (Research/04 §I-pace)';
-      return 'VO₂max intervals — 5K to 10K effort. 1K reps with equal-time jog recovery. Finish feeling fast, not finished.';
+      if (phase === 'BASE') return 'VO₂max intervals, warm up 1.5 mi easy, then 5 × 800m at 5K effort, jog equal distance between. You should finish each rep feeling like you could have gone one more. If you\'re destroyed after rep 3, the pace is too fast. (Research/04 §I-pace)';
+      if (phase === 'BUILD') return 'VO₂max intervals, 5–6 × 1K at 5K effort, 90 sec jog between. Fast and controlled. These exist to protect your top-end speed while threshold mileage is the main story, don\'t skip them, but don\'t race them either. (Research/04 §I-pace, Research/22 §3)';
+      if (phase === 'PEAK') return 'Controlled VO₂ fartlek, 8–10 × 1 min fast / 1 min easy, or 5 × 3 min at 10K effort / 2 min easy. This sits between big long runs on purpose. You want pop, not damage. If you\'re still sore from the long run, back off the pace and prioritize the leg turnover. (Research/04 §I-pace)';
+      return 'VO₂max intervals, 5K to 10K effort. 1K reps with equal-time jog recovery. Finish feeling fast, not finished.';
     }
 
     default: return '';
@@ -876,13 +876,13 @@ function weekRationale(
   isCutback: boolean, isPeak: boolean, isRaceWeek: boolean,
 ): string {
   if (isRaceWeek) return 'Race week. The training is done. Protect your legs, sleep well, and trust what you\'ve built.';
-  if (isPeak)     return 'Peak week — highest volume of the plan. This week will either make you feel like a weapon or expose where recovery is leaking. Sleep, carbs, hydration, and no dumb bonus intensity. Nail this, and race day gets a lot less mysterious.';
-  if (isCutback)  return `Cutback week — volume drops ~18% so the last block of work can actually land. Don\'t fill the extra time with bonus activity. Feeling suspiciously good by Friday is the goal.`;
+  if (isPeak)     return 'Peak week, highest volume of the plan. This week will either make you feel like a weapon or expose where recovery is leaking. Sleep, carbs, hydration, and no dumb bonus intensity. Nail this, and race day gets a lot less mysterious.';
+  if (isCutback)  return `Cutback week, volume drops ~18% so the last block of work can actually land. Don\'t fill the extra time with bonus activity. Feeling suspiciously good by Friday is the goal.`;
   const phaseNote: Partial<Record<PhaseLabel, string>> = {
-    BASE:     'Building the aerobic foundation. Nothing glamorous, nothing dramatic — just consistent work that makes everything else possible.',
+    BASE:     'Building the aerobic foundation. Nothing glamorous, nothing dramatic, just consistent work that makes everything else possible.',
     BUILD:    'Build phase. Quality sessions get harder and more specific. The easy days need to stay easy so the hard days can actually be hard.',
     PEAK:     'Peak phase. The volume is high and the workouts are race-specific. Execute the structure, manage recovery, don\'t add anything extra.',
-    TAPER:    'Taper. Volume comes down, intensity stays live. Legs might feel flat or anxious — both are normal. The fitness is there.',
+    TAPER:    'Taper. Volume comes down, intensity stays live. Legs might feel flat or anxious, both are normal. The fitness is there.',
   };
   return phaseNote[phase] ?? `Week ${idx + 1} · ${phase.toLowerCase()} phase.`;
 }

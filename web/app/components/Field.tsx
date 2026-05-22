@@ -6,7 +6,7 @@
  *
  * <Field> wraps a label + control + optional help text.
  * <Input>, <Textarea> are styled native controls.
- * <SelectNative> is the styled-but-still-native <select> — kept as an escape
+ * <SelectNative> is the styled-but-still-native <select>, kept as an escape
  *   hatch for forms that need OS integration (autofill, mobile picker). For
  *   the design-system-matching popup, use <Dropdown> from ./Dropdown.tsx.
  * <InputWithUnit> wraps an Input with a fixed unit suffix.
@@ -24,9 +24,9 @@ import type {
 } from 'react';
 
 export interface FieldProps {
-  /** Label text — rendered uppercase, mono, muted above the control. */
+  /** Label text, rendered uppercase, mono, muted above the control. */
   label?: ReactNode;
-  /** Optional help text — small, muted, beneath the control. */
+  /** Optional help text, small, muted, beneath the control. */
   help?: ReactNode;
   children: ReactNode;
   /** Optional className for the wrapping <div class="field">. */

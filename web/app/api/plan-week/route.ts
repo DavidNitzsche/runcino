@@ -1,5 +1,5 @@
 /**
- * /api/plan-week — generate a training block or a single week.
+ * /api/plan-week, generate a training block or a single week.
  *
  * Current implementation: deterministic rule-based (lib/training.ts).
  * Swap target: Claude-authored weekly plans grounded in HealthKit

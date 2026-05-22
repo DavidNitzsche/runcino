@@ -1,5 +1,5 @@
 /**
- * Doctrine — Race time prediction across distances.
+ * Doctrine, Race time prediction across distances.
  *
  * Source: Research/02-race-time-prediction.md
  *
@@ -122,7 +122,7 @@ export const FATIGUE_EXPONENT_LITERATURE: Cited<Array<{
     { source: 'Riegel 1981',          population: 'Men\'s running WRs (track only)',     exponent: 1.0773, notes: '1500m–marathon track' },
     { source: 'George 2017',          population: 'Men\'s road WRs',                     exponent: 1.0497, notes: 'Modern records, 5K–marathon' },
     { source: 'George 2017',          population: 'Men\'s track WRs',                    exponent: 1.0777, notes: 'Stable vs. Riegel original' },
-    { source: 'George 2017',          population: 'Women\'s road WRs',                   exponent: 1.0397, notes: '~4% flatter than Riegel — women hold pace better with distance' },
+    { source: 'George 2017',          population: 'Women\'s road WRs',                   exponent: 1.0397, notes: '~4% flatter than Riegel, women hold pace better with distance' },
     { source: 'George 2017',          population: 'Women\'s track WRs',                  exponent: 1.1228, notes: 'Track women still fade more' },
     { source: 'Vickers/Vertosick 2016', population: '2,000+ recreational',                exponent: 1.07,   notes: 'Adds weekly mileage correction term' },
     { source: 'Recreational averages',population: 'Mass-participation finishers',        exponent: 1.10,   notes: 'Range 1.07–1.12; higher than world-record curve' },
@@ -242,7 +242,7 @@ export const PREDICTION_ASYMMETRY_RULES: Cited<{
       },
       {
         name: 'Specificity-limited predictions',
-        description: 'A 5K can be raced near full potential after a few weeks. A marathon cannot — long-run volume, midweek MLR, and weeks of race-pace effort take 12-18 weeks to develop. A 5K reveals current top-end fitness; it does not reveal whether endurance has been built.',
+        description: 'A 5K can be raced near full potential after a few weeks. A marathon cannot, long-run volume, midweek MLR, and weeks of race-pace effort take 12-18 weeks to develop. A 5K reveals current top-end fitness; it does not reveal whether endurance has been built.',
       },
       {
         name: 'Failure-mode asymmetry',
@@ -250,7 +250,7 @@ export const PREDICTION_ASYMMETRY_RULES: Cited<{
       },
       {
         name: 'Reverse direction is bounded',
-        description: 'A marathoner predicted to run a fast 5K is bounded by max VO2 and neuromuscular ceiling — both easy to develop in 4-6 weeks of speed work. So a marathoner\'s 5K prediction is usually near actual potential.',
+        description: 'A marathoner predicted to run a fast 5K is bounded by max VO2 and neuromuscular ceiling, both easy to develop in 4-6 weeks of speed work. So a marathoner\'s 5K prediction is usually near actual potential.',
       },
     ],
   },
@@ -273,7 +273,7 @@ export const MULTI_RACE_VDOT_WEIGHTS: Cited<{
   value: {
     decision: [
       { pointSpread: 'Within ±2 VDOT points',  method: 'Take the simple mean' },
-      { pointSpread: 'Diverge by >2 VDOT points', method: 'Information signal — fit an exponent and classify runner type' },
+      { pointSpread: 'Diverge by >2 VDOT points', method: 'Information signal, fit an exponent and classify runner type' },
     ],
     weightFunction: 'VDOT_estimate = Σ (w_i · VDOT_i) / Σ w_i; w_i = recency_weight · specificity_weight · effort_weight',
     recencyWeights: [
@@ -347,13 +347,13 @@ export const SEX_DIFFERENCES_BY_DISTANCE: Cited<{
       { distance: 'Half marathon',  gapPct: 9.3 },
       { distance: 'Marathon',       gapPct: 7.8 },
       { distance: '100K',           gapPct: 6.5 },
-      { distance: '24-hour',        gapPct: 15,  notes: 'Small N — women approach or exceed men in 100+ mile and multi-day events' },
+      { distance: '24-hour',        gapPct: 15,  notes: 'Small N, women approach or exceed men in 100+ mile and multi-day events' },
     ],
     patterns: [
       'Marathon and shorter: 7-11% gap, tightening with increasing aerobic specialization.',
       'Ultras with comparable participation: 1-3% in some race classes.',
       'Pacing: women are markedly more even-paced in marathons; men slow more in the second half.',
-      'Updated fatigue exponents: Women\'s road 1.04 (modern) vs. Riegel\'s 1.07 — women hold pace better with distance than the original formula assumes.',
+      'Updated fatigue exponents: Women\'s road 1.04 (modern) vs. Riegel\'s 1.07, women hold pace better with distance than the original formula assumes.',
     ],
     predictionAdjustment: 'Default Riegel/VDOT slightly under-predicts women\'s marathon performance from a 5K input and slightly over-predicts men\'s. Apply -1% to women\'s predicted marathon time (faster) and +1% to men\'s (slower) when extrapolating short → long, or use exponent 1.04-1.05 for endurance-trained women.',
   },
@@ -380,7 +380,7 @@ export const PREDICTOR_WORKOUTS: Cited<Record<PredictorWorkout, {
         combo:               'Accurate ±3 min',
         endurance_monster:   'Pessimistic by 3-5 min',
       },
-      errorPattern: 'Anecdotal correlation reported by Bart Yasso; not validated in controlled studies. Speedsters routinely hit Yasso targets in training but blow up — workout taxes VO2max and lactate buffering, not marathon-specific endurance.',
+      errorPattern: 'Anecdotal correlation reported by Bart Yasso; not validated in controlled studies. Speedsters routinely hit Yasso targets in training but blow up, workout taxes VO2max and lactate buffering, not marathon-specific endurance.',
       appliesTo: 'marathon',
     },
     fast_finish_long_run: {
@@ -390,7 +390,7 @@ export const PREDICTOR_WORKOUTS: Cited<Record<PredictorWorkout, {
         combo:               'Accurate',
         endurance_monster:   'Accurate (often beats prediction)',
       },
-      errorPattern: 'Low false positives — rarely passes a runner who can\'t deliver the marathon. Failing this workout is a clear signal that the goal is too aggressive.',
+      errorPattern: 'Low false positives, rarely passes a runner who can\'t deliver the marathon. Failing this workout is a clear signal that the goal is too aggressive.',
       appliesTo: 'marathon',
     },
     tune_up_race: {
@@ -415,7 +415,7 @@ export const PREDICTOR_WORKOUTS: Cited<Record<PredictorWorkout, {
     },
   },
   citations: [
-    cite('§12 Predictor Workouts', 'Yasso 800s, Fast Finish LR, Tune-up race, Race-Effort Tempo — protocols + accuracy + runner-type matrix', 'research', '02'),
+    cite('§12 Predictor Workouts', 'Yasso 800s, Fast Finish LR, Tune-up race, Race-Effort Tempo, protocols + accuracy + runner-type matrix', 'research', '02'),
   ],
 };
 
@@ -462,7 +462,7 @@ export const RACE_PREDICTION_ADJUSTMENTS: Cited<{
       noviceWidenCiPct: { low: 2, high: 2 },
     },
   },
-  note: 'Wind: a 10 mph headwind/tailwind asymmetrically slows by more than a tailwind speeds up — net slowdown on out-and-back courses. Most prediction failures at the marathon are pacing failures (going out 5 sec/mi too fast in first 10K costs 30-60 sec/mi in final 10K — a net loss that can wipe out 20+ minutes).',
+  note: 'Wind: a 10 mph headwind/tailwind asymmetrically slows by more than a tailwind speeds up, net slowdown on out-and-back courses. Most prediction failures at the marathon are pacing failures (going out 5 sec/mi too fast in first 10K costs 30-60 sec/mi in final 10K, a net loss that can wipe out 20+ minutes).',
   citations: [
     cite('§13 Common Prediction Error Sources', 'Training specificity, course profile, weather, altitude, runner profile, pacing execution adjustments', 'research', '02'),
   ],

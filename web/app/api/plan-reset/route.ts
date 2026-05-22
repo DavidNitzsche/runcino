@@ -1,10 +1,10 @@
 /**
- * /api/plan-reset — archive the active plan so the next request to
+ * /api/plan-reset, archive the active plan so the next request to
  * /api/plan-range rebuilds it fresh from current state + prefs.
  *
  * POST (no body required). Returns { ok: true } on success.
  * The rebuild happens lazily on the next getCurrentPlan() call
- * (plan-range, overview, today) — lifecycle returns 'first-time'
+ * (plan-range, overview, today), lifecycle returns 'first-time'
  * and buildPlan() runs with the current builder code.
  */
 

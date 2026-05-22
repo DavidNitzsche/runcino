@@ -1,13 +1,13 @@
 /**
- * /api/log — server-side Coach + data bundle for the Log tab.
+ * /api/log, server-side Coach + data bundle for the Log tab.
  *
  * Mirrors /api/health/route.ts. The Log surface is the run-history
- * scanner — every Strava run YTD with year heatmap, monthly volume
+ * scanner, every Strava run YTD with year heatmap, monthly volume
  * vs prior year, personal-best shelf, and the most-recent run feed.
  *
  * Coach methods wired:
  *   - runRead()  · one-line verdict + body sentence per run (called
- *                  for the recent-runs feed; safe to throw — feed
+ *                  for the recent-runs feed; safe to throw, feed
  *                  falls back to a generic blurb).
  *
  * Real data sources:
@@ -28,7 +28,7 @@ import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 
 // ─────────────────────────────────────────────────────────────────────
-// Wire shapes — every Log card has a deterministic data contract that
+// Wire shapes, every Log card has a deterministic data contract that
 // the page consumes. Stays narrow so the wire stays small.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -36,13 +36,13 @@ import type { FreshnessMap } from '../../../lib/freshness-types';
 export interface LogApiRunRow {
   id: number;
   dateISO: string;
-  /** "FRI 8" / "SUN APR 27" — short label tuned for the feed column. */
+  /** "FRI 8" / "SUN APR 27", short label tuned for the feed column. */
   dateLabel: string;
   /** Run / activity name. */
   name: string;
   /** Subtitle line under the name, e.g. "EAST BAY LOOP · STRAVA". */
   subLabel: string;
-  /** Workout kind chip — drives the leading mark + tint. */
+  /** Workout kind chip, drives the leading mark + tint. */
   kind: 'race' | 'workout' | 'long' | 'recovery' | 'easy';
   /** True if this run is a PR / has Strava achievements. */
   isStar: boolean;
@@ -54,9 +54,9 @@ export interface LogApiRunRow {
   paceSPerMi: number;
   /** Avg HR (bpm). Null when no HR. */
   avgHr: number | null;
-  /** RPE 1–10 — inferred from name + HR until daily logs land. */
+  /** RPE 1–10, inferred from name + HR until daily logs land. */
   rpe: number | null;
-  /** Pace tone — drives color cue ('good' for easy, 'corp' for quality,
+  /** Pace tone, drives color cue ('good' for easy, 'corp' for quality,
    *  'neutral' for race-pace, 'warn' for heavy effort). */
   paceTone: 'good' | 'corp' | 'neutral' | 'warn';
 }
@@ -107,7 +107,7 @@ export interface LogApiHeatCell {
   miles: number;
   /** Fraction of peak-week miles. 0–1. Drives cell intensity. */
   intensity: number;
-  /** Top-tone bucket — 'race' (red) for race weeks, 'good' (green) for normal,
+  /** Top-tone bucket, 'race' (red) for race weeks, 'good' (green) for normal,
    *  'rest' (gray) for empty future weeks, 'amber' for the current week. */
   tone: 'race' | 'good' | 'rest' | 'amber';
   /** True if this week contains any race. */
@@ -154,10 +154,10 @@ interface LogApiOk {
   /** Top-line month name + miles for the greet sub-lede. */
   peakMonthLabel: string | null;
   peakMonthMi: number;
-  /** Longest run YTD — display label + miles + name. */
+  /** Longest run YTD, display label + miles + name. */
   longestRunMi: number;
   longestRunName: string | null;
-  /** Per-signal freshness map — drives the "Coach is watching" UI
+  /** Per-signal freshness map, drives the "Coach is watching" UI
    *  strip. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
 }
@@ -175,7 +175,7 @@ export async function GET(): Promise<Response> {
 
     // Pull this year's activities. The cache returns up to one year of
     // data; we filter to current-year-only here. If empty (no Strava
-    // sync), the page handles the empty state itself — we never
+    // sync), the page handles the empty state itself, we never
     // synthesize fake runs.
     const cache = await getCachedActivities().catch(
       () => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 }),
@@ -216,13 +216,13 @@ export async function GET(): Promise<Response> {
     // 53-week year heat strip
     const yearHeat = buildYearHeat(ytdRuns, today, year);
 
-    // Monthly volume — current vs prior year
+    // Monthly volume, current vs prior year
     const months = buildMonths(ytdRuns, priorYearRuns, todayDate);
 
     // Personal-best shelf
     const prs = buildPrs(allRuns, year);
 
-    // Recent runs feed — most-recent 7
+    // Recent runs feed, most-recent 7
     const sortedRuns = ytdRuns.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));
     const recentRuns: LogApiRunRow[] = sortedRuns.slice(0, 7).map((r) => buildRunRow(r));
 
@@ -266,7 +266,7 @@ export async function GET(): Promise<Response> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Helpers — pure functions over the activity list.
+// Helpers, pure functions over the activity list.
 // ─────────────────────────────────────────────────────────────────────
 
 const MONTH_LABELS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -281,7 +281,7 @@ function sameDayPriorYearISO(todayISO: string): string {
 /** Build the 53-week heat strip from Jan-1 to Dec-31. */
 function buildYearHeat(runs: NormalizedActivity[], todayISO: string, year: number): LogApiHeatCell[] {
   const cells: LogApiHeatCell[] = [];
-  // First Monday on/before Jan 1 — gives us 52 or 53 weeks across the
+  // First Monday on/before Jan 1, gives us 52 or 53 weeks across the
   // calendar year, lined up with ISO weeks (Mon-start).
   const jan1 = new Date(`${year}-01-01T12:00:00Z`);
   const jan1Day = jan1.getUTCDay();
@@ -333,7 +333,7 @@ function buildYearHeat(runs: NormalizedActivity[], todayISO: string, year: numbe
   return cells;
 }
 
-/** Helper for buildYearHeat — full-year weekly miles independent of today. */
+/** Helper for buildYearHeat, full-year weekly miles independent of today. */
 function weeklyMilesByWeekStart(runs: NormalizedActivity[]): Array<{ weekStart: string; miles: number }> {
   const buckets = new Map<string, number>();
   for (const r of runs) {
@@ -348,7 +348,7 @@ function weeklyMilesByWeekStart(runs: NormalizedActivity[]): Array<{ weekStart: 
   return Array.from(buckets.entries()).map(([weekStart, miles]) => ({ weekStart, miles }));
 }
 
-/** Monthly bar data — current vs prior year. */
+/** Monthly bar data, current vs prior year. */
 function buildMonths(
   thisYear: NormalizedActivity[],
   priorYear: NormalizedActivity[],
@@ -356,7 +356,7 @@ function buildMonths(
 ): LogApiMonth[] {
   const currentMonth = todayDate.getUTCMonth();
   const months: LogApiMonth[] = [];
-  // First pass — sums.
+  // First pass, sums.
   const sumsThis = new Array(12).fill(0);
   const sumsPrior = new Array(12).fill(0);
   for (const r of thisYear) sumsThis[Number(r.date.slice(5, 7)) - 1] += r.distanceMi;
@@ -376,7 +376,7 @@ function buildMonths(
   return months;
 }
 
-/** Build the PR shelf — naive PRs over the year, with last-year fallback
+/** Build the PR shelf, naive PRs over the year, with last-year fallback
  *  for the 1-mile + longest categories so the shelf renders 6 cards. */
 function buildPrs(allRuns: NormalizedActivity[], thisYear: number): LogApiPr[] {
   const yearStart = `${thisYear}-01-01`;
@@ -386,7 +386,7 @@ function buildPrs(allRuns: NormalizedActivity[], thisYear: number): LogApiPr[] {
   const thisYearPrs = naivePRs(thisYearRuns);
   const priorYearPrs = naivePRs(priorYearRuns);
 
-  // PR card builder — pulls source name/pace from the activity.
+  // PR card builder, pulls source name/pace from the activity.
   function buildCard(label: string, pr: ReturnType<typeof naivePRs>[number], isNew: boolean): LogApiPr {
     if (pr.bestS == null || pr.activityId == null) {
       return {
@@ -427,7 +427,7 @@ function buildPrs(allRuns: NormalizedActivity[], thisYear: number): LogApiPr[] {
       out.push(buildCard(displayLabel(label), lp ?? { label, distMi: 0, bestS: null, activityId: null, date: null }, false));
     }
   }
-  // Mile PR — typically last-year for most runners.
+  // Mile PR, typically last-year for most runners.
   const mile = thisYearPrs.find((p) => p.label === '1 mi');
   if (mile && mile.bestS != null) {
     out.push(buildCard('1 MILE', mile, true));
@@ -435,7 +435,7 @@ function buildPrs(allRuns: NormalizedActivity[], thisYear: number): LogApiPr[] {
     const lp = priorYearPrs.find((p) => p.label === '1 mi');
     out.push(buildCard('1 MILE', lp ?? { label: '1 mi', distMi: 0, bestS: null, activityId: null, date: null }, false));
   }
-  // Longest single run — across all-time, with the "year" as the badge.
+  // Longest single run, across all-time, with the "year" as the badge.
   const longest = allRuns.reduce<NormalizedActivity | null>(
     (acc, r) => (acc == null || r.distanceMi > acc.distanceMi ? r : acc),
     null,
@@ -482,7 +482,7 @@ function buildRunRow(r: NormalizedActivity): LogApiRunRow {
     ? `${dow} ${day}`
     : `${dow} ${MONTH_LABELS[d.getUTCMonth()]} ${day}`;
 
-  // Kind classification — name-driven, races win.
+  // Kind classification, name-driven, races win.
   const isRace = isProbablyRace(r);
   const nm = r.name.toLowerCase();
   let kind: LogApiRunRow['kind'] = 'easy';
@@ -491,14 +491,14 @@ function buildRunRow(r: NormalizedActivity): LogApiRunRow {
   else if (/(long|long\s*run)/i.test(nm) || r.distanceMi >= 14) kind = 'long';
   else if (/(recovery|recover|jog)/i.test(nm)) kind = 'recovery';
 
-  // Pace tone — race-pace neutral, easy good, workout corp.
+  // Pace tone, race-pace neutral, easy good, workout corp.
   const paceTone: LogApiRunRow['paceTone'] =
     kind === 'race' ? 'neutral'
     : kind === 'workout' ? 'corp'
     : kind === 'recovery' || kind === 'easy' ? 'good'
     : 'neutral';
 
-  // RPE inference — name + HR. Coarse but useful until daily-log lands.
+  // RPE inference, name + HR. Coarse but useful until daily-log lands.
   let rpe: number | null = null;
   if (kind === 'race') rpe = r.distanceMi >= 22 ? 9 : 6;
   else if (kind === 'workout') rpe = 5;

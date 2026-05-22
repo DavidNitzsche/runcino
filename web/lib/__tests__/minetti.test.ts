@@ -54,7 +54,7 @@ describe('gradeAdjustmentFactor', () => {
 
   it('Hurricane Point (+5%) has GAF ~1.30', () => {
     // Real value per Minetti's polynomial. This is the metabolic cost
-    // ratio — a 1.30x GAF means you bleed ~30% more energy per second
+    // ratio, a 1.30x GAF means you bleed ~30% more energy per second
     // than flat. Runners often cite "1.8x as hard" for 5% climbs, but
     // that's folk wisdom; the measured value is 1.30.
     expect(gradeAdjustmentFactor(5)).toBeGreaterThan(1.25);

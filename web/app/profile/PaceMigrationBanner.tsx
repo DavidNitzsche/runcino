@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Pace-migration banner — one-time UX for the canonical Daniels
+ * Pace-migration banner, one-time UX for the canonical Daniels
  * pace-band correction.
  *
  * History: the previous pacesFromVdot formula derived training paces
@@ -21,7 +21,7 @@
  *
  * After acknowledgment, ongoing pace shifts (e.g. from new race
  * results) fall under the normal large-shift guard at the
- * prescription layer — not this one-time banner.
+ * prescription layer, not this one-time banner.
  */
 
 import { useState } from 'react';
@@ -29,7 +29,7 @@ import { useState } from 'react';
 /** Optional before/after data showing the user exactly what changed.
  *  Pass paces in seconds/mile so the banner formats them. Renders a
  *  compact two-column comparison ("Previous / Now") with deltas, per
- *  David's N10 spec — makes the migration feel like a deliberate edit
+ *  David's N10 spec, makes the migration feel like a deliberate edit
  *  rather than a silent shift. */
 export interface BeforeAfter {
   legacyE?: number;  // s/mi
@@ -50,7 +50,7 @@ export interface BeforeAfter {
 }
 
 function fmtPace(s?: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}`;
@@ -120,7 +120,7 @@ export function PaceMigrationBanner({ beforeAfter }: { beforeAfter?: BeforeAfter
           <>
             Your training paces have been updated to <strong>canonical Daniels</strong> values from
             the official Table 2 source. The previous formula was derived from race times and
-            drifted from the canonical bands — Easy paces ran too slow (over-conservative),
+            drifted from the canonical bands, Easy paces ran too slow (over-conservative),
             Repetition paces ran too fast (mile race pace instead of Daniels&apos; R).
           </>
         )}
@@ -147,7 +147,7 @@ export function PaceMigrationBanner({ beforeAfter }: { beforeAfter?: BeforeAfter
           }}
         >
           <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 9, letterSpacing: 1.2, color: 'rgba(13, 15, 18, 0.55)', textTransform: 'uppercase', marginBottom: 6, fontWeight: 700 }}>
-            Before / after · VDOT {beforeAfter.vdot?.toFixed(1) ?? '—'}
+            Before / after · VDOT {beforeAfter.vdot?.toFixed(1) ?? '-'}
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
             <thead>

@@ -8,7 +8,7 @@
  *      - la-marathon-2026:   priority='A'  (was 'B' default)
  *      - big-sur-marathon:   priority='A'  (was 'A' display, normalize)
  *      - disney-half-2026:   priority='A'  (was 'B' default)
- *      - sombrero-half:      priority='C'  (was 'B' default — David
+ *      - sombrero-half:      priority='C'  (was 'B' default, David
  *                                          ran it as a tune-up,
  *                                          not an A-race effort)
  *
@@ -27,7 +27,7 @@
  *   - Sombrero shows 'C'
  *   - Aggregate VDOT shifts: Sombrero now C-tier, won't qualify for
  *     full goal-tier exemption in cycle-aware compute (depending on
- *     whether tier matching honors priority — verify after run).
+ *     whether tier matching honors priority, verify after run).
  *   - Rose Bowl Half is in the curated table; compute-vdot can use
  *     it on next refresh.
  */
@@ -202,7 +202,7 @@ export async function POST() {
     nextSteps: [
       'Re-hit /api/admin/audit-races to verify race list',
       'Re-hit /races on the app to see priorities reflected',
-      'Aggregate VDOT will reflect the new priorities on next Coach Reads load (note: current compute-vdot does not honor priority for tier matching — tomorrow ticket)',
+      'Aggregate VDOT will reflect the new priorities on next Coach Reads load (note: current compute-vdot does not honor priority for tier matching, tomorrow ticket)',
     ],
   });
 }

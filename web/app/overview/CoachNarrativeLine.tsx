@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * CoachNarrativeLine — the single-line coach voice that sits at the
+ * CoachNarrativeLine, the single-line coach voice that sits at the
  * very top of /overview, just under the page header.
  *
  * This component is intentionally minimal:
@@ -12,7 +12,7 @@
  *     source ("FROM YOUR CHECK-INS", "FROM YOUR RACE CAL.", etc.).
  *
  * When `line === null` the component renders nothing. There is no
- * placeholder, no "Keep up the great work!" filler — that's the whole
+ * placeholder, no "Keep up the great work!" filler, that's the whole
  * point of the narrative contract. If the coach has nothing specific
  * to say today, the slot collapses.
  *
@@ -53,7 +53,7 @@ function chipLabelFor(basedOn: string): string | null {
   }
 }
 
-/** Race-orange by default — the brand "the coach is here" colour. */
+/** Race-orange by default, the brand "the coach is here" colour. */
 function dotColorFor(tone: NarrativeLine['tone']): string {
   switch (tone) {
     case 'pushing':     return 'var(--color-race)';
@@ -86,7 +86,7 @@ export function CoachNarrativeLine({ line }: Props): React.ReactElement | null {
         borderRadius: 12,
       }}
     >
-      {/* Coach mark — small filled dot tinted to tone. */}
+      {/* Coach mark, small filled dot tinted to tone. */}
       <span
         aria-hidden
         style={{
@@ -99,7 +99,7 @@ export function CoachNarrativeLine({ line }: Props): React.ReactElement | null {
         }}
       />
 
-      {/* The sentence — readable, single line on desktop, wraps to two
+      {/* The sentence, readable, single line on desktop, wraps to two
           on narrow screens. */}
       <p
         style={{
@@ -114,7 +114,7 @@ export function CoachNarrativeLine({ line }: Props): React.ReactElement | null {
         {line.sentence}
       </p>
 
-      {/* Source chip — small uppercase label, only shown when we have a
+      {/* Source chip, small uppercase label, only shown when we have a
           mapping in chipLabelFor. */}
       {chip && (
         <span

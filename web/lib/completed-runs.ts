@@ -3,7 +3,7 @@
  *
  * Returns a Set of YYYY-MM-DD dates the user actually ran (per
  * strava_activities). Pages use this to decide whether a planned
- * workout is marked complete — date alone isn't enough; we need
+ * workout is marked complete, date alone isn't enough; we need
  * evidence of a logged run.
  *
  * Date logic: the activity row stores `data->>'startLocal'` as a full
@@ -44,7 +44,7 @@ export async function getCompletedDates(userId: string, fromISO: string, toISO: 
  * Stronger completion check: returns a Map from YYYY-MM-DD → total
  * miles actually logged that day. Pages use this to gate "DONE" not
  * just on "any activity exists" but on "an activity that's at least
- * 60% of the planned distance" — so a 3-mi shake-out doesn't mark
+ * 60% of the planned distance", so a 3-mi shake-out doesn't mark
  * a 10-mi long run complete.
  */
 export async function getCompletedMileageByDate(userId: string | null | undefined, fromISO: string, toISO: string): Promise<Map<string, number>> {
@@ -66,7 +66,7 @@ export async function getCompletedMileageByDate(userId: string | null | undefine
   }
   // Fold in Apple-Watch completions (runs that never synced to Strava).
   // Date comes from the workoutId prefix ("YYYY-MM-DD-<slug>"). Take the
-  // MAX per day, not the sum — a run logged in BOTH Strava and a watch
+  // MAX per day, not the sum, a run logged in BOTH Strava and a watch
   // completion must not double-count.
   if (userId) {
     const wc = await query<Row>(
@@ -94,7 +94,7 @@ export async function getCompletedMileageByDate(userId: string | null | undefine
  *
  * Rule: actual total miles for that date must be ≥ 60% of plannedMi.
  * Rest days (plannedMi=0) are auto-true. Tolerance is loose on
- * purpose — a slightly-short long run is still a long run; we don't
+ * purpose, a slightly-short long run is still a long run; we don't
  * want to penalize a runner for ending at 9.4 mi instead of 10.5.
  */
 export function isWorkoutComplete(
@@ -122,7 +122,7 @@ export interface WeekStats {
  * Used by the coach briefing to talk about last week with real numbers.
  *
  * "quality" is the highest-pace (lowest seconds/mi) run that's at least
- * 3 mi — picks out a threshold/intervals day from easy runs.
+ * 3 mi, picks out a threshold/intervals day from easy runs.
  */
 export async function getWeekStats(userId: string, fromISO: string, toISO: string): Promise<WeekStats> {
   interface Row {

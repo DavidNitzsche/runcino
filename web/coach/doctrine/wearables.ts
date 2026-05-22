@@ -1,5 +1,5 @@
 /**
- * Doctrine — Wearable data interpretation.
+ * Doctrine, Wearable data interpretation.
  *
  * Source: Research/15-wearable-data.md
  *
@@ -34,7 +34,7 @@ export const TRAINING_LOAD_METRICS: Cited<{
       dangerZoneAbove: 1.5,
     },
     monotony: {
-      definition: 'Monotony = mean weekly load / SD of daily load. High monotony (>2.0) means every day is similar — no recovery rhythm.',
+      definition: 'Monotony = mean weekly load / SD of daily load. High monotony (>2.0) means every day is similar, no recovery rhythm.',
       thresholdHigh: 2.0,
     },
     strain: {
@@ -42,7 +42,7 @@ export const TRAINING_LOAD_METRICS: Cited<{
       useCase: 'Combined high-load + low-variation signal predicts illness/injury risk',
     },
   },
-  note: 'EWMA (exponentially weighted moving average) ACWR is preferred over rolling-average ACWR — gives more weight to recent days, decays correctly.',
+  note: 'EWMA (exponentially weighted moving average) ACWR is preferred over rolling-average ACWR, gives more weight to recent days, decays correctly.',
   citations: [
     cite('§Training Load Metrics', 'TRIMP, TSS, ACWR (0.8-1.3 sweet spot, >1.5 danger), monotony >2.0, strain', 'research', '15'),
   ],
@@ -57,23 +57,23 @@ export const CTL_ATL_TSB_BANDS: Cited<{
 }> = {
   value: {
     definitions: {
-      ctl: 'Chronic Training Load — 42-day exponentially weighted average of daily load. Proxy for fitness.',
-      atl: 'Acute Training Load — 7-day exponentially weighted average. Proxy for fatigue.',
-      tsb: 'Training Stress Balance — CTL minus ATL. Proxy for form. Positive = fresh; negative = fatigued.',
+      ctl: 'Chronic Training Load, 42-day exponentially weighted average of daily load. Proxy for fitness.',
+      atl: 'Acute Training Load, 7-day exponentially weighted average. Proxy for fatigue.',
+      tsb: 'Training Stress Balance, CTL minus ATL. Proxy for form. Positive = fresh; negative = fatigued.',
     },
     tsbBands: [
       { tsbLow: -50, tsbHigh: -30,  meaning: 'over_reached',   action: 'Insert recovery week. High illness/injury risk.' },
-      { tsbLow: -30, tsbHigh: -10,  meaning: 'fatigued',        action: 'Productive training zone — building. Monitor for overshoot.' },
+      { tsbLow: -30, tsbHigh: -10,  meaning: 'fatigued',        action: 'Productive training zone, building. Monitor for overshoot.' },
       { tsbLow: -10, tsbHigh: 5,    meaning: 'productive',      action: 'Optimal training zone for adaptation' },
       { tsbLow: 5,   tsbHigh: 25,   meaning: 'fresh',           action: 'Race-ready zone (taper window)' },
-      { tsbLow: 25,  tsbHigh: 100,  meaning: 'detrained',       action: 'Fitness loss likely — return to training' },
+      { tsbLow: 25,  tsbHigh: 100,  meaning: 'detrained',       action: 'Fitness loss likely, return to training' },
     ],
     rampRateGuidance: {
       healthyCtlPctPerWeekLow: 3, healthyCtlPctPerWeekHigh: 7,
       injuryRiskAbovePctPerWeek: 10,
     },
   },
-  note: 'Form (TSB) +5 to +25 is the "race-ready" range — peaks around +20 for marathon, +10-15 for shorter races. Building cycles run TSB negative; race weeks build TSB positive.',
+  note: 'Form (TSB) +5 to +25 is the "race-ready" range, peaks around +20 for marathon, +10-15 for shorter races. Building cycles run TSB negative; race weeks build TSB positive.',
   citations: [
     cite('§Fitness/Fatigue/Form (CTL/ATL/TSB)', 'CTL 42-day, ATL 7-day, TSB = CTL-ATL. Bands: over-reached -50 to -30 / fatigued -30 to -10 / productive -10 to +5 / fresh +5 to +25 / detrained +25.', 'research', '15'),
   ],
@@ -149,7 +149,7 @@ export const DEVICE_SOURCE_OF_TRUTH: Cited<{
       'Stable measurement environment',
       'Trend over 7-14 days, not single readings',
     ],
-    multiDeviceRule: 'When HR readings disagree, trust the chest strap. When pace readings disagree, GPS-corrected (post-run smoothing) > raw. Don\'t mix data sources within a metric — pick one device family for ACWR/CTL trending and stick to it.',
+    multiDeviceRule: 'When HR readings disagree, trust the chest strap. When pace readings disagree, GPS-corrected (post-run smoothing) > raw. Don\'t mix data sources within a metric, pick one device family for ACWR/CTL trending and stick to it.',
   },
   citations: [
     cite('§Heart Rate Sensor Accuracy + Pace and GPS Accuracy + Multi-Device Sync', 'Chest strap = gold; arm optical = good; wrist = fair-poor in intervals. Pick one device family for trending.', 'research', '15'),

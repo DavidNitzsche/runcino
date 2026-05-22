@@ -1,5 +1,5 @@
 /**
- * /api/admin/strava-webhook — manage the Strava webhook subscription.
+ * /api/admin/strava-webhook, manage the Strava webhook subscription.
  *
  * Strava only allows ONE active webhook subscription per app. This
  * endpoint lets an admin (you) check, create, or delete it without
@@ -58,7 +58,7 @@ async function listSubscriptions(): Promise<Subscription[]> {
   return (await res.json()) as Subscription[];
 }
 
-// ── GET — show current state ────────────────────────────────────────
+// ── GET, show current state ────────────────────────────────────────
 export async function GET(req: NextRequest) {
   await requireAdmin();
   try {
@@ -74,13 +74,13 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── POST — create the subscription ──────────────────────────────────
+// ── POST, create the subscription ──────────────────────────────────
 export async function POST(req: NextRequest) {
   await requireAdmin();
   const creds = clientCreds();
   if (!creds) return NextResponse.json({ ok: false, error: 'STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET not set' }, { status: 500 });
 
-  // Strava only allows one — tear down existing first so the new one wins.
+  // Strava only allows one, tear down existing first so the new one wins.
   try {
     const existing = await listSubscriptions();
     for (const sub of existing) {
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, subscription: data, callbackUrl: callbackUrl(req) });
 }
 
-// ── DELETE — tear it down ───────────────────────────────────────────
+// ── DELETE, tear it down ───────────────────────────────────────────
 export async function DELETE() {
   await requireAdmin();
   const creds = clientCreds();

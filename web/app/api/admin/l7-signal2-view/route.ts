@@ -15,7 +15,7 @@ import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import { query } from '@/lib/db';
 
 function fmtPace(s: number | null): string {
-  if (s == null || s <= 0) return '—';
+  if (s == null || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
@@ -77,8 +77,8 @@ export async function GET(req: NextRequest) {
         : signal2.firesDown
           ? `Signal 2 fires DOWN · ${signal2.deltaSPerMi} s/mi slower at Z2 HR.`
           : !signal2.enoughVolume
-            ? `Not enough volume yet — need 3+ easy workouts and 10+ Z2 splits per window. recent: ${signal2.windows.recent.workoutCount}w / ${signal2.windows.recent.z2MileCount}mi · prior: ${signal2.windows.prior.workoutCount}w / ${signal2.windows.prior.z2MileCount}mi.`
-            : `Delta within noise floor (±5 s/mi). System holding — no fitness drift detected.`,
+            ? `Not enough volume yet, need 3+ easy workouts and 10+ Z2 splits per window. recent: ${signal2.windows.recent.workoutCount}w / ${signal2.windows.recent.z2MileCount}mi · prior: ${signal2.windows.prior.workoutCount}w / ${signal2.windows.prior.z2MileCount}mi.`
+            : `Delta within noise floor (±5 s/mi). System holding, no fitness drift detected.`,
     },
   });
 }

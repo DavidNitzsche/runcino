@@ -11,7 +11,7 @@
  *   - Gap (s/mi) and feasibility verdict
  *   - One-line "next move" from the coach
  *
- * All numbers come from `coach.pathToRace()` — no synthesized
+ * All numbers come from `coach.pathToRace()`, no synthesized
  * fallbacks. When there's no A race or no VDOT-eligible recent race,
  * the card renders an honest empty state with a CTA.
  *
@@ -46,7 +46,7 @@ const FEASIBILITY_PIN: Record<
 };
 
 function formatPace(sPerMi: number): string {
-  if (!isFinite(sPerMi) || sPerMi <= 0) return '—';
+  if (!isFinite(sPerMi) || sPerMi <= 0) return ', ';
   const mm = Math.floor(sPerMi / 60);
   const ss = Math.round(sPerMi - mm * 60);
   return `${mm}:${ss.toString().padStart(2, '0')}/mi`;
@@ -225,7 +225,7 @@ export function PathToRaceCard({ decision }: PathToRaceCardProps) {
               letterSpacing: '-0.5px',
             }}
           >
-            {fitness?.predictedDisplay ?? '—'}
+            {fitness?.predictedDisplay ?? '-'}
           </div>
           <div
             style={{
@@ -327,7 +327,7 @@ export function PathToRaceCard({ decision }: PathToRaceCardProps) {
               letterSpacing: '-0.5px',
             }}
           >
-            {r.gapDisplay ?? '—'}
+            {r.gapDisplay ?? '-'}
           </div>
           <div
             style={{

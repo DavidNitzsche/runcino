@@ -1,5 +1,5 @@
 /**
- * Snapshot tests — Daniels training paces table.
+ * Snapshot tests, Daniels training paces table.
  *
  * Per Rule 10 ("Memory is not a source"): pinned rows lock the
  * canonical reference data so that future edits (intentional or
@@ -7,18 +7,18 @@
  * readable diff naming the cell that moved.
  *
  * Pinned rows (per David's UNIT A round 2 sign-off):
- *   - VDOT 30 — table floor
- *   - VDOT 40 — round-number checkpoint, mid-low fitness
- *   - VDOT 46 — round 1 spot-check verified (M from Table 2 canonical,
+ *   - VDOT 30, table floor
+ *   - VDOT 40, round-number checkpoint, mid-low fitness
+ *   - VDOT 46, round 1 spot-check verified (M from Table 2 canonical,
  *               1500 corrected to 5:50, i400 marked undefined pending
  *               re-verification)
- *   - VDOT 48 — David's anchor; round 1 spot-check verified
- *   - VDOT 50 — round 1 spot-check verified
- *   - VDOT 60 — round 1 spot-check verified; last row with
+ *   - VDOT 48, David's anchor; round 1 spot-check verified
+ *   - VDOT 50, round 1 spot-check verified
+ *   - VDOT 60, round 1 spot-check verified; last row with
  *               10K-derived E range coverage
  *
  * NOT pinned (intentionally):
- *   - VDOT 61–72 — best-effort transcription from compressed source.
+ *   - VDOT 61–72, best-effort transcription from compressed source.
  *     PENDING SECOND-SOURCE VERIFICATION (runsmartonline.com or
  *     Daniels 3rd ed direct). Pinning them now would lock in
  *     low-confidence values; we don't get the safety net we want
@@ -44,7 +44,7 @@ function row(vdot: number): VdotTrainingRow {
 }
 
 describe('TRAINING_PACES_TABLE · pinned rows (Rule 10)', () => {
-  // VDOT 30 — table floor. Spot-check verified round 1.
+  // VDOT 30, table floor. Spot-check verified round 1.
   // Notable: R 400m = 2:16 (136s) corrected in round 1 (was wrongly
   // marked blank in the original draft; led to r/mile = 8:56 instead
   // of the correct 9:07).
@@ -58,7 +58,7 @@ describe('TRAINING_PACES_TABLE · pinned rows (Rule 10)', () => {
     });
   });
 
-  // VDOT 40 — competitive recreational tier. Round-number checkpoint
+  // VDOT 40, competitive recreational tier. Round-number checkpoint
   // not in the round 1 spot-check; transcribed best-effort from
   // source per the column-first discipline.
   it('VDOT 40 row matches Daniels source', () => {
@@ -72,7 +72,7 @@ describe('TRAINING_PACES_TABLE · pinned rows (Rule 10)', () => {
     });
   });
 
-  // VDOT 46 — round 1 corrections applied:
+  // VDOT 46, round 1 corrections applied:
   //   - 1500m = 5:50 (was 5:49 in original draft)
   //   - M = 7:49 / 469s from Table 2 (was 7:48 from 10K-derived)
   //   - I 400m marked undefined pending direct re-verification
@@ -82,7 +82,7 @@ describe('TRAINING_PACES_TABLE · pinned rows (Rule 10)', () => {
       race1500S: 350, raceMileS: 377, race3kS: 746, race2miS: 805, race5kS: 1285,
       race10kS: 2665, race15kS: 4102, raceHalfS: 5907, raceMarathonS: 12279,
       eS: 530, mS: 469, tMileS: 437, t400S: 109, t1000S: 273,
-      // i400S deliberately undefined — provenance unclear in round 1.
+      // i400S deliberately undefined, provenance unclear in round 1.
       // Resolver falls back to i1000S × 1.609 for the iMile.
       i400S: undefined,
       i1000S: 252, i1200S: 300,
@@ -90,7 +90,7 @@ describe('TRAINING_PACES_TABLE · pinned rows (Rule 10)', () => {
     });
   });
 
-  // VDOT 48 — David's anchor (HM 1:34:54 → VDOT 48.0 exact match).
+  // VDOT 48, David's anchor (HM 1:34:54 → VDOT 48.0 exact match).
   // Every cell verified perfect by David in round 1.
   it('VDOT 48 row matches Daniels source (David anchor)', () => {
     expect(row(48)).toEqual({
@@ -103,7 +103,7 @@ describe('TRAINING_PACES_TABLE · pinned rows (Rule 10)', () => {
     });
   });
 
-  // VDOT 50 — verified perfect in round 1. First row with R 800m
+  // VDOT 50, verified perfect in round 1. First row with R 800m
   // published in Table 2 (Daniels doesn't publish R 800m below VDOT
   // 60 according to round-2 source check; we include r800S=174 at
   // VDOT 50 from the Table 2 row to support runners interpolating
@@ -119,7 +119,7 @@ describe('TRAINING_PACES_TABLE · pinned rows (Rule 10)', () => {
     });
   });
 
-  // VDOT 60 — verified perfect in round 1. Last row covered by the
+  // VDOT 60, verified perfect in round 1. Last row covered by the
   // 10K-derived range image (E range = daniels-published below this
   // VDOT, synthetic ±10s above).
   it('VDOT 60 row matches Daniels source (10K-derived E ceiling)', () => {
@@ -197,7 +197,7 @@ describe('resolveTrainingPaces · source-priority chain', () => {
   });
 
   // VDOT 61 is the first row carrying a (best-effort) published
-  // iMileS in the table data — the canonical Daniels Table 2 likely
+  // iMileS in the table data, the canonical Daniels Table 2 likely
   // begins publishing the column around this VDOT, though exact
   // start row pending second-source verification. Priority chain
   // prefers published over derived.

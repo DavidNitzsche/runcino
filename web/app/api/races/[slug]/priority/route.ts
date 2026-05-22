@@ -9,7 +9,7 @@
  * Body: { priority: 'A' | 'B' | 'C' | 'tune-up' | 'training-run' |
  *                   'hilly-excluded' }
  *
- * Returns the updated race meta. Auth required — user can only
+ * Returns the updated race meta. Auth required, user can only
  * edit their own races (or unclaimed legacy rows).
  *
  * Locked with David 2026-05-19 round 2: per-race effort level is

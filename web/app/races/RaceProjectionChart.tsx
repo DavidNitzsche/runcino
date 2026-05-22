@@ -18,7 +18,7 @@ interface Props {
 }
 
 function fmtTime(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);
@@ -151,7 +151,7 @@ export function RaceProjectionChart({ projection }: Props) {
             fontStyle: 'italic',
           }}
         >
-          Goal is at or easier than current VDOT — plan line equals maintain line.
+          Goal is at or easier than current VDOT, plan line equals maintain line.
         </div>
       )}
     </div>

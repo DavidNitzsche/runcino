@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * /plan — full multi-month plan view.
+ * /plan, full multi-month plan view.
  *
  * Renders one calendar grid per month for the next ~4 months. Each
  * cell shows the engine's prescribed work for that day: type label +
@@ -11,7 +11,7 @@
  * Data: GET /api/plan-range?months=4 → array of CoachToday-shaped
  * day entries with date/type/label/distanceMi/isQuality/isLong/...
  *
- * The whole page is one Coach-driven surface — no inline numbers.
+ * The whole page is one Coach-driven surface, no inline numbers.
  */
 
 import Link from 'next/link';
@@ -108,7 +108,7 @@ function PlanGreet({ data }: { data: PlanRangeApiOk | null }) {
       <div style={{
         fontSize: 14, color: 'var(--t1)', marginTop: 8, maxWidth: '70ch',
       }}>
-        Every day from this month through {data ? new Date(data.endISO + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'four months from now'} —
+        Every day from this month through {data ? new Date(data.endISO + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'four months from now'}, 
         same engine that prescribes today. {dayCount ? `${dayCount} days, ` : ''}same rest cadence, same quality cap.
         <Link href="/training" style={{ color: 'var(--coach)', marginLeft: 8, textDecoration: 'none' }}>← back to training</Link>
       </div>
@@ -258,7 +258,7 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
             }}>TODAY</span>
           )}
         </div>
-        {/* type name — big and colored */}
+        {/* type name, big and colored */}
         <div style={{
           fontFamily: 'var(--f-data)', fontSize: 9.5, fontWeight: 700,
           letterSpacing: '.5px', textTransform: 'uppercase',
@@ -279,7 +279,7 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
           </div>
         )}
         {isRest && (
-          <div style={{ fontFamily: 'var(--f-data)', fontSize: 18, color: 'var(--t3)', lineHeight: 1 }}>—</div>
+          <div style={{ fontFamily: 'var(--f-data)', fontSize: 18, color: 'var(--t3)', lineHeight: 1 }}>, </div>
         )}
         {/* pace */}
         {!isRest && day.paceTargetSPerMi && (
@@ -288,7 +288,7 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
           </div>
         )}
       </div>
-      {/* strength strip — first-class session */}
+      {/* strength strip, first-class session */}
       {strengthFocus && (
         <div style={{
           background: 'rgba(209,168,90,.1)',

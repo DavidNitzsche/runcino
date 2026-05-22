@@ -105,7 +105,7 @@ describe('validateCompletion', () => {
 
   it('rejects a non-boolean completed flag', () => {
     const c = validBase();
-    // @ts-expect-error — exercising runtime guard against bad input
+    // @ts-expect-error, exercising runtime guard against bad input
     c.phases[1].completed = 'yes';
     expect(validateCompletion(c)?.reason).toMatch(/completed/);
   });

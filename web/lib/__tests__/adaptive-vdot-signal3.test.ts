@@ -1,5 +1,5 @@
 /**
- * L7 Signal 3 tests — interval pace at controlled effort.
+ * L7 Signal 3 tests, interval pace at controlled effort.
  *
  * Like Signal 2's tests, these pin the locked constants + mirror
  * the threshold math at the unit level. Integration-level firing
@@ -71,7 +71,7 @@ describe('L7 Signal 3 · interval-candidate detection', () => {
     expect(pattern.test('Easy Run')).toBe(false);
   });
 
-  it('Strava workoutType=3 (Workout) alone is not enough — name must also match', () => {
+  it('Strava workoutType=3 (Workout) alone is not enough, name must also match', () => {
     // workoutType=3 covers tempos, threshold, AND intervals. We need
     // additional confirmation (name keyword) to identify as interval.
     const data = { workoutType: 3, name: 'Tempo 5 Miles' };

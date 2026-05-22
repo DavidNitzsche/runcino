@@ -17,7 +17,7 @@
  *   3. From VDOT, look up that runner's E/M/T/I/R equivalent paces.
  *   4. Map a RunWorkoutType to its Daniels zone, return a band.
  *
- * Falls back to null when no recent race is available — caller
+ * Falls back to null when no recent race is available, caller
  * uses the legacy PACE_OFFSETS_S_PER_MI table as a fallback in that
  * case.
  */
@@ -37,7 +37,7 @@ type DistanceKey = 'mileS' | 'km3S' | 'km5S' | 'km10S' | 'km15S' | 'halfS' | 'ma
 
 /** Pick the closest distance key in the VDOT table for a given race
  *  distance in miles. The table covers Mile / 3K / 5K / 10K / 15K /
- *  Half / Marathon — race distances within 5% of one of these are
+ *  Half / Marathon, race distances within 5% of one of these are
  *  treated as that distance for VDOT lookup. */
 function distanceKeyForMi(distMi: number): { key: DistanceKey; canonicalMi: number } | null {
   const candidates: Array<{ key: DistanceKey; canonicalMi: number }> = [
@@ -75,7 +75,7 @@ export function vdotFromRace(distanceMi: number, timeS: number): number | null {
       return Math.round((hi.vdot + t * (lo.vdot - hi.vdot)) * 10) / 10;
     }
   }
-  // Outside the table — return the closest endpoint VDOT for
+  // Outside the table, return the closest endpoint VDOT for
   // graceful degradation.
   if (timeS > rows[0][dist.key]) return rows[0].vdot;
   if (timeS < rows[rows.length - 1][dist.key]) return rows[rows.length - 1].vdot;
@@ -119,18 +119,18 @@ export function vdotRow(vdot: number): {
 // ── VDOT → Daniels pace bands ─────────────────────────────────────
 
 export interface DanielsPaceSet {
-  /** Source VDOT — for diagnostic / display. */
+  /** Source VDOT, for diagnostic / display. */
   vdot: number;
-  /** E pace band — Easy / aerobic / recovery floor. s/mi. */
+  /** E pace band, Easy / aerobic / recovery floor. s/mi. */
   E: { lowS: number; highS: number };
-  /** M pace band — marathon pace. s/mi. */
+  /** M pace band, marathon pace. s/mi. */
   M: { lowS: number; highS: number };
-  /** T pace band — threshold (anchored to HM pace by default; 15K
+  /** T pace band, threshold (anchored to HM pace by default; 15K
    *  for slower runners). s/mi. */
   T: { lowS: number; highS: number };
-  /** I pace band — VO2max intervals (5K-3K range). s/mi. */
+  /** I pace band, VO2max intervals (5K-3K range). s/mi. */
   I: { lowS: number; highS: number };
-  /** R pace band — repetition / mile-pace work. s/mi. */
+  /** R pace band, repetition / mile-pace work. s/mi. */
   R: { lowS: number; highS: number };
 }
 
@@ -162,7 +162,7 @@ export function pacesFromVdot(vdot: number): DanielsPaceSet | null {
   // chain (published > derived) applied for iMile and rMile. Clamps
   // to the table bounds [30, 72]; pendingVerification is set for
   // VDOT > 60 (caller can read it but pacesFromVdot doesn't pass
-  // through — the DanielsPaceSet shape is fixed).
+  // through, the DanielsPaceSet shape is fixed).
   const resolved = resolveTrainingPaces(vdot);
 
   const widthFor = (zone: DanielsPace): number => PACE_ZONE_WIDTH.value[zone].rangeWidthSPerMi;
@@ -217,7 +217,7 @@ interface RecentRace {
  *  - state.races.recent is already filtered to the last 28 days
  *    (well within Daniels' ≤8w currency window).
  *  - Standard distance (within 5% of canonical Mile/5K/10K/15K/HM/M)
- *  - Highest derived VDOT wins. (Strongest race, not most recent —
+ *  - Highest derived VDOT wins. (Strongest race, not most recent, 
  *    a runner's true fitness is the best of their recent results.)
  *  Returns null when no usable race is available. */
 function pickStrongestRecentRace(state: CoachState): RecentRace | null {
@@ -226,7 +226,7 @@ function pickStrongestRecentRace(state: CoachState): RecentRace | null {
   for (const r of pool) {
     if (r.finishS == null) continue;                  // no time logged
     if (!distanceKeyForMi(r.distanceMi)) continue;    // non-canonical
-    // Marathon performances underestimate aerobic VDOT — late-race
+    // Marathon performances underestimate aerobic VDOT, late-race
     // fatigue, fueling, heat, and connective-tissue endurance pull
     // marathon times below what pure aerobic ceiling would predict.
     // Daniels + every contemporary VDOT picker excludes marathon
@@ -252,7 +252,7 @@ export interface VdotPaceTarget {
   /** Pace band, s/mi. */
   lowS: number;
   highS: number;
-  /** Source VDOT — surfaces in coach voice ("at your VDOT 50 fitness…"). */
+  /** Source VDOT, surfaces in coach voice ("at your VDOT 50 fitness…"). */
   vdot: number;
   /** Which Daniels zone this pace lives in. */
   zone: DanielsPace;
@@ -262,10 +262,10 @@ export interface VdotPaceTarget {
  *  null when no recent race is available (caller uses legacy table).
  *
  *  Source priority:
- *    1. state.aggregateVdotValue when present — matches the value the
+ *    1. state.aggregateVdotValue when present, matches the value the
  *       UI shows on /profile's Coach Reads card (computeAggregateVdot
  *       recency-weighted top 3). Engine + UI agree.
- *    2. pickStrongestRecentRace fallback — single best race in 180-day
+ *    2. pickStrongestRecentRace fallback, single best race in 180-day
  *       window. Used when state wasn't gathered with a userId. */
 export function paceTargetFromVdot(
   state: CoachState,
@@ -274,7 +274,7 @@ export function paceTargetFromVdot(
   const zone = zoneForWorkout(workoutType);
   if (zone == null) return null;
 
-  // Tier 1 — pre-resolved aggregate VDOT (preferred)
+  // Tier 1, pre-resolved aggregate VDOT (preferred)
   if (state.aggregateVdotValue && state.aggregateVdotValue > 0) {
     const set = pacesFromVdot(state.aggregateVdotValue);
     if (set) {
@@ -283,7 +283,7 @@ export function paceTargetFromVdot(
     }
   }
 
-  // Tier 2 — single-best-race fallback
+  // Tier 2, single-best-race fallback
   const race = pickStrongestRecentRace(state);
   if (!race) return null;
   const vdot = vdotFromRace(race.distanceMi, race.timeS);
@@ -317,14 +317,14 @@ export interface VdotSnapshot {
  *  recent race is logged.
  *
  *  Source priority matches paceTargetFromVdot above:
- *    1. state.aggregateVdotValue — agrees with what /profile shows
+ *    1. state.aggregateVdotValue, agrees with what /profile shows
  *    2. Single best race in 180-day window (legacy fallback)
  *
  *  The .source field always cites the strongest single race, even
- *  when the VDOT value came from the aggregate — that's the most
+ *  when the VDOT value came from the aggregate, that's the most
  *  meaningful "anchor race" to show. */
 export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
-  // Find the strongest race regardless of which tier we end up using —
+  // Find the strongest race regardless of which tier we end up using, 
   // its metadata becomes the `.source` field on the snapshot.
   const pool = (state.races.bestForVdot?.length ? state.races.bestForVdot : state.races.recent);
   let best: { race: typeof state.races.recent[number]; vdot: number } | null = null;
@@ -355,7 +355,7 @@ export function vdotSnapshot(state: CoachState): VdotSnapshot | null {
         paces,
       };
     }
-    // Aggregate present but no anchor race — still return paces with
+    // Aggregate present but no anchor race, still return paces with
     // a synthetic placeholder source so callers don't fall through.
     if (paces) {
       return {

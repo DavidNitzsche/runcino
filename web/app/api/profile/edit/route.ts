@@ -1,5 +1,5 @@
 /**
- * /api/profile/edit — read + write path for the EDIT PROFILE modal.
+ * /api/profile/edit, read + write path for the EDIT PROFILE modal.
  *
  * GET  → return the raw profile row for user 'me' (or null when no
  *        row exists). Used by the modal to pre-fill its inputs.
@@ -11,7 +11,7 @@
  * unit tests can exercise it without a live DB. Errors come back as
  * 400 + { ok: false, error }; everything else is a 500.
  *
- * No auth yet — user_id is hard-coded to 'me' to match the rest of
+ * No auth yet, user_id is hard-coded to 'me' to match the rest of
  * the user-scoped tables until auth lands.
  */
 
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     const msg = e instanceof Error ? e.message : String(e);
     // Validation errors thrown by validateProfileInput are human-
     // readable and safe to surface verbatim. DB/unknown errors fall
-    // into the same bucket — the modal renders the message.
+    // into the same bucket, the modal renders the message.
     const isValidation = /required|must be|characters or less|must be one of/i.test(msg);
     return Response.json(
       { ok: false, error: msg },

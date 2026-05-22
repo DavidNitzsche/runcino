@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * WorkoutDetailPopup — shared modal for workout detail overlays.
+ * WorkoutDetailPopup, shared modal for workout detail overlays.
  * Used by the overview week strip and the training month calendar.
  */
 

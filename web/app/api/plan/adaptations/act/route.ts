@@ -1,8 +1,8 @@
 /**
- * POST /api/plan/adaptations/act — approve or skip BIG plan adaptations.
+ * POST /api/plan/adaptations/act, approve or skip BIG plan adaptations.
  *
  * The coach proposes (status='proposed') discretionary, plan-reshaping
- * changes — cutbacks, suppressing quality, volume drops from poor
+ * changes, cutbacks, suppressing quality, volume drops from poor
  * check-ins, race-week reshapes, post-race pace shifts (see
  * APPROVAL_TRIGGERS in plan-adapter.ts). Those mutations are RECORDED but
  * NOT applied to the workout until the runner signs off here.

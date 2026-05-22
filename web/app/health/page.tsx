@@ -1,15 +1,15 @@
 /**
- * /health — fresh React port of designs/health-v4.html.
+ * /health, fresh React port of designs/health-v4.html.
  *
  * Sections matching the approved mockup:
- *   1. Coach strip — health readout narrative + compact Today's Check-In
- *   2. Today's Readiness hero — 4-section coach brief (The Read /
+ *   1. Coach strip, health readout narrative + compact Today's Check-In
+ *   2. Today's Readiness hero, 4-section coach brief (The Read /
  *      What's Working / The Watch / The Frame) + readiness ring +
  *      5 trend rows (Sleep / Resting HR / HRV / Strain / Check-In)
- *   3. Insights — pattern reads from last 14 days
- *   4. Check-In Timeline — 14-day legend + bar chart (placeholder)
- *   5. Training Load — Fitness/Fatigue/Form stats + form-curve SVG
- *   6. Recovery Vitals — Sleep / Resting HR / HRV / Body Mass tiles
+ *   3. Insights, pattern reads from last 14 days
+ *   4. Check-In Timeline, 14-day legend + bar chart (placeholder)
+ *   5. Training Load, Fitness/Fatigue/Form stats + form-curve SVG
+ *   6. Recovery Vitals, Sleep / Resting HR / HRV / Body Mass tiles
  *
  * Sample seed values mirror designs/health-v4.html. Real-data wiring
  * happens when HealthKit / Strava streams hook in.
@@ -38,11 +38,11 @@ import './health-v4.css';
 // Plain-language names + "what it feels like" for each HR zone, so a normal
 // person never sees "VO₂max" or "%HRR". Keyed by zone tier (z1..z5).
 const ZONE_PLAIN: Record<string, { name: string; feel: string }> = {
-  z1: { name: 'Recovery', feel: 'Very easy — warm-up pace' },
-  z2: { name: 'Easy',     feel: 'Easy — you can hold a conversation' },
-  z3: { name: 'Steady',   feel: 'Moderate — comfortably working' },
-  z4: { name: 'Hard',     feel: 'Hard — only a few words at a time' },
-  z5: { name: 'Max',      feel: 'Very hard — all-out' },
+  z1: { name: 'Recovery', feel: 'Very easy, warm-up pace' },
+  z2: { name: 'Easy',     feel: 'Easy, you can hold a conversation' },
+  z3: { name: 'Steady',   feel: 'Moderate, comfortably working' },
+  z4: { name: 'Hard',     feel: 'Hard, only a few words at a time' },
+  z5: { name: 'Max',      feel: 'Very hard, all-out' },
 };
 
 export default async function HealthPage() {
@@ -53,7 +53,7 @@ export default async function HealthPage() {
   const todayLabel = new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();
 
   // Today's check-in (from /api/checkin POST). Used by the "What's
-  // driving it" panel — was hardcoded "Not logged" in the v4 mockup.
+  // driving it" panel, was hardcoded "Not logged" in the v4 mockup.
   interface CheckinRow { energy: number; soreness: number; stress: number }
   const checkinRows = await query<CheckinRow>(
     `SELECT energy, soreness, stress
@@ -114,7 +114,7 @@ export default async function HealthPage() {
   const dyn = new Map(dynRows.map((r) => [r.sample_type, Number(r.avg)]));
   const dynVal = (k: string, dec: number, unit: string) => {
     const v = dyn.get(k);
-    return v != null ? { value: v.toFixed(dec), unit } : { value: '—', unit: '' };
+    return v != null ? { value: v.toFixed(dec), unit } : { value: '-', unit: '' };
   };
   const cadence    = dynVal('cadence', 0, 'spm');
   const stride     = dynVal('stride_length', 2, 'm');
@@ -140,7 +140,7 @@ export default async function HealthPage() {
   const body = new Map(bodyRows.map((r) => [r.sample_type, Number(r.avg)]));
   const bodyVal = (k: string, dec: number, unit: string) => {
     const v = body.get(k);
-    return v != null ? { value: v.toFixed(dec), unit } : { value: '—', unit: '' };
+    return v != null ? { value: v.toFixed(dec), unit } : { value: '-', unit: '' };
   };
   const bodyMass    = bodyVal('body_mass', 1, 'kg');
   const bodyFat     = bodyVal('body_fat_pct', 1, '%');
@@ -174,7 +174,7 @@ export default async function HealthPage() {
   const readyScore = readiness?.score ?? null;
   const readyState = readiness?.state ?? null;
 
-  // ── HR zones — Karvonen scale anchored on the runner's real anchors.
+  // ── HR zones, Karvonen scale anchored on the runner's real anchors.
   // resolveFitness already merges manual + computed max/resting HR; the
   // health_samples max_hr above is a separate (wearable-derived) read and
   // is only a fallback when fitness has no anchor.
@@ -182,11 +182,11 @@ export default async function HealthPage() {
   const anchorRestingHr = fitness?.restingHr.value ?? (rhr != null ? Math.round(rhr) : null);
   const hrBundle = buildHrZonesBundle(anchorMaxHr, anchorRestingHr);
   const zoneColors: Record<ZoneTier, string> = {
-    z1: 'rgba(8,8,8,.35)', // Recovery — grey
-    z2: '#3EBD41',            // Easy — green
-    z3: '#F3AD38',            // Steady — amber
-    z4: '#E85D26',            // Threshold — orange
-    z5: '#FC4D64',            // VO2max — red
+    z1: 'rgba(8,8,8,.35)', // Recovery, grey
+    z2: '#3EBD41',            // Easy, green
+    z3: '#F3AD38',            // Steady, amber
+    z4: '#E85D26',            // Threshold, orange
+    z5: '#FC4D64',            // VO2max, red
   };
   const maxHrSourceLabel = fitness?.maxHr.sourceLabel
     ?? (fitness?.maxHr.source === 'manual' ? 'Manual override'
@@ -206,8 +206,8 @@ export default async function HealthPage() {
   if (sleep != null) vitalBits.push(`${sleep.toFixed(1)}h sleep`);
   const briefRead = readiness?.recommendation
     ?? (hasBio ? readBodyShort() : 'Connect a wearable or log check-ins and a daily readiness read lands here.');
-  const briefWorking = posInputs.length ? cap(posInputs.join('; ')) + '.' : (vitalBits.length ? `${cap(vitalBits.join(', '))} — vitals tracking.` : 'No positive signals logged yet.');
-  const briefWatch = negInputs.length ? cap(negInputs.join('; ')) + '.' : 'Nothing flagged — no elevated load or drift signals.';
+  const briefWorking = posInputs.length ? cap(posInputs.join('; ')) + '.' : (vitalBits.length ? `${cap(vitalBits.join(', '))}, vitals tracking.` : 'No positive signals logged yet.');
+  const briefWatch = negInputs.length ? cap(negInputs.join('; ')) + '.' : 'Nothing flagged, no elevated load or drift signals.';
   const briefFrame = [
     readyScore != null ? `Readiness ${readyScore}/100` : null,
     vo2 != null ? `VO₂max ${vo2.toFixed(1)}` : null,
@@ -221,7 +221,7 @@ export default async function HealthPage() {
 
   const heroTitle = readyState ? stateWord.toUpperCase() : (hasBio ? 'TRACKED' : (checkin ? 'CHECK IN LOGGED' : 'NO DATA'));
 
-  // ── Training Load (CTL / ATL / TSB) — real, from coach-state volume ──
+  // ── Training Load (CTL / ATL / TSB), real, from coach-state volume ──
   // Same computation /api/health serves, via the shared pure helper.
   const coachState = await gatherCoachState({ userId: auth.id }).catch(() => null);
   const trainingLoad = coachState
@@ -231,7 +231,7 @@ export default async function HealthPage() {
       })
     : null;
 
-  // ── Weekly insights — plan-aware pattern reads (same call /overview uses) ──
+  // ── Weekly insights, plan-aware pattern reads (same call /overview uses) ──
   // Needs the runner's real plan (current week's planned mileage + phase)
   // and the VDOT-derived easy band from resolveFitness.
   let insights: Awaited<ReturnType<typeof generateWeeklyInsights>> = [];
@@ -314,7 +314,7 @@ export default async function HealthPage() {
                       transform="rotate(-90 150 150)"
                     />
                   )}
-                  <text x="150" y="166" fontFamily="Bebas Neue" fontSize="64" fill={readyScore != null ? '#080808' : 'rgba(8,8,8,.32)'} textAnchor="middle">{readyScore ?? '—'}</text>
+                  <text x="150" y="166" fontFamily="Bebas Neue" fontSize="64" fill={readyScore != null ? '#080808' : 'rgba(8,8,8,.32)'} textAnchor="middle">{readyScore ?? '-'}</text>
                   <text x="150" y="200" fontFamily="Inter" fontSize="11" fontWeight="600" fill={stateColor} textAnchor="middle" letterSpacing="1">{(readyState ?? 'no data').toUpperCase()}</text>
                 </svg>
               </div>
@@ -338,7 +338,7 @@ export default async function HealthPage() {
               <div className="card-title">HR Zones</div>
               <div className="card-sub">
                 {hrBundle
-                  ? <>What each effort should feel like — set from your own max and resting heart rate.</>
+                  ? <>What each effort should feel like, set from your own max and resting heart rate.</>
                   : 'Add your max heart rate below to see your personal zones.'}
               </div>
             </div>
@@ -375,12 +375,12 @@ export default async function HealthPage() {
             </div>
           ) : (
             <div style={{ padding: '8px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.55)' }}>
-              Add your max heart rate below and your five effort zones — from very easy to all-out —
+              Add your max heart rate below and your five effort zones, from very easy to all-out, 
               show up here, tuned to you.
             </div>
           )}
 
-          {/* HR anchors — editable, POST to /api/profile/{max,resting}-hr */}
+          {/* HR anchors, editable, POST to /api/profile/{max,resting}-hr */}
           <div className="hr-anchors-header">HR Anchors</div>
           <HrAnchorsIsland
             initialMaxHr={{ value: anchorMaxHr, source: fitness?.maxHr.source ?? (maxHr != null ? 'computed' : 'none'), autoValue: fitness?.maxHr.autoValue ?? null }}
@@ -413,7 +413,7 @@ export default async function HealthPage() {
               })
             ) : (
               <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.55)', textAlign: 'center' }}>
-                Nothing’s jumping out from your last couple of weeks — keep logging runs and we’ll
+                Nothing’s jumping out from your last couple of weeks, keep logging runs and we’ll
                 point out anything worth knowing (easy pace creeping up, mileage spiking, your long
                 run climbing).
               </div>
@@ -437,14 +437,14 @@ export default async function HealthPage() {
             <div className="form-stat">
               <div className="form-stat-label">Fitness</div>
               <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(8,8,8,.32)' }}>
-                {trainingLoad?.hasData ? trainingLoad.fitnessCtl : '—'}
+                {trainingLoad?.hasData ? trainingLoad.fitnessCtl : '-'}
               </div>
               <div className="form-stat-sub">{trainingLoad?.hasData ? 'your aerobic base' : 'No data'}</div>
             </div>
             <div className="form-stat">
               <div className="form-stat-label">Fatigue</div>
               <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(8,8,8,.32)' }}>
-                {trainingLoad?.hasData ? trainingLoad.fatigueAtl : '—'}
+                {trainingLoad?.hasData ? trainingLoad.fatigueAtl : '-'}
               </div>
               <div className="form-stat-sub">{trainingLoad?.hasData ? 'how hard this week was' : 'No data'}</div>
             </div>
@@ -454,7 +454,7 @@ export default async function HealthPage() {
                 className={`form-stat-val${trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? ' green' : trainingLoad.formTsb < -20 ? ' orange' : '') : ''}`}
                 style={trainingLoad?.hasData ? undefined : { color: 'rgba(8,8,8,.32)' }}
               >
-                {trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? `+${trainingLoad.formTsb}` : trainingLoad.formTsb) : '—'}
+                {trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? `+${trainingLoad.formTsb}` : trainingLoad.formTsb) : '-'}
               </div>
               <div className="form-stat-sub">{trainingLoad?.hasData ? 'how fresh you feel' : 'No data'}</div>
             </div>
@@ -463,15 +463,15 @@ export default async function HealthPage() {
           {trainingLoad?.hasData ? (
             <div style={{ padding: '4px 40px 12px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.7)' }}>
               {trainingLoad.formTsb > 5
-                ? 'You’re fresh right now — fitness is ahead of fatigue. A good window to push hard or race.'
+                ? 'You’re fresh right now, fitness is ahead of fatigue. A good window to push hard or race.'
                 : trainingLoad.formTsb >= -20
-                  ? 'You’re building and carrying a little tiredness — exactly what a normal training week feels like. You’ll feel fresher as you ease off toward race day.'
-                  : 'You’re carrying a lot of fatigue right now — a heavy stretch. Keep easy days truly easy so you absorb the work instead of digging a hole.'}
+                  ? 'You’re building and carrying a little tiredness, exactly what a normal training week feels like. You’ll feel fresher as you ease off toward race day.'
+                  : 'You’re carrying a lot of fatigue right now, a heavy stretch. Keep easy days truly easy so you absorb the work instead of digging a hole.'}
             </div>
           ) : (
             <div style={{ padding: '40px 40px 48px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.55)', textAlign: 'center' }}>
               Training load curves need ~30 days of activity history before they read meaningfully.
-              Keep logging runs — Strava is connected — and the chart will fill in here.
+              Keep logging runs, Strava is connected, and the chart will fill in here.
             </div>
           )}
         </div>
@@ -485,12 +485,12 @@ export default async function HealthPage() {
             </div>
           </div>
           <div className="vitals-grid">
-            <VitalTile label="Sleep"       value={sleep != null ? sleep.toFixed(1) : '—'} unit={sleep != null ? 'h' : ''}     range={['—','—']} markerPct={0} avgPct={0} status={sleep != null ? '7-day avg' : 'No data'} />
-            <VitalTile label="Resting HR"  value={rhr != null ? String(Math.round(rhr)) : '—'} unit={rhr != null ? 'bpm' : ''} range={['—','—']} markerPct={0} avgPct={0} status={rhr != null ? '7-day avg' : 'No data'} />
-            <VitalTile label="HRV"         value={hrv != null ? String(Math.round(hrv)) : '—'} unit={hrv != null ? 'ms' : ''}  range={['—','—']} markerPct={0} avgPct={0} status={hrv != null ? '7-day avg' : 'No data'} />
-            <VitalTile label="VO₂max"      value={vo2 != null ? vo2.toFixed(1) : '—'} unit=""                                  range={['—','—']} markerPct={0} avgPct={0} status={vo2 != null ? 'latest' : 'No data'} />
-            <VitalTile label="Respiration" value={resp != null ? resp.toFixed(1) : '—'} unit={resp != null ? 'br/m' : ''}      range={['—','—']} markerPct={0} avgPct={0} status={resp != null ? '7-day avg' : 'No data'} />
-            <VitalTile label="Wrist Temp"  value={wristTemp != null ? wristTemp.toFixed(1) : '—'} unit={wristTemp != null ? '°C' : ''} range={['—','—']} markerPct={0} avgPct={0} status={wristTemp != null ? 'sleeping' : 'No data'} />
+            <VitalTile label="Sleep"       value={sleep != null ? sleep.toFixed(1) : '-'} unit={sleep != null ? 'h' : ''}     range={[', ',', ']} markerPct={0} avgPct={0} status={sleep != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="Resting HR"  value={rhr != null ? String(Math.round(rhr)) : '-'} unit={rhr != null ? 'bpm' : ''} range={[', ',', ']} markerPct={0} avgPct={0} status={rhr != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="HRV"         value={hrv != null ? String(Math.round(hrv)) : '-'} unit={hrv != null ? 'ms' : ''}  range={[', ',', ']} markerPct={0} avgPct={0} status={hrv != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="VO₂max"      value={vo2 != null ? vo2.toFixed(1) : '-'} unit=""                                  range={[', ',', ']} markerPct={0} avgPct={0} status={vo2 != null ? 'latest' : 'No data'} />
+            <VitalTile label="Respiration" value={resp != null ? resp.toFixed(1) : '-'} unit={resp != null ? 'br/m' : ''}      range={[', ',', ']} markerPct={0} avgPct={0} status={resp != null ? '7-day avg' : 'No data'} />
+            <VitalTile label="Wrist Temp"  value={wristTemp != null ? wristTemp.toFixed(1) : '-'} unit={wristTemp != null ? '°C' : ''} range={[', ',', ']} markerPct={0} avgPct={0} status={wristTemp != null ? 'sleeping' : 'No data'} />
           </div>
         </div>
 
@@ -504,12 +504,12 @@ export default async function HealthPage() {
             <div className="card-meta" style={{ color: hasBody ? '#080808' : 'rgba(8,8,8,.45)' }}>{hasBody ? '7-day avg' : 'No data'}</div>
           </div>
           <div className="vitals-grid">
-            <VitalTile label="Weight"        value={bodyMass.value}     unit={bodyMass.unit}     range={['—','—']} markerPct={0} avgPct={0} status={bodyMass.value !== '—' ? '7-day avg' : 'No data'} />
-            <VitalTile label="Body Fat"      value={bodyFat.value}      unit={bodyFat.unit}      range={['—','—']} markerPct={0} avgPct={0} status={bodyFat.value !== '—' ? '7-day avg' : 'No data'} />
-            <VitalTile label="Lean Mass"     value={leanMass.value}     unit={leanMass.unit}     range={['—','—']} markerPct={0} avgPct={0} status={leanMass.value !== '—' ? '7-day avg' : 'No data'} />
-            <VitalTile label="HR Recovery"   value={hrRecovery.value}   unit={hrRecovery.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hrRecovery.value !== '—' ? '7-day avg' : 'No data'} />
-            <VitalTile label="Blood O₂"      value={spo2.value}         unit={spo2.unit}         range={['—','—']} markerPct={0} avgPct={0} status={spo2.value !== '—' ? '7-day avg' : 'No data'} />
-            <VitalTile label="Active Energy" value={activeEnergy.value} unit={activeEnergy.unit} range={['—','—']} markerPct={0} avgPct={0} status={activeEnergy.value !== '—' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Weight"        value={bodyMass.value}     unit={bodyMass.unit}     range={[', ',', ']} markerPct={0} avgPct={0} status={bodyMass.value !== ', ' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Body Fat"      value={bodyFat.value}      unit={bodyFat.unit}      range={[', ',', ']} markerPct={0} avgPct={0} status={bodyFat.value !== ', ' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Lean Mass"     value={leanMass.value}     unit={leanMass.unit}     range={[', ',', ']} markerPct={0} avgPct={0} status={leanMass.value !== ', ' ? '7-day avg' : 'No data'} />
+            <VitalTile label="HR Recovery"   value={hrRecovery.value}   unit={hrRecovery.unit}   range={[', ',', ']} markerPct={0} avgPct={0} status={hrRecovery.value !== ', ' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Blood O₂"      value={spo2.value}         unit={spo2.unit}         range={[', ',', ']} markerPct={0} avgPct={0} status={spo2.value !== ', ' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Active Energy" value={activeEnergy.value} unit={activeEnergy.unit} range={[', ',', ']} markerPct={0} avgPct={0} status={activeEnergy.value !== ', ' ? '7-day avg' : 'No data'} />
           </div>
           {!hasBody && (
             <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
@@ -528,12 +528,12 @@ export default async function HealthPage() {
             <div className="card-meta" style={{ color: 'rgba(8,8,8,.45)' }}>{hasDyn ? '30-day avg' : 'No data'}</div>
           </div>
           <div className="vitals-grid">
-            <VitalTile label="Cadence"      value={cadence.value}   unit={cadence.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && cadence.value !== '—' ? '30-day avg' : 'No data'} />
-            <VitalTile label="Stride"       value={stride.value}    unit={stride.unit}    range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && stride.value !== '—' ? '30-day avg' : 'No data'} />
-            <VitalTile label="Vert Osc"     value={vertOsc.value}   unit={vertOsc.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && vertOsc.value !== '—' ? '30-day avg' : 'No data'} />
-            <VitalTile label="Grnd Contact" value={groundC.value}   unit={groundC.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && groundC.value !== '—' ? '30-day avg' : 'No data'} />
-            <VitalTile label="Vert Ratio"   value={vertRatio.value} unit={vertRatio.unit} range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && vertRatio.value !== '—' ? '30-day avg' : 'No data'} />
-            <VitalTile label="Run Power"    value={runPower.value}  unit={runPower.unit}  range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && runPower.value !== '—' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Cadence"      value={cadence.value}   unit={cadence.unit}   range={[', ',', ']} markerPct={0} avgPct={0} status={hasDyn && cadence.value !== ', ' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Stride"       value={stride.value}    unit={stride.unit}    range={[', ',', ']} markerPct={0} avgPct={0} status={hasDyn && stride.value !== ', ' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Vert Osc"     value={vertOsc.value}   unit={vertOsc.unit}   range={[', ',', ']} markerPct={0} avgPct={0} status={hasDyn && vertOsc.value !== ', ' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Grnd Contact" value={groundC.value}   unit={groundC.unit}   range={[', ',', ']} markerPct={0} avgPct={0} status={hasDyn && groundC.value !== ', ' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Vert Ratio"   value={vertRatio.value} unit={vertRatio.unit} range={[', ',', ']} markerPct={0} avgPct={0} status={hasDyn && vertRatio.value !== ', ' ? '30-day avg' : 'No data'} />
+            <VitalTile label="Run Power"    value={runPower.value}  unit={runPower.unit}  range={[', ',', ']} markerPct={0} avgPct={0} status={hasDyn && runPower.value !== ', ' ? '30-day avg' : 'No data'} />
           </div>
           {!hasDyn && (
             <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>

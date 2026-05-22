@@ -119,7 +119,7 @@ function assertLongRunProgression(weeks: Day[][], label: string): void {
     const ratio = b / a;
     expect(
       ratio >= 0.75 && ratio <= 1.25,
-      `[${label}] Long-run jump from ${a.toFixed(1)}mi (wk ${i - 1}) to ${b.toFixed(1)}mi (wk ${i}) — ` +
+      `[${label}] Long-run jump from ${a.toFixed(1)}mi (wk ${i - 1}) to ${b.toFixed(1)}mi (wk ${i}), ` +
       `ratio ${ratio.toFixed(2)} outside the ±25% week-over-week cap. ` +
       `Doctrine §13.1: single-session-spike rule.`,
     ).toBe(true);
@@ -128,7 +128,7 @@ function assertLongRunProgression(weeks: Day[][], label: string): void {
 
 /** Universal: no same-day double-quality. A day already classified as
  *  quality should not also carry an additional quality marker. (Engine
- *  emits one workout per day, so this collapses to a presence check —
+ *  emits one workout per day, so this collapses to a presence check, 
  *  but documenting the invariant explicitly catches a future regression
  *  if the engine ever stacks workouts on a single date.) */
 function assertNoDoubleQualityPerDay(days: Day[], label: string): void {
@@ -141,7 +141,7 @@ function assertNoDoubleQualityPerDay(days: Day[], label: string): void {
   for (const [date, count] of byDate) {
     expect(
       count,
-      `[${label}] ${date} has ${count} quality workouts — engine should prescribe at most one quality session per day.`,
+      `[${label}] ${date} has ${count} quality workouts, engine should prescribe at most one quality session per day.`,
     ).toBeLessThanOrEqual(1);
   }
 }
@@ -149,7 +149,7 @@ function assertNoDoubleQualityPerDay(days: Day[], label: string): void {
 // ────────────────────────────────────────────────────────────────────
 // 1. STATE_POST_HALF_DAY_3
 // ────────────────────────────────────────────────────────────────────
-describe('STATE_POST_HALF_DAY_3 — half-marathon 3 days ago, A-race 12wks out', () => {
+describe('STATE_POST_HALF_DAY_3, half-marathon 3 days ago, A-race 12wks out', () => {
   const days = simulateRange(STATE_POST_HALF_DAY_3, TODAY_ISO, dayOffsetISO(28));
   const windowEndISO = STATE_POST_HALF_DAY_3.recoveryWindowEndsISO!;
 
@@ -171,7 +171,7 @@ describe('STATE_POST_HALF_DAY_3 — half-marathon 3 days ago, A-race 12wks out',
       const ok = d.type === 'rest' || (d.type === 'recovery' && d.distanceMi <= 4);
       expect(
         ok,
-        `Day ${d.date} (post-race day +${days.indexOf(d) + 3}) prescribed ${d.type} ${d.distanceMi}mi — ` +
+        `Day ${d.date} (post-race day +${days.indexOf(d) + 3}) prescribed ${d.type} ${d.distanceMi}mi, ` +
         `engine should still be in the rest/light-recovery stage in the first 3 days.`,
       ).toBe(true);
     }
@@ -193,7 +193,7 @@ describe('STATE_POST_HALF_DAY_3 — half-marathon 3 days ago, A-race 12wks out',
       expect(
         firstQuality.date > windowEndISO,
         `First quality session ${firstQuality.date} (${firstQuality.type}) lands inside the recovery window ` +
-        `(ends ${windowEndISO}) — POST_RACE phase forbids quality work.`,
+        `(ends ${windowEndISO}), POST_RACE phase forbids quality work.`,
       ).toBe(true);
     }
   });
@@ -211,7 +211,7 @@ describe('STATE_POST_HALF_DAY_3 — half-marathon 3 days ago, A-race 12wks out',
 // ────────────────────────────────────────────────────────────────────
 // 2. STATE_MID_BUILD_WEEK_4
 // ────────────────────────────────────────────────────────────────────
-describe('STATE_MID_BUILD_WEEK_4 — 30mpw build, A-race 10wks out', () => {
+describe('STATE_MID_BUILD_WEEK_4, 30mpw build, A-race 10wks out', () => {
   const days = simulateRange(STATE_MID_BUILD_WEEK_4, TODAY_ISO, dayOffsetISO(28));
 
   it('produces 29 days', () => {
@@ -272,7 +272,7 @@ describe('STATE_MID_BUILD_WEEK_4 — 30mpw build, A-race 10wks out', () => {
 // ────────────────────────────────────────────────────────────────────
 // 3. STATE_PEAK_WEEK_MINUS_2 (A-race 14 days out)
 // ────────────────────────────────────────────────────────────────────
-describe('STATE_PEAK_WEEK_MINUS_2 — peak block, A-race 14 days out', () => {
+describe('STATE_PEAK_WEEK_MINUS_2, peak block, A-race 14 days out', () => {
   const days = simulateRange(STATE_PEAK_WEEK_MINUS_2, TODAY_ISO, dayOffsetISO(28));
 
   it('produces 29 days', () => {
@@ -336,7 +336,7 @@ describe('STATE_PEAK_WEEK_MINUS_2 — peak block, A-race 14 days out', () => {
 // ────────────────────────────────────────────────────────────────────
 // 4. STATE_TAPER_WEEK_MINUS_5 (A-race 5 days out)
 // ────────────────────────────────────────────────────────────────────
-describe('STATE_TAPER_WEEK_MINUS_5 — final taper, A-race 5 days out', () => {
+describe('STATE_TAPER_WEEK_MINUS_5, final taper, A-race 5 days out', () => {
   const days = simulateRange(STATE_TAPER_WEEK_MINUS_5, TODAY_ISO, dayOffsetISO(28));
 
   it('produces 29 days', () => {
@@ -350,7 +350,7 @@ describe('STATE_TAPER_WEEK_MINUS_5 — final taper, A-race 5 days out', () => {
     for (const d of raceWeek) {
       expect(
         allowedTypes.has(d.type),
-        `Race-week day ${d.date} prescribed ${d.type} — only easy/recovery/shakeout/race allowed in final 5 days.`,
+        `Race-week day ${d.date} prescribed ${d.type}, only easy/recovery/shakeout/race allowed in final 5 days.`,
       ).toBe(true);
     }
     // No quality, no long.
@@ -378,14 +378,14 @@ describe('STATE_TAPER_WEEK_MINUS_5 — final taper, A-race 5 days out', () => {
 // ────────────────────────────────────────────────────────────────────
 // 5. STATE_EARLY_BASE_REBUILD (low-volume returning runner)
 // ────────────────────────────────────────────────────────────────────
-describe('STATE_EARLY_BASE_REBUILD — 8mpw returning runner, A-race 16wks out', () => {
+describe('STATE_EARLY_BASE_REBUILD, 8mpw returning runner, A-race 16wks out', () => {
   const days = simulateRange(STATE_EARLY_BASE_REBUILD, TODAY_ISO, dayOffsetISO(28));
 
   it('produces 29 days', () => {
     expect(days.length).toBe(29);
   });
 
-  it('no quality work — all easy', () => {
+  it('no quality work, all easy', () => {
     const quality = days.filter(d => QUALITY_TYPES.has(d.type));
     expect(
       quality.length,
@@ -425,7 +425,7 @@ describe('STATE_EARLY_BASE_REBUILD — 8mpw returning runner, A-race 16wks out',
 // ────────────────────────────────────────────────────────────────────
 // 6. STATE_HEAVY_BLOCK_STACK (the original a32e1f9 bug scenario)
 // ────────────────────────────────────────────────────────────────────
-describe('STATE_HEAVY_BLOCK_STACK — 2 races in 14d + far A-race', () => {
+describe('STATE_HEAVY_BLOCK_STACK, 2 races in 14d + far A-race', () => {
   const days = simulateRange(STATE_HEAVY_BLOCK_STACK, TODAY_ISO, dayOffsetISO(28));
   const windowEndISO = STATE_HEAVY_BLOCK_STACK.recoveryWindowEndsISO!;
 
@@ -471,7 +471,7 @@ describe('STATE_HEAVY_BLOCK_STACK — 2 races in 14d + far A-race', () => {
 // ────────────────────────────────────────────────────────────────────
 // 7. STATE_INJURY_RETURN (no race, 21d gap, rebuilding)
 // ────────────────────────────────────────────────────────────────────
-describe('STATE_INJURY_RETURN — rebuild after 21d gap, no race calendar', () => {
+describe('STATE_INJURY_RETURN, rebuild after 21d gap, no race calendar', () => {
   const days = simulateRange(STATE_INJURY_RETURN, TODAY_ISO, dayOffsetISO(28));
 
   it('produces 29 days', () => {
@@ -490,7 +490,7 @@ describe('STATE_INJURY_RETURN — rebuild after 21d gap, no race calendar', () =
 
   it('weekly volume ≤ 8mi in week 1', () => {
     // baseEasy floor is 3mi; runner has 4mpw avg. Allow up to 8mi
-    // (≈2x baseline) — engine's rebuild cap should prevent more.
+    // (≈2x baseline), engine's rebuild cap should prevent more.
     const wk1Mi = weekMiles(days.slice(0, 7));
     expect(
       wk1Mi <= 8,

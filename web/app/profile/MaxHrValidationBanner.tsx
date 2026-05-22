@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Max HR validation banner — the first surface of the ADAPTIVE
+ * Max HR validation banner, the first surface of the ADAPTIVE
  * RECOMMENDATION pattern.
  *
  * Renders inside the Coach Reads card when the validator detects
@@ -65,7 +65,7 @@ export function MaxHrValidationBanner({ verdict }: Props) {
         // re-fetches. router.refresh() only re-renders server
         // components; client islands keep their useState from before
         // and would show stale values. (David caught this 2026-05-19
-        // round 3 — top max HR card showed 175 while Coach Reads
+        // round 3, top max HR card showed 175 while Coach Reads
         // showed 181 after Apply.)
         window.location.reload();
       }

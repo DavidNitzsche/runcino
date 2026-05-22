@@ -45,7 +45,7 @@ struct ContentView: View {
             } else {
                 LoginView(onLogin: {
                     isAuthenticated = true
-                    // Push today's workout to the watch right after login —
+                    // Push today's workout to the watch right after login, 
                     // automatic, no user action.
                     Task { await WatchSync.shared.syncTodayToWatch() }
                 })
@@ -69,7 +69,7 @@ struct ContentView: View {
         guard TokenStore.shared.isLoggedIn else { return }
         await FaffAPI.shared.refreshAccessToken()
         if !TokenStore.shared.isLoggedIn { isAuthenticated = false; return }
-        // Keep the watch's workout current on every launch + foreground —
+        // Keep the watch's workout current on every launch + foreground, 
         // automatic, no "send to watch" step (runs on .task and scenePhase .active).
         await WatchSync.shared.syncTodayToWatch()
         // Retry uploading any watch-recorded runs that haven't reached the

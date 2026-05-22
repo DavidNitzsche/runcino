@@ -2,7 +2,7 @@
  * L7 Signal 3 · Interval pace at controlled effort
  *
  * The third corroborating signal. Same shape as Signal 1 (threshold)
- * but for I-pace work — Daniels' interval pace, ~5K race pace, the
+ * but for I-pace work, Daniels' interval pace, ~5K race pace, the
  * top of the aerobic-power adaptation curve. A runner whose I-pace
  * splits are 5+ s/mi faster than prescribed at Z4-Z5 HR has gained
  * VO₂max-shifting fitness.
@@ -59,7 +59,7 @@ export interface Signal3Observation {
   /** Mean grade-adjusted pace of the work-interval splits (s/mi).
    *  Null when no GAP available for any work split. */
   workIntervalGapS: number | null;
-  /** The pace we ACTUALLY used for comparison — raw or GAP depending
+  /** The pace we ACTUALLY used for comparison, raw or GAP depending
    *  on whether terrain distortion was significant (>20 s/mi gap). */
   comparisonPaceS: number;
   /** Tag explaining which pace fed the comparison + why. */
@@ -110,7 +110,7 @@ const SLOWER_THRESHOLD_S = 5;
 const HR_MISSING_FACTOR = 0.6;
 const HARD_CONTEXT_TAGS = new Set(['heat', 'race-recency', 'poor-sleep']);
 
-/** Interval-workout keyword detection — used when the activity
+/** Interval-workout keyword detection, used when the activity
  *  doesn't carry a plannedWorkoutType but the runner clearly
  *  named the session. */
 const INTERVAL_NAME_KEYWORDS = [
@@ -189,7 +189,7 @@ function pickWorkSplits(
     s.avgHr != null && s.avgHr >= z4z5.lo && s.avgHr <= z4z5.hi,
   );
   if (inZ45.length >= 1) return inZ45;
-  // No HR-in-Z45 splits — pick the 2-3 fastest splits as a proxy
+  // No HR-in-Z45 splits, pick the 2-3 fastest splits as a proxy
   // for "work intervals" (rough but better than empty). These are
   // signal-weakened (hr-missing tag will fire if we can't confirm).
   const sorted = [...splits].sort((a, b) => a.paceSPerMi - b.paceSPerMi);
@@ -272,7 +272,7 @@ export async function computeSignal3(
       continue;
     }
     if (!d.splits || d.splits.length === 0) {
-      skipped.push({ date, reason: 'no per-mile splits — needs backfill' });
+      skipped.push({ date, reason: 'no per-mile splits, needs backfill' });
       continue;
     }
 
@@ -290,7 +290,7 @@ export async function computeSignal3(
     // GAP comparison logic · per David 2026-05-19 round 4 spec:
     //   - If GAP is available for ALL work splits AND the mean
     //     raw-vs-GAP gap exceeds GAP_SWAP_THRESHOLD_S (20 s/mi),
-    //     terrain is distorting the comparison — swap to GAP.
+    //     terrain is distorting the comparison, swap to GAP.
     //   - If GAP is available but gap is < 20 s/mi, raw pace is
     //     the honest reading (flat-ish terrain).
     //   - If GAP missing on any split, fall back to raw with a

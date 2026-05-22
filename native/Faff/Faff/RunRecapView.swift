@@ -47,7 +47,7 @@ struct RunRecapView: View {
         dynamics = await HealthKitManager.shared.runDynamics(forDateISO: run?.date ?? date)
     }
 
-    // MARK: Empty state (honest — no fabricated run)
+    // MARK: Empty state (honest, no fabricated run)
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("\(RunRecapView.prettyDate(date)) · RECAP")
@@ -74,9 +74,9 @@ struct RunRecapView: View {
         guard splits.count >= 2 else { return nil }
         let first = splits.first!.paceSPerMi, last = splits.last!.paceSPerMi
         let delta = Int((first - last).rounded())   // + = finished faster
-        if delta >= 8 { return "Negative split — finished \(delta) s/mi quicker than you started." }
-        if delta <= -8 { return "Positive split — faded \(abs(delta)) s/mi over the run." }
-        return "Even pacing — held within \(abs(delta)) s/mi start to finish."
+        if delta >= 8 { return "Negative split, finished \(delta) s/mi quicker than you started." }
+        if delta <= -8 { return "Positive split, faded \(abs(delta)) s/mi over the run." }
+        return "Even pacing, held within \(abs(delta)) s/mi start to finish."
     }
 
     // (decodePolyline below)
@@ -111,7 +111,7 @@ struct RunRecapView: View {
 
 // MARK: - Reusable recap body
 //
-// The populated recap — header, stats, route, mile splits, summary, per-run
+// The populated recap, header, stats, route, mile splits, summary, per-run
 // dynamics, note. Lives in its own view so it can render BOTH in the recap
 // sheet (RunRecapView) and inline on the Today tab (past-day / just-finished
 // runs), instead of hiding the data behind a "View full recap" tap.
@@ -215,7 +215,7 @@ struct RunRecapContent: View {
 
     private func dynamicsCard(_ d: HealthKitManager.RunDynamics) -> some View {
         func f(_ v: Double?, _ dec: Int) -> String {
-            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? "—"
+            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? ", "
         }
         let tiles: [DynTile] = [
             DynTile(label: "Cadence", value: f(d.cadenceSpm, 0), unit: d.cadenceSpm != nil ? "spm" : nil),

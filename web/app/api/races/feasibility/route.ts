@@ -1,5 +1,5 @@
 /**
- * GET /api/races/feasibility — returns the race feasibility verdict
+ * GET /api/races/feasibility, returns the race feasibility verdict
  * for the user's nearest upcoming race.
  *
  * Consumed by the Coach Reads card on /profile and the race plan

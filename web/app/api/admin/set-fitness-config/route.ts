@@ -3,7 +3,7 @@
  *
  * Operational config setter for one-shot fitness inputs the agent
  * needs to adjust (resting HR, max HR). Same opt-token pattern as
- * the L7 diagnostics — used when the agent has explicit instruction
+ * the L7 diagnostics, used when the agent has explicit instruction
  * to change a config value and needs to bypass the session-cookie
  * path (e.g., no live browser session).
  *

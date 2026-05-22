@@ -13,7 +13,7 @@
  *
  * Movement names match the Amp library exactly (docs/amp-research.md
  * §7) so the runner can search and load each in the Amp app. The
- * runner can also override with an Amp AI-generated workout — Coach
+ * runner can also override with an Amp AI-generated workout, Coach
  * suggests, Coach doesn't lock.
  */
 
@@ -36,7 +36,7 @@ export interface AmpWorkout {
 
 export const AMP_WORKOUTS: AmpWorkout[] = [
   /* ─────────────────────────────────────────────────────────────
-     HEAVY · 45 MIN — three rotations
+     HEAVY · 45 MIN, three rotations
      Each is full-body but weighted to running. Each runs ~45 min:
      5 min warm-up, ~35 min main work, ~5 min finisher.
      ─────────────────────────────────────────────────────────── */
@@ -48,7 +48,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
     phases: ['BASE', 'BUILD', 'BASE_MAINTENANCE', 'REBUILD'],
     durationMin: 45,
     ampMode: 'Eccentric',
-    intent: 'Posterior chain emphasis with full-body coverage. Eccentric mode loads the lowering phase — the doc-validated stimulus for tendon health (Achilles, patellar, hamstring).',
+    intent: 'Posterior chain emphasis with full-body coverage. Eccentric mode loads the lowering phase, the doc-validated stimulus for tendon health (Achilles, patellar, hamstring).',
     blocks: [
       { section: 'Warm-up · 5 min', items: [
         { name: 'Glute bridges',                sets: '2 × 10', notes: 'Activation, no load' },
@@ -58,7 +58,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
       { section: 'Main · lower force', items: [
         { name: 'Hip Thrust',                   sets: '4 × 6 heavy', notes: 'Glute max · 3-second eccentric' },
         { name: 'Stiff Deadlift',               sets: '4 × 5 heavy', notes: 'Hamstring tendon load · slow lower' },
-        { name: 'Reverse Nordic Curl',          sets: '3 × 6',       notes: 'Quad eccentric — descent tolerance' },
+        { name: 'Reverse Nordic Curl',          sets: '3 × 6',       notes: 'Quad eccentric, descent tolerance' },
       ]},
       { section: 'Main · upper', items: [
         { name: 'Hinge & Row',                  sets: '4 × 8',       notes: 'Lat + mid-back · postural support for late-race form' },
@@ -111,7 +111,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
     phases: ['BASE', 'BUILD', 'BASE_MAINTENANCE'],
     durationMin: 45,
     ampMode: 'Fixed',
-    intent: 'Bilateral compound day — total-body strength baseline that prevents the runner from becoming a pure-aerobic noodle. Fixed mode for reproducible loads + comparison across sessions.',
+    intent: 'Bilateral compound day, total-body strength baseline that prevents the runner from becoming a pure-aerobic noodle. Fixed mode for reproducible loads + comparison across sessions.',
     blocks: [
       { section: 'Warm-up · 5 min', items: [
         { name: 'Glute bridges',                sets: '2 × 10' },
@@ -138,7 +138,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
   },
 
   /* ─────────────────────────────────────────────────────────────
-     POWER · 45 MIN — two rotations
+     POWER · 45 MIN, two rotations
      ─────────────────────────────────────────────────────────── */
 
   {
@@ -148,7 +148,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
     phases: ['BUILD', 'PEAK'],
     durationMin: 45,
     ampMode: 'Band',
-    intent: 'Plyometric + power work targeted at running mechanics — explosive triple-extension, hip drive, calf-Achilles reactivity. Band mode loads the top of every jump.',
+    intent: 'Plyometric + power work targeted at running mechanics, explosive triple-extension, hip drive, calf-Achilles reactivity. Band mode loads the top of every jump.',
     blocks: [
       { section: 'Warm-up · 5 min', items: [
         { name: 'A-skips with cable (light)',   sets: '2 × 10 each' },
@@ -179,7 +179,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
     phases: ['BUILD', 'PEAK', 'TAPER'],
     durationMin: 45,
     ampMode: 'Band',
-    intent: 'Full-body explosive work — running-weighted but covers upper body too. Band mode at the top of every rep.',
+    intent: 'Full-body explosive work, running-weighted but covers upper body too. Band mode at the top of every rep.',
     blocks: [
       { section: 'Warm-up · 5 min', items: [
         { name: 'Glute bridges',                sets: '2 × 10' },
@@ -201,11 +201,11 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
         { name: 'Resisted Mountain Climber',    sets: '3 × 30s' },
       ]},
     ],
-    benefit: 'Total-body power — running-weighted but with upper-body coverage. Holds neuromuscular tone through peak/taper without aerobic cost.',
+    benefit: 'Total-body power, running-weighted but with upper-body coverage. Holds neuromuscular tone through peak/taper without aerobic cost.',
   },
 
   /* ─────────────────────────────────────────────────────────────
-     MAINTAIN · 30 MIN — short and effective
+     MAINTAIN · 30 MIN, short and effective
      ─────────────────────────────────────────────────────────── */
 
   {
@@ -215,7 +215,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
     phases: ['PEAK', 'TAPER', 'BASE_MAINTENANCE'],
     durationMin: 30,
     ampMode: 'Fixed',
-    intent: 'Lower volume, intensity preserved. Fast in-and-out — fits late-cycle when run intensity is the priority. The goal is preservation, not gain.',
+    intent: 'Lower volume, intensity preserved. Fast in-and-out, fits late-cycle when run intensity is the priority. The goal is preservation, not gain.',
     blocks: [
       { section: 'Warm-up · 3 min', items: [
         { name: 'Glute bridges',                sets: '2 × 10' },
@@ -238,7 +238,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
   },
 
   /* ─────────────────────────────────────────────────────────────
-     MOBILITY · 30 MIN — recovery / rebuild day
+     MOBILITY · 30 MIN, recovery / rebuild day
      ─────────────────────────────────────────────────────────── */
 
   {
@@ -248,7 +248,7 @@ export const AMP_WORKOUTS: AmpWorkout[] = [
     phases: ['POST_RACE', 'REBUILD', 'BASE_MAINTENANCE', 'TAPER'],
     durationMin: 30,
     ampMode: 'Mobility',
-    intent: 'Hip range + Achilles tendon range + posterior chain assisted stretching. Light cable feedback through stretches — Amp\'s underused mobility category, treated as legitimate work.',
+    intent: 'Hip range + Achilles tendon range + posterior chain assisted stretching. Light cable feedback through stretches, Amp\'s underused mobility category, treated as legitimate work.',
     blocks: [
       { section: 'Hip openers', items: [
         { name: 'Rocking Couch Stretch',        sets: '2 × 60s each', notes: 'Hip flexor · desk-runner staple' },
@@ -284,7 +284,7 @@ export function pickAmpWorkout(type: StrengthSessionType, phase: Phase, rotation
   return fallback ?? null;
 }
 
-/** ISO week number — used as the rotation key so a given week always
+/** ISO week number, used as the rotation key so a given week always
  *  returns the same workout per session type, but consecutive weeks
  *  cycle through the catalog. */
 export function isoWeekNumber(d: Date = new Date()): number {

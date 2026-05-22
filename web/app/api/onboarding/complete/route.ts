@@ -71,14 +71,14 @@ export async function POST(req: NextRequest) {
   );
 
   // If user provided an A-race, create the races row (separate from the
-  // legacy races table that stores plan artifacts — this writes to the
+  // legacy races table that stores plan artifacts, this writes to the
   // user_uuid-keyed shape we expect post-cutover).
   // For now: skip if no race name. Plan generation happens separately.
   if (body.raceName && body.raceDate) {
     // The existing `races` table is keyed by slug + stores full plan
     // JSONB. We won't write there until /web/ port completes the plan
     // builder integration. Just store enough on the user row to retain
-    // the race intent — future PR will wire the actual plan generation.
+    // the race intent, future PR will wire the actual plan generation.
     // (No-op for now; race name is logged so we can debug later.)
     console.log(`[onboarding] User ${user.id} A-race: ${body.raceName} on ${body.raceDate} (${body.raceDistance})`);
   }

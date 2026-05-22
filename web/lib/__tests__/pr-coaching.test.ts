@@ -1,5 +1,5 @@
 /**
- * Tests for lib/pr-coaching.ts — the consolidated C5 PR coaching lines.
+ * Tests for lib/pr-coaching.ts, the consolidated C5 PR coaching lines.
  *
  * Locks the role classification matrix + the canonical strings so a
  * future agent can't quietly tweak the copy or change the boundary
@@ -13,7 +13,7 @@ import {
   coachingLineForPR,
 } from '../pr-coaching';
 
-describe('PR_COACHING_LINES — canonical strings', () => {
+describe('PR_COACHING_LINES, canonical strings', () => {
   it('all four roles have a coaching line', () => {
     expect(PR_COACHING_LINES['goal-distance']).toBeTruthy();
     expect(PR_COACHING_LINES['pre-cycle']).toBeTruthy();
@@ -34,7 +34,7 @@ describe('PR_COACHING_LINES — canonical strings', () => {
   });
 });
 
-describe('classifyPR — role assignment matrix', () => {
+describe('classifyPR, role assignment matrix', () => {
   it('strava source → strava-effort regardless of distance/age', () => {
     expect(classifyPR({ source: 'strava' })).toBe('strava-effort');
     expect(
@@ -77,7 +77,7 @@ describe('classifyPR — role assignment matrix', () => {
     expect(role).toBe('adjacent-tier');
   });
 
-  it('boundary day is exclusive — exactly PRE_CYCLE_DAYS still counts as current', () => {
+  it('boundary day is exclusive, exactly PRE_CYCLE_DAYS still counts as current', () => {
     // ageDays > 84 is pre-cycle; ageDays === 84 is still current.
     const exact = classifyPR({
       source: 'race',
@@ -106,7 +106,7 @@ describe('classifyPR — role assignment matrix', () => {
   });
 });
 
-describe('coachingLineForPR — role-to-string lookup', () => {
+describe('coachingLineForPR, role-to-string lookup', () => {
   it('returns the canonical line for each role', () => {
     expect(coachingLineForPR('goal-distance')).toBe(
       PR_COACHING_LINES['goal-distance'],

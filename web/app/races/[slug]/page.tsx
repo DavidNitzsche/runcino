@@ -1,5 +1,5 @@
 /**
- * /races/[slug] — race plan detail (v4 port).
+ * /races/[slug], race plan detail (v4 port).
  *
  * Server component. Reads the saved race from Postgres via lib/race-store,
  * then renders the canonical v4 layout from designs/race-plan-v4.html:
@@ -49,7 +49,7 @@ function fmtShortMonthDay(iso: string): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 function fmtTime(sec: number): string {
-  if (!sec || sec <= 0) return '—';
+  if (!sec || sec <= 0) return ', ';
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
@@ -114,7 +114,7 @@ function buildElevationPath(
   let samples: Array<{ mi: number; ft: number }> = [];
   let totalMi = phases.length > 0 ? phases[phases.length - 1].end_mi : 0;
 
-  // Try to use raw GPX trackpoints first — smoother + truer
+  // Try to use raw GPX trackpoints first, smoother + truer
   if (gpxText && gpxText.length > 50) {
     try {
       const track = parseGpx(gpxText, { smoothWindow: 5 });
@@ -175,7 +175,7 @@ function buildElevationPath(
   const ticks: number[] = [];
   for (let mi = 1; mi <= totalMi; mi++) ticks.push(mi);
 
-  // Y-axis labels — pick rounded ft values across the range
+  // Y-axis labels, pick rounded ft values across the range
   const yLabels: Array<{ ft: number; y: number }> = [];
   const niceStep = (range: number) => {
     if (range <= 50)   return 10;
@@ -230,7 +230,7 @@ export default async function RacePlanPage({ params }: PageProps) {
   const today = todayISO(tz);
   const daysAway = Math.max(0, daysBetween(today, race.meta.date));
 
-  // Priority defaults to 'A' when unset — matches /races page behavior
+  // Priority defaults to 'A' when unset, matches /races page behavior
   // so the same race doesn't show as A-RACE on the calendar and
   // C-RACE on the detail page. Users explicitly set B/C; null means
   // "haven't decided" which is closer to A than C.
@@ -280,7 +280,7 @@ export default async function RacePlanPage({ params }: PageProps) {
 
   // Find race-pointed workouts from the runner's REAL plan
   // (only show if the race falls within the plan's date range).
-  // Race-pace band derived from THIS race's goal — single source of
+  // Race-pace band derived from THIS race's goal, single source of
   // truth for every workout that says "half-marathon goal pace".
   // (1:30:00 / 13.1 mi = 6:52/mi ± 10 sec tolerance.)
   const racePaceLow = Math.max(0, Math.round(goalFinishS / race.meta.distanceMi) - 10);
@@ -288,7 +288,7 @@ export default async function RacePlanPage({ params }: PageProps) {
   const fmtPaceS = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   const racePaceDisplay = goalFinishS > 0 && race.meta.distanceMi > 0
     ? `${fmtPaceS(racePaceLow)}–${fmtPaceS(racePaceHigh)}`
-    : '—';
+    : '-';
 
   const synthWeeks = await getActivePlanWeeks();
   const planFirstDate = synthWeeks[0]?.startDate ?? '';
@@ -302,7 +302,7 @@ export default async function RacePlanPage({ params }: PageProps) {
             weekNum: w.weekNum,
             date: fmtShortMonthDay(d.date),
             label: d.label,
-            sub: 'Key threshold session — anchors race pace',
+            sub: 'Key threshold session, anchors race pace',
             pace: racePaceDisplay,
             paceSub: '/mi target',
             tag: 'threshold',
@@ -361,7 +361,7 @@ export default async function RacePlanPage({ params }: PageProps) {
           // Find the VDOT that would produce the goal finish at this
           // distance. Walk the VDOT table.
           let goalVdot: number | null = null;
-          // Pull table rows in order — bracket and interpolate.
+          // Pull table rows in order, bracket and interpolate.
           // We can use vdotRow at integer VDOTs from 30 to 85.
           for (let v = 30; v <= 85; v++) {
             const r = vdotRow(v);
@@ -492,7 +492,7 @@ export default async function RacePlanPage({ params }: PageProps) {
               Your <strong>chip time</strong> of <strong>{divergence.chipDisplay}</strong> is what
               the coach uses for VDOT computation (Option-B source-of-truth: curated chip
               time wins over Strava elapsed). The matched Strava activity shows{' '}
-              <strong>{divergence.stravaDisplay}</strong> —{' '}
+              <strong>{divergence.stravaDisplay}</strong>, {' '}
               <strong>
                 {divergence.deltaS > 0 ? `${divergence.deltaS}s slower` : `${-divergence.deltaS}s faster`}
               </strong>
@@ -521,7 +521,7 @@ export default async function RacePlanPage({ params }: PageProps) {
               <span className="dot-orange"></span>
               COACH · RACE PLAN · {priorityLabel}
             </div>
-            {/* Effort-level editor — controls how this race weights in
+            {/* Effort-level editor, controls how this race weights in
                 aggregate VDOT. Shipped 2026-05-19 round 2 to fix the
                 Sombrero=full-weight tune-up problem. */}
             <div style={{ marginTop: 8, marginBottom: 8 }}>
@@ -536,13 +536,13 @@ export default async function RacePlanPage({ params }: PageProps) {
                       const weeks = Math.max(1, Math.round(daysAway / 7));
                       const perWk = readiness.vdotGap / weeks;
                       const feas = readiness.vdotGap <= 0
-                        ? `you're already there on current fitness — the work now is sharpening and staying healthy.`
+                        ? `you're already there on current fitness, the work now is sharpening and staying healthy.`
                         : perWk <= 0.25
                           ? `that's a realistic lift at this timeline if you hit the key sessions.`
                           : perWk <= 0.45
-                            ? `ambitious but doable — it needs consistent threshold work and no missed blocks.`
-                            : `a real stretch — it would need everything to click; a slightly softer goal may serve you better.`;
-                      return <>You&apos;re at VDOT <strong>{readiness.currentVdot.toFixed(1)}</strong>, which projects <strong>{readiness.predictedFinishDisplay}</strong> here. Your {race.meta.goalDisplay} goal needs VDOT <strong>{readiness.goalVdot.toFixed(1)}</strong> — a {readiness.vdotGap.toFixed(1)}-point lift over {weeks} weeks ({feas}) The plan&apos;s threshold + race-pace blocks are built to close that gap; hit them and the projection moves with you.</>;
+                            ? `ambitious but doable, it needs consistent threshold work and no missed blocks.`
+                            : `a real stretch, it would need everything to click; a slightly softer goal may serve you better.`;
+                      return <>You&apos;re at VDOT <strong>{readiness.currentVdot.toFixed(1)}</strong>, which projects <strong>{readiness.predictedFinishDisplay}</strong> here. Your {race.meta.goalDisplay} goal needs VDOT <strong>{readiness.goalVdot.toFixed(1)}</strong>, a {readiness.vdotGap.toFixed(1)}-point lift over {weeks} weeks ({feas}) The plan&apos;s threshold + race-pace blocks are built to close that gap; hit them and the projection moves with you.</>;
                     })()
                   : <>The full 14-week plan points here. Log a recent race or a few quality runs and the coach will show your current fitness, the gap to {race.meta.goalDisplay}, and the path to close it.</>}
             </p>
@@ -614,7 +614,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                     }}
                   >
                     {readiness.onPace ? (
-                      <>✓ <strong>On pace</strong> — projected is faster than goal by{' '}
+                      <>✓ <strong>On pace</strong>, projected is faster than goal by{' '}
                       {fmtTime(readiness.goalFinishS - readiness.predictedFinishS)}.</>
                     ) : (
                       <>
@@ -663,8 +663,8 @@ export default async function RacePlanPage({ params }: PageProps) {
                     </>
                   ) : (
                     <>
-                      <div className="path-stat-value orange">—</div>
-                      <div className="path-stat-sub">No data — set your VDOT</div>
+                      <div className="path-stat-value orange">, </div>
+                      <div className="path-stat-sub">No data, set your VDOT</div>
                     </>
                   )}
                 </div>
@@ -719,7 +719,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                       <text x={6} y={label.y + 3} fontFamily="Inter, sans-serif" fontSize="10" fill="rgba(8,8,8,.40)" fontWeight="500">{label.ft} ft</text>
                     </g>
                   ))}
-                  {/* Elevation area — filled per phase with that phase's
+                  {/* Elevation area, filled per phase with that phase's
                       difficulty color, as a soft vertical gradient. Each
                       colored rect is clipped to the area-under-the-curve
                       shape; soft seams at the boundaries read as gentle
@@ -904,7 +904,7 @@ export default async function RacePlanPage({ params }: PageProps) {
             <div className="brief-empty-body">
               <div className="brief-empty-title">Ready {fmtShortMonthDay(briefGenIso)}</div>
               <div className="brief-empty-text">
-                Your race-day brief — shakeout, kit, wake-up timing, fueling, and weather-adjusted pace targets —
+                Your race-day brief, shakeout, kit, wake-up timing, fueling, and weather-adjusted pace targets, 
                 lands 7 days out, once we have the real weather window and your taper-week readiness.
               </div>
               <div className="brief-empty-when">

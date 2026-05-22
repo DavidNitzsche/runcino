@@ -3,7 +3,7 @@
  *
  * Issues access + refresh token pairs that native clients can use to
  * authenticate against the same backend that powers the web app.  No
- * JWTs — opaque 32-byte base64url tokens stored in the existing
+ * JWTs, opaque 32-byte base64url tokens stored in the existing
  * `sessions` table with a `kind` discriminator.
  *
  * THREE TOKEN KINDS share the sessions table:
@@ -190,7 +190,7 @@ export async function rotateRefreshToken(
   if (!row) return null;
 
   // Revoke the old refresh first.  If issueTokens fails downstream,
-  // the user can re-authenticate with password — no token is left
+  // the user can re-authenticate with password, no token is left
   // both old AND valid.
   await query(
     `UPDATE sessions SET revoked_at = NOW() WHERE id = $1`,
@@ -206,7 +206,7 @@ export async function rotateRefreshToken(
  * ok without error.
  *
  * Also revokes any access tokens issued from the same user that
- * predate this revocation — prevents the case where an attacker
+ * predate this revocation, prevents the case where an attacker
  * with a stolen access token can keep using it after the user has
  * explicitly logged out.
  */
@@ -251,7 +251,7 @@ export async function revokeRefreshToken(
 /**
  * Cleanup helper: revoke ALL active tokens (access + refresh) for a
  * user.  Used when the user changes password or marks themselves
- * compromised.  Cookie sessions are untouched — that's a separate
+ * compromised.  Cookie sessions are untouched, that's a separate
  * surface and gets cleared via cookie expiry / logout.
  */
 export async function revokeAllUserTokens(userId: string): Promise<{ revoked: number }> {

@@ -4,18 +4,18 @@
  * One-shot admin endpoint that creates curated races rows for the
  * two orphans identified by the audit:
  *
- *   1. LA Marathon 2026-03-08 — Strava has 3:30:25; David's chip
+ *   1. LA Marathon 2026-03-08, Strava has 3:30:25; David's chip
  *      time is 3:31:40 (12700s). Creates a curated entry so
  *      compute-vdot (post-Option-B) prefers the chip time.
  *
- *   2. Disney Half Marathon ("Powered by the Mouse") 2026-02-01 —
+ *   2. Disney Half Marathon ("Powered by the Mouse") 2026-02-01, 
  *      Strava has 1:34:54 (5694s) which matches the chip time.
  *      Creates the curated entry so it's no longer an orphan
  *      (matters because Option-B compute-vdot reads races first).
  *
  * Also flips Big Sur Marathon (2026-04-26) and Sombrero Half
  * (2026-05-03) from source='strava' to source='manual' to mark
- * them user-confirmed — David confirmed the auto-imported values
+ * them user-confirmed, David confirmed the auto-imported values
  * (3:36:55 and 1:40:57 respectively) are correct chip times.
  *
  * The races table requires NOT NULL plan + gpx_text. We insert
@@ -68,7 +68,7 @@ const ORPHAN_SEEDS: OrphanSeed[] = [
     name: 'LA Marathon',
     date: '2026-03-08',
     distanceMi: 26.219,
-    finishS: 12700,                // 3:31:40 chip — supersedes Strava's 3:30:25
+    finishS: 12700,                // 3:31:40 chip, supersedes Strava's 3:30:25
     stravaActivityId: 17654375467,
   },
   {
@@ -76,13 +76,13 @@ const ORPHAN_SEEDS: OrphanSeed[] = [
     name: 'Disney Half Marathon',
     date: '2026-02-01',
     distanceMi: 13.109,
-    finishS: 5694,                 // 1:34:54 chip — matches Strava
+    finishS: 5694,                 // 1:34:54 chip, matches Strava
     stravaActivityId: 17250968534,
   },
 ];
 
 /** Existing races where Strava auto-import value is the confirmed
- *  chip time — just flip source to 'manual' to mark as user-verified. */
+ *  chip time, just flip source to 'manual' to mark as user-verified. */
 const CONFIRM_SOURCES: string[] = ['big-sur-marathon', 'sombrero-half'];
 
 export async function POST() {
@@ -152,7 +152,7 @@ export async function POST() {
       );
       inserted.push(seed.slug);
     } else {
-      // UPDATE actual_result only — leave plan/gpx alone for any
+      // UPDATE actual_result only, leave plan/gpx alone for any
       // existing UI-side data.
       await query(
         `UPDATE races

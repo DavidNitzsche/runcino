@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the activities endpoint — kept separate from
+ * Pure helpers for the activities endpoint, kept separate from
  * route.ts so server-side modules (lib/strava-cache.ts) can import
  * the normalizer without dragging the GET handler into their bundle.
  *
@@ -37,7 +37,7 @@ export interface NormalizedActivity {
   /** Canonical-distance finish time, sourced from Strava's best_efforts
    *  (only present when activity detail has been fetched). For a half
    *  marathon ran as a 13.4 mi activity, this is the time at exactly
-   *  13.1 mi — i.e., the time you crossed the finish line, not the
+   *  13.1 mi, i.e., the time you crossed the finish line, not the
    *  total time on watch. Used by /log race rows so the displayed
    *  finish matches what the chip clock said. */
   canonicalFinishS: number | null;
@@ -46,7 +46,7 @@ export interface NormalizedActivity {
   /** Per-mile splits from Strava's splits_standard. Only present when
    *  the activity was ingested from a detail-bearing response (single-
    *  activity endpoint OR the detail backfill). Consumers needing
-   *  splits should treat `undefined` as "not yet hydrated" — kick off
+   *  splits should treat `undefined` as "not yet hydrated", kick off
    *  /api/admin/backfill-splits to populate. L7 Signal 2 reads these
    *  to compute pace-at-Z2-HR drift. */
   splits?: Array<{
@@ -56,7 +56,7 @@ export interface NormalizedActivity {
      *  average_grade_adjusted_speed. Null when Strava doesn't return
      *  GAP for this split (older activities, missing GPS). When
      *  present, |paceSPerMi - gapSPerMi| > 20 indicates meaningful
-     *  terrain distortion — L7 Signal 3 swaps to GAP for the
+     *  terrain distortion, L7 Signal 3 swaps to GAP for the
      *  comparison in that case. */
     gapSPerMi: number | null;
     avgHr: number | null;
@@ -68,13 +68,13 @@ export function normalizeActivity(a: StravaActivity): NormalizedActivity {
   const distMi = a.distance / 1609.344;
   const paceSPerMi = distMi > 0 ? Math.round(a.moving_time / distMi) : 0;
   const startLocal = a.start_date_local || a.start_date;
-  // Canonical-distance best_effort — only present when we have detail.
+  // Canonical-distance best_effort, only present when we have detail.
   // Pick the best_effort whose distance is closest to a canonical race
   // distance AND within 8% of the activity's actual distance (so a
   // 13.4mi run picks the half-marathon best_effort, not the marathon).
   const canonical = pickCanonicalBestEffort(a, distMi);
 
-  // Per-mile splits — present only when the source response includes
+  // Per-mile splits, present only when the source response includes
   // splits_standard (single-activity endpoint OR detail backfill). The
   // list endpoint doesn't return them. Undefined here means "not
   // hydrated yet"; the backfill admin endpoint populates retroactively.
@@ -84,7 +84,7 @@ export function normalizeActivity(a: StravaActivity): NormalizedActivity {
     // Grade-adjusted pace from Strava's average_grade_adjusted_speed
     // (m/s). Convert to s/mi: 1609.344 m/mi ÷ (m/s) = s/mi.
     // Null when Strava doesn't return GAP (no GPS, treadmill, older
-    // activities). Don't compute locally — Strava's GAP uses proprietary
+    // activities). Don't compute locally, Strava's GAP uses proprietary
     // grade-cost model, our approximation would diverge.
     const gapSPerMi = s.average_grade_adjusted_speed != null && s.average_grade_adjusted_speed > 0
       ? Math.round(1609.344 / s.average_grade_adjusted_speed)
@@ -145,7 +145,7 @@ function pickCanonicalBestEffort(a: StravaActivity, distMi: number): { label: st
     { regex: /^1\s*mile$/i,           label: '1 mi',     mi: 1.00  },
   ];
   // Prefer the canonical that's closest to the activity's actual
-  // distance — so a 13.4 mi run picks Half (13.10) over 10K (6.21),
+  // distance, so a 13.4 mi run picks Half (13.10) over 10K (6.21),
   // and a 26.7 mi run picks Marathon (26.22).
   for (const c of CANON) {
     const tol = c.mi * 0.08;

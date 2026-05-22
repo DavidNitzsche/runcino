@@ -1,5 +1,5 @@
 /**
- * v4 segments table — warmup / main / cooldown breakdown for the hero
+ * v4 segments table, warmup / main / cooldown breakdown for the hero
  * card. The "main" row gets a green-wash background per the doctrine
  * that the main block is the part of the workout that matters most.
  *
@@ -14,7 +14,7 @@
 import type { ReactNode } from 'react';
 
 export interface SegmentRow {
-  /** Block name — WARMUP / MAIN / COOLDOWN / STRIDES / etc. Uppercased
+  /** Block name, WARMUP / MAIN / COOLDOWN / STRIDES / etc. Uppercased
    *  on render via CSS. */
   label: string;
   /** Duration in plain text, e.g. "10 min" or "32 min". */
@@ -23,7 +23,7 @@ export interface SegmentRow {
   distance: string;
   /** Pace, e.g. "10:00/mi" or "9:09/mi avg". */
   pace: string;
-  /** True for the main block — gets the green wash + green text. */
+  /** True for the main block, gets the green wash + green text. */
   isMain?: boolean;
 }
 

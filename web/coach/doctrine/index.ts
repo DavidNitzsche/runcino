@@ -1,5 +1,5 @@
 /**
- * Doctrine barrel — re-exports the cite helper + every topic file.
+ * Doctrine barrel, re-exports the cite helper + every topic file.
  *
  * Pattern (see intensity.ts for the canonical example):
  *
@@ -14,7 +14,7 @@
  *
  * Topic files import the cite helper FROM './cite' directly (not from
  * this barrel) to avoid a TDZ regression under Turbopack production
- * bundling — see cite.ts header for details.
+ * bundling, see cite.ts header for details.
  */
 
 export { cite, type Cited, type ResearchDocId } from './cite';

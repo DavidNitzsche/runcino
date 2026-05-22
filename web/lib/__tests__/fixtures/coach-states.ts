@@ -1,5 +1,5 @@
 /**
- * Canonical CoachState fixtures — one per runner archetype the engine
+ * Canonical CoachState fixtures, one per runner archetype the engine
  * must handle. Each fixture is a hand-tuned snapshot that triggers a
  * specific doctrine path; the partner test file (coach-engine-scenarios)
  * walks 28 days forward via simulateRange and asserts the engine
@@ -219,7 +219,7 @@ export const STATE_MID_BUILD_WEEK_4: CoachState = (() => {
 // Runner: A-race 14 days out, peak mileage 38mpw, healthy 75% easy
 //   share, no recent races.
 // Engine should: drop volume 30–50% across the 14-day taper while
-//   preserving quality (Daniels §9 — taper kills volume, holds intensity),
+//   preserving quality (Daniels §9, taper kills volume, holds intensity),
 //   no new long-run spikes inside 10 days of race.
 // ─────────────────────────────────────────────────────────────────
 export const STATE_PEAK_WEEK_MINUS_2: CoachState = (() => {
@@ -438,7 +438,7 @@ export const STATE_HEAVY_BLOCK_STACK: CoachState = (() => {
       weeklyAvg4w: 18,
       weeklyAvg8w: 22,
       longestLast28Mi: 26.2,
-      // Training-only excludes the marathon + half — pre-race training
+      // Training-only excludes the marathon + half, pre-race training
       // long was ~20mi (typical marathon prep peak).
       ...defaultTrainingVolume(11, 20),
       deltaPct4v4: -0.1,
@@ -468,7 +468,7 @@ export const STATE_HEAVY_BLOCK_STACK: CoachState = (() => {
 
 // ─────────────────────────────────────────────────────────────────
 // 7. STATE_INJURY_RETURN
-// Runner: returning from injury — long gap (21+ days since last run),
+// Runner: returning from injury, long gap (21+ days since last run),
 //   very low recent volume (4mpw effective), no quality. There is no
 //   `injuryReturning` flag in CoachState; we model it via
 //   rebuildAfterBreak + low volume + 21d gap.
@@ -476,7 +476,7 @@ export const STATE_HEAVY_BLOCK_STACK: CoachState = (() => {
 //   REBUILD phase should pin distance to baseEasy.
 // ─────────────────────────────────────────────────────────────────
 export const STATE_INJURY_RETURN: CoachState = (() => {
-  // No goal race — pure rebuild scenario. Engine treats this as base
+  // No goal race, pure rebuild scenario. Engine treats this as base
   // mode + REBUILD phase via rebuildAfterBreak flag.
   return {
     now: TODAY_ISO,

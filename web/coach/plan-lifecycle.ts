@@ -32,10 +32,10 @@ export interface LifecycleResult {
 }
 
 /** Decide whether the active plan can continue, or whether a new plan
- *  needs to be authored. Pure — no side effects. */
+ *  needs to be authored. Pure, no side effects. */
 export function lifecycleCheck(plan: Plan | null, state: CoachState): LifecycleAction {
   if (!plan) return 'first-time';
-  // Builder algorithm changed — transparently rewrite to pick up new logic.
+  // Builder algorithm changed, transparently rewrite to pick up new logic.
   if ((plan.authoredFromState.builderVersion ?? 0) < BUILDER_VERSION) return 'rewrite';
   if (plan.goalISO < state.now) return 'transition';
 
@@ -47,7 +47,7 @@ export function lifecycleCheck(plan: Plan | null, state: CoachState): LifecycleA
 
   // Profile prefs changed since the plan was authored → rebuild so the
   // new long-run day / quality days / level take effect immediately.
-  // Only compare level when the user explicitly set it — auto-detected
+  // Only compare level when the user explicitly set it, auto-detected
   // level changes with volume drift, which the separate drift check handles.
   const snap = plan.authoredFromState;
   const p = state.prefs;
@@ -62,7 +62,7 @@ export function lifecycleCheck(plan: Plan | null, state: CoachState): LifecycleA
   }
 
   // Rewrite when volume has drifted significantly from what the plan
-  // was authored at — catches stale first-builds from empty Strava cache.
+  // was authored at, catches stale first-builds from empty Strava cache.
   const authoredAvg = snap.weeklyAvg4w;
   const anyMutations = plan.weeks.some(w => w.workouts.some(x => x.mutations.length > 0));
   if (!anyMutations) {
@@ -117,7 +117,7 @@ export async function getCurrentPlan(userId = 'me'): Promise<LifecycleResult> {
     plan = fresh;
   }
 
-  // Adapt against current state (idempotent — safe to re-run).
+  // Adapt against current state (idempotent, safe to re-run).
   if (plan) {
     plan = await adaptPlan(plan, state, state.now, { persist: true });
   }

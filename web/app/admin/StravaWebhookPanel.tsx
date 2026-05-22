@@ -53,7 +53,7 @@ export function StravaWebhookPanel() {
       if (res.ok) {
         setMsg('Subscribed. Strava will now push activity events to /api/strava/webhook.');
       } else {
-        setMsg(`Subscribe failed: ${j?.error || res.status}${j?.response ? ' — ' + JSON.stringify(j.response) : ''}`);
+        setMsg(`Subscribe failed: ${j?.error || res.status}${j?.response ? ', ' + JSON.stringify(j.response) : ''}`);
       }
       await load();
     } catch (e) {
@@ -132,7 +132,7 @@ export function StravaWebhookPanel() {
       <p style={{ marginTop: 18, fontSize: 12, color: 'rgba(13,15,18,.45)', lineHeight: 1.5 }}>
         Once registered, Strava pushes a webhook to <code>/api/strava/webhook</code> whenever any
         connected athlete posts, updates, or deletes a run. The handler refreshes only the
-        affected activity — no polling, no waiting. Set <code>STRAVA_WEBHOOK_VERIFY_TOKEN</code> in
+        affected activity, no polling, no waiting. Set <code>STRAVA_WEBHOOK_VERIFY_TOKEN</code> in
         Railway env if you want to override the default shared secret.
       </p>
     </div>

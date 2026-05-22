@@ -1,5 +1,5 @@
 /**
- * /api/strava/callback — Strava OAuth callback handler.
+ * /api/strava/callback, Strava OAuth callback handler.
  *
  * Multi-tenant flow:
  *   1. Verify the state cookie matches the state param (CSRF check).
@@ -8,7 +8,7 @@
  *   4. UPSERT a row in connector_tokens for (user_id, 'strava').
  *   5. Redirect to /profile with success param.
  *
- * Background activity backfill runs separately — kicked off here as a
+ * Background activity backfill runs separately, kicked off here as a
  * fire-and-forget but the user lands back in the app immediately.
  */
 
@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
     const result = await syncStravaForUser(userId);
     if (!result.ok) {
       console.error('[strava callback] initial sync failed:', result.error);
-      // Tokens are persisted — the user can hit "Sync now" from /profile.
+      // Tokens are persisted, the user can hit "Sync now" from /profile.
       // Don't redirect to error; the connection itself succeeded.
     }
   } catch (e) {

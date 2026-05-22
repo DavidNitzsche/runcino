@@ -1,5 +1,5 @@
 /**
- * Training load (CTL · ATL · TSB) — pure derivation from coach-state
+ * Training load (CTL · ATL · TSB), pure derivation from coach-state
  * volume inputs, shared by the /api/health route and the /health page.
  *
  * CTL (fitness) approximates the 8-week-rolling chronic training load;
@@ -23,9 +23,9 @@ export interface TrainingLoadInputs {
 }
 
 export interface TrainingLoad {
-  /** CTL (fitness) — chronic load. */
+  /** CTL (fitness), chronic load. */
   fitnessCtl: number;
-  /** ATL (fatigue) — acute load. */
+  /** ATL (fatigue), acute load. */
   fatigueAtl: number;
   /** Form = CTL − ATL. */
   formTsb: number;

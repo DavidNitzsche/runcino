@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { gatherFreshness } from '../freshness';
 import type { CoachState } from '../coach-state';
 
-// Synthetic CoachState fixture — only the fields freshness reads
+// Synthetic CoachState fixture, only the fields freshness reads
 // (`now` + `races.recent` for vdotSnapshot). Cast through unknown so
 // we don't have to fake every nested branch.
 function makeState(opts: { now?: string; vdotRace?: { date: string; distanceMi: number; finishS: number; name: string } } = {}): CoachState {
@@ -88,7 +88,7 @@ describe('gatherFreshness', () => {
   });
 
   it('stale VDOT anchor (>60d) → vdotAnchor stale + reason cites doctrine', async () => {
-    // Race 75 days back — clearly past the 60-day budget.
+    // Race 75 days back, clearly past the 60-day budget.
     const raceDate = new Date(NOW_MS - 75 * 86_400_000).toISOString().slice(0, 10);
     const map = await gatherFreshness({
       state: makeState({

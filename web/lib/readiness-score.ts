@@ -27,7 +27,7 @@
  *   yet, signal 2 below volume gate, etc.), the score is computed
  *   from the inputs that ARE available and the missing ones are listed
  *   in `missingInputs` so the surface can say "Score 72 (sleep data
- *   unavailable — uses load + freshness only)."
+ *   unavailable, uses load + freshness only)."
  *
  * SUSPENSION
  *   When the user is marked injured (activity_gap_status='injured'),
@@ -46,7 +46,7 @@
  *   4+ hard in last 7 days    -10
  *   ── volume ──
  *   This week >110% prescribed -10
- *   This week  <80% prescribed -5   (light week — caveat: may be by choice)
+ *   This week  <80% prescribed -5   (light week, caveat: may be by choice)
  *   ── HR-pace drift ──
  *   Signal 2 Δ ≤ -10 s/mi      +5   (faster at fixed HR = fit)
  *   Signal 2 Δ ≥ +10 s/mi     -10   (slower at fixed HR = fatigued)
@@ -69,7 +69,7 @@ export interface ReadinessFinding {
   /** Inputs that contributed and their score deltas (transparent
    *  scoring per the locked discipline). */
   inputs: Array<{ name: string; delta: number; note: string }>;
-  /** Inputs we WOULD have used if available — listed so the surface
+  /** Inputs we WOULD have used if available, listed so the surface
    *  can be transparent about gaps. */
   missingInputs: string[];
   /** Suppress reason when score is null. */
@@ -126,17 +126,17 @@ export function readinessLabelFor(state: ReadinessFinding['state']): string {
  *
  *   · readiness state is yellow or red (green doesn't need an explanation)
  *   · V5 is firing (z2Finding.shouldRender === true)
- *   · V5 plausibly contributes — at least one readiness input that
+ *   · V5 plausibly contributes, at least one readiness input that
  *     reduced the score is in the same causal family as V5's finding.
  *     V5 means easy runs were too hard; that elevates yesterday's
  *     load + freshness markers.  If yesterday or freshness pushed the
  *     score down, V5 is plausibly part of the story.
  *
- * Relation: 'consistent with' (default) — corroboration without
+ * Relation: 'consistent with' (default), corroboration without
  * overclaiming causation.  Both surfaces observe elevated effort from
  * different angles; we don't assert V5 caused C6.
  *
- * Returns null when the check fails — topic overlap alone is not
+ * Returns null when the check fails, topic overlap alone is not
  * enough to fire a cross-reference (Rule 1 from CROSS-REFERENCE
  * DISCIPLINE in coach-voice.ts).
  */
@@ -191,7 +191,7 @@ export async function computeReadinessScore(
   // Pull last 14 days of activities in one query.
   const rows = await query<ActivityRow>(
     // HR fields can be decimals (e.g. 143.7) on HealthKit-enriched
-    // activities, so cast via NUMERIC + ROUND — a bare ::INTEGER throws
+    // activities, so cast via NUMERIC + ROUND, a bare ::INTEGER throws
     // "invalid input syntax for type integer" and nulls the whole score.
     `SELECT data->>'date'              AS date,
             ROUND((data->>'workoutType')::NUMERIC)::INTEGER AS workout_type,
@@ -263,18 +263,18 @@ export async function computeReadinessScore(
   const hardLast7 = hardSessions.filter((r) => r.date >= last7StartIso).length;
 
   // Freshness rewards a genuine easy stretch (+10) and penalizes ACUTE
-  // overload only — back-to-back hard days without recovery between
+  // overload only, back-to-back hard days without recovery between
   // (≥2 in 3 days). A SINGLE hard session 2–3 days ago is normal training
   // rhythm: you absorb one quality day within ~48h (Research/00b §In-week
-  // recovery), and the 'yesterday' input already handles the acute case —
+  // recovery), and the 'yesterday' input already handles the acute case, 
   // so a lone recent quality day no longer double-dings or chronically
   // pins readiness to yellow.
   if (hardLast5 === 0) {
     score += 10;
-    inputs.push({ name: 'freshness', delta: +10, note: 'fresh — no hard sessions in 5 days' });
+    inputs.push({ name: 'freshness', delta: +10, note: 'fresh, no hard sessions in 5 days' });
   } else if (hardLast3 >= 2) {
     score -= 10;
-    inputs.push({ name: 'freshness', delta: -10, note: `${hardLast3} hard days back-to-back in the last 3 — limited recovery between` });
+    inputs.push({ name: 'freshness', delta: -10, note: `${hardLast3} hard days back-to-back in the last 3, limited recovery between` });
   }
   if (hardLast7 >= 4) {
     score -= 10;
@@ -282,13 +282,13 @@ export async function computeReadinessScore(
   }
 
   // Note: weekly mileage-vs-prescribed is intentionally NOT a readiness
-  // input (the score is about recovery/freshness, not plan adherence —
+  // input (the score is about recovery/freshness, not plan adherence, 
   // mileage progress lives in its own card). We deliberately don't list it
   // as a "missing" input, since that read as a confusing "unavailable" note
   // sitting right next to the mileage bar.
 
   // NOTE: Z2 pace-at-fixed-HR drift is intentionally NOT a daily-readiness
-  // input. Signal 2 compares the last 28 days to the 28 days before that —
+  // input. Signal 2 compares the last 28 days to the 28 days before that, 
   // that's a CHRONIC fitness/efficiency trend (and is sensitive to base
   // phase, seasonal heat, and a shifting Z2 band), not a read on whether
   // you're recovered TODAY. Penalizing daily readiness by -10 for a 2-month
@@ -313,21 +313,21 @@ export async function computeReadinessScore(
     const series = (t: string) => hsRows.filter((r) => r.sample_type === t).map((r) => Number(r.value)).filter((n) => isFinite(n));
     const mean = (arr: number[]) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0);
 
-    // HRV — a SMOOTHED recent read (mean of the last 3 days) vs an older
+    // HRV, a SMOOTHED recent read (mean of the last 3 days) vs an older
     // baseline. Single-day HRV is very noisy (one bad night swings it 20%+),
-    // so we never penalize on one reading — only a sustained dip. Need ≥5
+    // so we never penalize on one reading, only a sustained dip. Need ≥5
     // readings so the baseline isn't itself a single day. Research/03 §10.
     const hrv = series('hrv');
     if (hrv.length >= 5) {
       const recent = mean(hrv.slice(0, 3));
       const base = mean(hrv.slice(3));
       const dropPct = base > 0 ? (base - recent) / base : 0;
-      if (dropPct >= 0.20) { score -= 10; inputs.push({ name: 'hrv', delta: -10, note: `HRV averaging ${Math.round(recent)}ms over 3 days — ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline` }); }
+      if (dropPct >= 0.20) { score -= 10; inputs.push({ name: 'hrv', delta: -10, note: `HRV averaging ${Math.round(recent)}ms over 3 days, ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline` }); }
       else if (dropPct >= 0.12) { score -= 5; inputs.push({ name: 'hrv', delta: -5, note: `HRV trending ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline` }); }
-      else if (dropPct <= -0.10) { score += 5; inputs.push({ name: 'hrv', delta: +5, note: `HRV averaging ${Math.round(recent)}ms — above your ${Math.round(base)}ms baseline, well recovered` }); }
+      else if (dropPct <= -0.10) { score += 5; inputs.push({ name: 'hrv', delta: +5, note: `HRV averaging ${Math.round(recent)}ms, above your ${Math.round(base)}ms baseline, well recovered` }); }
     } else { missing.push('hrv (need a few days of baseline)'); }
 
-    // Resting HR — same smoothing: mean of the last 3 days vs an older
+    // Resting HR, same smoothing: mean of the last 3 days vs an older
     // baseline. A single +4–6 morning reading is normal noise; only a
     // sustained elevation should pull the score. Research/03 §9.
     const rhr = series('resting_hr');
@@ -335,20 +335,20 @@ export async function computeReadinessScore(
       const recent = mean(rhr.slice(0, 3));
       const base = mean(rhr.slice(3));
       const delta = recent - base;
-      if (delta >= 7) { score -= 10; inputs.push({ name: 'resting-hr', delta: -10, note: `Resting HR averaging ${Math.round(recent)} over 3 days — +${Math.round(delta)} over your ${Math.round(base)} baseline` }); }
-      else if (delta >= 5) { score -= 5; inputs.push({ name: 'resting-hr', delta: -5, note: `Resting HR averaging ${Math.round(recent)} — slightly elevated vs ${Math.round(base)} baseline` }); }
-      else if (delta <= -3) { score += 3; inputs.push({ name: 'resting-hr', delta: +3, note: `Resting HR averaging ${Math.round(recent)} — below your ${Math.round(base)} baseline, recovered` }); }
+      if (delta >= 7) { score -= 10; inputs.push({ name: 'resting-hr', delta: -10, note: `Resting HR averaging ${Math.round(recent)} over 3 days, +${Math.round(delta)} over your ${Math.round(base)} baseline` }); }
+      else if (delta >= 5) { score -= 5; inputs.push({ name: 'resting-hr', delta: -5, note: `Resting HR averaging ${Math.round(recent)}, slightly elevated vs ${Math.round(base)} baseline` }); }
+      else if (delta <= -3) { score += 3; inputs.push({ name: 'resting-hr', delta: +3, note: `Resting HR averaging ${Math.round(recent)}, below your ${Math.round(base)} baseline, recovered` }); }
     } else { missing.push('resting-hr (need a few days of baseline)'); }
 
-    // Sleep — last night. Research/00b §Sleep: <6h significant decrement;
+    // Sleep, last night. Research/00b §Sleep: <6h significant decrement;
     // §8.1 general floor 7h.
     const sleep = series('sleep_hours');
     if (sleep.length >= 1) {
       const last = sleep[0];
-      if (last < 6) { score -= 10; inputs.push({ name: 'sleep', delta: -10, note: `${last.toFixed(1)}h last night — under 6h is a real decrement` }); }
-      else if (last < 7) { score -= 5; inputs.push({ name: 'sleep', delta: -5, note: `${last.toFixed(1)}h last night — below the 7h floor` }); }
-      else if (last >= 8.5) { score += 5; inputs.push({ name: 'sleep', delta: +5, note: `${last.toFixed(1)}h last night — fully banked` }); }
-      else { score += 3; inputs.push({ name: 'sleep', delta: +3, note: `${last.toFixed(1)}h last night — adequate` }); }
+      if (last < 6) { score -= 10; inputs.push({ name: 'sleep', delta: -10, note: `${last.toFixed(1)}h last night, under 6h is a real decrement` }); }
+      else if (last < 7) { score -= 5; inputs.push({ name: 'sleep', delta: -5, note: `${last.toFixed(1)}h last night, below the 7h floor` }); }
+      else if (last >= 8.5) { score += 5; inputs.push({ name: 'sleep', delta: +5, note: `${last.toFixed(1)}h last night, fully banked` }); }
+      else { score += 3; inputs.push({ name: 'sleep', delta: +3, note: `${last.toFixed(1)}h last night, adequate` }); }
     } else { missing.push('sleep'); }
   } catch {
     missing.push('hrv'); missing.push('resting-hr'); missing.push('sleep');

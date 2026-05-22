@@ -1,5 +1,5 @@
 /**
- * Stage — max-width page container.
+ * Stage, max-width page container.
  *
  * Wraps the entire page. Matches the canonical `.stage` from the May 2026
  * mockups (max-width: 1500px, centered, padding 24px 26px 60px). One Stage

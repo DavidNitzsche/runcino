@@ -8,7 +8,7 @@
  * coaching finding.
  *
  * Voice: data is data, coach is coach. Both honest. Don't soften the
- * diagnosis to make it palatable — the data IS the case for slowing
+ * diagnosis to make it palatable, the data IS the case for slowing
  * down, and softening it makes the coach less useful.
  *
  * TRIGGER (locked with David round 4, 2026-05-19):
@@ -16,7 +16,7 @@
  *     - Last 7 days: ≥3 easy runs AND Z2 share < 40% of easy mileage
  *     - NOT during race-week (within 7 days of any race in scope)
  *     - NOT during post-race recovery (within 7 days AFTER a race)
- *     - HRR framework active (max HR + resting HR both set —
+ *     - HRR framework active (max HR + resting HR both set, 
  *       otherwise Z2 band is uncalibrated and the finding is noise)
  *
  * The 40% threshold + 3-run minimum kills single-run noise. A 5K
@@ -28,7 +28,7 @@
  *
  * Second-order observation: when the most recent threshold workout
  * hit the pace band but stayed below Z4, surface it. That's downstream
- * evidence — body can't reach threshold intensity when carrying easy-
+ * evidence, body can't reach threshold intensity when carrying easy-
  * day load. Connecting the dots is the coaching.
  */
 
@@ -102,7 +102,7 @@ function isEasyCandidate(data: ActivityRow['data']): boolean {
 }
 
 function fmtPace(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
@@ -129,12 +129,12 @@ async function fetchRaceDates(userId: string, startIso: string, endIso: string):
 
 /** Find the most recent threshold-effort workout that hit pace target
  *  but stayed below Z4 HR. The "downstream" observation in the V5
- *  surface — when easy runs are too hard, threshold can't reach Z4.
+ *  surface, when easy runs are too hard, threshold can't reach Z4.
  *
  *  CONTEXT GUARDS (per CLAUDE.md Rule 5 · per-finding context filters):
  *   - RACE-RECENCY · skips workouts within ±7 days of any race
  *   - HEAT · skips workouts where start temp > 78°F (cardiac drift in
- *     heat artificially DEPRESSES HR-to-pace ratio at threshold —
+ *     heat artificially DEPRESSES HR-to-pace ratio at threshold, 
  *     a pace-in-T-band, HR-sub-Z4 workout in heat is explained by
  *     heat, not easy-day load)
  *
@@ -247,7 +247,7 @@ export async function computeZ2CoverageFinding(
   }
 
   // Injury suspension · per Rule 5 (per-finding context filter). V5
-  // shouldn't fire while the user is marked injured — missed easy
+  // shouldn't fire while the user is marked injured, missed easy
   // runs during recovery are not "easy runs too hard," they're
   // intentional rehab. Same context-filter principle as L7.
   try {

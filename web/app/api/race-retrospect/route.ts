@@ -1,12 +1,12 @@
 /**
- * /api/race-retrospect — post-race reflection.
+ * /api/race-retrospect, post-race reflection.
  *
  * Stage 5 wired: delegates to `coach.retrospect(...)`. The route exists
  * so the client-side race detail page (`/races/[slug]`) can fetch the
  * Coach's narrative + calibration delta after the race is marked
  * completed.
  *
- * The Coach reads two opaque shapes — `plan` and `actual` — and
+ * The Coach reads two opaque shapes, `plan` and `actual`, and
  * extracts the fields it cares about (goalFinishS, miles[], finishS,
  * splits). We assemble both from the race row's plan + actualResult
  * and pass through.
@@ -44,7 +44,7 @@ export async function GET(req: Request): Promise<Response> {
     }
     if (!race.actualResult) {
       return Response.json(
-        { ok: false, error: 'no actual result on file — retrospect requires a completed race' } satisfies ErrBody,
+        { ok: false, error: 'no actual result on file, retrospect requires a completed race' } satisfies ErrBody,
         { status: 422 },
       );
     }
@@ -56,7 +56,7 @@ export async function GET(req: Request): Promise<Response> {
       goalFinishS: race.plan.goal.finish_time_s,
       distanceMi: race.meta.distanceMi,
       // The intervals carry per-segment plan info but the retrospect
-      // path doesn't read them today — keep payload minimal.
+      // path doesn't read them today, keep payload minimal.
     };
     const actualForCoach = {
       finishS: race.actualResult.finishS,

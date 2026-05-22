@@ -1,5 +1,5 @@
 /**
- * AddGoalModal — wires the +ADD GOAL button on /profile.
+ * AddGoalModal, wires the +ADD GOAL button on /profile.
  *
  * Implements the canonical pattern from designs/_template-action-2026-05-09.html:
  * wide modal · ADD eyebrow · "Personal Goal" title · 1-Goal type chip group ·
@@ -25,8 +25,8 @@ const GOAL_TYPES = [
   { id: 'volume',   label: 'VOLUME',   help: "Coach ramps your weekly mileage toward a target. Plan respects this when scheduling weeks." },
   { id: 'speed',    label: 'SPEED',    help: "Coach adds threshold + race-pace work earlier in builds and gates quality at goal-pace targets." },
   { id: 'distance', label: 'DISTANCE', help: "Coach builds durability with back-to-back long runs ahead of the target distance." },
-  { id: 'habit',    label: 'HABIT',    help: "Coach holds run frequency at a target floor — never below it for adherence streaks." },
-  { id: 'strength', label: 'STRENGTH', help: "Coach gates running quality on strength absorption — caps stacking and protects squat days." },
+  { id: 'habit',    label: 'HABIT',    help: "Coach holds run frequency at a target floor, never below it for adherence streaks." },
+  { id: 'strength', label: 'STRENGTH', help: "Coach gates running quality on strength absorption, caps stacking and protects squat days." },
   { id: 'health',   label: 'HEALTH',   help: "Coach prioritizes sleep + HRV recovery, dialing quality back when health metrics flag." },
 ] as const;
 

@@ -1,15 +1,15 @@
 /**
- * /profile — fresh React port of designs/profile-v4.html.
+ * /profile, fresh React port of designs/profile-v4.html.
  *
  * Sections (matches approved mockup top→bottom):
- *   1. Identity hero — avatar + name + bio + Edit Profile button
+ *   1. Identity hero, avatar + name + bio + Edit Profile button
  *   2. Lifetime KPI strip (5 cells)
- *   3. Connectors card (full-width) — reuses ConnectorsCard.tsx
- *   4. Training Profile — 4 pref cells (Level / Long-Run / Quality / Rest)
- *   5. Heart Rate Zones — 5-cell strip + VDOT meta
- *   6. Shoe Rotation — 2-col grid (clickable rows open the Edit Shoe modal)
+ *   3. Connectors card (full-width), reuses ConnectorsCard.tsx
+ *   4. Training Profile, 4 pref cells (Level / Long-Run / Quality / Rest)
+ *   5. Heart Rate Zones, 5-cell strip + VDOT meta
+ *   6. Shoe Rotation, 2-col grid (clickable rows open the Edit Shoe modal)
  *
- * Personal Goals card REMOVED — race-time goals already live per-race
+ * Personal Goals card REMOVED, race-time goals already live per-race
  * in /races. Replaces 1700-line pre-v4 implementation.
  */
 
@@ -132,7 +132,7 @@ async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes:
       raw_color: r.color,
     }));
   } catch {
-    // Schema not yet migrated — fall back to empty
+    // Schema not yet migrated, fall back to empty
     shoes = [];
   }
   return { user, shoes };
@@ -146,29 +146,29 @@ export default async function ProfilePage() {
   const initials = user.name?.trim().split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'R';
 
   // Resolve max HR (manual override → computed peak) so the zones
-  // strip can show real bpm ranges, not "—". The MaxHrIsland below
+  // strip can show real bpm ranges, not ", ". The MaxHrIsland below
   // hits the same API client-side for its provenance UI; we mirror
   // the value here for fast server render of the zone ranges.
   const resolvedMaxHr = await resolveEffectiveMaxHr(auth.id);
   const maxHr = resolvedMaxHr.value;
 
-  // Resolve the full fitness bundle — same function every other page
+  // Resolve the full fitness bundle, same function every other page
   // calls. Surfacing it via CoachReadsCard lets the user verify the
   // whole app is reading from one coherent set of numbers.
   const today = new Date().toISOString().slice(0, 10);
   const fitness = await resolveFitness(auth.id, today);
 
-  // Adaptive max-HR validation — passive scan + race-anchored LTHR
+  // Adaptive max-HR validation, passive scan + race-anchored LTHR
   // estimate. Verdict drives the Apply / Keep current banner inside
   // CoachReadsCard's Heart Rate section.
   const maxHrVerdict = await validateMaxHr(auth.id, fitness.maxHr.value);
 
-  // Race feasibility validator — compares stored goal to predicted
+  // Race feasibility validator, compares stored goal to predicted
   // race time at current VDOT. Surfaces stretch/aggressive/fair/
   // conservative verdict with evidence + falsifier.
   const raceFeasibility = await validateRaceFeasibility(auth.id, today);
 
-  // L7 adaptive-VDOT verdict — detects fitness movement between
+  // L7 adaptive-VDOT verdict, detects fitness movement between
   // races from threshold workout adherence. Banner renders on Coach
   // Reads when 3+ T workouts trend faster at controlled HR
   // (vdot-bump-suggested) or 2+ trend slower with no flagged context
@@ -213,7 +213,7 @@ export default async function ProfilePage() {
     : null;
 
   // Ongoing large-shift guard · "VDOT moved >2 pts since last review."
-  // Distinct from L7's per-workout adaptive bumps — this watches the
+  // Distinct from L7's per-workout adaptive bumps, this watches the
   // aggregate value itself. Race-week suppression + 30-day Dismiss +
   // 24-hour Investigate snooze all applied by computeVdotShiftFinding.
   const vdotShiftFinding = await computeVdotShiftFinding(
@@ -230,7 +230,7 @@ export default async function ProfilePage() {
     [auth.id],
   ).then((rows) => rows[0]?.at ? new Date(rows[0].at) : null).catch(() => null);
 
-  // C2 · Z2 pace sparkline — 8-week trend at fixed HR. Reads same
+  // C2 · Z2 pace sparkline, 8-week trend at fixed HR. Reads same
   // data Signal 2 uses, rolled up per ISO week. Renders only when
   // ≥3 populated weeks (hasSignal=true).
   const z2SparklineData = await computeZ2Sparkline(
@@ -255,7 +255,7 @@ export default async function ProfilePage() {
     : null;
 
   // Real lifetime KPIs computed from strava_activities. Until activity
-  // data is present, every cell reads "No data" — no more seeded mockups.
+  // data is present, every cell reads "No data", no more seeded mockups.
   interface KpiRow {
     lifetime_mi: string | null;
     races: string | null;
@@ -306,14 +306,14 @@ export default async function ProfilePage() {
   }
 
   const KPIS = [
-    { label: 'Lifetime mi',  value: lifetimeMi !== null ? String(lifetimeMi) : '—',                  unit: lifetimeMi !== null ? 'mi' : undefined, sub: lifetimeMi !== null ? 'All time' : 'No data' },
-    { label: 'Races',        value: racesCount !== null ? String(racesCount) : '—',                  sub: racesCount !== null ? 'Races run' : 'No data' },
-    { label: 'Days run',     value: daysRun !== null    ? String(daysRun)    : '—',                  sub: daysRun !== null ? `${daysRun} unique days` : 'No data' },
-    { label: 'Peak year',    value: peakYearMi !== null ? String(peakYearMi) : '—',                  unit: peakYearMi !== null ? 'mi' : undefined, sub: peakYear ? `${peakYear} · biggest year` : 'No data' },
-    { label: 'Lifetime elev',value: elevFt !== null     ? fmtElev(elevFt)    : '—',                  unit: elevFt !== null ? 'ft' : undefined, sub: elevFt !== null ? `${(elevFt / 29032).toFixed(2)}× Everest` : 'No data' },
+    { label: 'Lifetime mi',  value: lifetimeMi !== null ? String(lifetimeMi) : '-',                  unit: lifetimeMi !== null ? 'mi' : undefined, sub: lifetimeMi !== null ? 'All time' : 'No data' },
+    { label: 'Races',        value: racesCount !== null ? String(racesCount) : '-',                  sub: racesCount !== null ? 'Races run' : 'No data' },
+    { label: 'Days run',     value: daysRun !== null    ? String(daysRun)    : '-',                  sub: daysRun !== null ? `${daysRun} unique days` : 'No data' },
+    { label: 'Peak year',    value: peakYearMi !== null ? String(peakYearMi) : '-',                  unit: peakYearMi !== null ? 'mi' : undefined, sub: peakYear ? `${peakYear} · biggest year` : 'No data' },
+    { label: 'Lifetime elev',value: elevFt !== null     ? fmtElev(elevFt)    : '-',                  unit: elevFt !== null ? 'ft' : undefined, sub: elevFt !== null ? `${(elevFt / 29032).toFixed(2)}× Everest` : 'No data' },
   ];
 
-  // HR zones — via shared utility in lib/hr-zones.ts (S1 cleanup
+  // HR zones, via shared utility in lib/hr-zones.ts (S1 cleanup
   // 2026-05-19 round 3). HRR (Karvonen) when resting HR is known,
   // %max fallback otherwise. Identical math to Coach Reads.
   const restingHr = fitness.restingHr.value ?? null;
@@ -327,11 +327,11 @@ export default async function ProfilePage() {
         pct: z.pctLabel,
       }))
     : [
-        { tier: 'z1', name: 'Z1 · Recovery',  range: '—', pct: '50–60% max' },
-        { tier: 'z2', name: 'Z2 · Easy',      range: '—', pct: '60–70% max' },
-        { tier: 'z3', name: 'Z3 · Steady',    range: '—', pct: '70–80% max' },
-        { tier: 'z4', name: 'Z4 · Threshold', range: '—', pct: '80–90% max' },
-        { tier: 'z5', name: 'Z5 · Max effort', range: '—', pct: '90–100% max' },
+        { tier: 'z1', name: 'Z1 · Recovery',  range: '-', pct: '50–60% max' },
+        { tier: 'z2', name: 'Z2 · Easy',      range: '-', pct: '60–70% max' },
+        { tier: 'z3', name: 'Z3 · Steady',    range: '-', pct: '70–80% max' },
+        { tier: 'z4', name: 'Z4 · Threshold', range: '-', pct: '80–90% max' },
+        { tier: 'z5', name: 'Z5 · Max effort', range: '-', pct: '90–100% max' },
       ];
 
   const bioBits: string[] = [];
@@ -429,7 +429,7 @@ export default async function ProfilePage() {
             </div>
           </div>
 
-          {/* Brand accent — sits inside Training Profile so the
+          {/* Brand accent, sits inside Training Profile so the
               personalization controls are co-located. The accent stamps
               --accent / --orange on <html> server-side, so the wordmark,
               buttons, and pins all pick it up on first paint. */}
@@ -474,13 +474,13 @@ export default async function ProfilePage() {
               <div className="card-sub" style={{ color: 'rgba(8,8,8,.55)' }}>
                 {maxHr
                   ? (useHRR
-                      ? `Personalized to your heart — resting ${restingHr}, max ${maxHr}. Using your resting rate makes these zones more accurate than max alone.`
+                      ? `Personalized to your heart, resting ${restingHr}, max ${maxHr}. Using your resting rate makes these zones more accurate than max alone.`
                       : 'Add your resting heart rate to make these zones more accurate for you.')
-                  : 'No data yet — add your max heart rate and a recent race to fill this in.'}
+                  : 'No data yet, add your max heart rate and a recent race to fill this in.'}
               </div>
             </div>
             <div className="card-meta" style={{ color: maxHr ? '#080808' : 'rgba(8,8,8,.45)' }}>
-              Max HR · {maxHr ? <strong>{maxHr}</strong> : '—'}
+              Max HR · {maxHr ? <strong>{maxHr}</strong> : '-'}
             </div>
           </div>
           <div className="hr-grid">
@@ -517,10 +517,10 @@ export default async function ProfilePage() {
                 const status = shoeStatus(sh.current_mi, sh.cap_mi);
                 const pct = Math.min(100, Math.round((sh.current_mi / sh.cap_mi) * 100));
                 const fillCls = status.tone === 'warn' ? 'warn' : status.tone === 'amber' ? 'amber' : '';
-                const purposeStr = (sh.purposes || []).map((p) => PURPOSE_LABEL[p] ?? p).join(' · ') || '—';
+                const purposeStr = (sh.purposes || []).map((p) => PURPOSE_LABEL[p] ?? p).join(' · ') || '-';
                 // Reconstruct the Shoe row shape ProfileModalsIsland expects.
                 // We could re-GET from the API, but the page already has
-                // every field — pass it through directly to skip the round-trip.
+                // every field, pass it through directly to skip the round-trip.
                 const shoeForModal = {
                   id: Number(sh.id),
                   brand: sh.brand,

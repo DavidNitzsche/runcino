@@ -2,7 +2,7 @@
  * GET /api/admin/system-actions
  *
  * S5 · admin visibility into "invisible but important" system actions
- * that happen behind the scenes — primarily one-shot data migrations
+ * that happen behind the scenes, primarily one-shot data migrations
  * tracked by the `data_migrations` table, plus recent schema-affecting
  * events.
  *

@@ -14,7 +14,7 @@ import { query } from '@/lib/db';
 import { computeElevationAdjustment } from '@/lib/elevation-adjust';
 
 function fmtTime(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);

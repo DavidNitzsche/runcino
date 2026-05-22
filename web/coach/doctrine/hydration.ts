@@ -1,5 +1,5 @@
 /**
- * Doctrine — Hydration and electrolytes.
+ * Doctrine, Hydration and electrolytes.
  *
  * Source: Research/19-hydration-electrolytes.md
  *
@@ -43,7 +43,7 @@ export const HYDRATION_STATUS_INDICATORS: Cited<Array<{
     { marker: 'Body mass (multi-day stable)',                euhydrated: 'Within 1% of baseline', hypohydrated: '>1% below baseline' },
     { marker: 'Plasma osmolality',                            euhydrated: '280-295 mOsm/kg',     hypohydrated: '>295 mOsm/kg' },
   ],
-  note: 'WUT check (Weight, Urine, Thirst) — any two abnormal = hypohydration.',
+  note: 'WUT check (Weight, Urine, Thirst), any two abnormal = hypohydration.',
   citations: [
     cite('§Daily Hydration Baseline › Hydration status indicators', 'USG, urine color, body mass, plasma osmolality thresholds', 'research', '19'),
   ],
@@ -209,7 +209,7 @@ export const EAH_CLASSIFICATION: Cited<Array<{
     { serumNaMmolPerL: '120-125',  classification: 'severe_eah' },
     { serumNaMmolPerL: '<120',     classification: 'critical_eah' },
   ],
-  note: 'Per Hew-Butler 2015 consensus. Serum [Na+] <135 mmol/L during or within 24h of activity. <120: cerebral edema, seizure, death possible. <115: often fatal without intervention. Mechanism almost always dilutional — excess hypotonic fluid intake exceeds renal excretion, often combined with non-osmotic ADH/AVP secretion. Sodium loss alone rarely causes EAH; over-drinking is dominant.',
+  note: 'Per Hew-Butler 2015 consensus. Serum [Na+] <135 mmol/L during or within 24h of activity. <120: cerebral edema, seizure, death possible. <115: often fatal without intervention. Mechanism almost always dilutional, excess hypotonic fluid intake exceeds renal excretion, often combined with non-osmotic ADH/AVP secretion. Sodium loss alone rarely causes EAH; over-drinking is dominant.',
   citations: [
     cite('§Hyponatremia (Exercise-Associated)', 'Hew-Butler 2015 consensus: 130-134 mild / 125-129 moderate / <125 severe / <120 cerebral edema risk', 'research', '19'),
   ],
@@ -217,15 +217,15 @@ export const EAH_CLASSIFICATION: Cited<Array<{
 
 export const EAH_RISK_FACTORS: Cited<string[]> = {
   value: [
-    'Slow finish (>4 h marathon) — more time to over-consume',
-    'Female sex — smaller body mass, higher relative intake',
-    'Low BMI — lower fluid distribution volume',
-    'Inexperienced racers — following "drink as much as possible" advice',
+    'Slow finish (>4 h marathon), more time to over-consume',
+    'Female sex, smaller body mass, higher relative intake',
+    'Low BMI, lower fluid distribution volume',
+    'Inexperienced racers, following "drink as much as possible" advice',
     'Many aid stations on course',
-    'Non-acclimated in cool conditions — low sweat rate, normal drinking',
-    'NSAID use pre/during — impairs renal water excretion',
-    'Body mass gain during race — direct evidence of overdrinking',
-    'Sodium-poor fluid >1.5 L/hr for hours — dilutional risk',
+    'Non-acclimated in cool conditions, low sweat rate, normal drinking',
+    'NSAID use pre/during, impairs renal water excretion',
+    'Body mass gain during race, direct evidence of overdrinking',
+    'Sodium-poor fluid >1.5 L/hr for hours, dilutional risk',
   ],
   citations: [
     cite('§Hyponatremia › Risk factors', '9 risk factors for EAH', 'research', '19'),

@@ -9,7 +9,7 @@
  * deauthorized in the user's settings.
  *
  * Per Strava ToS: this is a personal-use single-athlete tool. The
- * activity list pulled here is never persisted to durable storage —
+ * activity list pulled here is never persisted to durable storage, 
  * it lives only in localStorage as an actualResult fill-in on the
  * matching SavedRace.
  */
@@ -46,7 +46,7 @@ export interface StravaActivity {
   start_latlng?: [number, number];
   end_latlng?: [number, number];
   map?: { summary_polyline?: string; polyline?: string };
-  // Detailed fields — only present on /activities/{id}, not the
+  // Detailed fields, only present on /activities/{id}, not the
   // list endpoint. fetchActivityDetail() pulls these on demand.
   description?: string | null;
   kudos_count?: number;
@@ -142,7 +142,7 @@ export async function refreshAccessToken(): Promise<{ accessToken: string; expir
   const clientSecret = process.env.STRAVA_CLIENT_SECRET;
   const refreshToken = process.env.STRAVA_REFRESH_TOKEN;
   if (!clientId || !clientSecret) throw new Error('Missing STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET in env');
-  if (!refreshToken) throw new Error('Missing STRAVA_REFRESH_TOKEN in env — run /api/strava/connect to capture it');
+  if (!refreshToken) throw new Error('Missing STRAVA_REFRESH_TOKEN in env, run /api/strava/connect to capture it');
 
   const body = new URLSearchParams({
     client_id: clientId,

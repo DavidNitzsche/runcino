@@ -1,5 +1,5 @@
 /**
- * Doctrine §14 — Tapering.
+ * Doctrine §14, Tapering.
  *
  * Extracted from docs/coaching-research.md §14.
  * The mantra: in the final two weeks, the fitness is built. The job is
@@ -40,7 +40,7 @@ export const TAPER_VOLUME_REDUCTION: Cited<{
     frequencyPctOfNormal: 80,
     cutAllocation: 'easy_mileage_first',
   },
-  note: 'Frequency stays near 80 % — don\'t suddenly add rest days; keep the body in its rhythm.',
+  note: 'Frequency stays near 80 %, don\'t suddenly add rest days; keep the body in its rhythm.',
   citations: [
     cite('§14', '40 to 60 percent reduction from peak. The largest cuts go to easy mileage, not to quality work.'),
     cite('§14', 'maintain run frequency at approximately 80 percent of normal'),
@@ -58,7 +58,7 @@ export const TAPER_INTENSITY_PRESERVATION: Cited<{
   citations: [cite('§14', 'keep some short, sharp work at race pace through the taper. Eliminating intensity entirely is detrimental.')],
 };
 
-/** Common taper errors — the things the Coach should call out. */
+/** Common taper errors, the things the Coach should call out. */
 export const TAPER_ERRORS: Cited<string[]> = {
   value: [
     'cutting intensity along with volume (loses sharpness)',

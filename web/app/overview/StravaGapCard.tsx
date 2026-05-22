@@ -5,7 +5,7 @@
  *
  * Five states from lib/strava-gap.ts:
  *   silent           · no surface
- *   e4-3to4          · "Three days off — planned or unexpected?"
+ *   e4-3to4          · "Three days off, planned or unexpected?"
  *   e4-5to7          · "It's been N days. Worth checking if the plan
  *                       needs adjusting."
  *   e1-8to14         · "It's been N days since your last run.
@@ -16,7 +16,7 @@
  * All states surface the same three affordances:
  *   Planned · 7-day silence, normal training prompts resume after
  *   Injured · suspends L7 signals + V5 until activity resumes
- *   Unexpected · no mark, just acknowledges — back to normal prompts next run
+ *   Unexpected · no mark, just acknowledges, back to normal prompts next run
  *
  * Voice: warm but not alarmist. The runner knows whether they're ok;
  * the system shouldn't pretend to know either way.
@@ -34,7 +34,7 @@ interface Props {
 function headerCopy(state: GapState, days: number): string {
   switch (state) {
     case 'e4-3to4':
-      return `${days} days off — planned recovery or unexpected?`;
+      return `${days} days off, planned recovery or unexpected?`;
     case 'e4-5to7':
       return `It's been ${days} days. Worth checking if the plan needs adjusting.`;
     case 'e1-8to14':
@@ -49,13 +49,13 @@ function headerCopy(state: GapState, days: number): string {
 function detailCopy(state: GapState): string {
   switch (state) {
     case 'e4-3to4':
-      return "Three days isn't a problem — sometimes life gets busy or your body asks for rest. Pick a label below if it helps the plan stay honest.";
+      return "Three days isn't a problem, sometimes life gets busy or your body asks for rest. Pick a label below if it helps the plan stay honest.";
     case 'e4-5to7':
-      return "A week off changes the next session's prescription. If this was planned cutback, mark it so the plan absorbs it. If unexpected, no judgment — pick the right label and the system adjusts.";
+      return "A week off changes the next session's prescription. If this was planned cutback, mark it so the plan absorbs it. If unexpected, no judgment, pick the right label and the system adjusts.";
     case 'e1-8to14':
-      return "Longer gaps deserve acknowledgment. The plan can absorb a planned break or pause adaptive signals during recovery from injury. Or this is just life and you're fine — let me know what's going on.";
+      return "Longer gaps deserve acknowledgment. The plan can absorb a planned break or pause adaptive signals during recovery from injury. Or this is just life and you're fine, let me know what's going on.";
     case 'e1-15plus':
-      return "Two-plus weeks off is a real interruption. Marking it as injury suspends signal evaluation (so the system doesn't read missed workouts as fitness regression). Marking it as planned holds normal prompts for a week. Or do nothing — the plan resumes naturally once you run again.";
+      return "Two-plus weeks off is a real interruption. Marking it as injury suspends signal evaluation (so the system doesn't read missed workouts as fitness regression). Marking it as planned holds normal prompts for a week. Or do nothing, the plan resumes naturally once you run again.";
     default:
       return '';
   }

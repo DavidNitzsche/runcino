@@ -1,5 +1,5 @@
 /**
- * gatherFreshness — single source of truth for how stale every Coach
+ * gatherFreshness, single source of truth for how stale every Coach
  * signal is.
  *
  * The "Coach is watching" UI strip surfaces a per-signal chip with the
@@ -12,13 +12,13 @@
  *   - Strava           · 2 hours    (cache TTL is 15m, anything past
  *                                    2h means the sync pipeline broke)
  *   - Check-in         · 36 hours   (daily cadence with overnight
- *                                    grace — see Research/15 §subjective
+ *                                    grace, see Research/15 §subjective
  *                                    capture cadence)
  *   - VDOT anchor      · 60 days    (Research/01-pace-zones-vdot.md
- *                                    §Freshness window — fitness signal
+ *                                    §Freshness window, fitness signal
  *                                    expires past 60 days)
- *   - Profile          · 6 months   (180 days — runner's body changes)
- *   - Race calendar    · 14 days    (signal is "engagement" — A-race
+ *   - Profile          · 6 months   (180 days, runner's body changes)
+ *   - Race calendar    · 14 days    (signal is "engagement", A-race
  *                                    edited in last 14d = active runner)
  *   - HealthKit        · n/a       (always unavailable until M2)
  *
@@ -38,7 +38,7 @@ import type {
 } from './freshness-types';
 
 // ─────────────────────────────────────────────────────────────────────
-// Freshness budgets — in milliseconds.
+// Freshness budgets, in milliseconds.
 // ─────────────────────────────────────────────────────────────────────
 
 const MS = 1;
@@ -56,20 +56,20 @@ export const FRESHNESS_BUDGETS = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
-// Dependency injection — all the readers gatherFreshness needs. Defaults
+// Dependency injection, all the readers gatherFreshness needs. Defaults
 // to the real DB-backed readers; tests override these.
 // ─────────────────────────────────────────────────────────────────────
 
 export interface FreshnessDeps {
-  /** Coach state — we only read `state.now` and (optionally)
+  /** Coach state, we only read `state.now` and (optionally)
    *  vdotSnapshot(state). When omitted, the caller is responsible for
    *  passing one; this never gathers state itself to avoid a circular
    *  dependency with /api/overview. */
   state: CoachState;
-  /** "Now" override for testing — defaults to Date.now(). */
+  /** "Now" override for testing, defaults to Date.now(). */
   nowMs?: number;
 
-  // Source readers — each returns the last refresh time as a Date or null.
+  // Source readers, each returns the last refresh time as a Date or null.
   /** Most recent Strava sync timestamp. */
   readStravaSyncAt?: () => Promise<Date | null>;
   /** Most recent daily_checkin.logged_at. */
@@ -81,7 +81,7 @@ export interface FreshnessDeps {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Default DB readers — used in production paths.
+// Default DB readers, used in production paths.
 // ─────────────────────────────────────────────────────────────────────
 
 async function defaultStravaSyncAt(): Promise<Date | null> {
@@ -133,7 +133,7 @@ async function defaultRaceCalUpdatedAt(): Promise<Date | null> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// gatherFreshness — the public API.
+// gatherFreshness, the public API.
 // ─────────────────────────────────────────────────────────────────────
 
 export async function gatherFreshness(deps: FreshnessDeps): Promise<FreshnessMap> {
@@ -161,7 +161,7 @@ export async function gatherFreshness(deps: FreshnessDeps): Promise<FreshnessMap
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Per-signal builders. Each returns a SignalFreshness — pure functions
+// Per-signal builders. Each returns a SignalFreshness, pure functions
 // of (lastRefreshAt, nowMs).
 // ─────────────────────────────────────────────────────────────────────
 
@@ -175,7 +175,7 @@ function buildStrava(at: Date | null, nowMs: number): SignalFreshness {
       staleness: 'stale-bad',
       lastRefreshISO: null,
       daysSince: null,
-      reason: 'No Strava activities synced yet — connect to refresh.',
+      reason: 'No Strava activities synced yet, connect to refresh.',
     };
   }
   const ageMs = nowMs - at.getTime();
@@ -187,7 +187,7 @@ function buildStrava(at: Date | null, nowMs: number): SignalFreshness {
     : 'fresh';
   const ageLabel = formatAgeShort(ageMs);
   const label = isStale
-    ? `STRAVA · last synced ${ageLabel} — connect to refresh`
+    ? `STRAVA · last synced ${ageLabel}, connect to refresh`
     : `STRAVA · synced ${ageLabel}`;
   return {
     source: 'strava',
@@ -199,7 +199,7 @@ function buildStrava(at: Date | null, nowMs: number): SignalFreshness {
     daysSince: Math.floor(ageMs / DAY),
     reason: isStale
       ? `Strava cache is ${ageLabel} old (budget: 2 hours).`
-      : `Strava cache fresh — last sync ${ageLabel} ago.`,
+      : `Strava cache fresh, last sync ${ageLabel} ago.`,
   };
 }
 
@@ -213,7 +213,7 @@ function buildCheckin(at: Date | null, nowMs: number): SignalFreshness {
       staleness: 'stale-bad',
       lastRefreshISO: null,
       daysSince: null,
-      reason: 'No check-in logged yet — log energy/soreness/stress to feed the readiness signal.',
+      reason: 'No check-in logged yet, log energy/soreness/stress to feed the readiness signal.',
     };
   }
   const ageMs = nowMs - at.getTime();
@@ -237,7 +237,7 @@ function buildCheckin(at: Date | null, nowMs: number): SignalFreshness {
     daysSince: Math.floor(ageMs / DAY),
     reason: isStale
       ? `Last check-in was ${ageLabel} ago (budget: 36 hours).`
-      : `Check-in fresh — logged ${ageLabel} ago.`,
+      : `Check-in fresh, logged ${ageLabel} ago.`,
   };
 }
 
@@ -252,7 +252,7 @@ function buildVdotAnchor(state: CoachState, nowMs: number): SignalFreshness {
       staleness: 'stale-bad',
       lastRefreshISO: null,
       daysSince: null,
-      reason: 'No race result available to anchor a VDOT — log a 5K–half result to unlock pace zones.',
+      reason: 'No race result available to anchor a VDOT, log a 5K–half result to unlock pace zones.',
     };
   }
   const raceDate = snap.source.date; // YYYY-MM-DD
@@ -264,7 +264,7 @@ function buildVdotAnchor(state: CoachState, nowMs: number): SignalFreshness {
   const ageLabel = formatDaysAgo(daysSince);
   const distLabel = distanceLabel(snap.source.distanceMi);
   const label = isStale
-    ? `VDOT · ${distLabel} ${ageLabel} — stale per doctrine`
+    ? `VDOT · ${distLabel} ${ageLabel}, stale per doctrine`
     : `VDOT · ${distLabel} ${ageLabel}`;
   return {
     source: 'vdot-anchor',
@@ -275,7 +275,7 @@ function buildVdotAnchor(state: CoachState, nowMs: number): SignalFreshness {
     lastRefreshISO: new Date(raceMs).toISOString(),
     daysSince,
     reason: isStale
-      ? `Your fitness estimate is ${daysSince} days old. It goes stale after about 60 days — log a recent race or hard effort to refresh it.`
+      ? `Your fitness estimate is ${daysSince} days old. It goes stale after about 60 days, log a recent race or hard effort to refresh it.`
       : `VDOT anchored on ${snap.source.name} (${ageLabel}).`,
   };
 }
@@ -290,7 +290,7 @@ function buildProfile(at: Date | null, nowMs: number): SignalFreshness {
       staleness: 'stale-bad',
       lastRefreshISO: null,
       daysSince: null,
-      reason: 'No profile yet — set age/sex/etc. in /profile to unlock body-aware advice.',
+      reason: 'No profile yet, set age/sex/etc. in /profile to unlock body-aware advice.',
     };
   }
   const ageMs = nowMs - at.getTime();
@@ -299,7 +299,7 @@ function buildProfile(at: Date | null, nowMs: number): SignalFreshness {
   const daysSince = Math.floor(ageMs / DAY);
   const ageLabel = formatDaysAgo(daysSince);
   const label = isStale
-    ? `PROFILE · updated ${ageLabel} — please refresh`
+    ? `PROFILE · updated ${ageLabel}, please refresh`
     : `PROFILE · updated ${ageLabel}`;
   return {
     source: 'profile',
@@ -310,8 +310,8 @@ function buildProfile(at: Date | null, nowMs: number): SignalFreshness {
     lastRefreshISO: at.toISOString(),
     daysSince,
     reason: isStale
-      ? `Profile last updated ${ageLabel}. Body changes over months — refresh when convenient.`
-      : `Profile fresh — last edited ${ageLabel}.`,
+      ? `Profile last updated ${ageLabel}. Body changes over months, refresh when convenient.`
+      : `Profile fresh, last edited ${ageLabel}.`,
   };
 }
 
@@ -325,12 +325,12 @@ function buildRaceCal(at: Date | null, nowMs: number): SignalFreshness {
       staleness: 'stale-ok',
       lastRefreshISO: null,
       daysSince: null,
-      reason: 'No races on the calendar — add one to anchor your build.',
+      reason: 'No races on the calendar, add one to anchor your build.',
     };
   }
   const ageMs = nowMs - at.getTime();
   const isStale = ageMs > FRESHNESS_BUDGETS.raceCal;
-  // A 6-month-out race not edited in a while isn't BAD — just not active.
+  // A 6-month-out race not edited in a while isn't BAD, just not active.
   const staleness: FreshnessStaleness = isStale ? 'stale-ok' : 'fresh';
   const daysSince = Math.floor(ageMs / DAY);
   const ageLabel = formatDaysAgo(daysSince);
@@ -346,8 +346,8 @@ function buildRaceCal(at: Date | null, nowMs: number): SignalFreshness {
     lastRefreshISO: at.toISOString(),
     daysSince,
     reason: isStale
-      ? `Last race edit was ${ageLabel}. Not stale-bad — calendar is just dormant.`
-      : `Race calendar active — last edit ${ageLabel}.`,
+      ? `Last race edit was ${ageLabel}. Not stale-bad, calendar is just dormant.`
+      : `Race calendar active, last edit ${ageLabel}.`,
   };
 }
 
@@ -366,7 +366,7 @@ function buildHealthkit(): SignalFreshness {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Formatters — keep labels under one short phrase.
+// Formatters, keep labels under one short phrase.
 // ─────────────────────────────────────────────────────────────────────
 
 function formatAgeShort(ms: number): string {

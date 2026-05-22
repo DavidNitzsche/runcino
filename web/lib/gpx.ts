@@ -6,13 +6,13 @@
  * elevation gain/loss numbers.
  *
  * Naïve gain summing (every positive delta) accumulates phantom climb
- * from GPS jitter — typical handheld GPS reports ±3m altitude noise
+ * from GPS jitter, typical handheld GPS reports ±3m altitude noise
  * even at rest, which on a 13mi run can compound into 200+ ft of
  * fake elevation gain. Strava (and pretty much every serious tracker)
  * counters this with two passes:
  *
  *   1. Smooth the altitude series with a moving average (we use 9
- *      points by default — wide enough to flatten sample-to-sample
+ *      points by default, wide enough to flatten sample-to-sample
  *      jitter, narrow enough to preserve real climbs and descents).
  *   2. Threshold the gain/loss summing: maintain a "pivot" altitude
  *      and only count a move once the current altitude has drifted
@@ -60,7 +60,7 @@ export function smoothElevation(points: GpxPoint[]): void {
 }
 
 /** Naïve sum of every positive (gain) and negative (loss) per-sample
- *  elevation delta. Use this only as the rawGainFt baseline — it
+ *  elevation delta. Use this only as the rawGainFt baseline, it
  *  systematically over-counts because GPS altitude jitter at every
  *  sample contributes phantom climb. */
 function sumGainLossFt(points: GpxPoint[], key: 'eleM'): [number, number] {
@@ -76,7 +76,7 @@ function sumGainLossFt(points: GpxPoint[], key: 'eleM'): [number, number] {
  *  running low and the running high since the last commit, then commits
  *  a climb the moment current rises ≥thresholdM above the running low
  *  (and mirror for descent). After committing, the baseline rebases to
- *  the current altitude — so a short reversal inside a longer climb
+ *  the current altitude, so a short reversal inside a longer climb
  *  doesn't reset the credit you've already earned.
  *
  *  Calibration: 2.0 m threshold matches Strava's reported gain to
@@ -109,14 +109,14 @@ export function thresholdedGainLossFt(points: GpxPoint[], thresholdM = 2.0): [nu
 }
 
 export interface ParseOptions {
-  /** Moving-average window size. Default 1 (off) — StravaGPX exports
+  /** Moving-average window size. Default 1 (off), StravaGPX exports
    *  arrive DEM-corrected and don't need pre-smoothing; combined with
    *  a 2 m threshold this matches Strava's reported gain to within ~2%
    *  on the Malibu Half (237 ft computed vs 232 ft Strava). For raw
    *  GPS traces from a watch, bump to 5 to tame altitude jitter. */
   smoothWindow?: number;
   /** Pivot threshold for the gain/loss summing pass, in meters.
-   *  Default 2.0 m — calibrated against Strava on StravaGPX inputs.
+   *  Default 2.0 m, calibrated against Strava on StravaGPX inputs.
    *  Lower values (1 m) over-count GPS jitter as climb. Higher values
    *  (3+ m) start eating real climbs on flatter coastal courses. */
   gainThresholdM?: number;
@@ -174,7 +174,7 @@ export function parseGpx(xml: string, opts: ParseOptions = {}): GpxTrack {
 
   const [rawGain, rawLoss] = sumGainLossFt(points, 'eleM');
 
-  // Smooth in place (default off — StravaGPX is already DEM-corrected).
+  // Smooth in place (default off, StravaGPX is already DEM-corrected).
   const window = opts.smoothWindow ?? 1;
   if (window >= 3) {
     const src = points.map(p => p.eleM);
@@ -188,7 +188,7 @@ export function parseGpx(xml: string, opts: ParseOptions = {}): GpxTrack {
     }
   }
 
-  // Threshold-based gain/loss — calibrated against Strava's reported
+  // Threshold-based gain/loss, calibrated against Strava's reported
   // gain on StravaGPX inputs. The naïve sum-every-delta version stays
   // in `rawGainFt` for reference. Default 2.0 m threshold; see
   // ParseOptions.gainThresholdM for tuning rationale.

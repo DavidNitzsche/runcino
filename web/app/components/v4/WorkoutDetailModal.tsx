@@ -1,13 +1,14 @@
 'use client';
 
 /**
- * v4 workout detail modal — opens when the runner clicks "Open Workout"
+ * v4 workout detail modal, opens when the runner clicks "Open Workout"
  * on the hero card. Compact version of the hero with the same data:
  * title, four stats, segments table, intensity bar, coach note, and
  * Mark Complete / Skip Today actions.
  */
 
 import { Modal, ModalClose } from './Modal';
+import { approxDuration } from '@/lib/duration';
 import { SegmentsTable, type SegmentRow } from './SegmentsTable';
 import { IntensityBar } from './IntensityBar';
 import type { HeroStatPills } from './HeroCard';
@@ -17,7 +18,7 @@ export interface WorkoutDetailModalProps {
   onClose: () => void;
   /** Eyebrow above the title. */
   eyebrow: string;
-  /** Workout title — single or two-line. */
+  /** Workout title, single or two-line. */
   title: string;
   /** Stats row content. */
   stats: HeroStatPills;
@@ -86,10 +87,10 @@ export function WorkoutDetailModal(props: WorkoutDetailModalProps) {
 
         {/* Stats row */}
         <div style={{ display: 'flex', gap: '8px', marginTop: '24px', marginBottom: '24px' }}>
-          <ModalStat value={stats.distanceMi != null ? stats.distanceMi.toFixed(1) : '—'} unit="mi" label="Distance" />
-          <ModalStat value={formatPace(stats.paceSecPerMi) ?? '—'} unit="/mi" label="Pace" />
-          <ModalStat value={stats.durationMin != null ? `~${stats.durationMin}` : '—'} unit="min" label="Duration" />
-          <ModalStat value={stats.hrCapBpm != null ? `≤${stats.hrCapBpm}` : '—'} unit="bpm" label="Heart Rate" />
+          <ModalStat value={stats.distanceMi != null ? stats.distanceMi.toFixed(1) : '-'} unit="mi" label="Distance" />
+          <ModalStat value={formatPace(stats.paceSecPerMi) ?? '-'} unit="/mi" label="Pace" />
+          <ModalStat value={approxDuration(stats.durationMin).value} unit={approxDuration(stats.durationMin).unit} label="Duration" />
+          <ModalStat value={stats.hrCapBpm != null ? `≤${stats.hrCapBpm}` : '-'} unit="bpm" label="Heart Rate" />
         </div>
 
         {segments.length > 0 && <SegmentsTable rows={segments} style={{ marginTop: 0, marginBottom: '24px' }} />}

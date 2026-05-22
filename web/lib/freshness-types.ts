@@ -1,7 +1,7 @@
 /**
  * Freshness wire shapes.
  *
- * Every signal the Coach reads from has a freshness budget — the maximum
+ * Every signal the Coach reads from has a freshness budget, the maximum
  * age past which the signal stops being trustworthy. The shape below is
  * what every API route returns alongside its data so the UI can render
  * "STRAVA · synced 2m ago" or "CHECK-IN · awaiting today" without
@@ -35,7 +35,7 @@ export interface SignalFreshness {
   isAvailable: boolean;
   /** True when the source is past its freshness budget. */
   isStale: boolean;
-  /** Staleness bucket — drives chip color in the UI. */
+  /** Staleness bucket, drives chip color in the UI. */
   staleness: FreshnessStaleness;
   /** ISO timestamp of the most recent refresh. Null when no signal yet. */
   lastRefreshISO: string | null;

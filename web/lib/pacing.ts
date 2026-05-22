@@ -4,7 +4,7 @@
  * 1. Segment the course into ~800m chunks.
  * 2. Compute mean grade + Minetti GAF per segment.
  * 3. Scale paces so the sum of (distance × pace) equals the goal time.
- *    This is the "even effort" strategy — hold effort constant, let
+ *    This is the "even effort" strategy, hold effort constant, let
  *    pace vary with the course.
  *
  * See docs/ALGORITHM.md for the math.
@@ -34,7 +34,7 @@ export function segmentCourse(
 
   for (let boundary = segmentM; boundary <= totalDistanceM + 1; boundary += segmentM) {
     // Skip boundaries already behind the current start (happens when a GPS
-    // point spans multiple 800m boundaries — sparse GPX files from route
+    // point spans multiple 800m boundaries, sparse GPX files from route
     // planners like plotaroute can have inter-point gaps of 500-3000m).
     if (boundary <= points[segStart].distM) continue;
 
@@ -77,11 +77,11 @@ export function segmentCourse(
 
 /** Hard pace bounds applied AFTER the strategy assigns per-segment
  *  targets. Without this, Minetti's grade-adjusted pace produces
- *  unrealistic targets on steep descents — physically possible but
+ *  unrealistic targets on steep descents, physically possible but
  *  tactically suicidal: a runner who banks 60s of "free" speed on a
  *  2-mile downhill blows their quads before the next climb.
  *
- *  The floor here is INTENTIONALLY conservative — coaches typically
+ *  The floor here is INTENTIONALLY conservative, coaches typically
  *  say "no more than 20–30s/mi faster than goal pace on a downhill"
  *  for sustainable racing. Going more aggressive saves a few seconds
  *  on the descent and costs minutes from quad damage on the rest of

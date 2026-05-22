@@ -1,5 +1,5 @@
 /**
- * /api/checkin — daily energy/soreness/stress check-in.
+ * /api/checkin, daily energy/soreness/stress check-in.
  *
  * GET  ?date=YYYY-MM-DD → { ok, today, checkin: { energy, soreness, stress, notes } | null }
  * GET                  → defaults to today in the user's timezone
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // Auth is optional — same anon→'me' fallback as GET. Anonymous writes
+  // Auth is optional, same anon→'me' fallback as GET. Anonymous writes
   // land on the legacy demo row (user_uuid NULL, user_id 'me') so the
   // simulator preview persists and feeds the coach state.
   const user = await getCurrentUser(req);

@@ -89,7 +89,7 @@ export async function addMileage(shoeId: number, miles: number): Promise<void> {
   );
 }
 
-/** Default shoe rotation — seeded on first boot if shoes table is empty. */
+/** Default shoe rotation, seeded on first boot if shoes table is empty. */
 export const DEFAULT_SHOES: ShoeInput[] = [
   {
     brand: 'New Balance',

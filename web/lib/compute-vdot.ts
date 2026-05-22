@@ -1,5 +1,5 @@
 /**
- * Aggregate VDOT compute — cycle-aware variant (c) with C3 + C1 fallback.
+ * Aggregate VDOT compute, cycle-aware variant (c) with C3 + C1 fallback.
  *
  * Single-race VDOT (vdot.ts → vdotFromRace) is brittle: a bad day or
  * a hot race spikes it the wrong way. The aggregate weights multiple
@@ -18,16 +18,16 @@
  *   tierFactor   = 3.0 exact / 1.0 adjacent / 0.4 distant
  *
  * Tier classification:
- *   - SPRINT     ≤ 3 km (1.864 mi)        — true sprints, mostly track
- *   - TEN_K_ISH    3–15 km (1.864–9.32 mi) — 5K and 10K together
- *   - HM_ISH    15–25 km (9.32–15.53 mi)   — HM
- *   - M_ISH       > 25 km (15.53+ mi)      — marathon
+ *   - SPRINT     ≤ 3 km (1.864 mi), true sprints, mostly track
+ *   - TEN_K_ISH    3–15 km (1.864–9.32 mi), 5K and 10K together
+ *   - HM_ISH    15–25 km (9.32–15.53 mi), HM
+ *   - M_ISH       > 25 km (15.53+ mi), marathon
  *
  *   Goal tier comes from races table (next upcoming race; falls back
  *   to most recently saved when no future race exists). Race tier is
  *   computed from the canonical distance.
  *
- * Cycle start (cycleStart) determination — C3 with C1 fallback:
+ * Cycle start (cycleStart) determination, C3 with C1 fallback:
  *   1. Most recently archived training plan's earliest week_start_iso
  *   2. Active training plan's earliest week_start_iso (when no archive)
  *   3. today − 16 weeks (C1 fallback when no plans exist)
@@ -63,7 +63,7 @@ export interface AggregateVdot {
     date: string;
     activityId: string;
     vdot: number;
-    /** Resolved source for finishS — 'races' means curated chip time;
+    /** Resolved source for finishS, 'races' means curated chip time;
      *  'strava' means raw Strava canonicalFinishS / movingTimeS. */
     source: 'races' | 'strava';
     /** Total weight applied to this contributor. */
@@ -75,7 +75,7 @@ export interface AggregateVdot {
     /** True when this race fell inside the cycle window (so goal-tier
      *  races skip the recency decay). */
     isInCycle: boolean;
-    /** Race priority from meta.priority — A=full weight, B=0.6×,
+    /** Race priority from meta.priority, A=full weight, B=0.6×,
      *  C=0.3×. Defaults to 'A' when unset. */
     priority: RaceEffortLevel;
   }>;
@@ -84,7 +84,7 @@ export interface AggregateVdot {
   /** Goal-tier used for tier-factor scoring. Null when no race exists
    *  in the races table. */
   goalTier: RaceTier | null;
-  /** Start of the cycle window (ISO date) — for debugging / UI. */
+  /** Start of the cycle window (ISO date), for debugging / UI. */
   cycleStartIso: string;
 }
 
@@ -131,7 +131,7 @@ export function recencyFactor(
   return Math.exp(-daysBetween(raceDate, today) / 90);
 }
 
-/** Length factor — sqrt to keep race-length spread mild. */
+/** Length factor, sqrt to keep race-length spread mild. */
 export function lengthFactor(km: number): number {
   return Math.sqrt(km / 10);
 }
@@ -257,7 +257,7 @@ export interface RaceBest {
   date: string;
   activityId: string;
   source: 'races' | 'strava';
-  /** Race priority from meta.priority — drives the effort-level
+  /** Race priority from meta.priority, drives the effort-level
    *  weight multiplier in the aggregate (A=1.0, B=0.6, C=0.3).
    *  Defaults to 'A' when unset (full weight, prior behavior). */
   priority?: RaceEffortLevel;
@@ -349,13 +349,13 @@ interface RaceRow {
  *  these multipliers to honor user intent.
  *
  *  Six levels locked with David on 2026-05-19 (round 2 spec):
- *    A              full weight (1.0×) — primary goal effort
- *    B              0.7× — secondary checkpoint
- *    C              0.4× — minor race, partial effort
- *    tune-up        0.4× — explicit pre-race tune-up (same as C
+ *    A              full weight (1.0×), primary goal effort
+ *    B              0.7×, secondary checkpoint
+ *    C              0.4×, minor race, partial effort
+ *    tune-up        0.4×, explicit pre-race tune-up (same as C
  *                          but expressed semantically)
- *    training-run   0.2× — race used as workout
- *    hilly-excluded 0.0× — course profile distorts time→VDOT
+ *    training-run   0.2×, race used as workout
+ *    hilly-excluded 0.0×, course profile distorts time→VDOT
  *                          mapping; remove from aggregate */
 export type RaceEffortLevel = 'A' | 'B' | 'C' | 'tune-up' | 'training-run' | 'hilly-excluded';
 
@@ -370,7 +370,7 @@ const PRIORITY_WEIGHT: Record<RaceEffortLevel, number> = {
 
 /** Check whether the user has an active manual VDOT override (from
  *  L7 adaptive-vdot Apply). The override stays active until a new
- *  race result post-dates the override timestamp — race-first
+ *  race result post-dates the override timestamp, race-first
  *  source-of-truth still wins long term. Returns null when no
  *  override or when override is stale (newer race exists). */
 async function checkVdotManualOverride(userId: string | null | undefined): Promise<number | null> {
@@ -410,7 +410,7 @@ export async function computeAggregateVdot(userId?: string | null): Promise<Aggr
 
   // STRICT OPTION-B: aggregate reads ONLY from the curated races table.
   // Strava activities not linked to a races entry never enter the
-  // aggregate — this prevents auto-detected best-effort segments
+  // aggregate, this prevents auto-detected best-effort segments
   // (e.g. a 5K split inside a long run) from being mistreated as
   // race performances. Per David's review of the Coach Reads card on
   // 2026-05-19: a phantom 5K at VDOT 33.6 was pulled from raw Strava
@@ -420,7 +420,7 @@ export async function computeAggregateVdot(userId?: string | null): Promise<Aggr
   // Also: no dedup by canonical distance. Multiple HMs (e.g. Disney
   // HM + Sombrero) and multiple marathons (LA + Big Sur) each
   // contribute as independent signals. The cycle-aware weighting
-  // handles ordering — fastest doesn't have to be the only one.
+  // handles ordering, fastest doesn't have to be the only one.
   const rows = await query<RaceRow>(
     `SELECT
         slug,
@@ -452,16 +452,16 @@ export async function computeAggregateVdot(userId?: string | null): Promise<Aggr
 
     const matched = inferCanonical(distMi);
     // If the race distance doesn't match any canonical bucket within
-    // 5%, skip it — vdotFromRace can't map non-canonical distances
+    // 5%, skip it, vdotFromRace can't map non-canonical distances
     // to VDOT. Common case: trail / ultra / unusual-length races.
     if (!matched) continue;
 
-    // Normalize priority — default to 'A' when unset (legacy rows
+    // Normalize priority, default to 'A' when unset (legacy rows
     // without an explicit priority get full weight, prior behavior).
     const validLevels: ReadonlySet<string> = new Set(['A', 'B', 'C', 'tune-up', 'training-run', 'hilly-excluded']);
     const pri = (r.priority && validLevels.has(r.priority)) ? r.priority as RaceEffortLevel : 'A';
 
-    // Skip hilly-excluded races entirely — 0× weight means they'd
+    // Skip hilly-excluded races entirely, 0× weight means they'd
     // contribute nothing anyway, but filtering early keeps the
     // sources[] list honest (excluded races don't render as "0%
     // contributor" in the UI; they're not contributors at all).
@@ -495,7 +495,7 @@ export async function computeAggregateVdot(userId?: string | null): Promise<Aggr
   // L7 manual override: if the user has Applied an adaptive-vdot bump
   // banner and no fresh race has landed since, override the displayed
   // aggregate. The sources/weights/breakdown still reflect race
-  // contributors — the displayed VDOT just shifts to the user-applied
+  // contributors, the displayed VDOT just shifts to the user-applied
   // value. Race-first source-of-truth: any new race result post-
   // dating the override automatically clears it (next call returns
   // pure race-derived).

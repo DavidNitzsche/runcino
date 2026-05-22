@@ -1,5 +1,5 @@
 /**
- * L7 Signal 2 · Pace at fixed HR — longitudinal drift
+ * L7 Signal 2 · Pace at fixed HR, longitudinal drift
  *
  * The "alive" half of the alive-but-not-nervous discipline, now with
  * a second corroborating measurement. Where Signal 1 watches threshold
@@ -9,14 +9,14 @@
  * Physiology: at a fixed sub-LT effort, faster pace = lower lactate
  * cost = more aerobic fitness. A runner whose Z2 pace at HR 140 was
  * 9:00/mi six weeks ago and is 8:45/mi now has added ~5% aerobic
- * efficiency — that's a real fitness gain, independent of workout-
+ * efficiency, that's a real fitness gain, independent of workout-
  * adherence noise.
  *
  * METHOD
  *   1. Walk easy + recovery + general-aerobic runs over the last 8
  *      weeks. Skip races, threshold, intervals, long runs (>9 mi).
  *   2. For each run, pull `data.splits` (per-mile pace + HR from
- *      Strava's splits_standard). Skip if splits missing — backfill
+ *      Strava's splits_standard). Skip if splits missing, backfill
  *      via /api/admin/backfill-splits.
  *   3. For each mile-split, classify as "Z2" if avgHr lands in the
  *      user's Z2 band (built via lib/hr-zones.ts, framework-aware).
@@ -31,7 +31,7 @@
  * CONTEXT FILTERS (same policy as Signal 1)
  *   HARD context (heat > 78°F, race-recency ≤ 7 days, poor-sleep flag)
  *   excludes the entire workout from the window. Reuses Signal 1's
- *   weather + race-calendar resolvers — no duplicate plumbing.
+ *   weather + race-calendar resolvers, no duplicate plumbing.
  *
  * FIRING THRESHOLD
  *   UP (faster):  Δ ≤ -5 s/mi AND each window has ≥3 qualifying
@@ -44,7 +44,7 @@
  * alongside Signal 1. Verdict combines them additively: a banner
  * fires when EITHER signal's UP path passes its own threshold, OR
  * when both signals together hit a softer combined threshold (NOT
- * implemented in this commit — kept simple while Signal 2 is fresh).
+ * implemented in this commit, kept simple while Signal 2 is fresh).
  */
 
 import { query } from './db';
@@ -176,7 +176,7 @@ export async function computeSignal2(
       firesUp: false,
       firesDown: false,
       workouts: [],
-      skipped: [{ date: todayIso, reason: 'no max HR — cannot define Z2 band' }],
+      skipped: [{ date: todayIso, reason: 'no max HR, cannot define Z2 band' }],
     };
   }
 
@@ -207,7 +207,7 @@ export async function computeSignal2(
       continue;
     }
     if (!d.splits || d.splits.length === 0) {
-      skipped.push({ date, reason: 'no per-mile splits — needs backfill' });
+      skipped.push({ date, reason: 'no per-mile splits, needs backfill' });
       continue;
     }
 
@@ -222,11 +222,11 @@ export async function computeSignal2(
       z2Splits.push({ mile: s.mile, paceSPerMi: pace, avgHr: hr });
     }
     if (z2Splits.length === 0) {
-      skipped.push({ date, reason: 'no Z2 splits — entire run outside Z2 band' });
+      skipped.push({ date, reason: 'no Z2 splits, entire run outside Z2 band' });
       continue;
     }
 
-    // Resolve context (weather + race-recency) — reuse Signal 1 policy.
+    // Resolve context (weather + race-recency), reuse Signal 1 policy.
     const context: string[] = [];
     let temperatureF: number | null = null;
     if (d.startLatLng) {
@@ -246,7 +246,7 @@ export async function computeSignal2(
       if (daysToNearestRace != null && daysToNearestRace <= RACE_RECENCY_DAYS) context.push('race-recency');
     }
     // Skip filtered workouts entirely from window math (matches the
-    // hard-context policy from Signal 1 — heat distorts Z2 pace badly).
+    // hard-context policy from Signal 1, heat distorts Z2 pace badly).
     if (context.length > 0) {
       skipped.push({ date, reason: `filtered · ${context.join(', ')}` });
       continue;

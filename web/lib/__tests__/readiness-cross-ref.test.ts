@@ -3,14 +3,14 @@
  *
  * Cross-references are EARNED, not decorative.  These tests lock the
  * relevance check so a future agent can't quietly broaden it to "any
- * topical overlap fires a cross-ref" — that would violate the V7
+ * topical overlap fires a cross-ref", that would violate the V7
  * cross-reference discipline rule in coach-voice.ts.
  */
 import { describe, expect, it } from 'vitest';
 import { resolveCrossRef } from '../readiness-score';
 import type { Z2CoverageFinding } from '../z2-coverage';
 
-/** Minimal Z2 finding shape — only the field resolveCrossRef reads. */
+/** Minimal Z2 finding shape, only the field resolveCrossRef reads. */
 function z2(shouldRender: boolean): Z2CoverageFinding {
   return {
     shouldRender,
@@ -40,7 +40,7 @@ describe('resolveCrossRef · earned-not-decorative discipline', () => {
 
   it('yellow readiness + V5 firing + no fatigue inputs → null', () => {
     // Topic overlap alone (both touch effort) is NOT enough. V5 must
-    // be plausibly causal — a fatigue input on C6 is the link.
+    // be plausibly causal, a fatigue input on C6 is the link.
     const out = resolveCrossRef('yellow', [POSITIVE_INPUT], z2(true));
     expect(out).toBeNull();
   });
@@ -73,7 +73,7 @@ describe('resolveCrossRef · earned-not-decorative discipline', () => {
     expect(out).not.toBeNull();
   });
 
-  it('uses "consistent with" relation (default — corroboration, no overclaim)', () => {
+  it('uses "consistent with" relation (default, corroboration, no overclaim)', () => {
     // The two surfaces observe elevated effort from different angles.
     // "Contributing to" would overclaim causation; "tied to" implies a
     // shared data event that doesn't exist here.  Default is correct.

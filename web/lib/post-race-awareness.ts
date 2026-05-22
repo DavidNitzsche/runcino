@@ -15,7 +15,7 @@
  *   Half (≥11mi):        rest 2d  · light 5d  · easy 9d
  *   Shorter (10K, 5K):   rest 1d  · light 3d  · easy 5d
  *
- * Race source: races.actual_result (per L6 source-of-truth — taper
+ * Race source: races.actual_result (per L6 source-of-truth, taper
  * surfaces consume race RESULTS, not strava activities). Race must
  * have actual_result populated to be considered "completed."
  *
@@ -85,7 +85,7 @@ function fmtDateAgo(daysAgo: number): string {
 }
 
 function fmtTime(s: number | null): string {
-  if (s == null || s <= 0) return '—';
+  if (s == null || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);
@@ -108,10 +108,10 @@ function buildGuidance(
   if (stage === 'rest') {
     const remaining = bounds.restEndDay - daysSinceRace;
     const today = isMarathon
-      ? "Day " + daysSinceRace + " post-marathon · full rest. No running. Walking, stretching, foam roller all encouraged. Your body is repairing micro-tears from race effort — running on it doesn't accelerate recovery, it extends it. Eat well, sleep well."
+      ? "Day " + daysSinceRace + " post-marathon · full rest. No running. Walking, stretching, foam roller all encouraged. Your body is repairing micro-tears from race effort, running on it doesn't accelerate recovery, it extends it. Eat well, sleep well."
       : isHalf
         ? "Day " + daysSinceRace + " post-HM · full rest. Walking ok, no running. The race effort is more taxing than the miles suggest at HM intensity."
-        : "Day " + daysSinceRace + " post-race · full rest. Walking ok, no running. Even short races spike cortisol and inflammation — give the body 24-48h.";
+        : "Day " + daysSinceRace + " post-race · full rest. Walking ok, no running. Even short races spike cortisol and inflammation, give the body 24-48h.";
     const next = remaining > 0
       ? `${remaining + 1} more day${remaining === 0 ? '' : 's'} of full rest, then easy short jogs.`
       : `Tomorrow: light recovery jogs begin (20-30 min easy if your legs say go).`;
@@ -121,7 +121,7 @@ function buildGuidance(
   if (stage === 'light') {
     const remaining = bounds.lightEndDay - daysSinceRace;
     const today = isMarathon
-      ? `Day ${daysSinceRace} post-marathon · light recovery zone. 20-30 min very easy jog ok if legs feel willing. Conversational pace, HR strictly below Z2 ceiling. Walk if you need to. Skip if anything feels off — there is no rush to come back faster than your body wants.`
+      ? `Day ${daysSinceRace} post-marathon · light recovery zone. 20-30 min very easy jog ok if legs feel willing. Conversational pace, HR strictly below Z2 ceiling. Walk if you need to. Skip if anything feels off, there is no rush to come back faster than your body wants.`
       : isHalf
         ? `Day ${daysSinceRace} post-HM · light recovery. 20-40 min easy at conversational pace. HR below Z2 ceiling. Skip if legs feel heavy.`
         : `Day ${daysSinceRace} post-race · light recovery. 20-40 min easy. Pace is whatever lets you hold a conversation.`;
@@ -134,15 +134,15 @@ function buildGuidance(
   if (stage === 'easy') {
     const remaining = bounds.easyEndDay - daysSinceRace;
     const today = isMarathon
-      ? `Day ${daysSinceRace} after your marathon · easy running only, no hard work. Keep mileage low (about a third to half of your peak weeks) and build back gradually. Skip the speed work — tempo and intervals come back after the full ${bounds.easyEndDay}-day window.`
-      : `Day ${daysSinceRace} post-race · easy aerobic only. No quality work yet — let the system fully absorb the race stress before adding sharpening stimulus.`;
+      ? `Day ${daysSinceRace} after your marathon · easy running only, no hard work. Keep mileage low (about a third to half of your peak weeks) and build back gradually. Skip the speed work, tempo and intervals come back after the full ${bounds.easyEndDay}-day window.`
+      : `Day ${daysSinceRace} post-race · easy aerobic only. No quality work yet, let the system fully absorb the race stress before adding sharpening stimulus.`;
     const next = remaining > 0
-      ? `${remaining} more day${remaining === 1 ? '' : 's'} of easy-only. After that, normal plan resumes — threshold + intervals + long runs.`
+      ? `${remaining} more day${remaining === 1 ? '' : 's'} of easy-only. After that, normal plan resumes, threshold + intervals + long runs.`
       : `Tomorrow: normal plan resumes. Threshold + intervals return; long runs scale back up.`;
     return { today, next };
   }
 
-  // 'done' — outside the window; we shouldn't render but produce safe defaults.
+  // 'done', outside the window; we shouldn't render but produce safe defaults.
   return {
     today: 'Recovery window complete · normal training resumed.',
     next: '',
@@ -164,7 +164,7 @@ export async function computePostRaceFinding(
   };
 
   // Most recent race that completed (has actual_result.finishS), within
-  // the widest recovery window (14 days for marathon — anything past
+  // the widest recovery window (14 days for marathon, anything past
   // that and we're outside any stage).
   const cutoffIso = new Date(Date.parse(todayIso + 'T00:00:00Z') - 14 * 86_400_000)
     .toISOString().slice(0, 10);
@@ -187,7 +187,7 @@ export async function computePostRaceFinding(
   const daysSinceRace = dayDelta(raceDate, todayIso);
   if (daysSinceRace < 0) return empty;  // race in the future, not us
   if (daysSinceRace === 0) {
-    // race day itself — different message family, defer to next-day handling
+    // race day itself, different message family, defer to next-day handling
     return {
       ...empty,
       race: {

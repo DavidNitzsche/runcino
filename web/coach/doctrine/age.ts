@@ -1,5 +1,5 @@
 /**
- * Doctrine — Age-related training adjustments (lifespan).
+ * Doctrine, Age-related training adjustments (lifespan).
  *
  * Source: Research/14-age-considerations.md
  *
@@ -27,7 +27,7 @@ export const AGE_DEFAULTS_BY_DECADE: Cited<Array<{
     { decade: '14_18',     volumeRecommendation: 'Build to ~50 mpw; HM by senior year only',                     recoveryDaysPerHardSession: { low: 1, high: 1 }, strengthEmphasis: 'moderate', injuryRiskShifts: ['Stress fractures if rapid volume increase', 'RED-S vulnerability'] },
     { decade: '18_22',     volumeRecommendation: 'Collegiate volume 60-90 mpw; full marathon physiology',         recoveryDaysPerHardSession: { low: 1, high: 1 }, strengthEmphasis: 'moderate', injuryRiskShifts: ['Compartment syndrome', 'Mononucleosis vulnerability'] },
     { decade: '20s',       volumeRecommendation: 'Peak training years',                                            recoveryDaysPerHardSession: { low: 1, high: 1 }, strengthEmphasis: 'moderate', injuryRiskShifts: ['Acute injuries from intensity'] },
-    { decade: '30s',       volumeRecommendation: 'Marathon sweet spot — cumulative aerobic adaptation pays off',   recoveryDaysPerHardSession: { low: 1, high: 2 }, strengthEmphasis: 'high',     injuryRiskShifts: ['Achilles/plantar fasciitis', 'IT band'] },
+    { decade: '30s',       volumeRecommendation: 'Marathon sweet spot, cumulative aerobic adaptation pays off',   recoveryDaysPerHardSession: { low: 1, high: 2 }, strengthEmphasis: 'high',     injuryRiskShifts: ['Achilles/plantar fasciitis', 'IT band'] },
     { decade: '40s',       volumeRecommendation: 'Hold volume; build strength + mobility',                          recoveryDaysPerHardSession: { low: 1, high: 2 }, strengthEmphasis: 'high',     injuryRiskShifts: ['Tendon stiffness; meniscal degeneration'] },
     { decade: '50s',       volumeRecommendation: 'Recovery weeks more critical; consider 2-on-1-off cycle',         recoveryDaysPerHardSession: { low: 2, high: 2 }, strengthEmphasis: 'critical', injuryRiskShifts: ['Rotator cuff (form), Achilles, hamstring'] },
     { decade: '60s',       volumeRecommendation: 'Modify intensity emphasis; prioritize steady aerobic',            recoveryDaysPerHardSession: { low: 2, high: 3 }, strengthEmphasis: 'critical', injuryRiskShifts: ['Bone density loss', 'Joint OA flare-ups'] },
@@ -72,7 +72,7 @@ export const LACTATE_THRESHOLD_PRESERVATION: Cited<{
   value: {
     preservationFinding: 'Lactate threshold (LT2) preserves better with age than VO2max. Trained masters can maintain LT pace as % of VO2max even as VO2max declines.',
     protocolRequirement: 'Maintain ≥1 weekly threshold session (cruise intervals or continuous tempo). 4-7 mi at T or 3-5 × 1 mi at T.',
-    practicalImplication: 'Marathon performance preserves better than 5K performance with age — marathon is more LT-dependent, less VO2max-dependent.',
+    practicalImplication: 'Marathon performance preserves better than 5K performance with age, marathon is more LT-dependent, less VO2max-dependent.',
   },
   citations: [
     cite('§Lactate Threshold Preservation', 'LT preserves better than VO2max; marathon performance preserves better than 5K', 'research', '14'),

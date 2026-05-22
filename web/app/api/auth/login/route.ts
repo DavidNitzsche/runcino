@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const user = await loginUser(email, password);
     return NextResponse.json({ user });
   } catch {
-    // Don't leak whether email exists — generic 401
+    // Don't leak whether email exists, generic 401
     return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
   }
 }

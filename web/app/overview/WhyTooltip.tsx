@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * "Why this workout" — a small pill in the hero that expands into a
+ * "Why this workout", a small pill in the hero that expands into a
  * short, plain-English reason for today's run. Three scannable lines:
  * what it is, where you are in the plan, and what it does for you.
  *
@@ -58,7 +58,7 @@ export function WhyTooltip({ why }: Props) {
             letterSpacing: 'normal',
           }}
         >
-          {/* Line 1 — what it is, as a headline */}
+          {/* Line 1, what it is, as a headline */}
           <div
             style={{
               fontFamily: 'Oswald, sans-serif',
@@ -72,7 +72,7 @@ export function WhyTooltip({ why }: Props) {
             {why.what}
           </div>
 
-          {/* Line 2 — where you are in the plan */}
+          {/* Line 2, where you are in the plan */}
           <div
             style={{
               marginTop: 6,
@@ -87,7 +87,7 @@ export function WhyTooltip({ why }: Props) {
           {/* Divider */}
           <div style={{ height: 1, background: 'rgba(8,8,8,.08)', margin: '12px 0' }} />
 
-          {/* Line 3 — the point */}
+          {/* Line 3, the point */}
           <div
             style={{
               fontSize: 13.5,

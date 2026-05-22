@@ -1,5 +1,5 @@
 /**
- * lib/core/plan.ts — Slice 1+ planner
+ * lib/core/plan.ts, Slice 1+ planner
  *
  * When a GPX track is provided (any source): terrain-aware even_effort pacing
  * via Minetti GAF + segment-based phase derivation.
@@ -72,7 +72,7 @@ export function buildPlan(input: PlannerInput): RacePlan {
     }
   }
 
-  // Always provide phases — generic quarter-splits when no GPX
+  // Always provide phases, generic quarter-splits when no GPX
   if (!phases) {
     phases = genericPhases(totalMiles, gels);
   }
@@ -104,18 +104,18 @@ export function buildPlan(input: PlannerInput): RacePlan {
   // ── Missing fields + warnings ─────────────────────────────────────────────────
   const missing_fields: string[] = [];
   if (course.total_gain_ft === null && !gpxText)
-    missing_fields.push('Elevation gain/loss (not verified — terrain pacing unavailable)');
+    missing_fields.push('Elevation gain/loss (not verified, terrain pacing unavailable)');
   if (course.aid_station_miles === null)
-    missing_fields.push('Aid station locations (not verified — 💧 markers not shown)');
+    missing_fields.push('Aid station locations (not verified, 💧 markers not shown)');
   if (course.start_coords === null)
-    missing_fields.push('Start coordinates (not verified — weather forecast unavailable)');
+    missing_fields.push('Start coordinates (not verified, weather forecast unavailable)');
   if (!gpxText && !course.gpx_url)
-    missing_fields.push('Course GPX (not found — using even splits; upload your own Garmin/Strava GPX for terrain pacing)');
+    missing_fields.push('Course GPX (not found, using even splits; upload your own Garmin/Strava GPX for terrain pacing)');
 
   const warnings: string[] = [
     ...course.course_warnings,
     ...(course.primary_source_url === null
-      ? ['⚠ No primary source (official race domain) found — all facts are secondary source']
+      ? ['⚠ No primary source (official race domain) found, all facts are secondary source']
       : []),
   ];
 
@@ -277,7 +277,7 @@ function namingPhase(
   if (idx === 0) {
     return {
       name: 'Opening Miles',
-      strategy_note: 'Settle in. Hold back — adrenaline will push you too fast early.',
+      strategy_note: 'Settle in. Hold back, adrenaline will push you too fast early.',
     };
   }
   if (idx === total - 1) {
@@ -295,7 +295,7 @@ function namingPhase(
   if (netFt < -150) {
     return {
       name: lossFt > 300 ? 'Big Descent' : 'Descent',
-      strategy_note: 'Let gravity help. Protect your quads — you need them later.',
+      strategy_note: 'Let gravity help. Protect your quads, you need them later.',
     };
   }
   if (netFt > 50) {
@@ -321,7 +321,7 @@ function genericPhases(totalMiles: number, gels: GelPlacement[]): RacePhase[] {
   const splits = [0, totalMiles * 0.25, totalMiles * 0.5, totalMiles * 0.75, totalMiles];
   const names = ['Opening Miles', 'Early Race', 'Mid Race', 'Final Push'];
   const notes = [
-    'Settle in. Hold back — adrenaline will push you too fast.',
+    'Settle in. Hold back, adrenaline will push you too fast.',
     'Find your rhythm. This is your target effort.',
     'Stay patient. The race starts at mile 20.',
     'Empty the tank. Leave nothing on the course.',
@@ -335,7 +335,7 @@ function genericPhases(totalMiles: number, gels: GelPlacement[]): RacePhase[] {
       name: names[i],
       start_mi: Math.round(start * 10) / 10,
       end_mi: Math.round(end * 10) / 10,
-      avg_pace_s: 0,       // filled at plan build time — set by caller
+      avg_pace_s: 0,       // filled at plan build time, set by caller
       avg_pace_display: '', // filled at plan build time
       gain_ft: 0,
       loss_ft: 0,

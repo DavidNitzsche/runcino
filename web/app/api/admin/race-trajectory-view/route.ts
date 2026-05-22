@@ -2,7 +2,7 @@
  * GET /api/admin/race-trajectory-view
  *
  * Diagnostic for V3 race trajectory indicator. Returns the state,
- * per-signal direction, headline, and falsifier — same data the
+ * per-signal direction, headline, and falsifier, same data the
  * /races A-race hero "Trajectory" tile renders.
  *
  * Read-only. opt-token or admin session.

@@ -274,7 +274,7 @@ struct PlanView: View {
                 } else if isSkipped {
                     Image(systemName: "slash.circle").font(.system(size: 13, weight: .bold)).foregroundStyle(Faff.C.milestone)
                 } else {
-                    Text(isRest ? "—" : OverviewFormat.distance(d.distanceMi)).font(Faff.F.display(18))
+                    Text(isRest ? ", " : OverviewFormat.distance(d.distanceMi)).font(Faff.F.display(18))
                         .foregroundStyle(isRest ? Faff.C.textFaint : nameColor)
                 }
                 if !isRest {
@@ -338,14 +338,14 @@ struct CoachView: View {
             CoachVerdict("Focus", dw.guidance, color: Faff.C.milestone)
             if let acwr = overview.acwrValue, acwr > 1.3 {
                 CoachVerdict("Back off if",
-                             "Resting HR stays high two mornings, or the legs feel dead — we'll trade the long run for easy miles.",
+                             "Resting HR stays high two mornings, or the legs feel dead, we'll trade the long run for easy miles.",
                              color: Faff.C.warn)
             }
             Text("SIGNALS").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
             VStack(alignment: .leading, spacing: 12) {
                 if let acwr = overview.acwrValue {
                     SignalRow("Watching", tone: .amber,
-                              String(format: "Your last week is %.0f%% of your 8-week average — that's ramping fast. Hold easy until it settles.", acwr * 100))
+                              String(format: "Your last week is %.0f%% of your 8-week average, that's ramping fast. Hold easy until it settles.", acwr * 100))
                 }
                 let bankedMi = (overview.completedByDate ?? [:]).values.reduce(0, +)
                 if bankedMi > 0 {
@@ -373,7 +373,7 @@ struct HealthView: View {
     var body: some View {
         let r = overview.state?.recovery
         func num(_ v: Double?, _ dec: Int = 0) -> String {
-            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? "—"
+            v.map { dec == 0 ? "\(Int($0.rounded()))" : String(format: "%.\(dec)f", $0) } ?? ", "
         }
         func vital(_ label: String, _ v: Double?, _ unit: String, dec: Int = 0, sub: String, type: String? = nil) -> Tile {
             Tile(label: label, value: num(v, dec), unit: v != nil ? unit : nil,
@@ -415,16 +415,16 @@ struct HealthView: View {
             vital("Active Energy", hk.activeEnergyKcal, "kcal", sub: "today", type: "active_energy"),
         ]
         let acwr = overview.acwrValue
-        let loadWord = acwr == nil ? "—"
+        let loadWord = acwr == nil ? ", "
             : (acwr! > 1.3 ? "Building" : acwr! < 0.8 ? "Easing" : "Steady")
         let load: [Tile] = [
             Tile(label: "Training load", value: loadWord, unit: nil, delta: acwr != nil ? "last 7 vs 28 days" : "No data", tone: (acwr ?? 0) > 1.3 ? .watch : .good, live: acwr != nil),
             Tile(label: "Volume", value: OverviewFormat.distance(overview.state?.volume?.last7Mi), unit: "mi", delta: "last 7d", tone: .flat, live: true),
-            Tile(label: "Freshness", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
+            Tile(label: "Freshness", value: "-", unit: nil, delta: "No data", tone: .flat, live: false),
         ]
 
         return FaffScreen(eyebrow: localHealth ? "Apple Health · connected" : "Apple Health", title: "Body State") {
-            // Hero ring — tappable → full readiness breakdown.
+            // Hero ring, tappable → full readiness breakdown.
             Button { showReadiness = true } label: {
                 HStack(spacing: 14) {
                     ReadinessRing(score: overview.readinessScore, tone: TodayView.tone(for: overview.readinessState), size: 70)
@@ -464,11 +464,11 @@ struct HealthView: View {
             )
         }
         // Always read whatever HealthKit has authorized so the tiles fill
-        // in once access is granted (in Profile) — not gated on a flag.
+        // in once access is granted (in Profile), not gated on a flag.
         .task { await hk.refreshDisplayMetrics() }
     }
 
-    /// HealthKit is usable on THIS device — drives the hero + hides the
+    /// HealthKit is usable on THIS device, drives the hero + hides the
     /// in-tab connect button (connecting happens in Profile).
     private var localHealth: Bool {
         overview.hasHealthData || hk.hasConnected
@@ -485,7 +485,7 @@ struct HealthView: View {
         }
     }
 
-    /// HR anchors — the two numbers every zone keys off. Shows max + resting
+    /// HR anchors, the two numbers every zone keys off. Shows max + resting
     /// HR with their framework and an edit affordance (auto from Apple Health,
     /// overridable).
     private func hrAnchorsCard(_ z: OHrZones) -> some View {
@@ -498,8 +498,8 @@ struct HealthView: View {
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
                 }
                 HStack(spacing: 14) {
-                    anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? "—", "bpm")
-                    anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? "—", "bpm")
+                    anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? ", ", "bpm")
+                    anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? ", ", "bpm")
                     anchorCell("ZONES", z.framework == "HRR" ? "Personalized" : "Standard", z.framework == "HRR" ? "uses resting HR" : "")
                 }
             }
@@ -547,7 +547,7 @@ struct HealthView: View {
     }
 }
 
-// MARK: - Races (tab) — orange countdown + recent
+// MARK: - Races (tab), orange countdown + recent
 
 struct RacesView: View {
     let overview: OverviewResponse
@@ -624,7 +624,7 @@ struct RacesView: View {
                 Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
             }.padding(.top, 2)
             HStack(spacing: 18) {
-                raceStat("Goal time", r.goalDisplay ?? "—")
+                raceStat("Goal time", r.goalDisplay ?? ", ")
                 if let p = RacesView.goalPace(r.goalDisplay, r.distanceMi) { raceStat("Goal pace", "\(p)/mi") }
                 raceStat("Distance", "\(OverviewFormat.distance(r.distanceMi)) mi")
             }.padding(.top, 8)
@@ -653,7 +653,7 @@ struct RacesView: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(r.goalDisplay ?? "—").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
+                Text(r.goalDisplay ?? ", ").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
                 Text("\(r.daysAway ?? 0)d away").font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.race)
             }
             Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
@@ -677,7 +677,7 @@ struct RacesView: View {
         }.padding(.vertical, 11).contentShape(Rectangle())
     }
 
-    /// A / B / C priority pill — orange / amber / grey (mirrors web).
+    /// A / B / C priority pill, orange / amber / grey (mirrors web).
     @ViewBuilder
     private func priorityChip(_ p: String?, onDark: Bool) -> some View {
         let pr = (p ?? "A").uppercased()
@@ -695,7 +695,7 @@ struct RacesView: View {
         }
     }
     static func finish(_ s: Double?) -> String {
-        guard let s, s > 0 else { return "—" }
+        guard let s, s > 0 else { return ", " }
         let t = Int(s); let h = t / 3600, m = (t % 3600) / 60, sec = t % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
@@ -703,7 +703,7 @@ struct RacesView: View {
     static func raceShort(_ name: String) -> String {
         let types: Set<String> = ["half", "marathon", "10k", "5k", "15k", "mile", "miler", "5km", "10km"]
         let words = name.split(separator: " ").map(String.init)
-        // A "Half Marathon" IS a half — prefer "Half" over the trailing
+        // A "Half Marathon" IS a half, prefer "Half" over the trailing
         // "Marathon" so "Sombrero Half Marathon" reads "Sombrero Half", not
         // "Sombrero Marathon". Otherwise take the last race-type word.
         let typeWord: String? = words.first(where: { $0.lowercased() == "half" }).map { _ in "Half" }
@@ -771,7 +771,7 @@ struct RaceDetailView: View {
     private var eyebrow: String {
         let pr = (header.priority ?? "A")
         if header.isPast { return "RESULT" }
-        return "\(["A","B","C"].contains(pr) ? "\(pr)-RACE" : "RACE") · GOAL \(header.goalDisplay ?? "—")"
+        return "\(["A","B","C"].contains(pr) ? "\(pr)-RACE" : "RACE") · GOAL \(header.goalDisplay ?? ", ")"
     }
     var body: some View {
         ScrollView {
@@ -792,7 +792,7 @@ struct RaceDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(header.isPast ? "FINISH" : "COUNTDOWN").font(Faff.F.inter(9.5, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
                             if header.isPast {
-                                Text(header.finishDisplay ?? "—").font(Faff.F.display(46)).foregroundStyle(.white)
+                                Text(header.finishDisplay ?? ", ").font(Faff.F.display(46)).foregroundStyle(.white)
                             } else {
                                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                                     Text("\(header.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
@@ -816,7 +816,7 @@ struct RaceDetailView: View {
                     Divider().overlay(Color.white.opacity(0.25))
                     if header.isPast {
                         HStack(spacing: 18) {
-                            rcStat("Goal", header.goalDisplay ?? "—")
+                            rcStat("Goal", header.goalDisplay ?? ", ")
                             rcStat("Distance", "\(OverviewFormat.distance(header.distanceMi)) mi")
                             if let d = header.date { rcStat("Date", RacesView.prettyDate(d)) }
                         }
@@ -824,9 +824,9 @@ struct RaceDetailView: View {
                         readinessBlock(pr, cv: cv)
                     } else {
                         HStack(spacing: 18) {
-                            rcStat("Goal time", header.goalDisplay ?? "—")
+                            rcStat("Goal time", header.goalDisplay ?? ", ")
                             rcStat("Distance", "\(OverviewFormat.distance(header.distanceMi)) mi")
-                            rcStat("Phase", phase ?? "—")
+                            rcStat("Phase", phase ?? ", ")
                         }
                     }
                 }
@@ -892,7 +892,7 @@ struct RaceDetailView: View {
                  + Text("  ·  net \(net >= 0 ? "+" : "−")\(abs(net)) ft \(net <= -40 ? "(fast)" : net >= 40 ? "(climby)" : "")").foregroundStyle(net <= -40 ? Faff.C.recovery : net >= 40 ? Faff.C.warn : Faff.C.textMuted))
                     .font(Faff.F.inter(11.5, .semibold))
             }
-            // Elevation profile — area filled by phase.
+            // Elevation profile, area filled by phase.
             if let samples = c.samples, samples.count > 1 {
                 elevationProfile(samples, phases: c.phases ?? [])
             }
@@ -905,7 +905,7 @@ struct RaceDetailView: View {
     }
 
     /// Elevation profile. The area under the curve is coloured per
-    /// PHASE (climb = amber, descent = blue, flat = green) — each sample
+    /// PHASE (climb = amber, descent = blue, flat = green), each sample
     /// segment gets its phase's solid colour, so the fill reads as clean
     /// bands that map to the pacing table (no per-segment gradient
     /// striping). Monotone interpolation keeps the curve smooth without
@@ -954,7 +954,7 @@ struct RaceDetailView: View {
         .frame(height: 96)
     }
 
-    /// Phase colour for a given mile — used to band the elevation fill.
+    /// Phase colour for a given mile, used to band the elevation fill.
     static func phaseColorAt(_ mile: Double, _ phases: [RacePhase]) -> Color {
         let p = phases.first { mile >= ($0.startMi ?? 0) && mile <= ($0.endMi ?? 0) } ?? phases.last
         return gradeColor(p?.meanGradePct ?? 0)
@@ -995,7 +995,7 @@ struct RaceDetailView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(p.targetPaceDisplay ?? "—").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
+                    Text(p.targetPaceDisplay ?? ", ").font(Faff.F.display(17)).foregroundStyle(Faff.C.ink)
                     if let t = p.cumulativeTimeDisplay { Text(t).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textDim) }
                 }
             }
@@ -1081,9 +1081,9 @@ struct RaceDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("NO DATA YET · HONEST EMPTY STATE")
                         .font(Faff.F.inter(9.5, .semibold)).tracking(1.2).foregroundStyle(Faff.C.amberInk)
-                    (Text("The race-day brief — ").foregroundColor(Faff.C.textMuted)
+                    (Text("The race-day brief, ").foregroundColor(Faff.C.textMuted)
                      + Text("shakeout sequencing, kit layout, wake-up time, pre-race fueling, and weather-adjusted pace tweaks").foregroundColor(Faff.C.ink)
-                     + Text(" — generates exactly 7 days out from gun time. The coach needs the actual weather window and your taper-week readiness before writing it. Don't plan it now; trust the system.").foregroundColor(Faff.C.textMuted))
+                     + Text(", generates exactly 7 days out from gun time. The coach needs the actual weather window and your taper-week readiness before writing it. Don't plan it now; trust the system.").foregroundColor(Faff.C.textMuted))
                         .font(Faff.F.inter(12.5)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
                     if let g = genISO {
                         Text("AWAITING \(Self.longDate(g))\(daysToBrief > 0 ? " · \(daysToBrief) DAYS FROM TODAY" : "")")
@@ -1128,7 +1128,7 @@ struct RaceDetailView: View {
             longitudeDelta: max((maxLon - minLon) * 1.35, 0.01))
         return MKCoordinateRegion(center: center, span: span)
     }
-    // Phase grade classification — mirrors the web /races/[slug] page
+    // Phase grade classification, mirrors the web /races/[slug] page
     // (phaseColor + gradeLabel) EXACTLY so the iPhone and web agree.
     enum PhaseTone { case orange, amber, blue, green }
     static func phaseTone(_ g: Double) -> PhaseTone {
@@ -1188,7 +1188,7 @@ struct RaceDetailView: View {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("PROJECTED").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
-                    Text(pr.predictedDisplay ?? "—").font(Faff.F.display(26)).foregroundStyle(.white)
+                    Text(pr.predictedDisplay ?? ", ").font(Faff.F.display(26)).foregroundStyle(.white)
                     Text("at fitness score \(String(format: "%.1f", cv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
                 }
                 Spacer(minLength: 4)
@@ -1196,7 +1196,7 @@ struct RaceDetailView: View {
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("GOAL").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
-                    Text(goalT ?? "—").font(Faff.F.display(26)).foregroundStyle(.white)
+                    Text(goalT ?? ", ").font(Faff.F.display(26)).foregroundStyle(.white)
                     if let gv = pr.goalVdot {
                         Text("needs fitness score \(String(format: "%.1f", gv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
                     }
@@ -1221,7 +1221,7 @@ struct RaceDetailView: View {
     }
     static func mmss(_ s: Int) -> String { "\(s/60):\(String(format: "%02d", s%60))" }
     static func verdictText(_ pr: RaceProjection, pSec: Int?, gSec: Int?, onPace: Bool) -> String {
-        if onPace, let p = pSec, let g = gSec, g >= p { return "On pace — beats goal by \(mmss(g - p))" }
+        if onPace, let p = pSec, let g = gSec, g >= p { return "On pace, beats goal by \(mmss(g - p))" }
         if let gap = pr.vdotGap {
             let pace = pr.paceTGapS.map { " · ~\(Int(abs($0)))s/mi" } ?? ""
             return "\(String(format: "%.1f", abs(gap))) fitness points to find\(pace)"
@@ -1268,15 +1268,15 @@ struct ProfileView: View {
                     shoeCard
                     VStack(alignment: .leading, spacing: 0) {
                         Text("INTEGRATIONS").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim).padding(.bottom, 8)
-                        // Apple Health — connect right here (tap → HealthKit auth + sync).
+                        // Apple Health, connect right here (tap → HealthKit auth + sync).
                         let healthOn = overview.hasHealthData || health.hasConnected
                         Button { Task { await health.connectAndSync() } } label: {
                             setRow("Apple Health", status: healthStatusText(healthOn), tone: healthOn ? .green : .orange, first: true)
                         }.buttonStyle(.plain).disabled(healthOn || health.status == .requesting || health.status == .syncing)
-                        // Strava — status only (linked via OAuth on faff.run).
+                        // Strava, status only (linked via OAuth on faff.run).
                         let stravaOn = overview.connectors?.contains("strava") ?? false
                         setRow("Strava", status: stravaOn ? "Connected" : "Connect", tone: stravaOn ? .green : .grey)
-                        // Apple Watch — status only (the watch app is the link).
+                        // Apple Watch, status only (the watch app is the link).
                         setRow("Apple Watch", status: watchStatus.0, tone: watchStatus.1)
                     }.faffCard()
                     Button { onLogout() } label: {
@@ -1299,7 +1299,7 @@ struct ProfileView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("TRAINING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             HStack(spacing: Faff.S.inlineGap) {
-                StatPill(value: vdot.map { String(Int($0)) } ?? "—", unit: vdot != nil ? "score" : nil, label: "Fitness")
+                StatPill(value: vdot.map { String(Int($0)) } ?? ", ", unit: vdot != nil ? "score" : nil, label: "Fitness")
                 StatPill(value: OverviewFormat.distance(v?.last7Mi), unit: "mi", label: "Last 7d")
                 StatPill(value: OverviewFormat.distance(v?.weeklyAvg8w), unit: "mi", label: "8wk avg")
             }
@@ -1399,12 +1399,12 @@ struct ProfileView: View {
         shoesLoaded = true
     }
 
-    /// Apple Watch status from real WCSession pairing — there's no
+    /// Apple Watch status from real WCSession pairing, there's no
     /// "connect" step, the watch app is the link. A paired watch with the
     /// Faff app reads as Connected.
     private var watchStatus: (String, Badge.Tone) {
         if watch.isWatchAppInstalled || watch.isPaired { return ("Connected", .green) }
-        return ("—", .grey)
+        return (", ", .grey)
     }
 
     private func healthStatusText(_ on: Bool) -> String {
@@ -1427,7 +1427,7 @@ struct ProfileView: View {
     }
 }
 
-// MARK: - Why this (sheet) — read-only rationale
+// MARK: - Why this (sheet), read-only rationale
 
 struct WhyThisSheet: View {
     let overview: OverviewResponse
@@ -1486,7 +1486,7 @@ struct HrAnchorEditSheet: View {
                     SheetCloseButton { dismiss() }
                 }
                 CoachVerdict("How this works",
-                    "These come from Apple Health automatically (max HR from your hardest efforts, resting HR from your watch). Override either if you've measured it directly — clear the field to go back to automatic. Every HR zone keys off these two numbers.",
+                    "These come from Apple Health automatically (max HR from your hardest efforts, resting HR from your watch). Override either if you've measured it directly, clear the field to go back to automatic. Every HR zone keys off these two numbers.",
                     color: Faff.C.textDim)
                 VStack(alignment: .leading, spacing: 14) {
                     anchorField("Max HR", placeholder: maxHr.map { "\($0)" } ?? "auto", text: $maxText, unit: "bpm")
@@ -1523,7 +1523,7 @@ struct HrAnchorEditSheet: View {
     }
 }
 
-/// Karvonen HR zone scale — the 5 zones with the runner's real bpm ranges,
+/// Karvonen HR zone scale, the 5 zones with the runner's real bpm ranges,
 /// so "145 = easy aerobic" is legible at a glance. Optionally marks where a
 /// run's average HR landed. Reads /api/overview hrZones (HRR or %max).
 struct HrZoneScale: View {
@@ -1576,7 +1576,7 @@ struct HrZoneScale: View {
     }
 }
 
-/// Readiness detail — the transparent breakdown behind the score. Opened
+/// Readiness detail, the transparent breakdown behind the score. Opened
 /// from the Today readiness card and the Health "Body State" hero. Shows the
 /// signals that moved the score off baseline, the vitals feeding it, what's
 /// not yet wired in, and a plain-language explainer of the scale.
@@ -1602,7 +1602,7 @@ struct ReadinessDetailSheet: View {
                     SheetCloseButton { dismiss() }
                 }
 
-                // Hero — ring + state + the coach's recommendation verbatim.
+                // Hero, ring + state + the coach's recommendation verbatim.
                 HStack(spacing: 16) {
                     ReadinessRing(score: score, tone: tone, size: 76)
                     VStack(alignment: .leading, spacing: 7) {
@@ -1620,7 +1620,7 @@ struct ReadinessDetailSheet: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("WHAT'S FEEDING IT").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
                         if inputs.isEmpty {
-                            Text("Sitting right at the baseline of 75 — nothing is pulling it up or down today.")
+                            Text("Sitting right at the baseline of 75, nothing is pulling it up or down today.")
                                 .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                         } else {
                             ForEach(inputs) { i in
@@ -1640,12 +1640,12 @@ struct ReadinessDetailSheet: View {
                     // The recovery vitals the engine reads.
                     vitalsRow
 
-                    // The runner's HR zones — so "hard" vs "easy" is legible.
+                    // The runner's HR zones, so "hard" vs "easy" is legible.
                     if let z = overview.hrZones, !z.zones.isEmpty {
                         HrZoneScale(zones: z.zones, framework: z.framework)
                     }
 
-                    // Honest about gaps — signals we'd use but don't have yet.
+                    // Honest about gaps, signals we'd use but don't have yet.
                     if !missing.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("NOT YET IN THE SCORE").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
@@ -1657,7 +1657,7 @@ struct ReadinessDetailSheet: View {
                     }
 
                     CoachVerdict("How readiness works",
-                        "Every day starts at a baseline of 75. Recent training load, how fresh you are, and how your easy pace tracks against heart rate nudge it up or down. 80+ is green — hit the plan. 60–79 is yellow — watch your effort. Under 60 is red — back off. It's a read on your body, not a command; you make the call.",
+                        "Every day starts at a baseline of 75. Recent training load, how fresh you are, and how your easy pace tracks against heart rate nudge it up or down. 80+ is green, hit the plan. 60–79 is yellow, watch your effort. Under 60 is red, back off. It's a read on your body, not a command; you make the call.",
                         color: Faff.C.textDim)
                 } else {
                     CoachVerdict("No score yet",
@@ -1684,9 +1684,9 @@ struct ReadinessDetailSheet: View {
     @ViewBuilder private var vitalsRow: some View {
         let r = overview.state?.recovery
         let cells: [(String, String, String)] = [
-            ("HRV", r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", "ms · 7d"),
-            ("RESTING HR", r?.rhrBpm.map { "\(Int($0))" } ?? "—", "bpm"),
-            ("SLEEP", r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", "h · 7d"),
+            ("HRV", r?.hrv7dAvgMs.map { "\(Int($0))" } ?? ", ", "ms · 7d"),
+            ("RESTING HR", r?.rhrBpm.map { "\(Int($0))" } ?? ", ", "bpm"),
+            ("SLEEP", r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? ", ", "h · 7d"),
         ]
         VStack(alignment: .leading, spacing: 10) {
             Text("VITALS FEEDING IT").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
@@ -1740,7 +1740,7 @@ struct MetricDetailSheet: View {
                     guideCards
                     readinessNote
                 } else if metric.live {
-                    // Non-series metrics (ACWR, Volume) — explanation, no chart.
+                    // Non-series metrics (ACWR, Volume), explanation, no chart.
                     guideCards
                 } else {
                     CoachVerdict("No data yet",
@@ -1770,7 +1770,7 @@ struct MetricDetailSheet: View {
         }.faffCard()
     }
 
-    /// What-it-is / what's-good / how-to-improve — the guidance the user
+    /// What-it-is / what's-good / how-to-improve, the guidance the user
     /// actually wants, per metric. Colored accents: neutral → green → orange.
     @ViewBuilder private var guideCards: some View {
         if let g = guide {
@@ -1780,13 +1780,13 @@ struct MetricDetailSheet: View {
         }
     }
 
-    /// Only the recovery vitals feed the readiness score — note it where true.
+    /// Only the recovery vitals feed the readiness score, note it where true.
     @ViewBuilder private var readinessNote: some View {
         if let s = overview.readinessScore,
            ["hrv", "resting_hr", "sleep_hours"].contains(metric.sampleType ?? "") {
             HStack(spacing: 12) {
                 ReadinessRing(score: s, tone: TodayView.tone(for: overview.readinessState), size: 42)
-                Text("**Feeds your readiness** — recovery vitals like this set today's score of \(s).")
+                Text("**Feeds your readiness**, recovery vitals like this set today's score of \(s).")
                     .font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
                 Spacer()
             }.faffCard()
@@ -1807,13 +1807,13 @@ struct MetricDetailSheet: View {
         let pct = (b - a) / abs(a) * 100
         let mag = abs(pct)
         if mag < 3 {
-            return ("Holding steady over \(rangeLabel) — within a few percent of where it started.", Faff.C.textMuted)
+            return ("Holding steady over \(rangeLabel), within a few percent of where it started.", Faff.C.textMuted)
         }
         let up = b > a
         let phrase = "Trending \(up ? "up" : "down") ~\(Int(mag.rounded()))% over \(rangeLabel)"
         if let lowerBetter = guide?.goodWhenLower {
             let good = (lowerBetter && !up) || (!lowerBetter && up)
-            return (phrase + (good ? " — that's the direction you want." : " — worth keeping an eye on."),
+            return (phrase + (good ? ", that's the direction you want." : ", worth keeping an eye on."),
                     good ? Faff.C.recovery : Faff.C.milestone)
         }
         return (phrase + ".", Faff.C.textMuted)
@@ -1853,7 +1853,7 @@ struct MetricDetailSheet: View {
             .frame(height: 130)
         } else {
             Text(series.count == 1
-                 ? "Only one day recorded so far — the trend fills in as more days sync."
+                 ? "Only one day recorded so far, the trend fills in as more days sync."
                  : "No \(metric.title.lowercased()) recorded in this window yet. It fills in as Apple Health syncs each day.")
                 .font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textDim)
                 .frame(maxWidth: .infinity, minHeight: 110, alignment: .center)
@@ -1883,25 +1883,25 @@ struct MetricGuide {
         switch sampleType {
         case "hrv":
             return MetricGuide(
-                what: "Heart-rate variability (HRV) is the beat-to-beat variation in your pulse — a window into recovery and how balanced your nervous system is.",
-                good: "There's no universal 'good' number — your own baseline is what matters. Stable or rising HRV means you're absorbing training; a sharp drop often comes before fatigue or illness.",
+                what: "Heart-rate variability (HRV) is the beat-to-beat variation in your pulse, a window into recovery and how balanced your nervous system is.",
+                good: "There's no universal 'good' number, your own baseline is what matters. Stable or rising HRV means you're absorbing training; a sharp drop often comes before fatigue or illness.",
                 improve: "Protect sleep, keep easy days genuinely easy, hydrate, and manage life stress. HRV responds to total load, not just running.",
                 goodWhenLower: false)
         case "resting_hr":
             return MetricGuide(
-                what: "Resting heart rate (RHR) is your pulse at full rest — a simple, sensitive marker of aerobic fitness and recovery.",
+                what: "Resting heart rate (RHR) is your pulse at full rest, a simple, sensitive marker of aerobic fitness and recovery.",
                 good: "Lower trends are generally better. A morning reading 5+ bpm above your baseline usually means under-recovery or an oncoming bug.",
                 improve: "Build an aerobic base with easy mileage, prioritise sleep, and avoid stacking hard days. It drops over months, not days.",
                 goodWhenLower: true)
         case "sleep_hours":
             return MetricGuide(
-                what: "Nightly sleep duration — the single biggest lever on recovery, adaptation and staying injury-free.",
+                what: "Nightly sleep duration, the single biggest lever on recovery, adaptation and staying injury-free.",
                 good: "Most endurance runners do best on 7–9 hours, and consistency night-to-night matters as much as the total.",
-                improve: "Hold a fixed wake time, dim screens before bed, and treat sleep as part of the plan — not the leftover.",
+                improve: "Hold a fixed wake time, dim screens before bed, and treat sleep as part of the plan, not the leftover.",
                 goodWhenLower: false)
         case "vo2_max":
             return MetricGuide(
-                what: "VO₂max estimates your aerobic ceiling — how much oxygen you can use at max effort.",
+                what: "VO₂max estimates your aerobic ceiling, how much oxygen you can use at max effort.",
                 good: "Higher is better and it climbs with consistent training. Apple's estimate is directional, so watch the trend, not the exact figure.",
                 improve: "Easy Z2 volume builds the engine; controlled intervals sharpen the top end. Both, over weeks.",
                 goodWhenLower: false)
@@ -1909,40 +1909,40 @@ struct MetricGuide {
             return MetricGuide(
                 what: "Breaths per minute at rest, measured overnight.",
                 good: "Stable is healthy. A rise of a couple of breaths above your norm can flag illness, poor sleep or piled-up fatigue.",
-                improve: "It mostly tracks health and recovery — protect sleep and back off when it spikes.",
+                improve: "It mostly tracks health and recovery, protect sleep and back off when it spikes.",
                 goodWhenLower: true)
         case "wrist_temp":
             return MetricGuide(
                 what: "Overnight wrist temperature, tracked against your own baseline.",
                 good: "Steady near baseline is normal. A jump often precedes illness or signals heavy training stress.",
-                improve: "You don't train this — use it as an early-warning flag to add recovery when it climbs.")
+                improve: "You don't train this, use it as an early-warning flag to add recovery when it climbs.")
         case "cadence":
             return MetricGuide(
                 what: "Cadence is your step rate while running (steps per minute).",
                 good: "Many runners are efficient around 170–185 spm, but the right number is individual. A higher cadence usually shortens your stride and cuts overstriding and impact.",
-                improve: "To raise it, nudge up ~5% at a time — run to a metronome or a playlist at the target beat for short stretches.",
+                improve: "To raise it, nudge up ~5% at a time, run to a metronome or a playlist at the target beat for short stretches.",
                 goodWhenLower: false)
         case "stride_length":
             return MetricGuide(
                 what: "Stride length is the distance you cover per step.",
-                good: "It grows naturally as you speed up and pairs with cadence to set your pace — there's no single ideal, it's part of your form signature.",
+                good: "It grows naturally as you speed up and pairs with cadence to set your pace, there's no single ideal, it's part of your form signature.",
                 improve: "It improves on its own with strength, mobility and aerobic fitness. Reaching for a longer stride directly usually causes overstriding.")
         case "vertical_oscillation":
             return MetricGuide(
                 what: "Vertical oscillation is how much you bounce up-and-down each step (cm).",
-                good: "Lower is generally more economical — roughly 6–9 cm is common for efficient runners.",
+                good: "Lower is generally more economical, roughly 6–9 cm is common for efficient runners.",
                 improve: "A slightly higher cadence and a tall, relaxed posture usually reduce the bounce. Don't force it.",
                 goodWhenLower: true)
         case "ground_contact_time":
             return MetricGuide(
                 what: "Ground contact time is how long each foot stays on the ground (milliseconds).",
-                good: "Quicker (lower) is generally more economical — efficient runners are often around 200–250 ms.",
+                good: "Quicker (lower) is generally more economical, efficient runners are often around 200–250 ms.",
                 improve: "Higher cadence, strides and strength/plyometric work tend to shorten it over time.",
                 goodWhenLower: true)
         case "vertical_ratio":
             return MetricGuide(
                 what: "Vertical ratio is your bounce relative to your stride (oscillation ÷ stride length, %). It normalises 'bounciness' for speed.",
-                good: "Lower is more efficient — you're moving forward, not up and down.",
+                good: "Lower is more efficient, you're moving forward, not up and down.",
                 improve: "It comes down with higher cadence and better posture; it's a cleaner economy signal than raw oscillation.",
                 goodWhenLower: true)
         case "run_power":
@@ -1957,12 +1957,12 @@ struct MetricGuide {
         case "Training load":
             return MetricGuide(
                 what: "Compares how much you've run in the last 7 days against your rolling 28-day average.",
-                good: "\"Steady\" is when the two are close. If your last week jumps well above your recent average, you're ramping fast — a higher injury-risk zone.",
+                good: "\"Steady\" is when the two are close. If your last week jumps well above your recent average, you're ramping fast, a higher injury-risk zone.",
                 improve: "Build mileage gradually and follow a hard week with an easier one.")
         case "Volume":
             return MetricGuide(
                 what: "Total running distance over the last 7 days.",
-                good: "Progress it gradually — big week-to-week jumps are a classic injury trigger.",
+                good: "Progress it gradually, big week-to-week jumps are a classic injury trigger.",
                 improve: "Add roughly 10% a week at most, and bank a down week every few weeks to absorb the work.")
         default:
             return nil
@@ -1994,7 +1994,7 @@ struct PlanDayDetailSheet: View {
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(day.distanceMi), unit: "mi", label: "Distance")
                     StatPill(value: day.paceDisplay, unit: day.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: day.isQuality ?? false)
-                    StatPill(value: day.durationMin.map { "~\($0)" } ?? "—", unit: day.durationMin != nil ? "min" : nil, label: "Time")
+                    StatPill(value: day.durationMin.map { "~\($0)" } ?? ", ", unit: day.durationMin != nil ? "min" : nil, label: "Time")
                 }
                 // Structured steps (real describeWorkout, same as today's
                 // detail) when available; fall back to the prose notes.
@@ -2038,11 +2038,11 @@ struct PlanDayDetailSheet: View {
     }
     private func effort(_ type: String?) -> String {
         switch type ?? "" {
-        case "threshold": return "Comfortably hard — controlled threshold effort. You can say 2–3 words at a time, not a full sentence."
+        case "threshold": return "Comfortably hard, controlled threshold effort. You can say 2–3 words at a time, not a full sentence."
         case "vo2", "interval": return "Hard reps with full recoveries. Hit the paces, don't exceed them."
         case "long_steady", "long": return "Steady aerobic miles. Time on feet is the stimulus, not pace."
-        case "marathon_specific", "mp": return "Goal marathon-pace effort — controlled and rhythmic."
-        case "race": return "Race day — execute the plan; conserve early, commit late."
+        case "marathon_specific", "mp": return "Goal marathon-pace effort, controlled and rhythmic."
+        case "race": return "Race day, execute the plan; conserve early, commit late."
         default: return "Easy and conversational. If you can't hold a sentence, slow down."
         }
     }

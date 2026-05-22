@@ -3,7 +3,7 @@
  *
  * GPS-recorded elevation systematically underreports steep terrain by 30-50%.
  * This replaces GPS elevation with ground-truth values from the USGS national
- * terrain model — same source Garmin Connect and Strava use post-run.
+ * terrain model, same source Garmin Connect and Strava use post-run.
  *
  * We sample 60 evenly-spaced points from the track, query in parallel batches
  * of 10, then linear-interpolate elevation for all remaining points.
@@ -15,7 +15,7 @@ const USGS_URL = 'https://epqs.nationalmap.gov/v1/json';
 const SAMPLE_N = 60;
 const BATCH_SIZE = 10;
 
-/** USGS 3DEP — 1m resolution, US only. Best source for US courses. */
+/** USGS 3DEP, 1m resolution, US only. Best source for US courses. */
 async function queryUsgsElevationFt(lat: number, lon: number): Promise<number | null> {
   try {
     const url = `${USGS_URL}?x=${lon}&y=${lat}&wkid=4326&units=Feet&includeDate=false`;
@@ -29,7 +29,7 @@ async function queryUsgsElevationFt(lat: number, lon: number): Promise<number | 
   }
 }
 
-/** Open-Topo-Data SRTM — 30m resolution, global. Fallback for non-US courses. */
+/** Open-Topo-Data SRTM, 30m resolution, global. Fallback for non-US courses. */
 async function batchQuerySrtm(pts: GpxPoint[]): Promise<(number | null)[]> {
   try {
     const locations = pts.map(p => `${p.lat},${p.lon}`).join('|');
@@ -89,7 +89,7 @@ export async function correctElevations(points: GpxPoint[]): Promise<{ points: G
     return { points, corrected: false };
   }
 
-  // If more than half failed, bail — USGS may be down
+  // If more than half failed, bail, USGS may be down
   const successCount = demElevsFt.filter(v => v !== null).length;
   if (successCount < samplePts.length / 2) {
     return { points, corrected: false };

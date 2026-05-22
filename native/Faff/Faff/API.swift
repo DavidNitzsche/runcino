@@ -57,7 +57,7 @@ enum APIError: Error, LocalizedError {
         switch self {
         case .invalidURL:               return "Internal error: bad URL"
         case .noData:                   return "No data returned"
-        case .unauthorized:             return "Session expired — sign in again"
+        case .unauthorized:             return "Session expired, sign in again"
         case .http(let status, let b):  return "HTTP \(status)\(b.map { ": \($0)" } ?? "")"
         case .decoding(let msg):        return "Could not parse response: \(msg)"
         case .network(let err):         return err.localizedDescription
@@ -147,7 +147,7 @@ final class FaffAPI {
     //
     // The access token is short-lived (24h). Without refresh, expired calls
     // silently degrade: strict endpoints 401, but auth-OPTIONAL ones (e.g.
-    // /api/runs/by-date) just return anonymous data — which is why a logged-in
+    // /api/runs/by-date) just return anonymous data, which is why a logged-in
     // user could see "no run" for a run that's actually theirs. We refresh
     // proactively on launch/foreground (so even auth-optional calls carry a
     // valid token) and reactively on a 401.
@@ -181,7 +181,7 @@ final class FaffAPI {
             } catch APIError.http(let status, _) where status == 400 || status == 401 {
                 TokenStore.shared.clear(); return false
             } catch {
-                return false   // offline / transient — keep tokens, try later
+                return false   // offline / transient, keep tokens, try later
             }
         }
         refreshTask = task
@@ -199,11 +199,11 @@ final class FaffAPI {
     /// cross-target re-encode mismatch).
     func fetchTodayRaw() async throws -> Data { try await rawGet("/api/watch/today") }
 
-    /// Raw GET /api/watch/readiness body — the §G glance payload, forwarded
+    /// Raw GET /api/watch/readiness body, the §G glance payload, forwarded
     /// verbatim to the watch alongside the workout.
     func fetchReadinessRaw() async throws -> Data { try await rawGet("/api/watch/readiness") }
 
-    /// Shared authenticated raw GET — returns the response body verbatim.
+    /// Shared authenticated raw GET, returns the response body verbatim.
     private func rawGet(_ path: String) async throws -> Data {
         guard let url = URL(string: path, relativeTo: API.baseURL) else {
             throw APIError.invalidURL
@@ -388,7 +388,7 @@ final class FaffAPI {
         }
 
         if http.statusCode == 401 {
-            // Access token expired — refresh once and retry the call. The
+            // Access token expired, refresh once and retry the call. The
             // refresh is coalesced, so parallel 401s share one rotation.
             if authenticated, allowRefresh, await refreshAccessToken() {
                 return try await perform(method: method, path: path, body: body,

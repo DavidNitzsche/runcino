@@ -7,11 +7,11 @@
  *
  * Three reports in the response payload:
  *
- *   races[]        — every row, with curation status flag
- *   stravaRaces[]  — Strava race-tagged activities, linked-or-not to races
- *   divergences[]  — races where curated finishS differs from Strava's
+ *   races[], every row, with curation status flag
+ *   stravaRaces[], Strava race-tagged activities, linked-or-not to races
+ *   divergences[], races where curated finishS differs from Strava's
  *
- * Doesn't modify anything — read-only. Visit in browser logged in as
+ * Doesn't modify anything, read-only. Visit in browser logged in as
  * admin; copy-paste the JSON or use the readable plain-text view at
  * the bottom of the response.
  *
@@ -46,7 +46,7 @@ interface StravaRaceRow {
 }
 
 function fmtTime(s: number | null): string {
-  if (s == null) return '—';
+  if (s == null) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.round(s % 60);
@@ -174,10 +174,10 @@ export async function GET() {
     stravaRaces: stravaReport,
     divergences,
     legend: {
-      'no-curated-result':         'races row has no actual_result.finishS — enter chip time via /races/<slug>',
-      'strava-auto-verify':        'races row inherited finishS from Strava — confirm it matches official chip time',
+      'no-curated-result':         'races row has no actual_result.finishS, enter chip time via /races/<slug>',
+      'strava-auto-verify':        'races row inherited finishS from Strava, confirm it matches official chip time',
       'manual-curated':            'races row carries user-entered chip time (✓ Option-B-ready)',
-      'orphan-strava-no-races-row':'Strava race activity has no curated races entry — add one so compute-vdot can prefer it',
+      'orphan-strava-no-races-row':'Strava race activity has no curated races entry, add one so compute-vdot can prefer it',
       'linked':                    'Strava activity matched to a races row',
     },
   });

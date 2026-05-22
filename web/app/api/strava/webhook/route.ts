@@ -1,15 +1,15 @@
 /**
- * /api/strava/webhook — Strava Webhooks Push Subscription endpoint.
+ * /api/strava/webhook, Strava Webhooks Push Subscription endpoint.
  *
  * Two purposes:
  *
- * 1. GET — Strava subscription handshake.
+ * 1. GET, Strava subscription handshake.
  *    When we register a webhook subscription, Strava immediately hits
  *    this endpoint with `hub.mode=subscribe&hub.verify_token=<token>&
  *    hub.challenge=<random>`. We must echo back the challenge as JSON
  *    `{"hub.challenge": "..."}`. Done once on subscription create.
  *
- * 2. POST — Strava event delivery.
+ * 2. POST, Strava event delivery.
  *    Body shape (per Strava docs):
  *      {
  *        aspect_type: 'create' | 'update' | 'delete',
@@ -31,7 +31,7 @@
  * failures). All heavy lifting is fire-and-forget.
  *
  * Verify token: STRAVA_WEBHOOK_VERIFY_TOKEN env var. Pick anything
- * random and consistent — it's just a shared secret Strava echoes
+ * random and consistent, it's just a shared secret Strava echoes
  * back during subscription create to confirm it's hitting our app.
  */
 
@@ -107,7 +107,7 @@ async function handleEvent(event: StravaEvent): Promise<void> {
       }
       console.log('[strava webhook] activity', event.aspect_type, event.object_id, 'for user', userId);
 
-      // Writeback: only on CREATE (never on update — manual edits stick).
+      // Writeback: only on CREATE (never on update, manual edits stick).
       // Pull the just-synced activity from our DB to know its date +
       // current name/description + actual stats, then push the planned
       // workout name + description back to Strava if all guards pass.
@@ -171,7 +171,7 @@ async function tryWriteback(userId: string, activityId: number): Promise<void> {
     if (d) { matchedDay = d; matchedWeek = w; break; }
   }
   if (!matchedDay || !matchedWeek) {
-    console.log('[strava-writeback] no plan match for', dateISO, '— skip');
+    console.log('[strava-writeback] no plan match for', dateISO, ', skip');
     return;
   }
 

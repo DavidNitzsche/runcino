@@ -9,16 +9,16 @@
  * Voice: coach, not system alert. The L7 / max-HR adaptive banners
  * are alert-shaped (warning eyebrow, urgency framing) because they
  * surface findings that need a decision. This is a daily-touch
- * surface — the runner sees it every morning, so it leans informational.
+ * surface, the runner sees it every morning, so it leans informational.
  *
  * Server component (data prefetched in /overview SSR). No client
- * interactivity required — purely read-only context for the workout.
+ * interactivity required, purely read-only context for the workout.
  */
 
 import type { PreWorkoutBriefing } from '@/lib/pre-workout-briefing';
 
 function fmtPace(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
@@ -29,7 +29,7 @@ interface Props {
   /** Today's pace target as already formatted by the caller ("8:18-8:48/mi" etc).
    *  Echoed in the briefing's opening line for context. */
   todayPaceLabel: string;
-  /** Today's workout type — used for the opening line's tone ("threshold
+  /** Today's workout type, used for the opening line's tone ("threshold
    *  session" vs "easy effort"). */
   workoutType: string;
 }
@@ -54,15 +54,15 @@ function workoutEyebrow(workoutType: string): string {
 /** Plain-language temperature commentary. Anchors to the L7 heat
  *  ceiling so the runner sees the same threshold the signal uses. */
 function tempCommentary(tempF: number, workoutType: string): string {
-  if (tempF > 82) return ` · ${tempF}°F is hot — slow start, hydrate ahead.`;
+  if (tempF > 82) return ` · ${tempF}°F is hot, slow start, hydrate ahead.`;
   if (tempF > 78) {
     if (workoutType === 'threshold' || workoutType === 'tempo' || workoutType === 'intervals') {
-      return ` · ${tempF}°F is at the heat ceiling — expect pace to drift; HR is the truer gauge today.`;
+      return ` · ${tempF}°F is at the heat ceiling, expect pace to drift; HR is the truer gauge today.`;
     }
     return ` · ${tempF}°F is warm; ease into it.`;
   }
-  if (tempF < 35) return ` · ${tempF}°F is cold — warm up indoors first, dress in layers.`;
-  if (tempF < 50) return ` · ${tempF}°F is cool — first mile will feel stiff, that's normal.`;
+  if (tempF < 35) return ` · ${tempF}°F is cold, warm up indoors first, dress in layers.`;
+  if (tempF < 50) return ` · ${tempF}°F is cool, first mile will feel stiff, that's normal.`;
   return ` · ${tempF}°F is good running weather.`;
 }
 
@@ -119,7 +119,7 @@ export function PreWorkoutBriefingCard({ briefing, todayPaceLabel, workoutType }
           {briefing.shoe.color && <span style={{ color: 'rgba(8,8,8,.55)' }}> · {briefing.shoe.color}</span>}
           {briefing.shoe.wearPct != null && briefing.shoe.wearPct >= 80 && (
             <span style={{ color: '#b3450a' }}>
-              {' '}· {briefing.shoe.wearPct}% of cap ({briefing.shoe.mileage}/{briefing.shoe.mileageCap} mi) — start eyeing a replacement
+              {' '}· {briefing.shoe.wearPct}% of cap ({briefing.shoe.mileage}/{briefing.shoe.mileageCap} mi), start eyeing a replacement
             </span>
           )}
           {briefing.shoe.wearPct != null && briefing.shoe.wearPct < 80 && briefing.shoe.mileageCap && (
@@ -134,7 +134,7 @@ export function PreWorkoutBriefingCard({ briefing, todayPaceLabel, workoutType }
       {briefing.lastSimilar && (
         <div>
           <strong style={{ color: '#080808' }}>Last similar:</strong>{' '}
-          {briefing.lastSimilar.ageLabel} — {briefing.lastSimilar.distanceMi} mi @ {fmtPace(briefing.lastSimilar.paceSPerMi)}
+          {briefing.lastSimilar.ageLabel}, {briefing.lastSimilar.distanceMi} mi @ {fmtPace(briefing.lastSimilar.paceSPerMi)}
           {briefing.lastSimilar.avgHr != null && <>, HR {briefing.lastSimilar.avgHr}</>}
           {todayPaceLabel && (
             <span style={{ color: 'rgba(8,8,8,.55)' }}> · today targets {todayPaceLabel}/mi</span>

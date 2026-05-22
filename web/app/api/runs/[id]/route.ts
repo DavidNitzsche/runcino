@@ -1,5 +1,5 @@
 /**
- * GET /api/runs/[id] — full activity details + matched plan day.
+ * GET /api/runs/[id], full activity details + matched plan day.
  *
  * Used by the run-detail modal on /log. Returns:
  *   - run: the normalized strava_activities.data shape
@@ -105,7 +105,7 @@ export async function GET(
       distanceMi: matchedDay.distanceMi,
       isRest: !!matchedDay.isRest,
       phase: matchedWeek.phase,
-      paceTarget: planDesc?.paceTarget ?? '—',
+      paceTarget: planDesc?.paceTarget ?? '-',
       zone: planDesc?.zone ?? null,
     } : null,
   });

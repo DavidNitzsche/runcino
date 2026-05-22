@@ -1,5 +1,5 @@
 /**
- * Coach narrative line — one sentence the coach says at the very top of
+ * Coach narrative line, one sentence the coach says at the very top of
  * /overview, driven entirely by real signals on CoachState.
  *
  * Contract:
@@ -7,20 +7,20 @@
  *
  * Every sentence returned MUST:
  *   - cite a real state field, recent activity, check-in, or race
- *     calendar entry — never a generic motivational platitude;
+ *     calendar entry, never a generic motivational platitude;
  *   - reference a real number or date the runner can verify
  *     ("23 days since your last 10-mile run", not "it's been a while");
  *   - be one sentence (~≤25 words). If the thought doesn't fit, scope
  *     it down. Two-line "primary + tail clause" is allowed but rare.
  *
  * If no signal in the priority list fires, the function returns null.
- * The UI renders nothing in that case — no empty placeholder, no
+ * The UI renders nothing in that case, no empty placeholder, no
  * "Keep up the great work!" filler.
  *
  * The narrative is intentionally distinct in ROLE from `nextPushes`:
- *   • `nextPushes` answers "what should I do this week?" — a to-do list.
+ *   • `nextPushes` answers "what should I do this week?", a to-do list.
  *   • `narrativeLine` answers "where am I right now and what just
- *      happened?" — one sentence of context.
+ *      happened?", one sentence of context.
  *
  * Topic overlap with `nextPushes` is acceptable when the voice is
  * descriptive rather than prescriptive: "Three weeks since your last
@@ -47,7 +47,7 @@
 import type { CoachState } from '../lib/coach-state';
 import type { Citation } from './types';
 
-/** Output shape — one sentence + audit trail. */
+/** Output shape, one sentence + audit trail. */
 export interface NarrativeLine {
   /** The sentence the runner sees. ≤25 words, one sentence. */
   sentence: string;
@@ -56,17 +56,17 @@ export interface NarrativeLine {
   /** Optional doctrine citation. Only set when the line invokes a
    *  research-backed rule (taper depth, long-run cadence, etc.). */
   citation?: Citation;
-  /** Voice tone — UI may use this to colour the line subtly. */
+  /** Voice tone, UI may use this to colour the line subtly. */
   tone: 'pushing' | 'softening' | 'celebrating' | 'reminding' | 'reorienting';
 }
 
 /** Optional adjacent-wave outputs passed in so we don't have to
- *  re-compute them. All optional — narrativeLine still works if none
+ *  re-compute them. All optional, narrativeLine still works if none
  *  of these are supplied, it just skips the signals that depend on
  *  them. */
 export interface NarrativeDeps {
   /** Output of `coach.adjustForReality()` for today. Powers Priority 2
-   *  (Coach adjusted today) — without it we cannot describe an
+   *  (Coach adjusted today), without it we cannot describe an
    *  adjustment because the relevant signals + reason live there. */
   adjustment?: {
     changed: boolean;
@@ -84,7 +84,7 @@ const STREAK_MILESTONES = [30, 60, 90, 180] as const;
 
 /** JS getDay() int → the day name we say in coach lines. The narrative
  *  references the runner's OWN configured long-run / quality days
- *  (state.prefs) instead of hardcoding "Saturday"/"Tuesday" — a runner
+ *  (state.prefs) instead of hardcoding "Saturday"/"Tuesday", a runner
  *  who long-runs on Sunday should hear "Sunday." */
 const DOW_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 function dowName(dow: number): string {
@@ -93,7 +93,7 @@ function dowName(dow: number): string {
 
 /** Public entry point. Walks the priority list top-down; the first
  *  signal that has a real trigger produces the line. Returns null when
- *  nothing fires — that is the expected outcome on a steady runner who
+ *  nothing fires, that is the expected outcome on a steady runner who
  *  is on plan with no race imminent. */
 export async function narrativeLine(
   state: CoachState,
@@ -101,7 +101,7 @@ export async function narrativeLine(
   deps: NarrativeDeps = {},
 ): Promise<NarrativeLine | null> {
   // ── Priority 1: Race-week imminent (A-race within 7 days) ──────────
-  // Drives the "you've banked everything you need" voice — taper-week
+  // Drives the "you've banked everything you need" voice, taper-week
   // reorientation, not a push. Cite Research/03 taper doctrine.
   const nextA = state.races.nextA;
   if (nextA && nextA.daysAway >= 0 && nextA.daysAway <= 7) {
@@ -112,12 +112,12 @@ export async function narrativeLine(
         : `in ${nextA.daysAway} days`;
     return {
       sentence: nextA.daysAway === 0
-        ? `${nextA.name} is today — volume is already low and the work is banked.`
+        ? `${nextA.name} is today, volume is already low and the work is banked.`
         : `${nextA.name} is ${daysWord}; the taper protects what you've banked, so drop intensity and trust the build.`,
       basedOn: 'race calendar',
       citation: {
         doc: 'Research/00a-distance-running-training.md',
-        section: '§Tapering — volume reduction in the final 7-14 days',
+        section: '§Tapering, volume reduction in the final 7-14 days',
       },
       tone: 'reorienting',
     };
@@ -136,14 +136,14 @@ export async function narrativeLine(
     const direction = deps.adjustment.direction ?? 'softening';
     const action = direction === 'softening' ? 'softened' : 'pushed';
     const sentence = reasonClause
-      ? `Coach ${action} today's session — ${reasonClause}.`
+      ? `Coach ${action} today's session, ${reasonClause}.`
       : `Coach ${action} today's session based on recent signals.`;
     return {
       sentence,
       basedOn: 'coach · live adjustment',
       citation: {
         doc: 'Research/00b-recovery-protocols.md',
-        section: '§Warning Signs of Incomplete Recovery — Decision Matrix',
+        section: '§Warning Signs of Incomplete Recovery, Decision Matrix',
       },
       tone: direction,
     };
@@ -158,7 +158,7 @@ export async function narrativeLine(
   const streak = state.recovery.consecutiveRunDays;
   if ((STREAK_MILESTONES as readonly number[]).includes(streak)) {
     return {
-      sentence: `${streak} straight run-days — the aerobic base is banked; now it's about protecting the streak with truly easy days, not chasing it with hard ones.`,
+      sentence: `${streak} straight run-days, the aerobic base is banked; now it's about protecting the streak with truly easy days, not chasing it with hard ones.`,
       basedOn: 'run streak',
       tone: 'celebrating',
     };
@@ -166,7 +166,7 @@ export async function narrativeLine(
 
   // ── Priority 4: Stale check-in (>72h since last check-in) ──────────
   // The check-in is the only qualitative signal the engine has. When
-  // it goes stale the coach is "flying partly blind" — we describe
+  // it goes stale the coach is "flying partly blind", we describe
   // that state, while nextPushes prescribes the action ("log one").
   const checkin = state.checkin;
   if (checkin) {
@@ -182,11 +182,11 @@ export async function narrativeLine(
         ? `No check-in logged yet`
         : `${daysStale} days since your last check-in`;
       return {
-        sentence: `${noun} — a 10-second energy-and-soreness read is what lets the plan flex to how you actually feel, so log one before today's run.`,
+        sentence: `${noun}, a 10-second energy-and-soreness read is what lets the plan flex to how you actually feel, so log one before today's run.`,
         basedOn: 'check-in log',
         citation: {
           doc: 'Research/00b-recovery-protocols.md',
-          section: '§Warning Signs of Incomplete Recovery — Qualitative Signals',
+          section: '§Warning Signs of Incomplete Recovery, Qualitative Signals',
         },
         tone: 'reminding',
       };
@@ -194,7 +194,7 @@ export async function narrativeLine(
   }
 
   // ── Priority 5: Recent PR / VDOT update ────────────────────────────
-  // DEFERRED — requires a `vdot` snapshot (current + previous) on the
+  // DEFERRED, requires a `vdot` snapshot (current + previous) on the
   // CoachState. Today vdot lives in lib/vdot.ts and is recomputed at
   // read-time, not persisted on state. Flagged in the wave report for
   // a future state-builder pass to add `state.fitness.vdot` +
@@ -216,11 +216,11 @@ export async function narrativeLine(
     const when = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
     const nextStep = Math.round(recentLong.miles + 2);
     return {
-      sentence: `That ${recentLong.miles.toFixed(1)} mi long run ${when} is in the bank — recover off it this week, then ${nextStep} is the next honest step up.`,
+      sentence: `That ${recentLong.miles.toFixed(1)} mi long run ${when} is in the bank, recover off it this week, then ${nextStep} is the next honest step up.`,
       basedOn: 'recent activity',
       citation: {
         doc: 'Research/00a-distance-running-training.md',
-        section: '§The Seven Workout Categories — 4. Long run',
+        section: '§The Seven Workout Categories, 4. Long run',
       },
       tone: 'pushing',
     };
@@ -229,7 +229,7 @@ export async function narrativeLine(
   // ── Pre-compute recovery gates (also used by Priority 9 below).
   // When the runner is in a post-race recovery window, has heavy-block
   // suspected, or is in a rebuild-after-break phase, volume drops and
-  // missed quality sessions are EXPECTED and doctrine-correct — not
+  // missed quality sessions are EXPECTED and doctrine-correct, not
   // signs of "falling behind." The narrative must not yell about them.
   const inRecoveryWindow = state.recoveryWindowEndsISO != null
     && state.recoveryWindowEndsISO >= todayISO;
@@ -239,7 +239,7 @@ export async function narrativeLine(
 
   // ── Priority 7: Falling behind on a build ──────────────────────────
   // 4-week-vs-prior-4-week volume trending down by ≥15% with an A-race
-  // still in the build window. Reorienting voice — name the trajectory.
+  // still in the build window. Reorienting voice, name the trajectory.
   // GATED: only when the down-trend isn't doctrine-correct (i.e., the
   // runner isn't in a recovery window or rebuild phase, where volume
   // drops are expected).
@@ -255,18 +255,18 @@ export async function narrativeLine(
     const weeksOut = Math.round(nextA!.daysAway / 7);
     const longDay = dowName(state.prefs.longRunDow);
     return {
-      sentence: `Volume's down ${dropPct}% over the last month with ${nextA!.name} ${weeksOut} weeks out — that's the wrong direction this close, and ${longDay}'s long run is how you bend it back.`,
+      sentence: `Volume's down ${dropPct}% over the last month with ${nextA!.name} ${weeksOut} weeks out, that's the wrong direction this close, and ${longDay}'s long run is how you bend it back.`,
       basedOn: 'volume trend · 4w vs prior 4w',
       tone: 'reorienting',
     };
   }
 
   // ── Priority 8: Stale quality (no T/I work in 14 days) ─────────────
-  // Counterpart to nextPushes "add_threshold" — same trigger, different
+  // Counterpart to nextPushes "add_threshold", same trigger, different
   // voice. Narrative: "It's been X days…" (state). Push: "Get one
   // session in this week" (action). We only fire when there's an
-  // A-race still some way out — no point pushing threshold inside
-  // the taper. GATED on recovery/heavy-block/rebuild — doctrine says
+  // A-race still some way out, no point pushing threshold inside
+  // the taper. GATED on recovery/heavy-block/rebuild, doctrine says
   // no quality during those phases.
   if (
     state.intensity.hardMi14d < 1
@@ -278,11 +278,11 @@ export async function narrativeLine(
       ? `${dowName(state.prefs.qualityDows[0])}'s threshold is`
       : 'a threshold session this week is';
     return {
-      sentence: `Two weeks with no real speed in your legs — ${qualityClause} what keeps race pace from feeling foreign on the day.`,
+      sentence: `Two weeks with no real speed in your legs, ${qualityClause} what keeps race pace from feeling foreign on the day.`,
       basedOn: 'intensity · last 14d',
       citation: {
         doc: 'Research/00a-distance-running-training.md',
-        section: '§The Seven Workout Categories — 5. Threshold / tempo',
+        section: '§The Seven Workout Categories, 5. Threshold / tempo',
       },
       tone: 'pushing',
     };
@@ -293,7 +293,7 @@ export async function narrativeLine(
   // narrative voice. The differentiator: we describe WHERE you are
   // ("three weeks since your last long run"); nextPushes describes
   // WHAT TO DO ("extend to 10+mi Saturday"). We only fire if Priority
-  // 6 (recent long run) didn't — those two are mutually exclusive by
+  // 6 (recent long run) didn't, those two are mutually exclusive by
   // ordering.
   const longRunMi = state.volume.longestLast28Mi;
   const daysSinceLong = (() => {
@@ -307,7 +307,7 @@ export async function narrativeLine(
       const r = Date.parse(recent7.date + 'T12:00:00Z');
       return Math.max(0, Math.round((t - r) / 86_400_000));
     }
-    return 14; // somewhere between 7 and 28 — midpoint estimate
+    return 14; // somewhere between 7 and 28, midpoint estimate
   })();
   // Reuse the recovery gate computed above for Priorities 7 + 8.
   if (
@@ -317,16 +317,16 @@ export async function narrativeLine(
     const weeks = Math.round(daysSinceLong / 7);
     const longDay = dowName(state.prefs.longRunDow);
     return {
-      sentence: `${weeks} weeks since your last long run — endurance fades faster than speed, so ${longDay} is the day that pulls the base back.`,
+      sentence: `${weeks} weeks since your last long run, endurance fades faster than speed, so ${longDay} is the day that pulls the base back.`,
       basedOn: 'recent activity',
       citation: {
         doc: 'Research/00a-distance-running-training.md',
-        section: '§The Seven Workout Categories — 4. Long run',
+        section: '§The Seven Workout Categories, 4. Long run',
       },
       tone: 'pushing',
     };
   }
 
-  // No signal fired — coach has nothing specific to say today.
+  // No signal fired, coach has nothing specific to say today.
   return null;
 }

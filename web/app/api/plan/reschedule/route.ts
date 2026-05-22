@@ -1,14 +1,14 @@
 /**
- * POST /api/plan/reschedule — runner moves or swaps a planned workout.
+ * POST /api/plan/reschedule, runner moves or swaps a planned workout.
  *
  * body: { action: 'move' | 'swap', fromDateISO, toDateISO }
- *   move — move the workout on fromDate to toDate. If toDate already has
+ *   move, move the workout on fromDate to toDate. If toDate already has
  *          a workout, the two exchange dates (so no day ends up doubled).
- *   swap — exchange the workouts on the two dates (both must exist).
+ *   swap, exchange the workouts on the two dates (both must exist).
  *
  * Updates the live plan_workouts rows (date_iso + dow). The original_*
  * columns are preserved by the store, so the coach can still see what
- * was originally prescribed. No coach-signal mutation is logged — this
+ * was originally prescribed. No coach-signal mutation is logged, this
  * is a manual reschedule, not an engine adaptation.
  *
  * Auth optional: anonymous → the legacy 'me' demo plan.

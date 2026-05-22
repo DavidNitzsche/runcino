@@ -1,6 +1,6 @@
 /**
  * Writes data/courses/{slug}.overrides.json to disk.
- * Dev/migration use only — not called at runtime by the app.
+ * Dev/migration use only, not called at runtime by the app.
  * Returns 403 in production (NODE_ENV !== 'development').
  */
 

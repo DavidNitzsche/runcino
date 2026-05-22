@@ -5,7 +5,7 @@
  * Signals 1+2+3 watch workout execution between races, Signal 4
  * watches the cumulative count of new race PRs set within the current
  * training cycle. Multiple fresh PRs are strong evidence the runner
- * is building real fitness — converging confirmation from race
+ * is building real fitness, converging confirmation from race
  * performance, not just training adherence.
  *
  * GATING (locked with David spec round 5):
@@ -27,7 +27,7 @@
  *
  * SUSPENSION
  *   When user is marked injured (activity_gap_status='injured'),
- *   signal evaluation suspends. Per CLAUDE.md Rule 5 — each finding
+ *   signal evaluation suspends. Per CLAUDE.md Rule 5, each finding
  *   applies its own injury filter, doesn't inherit from parent.
  */
 
@@ -47,9 +47,9 @@ export interface Signal4Result {
   prsInWindow: Signal4PR[];
   /** Distinct canonical distances represented. */
   distinctDistances: number;
-  /** True when 3+ PRs in window — strong fitness-up evidence. */
+  /** True when 3+ PRs in window, strong fitness-up evidence. */
   firesUp: boolean;
-  /** True when 2 PRs in window — softer positive (single-signal-up state). */
+  /** True when 2 PRs in window, softer positive (single-signal-up state). */
   softPositive: boolean;
   /** Lookback window in days. */
   lookbackDays: number;

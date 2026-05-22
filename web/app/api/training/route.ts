@@ -1,5 +1,5 @@
 /**
- * /api/training — server-side bundle of every Coach call the Training
+ * /api/training, server-side bundle of every Coach call the Training
  * page needs.
  *
  * Mirrors /api/overview/route.ts. The Coach engine pulls in node-only
@@ -12,7 +12,7 @@
  *   - weekDeltas       (THIS WEEK strip)
  *   - trajectory14wk   (PATH TO AFC build curve + Next 4 weeks)
  *   - proofSessions    (PROOF SESSIONS AHEAD list + latest proof)
- *   - raceFitnessPrediction (GOAL TRACKING card — A race only)
+ *   - raceFitnessPrediction (GOAL TRACKING card, A race only)
  */
 
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
@@ -43,7 +43,7 @@ import type { PlanWorkout } from '../../../coach/plan-types';
 import { getProfile } from '../../../lib/profile-store';
 
 // ─────────────────────────────────────────────────────────────────────
-// HR zones rollup — re-homed from /health per Research/00a §TID
+// HR zones rollup, re-homed from /health per Research/00a §TID
 // (training-design metric, not a readiness signal).
 // TODO: wire to a `lib/strava-hr-zones.ts` rollup that aggregates
 // per-activity HR streams into zone minutes per day. The shape mirrors
@@ -210,7 +210,7 @@ export async function GET(): Promise<Response> {
     const freshness = await gatherFreshness({ state });
 
     // Wave G · alive-coach surfaces (server-side). Same engine the
-    // /api/overview route calls — pageviews on /training reuse them.
+    // /api/overview route calls, pageviews on /training reuse them.
     const stateNextA = state.races.nextA;
     const pathToRace = (stateNextA && stateNextA.goalFinishS)
       ? await coach.pathToRace({
@@ -291,12 +291,12 @@ function parseGoalHMS(s: string | undefined): number | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// HR-zones rollup builder — gated on real Strava HR-stream rollup data.
+// HR-zones rollup builder, gated on real Strava HR-stream rollup data.
 // Until lib/strava-hr-zones.ts lands (per-activity HR streams parsed
 // into per-day zone minutes), we return isAvailable:false and the UI
 // surfaces "AWAITING STRAVA HR." easyShare IS real when intensity data
 // is present (it derives from pace, not HR) so we surface that even
-// in the not-yet-available state — but with zero minute totals to make
+// in the not-yet-available state, but with zero minute totals to make
 // it obvious to the UI that the per-day mix is unwired.
 // TODO (Wave J/H follow-up): wire to lib/strava-hr-zones.ts when it
 // lands.

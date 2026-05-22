@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * WorkoutModalIsland — interactive layer for the overview hero +
+ * WorkoutModalIsland, interactive layer for the overview hero +
  * week strip.
  *
  * Renders:
@@ -21,6 +21,7 @@ import { createContext, useContext, useEffect, useState, useMemo, type ReactNode
 import dynamic from 'next/dynamic';
 import { describeWorkout } from '@/lib/workout-descriptions';
 import { generateRunDebrief, parsePaceBounds } from '@/lib/run-debrief';
+import { approxDuration } from '@/lib/duration';
 
 const RouteMap = dynamic(() => import('@/app/log/RouteMap'), { ssr: false, loading: () => <div style={{ height: 260, borderRadius: 10, background: 'rgba(8,8,8,.04)' }} /> });
 
@@ -34,7 +35,7 @@ export interface WorkoutDay {
   hasStrength?: boolean;
   /** When this cell IS a race day (type='race'), the saved race's
    *  slug. Cells with raceSlug navigate to /races/[slug] on click
-   *  instead of opening the workout modal — the race plan has
+   *  instead of opening the workout modal, the race plan has
    *  more depth than a generic workout card. */
   raceSlug?: string;
 }
@@ -53,7 +54,7 @@ function fmtFullDate(iso: string): string {
 }
 
 /* ───────────────────────────────────────────────────────────────────
- * Provider — owns modal state, renders the modal itself
+ * Provider, owns modal state, renders the modal itself
  * ─────────────────────────────────────────────────────────────────── */
 
 export function WorkoutModalProvider({ children, today }: { children: ReactNode; today: string }) {
@@ -80,7 +81,7 @@ export function useModal(): ModalContextValue {
 }
 
 /* ───────────────────────────────────────────────────────────────────
- * Hero actions — OPEN WORKOUT + SKIP TODAY
+ * Hero actions, OPEN WORKOUT + SKIP TODAY
  * ─────────────────────────────────────────────────────────────────── */
 
 export function HeroActions({ today, todayDay, completed }: { today: string; todayDay: WorkoutDay | null; completed?: boolean }) {
@@ -145,7 +146,7 @@ export function HeroActions({ today, todayDay, completed }: { today: string; tod
 
   if (!todayDay) return null;
 
-  // Post-run: the workout's done — the only action is reviewing it.
+  // Post-run: the workout's done, the only action is reviewing it.
   if (completed) {
     return (
       <button type="button" className="btn-primary" onClick={() => openFor(todayDay)}>
@@ -174,7 +175,7 @@ export function HeroActions({ today, todayDay, completed }: { today: string; tod
          : 'SKIP TODAY'}
       </button>
       {err && <span style={{ color: '#FC4D64', fontSize: 12, marginLeft: 8 }}>{err}</span>}
-      {/* Body-attribute-driven dim — applied site-wide whenever today
+      {/* Body-attribute-driven dim, applied site-wide whenever today
           is skipped. Parent hero card opts in by selecting on this
           attribute. */}
       <style jsx global>{`
@@ -193,7 +194,7 @@ export function HeroActions({ today, todayDay, completed }: { today: string; tod
 }
 
 /* ───────────────────────────────────────────────────────────────────
- * Week strip — clickable day cells
+ * Week strip, clickable day cells
  * ─────────────────────────────────────────────────────────────────── */
 
 export function WeekStripCells({
@@ -221,7 +222,7 @@ export function WeekStripCells({
         const actual = completedMileage[d.date] ?? 0;
         // Bug fix: TODAY counts as done too when the run is logged.
         // Previously `!isToday && d.date < today` excluded today, so a
-        // completed run never showed ✓ on its own day — the runner
+        // completed run never showed ✓ on its own day, the runner
         // had to wait until tomorrow for confirmation. Now: today
         // shows DONE the moment actual ≥ 60% planned.
         const isDone = d.date <= today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
@@ -291,9 +292,9 @@ export function WeekStripCells({
 /** Parse the paceTarget string into a display-friendly { primary, unit }.
  *  Handles ranges ("7:20 – 7:40 per mile"), progressive ("9:45 → 8:30
  *  per mile"), mixed ("9:30 easy → half-marathon goal pace"), and
- *  text-only ("Half-marathon goal pace", "—"). */
+ *  text-only ("Half-marathon goal pace", ", "). */
 function parsePaceTarget(paceTarget: string): { primary: string; unit: string } {
-  if (!paceTarget || paceTarget === '—') return { primary: '—', unit: '' };
+  if (!paceTarget || paceTarget === ', ') return { primary: '-', unit: '' };
   // Range with the same unit on the end: "7:20 – 7:40 per mile"
   const range = paceTarget.match(/^(\d+:\d{2})\s*[–-]\s*(\d+:\d{2})\s*per\s*mile/i);
   if (range) return { primary: `${range[1]}–${range[2]}`, unit: '/mi' };
@@ -352,13 +353,13 @@ interface RunWeatherT {
 }
 
 function fmtPaceMS(sPerMi: number): string {
-  if (!sPerMi || sPerMi <= 0) return '—';
+  if (!sPerMi || sPerMi <= 0) return ', ';
   const m = Math.floor(sPerMi / 60);
   const s = sPerMi % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 function fmtTime(sec: number): string {
-  if (!sec || sec <= 0) return '—';
+  if (!sec || sec <= 0) return ', ';
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
@@ -372,7 +373,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   const isPast = !isToday && day.date < today;
   const canHaveActual = day.date <= today; // today or past
 
-  // User's resolved fitness — loaded via /api/runs/by-date. Until it
+  // User's resolved fitness, loaded via /api/runs/by-date. Until it
   // arrives, describeWorkout falls back to VDOT-45 default paces, so
   // the modal renders with generic strings briefly, then re-renders
   // with the user's actual paces (e.g. 6:52/mi HM goal pace for a
@@ -406,7 +407,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   })();
   const durMin = paceMid > 0 ? Math.round((paceMid * day.distanceMi) / 60) : 0;
 
-  // Fetch the actual run for this date (if any) — only for today + past
+  // Fetch the actual run for this date (if any), only for today + past
   const [actual, setActual] = useState<ActualRun | null | undefined>(undefined); // undefined = loading
   const [userMaxHr, setUserMaxHr] = useState<number | null>(null);
   const [userMaxHrSource, setUserMaxHrSource] = useState<string | null>(null);
@@ -414,7 +415,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
   const [dynamics, setDynamics] = useState<RunDynamics | null>(null);
   const [weather, setWeather] = useState<RunWeatherT | null>(null);
 
-  // Always load fitness on modal open — even for future workouts where
+  // Always load fitness on modal open, even for future workouts where
   // we never hit by-date. This is what threads the user's actual race
   // goal pace + Daniels bands into the recipe steps.
   useEffect(() => {
@@ -485,11 +486,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         </div>
 
         {/* ════════════════════════════════════════════════
-            DEBRIEF MODE — Completed run with actual data
+            DEBRIEF MODE, Completed run with actual data
             ════════════════════════════════════════════════ */}
         {actual && !isRest && (
           <>
-            {/* Headline stats — full width across the top */}
+            {/* Headline stats, full width across the top */}
             <div className="wm-stats wm-stats-debrief">
               <div className="wm-stat">
                 <div className="wm-stat-val">{actual.distanceMi.toFixed(1)}<small>mi</small></div>
@@ -504,7 +505,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 <div className="wm-stat-label">Avg pace</div>
               </div>
               <div className="wm-stat">
-                <div className="wm-stat-val">{actual.avgHr ?? '—'}<small>bpm</small></div>
+                <div className="wm-stat-val">{actual.avgHr ?? '-'}<small>bpm</small></div>
                 <div className="wm-stat-label">Avg HR</div>
               </div>
             </div>
@@ -562,7 +563,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                   />
                 ) : (
                   <div className="wm-no-map">
-                    No GPS data — looks like this run was logged from a treadmill or as a manual entry.
+                    No GPS data, looks like this run was logged from a treadmill or as a manual entry.
                   </div>
                 )}
               </div>
@@ -588,7 +589,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                         <div key={s.mile} className={`wm-split-row ${tone}`}>
                           <span className="wm-split-num">{s.mile}</span>
                           <span className="wm-split-pace">{s.paceDisplay}<small>/mi</small></span>
-                          <span className="wm-split-hr">{s.avgHr ?? '—'}</span>
+                          <span className="wm-split-hr">{s.avgHr ?? '-'}</span>
                           <span className="wm-split-elev">
                             {s.elevDeltaFt !== 0 && (s.elevDeltaFt > 0 ? `+${s.elevDeltaFt}` : `${s.elevDeltaFt}`)}
                           </span>
@@ -602,24 +603,24 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                   </div>
                 ) : (
                   <div className="wm-no-splits">
-                    No mile splits yet — Strava is still processing the activity.
+                    No mile splits yet, Strava is still processing the activity.
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Running form — per-run dynamics from Apple Health */}
+            {/* Running form, per-run dynamics from Apple Health */}
             {(() => {
               const cad = actual.avgCadence ?? dynamics?.cadence ?? null;
               const cells: Array<{ label: string; value: string; unit: string }> = [
-                { label: 'Cadence',      value: cad != null ? String(Math.round(cad)) : '—', unit: cad != null ? 'spm' : '' },
-                { label: 'Stride',       value: dynamics?.strideLength != null ? dynamics.strideLength.toFixed(2) : '—', unit: dynamics?.strideLength != null ? 'm' : '' },
-                { label: 'Vert Osc',     value: dynamics?.verticalOscillation != null ? dynamics.verticalOscillation.toFixed(1) : '—', unit: dynamics?.verticalOscillation != null ? 'cm' : '' },
-                { label: 'Grnd Contact', value: dynamics?.groundContactTime != null ? String(Math.round(dynamics.groundContactTime)) : '—', unit: dynamics?.groundContactTime != null ? 'ms' : '' },
-                { label: 'Vert Ratio',   value: dynamics?.verticalRatio != null ? dynamics.verticalRatio.toFixed(1) : '—', unit: dynamics?.verticalRatio != null ? '%' : '' },
-                { label: 'Run Power',    value: dynamics?.runPower != null ? String(Math.round(dynamics.runPower)) : '—', unit: dynamics?.runPower != null ? 'W' : '' },
+                { label: 'Cadence',      value: cad != null ? String(Math.round(cad)) : '-', unit: cad != null ? 'spm' : '' },
+                { label: 'Stride',       value: dynamics?.strideLength != null ? dynamics.strideLength.toFixed(2) : '-', unit: dynamics?.strideLength != null ? 'm' : '' },
+                { label: 'Vert Osc',     value: dynamics?.verticalOscillation != null ? dynamics.verticalOscillation.toFixed(1) : '-', unit: dynamics?.verticalOscillation != null ? 'cm' : '' },
+                { label: 'Grnd Contact', value: dynamics?.groundContactTime != null ? String(Math.round(dynamics.groundContactTime)) : '-', unit: dynamics?.groundContactTime != null ? 'ms' : '' },
+                { label: 'Vert Ratio',   value: dynamics?.verticalRatio != null ? dynamics.verticalRatio.toFixed(1) : '-', unit: dynamics?.verticalRatio != null ? '%' : '' },
+                { label: 'Run Power',    value: dynamics?.runPower != null ? String(Math.round(dynamics.runPower)) : '-', unit: dynamics?.runPower != null ? 'W' : '' },
               ];
-              const anyData = cells.some((c) => c.value !== '—');
+              const anyData = cells.some((c) => c.value !== ', ');
               return (
                 <div className="wm-form">
                   <div className="wm-sub-label">Running form · Apple Health</div>
@@ -633,14 +634,14 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                   </div>
                   {!anyData && (
                     <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(8,8,8,.45)' }}>
-                      Syncs from your Apple Watch via Apple Health — connect it in Profile and run-by-run form lands here.
+                      Syncs from your Apple Watch via Apple Health, connect it in Profile and run-by-run form lands here.
                     </div>
                   )}
                 </div>
               );
             })()}
 
-            {/* Coach take — dynamic response based on actuals vs plan */}
+            {/* Coach take, dynamic response based on actuals vs plan */}
             {(() => {
               const [paceLow, paceHigh] = parsePaceBounds(desc.paceTarget);
               const debrief = generateRunDebrief({
@@ -663,7 +664,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
               });
               const maxHrLabel = userMaxHr
                 ? `Max HR ${userMaxHr} · ${userMaxHrSource === 'manual' ? 'manual' : userMaxHrSource === 'computed' ? 'auto from your races' : 'auto'} · zones tuned to you`
-                : 'Max HR not set — using generic HR bands. Set yours on /profile for personalized zones.';
+                : 'Max HR not set, using generic HR bands. Set yours on /profile for personalized zones.';
               return (
                 <div className="wm-debrief-footer">
                   <div className="wm-debrief-footer-notes">
@@ -683,12 +684,12 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         {/* Missed: past date but no matching run logged */}
         {!actual && actual !== undefined && isPast && !isRest && (
           <div className="wm-missed">
-            No run logged for this date — the planned workout was missed or hasn&rsquo;t synced yet.
+            No run logged for this date, the planned workout was missed or hasn&rsquo;t synced yet.
           </div>
         )}
 
         {/* ════════════════════════════════════════════════
-            PLAN MODE — Future / today / missed: show the recipe
+            PLAN MODE, Future / today / missed: show the recipe
             ════════════════════════════════════════════════ */}
         {!isRest && !actual && (
           <>
@@ -702,7 +703,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 <div className="wm-stat-label">Pace target</div>
               </div>
               <div className="wm-stat">
-                <div className="wm-stat-val">~{durMin || '—'}<small>min</small></div>
+                <div className="wm-stat-val">{approxDuration(durMin || null).value}{approxDuration(durMin || null).unit && <small>{approxDuration(durMin || null).unit}</small>}</div>
                 <div className="wm-stat-label">Duration</div>
               </div>
             </div>
@@ -716,7 +717,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                       {s.kind === 'simple' ? (
                         <div className="wm-recipe-line">
                           <strong className="wm-step-name">{s.name}</strong>
-                          {' — '}
+                          {', '}
                           <strong>{s.duration}</strong>
                           {' at '}
                           <strong>{s.pace}</strong>
@@ -763,7 +764,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
             {day.hasStrength && (
               <>
                 <div className="wm-section-label">Strength session</div>
-                <p className="wm-copy">Pair this run with the strength block — 30 min of lower-body + core after the run, or in a separate session same day.</p>
+                <p className="wm-copy">Pair this run with the strength block, 30 min of lower-body + core after the run, or in a separate session same day.</p>
               </>
             )}
           </>
@@ -794,7 +795,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           box-shadow: 0 30px 80px rgba(0,0,0,.25);
           max-height: 92vh; overflow-y: auto;
         }
-        /* Wider variant for completed-run debrief — 3-column horizontal */
+        /* Wider variant for completed-run debrief, 3-column horizontal */
         .wm-card.wm-card-wide {
           max-width: 1180px;
         }
@@ -811,7 +812,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           color: rgba(8,8,8,.45);
           text-transform: uppercase; margin-bottom: 8px;
         }
-        /* Title block — workout name + zone subtitle.
+        /* Title block, workout name + zone subtitle.
            Bebas Neue + italic for stronger faff.run brand match.
            Clamps grow on wide modal, shrink on narrow viewports. */
         .wm-title-block {
@@ -828,7 +829,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           letter-spacing: -1.5px;
           color: #080808;
           margin: 0;
-          /* Subtle gradient on the bottom — faff brand accent without overdoing it */
+          /* Subtle gradient on the bottom, faff brand accent without overdoing it */
           background: linear-gradient(135deg, #080808 0%, #080808 70%, #E85D26 100%);
           -webkit-background-clip: text;
           background-clip: text;
@@ -899,7 +900,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         .wm-pill.long    { background: #3EBD41; }
         .wm-pill.workout { background: #C97000; }
 
-        /* What you ran — surfaced ABOVE the plan when a matching activity exists */
+        /* What you ran, surfaced ABOVE the plan when a matching activity exists */
         .wm-actual {
           background: rgba(62,189,65,.05);
           border: 1px solid rgba(62,189,65,.20);
@@ -964,7 +965,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           color: rgba(8,8,8,.65);
         }
 
-        /* "The plan:" header — appears above the planned stats block
+        /* "The plan:" header, appears above the planned stats block
            when actuals are present, so the plan becomes the secondary view */
         .wm-plan-header {
           font-family: 'Oswald', sans-serif;
@@ -991,7 +992,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           margin-bottom: 20px;
         }
 
-        /* Recipe — numbered list, no boxes inside */
+        /* Recipe, numbered list, no boxes inside */
         .wm-recipe {
           list-style: none;
           padding: 0;
@@ -1340,7 +1341,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
 }
 
 /* ───────────────────────────────────────────────────────────────────
- * InlineRecap — the completed-run recap rendered straight into the hero
+ * InlineRecap, the completed-run recap rendered straight into the hero
  * (no modal hop, no wasted space). Stats + coach take + running form
  * (with placeholders) inline; "full recap" opens the modal for route +
  * splits.
@@ -1378,7 +1379,7 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
     return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.45)' }}>Loading your run…</div>;
   }
   if (!actual) {
-    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.45)' }}>Run is still syncing from Strava — check back in a minute.</div>;
+    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.45)' }}>Run is still syncing from Strava, check back in a minute.</div>;
   }
 
   const desc = describeWorkout(day.label, day.type, fitness as Parameters<typeof describeWorkout>[2]);
@@ -1398,24 +1399,24 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
   });
   const maxHrLabel = maxHr
     ? `Max HR ${maxHr} · ${maxHrSource === 'manual' ? 'manual' : maxHrSource === 'computed' ? 'auto from your races' : 'auto'} · zones tuned to you`
-    : 'Max HR not set — using generic HR bands. Set yours on /profile.';
+    : 'Max HR not set, using generic HR bands. Set yours on /profile.';
 
   const cad = actual.avgCadence ?? dynamics?.cadence ?? null;
   const stats: Array<{ v: string; u?: string; l: string }> = [
     { v: actual.distanceMi.toFixed(1), u: 'mi', l: 'Distance' },
     { v: fmtTime(actual.movingTimeS), l: 'Time' },
     { v: fmtPaceMS(actual.paceSPerMi), u: '/mi', l: 'Avg pace' },
-    { v: actual.avgHr ? String(actual.avgHr) : '—', u: actual.avgHr ? 'bpm' : '', l: 'Avg HR' },
-    { v: cad != null ? String(Math.round(cad)) : '—', u: cad != null ? 'spm' : '', l: 'Cadence' },
+    { v: actual.avgHr ? String(actual.avgHr) : '-', u: actual.avgHr ? 'bpm' : '', l: 'Avg HR' },
+    { v: cad != null ? String(Math.round(cad)) : '-', u: cad != null ? 'spm' : '', l: 'Cadence' },
   ];
   const form: Array<{ v: string; u: string; l: string }> = [
-    { l: 'Stride', v: dynamics?.strideLength != null ? dynamics.strideLength.toFixed(2) : '—', u: dynamics?.strideLength != null ? 'm' : '' },
-    { l: 'Vert Osc', v: dynamics?.verticalOscillation != null ? dynamics.verticalOscillation.toFixed(1) : '—', u: dynamics?.verticalOscillation != null ? 'cm' : '' },
-    { l: 'Grnd Contact', v: dynamics?.groundContactTime != null ? String(Math.round(dynamics.groundContactTime)) : '—', u: dynamics?.groundContactTime != null ? 'ms' : '' },
-    { l: 'Vert Ratio', v: dynamics?.verticalRatio != null ? dynamics.verticalRatio.toFixed(1) : '—', u: dynamics?.verticalRatio != null ? '%' : '' },
-    { l: 'Run Power', v: dynamics?.runPower != null ? String(Math.round(dynamics.runPower)) : '—', u: dynamics?.runPower != null ? 'W' : '' },
+    { l: 'Stride', v: dynamics?.strideLength != null ? dynamics.strideLength.toFixed(2) : '-', u: dynamics?.strideLength != null ? 'm' : '' },
+    { l: 'Vert Osc', v: dynamics?.verticalOscillation != null ? dynamics.verticalOscillation.toFixed(1) : '-', u: dynamics?.verticalOscillation != null ? 'cm' : '' },
+    { l: 'Grnd Contact', v: dynamics?.groundContactTime != null ? String(Math.round(dynamics.groundContactTime)) : '-', u: dynamics?.groundContactTime != null ? 'ms' : '' },
+    { l: 'Vert Ratio', v: dynamics?.verticalRatio != null ? dynamics.verticalRatio.toFixed(1) : '-', u: dynamics?.verticalRatio != null ? '%' : '' },
+    { l: 'Run Power', v: dynamics?.runPower != null ? String(Math.round(dynamics.runPower)) : '-', u: dynamics?.runPower != null ? 'W' : '' },
   ];
-  const hasForm = form.some((c) => c.v !== '—');
+  const hasForm = form.some((c) => c.v !== ', ');
   const hasRecovery = recovery && (recovery.hrvMs != null || recovery.restingHrBpm != null || recovery.sleepHours != null);
 
   return (
@@ -1447,13 +1448,13 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
         <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(8,8,8,.40)', marginTop: 8 }}>{maxHrLabel}</div>
       </div>
 
-      {/* Running form (always shown — placeholders until Apple Health syncs) */}
+      {/* Running form (always shown, placeholders until Apple Health syncs) */}
       <div style={{ marginTop: 16 }}>
         <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(8,8,8,.40)', marginBottom: 8 }}>Running form · Apple Health</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
-          {[{ l: 'Cadence', v: cad != null ? String(Math.round(cad)) : '—', u: cad != null ? 'spm' : '' }, ...form].map((c) => (
+          {[{ l: 'Cadence', v: cad != null ? String(Math.round(cad)) : '-', u: cad != null ? 'spm' : '' }, ...form].map((c) => (
             <div key={c.l} style={{ padding: '10px 12px', background: 'rgba(8,8,8,.03)', border: '1px solid rgba(8,8,8,.06)', borderRadius: 8 }}>
-              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, lineHeight: 1, color: c.v === '—' ? 'rgba(8,8,8,.32)' : '#080808' }}>
+              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, lineHeight: 1, color: c.v === ', ' ? 'rgba(8,8,8,.32)' : '#080808' }}>
                 {c.v}{c.u && <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 600, color: 'rgba(8,8,8,.40)', marginLeft: 2 }}>{c.u}</small>}
               </div>
               <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 8.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'rgba(8,8,8,.40)', marginTop: 4 }}>{c.l}</div>
@@ -1462,7 +1463,7 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
         </div>
         {(!hasForm || !hasRecovery) && (
           <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(8,8,8,.45)' }}>
-            {hasForm ? '' : 'Form metrics '}{!hasForm && !hasRecovery ? 'and recovery vitals ' : ''}{hasRecovery ? '' : (hasForm ? 'Recovery vitals ' : '')}sync from your Apple Watch via Apple Health — connect it in Profile and they fill in here per run.
+            {hasForm ? '' : 'Form metrics '}{!hasForm && !hasRecovery ? 'and recovery vitals ' : ''}{hasRecovery ? '' : (hasForm ? 'Recovery vitals ' : '')}sync from your Apple Watch via Apple Health, connect it in Profile and they fill in here per run.
           </div>
         )}
       </div>

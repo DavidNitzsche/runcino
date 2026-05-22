@@ -3,7 +3,7 @@
  *
  * The running-form metrics for a single day, read from health_samples
  * (ingested from Apple Health by the iPhone). Used by the web run recap
- * to show per-run dynamics — the day's running average is the run's form
+ * to show per-run dynamics, the day's running average is the run's form
  * when there's one run that day, mirroring the iPhone recap's per-run read.
  *
  * Returns { dynamics: { cadence, stride_length, vertical_oscillation,

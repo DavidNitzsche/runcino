@@ -1,7 +1,7 @@
 /**
  * Server-side race CRUD against Postgres. The single source of truth
  * for race plans + actual results. Replaces the old localStorage path
- * — clients now go through /api/races and /api/races/[slug].
+ *, clients now go through /api/races and /api/races/[slug].
  *
  * Schema: see lib/db.ts (`races` table).
  */
@@ -33,7 +33,7 @@ function toSaved(row: DBRow): SavedRace {
  *
  *  Multi-tenant pattern matches strava_activities/shoes: when userId
  *  is supplied, returns rows where user_uuid matches OR user_uuid is
- *  NULL (un-migrated legacy rows still visible — no regression).
+ *  NULL (un-migrated legacy rows still visible, no regression).
  *  Without userId, returns all races (admin/backwards-compat). */
 export async function listRacesDB(userId?: string): Promise<SavedRace[]> {
   const rows = userId
@@ -75,7 +75,7 @@ export async function saveRaceDB(race: SavedRace, userId?: string): Promise<void
   //   - Race meta-merge editor (spreads existing first)
   // The editor POST is the risk path: client may send a body without
   // actualResult populated, full-replace would NULL it out. Apply same
-  // preservation pattern as splits — keep existing actual_result when
+  // preservation pattern as splits, keep existing actual_result when
   // the new payload doesn't carry one. To DELETE a chip time, callers
   // must use setActualResultDB(slug, null) explicitly.
   await query(

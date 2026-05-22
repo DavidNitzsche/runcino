@@ -66,18 +66,18 @@ export interface Retrospective {
   /** positive = slower than goal */
   finish_delta_s: number;
   phase_deltas: PhaseDelta[];
-  /** Personal GAP calibration — ratio of actual to planned time on
+  /** Personal GAP calibration, ratio of actual to planned time on
    *  climbs and descents. 1.0 means you ran exactly as predicted;
    *  >1 means you were slower than predicted for that grade type. */
   calibration: {
     climb_coefficient: number;
     descent_coefficient: number;
-    /** s/mi drift per mph of headwind — derived from exposed sections */
+    /** s/mi drift per mph of headwind, derived from exposed sections */
     headwind_sensitivity_s_per_mi_per_mph: number | null;
     /** Total HR drift over the race (late - early avg) */
     hr_drift_bpm: number;
   };
-  /** Three structured takeaways for the next race — short strings. */
+  /** Three structured takeaways for the next race, short strings. */
   takeaways: Array<{
     title: string;
     note: string;
@@ -153,12 +153,12 @@ export function computeRetrospective(plan: FaffPlan, actual: ActualRace): Retros
   const late = actual.splits.slice(-thirds).reduce((s, a) => s + a.meanHrBpm, 0) / thirds;
   const hrDrift = Math.round(late - early);
 
-  // Takeaways — deterministic rules. Claude layer writes prose on top.
+  // Takeaways, deterministic rules. Claude layer writes prose on top.
   const takeaways: Retrospective['takeaways'] = [];
   if (Math.abs(climbCoef - 1.0) < 0.05) {
     takeaways.push({
       title: 'Trust the climb pacing',
-      note: 'Climb splits landed within 5% of target. The Minetti GAP model is well-calibrated for your current fitness — don\'t second-guess the pace on next race\'s climbs.',
+      note: 'Climb splits landed within 5% of target. The Minetti GAP model is well-calibrated for your current fitness, don\'t second-guess the pace on next race\'s climbs.',
     });
   } else if (climbCoef > 1.08) {
     takeaways.push({
@@ -175,11 +175,11 @@ export function computeRetrospective(plan: FaffPlan, actual: ActualRace): Retros
   if (hrDrift < 6) {
     takeaways.push({
       title: 'Fueling and pacing held up',
-      note: 'HR drifted less than 6 bpm from early to late race — a signal that fueling and pacing were sustainable. Don\'t change the gel timing.',
+      note: 'HR drifted less than 6 bpm from early to late race, a signal that fueling and pacing were sustainable. Don\'t change the gel timing.',
     });
   } else {
     takeaways.push({
-      title: 'HR drifted late — review fueling',
+      title: 'HR drifted late, review fueling',
       note: `HR drifted ${hrDrift} bpm late in the race. Could be heat, fuel timing, or pacing too aggressive early. Audit before the next race.`,
     });
   }

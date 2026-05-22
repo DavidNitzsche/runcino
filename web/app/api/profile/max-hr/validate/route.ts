@@ -1,7 +1,7 @@
 /**
  * GET /api/profile/max-hr/validate
  *
- * Returns the max HR validation verdict — top peaks, race-anchored
+ * Returns the max HR validation verdict, top peaks, race-anchored
  * estimate, and a recommendation flag (peak-exceeds-current,
  * race-suggests-higher, looks-correct, insufficient-data).
  *

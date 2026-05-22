@@ -1,5 +1,5 @@
 /**
- * /api/goal — Claude-driven goal recommendation.
+ * /api/goal, Claude-driven goal recommendation.
  *
  * Safety model:
  *   - Server-side: ANTHROPIC_API_KEY stays off-device.
@@ -71,7 +71,7 @@ type GoalRequestBody = {
 };
 
 function coachStub(body: GoalRequestBody) {
-  // Deterministic stub — applies the "Big Sur course penalty ≈ 10 min vs flat"
+  // Deterministic stub, applies the "Big Sur course penalty ≈ 10 min vs flat"
   // heuristic to the runner's baseline race. Used when no API key is set.
   const baselineS = parseHMS(body.fitness.baselineFinish) ?? 13200;
   const weeksSince = body.fitness.baselineMonthsAgo * 4;
@@ -89,13 +89,13 @@ function coachStub(body: GoalRequestBody) {
 
   const risks: Array<{ severity: 'good' | 'watch' | 'risk'; text: string }> = [];
   if (longRunAgeWk > 2) {
-    risks.push({ severity: 'watch', text: `Only one 18+ mile run in last ${longRunAgeWk + 2} weeks — durability is the soft spot` });
+    risks.push({ severity: 'watch', text: `Only one 18+ mile run in last ${longRunAgeWk + 2} weeks, durability is the soft spot` });
   }
   if (mileageDelta < -2) {
-    risks.push({ severity: 'watch', text: `Mileage trend is ${mileageDelta} mi/wk — likely taper ate some of the base` });
+    risks.push({ severity: 'watch', text: `Mileage trend is ${mileageDelta} mi/wk, likely taper ate some of the base` });
   }
   if (restingHrDelta < 0) {
-    risks.push({ severity: 'good', text: `Resting HR trending ${restingHrDelta} bpm — strong positive signal` });
+    risks.push({ severity: 'good', text: `Resting HR trending ${restingHrDelta} bpm, strong positive signal` });
   }
 
   return {

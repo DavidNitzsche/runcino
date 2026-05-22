@@ -6,12 +6,12 @@
  * Per David 2026-05-19 round 2 U1: each past race needs a way to
  * express how it should weight in aggregate VDOT. Six levels:
  *
- *   A              full weight — primary goal effort
- *   B              0.7× — secondary checkpoint
- *   C              0.4× — minor race, partial effort
- *   tune-up        0.4× — explicit pre-race tune-up
- *   training-run   0.2× — race used as workout
- *   hilly-excluded 0.0× — course profile distorts VDOT mapping
+ *   A              full weight, primary goal effort
+ *   B              0.7×, secondary checkpoint
+ *   C              0.4×, minor race, partial effort
+ *   tune-up        0.4×, explicit pre-race tune-up
+ *   training-run   0.2×, race used as workout
+ *   hilly-excluded 0.0×, course profile distorts VDOT mapping
  *
  *  Posts to PATCH /api/races/[slug]/priority on save, then reloads
  *  the page so the readiness math + Coach Reads pick up the new
@@ -28,7 +28,7 @@ const OPTIONS: Array<{ value: EffortLevel; label: string; sub: string; weight: s
   { value: 'C',              label: 'C race',          sub: 'Minor race, partial effort',             weight: '0.4×' },
   { value: 'tune-up',        label: 'Tune-up',         sub: 'Pre-A-race sharpener',                   weight: '0.4×' },
   { value: 'training-run',   label: 'Training run',    sub: 'Ran the event, didn’t race it',     weight: '0.2×' },
-  { value: 'hilly-excluded', label: 'Hilly — excluded',sub: 'Course distorts VDOT — remove from agg', weight: '0.0×' },
+  { value: 'hilly-excluded', label: 'Hilly, excluded',sub: 'Course distorts VDOT, remove from agg', weight: '0.0×' },
 ];
 
 export function EffortLevelEditIsland({
@@ -44,7 +44,7 @@ export function EffortLevelEditIsland({
   const [value, setValue] = useState<EffortLevel>(currentPriority);
 
   const currentLabel = OPTIONS.find((o) => o.value === currentPriority)?.label ?? currentPriority;
-  const currentWeight = OPTIONS.find((o) => o.value === currentPriority)?.weight ?? '—';
+  const currentWeight = OPTIONS.find((o) => o.value === currentPriority)?.weight ?? '-';
 
   async function save(picked: EffortLevel) {
     setSaving(true);

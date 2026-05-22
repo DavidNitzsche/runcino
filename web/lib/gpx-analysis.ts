@@ -1,5 +1,5 @@
 /**
- * GPX course analysis — everything needed for the CoursePreview surface.
+ * GPX course analysis, everything needed for the CoursePreview surface.
  *
  * Builds on parseGpx (lib/gpx.ts) to derive: per-segment grades & bearings,
  * per-km / per-mile splits, bounding box, out-and-back match score,
@@ -7,7 +7,7 @@
  * in SI internally; converters live alongside the consumer.
  *
  * Calibration: parseGpx is invoked with smoothWindow=1 and a 2.0 m
- * threshold — that combination matches Strava's reported gain within
+ * threshold, that combination matches Strava's reported gain within
  * ~2% on StravaGPX-creator exports (Malibu Half: 237 ft computed vs
  * 232 ft Strava). Other callers of parseGpx that want different
  * smoothing/thresholding pass their own opts.
@@ -28,11 +28,11 @@ export interface CourseAnalysisSplit {
 
 export interface CourseAnalysisStats {
   totalDistM: number;
-  /** Threshold-based gain in feet (2 m default — matches Strava). */
+  /** Threshold-based gain in feet (2 m default, matches Strava). */
   gainFt: number;
   /** Threshold-based loss in feet. */
   lossFt: number;
-  /** Raw (every positive Δ summed) — useful as a noise floor display. */
+  /** Raw (every positive Δ summed), useful as a noise floor display. */
   rawGainFt: number;
   rawLossFt: number;
   minEleM: number;
@@ -209,7 +209,7 @@ export function analyzeGpx(gpxText: string): CourseAnalysis {
   }
 
   // Out-and-back match score: % of return points within 10 m of any outbound point.
-  // O(n²) — fine for typical GPX (<2k points). Sub-sample if a course ever exceeds that.
+  // O(n²), fine for typical GPX (<2k points). Sub-sample if a course ever exceeds that.
   let oabScorePct = 0;
   const ret = n - turnIdx;
   if (ret > 0) {
@@ -273,7 +273,7 @@ export function gradeColor(gradePct: number): string {
 
 // ── Phase auto-naming ──────────────────────────────────────────────────
 // Generates short, descriptive names for plan phases purely from the
-// GPX shape — no curated registry needed. Replaces the curated labels
+// GPX shape, no curated registry needed. Replaces the curated labels
 // from course-facts.ts at the consumer level: passing an
 // auto-generated array always overrides whatever the saved plan
 // stored, so the same label scheme applies to every race (registered
@@ -358,7 +358,7 @@ export function autoNamePhases(
     if (climb)      return isFirst ? 'Opening climb' : isLast ? 'Final push' : 'Rolling climb';
     if (drop)       return isLast ? 'Closing descent' : 'Long descent';
     if (flat)       return isFirst ? 'Opening miles' : isLast ? 'Finishing stretch' : 'Cruise';
-    // Mixed / mild rolling — keep base short so positional prefixes
+    // Mixed / mild rolling, keep base short so positional prefixes
     // ("Early Rolling / Mid Rolling / Late Rolling") still read cleanly.
     return isFirst ? 'Warm-up' : isLast ? 'Final stretch' : 'Rolling';
   });
@@ -397,7 +397,7 @@ function dedupeRunsWithPosition(names: string[]): string[] {
 // ── Continuous grade color (lerps between bucket anchors) ──────────────
 // `gradeColor` is fine for the legend (shows discrete buckets) but the
 // polyline rendered with it has hard color seams whenever a segment's
-// grade crosses a bucket edge — e.g. 4.95 % → 5.05 % flips yellow → orange
+// grade crosses a bucket edge, e.g. 4.95 % → 5.05 % flips yellow → orange
 // in a single segment. `gradeColorContinuous` interpolates linearly between
 // adjacent anchor colors so a 4.95 % segment is almost yellow, a 5.05 %
 // segment is almost orange, and the polyline visually fades between them.

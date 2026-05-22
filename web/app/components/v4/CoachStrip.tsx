@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * v4 coach strip — the band that sits at the top of /overview.
+ * v4 coach strip, the band that sits at the top of /overview.
  *
  *   ┌─────────────────────────────────────────┬────────────────────┐
  *   │ ● COACH · THU MAY 15 · BASE WEEK 3      │   Today's Check-In │
  *   │                                         │   Energy   [══]  6 │
  *   │ "Good morning, David. Your body is      │   Soreness [══]  4 │
- *   │  absorbing this block really well — ..."│   Stress   [══]  2 │
+ *   │  absorbing this block really well, ..."│   Stress   [══]  2 │
  *   │                                         │   [LOG CHECK-IN]   │
  *   └─────────────────────────────────────────┴────────────────────┘
  *
@@ -15,7 +15,7 @@
  * width card with the check-in form. Both stretch to the same height
  * via flex align-items: stretch.
  *
- * Check-in sliders POST to /api/health/checkin — endpoint already exists
+ * Check-in sliders POST to /api/health/checkin, endpoint already exists
  * (upserts to daily_checkin, keyed on user+date). Existing slider values
  * are pre-loaded via GET so re-visiting the page shows what you logged.
  */
@@ -270,7 +270,7 @@ function SliderRow({
   disabled: boolean;
   onChange: (v: number) => void;
 }) {
-  // Background gradient per tone — matches the .checkin-range CSS classes.
+  // Background gradient per tone, matches the .checkin-range CSS classes.
   const toneColor = tone === 'energy' ? '#3EBD41' : tone === 'soreness' ? '#E85D26' : '#F3AD38';
   const trackBg = `linear-gradient(to right, rgba(8,8,8,.10) 0%, ${toneColor} 100%)`;
 

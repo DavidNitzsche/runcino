@@ -1,5 +1,5 @@
 /**
- * Coach engine — the real version.
+ * Coach engine, the real version.
  *
  * Replaces the earlier placeholder. Encodes the coaching principles
  * from docs/coaching-research.md as constraints + decisions on top of
@@ -7,16 +7,16 @@
  * literature-anchored constant the engine reads.
  *
  * Decision flow each morning:
- *   1. mode      — race vs base (deterministic from race calendar)
- *   2. phase     — BASE | BUILD | PEAK | TAPER (race mode) OR
+ *   1. mode, race vs base (deterministic from race calendar)
+ *   2. phase, BASE | BUILD | PEAK | TAPER (race mode) OR
  *                  POST_RACE | REBUILD | BASE_MAINTENANCE (base mode)
- *   3. run pick  — default by phase + day-of-week, then state nudges
- *   4. constraints — long-run spike cap, recovery spacing, ACWR cap,
+ *   3. run pick, default by phase + day-of-week, then state nudges
+ *   4. constraints, long-run spike cap, recovery spacing, ACWR cap,
  *                    heavy-block override, post-race override
- *   5. strength  — Amp-aware prescription, opposite hard run days
- *   6. week shape — same loop simulated forward 7 days
- *   7. alerts    — heavy-block, easy-ratio low, taper window, rebuild
- *   8. rationale — one sentence that names the load-bearing input
+ *   5. strength, Amp-aware prescription, opposite hard run days
+ *   6. week shape, same loop simulated forward 7 days
+ *   7. alerts, heavy-block, easy-ratio low, taper window, rebuild
+ *   8. rationale, one sentence that names the load-bearing input
  */
 
 import type { CoachState } from './coach-state';
@@ -90,7 +90,7 @@ export function coachDaily(state: CoachState): CoachToday {
   const isHard = isHardRun(run);
   // Full rest day on the run side → no strength either. Rest day means
   // rest. The exception is mid/late POST_RACE where the run is rest but
-  // mobility can still help — but in the first ~5 days of POST_RACE
+  // mobility can still help, but in the first ~5 days of POST_RACE
   // (when REST is being prescribed because the body actually needs it),
   // skip strength entirely.
   const runIsRest = run.type === 'rest';
@@ -122,26 +122,26 @@ export function coachDaily(state: CoachState): CoachToday {
 function decideMode(state: CoachState): 'race' | 'base' {
   // Race mode whenever there's a future A-priority race on the calendar.
   // The legacy gate also required the race to be inside `inWindow` (a
-  // distance-aware build window — 84 days for HM, 112 for marathon),
+  // distance-aware build window, 84 days for HM, 112 for marathon),
   // which made a goal race outside that window invisible to the engine
   // and dropped the runner into base mode. Combined with a stuck
   // `heavyBlockSuspected` flag in `advanceState`, that produced an
   // all-REST plan past the recovery window. The phase logic
   // (raceSubPhase) already maps far-out daysAway to the 'BASE' phase,
-  // so we don't need a secondary gate here — having an A-race is
+  // so we don't need a secondary gate here, having an A-race is
   // sufficient signal that we're in race mode.
   return state.races.nextA ? 'race' : 'base';
 }
 
 /* ── Phase ──────────────────────────────────────────────────── */
 function decidePhase(state: CoachState, mode: 'race' | 'base'): Phase {
-  // POST_RACE overrides BOTH modes — recovery from a recent race takes
+  // POST_RACE overrides BOTH modes, recovery from a recent race takes
   // priority over race-week prep for the next race. A marathon
   // contributes 26 days of recovery window, a half 14, a 10K 7. So a
   // marathon 21 days ago keeps the runner in POST_RACE even though the
   // next-A race is 96 days out. Without this, a runner with a marathon
   // 9 days ago AND a goal race on the calendar would get full BASE
-  // training the day after the marathon — clearly wrong.
+  // training the day after the marathon, clearly wrong.
   if (state.recoveryWindowEndsISO && state.now <= state.recoveryWindowEndsISO) {
     return 'POST_RACE';
   }
@@ -156,19 +156,19 @@ function decidePhase(state: CoachState, mode: 'race' | 'base'): Phase {
 function describeMode(state: CoachState, phase: Phase): string {
   if (phase === 'TAPER' && state.races.nextA) {
     const d = state.races.nextA.daysAway;
-    if (d === 0) return `Race day — ${state.races.nextA.name}`;
-    if (d === 1) return `Race tomorrow — ${state.races.nextA.name}`;
-    return `${d} days to ${state.races.nextA.name} · taper week — volume drops, intensity holds`;
+    if (d === 0) return `Race day, ${state.races.nextA.name}`;
+    if (d === 1) return `Race tomorrow, ${state.races.nextA.name}`;
+    return `${d} days to ${state.races.nextA.name} · taper week, volume drops, intensity holds`;
   }
-  if (phase === 'PEAK' && state.races.nextA)  return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · peak block — marathon-specific work`;
-  if (phase === 'BUILD' && state.races.nextA) return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · build phase — threshold + progression long runs`;
-  if (phase === 'BASE' && state.races.nextA)  return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · base block — aerobic volume`;
+  if (phase === 'PEAK' && state.races.nextA)  return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · peak block, marathon-specific work`;
+  if (phase === 'BUILD' && state.races.nextA) return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · build phase, threshold + progression long runs`;
+  if (phase === 'BASE' && state.races.nextA)  return `${state.races.nextA.daysAway} days to ${state.races.nextA.name} · base block, aerobic volume`;
   if (phase === 'POST_RACE') {
     const r = state.races.recent[0];
-    return r ? `Recovery week — ${r.daysAgo} day${r.daysAgo === 1 ? '' : 's'} since ${r.name}` : 'Recovery — volume drop is by design';
+    return r ? `Recovery week, ${r.daysAgo} day${r.daysAgo === 1 ? '' : 's'} since ${r.name}` : 'Recovery, volume drop is by design';
   }
-  if (phase === 'REBUILD') return 'Easing back in — rebuilding the base after a break';
-  return 'Maintain the base — steady volume, weekly long run, no peaking';
+  if (phase === 'REBUILD') return 'Easing back in, rebuilding the base after a break';
+  return 'Maintain the base, steady volume, weekly long run, no peaking';
 }
 
 /* ── Day-of-week preference helpers ─────────────────────────── */
@@ -208,7 +208,7 @@ function isRecoveryDow(state: CoachState, dow: number): boolean {
 /** Maps a user-relative dow into the template's dow space.
  *
  *  Plan templates encode a fixed weekly cadence (some put the long on
- *  Saturday, others on Sunday — e.g. half_marathon_intermediate has its
+ *  Saturday, others on Sunday, e.g. half_marathon_intermediate has its
  *  long on Sunday, while 5K_beginner has it on Saturday). When a runner
  *  has set a different long-run day from the template's, we shift the
  *  dow before querying so today's user-long-day lands on the template's
@@ -258,7 +258,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // B vs C Race)": "B race | Hard but not depleted; 1-week taper
   // | 7-10 days | 60-70% of A-race recovery". A B-race day is a
   // race day; the day before/after is recovery. Research/08 §9.3
-  // race-week templates document the principle — quality work in
+  // race-week templates document the principle, quality work in
   // the ±2 day band around any race produces fatigue without
   // adaptation.
   //
@@ -270,29 +270,29 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   if (bRaceShield) {
     if (bRaceShield.daysAway === 0) return race(bRaceShield.distanceMi, bRaceShield.name);
     if (Math.abs(bRaceShield.daysAway) === 1) {
-      // ±1 day from B-race — easy or recovery only.
+      // ±1 day from B-race, easy or recovery only.
       return recovery(Math.max(3, baseEasyMi(state, phase) * 0.6));
     }
-    // ±2 days — no quality. Easy aerobic or long_steady on the user's
+    // ±2 days, no quality. Easy aerobic or long_steady on the user's
     // configured long-run day.
     if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
-  // Race-week / race-day overrides — these short-circuit normal logic.
+  // Race-week / race-day overrides, these short-circuit normal logic.
   if (phase === 'TAPER' && state.races.nextA) {
     const d = state.races.nextA.daysAway;
     if (d === 0) return race(state.races.nextA.distanceMi, state.races.nextA.name);
     if (d === 1) return shakeout();
     // Race-week prescription: only easy, recovery, shakeout, or rest.
     // Research/08-pacing-and-race-week.md §9.3 day-by-day race-week
-    // templates (HM/Marathon) — every day inside ~10 days of the
+    // templates (HM/Marathon), every day inside ~10 days of the
     // race is short easy / shakeout / strides / optional rest day. No
     // long runs, no T-pace continuous, no VO2 reps. The peak-week
     // template's quality slots are PEAK-block content, not TAPER, so
     // we short-circuit the template + defaultByDow lookups entirely
     // for the final 10 days. §9.1: "The largest cut is to easy
-    // mileage; intensity is preserved" — intensity here means a few
+    // mileage; intensity is preserved", intensity here means a few
     // short strides, not a T-pace continuous workout.
     if (d >= 2 && d <= 10) {
       return raceWeekEasy(state, dow, d);
@@ -314,7 +314,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // NOTE: `dow === 2` here is race-day-relative, NOT user-preference-
   // relative. Tuesday is 5 days before a Sunday race (the canonical race
   // day in the doctrine templates), giving the right buffer. If your
-  // race lands on a different day, this constant may need rework — flag
+  // race lands on a different day, this constant may need rework, flag
   // for follow-up when we generalize race-day to any weekday.
   if (state.races.nextA) {
     const d = state.races.nextA.daysAway;
@@ -329,10 +329,10 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     return rest(`Heavy-block recovery (~${HEAVY_BLOCK_REST_DAYS} days). Full rest today.`);
   }
 
-  // POST_RACE — graduated recovery based on the LARGEST recent race's
+  // POST_RACE, graduated recovery based on the LARGEST recent race's
   // distance + heavy-block flag (stacked races extend the rest depth).
   //
-  // Single race recovery — gentle ramp:
+  // Single race recovery, gentle ramp:
   //   Marathon:    days 0-3 REST, days 4-7 recovery 2-3mi, days 8-14
   //                easy 4-6mi, days 15-21 gradual return, day 22+ base.
   //   Half:        days 0-2 REST, days 3-5 recovery 2-3mi, days 6-9
@@ -340,39 +340,39 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   //   10K:         days 0-1 REST, days 2-4 recovery, day 5+ base.
   //   5K:          day 0 REST, day 1 recovery, day 2+ base.
   //
-  // Heavy block (marathon-in-14d, 2+ races in 14d, etc) — every stage
+  // Heavy block (marathon-in-14d, 2+ races in 14d, etc), every stage
   // extends ~2x because the second race compounded the damage.
   if (phase === 'POST_RACE') {
     const r = postRaceWorkout(state);
     if (r) return r;
   }
 
-  // Injury-return / long-gap rebuild — Research/05 §1.4 + §1.5.
+  // Injury-return / long-gap rebuild, Research/05 §1.4 + §1.5.
   // "Volume before intensity, always" + the heuristic "weeks off ≈
   // weeks to rebuild base". A runner with weeklyAvg4w ≤ 5 mi and the
   // rebuildAfterBreak flag set (last7 ≤ 30% of last28 avg) is in
   // week 1 of a graded return. Week 1 must cap total volume at ~2×
-  // the recent baseline. With baseline of ~4 mpw, that's ≤ 8mi — i.e.
+  // the recent baseline. With baseline of ~4 mpw, that's ≤ 8mi, i.e.
   // 3-4 short runs of 1.5-3 mi each plus 3-4 rest days, NOT 6 short
   // runs.
   if (phase === 'REBUILD' &&
       state.flags.rebuildAfterBreak &&
       state.volume.weeklyAvg4w < 8) {
     // Run on the user's quality days + their long-run day + the post-long
-    // recovery day — 4 days/week max. The long-run day gets a slightly
+    // recovery day, 4 days/week max. The long-run day gets a slightly
     // longer "long" (capped at 30% of weekly via longRunTarget). Other
-    // days rest. This is the walk-run-to-easy bridge — cross-training
+    // days rest. This is the walk-run-to-easy bridge, cross-training
     // (bike/elliptical) on rest days is encouraged per Research/05 §1.3.
     if (isQualityDow(state, dow)) return buildPrescriptionFor('general_aerobic', state, phase);
     if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
     if (isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
-    return rest('Rest day — week-1 return-to-run cadence. Cross-train (bike, pool, walk) if you want movement.');
+    return rest('Rest day, week-1 return-to-run cadence. Cross-train (bike, pool, walk) if you want movement.');
   }
 
   // ─────────────────────────────────────────────────────────────
   // K2-3: Rebuild-after-break softening for ALL volume tiers.
   // Research/05-injury-return-protocols.md §1.4 "Return-to-Volume
-  // Guidelines" + §1.5 "Volume before intensity, always" — the
+  // Guidelines" + §1.5 "Volume before intensity, always", the
   // principle is scale-free: a 50mpw runner who took 5 days off
   // cannot stack threshold/VO2 on day 1 back any more than a 4mpw
   // runner can. The heuristic "weeks off ≈ weeks to rebuild base"
@@ -395,7 +395,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Daily check-in gate — qualitative-signal Decision Matrix.
+  // Daily check-in gate, qualitative-signal Decision Matrix.
   // Research/00b-recovery-protocols.md §"Warning Signs of Incomplete
   // Recovery" · §"Decision Matrix":
   //   0-1 qualitative signals → continue training
@@ -403,12 +403,12 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   //   3+ qualitative signals  → 3-5 day cutback (50% volume, no quality)
   //   Persistent ≥2 weeks     → stop structured training (out of scope here).
   // checkin-aggregate.ts marks a day "poor" if energy ≤4 OR soreness ≥7
-  // OR stress ≥7 — each row is one qualitative signal day. We read
+  // OR stress ≥7, each row is one qualitative signal day. We read
   // state.checkin?.poorDaysCount as the literal count for the matrix.
   //
   // Mid-week intensity adjustment is bound by phase; here we fold it
   // into today's prescription so the underlying plan honors the
-  // qualitative signal — adjustForReality is a safety net, not the
+  // qualitative signal, adjustForReality is a safety net, not the
   // first responder.
   //
   // The other engine signals (REBUILD branch, low-volume gate) have
@@ -417,25 +417,25 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // ─────────────────────────────────────────────────────────────
   const poorDaysCount = state.checkin?.poorDaysCount ?? 0;
   if (poorDaysCount >= 5) {
-    // 5+ poor days in the 7-day window — beyond the "3+ cutback"
+    // 5+ poor days in the 7-day window, beyond the "3+ cutback"
     // threshold and into "persistent" territory. Today is rest or
     // recovery only; no long runs, no quality.
     if (isLongRunDow(state, dow) || isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
-    return rest(`${poorDaysCount} of the last 7 daily check-ins were poor (energy/soreness/stress). Decision Matrix: full cutback. Rest today — the body is sending the signal.`);
+    return rest(`${poorDaysCount} of the last 7 daily check-ins were poor (energy/soreness/stress). Decision Matrix: full cutback. Rest today, the body is sending the signal.`);
   }
   if (poorDaysCount >= 3) {
-    // 3-4 poor days — Decision Matrix "3+ qualitative" cutback. Drop
+    // 3-4 poor days, Decision Matrix "3+ qualitative" cutback. Drop
     // quality, keep easy volume (or long_steady if the slot is a long
     // run). We let the long-run slot through because long easy aerobic
     // is not a "quality" stimulus per Research/00a §1 ("Recovery run /
-    // General aerobic") — but threshold/VO2/MP-block are suppressed.
+    // General aerobic"), but threshold/VO2/MP-block are suppressed.
     if (isLongRunDow(state, dow)) return buildPrescriptionFor('long_steady', state, phase);
     if (isRecoveryDow(state, dow)) return buildPrescriptionFor('recovery', state, phase);
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
   if (poorDaysCount >= 2 && state.intensity.easyShare14d > 0 && state.intensity.easyShare14d < 0.60) {
     // ADAPTIVE GUARD: bumped from `>= 1` to `>= 2` poor days per the
-    // philosophy in lib/adaptive-pattern.ts — single events don't
+    // philosophy in lib/adaptive-pattern.ts, single events don't
     // trigger changes. One poor check-in could be a bad night's
     // sleep or a stressful day at work, not a fatigue signal. Two
     // consecutive poor days combined with already-unhealthy easy-share
@@ -443,7 +443,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     //
     // The 3+ poor days branch above handles the "definitely cooked"
     // case independently. This branch catches the "starting to drift"
-    // case — and we now require corroborating evidence.
+    // case, and we now require corroborating evidence.
     //
     // Easy-share <60% is well below the polarized target; combined
     // with 2+ poor days that's a real two-signal pattern.
@@ -458,7 +458,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // runner as recovering from disruption. Suppress quality; the easy
   // and long slots are already scaled down via isCrateredVolume() in
   // baseEasyMi / longRunTarget. Don't try to make up the missed
-  // mileage — Research/00a §"Volume progression rules": "5-15% per
+  // mileage, Research/00a §"Volume progression rules": "5-15% per
   // cycle" + 10% rule (Research/05 §1.4 "Return-to-Volume Guidelines").
   // ─────────────────────────────────────────────────────────────
   if (isCrateredVolume(state)) {
@@ -467,7 +467,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
     return buildPrescriptionFor('general_aerobic', state, phase);
   }
 
-  // Aerobic foundation gate — Research/00a §"Aerobic Base Development"
+  // Aerobic foundation gate, Research/00a §"Aerobic Base Development"
   // and §"Volume Guidelines by Experience and Distance": a runner
   // averaging <20 mpw who has no quality history yet ("Beginner" tier
   // for HM/Marathon, "Recreational competitive" floor for 5K/10K)
@@ -477,7 +477,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // Returning runners / beginners get easy + strides only until
   // weekly volume crosses ~20 mpw. Templates encode peak-week shapes
   // (already-built runners), so for a low-volume runner the template
-  // path prescribes threshold/VO2 inappropriately — gate it out here.
+  // path prescribes threshold/VO2 inappropriately, gate it out here.
   // TAPER/POST_RACE/race-day already returned above.
   const lowVolumeNoQualityHistory =
     state.volume.weeklyAvg4w < 20 &&
@@ -516,7 +516,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // Fallback: default by phase + day-of-week (from coach-workouts).
   // Used when no template applies, or when the template's sample-week
   // string didn't classify (e.g., a custom workout name we don't
-  // recognize — we default to the safer phase+dow lookup). The picker
+  // recognize, we default to the safer phase+dow lookup). The picker
   // reads the runner's configured weekly cadence (state.prefs) so the
   // long-run / quality / rest days land on the user's chosen weekdays.
   const def = defaultByDow(phase, dow, state.prefs);
@@ -524,7 +524,7 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
 }
 
 /** Race-week (TAPER, d≥2 days from race) prescription. Research/08
- *  §9.1: "The largest cut is to easy mileage; intensity is preserved" —
+ *  §9.1: "The largest cut is to easy mileage; intensity is preserved", 
  *  intensity in race week means a few short strides or 1-min @ 5K
  *  pulses, not a continuous T-pace workout. §9.3 race-week templates
  *  for HM/Marathon: every day is easy 25-50 min ± strides, with one
@@ -534,12 +534,12 @@ function raceWeekEasy(state: CoachState, dow: number, daysToRace: number): RunPr
   // 2 days out → light shakeout
   if (daysToRace === 2) return shakeout();
   // Recovery day or explicit rest day inside race-week → short recovery.
-  // (Race-week templates don't include a true rest day — even the rest
+  // (Race-week templates don't include a true rest day, even the rest
   // slot gets a short recovery run per Research/08 §9.3.)
   if (isRecoveryDow(state, dow) || dow === state.prefs.restDow) {
     return recovery(Math.max(3, baseEasyMi(state, 'TAPER') * 0.6));
   }
-  // Quality days → easy with strides (intensity preserved per §9.1 —
+  // Quality days → easy with strides (intensity preserved per §9.1, 
   // strides on what would normally be a hard day).
   if (isQualityDow(state, dow)) {
     return easyWithStrides(baseEasyMi(state, 'TAPER'), state);
@@ -557,14 +557,14 @@ function raceWeekEasy(state: CoachState, dow: number, daysToRace: number): RunPr
  *
  *    §13.3 "The recovery period doesn't have to mean no running; it
  *    means easy mileage at 30 to 50 percent of peak, no quality work."
- *    — light recovery is daily, not alternated.
+ *, light recovery is daily, not alternated.
  *
  *    §8.1 lists active recovery as high-evidence: easy spinning or
  *    very-low-intensity jogging supports recovery without taxing the
  *    aerobic system.
  *
  *    §8.3 "every hard training stress requires a recovery period of
- *    24 to 72 hours" — bounds the rest stage. Easy/recovery efforts
+ *    24 to 72 hours", bounds the rest stage. Easy/recovery efforts
  *    are not classified as hard stress.
  *
  *    A heavy-block stack (multiple races within ~30 days) extends the
@@ -590,7 +590,7 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
     const racesDesc = state.races.recent.length > 1
       ? `${state.races.recent.length} races in ${state.races.recent[state.races.recent.length - 1].daysAgo} days (last: ${mostRecent.name})`
       : `${days === 0 ? 'Race day' : `${days} day${days === 1 ? '' : 's'}`} since ${mostRecent.name}`;
-    return rest(`${racesDesc}. Full rest today. ${heavy ? 'Heavy block stacked — needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
+    return rest(`${racesDesc}. Full rest today. ${heavy ? 'Heavy block stacked, needs proper recovery before any running.' : 'The body needs 24-72h before any running, even easy.'}`);
   }
   if (days <= lightEnd) {
     return {
@@ -618,7 +618,7 @@ function postRaceWorkout(state: CoachState): RunPrescription | null {
     type: 'general_aerobic', label: 'General aerobic',
     distanceMi: round1(baseEasyMi(state, 'POST_RACE')), durationMin: null,
     paceTargetSPerMi: null, hrZone: 2,
-    description: `${round1(baseEasyMi(state, 'POST_RACE'))} mi easy aerobic · still inside the marathon recovery window — no quality yet`,
+    description: `${round1(baseEasyMi(state, 'POST_RACE'))} mi easy aerobic · still inside the marathon recovery window, no quality yet`,
     isQuality: false, isLong: false, appendStrides: false,
   };
 }
@@ -629,7 +629,7 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
 
   // Injury-return / very-low-volume override on the recovery floor.
   // Standard recovery floors at 3mi; for a runner on 4 mpw baseline
-  // that's nearly the whole week. Research/05 §1.4 — distances need
+  // that's nearly the whole week. Research/05 §1.4, distances need
   // to fit the rebuild budget. Recovery is a 1-2mi jog in week 1.
   const recoveryFloor = (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) ? 1 : 3;
 
@@ -663,7 +663,7 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
  *  the runner doesn't go from 4mi to 18mi in one week. Floor at 1.5mi
  *  per easy day (a 25-30 min jog), not the generic 3mi. */
 function baseEasyMi(state: CoachState, phase: Phase): number {
-  // REBUILD with very-low baseline (injury return / long gap) — pin
+  // REBUILD with very-low baseline (injury return / long gap), pin
   // distance to baseline, not the 3mi floor. Research/05 §1.4: rebuild
   // takes 4-8 weeks of continuous easy running to reach pre-injury
   // volume. Week 1 starts at baseline, not at pre-injury volume.
@@ -673,13 +673,13 @@ function baseEasyMi(state: CoachState, phase: Phase): number {
     return Math.max(1.5, wkAvg / 4 * 0.9);
   }
   // ─────────────────────────────────────────────────────────────
-  // Crater / disruption guard — Research/00a §"Volume progression
+  // Crater / disruption guard, Research/00a §"Volume progression
   // rules": "5-15% per training cycle for trained athletes" + the
   // "10% rule" (Research/05 §1.4 "Return-to-Volume Guidelines":
   // "weekly mileage +≤10%/week" as a safety margin). When last7Mi has
   // cratered to <70% of weeklyAvg4w (skipped runs, illness, heat,
   // life event) AND we're not also in the rebuild path, the next
-  // week ramps from last7Mi × 1.10 — NOT from weeklyAvg4w. Don't try
+  // week ramps from last7Mi × 1.10, NOT from weeklyAvg4w. Don't try
   // to "make up" the missed mileage; the body is recovering from
   // disruption.
   // ─────────────────────────────────────────────────────────────
@@ -735,7 +735,7 @@ function findBRaceShield(state: CoachState): { name: string; distanceMi: number;
   return closest;
 }
 
-/** Crater detector — last7Mi has dropped well below the 4-week baseline
+/** Crater detector, last7Mi has dropped well below the 4-week baseline
  *  and the 4-week baseline is real (>10mi, so we're not flagging a
  *  runner who always logs 5 mpw). The threshold matches the "missed 2-3
  *  planned runs out of 6" signal: last7Mi <70% of weeklyAvg4w. This is
@@ -755,23 +755,23 @@ function isCrateredVolume(state: CoachState): boolean {
   return state.volume.last7Mi < state.volume.weeklyAvg4w * 0.7;
 }
 
-/** Long-run target — capped at 110% of longest run in last 30 days
+/** Long-run target, capped at 110% of longest run in last 30 days
  *  (single-session-spike rule, doc §13.1). PEAK targets a slight
  *  increase; TAPER cuts to ~75%; POST_RACE / REBUILD cap at 60-80%.
  *
  *  REBUILD with weeklyAvg4w ≤ 5 mi (injury return) overrides the
  *  generic 6-mile floor: Research/05 §1.4 "long run ≤30% of weekly
  *  volume during rebuild". A runner on 4 mpw cannot have a 6mi long
- *  run — that's 150% of weekly. Pin to ≤25% of week-1 budget. */
+ *  run, that's 150% of weekly. Pin to ≤25% of week-1 budget. */
 function longRunTarget(state: CoachState, phase: Phase): number {
-  // POST_RACE — anchor on pre-race TRAINING, not the race itself.
+  // POST_RACE, anchor on pre-race TRAINING, not the race itself.
   // Research/00b §Recovery by Effort + marathon-specific recovery:
   // long runs restart at ~50% of pre-race long, ramping back 2-3 weeks.
   if (phase === 'POST_RACE' && state.volume.preRaceLongestTrainingMi != null) {
     const anchor = state.volume.preRaceLongestTrainingMi;
     return Math.min(maxLongRunMi(state), Math.max(3, anchor * 0.50));
   }
-  // Injury-return long-run pin — must respect the rebuild week budget.
+  // Injury-return long-run pin, must respect the rebuild week budget.
   if (phase === 'REBUILD' && state.volume.weeklyAvg4w < 8) {
     const wkAvg = Math.max(state.volume.weeklyAvg4w, 4);
     return Math.max(2, wkAvg * 0.30);
@@ -790,7 +790,7 @@ function longRunTarget(state: CoachState, phase: Phase): number {
     return Math.max(3, Math.min(maxLongRunMi(state), wkAvg * 0.30));
   }
   const cap = maxLongRunMi(state);
-  // peakLast must be a TRAINING run, never a race — using race effort
+  // peakLast must be a TRAINING run, never a race, using race effort
   // produced a 29mi prescription off a 26.2mi marathon.
   const peakLast = state.volume.longestTrainingRunLast28Mi;
   switch (phase) {
@@ -806,7 +806,7 @@ function longRunTarget(state: CoachState, phase: Phase): number {
 
 /* ── Hard constraints ───────────────────────────────────────── */
 function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, dow: number): RunPrescription {
-  // 1. Long run can't spike — cap at maxLongRunMi.
+  // 1. Long run can't spike, cap at maxLongRunMi.
   if (p.isLong && p.distanceMi > maxLongRunMi(state)) {
     const capped = maxLongRunMi(state);
     return { ...p, distanceMi: round1(capped),
@@ -833,12 +833,12 @@ function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, d
     return { ...easy, description: `${easy.description} · acute load is ${ratio.toFixed(2)}× chronic, holding off on quality today` };
   }
 
-  // 4. POST_RACE phase — never quality, ever.
+  // 4. POST_RACE phase, never quality, ever.
   if (phase === 'POST_RACE' && p.isQuality) {
     return recovery(Math.max(3, baseEasyMi(state, phase) * 0.7));
   }
 
-  // 5. Rebuild — cap distance to a sensible easy. Cap, don't replace:
+  // 5. Rebuild, cap distance to a sensible easy. Cap, don't replace:
   // when longRunTarget is already a deliberately small ≤30%-of-weekly
   // long run (Research/05 §1.4 long-run cap), we want the small long,
   // not a 3mi general-aerobic. Only swap to easy when the original
@@ -870,17 +870,17 @@ function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
   // alert that says the same thing produces banner-fatigue, so we skip
   // these when the description carries the message.
   if (phase === 'BASE_MAINTENANCE' && state.flags.heavyBlockSuspected) {
-    // No alert — description ("X races in N days, full rest today")
+    // No alert, description ("X races in N days, full rest today")
     // and readiness ("recovery is the work right now") already cover it.
   }
   if (phase === 'POST_RACE') {
-    // Same — workout description already names the recent race + the
+    // Same, workout description already names the recent race + the
     // recovery posture. Suppress.
   }
   if (state.flags.rebuildAfterBreak) {
-    out.push({ severity: 'warn', message: 'Last 7 days mileage is well below your 28-day average. Rebuild week — easy mileage only.' });
+    out.push({ severity: 'warn', message: 'Last 7 days mileage is well below your 28-day average. Rebuild week, easy mileage only.' });
   }
-  // Easy-share alert — only fires in phases where the runner has
+  // Easy-share alert, only fires in phases where the runner has
   // forward agency over training composition. POST_RACE and REBUILD
   // are recovery phases; the past 14 days will mechanically fail the
   // ratio and the alert isn't actionable. Skip it.
@@ -890,14 +890,14 @@ function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
     state.intensity.easyShare14d > 0 &&
     state.intensity.easyShare14d < target.easyShareMin
   ) {
-    out.push({ severity: 'warn', message: `Only ${Math.round(state.intensity.easyShare14d * 100)}% easy miles last 14 days. Target for this phase is ≥${Math.round(target.easyShareMin * 100)}% — drop intensity before injury risk climbs.` });
+    out.push({ severity: 'warn', message: `Only ${Math.round(state.intensity.easyShare14d * 100)}% easy miles last 14 days. Target for this phase is ≥${Math.round(target.easyShareMin * 100)}%, drop intensity before injury risk climbs.` });
   }
   if (state.races.nextA && state.races.nextA.daysAway > 0 && state.races.nextA.daysAway <= 14) {
     out.push({ severity: 'info', message: `${state.races.nextA.daysAway}-day taper window for ${state.races.nextA.name}. Volume drops 40-60%, intensity preserved.` });
   }
   const ratio = acwr(state);
   if (ratio != null && ratio > ACWR_HIGH) {
-    out.push({ severity: 'warn', message: `Acute:chronic load ratio is ${ratio.toFixed(2)}× — over the 1.3 ceiling. Holding intensity until it drops.` });
+    out.push({ severity: 'warn', message: `Acute:chronic load ratio is ${ratio.toFixed(2)}×, over the 1.3 ceiling. Holding intensity until it drops.` });
   }
   return out;
 }
@@ -908,7 +908,7 @@ function computeAlerts(state: CoachState, phase: Phase): CoachToday['alerts'] {
 // at a time so race-week overrides and post-race graduated recovery
 // reflect what the day will actually look like. Today's entry is
 // guaranteed to match coachDaily's prescription.
-/** Public range-simulator — walks the engine day-by-day from `startISO`
+/** Public range-simulator, walks the engine day-by-day from `startISO`
  *  through `endISO` (inclusive) and returns one entry per day. Same
  *  per-day path as `simulateWeek` (advance state, re-derive phase, run
  *  pickRun → applyConstraints). Used by the /plan page to render
@@ -930,7 +930,7 @@ export function simulateRange(state: CoachState, startISO: string, endISO: strin
   // climbs, baseEasyMi pegs at its 3.0mi floor for months, and the
   // long-run cap never lifts off today's longest run. That is the
   // root cause of "every weekday for 4 months: GENERAL AEROBIC 3.0
-  // MI" — fixed by advanceStateForSim below.
+  // MI", fixed by advanceStateForSim below.
   const simHistory: SimRun[] = [];
 
   for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
@@ -970,7 +970,7 @@ export function simulateRange(state: CoachState, startISO: string, endISO: strin
     if (chunk.length === 7) {
       enforceWeekStreakCap(chunk, state.volume.weeklyAvg4w);
       // Splice modified chunk back. enforceWeekStreakCap mutates in
-      // place — chunk references the array; reassign each index.
+      // place, chunk references the array; reassign each index.
       for (let j = 0; j < chunk.length; j++) out[i + j] = chunk[j];
     }
   }
@@ -996,7 +996,7 @@ function simulateWeek(state: CoachState, phase: Phase, todayDow: number): CoachT
     const isToday = iso === state.now;
 
     // Calendar offset from today. Past days don't need a real
-    // simulation (Strava actuals fill those in on the client) — we
+    // simulation (Strava actuals fill those in on the client), we
     // still emit an entry so the strip stays 7 wide.
     const offset = Math.round((d.getTime() - today.getTime()) / 86_400_000);
     const dayState = offset > 0 ? advanceStateForSim(state, offset, simHistoryWeek) : state;
@@ -1049,14 +1049,14 @@ function enforceWeekStreakCap(days: CoachToday['weekShape'], weeklyAvg4w: number
     if (streakStart < 0) streakStart = i;
     const streakLen = i - streakStart + 1;
     if (streakLen <= cap) { i += 1; continue; }
-    // Over cap — convert the latest non-quality, non-long general-
+    // Over cap, convert the latest non-quality, non-long general-
     // aerobic day in the streak to rest. Walk back from i, prefer the
     // most recent filler so the week keeps its quality + long shape.
     let swapIdx = -1;
     for (let j = i; j >= streakStart; j--) {
       const c = days[j];
       if (c.type === 'rest' || c.isQuality || c.isLong) continue;
-      if (c.type === 'recovery') continue; // already light — try a fuller easy first
+      if (c.type === 'recovery') continue; // already light, try a fuller easy first
       swapIdx = j; break;
     }
     if (swapIdx < 0) {
@@ -1074,7 +1074,7 @@ function enforceWeekStreakCap(days: CoachToday['weekShape'], weeklyAvg4w: number
       distanceMi: 0,
       paceTargetSPerMi: null,
       hrZone: null,
-      description: 'Protective rest — cap on consecutive run days at this weekly mileage tier.',
+      description: 'Protective rest, cap on consecutive run days at this weekly mileage tier.',
       isQuality: false,
       isLong: false,
     };
@@ -1103,7 +1103,7 @@ function advanceState(state: CoachState, daysOffset: number): CoachState {
   })();
   // Decay heavy-block flag once we're past the recovery window plus
   // the heavy-block reduced-volume window (doc §13.3). Beyond that the
-  // flag has no remaining grounding — both the marathon-in-14d and the
+  // flag has no remaining grounding, both the marathon-in-14d and the
   // races-in-21d criteria have aged out.
   let heavyBlockSuspected = state.flags.heavyBlockSuspected;
   if (heavyBlockSuspected && state.recoveryWindowEndsISO) {
@@ -1129,7 +1129,7 @@ function advanceState(state: CoachState, daysOffset: number): CoachState {
 
 /** One simulated future run, captured during simulateRange / simulateWeek
  *  walks so later days can read the rolling 7/28-day window correctly.
- *  Race-day entries are included — the runner's body registers that
+ *  Race-day entries are included, the runner's body registers that
  *  mileage. */
 interface SimRun {
   dateISO: string;
@@ -1208,12 +1208,12 @@ function advanceStateForSim(state: CoachState, daysOffset: number, simHistory: S
   // Intensity 14-day rollups: hold the ORIGINAL signal across the
   // projection rather than decaying it to zero. The gates that read
   // these (lowVolumeNoQualityHistory: hardMi14d <= last28Mi * 0.05)
-  // measure the runner's TRAINING HISTORY — what their body has
+  // measure the runner's TRAINING HISTORY, what their body has
   // actually done. The simulator's hypothetical future doesn't change
   // the runner's history. If we decay hardMi14d to zero while the
   // simulator's easy runs inflate last28Mi, the gate flips to "no
   // quality history" and locks the runner out of quality forever
-  // (feedback loop — engine prescribes easy → simHard stays 0 → gate
+  // (feedback loop, engine prescribes easy → simHard stays 0 → gate
   // stays triggered → engine prescribes easy …). Keep history
   // sticky; the simulator's accumulated simHard14 / simEasy14 ADD
   // on top so quality the engine does plan still moves the needle.
@@ -1222,12 +1222,12 @@ function advanceStateForSim(state: CoachState, daysOffset: number, simHistory: S
   const hardMi14d = Math.round((origInt.hardMi14d + simHard14) * 10) / 10;
   const totalMi14d = easyMi14d + hardMi14d;
   const easyShare14d = totalMi14d > 0 ? easyMi14d / totalMi14d : origInt.easyShare14d;
-  // origIntensity14Remain considered for decay, rejected — see above.
+  // origIntensity14Remain considered for decay, rejected, see above.
   void origIntensity14Remain;
 
   // rebuildAfterBreak: hold the original signal sticky for the first
   // 28 days of projection. Research/05 §1.4 "Return-to-Volume
-  // Guidelines": "weeks off ≈ weeks to rebuild base" — when the real
+  // Guidelines": "weeks off ≈ weeks to rebuild base", when the real
   // state says "this runner just had a break", we honor it for the
   // first projection block before allowing it to clear naturally as
   // the rolling-window math takes over. Without this hold, the
@@ -1274,11 +1274,11 @@ function strengthFitsThisDay(state: CoachState, phase: Phase, dow: number, today
   // Slots are fixed per STRENGTH_SCHEDULE doctrine: Mon(1) = lower/core, Fri(5) = upper/core.
   // power(3=Wed) and mobility(0=Sun,2=Tue) are phase-specific variants.
   const PLACEMENT: Record<string, number[]> = {
-    lower_core: [1],        // Mon — lower body + core (STRENGTH_SCHEDULE.monFocus)
-    upper_core: [5],        // Fri — upper body + core (STRENGTH_SCHEDULE.friFocus)
-    power: [3],             // Wed — power/explosive work (build phase)
-    maintenance: [1, 5],    // Mon or Fri — maintenance (taper/peak, 1 session)
-    mobility: [0, 2],       // Sun, Tue — mobility (rebuild)
+    lower_core: [1],        // Mon, lower body + core (STRENGTH_SCHEDULE.monFocus)
+    upper_core: [5],        // Fri, upper body + core (STRENGTH_SCHEDULE.friFocus)
+    power: [3],             // Wed, power/explosive work (build phase)
+    maintenance: [1, 5],    // Mon or Fri, maintenance (taper/peak, 1 session)
+    mobility: [0, 2],       // Sun, Tue, mobility (rebuild)
   };
   const types = phase === 'BASE' ? ['lower_core', 'upper_core']
     : phase === 'BUILD' ? ['lower_core', 'upper_core']
@@ -1301,7 +1301,7 @@ function composeRationale(state: CoachState, phase: Phase, p: RunPrescription, s
   // Priority order: explicit overrides → state-driven flags → phase
   // logic → fall-through.
   if (p.type === 'race') return `Race day. Trust the plan, execute the pacing strategy.`;
-  if (p.type === 'shakeout') return `Race tomorrow — keep the legs awake without adding fatigue.`;
+  if (p.type === 'shakeout') return `Race tomorrow, keep the legs awake without adding fatigue.`;
 
   if (state.flags.heavyBlockSuspected && p.type === 'rest') {
     return `${state.races.raceCount30d} races finished in the last 30 days; rest is the highest-leverage workout right now.`;
@@ -1309,35 +1309,35 @@ function composeRationale(state: CoachState, phase: Phase, p: RunPrescription, s
   if (state.flags.rebuildAfterBreak) {
     const ratio = state.volume.weeklyAvg4w > 0 ? Math.round((state.volume.last7Mi / state.volume.weeklyAvg4w) * 100) : null;
     return ratio != null
-      ? `Last 7 days are ${ratio}% of your recent weekly average — easing back, not pushing.`
-      : `Coming back from a break — easing back in.`;
+      ? `Last 7 days are ${ratio}% of your recent weekly average, easing back, not pushing.`
+      : `Coming back from a break, easing back in.`;
   }
   if (phase === 'POST_RACE') {
     const r = state.races.recent[0];
     return r ? `${r.daysAgo} day${r.daysAgo === 1 ? '' : 's'} since ${r.name}. Recovery before structure.` : `Recovery before structure.`;
   }
   if (phase === 'TAPER') {
-    return `Taper week — fitness is built, the job is to arrive at the start line rested without losing edge.`;
+    return `Taper week, fitness is built, the job is to arrive at the start line rested without losing edge.`;
   }
   if (phase === 'PEAK' && p.isLong) {
-    return `Peak block long run — most race-specific session in the cycle (Pfitzinger/Canova). Long-run cap is ${maxLongRunMi(state).toFixed(1)} mi (no >10% spikes).`;
+    return `Peak block long run, most race-specific session in the cycle (Pfitzinger/Canova). Long-run cap is ${maxLongRunMi(state).toFixed(1)} mi (no >10% spikes).`;
   }
   if (p.isQuality && p.isLong) {
-    return `Long run with quality — drives both aerobic capacity and race-pace specificity. Cap ${maxLongRunMi(state).toFixed(1)} mi from longest recent.`;
+    return `Long run with quality, drives both aerobic capacity and race-pace specificity. Cap ${maxLongRunMi(state).toFixed(1)} mi from longest recent.`;
   }
   if (p.isLong) {
     return `Long run anchors the week. Aerobic effort, kept fun. Cap ${maxLongRunMi(state).toFixed(1)} mi from longest recent.`;
   }
   if (p.isQuality) {
     const tgt = intensityTarget(phase);
-    return `Mid-week quality session — ${phase.toLowerCase()} target is ${Math.round(tgt.qualityDaysPerWeek)} quality day${tgt.qualityDaysPerWeek === 1 ? '' : 's'}/week, easy share ≥${Math.round(tgt.easyShareMin * 100)}%.`;
+    return `Mid-week quality session, ${phase.toLowerCase()} target is ${Math.round(tgt.qualityDaysPerWeek)} quality day${tgt.qualityDaysPerWeek === 1 ? '' : 's'}/week, easy share ≥${Math.round(tgt.easyShareMin * 100)}%.`;
   }
   if (strength) {
     return `Easy mileage today; ${strength.label.toLowerCase()} on the Amp completes the day. ${state.intensity.easyShare14d > 0 ? `Last 14d easy share ${Math.round(state.intensity.easyShare14d * 100)}%.` : ''}`.trim();
   }
   return phase === 'BASE_MAINTENANCE'
-    ? `Maintain the base — easy mileage compounds across years more than any single hard day.`
-    : `Building toward race day — aerobic miles are the substrate.`;
+    ? `Maintain the base, easy mileage compounds across years more than any single hard day.`
+    : `Building toward race day, aerobic miles are the substrate.`;
 }
 
 /* ── Helpers ────────────────────────────────────────────────── */

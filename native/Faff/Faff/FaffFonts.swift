@@ -4,7 +4,7 @@
 //
 //  Registers the bundled v4 typefaces (Bebas Neue, Inter, Oswald) at
 //  launch via CoreText. The iOS target uses a generated Info.plist
-//  (no UIAppFonts key), so we register programmatically instead — call
+//  (no UIAppFonts key), so we register programmatically instead, call
 //  FaffFonts.register() once from the app entry point.
 //
 

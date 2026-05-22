@@ -24,7 +24,7 @@ struct TodayView: View {
     @State private var working = false
     private struct RecapDate: Identifiable { let id: String }
 
-    // The logged run for the selected day (past, or a completed today) — drives
+    // The logged run for the selected day (past, or a completed today), drives
     // both the hero's actuals AND the inline recap surfaced below it, so the
     // run's route / splits / dynamics fill the space instead of hiding behind
     // a "View full recap" tap.
@@ -44,7 +44,7 @@ struct TodayView: View {
                 dateStrip(overview)
                 coachLineView
                 heroView
-                // Inline recap — when the selected day has a logged run, surface
+                // Inline recap, when the selected day has a logged run, surface
                 // its route, mile splits, summary and per-run dynamics right
                 // here instead of leaving the space empty.
                 if let r = selRun {
@@ -116,7 +116,7 @@ struct TodayView: View {
             if overview.todayWorkout.isRest {
                 restHero(overview)
             } else if todayDone, let d = todayPlanDay {
-                // Post-run: today's run is logged — show the recap hero
+                // Post-run: today's run is logged, show the recap hero
                 // (loads actuals + taps into the full recap), matching web.
                 PastDayHero(
                     date: overview.today ?? "",
@@ -195,16 +195,16 @@ struct TodayView: View {
     private func dayLine(_ d: OPlanDay) -> String {
         let dw = DerivedWorkout(plan: d, fallback: nil)
         let wd = weekday(d.dateISO)
-        if dw.isRest { return "\(wd) is a rest day — recovery is part of the work." }
+        if dw.isRest { return "\(wd) is a rest day, recovery is part of the work." }
         let mi = OverviewFormat.distance(d.distanceMi)
         if isPastSel {
             let actual = overview.completedByDate?[d.dateISO ?? ""] ?? 0
-            if overview.isPlanDayDone(d) { return "\(wd)'s \(dw.label.lowercased()), logged — \(OverviewFormat.distance(actual)) of \(mi) mi." }
-            if overview.isPlanDaySkipped(d) { return "\(wd)'s \(dw.label.lowercased()) — skipped. The coach adapts the days around it." }
-            if overview.isPlanDayShort(d) { return "\(wd)'s \(dw.label.lowercased()) — ran \(OverviewFormat.distance(actual)) of \(mi) mi planned. Short, but it counts." }
-            return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned, missed (not logged)."
+            if overview.isPlanDayDone(d) { return "\(wd)'s \(dw.label.lowercased()), logged, \(OverviewFormat.distance(actual)) of \(mi) mi." }
+            if overview.isPlanDaySkipped(d) { return "\(wd)'s \(dw.label.lowercased()), skipped. The coach adapts the days around it." }
+            if overview.isPlanDayShort(d) { return "\(wd)'s \(dw.label.lowercased()), ran \(OverviewFormat.distance(actual)) of \(mi) mi planned. Short, but it counts." }
+            return "\(wd)'s \(dw.label.lowercased()), \(mi) mi planned, missed (not logged)."
         }
-        return "\(wd)'s \(dw.label.lowercased()) — \(mi) mi planned. Tap Open workout for the structure."
+        return "\(wd)'s \(dw.label.lowercased()), \(mi) mi planned. Tap Open workout for the structure."
     }
     private func weekday(_ iso: String?) -> String {
         guard let iso, iso.count >= 10 else { return "That day" }
@@ -218,15 +218,15 @@ struct TodayView: View {
         let isToday = d.dateISO == o.today
         let isPast = (d.dateISO ?? "") < (o.today ?? "")
         if o.isPlanDayDone(d) {
-            // Completed — green check (white when sitting on the green fill).
+            // Completed, green check (white when sitting on the green fill).
             Image(systemName: "checkmark").font(.system(size: 7, weight: .black))
                 .foregroundStyle(onFill ? .white : Faff.C.recovery)
         } else if o.isPlanDaySkipped(d) {
-            // Deliberately skipped — amber slash (the coach knows; not "missed").
+            // Deliberately skipped, amber slash (the coach knows; not "missed").
             Image(systemName: "slash.circle").font(.system(size: 7, weight: .bold))
                 .foregroundStyle(onFill ? .white : Faff.C.milestone)
         } else if o.isPlanDayShort(d) {
-            // Logged, but short of plan — amber check (ran, didn't complete it).
+            // Logged, but short of plan, amber check (ran, didn't complete it).
             Image(systemName: "checkmark").font(.system(size: 7, weight: .black))
                 .foregroundStyle(onFill ? .white : Faff.C.milestone)
         } else if isRest {
@@ -234,7 +234,7 @@ struct TodayView: View {
         } else if isToday {
             Circle().fill(Faff.C.milestone).frame(width: 5, height: 5)
         } else if isPast {
-            // Missed — planned, not logged, not skipped. A hollow warn ring so
+            // Missed, planned, not logged, not skipped. A hollow warn ring so
             // it's clearly distinct from a deliberate skip and from "to come".
             Circle().stroke(Faff.C.warn.opacity(0.85), lineWidth: 1.5).frame(width: 5, height: 5)
         } else {
@@ -247,7 +247,7 @@ struct TodayView: View {
         return String(Int(iso.suffix(2)) ?? 0)
     }
 
-    // ── Coach brief (no eyebrow on Today — date strip gives context) ──
+    // ── Coach brief (no eyebrow on Today, date strip gives context) ──
     private func coachBrief(_ o: OverviewResponse) -> some View {
         faffMarkdown(o.coachRead)
             .font(Faff.F.inter(14)).foregroundStyle(Faff.C.ink).lineSpacing(4)
@@ -281,7 +281,7 @@ struct TodayView: View {
                     StatPill(value: OverviewFormat.distance(dw.distanceMi), unit: "mi", label: "Distance")
                     StatPill(value: dw.paceDisplay, unit: dw.paceDisplay.contains(":") ? "/mi" : nil,
                              label: "Pace", accent: dw.isQuality)
-                    StatPill(value: dw.durationMin.map { "~\($0)" } ?? "—",
+                    StatPill(value: dw.durationMin.map { "~\($0)" } ?? ", ",
                              unit: dw.durationMin != nil ? "min" : nil, label: "Time")
                 }
                 actionButtons
@@ -322,7 +322,7 @@ struct TodayView: View {
                 .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
             Text("REST").font(Faff.F.display(54)).tracking(-0.5)
                 .foregroundStyle(Faff.C.ink).padding(.top, 9).padding(.bottom, 8)
-            Text("No run on the schedule today. **Recovery is part of training** — let the body absorb the work from this week and come into the next session fresh.")
+            Text("No run on the schedule today. **Recovery is part of training**, let the body absorb the work from this week and come into the next session fresh.")
                 .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -352,7 +352,7 @@ struct TodayView: View {
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(dw.distanceMi), unit: "mi", label: "Distance")
                     StatPill(value: dw.paceDisplay, unit: dw.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: dw.isQuality)
-                    StatPill(value: dw.durationMin.map { "~\($0)" } ?? "—", unit: dw.durationMin != nil ? "min" : nil, label: "Time")
+                    StatPill(value: dw.durationMin.map { "~\($0)" } ?? ", ", unit: dw.durationMin != nil ? "min" : nil, label: "Time")
                 }
                 GhostButton(title: "Open workout") { onOpenWorkout() }.padding(.top, 12)
             }
@@ -446,7 +446,7 @@ struct TodayView: View {
         if overview.readinessHasDetail { return overview.readinessSummary }
         guard let a = acwr else { return "No recovery data yet. Connect Apple Health for heart-rate variability, resting heart rate and sleep." }
         let load = a > 1.3
-            ? "Your training load is climbing — keep easy days easy."
+            ? "Your training load is climbing, keep easy days easy."
             : "Your training load is balanced."
         return load + (o_hasHealth ? "" : " Connect Apple Health for heart-rate variability & sleep.")
     }
@@ -455,12 +455,12 @@ struct TodayView: View {
 
 // MARK: - Coach adaptations card (dismissible, top of Today)
 
-/// "Coach updated your plan" — shows recent plan adaptations (grouped by
+/// "Coach updated your plan", shows recent plan adaptations (grouped by
 /// reason, with the day(s) touched + the research citation) so a change never
 /// happens silently. Appears only when there's an adaptation newer than the
 /// one this device last dismissed (local seen-tracking via @AppStorage).
 /// BIG plan adaptations the coach proposes but won't apply until the runner
-/// approves — cutbacks, suppressing quality, volume drops, race-week reshapes,
+/// approves, cutbacks, suppressing quality, volume drops, race-week reshapes,
 /// post-race pace shifts. Each card carries Approve / Skip; the change lands on
 /// the plan only on approve. Small/safety adaptations auto-apply (no card).
 private struct PendingAdaptationsCard: View {
@@ -522,7 +522,7 @@ private struct PendingAdaptationsCard: View {
         let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
         let names = days.compactMap { inF.date(from: String($0.prefix(10))).map { out.string(from: $0) } }
         if names.count > 4 { return "\(names.count) days" }
-        return names.joined(separator: ", ")
+        return names.joined(separator: "-")
     }
 }
 
@@ -569,11 +569,11 @@ private struct CoachAdaptationsCard: View {
         let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
         let names = days.compactMap { inF.date(from: String($0.prefix(10))).map { out.string(from: $0) } }
         if names.count > 4 { return "\(names.count) days" }
-        return names.joined(separator: ", ")
+        return names.joined(separator: "-")
     }
 }
 
-// MARK: - Structure bar (quality days) — kept from the prior build
+// MARK: - Structure bar (quality days), kept from the prior build
 
 struct StructureBar: View {
     enum Seg { case warm, work, rec, cool }
@@ -595,7 +595,7 @@ struct StructureBar: View {
     }
 }
 
-// MARK: - Daily check-in (Energy / Soreness / Stress) — real data
+// MARK: - Daily check-in (Energy / Soreness / Stress), real data
 
 private struct CheckInCard: View {
     @State private var energy: Double = 5
@@ -621,7 +621,7 @@ private struct CheckInCard: View {
         .task { await load() }
     }
 
-    // Confirmed — solid green card with a checkmark + the logged stats.
+    // Confirmed, solid green card with a checkmark + the logged stats.
     private var confirmedView: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
@@ -751,7 +751,7 @@ private struct CheckInSlider: View {
 
 // ── Past day hero ─────────────────────────────────────────────────
 /// A selected past day. Loads the real run from /api/runs/by-date (the
-/// source of truth — works around flaky completedByDate detection) so
+/// source of truth, works around flaky completedByDate detection) so
 /// the card shows the true result + a tap into the full recap (route,
 /// mile splits, HR). Honest "missed" when nothing synced.
 private struct PastDayHero: View {
@@ -801,7 +801,7 @@ private struct PastDayHero: View {
             if !isRest {
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(plannedMi), unit: "mi", label: "Planned")
-                    StatPill(value: logged ? OverviewFormat.distance(run?.distanceMi) : "—",
+                    StatPill(value: logged ? OverviewFormat.distance(run?.distanceMi) : "-",
                              unit: logged ? "mi" : nil, label: "Ran",
                              accent: outcome == .onPlan)
                 }
@@ -812,7 +812,7 @@ private struct PastDayHero: View {
                         if let hr = r.avgHr { StatPill(value: "\(Int(hr))", unit: "bpm", label: "Avg HR") }
                     }.padding(.top, Faff.S.inlineGap)
                 } else {
-                    // Nothing synced for this day — say so plainly (no recap to
+                    // Nothing synced for this day, say so plainly (no recap to
                     // surface below).
                     Text("No run synced for this day yet.")
                         .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)

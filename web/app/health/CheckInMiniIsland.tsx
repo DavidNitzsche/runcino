@@ -40,7 +40,7 @@ export function CheckInMiniIsland({ today }: { today: string }) {
     }
   }
 
-  // Confirmed state — solid green card with a checkmark + logged stats.
+  // Confirmed state, solid green card with a checkmark + logged stats.
   if (logged && !editing) {
     const stat = (label: string, val: number) => (
       <div style={{ textAlign: 'center', flex: 1 }}>

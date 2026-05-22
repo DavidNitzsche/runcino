@@ -6,7 +6,7 @@
  * exist (Strava cache via /api/log); local-dev demo runs surface from the
  * route when Strava isn't synced.
  *
- * Shape is stable — when Coach.runRead() lands in Stage 7 only the bodies
+ * Shape is stable, when Coach.runRead() lands in Stage 7 only the bodies
  * of the helpers change. The page already renders against the wire shape.
  */
 
@@ -154,7 +154,7 @@ function synthesizeGreetCopy(api: LogApiOk): { greetEyebrow: string; greetSub: s
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Formatters — shared between page + cards
+// Formatters, shared between page + cards
 // ─────────────────────────────────────────────────────────────────────
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -166,7 +166,7 @@ export function formatShortDate(iso: string): string {
   return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`;
 }
 
-/** "1:32:00" / "8:42" — hh:mm:ss for >= 1h, m:ss otherwise. */
+/** "1:32:00" / "8:42", hh:mm:ss for >= 1h, m:ss otherwise. */
 export function formatTime(s: number): string {
   s = Math.round(s);
   const h = Math.floor(s / 3600);
@@ -176,14 +176,14 @@ export function formatTime(s: number): string {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-/** "8:42/mi" — pace formatter, expects s/mi. */
+/** "8:42/mi", pace formatter, expects s/mi. */
 export function formatPace(s: number): string {
-  if (s <= 0) return '—';
+  if (s <= 0) return ', ';
   s = Math.round(s);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/** Topbar clock formatter — DOW · MON D · H:MM AM/PM. */
+/** Topbar clock formatter, DOW · MON D · H:MM AM/PM. */
 export function formatTopbarClock(d: Date): string {
   const dows = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];

@@ -1,5 +1,5 @@
 /**
- * /api/strava/bests — aggregate Strava's best_efforts across every
+ * /api/strava/bests, aggregate Strava's best_efforts across every
  * cached activity detail in the database. Returns the fastest YTD time
  * per canonical distance (1 mi / 5K / 10K / Half / Marathon) plus the
  * activity that set it.
@@ -28,8 +28,8 @@ import { query } from '../../../../lib/db';
 const FETCH_BUDGET = 8;
 
 /** Map Strava's best_effort.name to our display labels. Strava uses
- *  inconsistent casing — "1 mile", "5k", "10k", "Half-Marathon",
- *  "Marathon" — so normalize. Also drops shorter efforts (400m, 1/2
+ *  inconsistent casing, "1 mile", "5k", "10k", "Half-Marathon",
+ *  "Marathon", so normalize. Also drops shorter efforts (400m, 1/2
  *  mile, 1k, 2 mile) that the dashboard doesn't surface. */
 const NAME_MAP: Array<{ match: RegExp; label: string; distMi: number }> = [
   { match: /^1\s*mile$/i,         label: '1 mi',     distMi: 1.00 },
@@ -70,13 +70,13 @@ export async function GET() {
     return Response.json({ bests: [], error: 'STRAVA_REFRESH_TOKEN not set.' }, { status: 200 });
   }
 
-  // Pull all activity rows from Postgres — already normalized + maybe
+  // Pull all activity rows from Postgres, already normalized + maybe
   // detail-cached.
   const rows = await query<DBRow>(`SELECT id, data, detail FROM strava_activities`);
 
   // Lazy-fetch detail for activities that need it. Priority order:
-  //   1. Race-like activities — PRs almost always come from races.
-  //   2. Recent quality sessions (last 90 days) — their best_efforts feed
+  //   1. Race-like activities, PRs almost always come from races.
+  //   2. Recent quality sessions (last 90 days), their best_efforts feed
   //      VDOT calibration and interval session scoring.
   // Capped at FETCH_BUDGET requests per call to stay inside Strava's
   // 100 req / 15 min rate limit across all concurrent app activity.
@@ -85,7 +85,7 @@ export async function GET() {
     .filter(r => {
       if (r.detail != null) return false;
       if (isProbablyRace(r.data)) return true;
-      // Quality sessions in the last 90 days — will populate best_efforts
+      // Quality sessions in the last 90 days, will populate best_efforts
       // for interval scoring and training-run VDOT inference.
       if (r.data.date >= cutoff90ISO && isQualityWorkout(r.data)) return true;
       return false;
@@ -129,7 +129,7 @@ export async function GET() {
 
   const bests: AggregatedBest[] = NAME_MAP.map(({ label, distMi }) => {
     const hit = bestByLabel.get(label);
-    if (!hit) return { label, distMi, bestS: null, elapsedDisplay: '—', activityId: null, activityName: null, date: null, isPR: false };
+    if (!hit) return { label, distMi, bestS: null, elapsedDisplay: '-', activityId: null, activityName: null, date: null, isPR: false };
     return {
       label,
       distMi,

@@ -8,7 +8,7 @@
  * The trajectory function reads L7 signal state to classify the
  * race as AHEAD / ON-TRACK / BEHIND / COLLECTING-EVIDENCE per V3.
  * NOTE: the underlying computeRaceTrajectory derives state from the
- * user's overall signals (not slug-specific) — the slug is here for
+ * user's overall signals (not slug-specific), the slug is here for
  * future race-specific extensions and to match the canonical URL
  * shape iPhone clients use to navigate.
  *

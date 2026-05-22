@@ -9,7 +9,7 @@
  *
  * Use case: "Has my signal been waiting to fire because heat or
  * race-recency wasn't filtered before? Now that the filters are in,
- * what does the signal actually see?" — David, 2026-05-19 round 4.
+ * what does the signal actually see?", David, 2026-05-19 round 4.
  *
  * Returns full SignalObservation shape per workout, plus the rolled-
  * up faster/slower counts and weights, plus the verdict the same
@@ -38,7 +38,7 @@ interface ActivityRow {
 }
 
 function fmtPace(s: number | null): string {
-  if (s == null || s <= 0) return '—';
+  if (s == null || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
@@ -172,10 +172,10 @@ export async function GET(req: NextRequest) {
     },
     summary: {
       hint: result.fasterCount >= 3 && result.fasterWeight >= 2.5
-        ? `${result.fasterCount} faster observations at ${result.fasterWeight.toFixed(1)}w — bump should fire.`
+        ? `${result.fasterCount} faster observations at ${result.fasterWeight.toFixed(1)}w, bump should fire.`
         : result.observations.length >= 3
-          ? `${result.observations.length} threshold-band workouts found; ${result.fasterCount} flagged faster after filters (need 3 obs + 2.5w to fire UP). Below threshold — system correctly waiting.`
-          : `Only ${result.observations.length} threshold-band workouts in last ${LOOKBACK_DAYS} days. Need 3 to evaluate — system waiting on more data.`,
+          ? `${result.observations.length} threshold-band workouts found; ${result.fasterCount} flagged faster after filters (need 3 obs + 2.5w to fire UP). Below threshold, system correctly waiting.`
+          : `Only ${result.observations.length} threshold-band workouts in last ${LOOKBACK_DAYS} days. Need 3 to evaluate, system waiting on more data.`,
     },
   });
 }

@@ -7,7 +7,7 @@
  * body temp, respiratory rate, VO2max) are stubs from /api/health
  * that match the locked May 9 mockup for local-dev QA.
  *
- * The shape is stable — when HealthKit ingestion lands in M2 only
+ * The shape is stable, when HealthKit ingestion lands in M2 only
  * the bodies of the helpers change.
  */
 
@@ -40,7 +40,7 @@ import type {
 // ─────────────────────────────────────────────────────────────────────
 // Re-export NEW research-grounded shapes so /health/page.tsx and any
 // future consumers can pull from one module. The wire format is owned
-// by /api/health/route.ts — data.ts only flattens and forwards.
+// by /api/health/route.ts, data.ts only flattens and forwards.
 // ─────────────────────────────────────────────────────────────────────
 
 export type {
@@ -62,13 +62,13 @@ export type {
 // ─────────────────────────────────────────────────────────────────────
 
 export interface HealthData {
-  /** ISO "today" — locked once per load. */
+  /** ISO "today", locked once per load. */
   today: string;
   /** Coach engine state (read-only by the UI). */
   state: CoachState;
   /** Headline composite + 5 signals. Real (assessReadiness). */
   readiness: HealthApiReadinessComposite;
-  /** Body-systems report — the centerpiece. Real (bodySystems stub). */
+  /** Body-systems report, the centerpiece. Real (bodySystems stub). */
   bodySystems: CoachDecision<BodySystemsReport>;
   /** Today's prescription summary (for "stressor vs rest" framing). */
   prescription: {
@@ -108,7 +108,7 @@ export interface HealthData {
   expandedCheckin: HealthApiExpandedCheckin;
   /** Subjective-vs-wearable agreement chip. */
   subjectiveAgreement: HealthApiSubjectiveAgreement;
-  /** HRV deep card — CV + Plews verdict + 30d series. */
+  /** HRV deep card, CV + Plews verdict + 30d series. */
   hrvDetail: HealthApiHrvDetail;
   /** Form / CTL · ATL · TSB with operating band. */
   formReport: HealthApiFormReport;
@@ -118,11 +118,11 @@ export interface HealthData {
   bodyMass: HealthApiBodyMass;
   /** Submax HR drift (earliest overtraining marker). */
   submaxHrDrift: HealthApiSubmaxHrDrift;
-  /** Cycle phase — null when profile.sex !== 'female'. */
+  /** Cycle phase, null when profile.sex !== 'female'. */
   cycle: HealthApiCycle | null;
-  /** Ferritin status — null when profile.sex !== 'female'. */
+  /** Ferritin status, null when profile.sex !== 'female'. */
   ferritin: HealthApiFerritin | null;
-  /** Profile snapshot — drives Row 5 rendering. */
+  /** Profile snapshot, drives Row 5 rendering. */
   profile: HealthApiProfile;
 }
 
@@ -253,11 +253,11 @@ function synthesizeGreetCopy(api: HealthApiOk): {
     .sort((a, b) => b.daysToHealed - a.daysToHealed)[0];
   let greetSub: string;
   if (recentRace && slowestBuilding) {
-    greetSub = `All vitals trending positive. ${slowestBuilding.label} still rebuilding from ${recentRace.name} — quality returns ~ ${qualityReturnsLabel}.`;
+    greetSub = `All vitals trending positive. ${slowestBuilding.label} still rebuilding from ${recentRace.name}, quality returns ~ ${qualityReturnsLabel}.`;
   } else if (recentRace) {
-    greetSub = `All vitals trending positive. ${recentRace.name} fully absorbed — back to base building.`;
+    greetSub = `All vitals trending positive. ${recentRace.name} fully absorbed, back to base building.`;
   } else {
-    greetSub = `All vitals trending positive. No recent race — body in steady state.`;
+    greetSub = `All vitals trending positive. No recent race, body in steady state.`;
   }
 
   return { greetEyebrow, greetSub, daysSincePeakStress };
@@ -291,7 +291,7 @@ export function formatHoursToHMM(decimalHrs: number): string {
   return `${h}:${m.toString().padStart(2, '0')}`;
 }
 
-/** Topbar clock formatter — DOW · MON D · H:MM AM/PM. */
+/** Topbar clock formatter, DOW · MON D · H:MM AM/PM. */
 export function formatTopbarClock(d: Date): string {
   const dows = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];

@@ -2,7 +2,7 @@
  * POST /api/auth/token/refresh
  *
  * Exchange a refresh token for a NEW access + refresh token pair.
- * The old refresh token is revoked atomically — refresh rotation
+ * The old refresh token is revoked atomically, refresh rotation
  * defends against replay if a token leaks.
  *
  * Request:  { refreshToken }
@@ -16,7 +16,7 @@
  *   which one.
  * - Each successful refresh INVALIDATES the old refresh token.  If a
  *   client tries to refresh with a stale token after rotation, they
- *   get 401 — caller must re-authenticate with password.
+ *   get 401, caller must re-authenticate with password.
  * - Replay window: between the moment a token is leaked and the
  *   legitimate user's next refresh, the attacker gets ONE rotation.
  *   This is the canonical refresh-rotation guarantee.

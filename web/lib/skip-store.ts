@@ -4,7 +4,7 @@
  *
  * A "skip" is the runner explicitly marking that today's planned
  * workout didn't happen. It's not the same thing as Strava simply
- * having no run on that date — it's the runner's intentional
+ * having no run on that date, it's the runner's intentional
  * acknowledgement, which is what the coach engine needs to react.
  *
  * Read paths:
@@ -54,7 +54,7 @@ function rowToSkip(r: SkipRow): SkippedWorkout {
 }
 
 /** Save (upsert) a skip for `dateISO`. Re-saving on the same day
- *  overwrites — keeps only the latest plan snapshot + reason. */
+ *  overwrites, keeps only the latest plan snapshot + reason. */
 export async function saveSkip(input: {
   userId?: string;
   dateISO: string;

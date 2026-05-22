@@ -1,5 +1,5 @@
 /**
- * v4 readiness ring — SVG gauge with a 270° arc (135° gap at the
+ * v4 readiness ring, SVG gauge with a 270° arc (135° gap at the
  * bottom). Maths from overview-v4.html, kept exactly:
  *
  *   r=130 → full circumference = 2π × 130 ≈ 816.81
@@ -10,7 +10,7 @@
  *   Score fill: dasharray = arc × (score/100), gap = full − arc
  *   For 88/100: 612.61 × .88 = 539.10, gap = 816.81 − 539.10 = 277.71
  *
- * Token: "Building" / "Ready" / "Watching" — caption below the ring.
+ * Token: "Building" / "Ready" / "Watching", caption below the ring.
  */
 
 export type ReadinessLevel = 'green' | 'yellow' | 'red';
@@ -42,7 +42,7 @@ export function ReadinessRing({ score, level, caption }: ReadinessRingProps) {
   const fillLen   = TRACK_DASH * fillRatio;
   const gapLen    = FULL_CIRC - fillLen;
   const color     = colorFor(level);
-  const display   = score == null ? '—' : String(Math.round(score));
+  const display   = score == null ? ', ' : String(Math.round(score));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

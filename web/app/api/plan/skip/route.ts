@@ -1,5 +1,5 @@
 /**
- * /api/plan/skip — runner explicitly marks today's planned workout as
+ * /api/plan/skip, runner explicitly marks today's planned workout as
  * skipped. Writes a row to `skipped_workouts` so the coach engine can
  * react and /log surfaces it as a real event.
  *
@@ -8,7 +8,7 @@
  *        Body: { plannedWorkoutType?, plannedMi?, reason?, undo?: true }
  *        When `undo: true`, deletes the row instead.
  *
- * The endpoint is intentionally narrow — Skip is a clear runner
+ * The endpoint is intentionally narrow, Skip is a clear runner
  * intent, not a fuzzy signal. The coach treats it as ground truth.
  */
 
@@ -36,13 +36,13 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const dateISO = body.dateISO ?? todayLAISO();
 
-    // Undo path — delete the row.
+    // Undo path, delete the row.
     if (body.undo === true) {
       const deleted = await deleteSkip({ dateISO });
       return Response.json({ ok: true, deleted });
     }
 
-    // Validate optional fields softly — bad input shouldn't 500.
+    // Validate optional fields softly, bad input shouldn't 500.
     const plannedWorkoutType =
       typeof body.plannedWorkoutType === 'string' && body.plannedWorkoutType.length <= 80
         ? body.plannedWorkoutType

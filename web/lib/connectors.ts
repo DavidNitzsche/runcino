@@ -1,5 +1,5 @@
 /**
- * Connector helpers — server-side checks used by every protected
+ * Connector helpers, server-side checks used by every protected
  * page to decide whether to render the Connect Strava banner.
  *
  * Source: connector_tokens table (per-user OAuth credentials).
@@ -36,7 +36,7 @@ export async function listUserConnectors(userId: string): Promise<ConnectorRow[]
  * to decide whether to render the Connect Strava banner.
  *
  * "Activity sources" are providers that actually feed runs into the
- * runs table — Strava, Garmin, etc. (Whoop/Oura don't count.)
+ * runs table, Strava, Garmin, etc. (Whoop/Oura don't count.)
  */
 export async function userHasActivitySource(userId: string): Promise<boolean> {
   const ACTIVITY_PROVIDERS = new Set([

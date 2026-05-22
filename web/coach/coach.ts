@@ -1,5 +1,5 @@
 /**
- * Coach — single entry point for every coaching judgment in faff.run.
+ * Coach, single entry point for every coaching judgment in faff.run.
  *
  * Layer 2 of the architecture in docs/COACH_BUILD_PLAN.md. The
  * application doesn't compute pace strategies, prescribe workouts,
@@ -7,16 +7,16 @@
  * a method on this Coach. The Coach internally chooses between two
  * brains:
  *
- *   • Deterministic — read from web/coach/doctrine/*.ts (structured
+ *   • Deterministic, read from web/coach/doctrine/*.ts (structured
  *     constants extracted from docs/coaching-research.md). Used for
  *     math, lookups, ACWR, taper percentages, intensity distribution.
- *   • LLM — Claude with web/coach/voice.md + the full research doc
+ *   • LLM, Claude with web/coach/voice.md + the full research doc
  *     cached as a system prompt. Used only for judgment calls
  *     (race-morning brief, retrospective insight, "this is unusual,
  *     what do we do?"). Each call returns a structured CoachDecision
  *     so the consumer always gets answer + rationale + citations.
  *
- * Stage 0 (this file): interface only — every method throws. Stage 1
+ * Stage 0 (this file): interface only, every method throws. Stage 1
  * onward fills the methods in, one at a time, against doctrine and
  * the existing engines (lib/pacing.ts, lib/coach-engine.ts, etc.) it
  * is replacing.
@@ -107,7 +107,7 @@ export interface WorkoutPrescription {
   paceTargetSPerMi?: { lower: number; upper: number } | null;
   /** HR zone (1-5), if available. */
   hrZone?: number | null;
-  /** Phase chip label — context, not verdict. "Post-race recovery",
+  /** Phase chip label, context, not verdict. "Post-race recovery",
    *  "Build", "Build · quality", "Peak", "Taper", "Recovery", etc. */
   phaseLabel: string;
   /** ONE multi-sentence body paragraph in the Coach voice that
@@ -130,7 +130,7 @@ export interface AssessReadinessInput extends CoachBaseContext {
 
 export interface ReadinessAssessment {
   level: 'green' | 'yellow' | 'red';
-  /** Sentence the daily card renders verbatim — Coach voice. */
+  /** Sentence the daily card renders verbatim, Coach voice. */
   message: string;
   /** Numeric ACWR for the indicator strip; null if not enough data. */
   acwr: number | null;
@@ -176,17 +176,17 @@ export interface RaceMorningBriefInput extends CoachBaseContext {
   /** Top-line course summary the brief can reference (peak mile, etc.). */
   courseSummary: string;
   /** Race-start elevation, feet. Used for altitude slowdown when
-   *  >1000 ft (Research/06 §7). Optional — defaults to sea level. */
+   *  >1000 ft (Research/06 §7). Optional, defaults to sea level. */
   elevationFt?: number;
   /** Goal pace in seconds-per-mile, used to convert the slowdown
    *  percentage into a per-mile seconds adjustment for the brief. */
   goalPaceSPerMi?: number;
-  /** Race distance in miles. Heat impact scales with race duration —
+  /** Race distance in miles. Heat impact scales with race duration, 
    *  a half marathon sees roughly half the heat impact of a marathon
    *  in the same conditions because exposure time is half. Required
    *  for the slowdown calc to reflect distance correctly. */
   raceDistanceMi?: number;
-  /** Runner ability tier — picks the right Maughan curve. Default
+  /** Runner ability tier, picks the right Maughan curve. Default
    *  'mid_pack'. Future: derive from VDOT or recent race times. */
   abilityTier?: 'elite' | 'mid_pack' | 'slow';
   /** Whether the runner is altitude-acclimatized (≥3 weeks at race
@@ -287,7 +287,7 @@ export interface Coach {
    *  into lib/fueling-claude.ts. (Wired Stage 1.) */
   fuelingFor(input: FuelingInput): Promise<CoachDecision<FuelingPlan>>;
 
-  /** Pre-race brief in the Coach's voice. LLM brain. (Wired Stage 2 —
+  /** Pre-race brief in the Coach's voice. LLM brain. (Wired Stage 2, 
    *  this is the first user-visible "the coach is alive" surface.) */
   briefRaceMorning(input: RaceMorningBriefInput): Promise<CoachDecision<string>>;
 
@@ -301,7 +301,7 @@ export interface Coach {
    *  makes sense. (Wired Stage 5.) */
   adjustForReality(input: AdjustForRealityInput): Promise<CoachDecision<AdjustedPlan>>;
 
-  /** 7-day rollup of plan adjustments — drives the PLAN ADAPTED card.
+  /** 7-day rollup of plan adjustments, drives the PLAN ADAPTED card.
    *  Empty `items` when nothing has moved (UI then renders "Plan held
    *  steady"). (Wired Stage 5.) */
   recentAdjustments(input: RecentAdjustmentsInput): Promise<CoachDecision<RecentAdjustmentsReport>>;
@@ -313,43 +313,43 @@ export interface Coach {
 
   /** 5-row body-systems readiness card (Glycogen / Muscle / Connective
    *  / CNS / Immune) with healed-date estimates. Surfaces on Overview
-   *  + Health pages. (Stub Stage 7 — wire to recovery_protocols.) */
+   *  + Health pages. (Stub Stage 7, wire to recovery_protocols.) */
   bodySystems(input: BodySystemsInput): Promise<CoachDecision<BodySystemsReport>>;
 
   /** 14-week PATH-TO-A-RACE trajectory: weekly mileage curve with phase
    *  tints, peak diamond, race marker. Backs /training PATH chart and
-   *  /races A-race hero "Build starts" tile. (Stub Stage 7 — wire to
+   *  /races A-race hero "Build starts" tile. (Stub Stage 7, wire to
    *  plan_templates.) */
   trajectory14wk(input: Trajectory14wkInput): Promise<CoachDecision<Trajectory14wk>>;
 
-  /** The key proof workouts upcoming in the build — surfaces on the
+  /** The key proof workouts upcoming in the build, surfaces on the
    *  /training GOAL TRACKING card as "Proof sessions ahead". (Stub
-   *  Stage 7 — wire to plan_templates.) */
+   *  Stage 7, wire to plan_templates.) */
   proofSessions(input: ProofSessionsInput): Promise<CoachDecision<ProofSessionsReport>>;
 
   /** GOAL vs FITNESS vs HEADROOM prediction for a specific race.
-   *  Surfaces on /races A-race hero. (Stub Stage 7 — wire to
+   *  Surfaces on /races A-race hero. (Stub Stage 7, wire to
    *  race_prediction.) */
   raceFitnessPrediction(input: RaceFitnessPredictionInput): Promise<CoachDecision<RaceFitnessPrediction>>;
 
-  /** Week strip — per-day deltas (actual vs planned) with chip labels.
-   *  Surfaces on Overview WEEK STRIP cards. (Stub Stage 7 — wire to
+  /** Week strip, per-day deltas (actual vs planned) with chip labels.
+   *  Surfaces on Overview WEEK STRIP cards. (Stub Stage 7, wire to
    *  plan_templates + strava-actuals join.) */
   weekDeltas(input: WeekDeltasInput): Promise<CoachDecision<WeekDeltasReport>>;
 
-  /** The Coach's read on its own engine state — pace zones, long-run
-   *  cap, easy-share target, cutback cadence — plus plan-integrity
+  /** The Coach's read on its own engine state, pace zones, long-run
+   *  cap, easy-share target, cutback cadence, plus plan-integrity
    *  validation. Surfaces on /profile COACH DETAILS card. (Stub Stage
-   *  7 — wire to multi-doctrine.) */
+   *  7, wire to multi-doctrine.) */
   engineDetails(input: EngineDetailsInput): Promise<CoachDecision<EngineDetailsReport>>;
 
   /** Coach Read card for a single run's detail view. Voice verdict +
    *  decision deltas (long-run cap unlocked, baseline bumped, etc.).
-   *  (Stub Stage 7 — wire to retrospective + state diff.) */
+   *  (Stub Stage 7, wire to retrospective + state diff.) */
   runRead(input: RunReadInput): Promise<CoachDecision<RunReadReport>>;
 
   /** Coach Read mini-takeaway under a race recap. One verdict line +
-   *  one body sentence. (Stub Stage 7 — wire to retrospective loop.) */
+   *  one body sentence. (Stub Stage 7, wire to retrospective loop.) */
   coachRead(input: CoachReadInput): Promise<CoachDecision<CoachReadReport>>;
 
   // ── Wave G · alive-coach surfaces (real data) ───────────────────────
@@ -429,7 +429,7 @@ export interface RunReadInput extends CoachBaseContext {
 }
 
 export interface CoachReadInput extends CoachBaseContext {
-  /** State at the time of the recap — used to compare the actual finish
+  /** State at the time of the recap, used to compare the actual finish
    *  against what current VDOT predicted before this race factored in. */
   state: CoachState;
   /** Race the read is about. */
@@ -522,7 +522,7 @@ export interface CoachPush {
 
 export interface NextPushesReport {
   /** 1-3 prioritized pushes, highest urgency first. Empty when no
-   *  signals fire — the card renders "Plan steady". */
+   *  signals fire, the card renders "Plan steady". */
   pushes: CoachPush[];
   rationale: string;
 }
@@ -540,7 +540,7 @@ class CoachImpl implements Coach {
   // ── Stage 5 · adjustForReality ─────────────────────────────────────
   // Decide whether today's prescribed workout should change based on
   // recent signals (missed runs, ACWR, sleep debt, HRV trend). Walks the
-  // INCOMPLETE_RECOVERY decision matrix from Research/00b — counts how
+  // INCOMPLETE_RECOVERY decision matrix from Research/00b, counts how
   // many quantitative signals are firing and maps that count to one of
   // four actions: continue · defer 24-48h · 3-5d cutback · full cutback.
   //
@@ -551,7 +551,7 @@ class CoachImpl implements Coach {
   //   full cutback    → rest, with a "stop training, see medical" note
   //
   // @research Research/00b §Warning Signs of Incomplete Recovery
-  //           — Decision Matrix · Quantitative Signals
+  //, Decision Matrix · Quantitative Signals
   //           Research/00a §13.1 ACWR sweet spot 0.8-1.3
   async adjustForReality(input: AdjustForRealityInput): Promise<CoachDecision<AdjustedPlan>> {
     const { signals, scheduledWorkout } = input;
@@ -560,7 +560,7 @@ class CoachImpl implements Coach {
     // INCOMPLETE_RECOVERY_QUANTITATIVE_SIGNALS thresholds (Research/00b).
     const fired: Array<{ signal: string; reason: string }> = [];
 
-    // ACWR danger zone — > 1.5 is the documented injury-risk threshold.
+    // ACWR danger zone, > 1.5 is the documented injury-risk threshold.
     // Sweet spot is 0.8-1.3 per HSS 2024 marathon research.
     if (signals.acwr > 1.5) {
       fired.push({ signal: 'ACWR', reason: `ACWR ${signals.acwr.toFixed(2)} above 1.5 danger zone` });
@@ -568,7 +568,7 @@ class CoachImpl implements Coach {
 
     // 5+ days since last run = rebuild territory, not just a deload.
     if (signals.daysSinceLastRun >= 5) {
-      fired.push({ signal: 'daysSinceLastRun', reason: `${signals.daysSinceLastRun} days since last run — rebuilding` });
+      fired.push({ signal: 'daysSinceLastRun', reason: `${signals.daysSinceLastRun} days since last run, rebuilding` });
     }
 
     // 3+ missed runs in 7 days = adherence pattern, not a one-off.
@@ -589,7 +589,7 @@ class CoachImpl implements Coach {
       fired.push({ signal: 'hrv', reason: `HRV ${signals.hrvBaselineDelta.toFixed(0)}% below baseline` });
     }
 
-    // Daily-checkin qualitative signal — 2+ poor days in the 7-day
+    // Daily-checkin qualitative signal, 2+ poor days in the 7-day
     // aggregate reads as a pattern per Research/00b §Decision Matrix.
     if (signals.checkinPoorDaysLast7d != null && signals.checkinPoorDaysLast7d >= 2) {
       fired.push({
@@ -602,7 +602,7 @@ class CoachImpl implements Coach {
 
     // ── Decision matrix · INCOMPLETE_RECOVERY_DECISION_MATRIX ─────
     // 0-1 → continue · 2 → defer quality · 3+ → cutback.
-    // The 5+ days-since-last-run case overrides — that's rebuild,
+    // The 5+ days-since-last-run case overrides, that's rebuild,
     // not a "skip today" call.
     if (signals.daysSinceLastRun >= 5) {
       const recoveryMi = Math.max(2.5, Math.min(5.0, scheduledWorkout.distanceMi * 0.5));
@@ -618,7 +618,7 @@ class CoachImpl implements Coach {
             paceTargetSPerMi: null,
             hrZone: 1,
             phaseLabel: 'REBUILD',
-            voiceLead: `${signals.daysSinceLastRun} days since your last run — body needs a re-entry, not the prescribed session. Short and very easy today. Build the week back from here.`,
+            voiceLead: `${signals.daysSinceLastRun} days since your last run, body needs a re-entry, not the prescribed session. Short and very easy today. Build the week back from here.`,
           },
           changed: true,
           adjustedFor: fired.map((f) => f.reason),
@@ -633,7 +633,7 @@ class CoachImpl implements Coach {
       return {
         answer: { workout: scheduledWorkout, changed: false, adjustedFor: [] },
         rationale: count === 0
-          ? 'No incomplete-recovery signals firing — today as scheduled.'
+          ? 'No incomplete-recovery signals firing, today as scheduled.'
           : `One signal firing (${fired[0]!.reason}). Below the defer threshold; continuing as planned.`,
         citations: [{ doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' }],
         brain: 'deterministic',
@@ -652,7 +652,7 @@ class CoachImpl implements Coach {
               isQuality: false,
               paceTargetSPerMi: null,
               hrZone: 2,
-              voiceLead: `Two recovery signals firing — ${fired.map((f) => f.reason).join(' and ')}. Keep the volume, drop the intensity today. Re-attempt quality in 24-48h once signals settle.`,
+              voiceLead: `Two recovery signals firing, ${fired.map((f) => f.reason).join(' and ')}. Keep the volume, drop the intensity today. Re-attempt quality in 24-48h once signals settle.`,
             },
             changed: true,
             adjustedFor: fired.map((f) => f.reason),
@@ -662,7 +662,7 @@ class CoachImpl implements Coach {
         brain: 'deterministic',
         };
       }
-      // Today is already easy — nothing to defer. Continue.
+      // Today is already easy, nothing to defer. Continue.
       return {
         answer: { workout: scheduledWorkout, changed: false, adjustedFor: [] },
         rationale: `Two signals firing but today is already easy. Continuing as planned.`,
@@ -684,7 +684,7 @@ class CoachImpl implements Coach {
           isLong: false,
           paceTargetSPerMi: null,
           hrZone: cutbackMi > 0 ? 1 : null,
-          voiceLead: `${count} recovery signals firing simultaneously: ${fired.map((f) => f.reason).join('; ')}. Doctrine says 3+ signals warrants a 3-5 day cutback. Today is the start — 50% volume, no quality. If signals persist past 2 weeks, escalate to a medical/coach review.`,
+          voiceLead: `${count} recovery signals firing simultaneously: ${fired.map((f) => f.reason).join('; ')}. Doctrine says 3+ signals warrants a 3-5 day cutback. Today is the start, 50% volume, no quality. If signals persist past 2 weeks, escalate to a medical/coach review.`,
         },
         changed: true,
         adjustedFor: fired.map((f) => f.reason),
@@ -696,13 +696,13 @@ class CoachImpl implements Coach {
   }
 
   // ── Stage 5 · recentAdjustments ────────────────────────────────────
-  // 7-day rollup of REAL plan adjustments — what the engine actually
+  // 7-day rollup of REAL plan adjustments, what the engine actually
   // moved over the last 7 days.
   //
   // This method does NOT retroactively re-simulate past days. The
   // adaptive layer doesn't have a persistence layer yet (no
   // plan_adjustments table), so any "what would Coach have decided
-  // yesterday?" walk is hindsight, not history — and the UI honors
+  // yesterday?" walk is hindsight, not history, and the UI honors
   // that distinction. Until the persistence layer ships, historical
   // adjustments surface as empty ("Plan held steady"), and today's
   // adjustment is the only item that can fire.
@@ -711,7 +711,7 @@ class CoachImpl implements Coach {
   // (daysSinceLastRun, ACWR, check-in poor-days, missed runs in the
   // current calendar week) and emits an item iff `changed === true`.
   //
-  // `missedRunsLast7d` is derived from `state.volume.last7Days` — the
+  // `missedRunsLast7d` is derived from `state.volume.last7Days`, the
   // current Mon-Sun calendar week. Days in the past with 0 miles where
   // the engine would have prescribed a run count as "missed". This is
   // a SIGNAL for today's decision, not a retroactive history entry.
@@ -786,7 +786,7 @@ class CoachImpl implements Coach {
     }
 
     const rationale = items.length === 0
-      ? 'Plan held steady — Coach didn\'t need to move anything this week.'
+      ? 'Plan held steady, Coach didn\'t need to move anything this week.'
       : `${items.length} adjustment${items.length === 1 ? '' : 's'} this week (${items[0]!.dateDisplay} most recent).`;
 
     return {
@@ -802,8 +802,8 @@ class CoachImpl implements Coach {
 
   // ── Stage 4 · retrospect ──────────────────────────────────────────
   // Post-race reflection. Parses the plan and actual to find the key
-  // deltas — finish-time gap, pacing pattern (positive/even/negative
-  // split), how the actual unfolded against the goal — and renders a
+  // deltas, finish-time gap, pacing pattern (positive/even/negative
+  // split), how the actual unfolded against the goal, and renders a
   // two-paragraph reflection in the Coach voice.
   //
   // Calibration deltas are conservative by design: we only emit a
@@ -817,38 +817,38 @@ class CoachImpl implements Coach {
 
     const paras: string[] = [];
 
-    // Paragraph 1 — the race verdict.
+    // Paragraph 1, the race verdict.
     if (summary.goalDeltaS == null) {
       paras.push(
-        `Race in the books. Without a goal time on file I can read the splits but not measure against intent — log the goal next time and the verdict gets sharper.`,
+        `Race in the books. Without a goal time on file I can read the splits but not measure against intent, log the goal next time and the verdict gets sharper.`,
       );
     } else {
       const off = Math.abs(summary.goalDeltaS);
       const dir = summary.goalDeltaS > 0 ? 'over' : 'under';
       const offDisplay = off >= 60 ? `${Math.round(off / 60)} min ${off % 60}s` : `${Math.round(off)}s`;
       if (off <= 30) {
-        paras.push(`Goal-line execution — finished ${offDisplay} ${dir} the target. Plan held. The kind of race that calibrates everything else; the engine is exactly where the model predicted.`);
+        paras.push(`Goal-line execution, finished ${offDisplay} ${dir} the target. Plan held. The kind of race that calibrates everything else; the engine is exactly where the model predicted.`);
       } else if (summary.goalDeltaS > 0 && off > 30) {
         const cause = summary.splitPattern === 'positive_split'
-          ? 'Positive split — second half slowed past the budget.'
+          ? 'Positive split, second half slowed past the budget.'
           : summary.splitPattern === 'even'
           ? 'Pacing held even but the goal was ahead of current fitness.'
           : 'Mixed pacing with a tough back half.';
-        paras.push(`Off goal by ${offDisplay} on the slow side. ${cause} Not a redo-the-plan situation on its own — race day adds friction the engine never sees. Log it, hold the build, see what the next mid-cycle test says.`);
+        paras.push(`Off goal by ${offDisplay} on the slow side. ${cause} Not a redo-the-plan situation on its own, race day adds friction the engine never sees. Log it, hold the build, see what the next mid-cycle test says.`);
       } else {
-        paras.push(`Beat goal by ${offDisplay} — fitness is ahead of where the engine had it placed. ${summary.splitPattern === 'negative_split' ? 'Negative split too, which means the floor is still rising.' : 'Execution clean.'} The plan was conservative; the next build can lean harder.`);
+        paras.push(`Beat goal by ${offDisplay}, fitness is ahead of where the engine had it placed. ${summary.splitPattern === 'negative_split' ? 'Negative split too, which means the floor is still rising.' : 'Execution clean.'} The plan was conservative; the next build can lean harder.`);
       }
     }
 
-    // Paragraph 2 — pacing pattern + what changes.
+    // Paragraph 2, pacing pattern + what changes.
     const pacingNote = (() => {
       switch (summary.splitPattern) {
         case 'positive_split':
-          return 'Pacing went out hot. The cost showed up in the back half — that\'s usually a goal-pace miscalibration or aid-station discipline, not a fitness ceiling. Two options next time: dial the first-mile target back 5-8 s/mi, or commit to even-effort GAP on hills.';
+          return 'Pacing went out hot. The cost showed up in the back half, that\'s usually a goal-pace miscalibration or aid-station discipline, not a fitness ceiling. Two options next time: dial the first-mile target back 5-8 s/mi, or commit to even-effort GAP on hills.';
         case 'negative_split':
-          return 'Built into the second half — the gold standard for goal-pace races. Validates that the engine has more room than the goal implied. Next build can hold the same volume but stretch quality reps by a third.';
+          return 'Built into the second half, the gold standard for goal-pace races. Validates that the engine has more room than the goal implied. Next build can hold the same volume but stretch quality reps by a third.';
         case 'even':
-          return 'Even-effort pacing across the course — the plan executed exactly as designed. Course shape didn\'t catch you off guard. Repeat the same pacing strategy template at the next A.';
+          return 'Even-effort pacing across the course, the plan executed exactly as designed. Course shape didn\'t catch you off guard. Repeat the same pacing strategy template at the next A.';
         default:
           return 'Pacing was uneven enough that no clean pattern emerges. Worth reviewing the splits against the elevation chart before drawing structural conclusions.';
       }
@@ -863,11 +863,11 @@ class CoachImpl implements Coach {
     if (summary.goalDeltaS != null) {
       const offPct = Math.abs(summary.goalDeltaS) / summary.goalFinishS;
       if (summary.goalDeltaS < 0 && offPct > 0.015 && summary.splitPattern === 'negative_split') {
-        // Beat goal by >1.5% with a negative split — bump up the
+        // Beat goal by >1.5% with a negative split, bump up the
         // engine's pace expectation by 1.5%.
         calibrationDelta = { easyPaceFloorDelta: -summary.actualPaceSPerMi * 0.015 };
       } else if (summary.goalDeltaS > 0 && offPct > 0.04 && summary.splitPattern === 'positive_split') {
-        // Off goal by >4% with a positive split — engine over-estimated.
+        // Off goal by >4% with a positive split, engine over-estimated.
         // Lift the easy-pace floor by 2%.
         calibrationDelta = { easyPaceFloorDelta: summary.actualPaceSPerMi * 0.02 };
       }
@@ -880,7 +880,7 @@ class CoachImpl implements Coach {
       },
       rationale: `Retrospect from ${summary.actualPaceSPerMi.toFixed(0)} s/mi avg pace, ${summary.splitPattern} split, ${summary.goalDeltaS == null ? 'no goal logged' : `${summary.goalDeltaS > 0 ? '+' : ''}${Math.round(summary.goalDeltaS)}s vs goal`}.`,
       citations: [
-        { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window, when does a VDOT signal expire?' },
         { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery' },
       ],
       brain: 'deterministic',
@@ -974,12 +974,12 @@ class CoachImpl implements Coach {
         segmentTargetPaces,
         estimatedFinishS,
       },
-      rationale: `${strategy.replace('_', ' ')} — first mile target GP +${firstMile.offsetVsGpSPerMiLow}–${firstMile.offsetVsGpSPerMiHigh} sec/mi (${firstMile.rationale}).`,
-      explanation: `Course is ${distMi.toFixed(1)} mi at goal pace ${formatPace(flatPace)}/mi (flat). Per-segment paces follow Minetti energy cost so effort stays constant — climbs slower, descents faster — while the time totals to your goal.`,
+      rationale: `${strategy.replace('_', ' ')}, first mile target GP +${firstMile.offsetVsGpSPerMiLow}–${firstMile.offsetVsGpSPerMiHigh} sec/mi (${firstMile.rationale}).`,
+      explanation: `Course is ${distMi.toFixed(1)} mi at goal pace ${formatPace(flatPace)}/mi (flat). Per-segment paces follow Minetti energy cost so effort stays constant, climbs slower, descents faster, while the time totals to your goal.`,
       citations: [
         { doc: 'Research/01-pace-zones-vdot.md', section: '§Daniels training paces', snippet: 'Pace prescription per race velocity' },
         { doc: 'Research/08-pacing-and-race-week.md', section: '§3', snippet: 'First-mile pacing offsets by distance' },
-        { doc: 'Research/08-pacing-and-race-week.md', section: '§6.1', snippet: 'HR ceilings by distance — backstop, not target' },
+        { doc: 'Research/08-pacing-and-race-week.md', section: '§6.1', snippet: 'HR ceilings by distance, backstop, not target' },
       ],
       brain: 'deterministic',
     };
@@ -1030,8 +1030,8 @@ class CoachImpl implements Coach {
     return {
       answer: Math.round(adjusted),
       rationale: daysToRace >= band.taperDaysHigh
-        ? `${daysToRace} days out — still in build phase. No taper reduction yet.`
-        : `${daysToRace} days out — ${bucket} taper window is ${band.taperDaysLow}-${band.taperDaysHigh} days. Cut ${Math.round(adjusted)}% from peak volume, largest cuts to easy mileage; preserve quality through the taper.`,
+        ? `${daysToRace} days out, still in build phase. No taper reduction yet.`
+        : `${daysToRace} days out, ${bucket} taper window is ${band.taperDaysLow}-${band.taperDaysHigh} days. Cut ${Math.round(adjusted)}% from peak volume, largest cuts to easy mileage; preserve quality through the taper.`,
       explanation: `Tapers run ${band.volumeReductionPctLow}-${band.volumeReductionPctHigh}% volume reduction for a ${bucket}. Run frequency stays near ${peakLeg.frequencyPctOfNormal}% so the body keeps its rhythm; the cuts go to easy miles, not to the sharpening work.`,
       citations: [
         { doc: 'Research/08-pacing-and-race-week.md', section: '§9.1 Taper duration by distance', snippet: '5K 5-7d / 10K 7-10d / Half 10-14d / Marathon 14-21d. Volume reduction 25-70%.' },
@@ -1074,7 +1074,7 @@ class CoachImpl implements Coach {
           gelSchedule: [],
           notes: `${bucket} races are too short to fuel mid-race. Top off with a pre-race gel ~15 min before the gun.`,
         },
-        rationale: `${bucket} doesn't need in-race fuel — too short for the gut window to matter.`,
+        rationale: `${bucket} doesn't need in-race fuel, too short for the gut window to matter.`,
         citations: [
           { doc: 'Research/08-pacing-and-race-week.md', section: '§10.5', snippet: '5K/10K: no in-race fueling' },
         ],
@@ -1100,7 +1100,7 @@ class CoachImpl implements Coach {
     const hours = estimatedFinishS / 3600;
     const totalCarbsG = Math.round(carbTarget * hours);
     // Default to Maurten 100 (25 g/gel). Halve it to keep dosing
-    // flexible — the actual product mix is a UI choice.
+    // flexible, the actual product mix is a UI choice.
     const gelCarbsG = 25;
     const gelCount = Math.max(1, Math.ceil(totalCarbsG / gelCarbsG));
 
@@ -1131,7 +1131,7 @@ class CoachImpl implements Coach {
 
     const overSwitchpoint = carbTarget > GLUCOSE_FRUCTOSE_RATIO.value.switchpointGPerHr;
     const ratioNote = overSwitchpoint
-      ? `At ${carbTarget} g/h, use a 1:0.8 glucose:fructose blend — single-source glucose alone hits the gut ceiling near 60 g/h.`
+      ? `At ${carbTarget} g/h, use a 1:0.8 glucose:fructose blend, single-source glucose alone hits the gut ceiling near 60 g/h.`
       : `At ${carbTarget} g/h, standard 2:1 glucose:fructose gels work.`;
     const heatNote = weather?.tempF != null && weather.tempF > HEAT_CARB_BUMP.value.ifTempFAbove
       ? ` Heat bump applied (+${HEAT_CARB_BUMP.value.bumpGPerHr} g/h above ${HEAT_CARB_BUMP.value.ifTempFAbove}°F).`
@@ -1238,10 +1238,10 @@ class CoachImpl implements Coach {
 
     const stillBuilding = systems.filter((s) => s.state === 'building').map((s) => s.label.toLowerCase());
     const rationale = !recentRace
-      ? 'No recent race. Every system is at baseline — train as scheduled.'
+      ? 'No recent race. Every system is at baseline, train as scheduled.'
       : buildingCount === 0
       ? `${daysSince} days post-${recentRace.name}. Every system has finished its repair window. Quality work is back online.`
-      : `${daysSince} days post-${recentRace.name}. ${doneCount}/${systems.length} systems repaired; ${stillBuilding.join(' and ')} still ${stillBuilding.length === 1 ? 'rebuilding' : 'in repair'}. Quality returns when the slowest tops out — about ${slowestDays} days.`;
+      : `${daysSince} days post-${recentRace.name}. ${doneCount}/${systems.length} systems repaired; ${stillBuilding.join(' and ')} still ${stillBuilding.length === 1 ? 'rebuilding' : 'in repair'}. Quality returns when the slowest tops out, about ${slowestDays} days.`;
 
     return {
       answer: {
@@ -1270,7 +1270,7 @@ class CoachImpl implements Coach {
   //   best signal we have at week granularity from current state.
   //
   // PRESENT (offset 0):
-  //   plannedMi = sum of coachDaily(state).weekShape distances —
+  //   plannedMi = sum of coachDaily(state).weekShape distances, 
   //   the engine's actual prescription for this week.
   //
   // FUTURE (offsets +1..+9):
@@ -1313,7 +1313,7 @@ class CoachImpl implements Coach {
       Math.round((last7Sum || baseline) * 10) / 10,
     ];
 
-    // PRESENT (week 0) — use plan if available, else coachDaily
+    // PRESENT (week 0), use plan if available, else coachDaily
     const planWeeks = input.planWeeks ?? [];
     const todayISO = input.today;
     const todayD = new Date(todayISO + 'T12:00:00Z');
@@ -1329,7 +1329,7 @@ class CoachImpl implements Coach {
       return Math.round(today0.weekShape.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
     })();
 
-    // FUTURE 9 weeks — use plan artifact when a matching week exists,
+    // FUTURE 9 weeks, use plan artifact when a matching week exists,
     // otherwise fall back to the formula-based ramp.
     const futureMi: number[] = [];
     const phaseSeq: TrajectoryPoint['phase'][] = [];
@@ -1378,7 +1378,7 @@ class CoachImpl implements Coach {
       runningMi = mi;
     }
 
-    // Determine peak week — highest mi in the future series before taper.
+    // Determine peak week, highest mi in the future series before taper.
     const peakIdx = futureMi.reduce((best, mi, i) => {
       if (phaseSeq[i] === 'taper' || phaseSeq[i] === 'past') return best;
       return mi > futureMi[best] ? i : best;
@@ -1475,7 +1475,7 @@ class CoachImpl implements Coach {
   //   final fitness check ← T pace test, ~10 days out
   //
   // Sessions whose anchor date falls in the past (build already
-  // underway) get filtered out — only show what's still upcoming.
+  // underway) get filtered out, only show what's still upcoming.
   //
   // @research Research/22 §Half-marathon build · Research/04 §Threshold
   //           Research/01 §VDOT pace bands · Research/08 §Race-pace work
@@ -1492,7 +1492,7 @@ class CoachImpl implements Coach {
 
     const snapshot = vdotSnapshot(state);
     const fmtPace = (sPerMi: number | undefined) => {
-      if (sPerMi == null) return '—';
+      if (sPerMi == null) return ', ';
       const m = Math.floor(sPerMi / 60);
       const s = Math.round(sPerMi % 60);
       return `${m}:${String(s).padStart(2, '0')}/MI`;
@@ -1591,7 +1591,7 @@ class CoachImpl implements Coach {
       },
       rationale: nextA
         ? `${sessions.length} proof sessions over the ${buildLengthWk}-week build to ${raceName}.`
-        : 'No A race scheduled — proof sessions are race-relative.',
+        : 'No A race scheduled, proof sessions are race-relative.',
       citations: [
         { doc: 'Research/22-plan-templates.md', section: '§Half Marathon Plans' },
         { doc: 'Research/04-workout-vocabulary.md', section: '§5. Threshold workouts' },
@@ -1645,11 +1645,11 @@ class CoachImpl implements Coach {
           headroomSPerMi: 0,
           confidence: 'low',
           stretchDisplay: formatTime(goalTimeS),
-          rationale: 'No recent race logged — fitness can\'t be inferred. Log a recent 5K/10K/HM and the prediction calibrates immediately.',
+          rationale: 'No recent race logged, fitness can\'t be inferred. Log a recent 5K/10K/HM and the prediction calibrates immediately.',
         },
         rationale: 'No VDOT-eligible race in the freshness window.',
         citations: [
-          { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window, when does a VDOT signal expire?' },
         ],
         brain: 'deterministic',
       };
@@ -1660,7 +1660,7 @@ class CoachImpl implements Coach {
     const predictedTimeS = equivAtTarget ?? snapshot.source.timeS * Math.pow(raceDistanceMi / snapshot.source.distanceMi, 1.06);
     const predictedPace = predictedTimeS / raceDistanceMi;
     const headroomSPerMi = goalPace - predictedPace;
-    // Stretch: another 3% off predicted pace — what fitness alone could
+    // Stretch: another 3% off predicted pace, what fitness alone could
     // produce on a perfect day before the engine breaks down.
     const stretchTimeS = predictedTimeS * 0.97;
 
@@ -1692,7 +1692,7 @@ class CoachImpl implements Coach {
       rationale: `Riegel from VDOT ${snapshot.vdot.toFixed(1)} (${snapshot.source.name} ${snapshot.source.daysAgo}d ago) to ${raceDistanceMi.toFixed(1)}mi: ${formatTime(predictedTimeS)} vs ${formatTime(goalTimeS)} goal.`,
       citations: [
         { doc: 'Research/02-race-time-prediction.md', section: '§2. Riegel Formula' },
-        { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window, when does a VDOT signal expire?' },
       ],
       brain: 'deterministic',
     };
@@ -1704,7 +1704,7 @@ class CoachImpl implements Coach {
   //   planned   ← coach engine simulateNext30Days() output, filtered
   //               to dates in this week. The engine already knows the
   //               runner's tier, phase, post-race recovery state, and
-  //               rest-day cadence — same numbers shown on /training.
+  //               rest-day cadence, same numbers shown on /training.
   //   actual    ← state.volume.last7Days (real Strava activities by
   //               date). Future dates have no actual yet; we leave
   //               actualMi null so the UI doesn't render a DONE pill.
@@ -1745,7 +1745,7 @@ class CoachImpl implements Coach {
       const isFuture = dateISO > todayISO;
       const plan = planByDate.get(dateISO);
       const p = plan?.distanceMi ?? 0;
-      // Future dates never have actuals — never query the actuals map.
+      // Future dates never have actuals, never query the actuals map.
       const a = isFuture ? null : (actualByDate.get(dateISO) ?? (dateISO === todayISO ? null : 0));
       const delta = a == null ? null : a - p;
       let pin: string | null = null;
@@ -1779,7 +1779,7 @@ class CoachImpl implements Coach {
     const projectedWeekMi = Math.round((loggedWeekMi + remainingPlanned + completedDelta * 0.3) * 10) / 10;
     const netDeltaMi = projectedWeekMi - plannedWeekMi;
 
-    // Compose the coach narrative — phase context + week composition
+    // Compose the coach narrative, phase context + week composition
     // beats. Reads off state.races.recent[0] for post-race framing,
     // engine phase for the build-cycle context, and counts the days[]
     // shape (rest count, quality count, long-run anchor) to call out
@@ -1814,14 +1814,14 @@ class CoachImpl implements Coach {
     }
     bodyParts.push(`Structure this week: ${qualityCount} quality, ${restCount} rest, ${longDay ? `${longDay.label.toLowerCase()} ${longDay.plannedMi.toFixed(1)} mi on ${longDay.dayLabel.toLowerCase()}` : 'no scheduled long run'}.`);
     if (qualityCount === 0 && recentRace && recentRace.daysAgo < 14) {
-      bodyParts.push(`No quality yet — that returns ${recentRace.distanceMi >= 22 ? 'around day 21-28' : recentRace.distanceMi >= 12 ? 'around day 10-14' : 'in the next day or two'}.`);
+      bodyParts.push(`No quality yet, that returns ${recentRace.distanceMi >= 22 ? 'around day 21-28' : recentRace.distanceMi >= 12 ? 'around day 10-14' : 'in the next day or two'}.`);
     } else if (nextA && nextA.daysAway <= 14) {
-      bodyParts.push(`A race in ${nextA.daysAway} days — taper logic is shaping the week.`);
+      bodyParts.push(`A race in ${nextA.daysAway} days, taper logic is shaping the week.`);
     }
     if (netDeltaMi > 1) {
-      bodyParts.push(`Projecting +${netDeltaMi.toFixed(1)} mi over plan — keep an eye on tomorrow's prescription.`);
+      bodyParts.push(`Projecting +${netDeltaMi.toFixed(1)} mi over plan, keep an eye on tomorrow's prescription.`);
     } else if (netDeltaMi < -2 && loggedWeekMi > 0) {
-      bodyParts.push(`Currently ${Math.abs(netDeltaMi).toFixed(1)} mi under plan — engine will catch up via the remaining days.`);
+      bodyParts.push(`Currently ${Math.abs(netDeltaMi).toFixed(1)} mi under plan, engine will catch up via the remaining days.`);
     }
 
     return {
@@ -1855,7 +1855,7 @@ class CoachImpl implements Coach {
   //
   //   pace_zones      ← vdotSnapshot.vdot (real, source race named)
   //   long_run_cap    ← state.volume.longestTrainingRunLast28Mi × 1.10
-  //                     spike cap (races EXCLUDED — anchoring on a
+  //                     spike cap (races EXCLUDED, anchoring on a
   //                     marathon produced a 29mi prescription bug).
   //                     In POST_RACE the cap pins to 50% of pre-race
   //                     long, ramping back 2-3 weeks.
@@ -1868,7 +1868,7 @@ class CoachImpl implements Coach {
   async engineDetails(input: EngineDetailsInput): Promise<CoachDecision<EngineDetailsReport>> {
     const state = input.state;
     const snapshot = vdotSnapshot(state);
-    // Use TRAINING-only longest — a 26mi race × 1.10 ≠ a 29mi training
+    // Use TRAINING-only longest, a 26mi race × 1.10 ≠ a 29mi training
     // long. In POST_RACE we anchor on 50% of pre-race training long.
     const inPostRace = state.recoveryWindowEndsISO != null
       && state.now <= state.recoveryWindowEndsISO;
@@ -1893,17 +1893,17 @@ class CoachImpl implements Coach {
         explanation: snapshot
           ? `The Coach prescribes every run inside one of 5 pace bands anchored on VDOT ${snapshot.vdot.toFixed(1)} (from ${snapshot.source.name}, ${snapshot.source.daysAgo}d ago).`
           : 'Log a recent 5K/10K/HM and the Coach anchors every workout pace on the resulting VDOT.',
-        sourceLabel: snapshot ? `VDOT ${snapshot.vdot.toFixed(1)}` : '—',
+        sourceLabel: snapshot ? `VDOT ${snapshot.vdot.toFixed(1)}` : '-',
         doctrineModule: 'pace_zones',
       },
       {
         id: 'long_run_cap',
         label: 'NEXT WEEK\'S LONG-RUN LIMIT',
-        valueDisplay: longRunCapHasValue ? `${longRunCap.toFixed(1)} MI` : '—',
+        valueDisplay: longRunCapHasValue ? `${longRunCap.toFixed(1)} MI` : '-',
         explanation: !longRunCapHasValue
-          ? 'No training long run logged in the last 28 days — the cap starts at the next absorbed week.'
+          ? 'No training long run logged in the last 28 days, the cap starts at the next absorbed week.'
           : usePostRaceAnchor && preRaceTraining != null
-            ? `Post-race recovery — Coach holds the long run to ${longRunCap.toFixed(1)} mi next week, roughly 50% of your pre-race long (${preRaceTraining.toFixed(1)} mi)${recentRaceName ? `. Your ${recentRaceName} doesn't count toward training progression` : ''}; the ramp back takes 2-3 weeks.`
+            ? `Post-race recovery, Coach holds the long run to ${longRunCap.toFixed(1)} mi next week, roughly 50% of your pre-race long (${preRaceTraining.toFixed(1)} mi)${recentRaceName ? `. Your ${recentRaceName} doesn't count toward training progression` : ''}; the ramp back takes 2-3 weeks.`
             : `Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week. Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi; the +10% cap protects connective tissue from a single-session spike (races excluded).`,
         sourceLabel: usePostRaceAnchor ? 'Post-race 50% restart' : '+10% rule',
         doctrineModule: 'training',
@@ -1913,7 +1913,7 @@ class CoachImpl implements Coach {
         label: 'EASY-PACE TARGET',
         valueDisplay: '≥80%',
         explanation: easyShare > 0
-          ? `At least 80% of your weekly miles should be at easy pace. You're at ${easySharePct}% — ${easySharePct >= 80 ? 'right in the polarized window' : 'slightly hot; the Coach will ease back this week'}.`
+          ? `At least 80% of your weekly miles should be at easy pace. You're at ${easySharePct}%, ${easySharePct >= 80 ? 'right in the polarized window' : 'slightly hot; the Coach will ease back this week'}.`
           : 'Polarized training: 80% easy / 20% hard. The Coach reads your 14-day easy share to keep the ratio honest.',
         sourceLabel: easyShare > 0 ? `${easySharePct}% easy now` : 'Polarized 80/20',
         doctrineModule: 'training',
@@ -1967,7 +1967,7 @@ class CoachImpl implements Coach {
   //   - Quality + hit targets           → "quality executed"; no change.
   //
   // The deltas[] list shows the state-record fields that change as a
-  // result of this run — emit only when meaningful, never as filler.
+  // result of this run, emit only when meaningful, never as filler.
   //
   // @research Research/00a §Progressive overload (+10% rule)
   //           Research/00a §13.1 Single-session spike
@@ -1992,7 +1992,7 @@ class CoachImpl implements Coach {
 
     // Use TRAINING-only longest as the cap anchor. The activity's
     // distance only lifts the cap if it was a training run, not a race
-    // — a marathon shouldn't lift the next-week long-run cap.
+    //, a marathon shouldn't lift the next-week long-run cap.
     // RunReadInput lacks workoutType so we use a name/distance heuristic.
     const longestTraining = state.volume.longestTrainingRunLast28Mi;
     const longestLast28 = longestTraining;
@@ -2019,7 +2019,7 @@ class CoachImpl implements Coach {
       const newBaseline = Math.round(baseline * (1 + baselineBumpPct / 100) * 10) / 10;
       v = {
         verdict: 'Absorbed more than planned.',
-        body: `Ran +${deltaMi.toFixed(1)} mi over plan at HR ${hr} (${hrZoneLabel(hr)}). Effort stayed inside Z1-Z2 — that's signal, not luck. Coach bumps baseline +${baselineBumpPct}% and lifts the long-run cap accordingly.`,
+        body: `Ran +${deltaMi.toFixed(1)} mi over plan at HR ${hr} (${hrZoneLabel(hr)}). Effort stayed inside Z1-Z2, that's signal, not luck. Coach bumps baseline +${baselineBumpPct}% and lifts the long-run cap accordingly.`,
         unlockPin: `+${baselineBumpPct}% BASELINE UNLOCKED`,
         deltas: [
           { label: 'VOL / WK', wasDisplay: `${baseline.toFixed(0)}`, nowDisplay: `${newBaseline.toFixed(0)} mi` },
@@ -2029,14 +2029,14 @@ class CoachImpl implements Coach {
     } else if (overPct >= 0.20 && hr != null && hr > z2Ceiling) {
       v = {
         verdict: 'Went long and hot.',
-        body: `+${deltaMi.toFixed(1)} mi over plan but HR averaged ${hr} (${hrZoneLabel(hr)}) — above the easy cap. Volume didn't come for free. No state change; let tomorrow be genuinely easy.`,
+        body: `+${deltaMi.toFixed(1)} mi over plan but HR averaged ${hr} (${hrZoneLabel(hr)}), above the easy cap. Volume didn't come for free. No state change; let tomorrow be genuinely easy.`,
         unlockPin: null,
         deltas: [],
       };
     } else if (isQualityPlanned && hr != null && hr > qualityCeiling) {
       v = {
         verdict: 'Quality day, ran hot.',
-        body: `HR averaged ${hr} (${hrZoneLabel(hr)}) on a ${plannedType.replace(/_/g, ' ')} session — above the prescribed ceiling. Pace targets likely missed late. Coach defers the next quality 24-48h to absorb.`,
+        body: `HR averaged ${hr} (${hrZoneLabel(hr)}) on a ${plannedType.replace(/_/g, ' ')} session, above the prescribed ceiling. Pace targets likely missed late. Coach defers the next quality 24-48h to absorb.`,
         unlockPin: null,
         deltas: [],
       };
@@ -2049,7 +2049,7 @@ class CoachImpl implements Coach {
       };
     } else if (plannedMi > 0 && Math.abs(overPct) < 0.05) {
       v = {
-        verdict: 'On plan — steady aerobic.',
+        verdict: 'On plan, steady aerobic.',
         body: `Held distance and effort. Easy aerobic adds to the base without spiking the load. The kind of run the engine wants more of.`,
         unlockPin: null,
         deltas: [],
@@ -2057,14 +2057,14 @@ class CoachImpl implements Coach {
     } else if (plannedMi === 0) {
       v = {
         verdict: 'Unprescribed run logged.',
-        body: `No coach prescription for this date — Strava picked it up automatically. Counts toward weekly volume; effort patterns will surface in the next retrospect.`,
+        body: `No coach prescription for this date, Strava picked it up automatically. Counts toward weekly volume; effort patterns will surface in the next retrospect.`,
         unlockPin: null,
         deltas: [],
       };
     } else {
       v = {
         verdict: 'Run logged.',
-        body: `${activity.distanceMi.toFixed(1)} mi vs ${plannedMi.toFixed(1)} planned${hr != null ? `, HR ${hr}` : ''}. Inside variance — no state change.`,
+        body: `${activity.distanceMi.toFixed(1)} mi vs ${plannedMi.toFixed(1)} planned${hr != null ? `, HR ${hr}` : ''}. Inside variance, no state change.`,
         unlockPin: null,
         deltas: [],
       };
@@ -2112,22 +2112,22 @@ class CoachImpl implements Coach {
     let body: string;
 
     if (isPR && deltaS != null && deltaS < 0 && offPct! > 0.02) {
-      // PR by >2% under prediction — fitness ahead of model.
+      // PR by >2% under prediction, fitness ahead of model.
       pin = 'PR';
-      verdict = `${raceName} PR — engine under-called the fitness.`;
+      verdict = `${raceName} PR, engine under-called the fitness.`;
       body = `Finished ${formatPace(paceSPerMi)}/mi avg vs ${formatPace(predictedS! / raceDistanceMi)} predicted${condClause}. The aerobic ceiling has more room than the model showed. Next build can lean harder on quality without protest.`;
     } else if (isPR) {
       pin = 'PR';
-      verdict = `${raceName} PR — aerobic engine confirmed.`;
-      body = `Sustained ${formatPace(paceSPerMi)}/mi avg ${predictedS != null ? `vs ${formatPace(predictedS / raceDistanceMi)} predicted${condClause}` : 'with no late fade'}. Race execution matched what the engine expected — the model is calibrated.`;
+      verdict = `${raceName} PR, aerobic engine confirmed.`;
+      body = `Sustained ${formatPace(paceSPerMi)}/mi avg ${predictedS != null ? `vs ${formatPace(predictedS / raceDistanceMi)} predicted${condClause}` : 'with no late fade'}. Race execution matched what the engine expected, the model is calibrated.`;
     } else if (deltaS != null && deltaS > 0 && offPct! > 0.04) {
-      // Off goal by >4% slow — flag conditions / execution.
+      // Off goal by >4% slow, flag conditions / execution.
       pin = 'OFF GOAL';
-      verdict = `${raceName} — race came up short of fitness.`;
-      body = `Finished ${formatPace(paceSPerMi)}/mi avg vs ${formatPace(predictedS! / raceDistanceMi)} predicted${condClause}. The engine had this race ${Math.round(deltaS / 60)} min faster. Race day adds friction the model can't see; ${Math.abs(offPct!) > 0.06 ? 'review course + conditions before adjusting training.' : 'one race isn\'t enough to recalibrate — hold the build, watch the next mid-cycle test.'}`;
+      verdict = `${raceName}, race came up short of fitness.`;
+      body = `Finished ${formatPace(paceSPerMi)}/mi avg vs ${formatPace(predictedS! / raceDistanceMi)} predicted${condClause}. The engine had this race ${Math.round(deltaS / 60)} min faster. Race day adds friction the model can't see; ${Math.abs(offPct!) > 0.06 ? 'review course + conditions before adjusting training.' : 'one race isn\'t enough to recalibrate, hold the build, watch the next mid-cycle test.'}`;
     } else {
       pin = 'ON TRACK';
-      verdict = `${raceName} — solid effort, no surprises.`;
+      verdict = `${raceName}, solid effort, no surprises.`;
       body = `Sustained ${formatPace(paceSPerMi)}/mi avg${predictedS != null ? ` vs ${formatPace(predictedS / raceDistanceMi)} predicted` : ''}${condClause}. Engine and execution matched. Fitness on track for the next goal.`;
     }
 
@@ -2207,34 +2207,34 @@ class CoachImpl implements Coach {
     let level: 'green' | 'yellow' | 'red' = 'green';
     let reason = '';
 
-    // ── Recovery context first — overrides ratio drift signals.
+    // ── Recovery context first, overrides ratio drift signals.
     if (heavyBlock || inRaceRecovery) {
       level = 'green';
       if (heavyBlock) {
-        reason = `Recovery is the work right now. You've stacked races — letting the body absorb them is what turns racing into fitness.`;
+        reason = `Recovery is the work right now. You've stacked races, letting the body absorb them is what turns racing into fitness.`;
       } else if (recentRace) {
-        reason = `${recentRace.daysAgo} day${recentRace.daysAgo === 1 ? '' : 's'} since ${recentRace.name}. The volume drop is by design — let the legs come back when they're ready.`;
+        reason = `${recentRace.daysAgo} day${recentRace.daysAgo === 1 ? '' : 's'} since ${recentRace.name}. The volume drop is by design, let the legs come back when they're ready.`;
       }
     }
     // ── Then the ratio bands (only fire when no recovery context).
     else if (ratio != null && ratio > 1.5) {
       level = 'red';
-      reason = `Recent volume is way above your normal — last 7 days are ${Math.round(ratio * 100)}% of your usual weekly average. Today's a pull-back day.`;
+      reason = `Recent volume is way above your normal, last 7 days are ${Math.round(ratio * 100)}% of your usual weekly average. Today's a pull-back day.`;
     } else if (ratio != null && ratio < 0.5) {
       level = 'red';
-      reason = `Last 7 days are ${Math.round(ratio * 100)}% of your usual — too far off to call you ready. Easy run today, see how the legs feel.`;
+      reason = `Last 7 days are ${Math.round(ratio * 100)}% of your usual, too far off to call you ready. Easy run today, see how the legs feel.`;
     } else if (ratio != null && ratio > ACWR_HIGH) {
       level = 'yellow';
-      reason = `Volume's been running hot — last 7 days are ${Math.round(ratio * 100)}% of your normal. Hold the easy days honestly, don't pile on hard work.`;
+      reason = `Volume's been running hot, last 7 days are ${Math.round(ratio * 100)}% of your normal. Hold the easy days honestly, don't pile on hard work.`;
     } else if (ratio != null && ratio < ACWR_LOW) {
       level = 'yellow';
-      reason = `Mileage was light last week — about ${Math.round(ratio * 100)}% of your usual. Ease back in, don't try to make it up in one day.`;
+      reason = `Mileage was light last week, about ${Math.round(ratio * 100)}% of your usual. Ease back in, don't try to make it up in one day.`;
     } else if (easy > 0 && easy < target.easyShareMin) {
       level = 'yellow';
-      reason = `Easy runs have been drifting too fast — only ${Math.round(easy * 100)}% of the last 14 days were truly easy. Run today's first mile by feel, then add 30 seconds.`;
+      reason = `Easy runs have been drifting too fast, only ${Math.round(easy * 100)}% of the last 14 days were truly easy. Run today's first mile by feel, then add 30 seconds.`;
     } else if (missedRunsSignal) {
       level = 'yellow';
-      reason = `${s.recovery.daysSinceLastRun} days since the last run. You're not falling apart — get out the door, easy pace, get some miles.`;
+      reason = `${s.recovery.daysSinceLastRun} days since the last run. You're not falling apart, get out the door, easy pace, get some miles.`;
     } else {
       level = 'green';
       reason = `The legs look ready. Trust today's plan.`;
@@ -2246,7 +2246,7 @@ class CoachImpl implements Coach {
     if (s.checkin != null && level !== 'red') {
       if (poorDays >= 3) {
         level = 'red';
-        reason = `${poorDays} of the last 7 check-ins flagged poor (energy / soreness / stress). Doctrine reads that as a recovery pattern — today is rest or a very short jog.`;
+        reason = `${poorDays} of the last 7 check-ins flagged poor (energy / soreness / stress). Doctrine reads that as a recovery pattern, today is rest or a very short jog.`;
       } else if (poorDays >= 2 && level === 'green') {
         level = 'yellow';
         reason = `Two recent check-ins flagged poor (energy / soreness / stress). Hold the easy days honest and skip the next quality if signals don't clear in 24-48h.`;
@@ -2268,12 +2268,12 @@ class CoachImpl implements Coach {
 
   // ── Stage 2 · Race-morning brief ───────────────────────────────────
   // First user-visible LLM surface. Pre-race, the Coach writes a short
-  // paragraph in voice — what to do in the first three miles, weather
+  // paragraph in voice, what to do in the first three miles, weather
   // adjustments, fueling reminders, what NOT to chase. Citations point
   // back at coaching-research §3, §5, §7, §11, §14 depending on what
   // the brief leans on.
   async briefRaceMorning(input: RaceMorningBriefInput): Promise<CoachDecision<string>> {
-    // Compute the deterministic weather slowdown — this runs whether
+    // Compute the deterministic weather slowdown, this runs whether
     // or not the LLM is available, and feeds both the fallback voice
     // and the LLM context. Single source of numeric truth (per
     // Research/06 §10 race-day decision flow).
@@ -2291,7 +2291,7 @@ class CoachImpl implements Coach {
       : null;
     const slowdownLine = slowdown ? formatSlowdownForBrief(slowdown) : null;
 
-    // Inner helper — the deterministic brief. Used when the LLM is
+    // Inner helper, the deterministic brief. Used when the LLM is
     // unavailable (no key) OR when it's available but throws (529
     // overloaded, network blip, etc). Same voice, just generic.
     const buildDeterministic = (): CoachDecision<string> => {
@@ -2299,40 +2299,40 @@ class CoachImpl implements Coach {
         ? `${Math.round(input.weather.tempF)}°F${input.weather.dewpointF != null ? ` / ${Math.round(input.weather.dewpointF)}°F dewpoint` : ''}`
         : null;
       // Tier the conditions into framing bands. Below ~1.5% the
-      // adjustment is inside pacing variability — call it "typical
+      // adjustment is inside pacing variability, call it "typical
       // for the course" rather than a real callout. 1.5-3% reads as
       // "modest cost, hold your line." 3%+ is real, slow the start.
       // Bail flags override entirely.
       const weatherClause = (() => {
         if (!slowdown || tempStr == null) {
           return input.weather?.tempF != null
-            ? `${tempStr} start — run the plan as written.`
+            ? `${tempStr} start, run the plan as written.`
             : 'Trust the plan.';
         }
         if (slowdown.bailFlag === 'cancel') {
-          return `${tempStr} — ${slowdownLine}. HEADS UP: ${slowdown.bailReason} If conditions hold, the goal becomes finish over time, not your time goal.`;
+          return `${tempStr}, ${slowdownLine}. HEADS UP: ${slowdown.bailReason} If conditions hold, the goal becomes finish over time, not your time goal.`;
         }
         if (slowdown.bailFlag === 'easy_only' || slowdown.totalPct >= 5) {
-          return `${tempStr} — ${slowdownLine}. The conditions are real today; running goal pace is fighting biology. Drop into effort-mode early and let the time fall where it falls.`;
+          return `${tempStr}, ${slowdownLine}. The conditions are real today; running goal pace is fighting biology. Drop into effort-mode early and let the time fall where it falls.`;
         }
         if (slowdown.totalPct >= 3) {
-          return `${tempStr} — ${slowdownLine}. Modest cost vs a cool baseline; first three miles slower than you want, then lock in.`;
+          return `${tempStr}, ${slowdownLine}. Modest cost vs a cool baseline; first three miles slower than you want, then lock in.`;
         }
         if (slowdown.totalPct >= 1.5) {
-          return `${tempStr} — ${slowdownLine}. Inside what your goal already factors in if you've raced this course before. Hold the line.`;
+          return `${tempStr}, ${slowdownLine}. Inside what your goal already factors in if you've raced this course before. Hold the line.`;
         }
-        // <1.5%: informational only — don't make the runner second-guess.
-        return `${tempStr} — typical race-day conditions for the course. Goal pace stands.`;
+        // <1.5%: informational only, don't make the runner second-guess.
+        return `${tempStr}, typical race-day conditions for the course. Goal pace stands.`;
       })();
       const bailClause = '';
       return {
-        answer: `Morning. The training is done. ${weatherClause}${bailClause} First three miles slower than you want. Whatever you feel right now is nerves, not fitness — let them sit. Run your race.`,
+        answer: `Morning. The training is done. ${weatherClause}${bailClause} First three miles slower than you want. Whatever you feel right now is nerves, not fitness, let them sit. Run your race.`,
         rationale: slowdown
           ? `Weather slowdown computed: ${slowdown.totalPct.toFixed(1)}% (${slowdown.rationale.join('; ') || 'neutral conditions'}).`
           : 'Conservative start + trust-the-plan default. No weather forecast provided.',
         citations: [
-          { doc: 'Research/06-weather-adjustments.md', section: '§Section 10 — Race-Day Recalibration', snippet: 'race-day recalibration combines heat + altitude + wind into a single per-mile target' },
-          { doc: 'Research/08-pacing-and-race-week.md', section: '§3.5 The marathon', snippet: 'first miles 1-3 at GP+10-20 sec/mi for marathon — every fast plan dies in the opening miles' },
+          { doc: 'Research/06-weather-adjustments.md', section: '§Section 10, Race-Day Recalibration', snippet: 'race-day recalibration combines heat + altitude + wind into a single per-mile target' },
+          { doc: 'Research/08-pacing-and-race-week.md', section: '§3.5 The marathon', snippet: 'first miles 1-3 at GP+10-20 sec/mi for marathon, every fast plan dies in the opening miles' },
         ],
         brain: 'deterministic',
       };
@@ -2359,7 +2359,7 @@ class CoachImpl implements Coach {
           `  Total adjustment: ${slowdown.totalPct.toFixed(1)}% slower than a hypothetical cool-baseline race`,
           slowdown.perMileSecs != null ? `  Per-mile cost vs cool baseline: about +${slowdown.perMileSecs} sec/mi` : null,
           ...slowdown.rationale.map(r => `  • ${r}`),
-          slowdown.bailFlag ? `  BAIL FLAG: ${slowdown.bailFlag} — ${slowdown.bailReason}` : null,
+          slowdown.bailFlag ? `  BAIL FLAG: ${slowdown.bailFlag}, ${slowdown.bailReason}` : null,
           '',
           'INTERPRETATION GUIDE for the brief:',
           '  - <1.5%: noise band. Mention the temp + "typical for the course." Goal pace stands.',
@@ -2367,7 +2367,7 @@ class CoachImpl implements Coach {
           '  - 3-5%: real cost. First miles conservative; runner may need to flex 5-10 sec/mi off goal.',
           '  - 5%+ or any bail flag: conditions exceed typical. Goal becomes finish-strong, not time.',
           '',
-          'Use these numbers in the brief. Don\'t guess at heat impact; the calculation is research-anchored. Frame the slowdown as informational — the runner\'s goal time was almost certainly set with the course\'s typical conditions in mind, so do NOT instruct them to add the slowdown to their goal pace unless conditions are clearly above typical.',
+          'Use these numbers in the brief. Don\'t guess at heat impact; the calculation is research-anchored. Frame the slowdown as informational, the runner\'s goal time was almost certainly set with the course\'s typical conditions in mind, so do NOT instruct them to add the slowdown to their goal pace unless conditions are clearly above typical.',
         ].filter((s): s is string => s != null).join('\n')
       : '';
 
@@ -2392,14 +2392,14 @@ class CoachImpl implements Coach {
       // LLM hiccup (529 overloaded, network blip, key revoked, etc).
       // Fall through to the deterministic brief so the page still works.
       // Logged so the operator can spot a pattern, but the runner just
-      // sees the generic voice — not a raw error.
+      // sees the generic voice, not a raw error.
       console.warn('[coach.briefRaceMorning] LLM failed, falling back to deterministic:', e instanceof Error ? e.message : e);
       return buildDeterministic();
     }
   }
 
   // ── Wave G · pathToRace ────────────────────────────────────────────
-  // The "PATH TO RACE" hero — what current fitness predicts for the
+  // The "PATH TO RACE" hero, what current fitness predicts for the
   // upcoming A-race, what the goal asks for, and a feasibility read on
   // how many weeks of typical VDOT progression close the gap.
   //
@@ -2417,7 +2417,7 @@ class CoachImpl implements Coach {
   //                    to-race ÷ 7.
   //
   // Per-week VDOT gain bands come from Research/00a §Volume progression
-  // rules — base growth: 5-15% per training cycle (≈12 weeks) for
+  // rules, base growth: 5-15% per training cycle (≈12 weeks) for
   // trained athletes, 20-25% over 8 weeks for novices. Translated to
   // VDOT points (a 5% volume-driven aerobic gain typically tracks ~0.3
   // VDOT/wk in the trained range, ~0.6 VDOT/wk for novices coming off
@@ -2426,7 +2426,7 @@ class CoachImpl implements Coach {
   //   newer  (weeklyAvg4w < 25mi):  0.6  VDOT/wk
   //
   // @research Research/01-pace-zones-vdot.md §How to recalibrate paces
-  //           — Triggers to retest
+  //, Triggers to retest
   //           Research/00a-distance-running-training.md §Volume
   //           progression rules
   //           Research/02-race-time-prediction.md §2. Riegel Formula
@@ -2462,7 +2462,7 @@ class CoachImpl implements Coach {
         },
         rationale: 'No usable recent race to anchor the path.',
         citations: [
-          { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window — when does a VDOT signal expire?' },
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§Freshness window, when does a VDOT signal expire?' },
         ],
         brain: 'deterministic',
       };
@@ -2508,7 +2508,7 @@ class CoachImpl implements Coach {
       ? `${Math.round(sPerMiToGain)}s/mi short`
       : `${Math.round(-sPerMiToGain)}s/mi ahead`;
 
-    // Use TRAINING longest, not race longest — a marathon in the last
+    // Use TRAINING longest, not race longest, a marathon in the last
     // 28 days doesn't mean the runner's training long-run depth is at
     // marathon distance. For race-specificity gap analysis, the relevant
     // question is "what's the aerobic ceiling in absorbed training?"
@@ -2516,10 +2516,10 @@ class CoachImpl implements Coach {
     const weeklyMi = state.volume.weeklyAvg4w;
     const nextMove = (() => {
       if (feasibility === 'ahead') {
-        return `Fitness sits ahead of goal. Keep doing what you're doing — protect the easy share and avoid spike weeks until taper.`;
+        return `Fitness sits ahead of goal. Keep doing what you're doing, protect the easy share and avoid spike weeks until taper.`;
       }
       if (feasibility === 'behind') {
-        return `Gap is real. ${weeksNeeded} weeks of typical progression closes ${Math.round(weeksToRace * sPerMiPerWk)}s/mi — short by ${Math.round((weeksNeeded - weeksToRace) * sPerMiPerWk)}s/mi. Consider adjusting the goal or extending the training window.`;
+        return `Gap is real. ${weeksNeeded} weeks of typical progression closes ${Math.round(weeksToRace * sPerMiPerWk)}s/mi, short by ${Math.round((weeksNeeded - weeksToRace) * sPerMiPerWk)}s/mi. Consider adjusting the goal or extending the training window.`;
       }
       if (raceDistanceMi >= 22) {
         const targetLong = Math.max(16, Math.min(22, Math.round(raceDistanceMi * 0.8)));
@@ -2534,9 +2534,9 @@ class CoachImpl implements Coach {
         if (longestMi < targetLong) {
           return `Two more weekly long runs above ${targetLong}mi unlocks the build phase. Last 28 days peaked at ${longestMi.toFixed(0)}mi.`;
         }
-        return `Long run is in range. One threshold session per week closes the gap — aim for ${Math.round(weeklyMi * 0.08)}mi at threshold pace.`;
+        return `Long run is in range. One threshold session per week closes the gap, aim for ${Math.round(weeklyMi * 0.08)}mi at threshold pace.`;
       }
-      return `Add one speed session a week — short 3–5 min hard reps near 5K pace. ${weeksNeeded} weeks of that closes the ${Math.round(sPerMiToGain)}s/mi gap.`;
+      return `Add one speed session a week, short 3–5 min hard reps near 5K pace. ${weeksNeeded} weeks of that closes the ${Math.round(sPerMiToGain)}s/mi gap.`;
     })();
 
     return {
@@ -2568,7 +2568,7 @@ class CoachImpl implements Coach {
       rationale: `${gapDisplay} of goal; ${weeksNeeded}wk of typical progression needed (${weeksToRace}wk available).`,
       citations: [
         { doc: 'Research/02-race-time-prediction.md', section: '§2. Riegel Formula' },
-        { doc: 'Research/01-pace-zones-vdot.md', section: '§How to recalibrate paces — Triggers to retest' },
+        { doc: 'Research/01-pace-zones-vdot.md', section: '§How to recalibrate paces, Triggers to retest' },
         { doc: 'Research/00a-distance-running-training.md', section: '§Volume progression rules' },
       ],
       brain: 'deterministic',
@@ -2593,7 +2593,7 @@ class CoachImpl implements Coach {
   // Priorities: each push has an `urgency` ('low' / 'med' / 'high').
   // Heavy-block / post-race state suppresses pushes that would conflict
   // (no "extend long run" during POST_RACE). The card renders top 1-3
-  // pushes; an empty array reads "Plan steady — keep executing."
+  // pushes; an empty array reads "Plan steady, keep executing."
   //
   // @research Research/00a-distance-running-training.md §The Seven
   //           Workout Categories
@@ -2638,10 +2638,10 @@ class CoachImpl implements Coach {
         signal: longRunMi < 10
           ? `No run ≥10mi in the last 28 days`
           : `Last run >10mi was ~${daysSinceLongRun} days ago`,
-        action: `Extend your long run to 10+mi this Saturday — the aerobic base for ${state.races.nextA!.name} needs the depth.`,
+        action: `Extend your long run to 10+mi this Saturday, the aerobic base for ${state.races.nextA!.name} needs the depth.`,
         urgency: daysSinceLongRun >= 28 ? 'high' : 'med',
         citations: [
-          { doc: 'Research/00a-distance-running-training.md', section: '§The Seven Workout Categories — 4. Long run' },
+          { doc: 'Research/00a-distance-running-training.md', section: '§The Seven Workout Categories, 4. Long run' },
           { doc: 'Research/00a-distance-running-training.md', section: '§Long-Run Variations' },
         ],
       });
@@ -2660,11 +2660,11 @@ class CoachImpl implements Coach {
       pushes.push({
         id: 'add_threshold',
         signal: `Zero quality miles in last 14 days`,
-        action: `Get one threshold session in this week — ${Math.round(state.volume.weeklyAvg4w * 0.08) || 3}mi at T-pace converts aerobic depth into race pace.`,
+        action: `Get one threshold session in this week, ${Math.round(state.volume.weeklyAvg4w * 0.08) || 3}mi at T-pace converts aerobic depth into race pace.`,
         urgency: 'med',
         citations: [
-          { doc: 'Research/00a-distance-running-training.md', section: '§The Seven Workout Categories — 5. Threshold / tempo' },
-          { doc: 'Research/01-pace-zones-vdot.md', section: '§Dosing rules — Daniels\' caps' },
+          { doc: 'Research/00a-distance-running-training.md', section: '§The Seven Workout Categories, 5. Threshold / tempo' },
+          { doc: 'Research/01-pace-zones-vdot.md', section: '§Dosing rules, Daniels\' caps' },
         ],
       });
     }
@@ -2707,7 +2707,7 @@ class CoachImpl implements Coach {
           action: `Log today's check-in (energy / soreness / stress). The engine reads these to defer quality if recovery signals fire.`,
           urgency: daysStale >= 7 ? 'high' : 'low',
           citations: [
-            { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery — Qualitative Signals' },
+            { doc: 'Research/00b-recovery-protocols.md', section: '§Warning Signs of Incomplete Recovery, Qualitative Signals' },
           ],
         });
       }
@@ -2740,7 +2740,7 @@ class CoachImpl implements Coach {
     const top = pushes.slice(0, 3);
 
     const rationale = top.length === 0
-      ? 'No actionable pushes this week — execute the plan as written.'
+      ? 'No actionable pushes this week, execute the plan as written.'
       : `${top.length} push${top.length === 1 ? '' : 'es'} surfaced; most urgent: ${top[0]!.id}.`;
 
     return {
@@ -2768,7 +2768,7 @@ function composePhaseLabel(
   isQuality: boolean,
   state: CoachState,
 ): string {
-  // State-driven overrides — these read truer than the underlying phase.
+  // State-driven overrides, these read truer than the underlying phase.
   if (state.flags.heavyBlockSuspected) return 'Recovery';
   if (state.flags.rebuildAfterBreak) return 'Rebuilding';
   // Phase-driven defaults.
@@ -2784,7 +2784,7 @@ function composePhaseLabel(
   }
 }
 
-/** Canonical "hard" workout types — used by prescribeWorkout to decide
+/** Canonical "hard" workout types, used by prescribeWorkout to decide
  *  whether to flag today as quality on the card. Mirrors lib/coach-
  *  workouts.ts's notion of intensity but kept here so the Coach layer
  *  doesn't depend on engine internals. */
@@ -2803,7 +2803,7 @@ function isHardWorkoutType(type: string): boolean {
 
 /** Format s/mi as "M:SS" pace string. Used by paceStrategy + coachRead. */
 function formatPace(sPerMi: number): string {
-  if (!isFinite(sPerMi) || sPerMi <= 0) return '—';
+  if (!isFinite(sPerMi) || sPerMi <= 0) return ', ';
   const mm = Math.floor(sPerMi / 60);
   const ss = Math.round(sPerMi - mm * 60);
   return `${mm}:${ss.toString().padStart(2, '0')}`;
@@ -2811,7 +2811,7 @@ function formatPace(sPerMi: number): string {
 
 /** Format duration in seconds as "H:MM:SS". Used by raceFitnessPrediction. */
 function formatTime(s: number): string {
-  if (!isFinite(s) || s <= 0) return '—';
+  if (!isFinite(s) || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s - h * 3600) / 60);
   const sec = Math.round(s - h * 3600 - m * 60);
@@ -2822,7 +2822,7 @@ function formatTime(s: number): string {
 /** Best-effort summary of a race retrospect input. Both `plan` and
  *  `actual` are typed `unknown` so this does runtime-safe extraction:
  *  it reads named numeric fields if present, returns a defaulted-out
- *  summary otherwise. Conservative — never throws, never crashes the
+ *  summary otherwise. Conservative, never throws, never crashes the
  *  Coach if the caller hands in malformed data. */
 function summarizeRetrospect(plan: unknown, actual: unknown): {
   goalFinishS: number;
@@ -2868,7 +2868,7 @@ function summarizeRetrospect(plan: unknown, actual: unknown): {
 /** Scale a VDOT row's canonical times to a target race distance using
  *  the Riegel formula (T2 = T1 × (D2/D1)^1.06). Picks the closest
  *  canonical distance below or above the target so the exponent is
- *  applied over the shortest jump — keeps the prediction tight.
+ *  applied over the shortest jump, keeps the prediction tight.
  *  Per Research/02 §Riegel formula. */
 function riegelScaleFromVdotRow(
   row: { mileS: number; km3S: number; km5S: number; km10S: number; km15S: number; halfS: number; marathonS: number },
@@ -2884,7 +2884,7 @@ function riegelScaleFromVdotRow(
     { mi: 13.10942,     s: row.halfS },    // half marathon
     { mi: 26.21885,     s: row.marathonS },// marathon
   ];
-  // Pick the canonical entry closest to target — shortest Riegel jump
+  // Pick the canonical entry closest to target, shortest Riegel jump
   // is the most accurate.
   let best = canon[0];
   for (const c of canon) {

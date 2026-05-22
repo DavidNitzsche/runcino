@@ -119,8 +119,8 @@ export function selectDataset(
   ned: { gainFt: number; lossFt: number; closureErr: number } | null,
 ): 'srtm30m' | 'ned10m' {
   if (!ned) return 'srtm30m';
-  // NED (LiDAR) is ground truth when internally consistent. Its failure mode —
-  // reading bridge decks instead of road surface — shows up as HIGH closure
+  // NED (LiDAR) is ground truth when internally consistent. Its failure mode, 
+  // reading bridge decks instead of road surface, shows up as HIGH closure
   // error (asymmetric gain/loss from crossing the deck). SRTM's failure mode
   // is radar scatter off urban infrastructure: it gives LOW closure error while
   // massively overcounting gain. So prefer NED unless its closure error is bad.
@@ -194,7 +194,7 @@ export async function injectDemElevation(track: GpxTrack): Promise<ElevationResu
   const chosenGL = chosen === 'ned10m' && nedResult ? nedResult : srtmGL;
 
   if (srtmClosure >= 10 && (!nedResult || nedResult.closureErr >= 10)) {
-    warnings.push(`High loop-closure error (${srtmClosure.toFixed(1)}%). DEM data may be unreliable on this course — check for bridges or overpasses.`);
+    warnings.push(`High loop-closure error (${srtmClosure.toFixed(1)}%). DEM data may be unreliable on this course, check for bridges or overpasses.`);
   }
 
   const divergenceWarning =

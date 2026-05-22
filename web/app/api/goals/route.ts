@@ -1,5 +1,5 @@
 /**
- * /api/goals — personal goal CRUD.
+ * /api/goals, personal goal CRUD.
  *
  * POST → create a new goal row in personal_goals.
  *   Body: { goal_type, target, current?, deadline?, tolerance?, rationale? }
@@ -9,7 +9,7 @@
  *   Returns: { goals: Array<{...}> }
  *
  * The personal_goals table is created on first query via lib/db.ts
- * bootstrap. No auth yet — user_id is hard-coded to 'me' until auth
+ * bootstrap. No auth yet, user_id is hard-coded to 'me' until auth
  * lands; matches the same pattern as other user-scoped tables.
  */
 

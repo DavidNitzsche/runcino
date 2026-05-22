@@ -1,6 +1,6 @@
 /**
  * Shared date / time helpers. Used by every page that needs a real
- * "today" — Overview greeting, race countdowns, this-week range,
+ * "today", Overview greeting, race countdowns, this-week range,
  * past/upcoming filters.
  *
  * Single source of truth for "what is today?" so the entire app moves
@@ -9,7 +9,7 @@
 
 /** App-wide reference timezone. The user is in California; the server
  *  runs in UTC. Computing "today" naively against UTC means we flip
- *  to tomorrow at 4–5 PM local — highlighting the wrong day in the
+ *  to tomorrow at 4–5 PM local, highlighting the wrong day in the
  *  week strip. All date-string math goes through LA. */
 export const FAFF_TZ = 'America/Los_Angeles';
 
@@ -25,7 +25,7 @@ export function todayISO(): string {
 }
 
 /** A Date anchored at noon UTC of LA's calendar today. Safe to pass
- *  through `setDate` / `getDate` arithmetic on any server timezone —
+ *  through `setDate` / `getDate` arithmetic on any server timezone, 
  *  noon UTC is far enough from midnight that ±days never crosses
  *  a UTC date boundary. */
 export function todayDate(): Date {
@@ -83,7 +83,7 @@ export function formatDow(iso: string): string {
 }
 
 /** Returns Mon-of-current-week + Sun-of-current-week as ISO strings.
- *  Computed in LA timezone — the server's UTC clock would otherwise
+ *  Computed in LA timezone, the server's UTC clock would otherwise
  *  flip the week boundary in the early hours of LA's Monday. */
 export function thisWeekRange(d: Date = todayDate()): { start: string; end: string } {
   const day = d.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat (UTC because d is anchored noon-UTC)

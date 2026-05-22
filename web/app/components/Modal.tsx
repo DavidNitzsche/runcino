@@ -17,7 +17,7 @@
  *     </Modal>
  *   </ModalOverlay>
  *
- * No focus-trap, no scroll-lock — those are caller responsibilities (or
+ * No focus-trap, no scroll-lock, those are caller responsibilities (or
  * a future enhancement). The structure here matches the mockup CSS exactly.
  */
 
@@ -68,7 +68,7 @@ export function Modal({ children, size = 'default' }: ModalProps) {
 export interface ModalHeaderProps {
   /** Optional uppercase eyebrow above the title. */
   eyebrow?: ReactNode;
-  /** The main title — uppercase display font. */
+  /** The main title, uppercase display font. */
   title: ReactNode;
   /** When provided, renders an × close button on the right. */
   onClose?: () => void;

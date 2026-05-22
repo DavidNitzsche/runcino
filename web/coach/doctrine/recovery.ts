@@ -1,5 +1,5 @@
 /**
- * Doctrine §8 — Recovery: sleep, modalities, and the hard/easy ratio.
+ * Doctrine §8, Recovery: sleep, modalities, and the hard/easy ratio.
  *
  * Extracted from docs/coaching-research.md §8.1, §8.2, §8.3.
  */

@@ -1,5 +1,5 @@
 /**
- * Doctrine — Weather adjustments (heat, cold, humidity, wind, altitude,
+ * Doctrine, Weather adjustments (heat, cold, humidity, wind, altitude,
  * air quality, race-day recalibration).
  *
  * Source: Research/06-weather-adjustments.md
@@ -122,7 +122,7 @@ export const TEMP_DEWPOINT_SUM_ADJUSTMENT: Cited<Array<{
     { sumLowF: 171, sumHighF: 180,  pctLow: 8,    pctHigh: 10,   notes: 'Easy only or postpone' },
     { sumLowF: 181, sumHighF: null, pctLow: null, pctHigh: null, notes: 'Stop. Hard running not recommended.' },
   ],
-  note: 'Interval-vs-continuous rule: for repeats with ≥1:1 work:rest, apply HALF the continuous-run adjustment — recovery periods allow partial cooling.',
+  note: 'Interval-vs-continuous rule: for repeats with ≥1:1 work:rest, apply HALF the continuous-run adjustment, recovery periods allow partial cooling.',
   citations: [
     cite('§2 Humidity and Dewpoint › Combined Tair + Td index', 'Add Tair (°F) + Td (°F). Sum drives single adjustment. ≤100 = 0%; 121-130 = 1-2%; 161-170 = 6-8%; 181+ stop.', 'research', '06'),
   ],
@@ -356,7 +356,7 @@ export const ALTITUDE_RACE_LOSS: Cited<Array<{
   ],
 };
 
-/** Altitude arrival timing — Stellingwerff/Chapman strategies. */
+/** Altitude arrival timing, Stellingwerff/Chapman strategies. */
 export const ALTITUDE_ARRIVAL_STRATEGIES: Cited<Array<{
   strategy: 'A_arrive_late' | 'B_arrive_early' | 'AVOID_2_to_7_days';
   description: string;
@@ -464,7 +464,7 @@ export const RACE_DAY_DECISION_FLOW: Cited<{
       'Pace early miles 5-10 s/mi slower than total adjusted pace; reassess at 5K and 10K.',
     ],
     combinedSlowdownFormula: 'total_slowdown_pct ≈ heat_pct + altitude_pct + wind_pct + aqi_pct',
-    compoundingNote: 'Heat and altitude slightly compound (not strictly additive); when both >5%, reduce expected gains by ~10% — i.e., a 6% heat + 6% altitude condition ≈ 11% (not 12%).',
+    compoundingNote: 'Heat and altitude slightly compound (not strictly additive); when both >5%, reduce expected gains by ~10%, i.e., a 6% heat + 6% altitude condition ≈ 11% (not 12%).',
     neutralEquivalentFormula: 'T_neutral ≈ T_observed / (1 + total_slowdown_pct/100)',
   },
   citations: [
@@ -491,7 +491,7 @@ export const QUALITY_SESSION_BAIL_TRIGGERS: Cited<Array<{
   ],
 };
 
-/** Hard cancel triggers — postpone or cancel the session. */
+/** Hard cancel triggers, postpone or cancel the session. */
 export const HARD_CANCEL_TRIGGERS: Cited<Array<{
   trigger: string;
   reason: string;

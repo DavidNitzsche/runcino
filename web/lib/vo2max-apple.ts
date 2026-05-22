@@ -1,5 +1,5 @@
 /**
- * Apple Health VO2max — WELLNESS signal isolation layer.
+ * Apple Health VO2max, WELLNESS signal isolation layer.
  *
  * THE PRINCIPLE (locked):
  *   "Physiological estimates from consumer devices are wellness
@@ -8,7 +8,7 @@
  *
  * Apple Watch systematically over-estimates VO2max by 8-15 points
  * for trained runners with low resting heart rates. A typical fit
- * user might show VDOT ~47 from races but Apple VO2max 61.7 — a
+ * user might show VDOT ~47 from races but Apple VO2max 61.7, a
  * 14-point gap that is the DEFAULT state, not a finding.
  *
  * USE Apple VO2max for:
@@ -17,7 +17,7 @@
  *     level-based defaults of 35/45/55/65).
  *   ✓ Trend display: chart the value over time as informational.
  *   ✓ Extreme divergence (>20 points): flag possible data-quality
- *     issue — NEVER training implications.
+ *     issue, NEVER training implications.
  *
  * DO NOT use Apple VO2max for:
  *   ✗ Driving any pace prescription. Ever.
@@ -35,7 +35,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 /** Apple Health VO2max snapshot for the resolver/display layer. Note
- *  the deliberate `Apple` suffix — this is a CONSUMER-DEVICE estimate,
+ *  the deliberate `Apple` suffix, this is a CONSUMER-DEVICE estimate,
  *  not a peer to VDOT. */
 export interface Vo2MaxApple {
   /** Apple Health VO2max value (25-90), or null when none has been
@@ -66,18 +66,18 @@ export function buildVo2MaxApple(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Cold-start VDOT fallback — Tier 2 of the resolver hierarchy.
+// Cold-start VDOT fallback, Tier 2 of the resolver hierarchy.
 //
 // Tier 1 (preferred): aggregate VDOT from race history.
 // Tier 2 (this):      when NO race exists AND Apple VO2max is set,
 //                     subtract the empirically-observed over-estimate
 //                     (8-15 points typical for trained runners with
-//                     low RHR — we use 10 as a conservative middle).
+//                     low RHR, we use 10 as a conservative middle).
 // Tier 3 (last):      level-based default (35 / 45 / 55 / 65).
 //
 // Documented over-estimate range: 8-15 points. We pick 10 because:
 //   - The cold-start path runs ONLY when there's no race data, so the
-//     user is by definition early in the app's life — anchoring on
+//     user is by definition early in the app's life, anchoring on
 //     the low end of the over-estimate range avoids dropping their
 //     prescribed paces below what the runner can actually hold.
 //   - Once a race is logged, this fallback is bypassed entirely.
@@ -97,7 +97,7 @@ export function coldStartVdotFromAppleVo2Max(apple: Vo2MaxApple): number | null 
   return Math.max(20, apple.value - 10);
 }
 
-/** Resolver tiers — for display + diagnostics. */
+/** Resolver tiers, for display + diagnostics. */
 export type ResolvedVdotTier = 'race' | 'apple-cold-start' | 'level-default' | 'none';
 
 export interface ResolvedVdot {
@@ -119,7 +119,7 @@ export interface ResolvedVdot {
  *
  *  This function exists ONLY for cold-start / display contexts where
  *  showing *something* is better than nothing. It MUST NOT be called
- *  by the pace prescription pipeline — vdotSnapshot stays the only
+ *  by the pace prescription pipeline, vdotSnapshot stays the only
  *  pace-driving source. See lib/vdot.ts for the pace pipeline. */
 export function resolveVdotWithColdStart(
   raceDerivedVdot: number | null,
@@ -141,7 +141,7 @@ export function resolveVdotWithColdStart(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Data-quality check — fires ONLY at >20 point gap.
+// Data-quality check, fires ONLY at >20 point gap.
 //
 // 8-15 points is the typical Apple over-estimation range for trained
 // runners with low RHR (user's own example: VDOT 47 vs Apple 61.7, a
@@ -161,7 +161,7 @@ export interface Vo2MaxDataQualityFlag {
   appleValue: number;
   /** The race-derived VDOT being compared against. */
   vdotValue: number;
-  /** User-facing message — explicitly framed as data-quality, never
+  /** User-facing message, explicitly framed as data-quality, never
    *  training. */
   message: string;
 }
@@ -171,7 +171,7 @@ export interface Vo2MaxDataQualityFlag {
  *  (the 8-15 point gap is normal for trained runners and should NEVER
  *  be surfaced as a finding).
  *
- *  Caller is responsible for ensuring both values are present — this
+ *  Caller is responsible for ensuring both values are present, this
  *  function deliberately doesn't massage nulls so the call site reads
  *  as "I have both, is the gap pathological?". */
 export function checkVo2MaxDataQuality(
@@ -188,7 +188,7 @@ export function checkVo2MaxDataQuality(
     message:
       `Apple VO2max ${apple.value} vs VDOT-implied ${Math.round(vdot)} is a ` +
       `${Math.round(gap)}-point gap. Apple Watch typically over-estimates ` +
-      `VO2max by 8-15 points for trained runners — gaps over 20 usually ` +
+      `VO2max by 8-15 points for trained runners, gaps over 20 usually ` +
       `mean a data-source issue. Verify your Apple Health VO2max isn't ` +
       `coming from an unrelated workout app.`,
   };

@@ -8,7 +8,7 @@
  *   3. Recalibration at window start or in OLDER half → clean cross-ref
  *
  * The discipline: a cross-ref that tells the runner "zones recalibrated"
- * when the sparkline window predates the recalibration is wrong — they're
+ * when the sparkline window predates the recalibration is wrong, they're
  * looking at settled data.  The relevance check enforces this.
  */
 import { describe, expect, it } from 'vitest';
@@ -88,7 +88,7 @@ describe('resolveSparklineRecalibrationRef · three-case window logic', () => {
   });
 
   it('Case 2 · recalibration AT window\'s recent end → hedged', () => {
-    // Recalibration yesterday — the entire 8-week trend is OLD-framework
+    // Recalibration yesterday, the entire 8-week trend is OLD-framework
     // data with only a sliver of new.  Hedge essential.
     const out = resolveSparklineRecalibrationRef(
       WINDOW_START,
@@ -102,7 +102,7 @@ describe('resolveSparklineRecalibrationRef · three-case window logic', () => {
 });
 
 describe('resolveSparklineRecalibrationRef · relation + nav target', () => {
-  it('uses "tied to" relation (structural — shared data event)', () => {
+  it('uses "tied to" relation (structural, shared data event)', () => {
     const out = resolveSparklineRecalibrationRef(
       WINDOW_START,
       WINDOW_END,

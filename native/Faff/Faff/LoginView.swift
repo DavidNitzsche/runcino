@@ -6,7 +6,7 @@
 //  Faff.run backend.  On success, TokenStore is populated and the
 //  onLogin callback fires; ContentView re-routes to TodayView.
 //
-//  No "forgot password" link in v0 — single-user beta, the user IS
+//  No "forgot password" link in v0, single-user beta, the user IS
 //  the developer.  Add when the second user signs up.
 //
 

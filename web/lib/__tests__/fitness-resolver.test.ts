@@ -7,8 +7,8 @@
  * stale hardcoded path, these tests catch it.
  *
  * The full resolveFitness() hits Postgres, so we test it indirectly by
- * verifying the pure components — pacesFromVdot, fmtPaceBand,
- * describeWorkout with fitness — produce the right numbers end-to-end
+ * verifying the pure components, pacesFromVdot, fmtPaceBand,
+ * describeWorkout with fitness, produce the right numbers end-to-end
  * for the canonical 1:30:00 HM scenario.
  */
 
@@ -17,7 +17,7 @@ import { pacesFromVdot } from '../vdot';
 import { fmtPaceBand, type ResolvedFitness } from '../fitness-types';
 import { describeWorkout } from '../workout-descriptions';
 
-// ── A 1:30:00 HM runner — the AFC Half scenario ─────────────────────
+// ── A 1:30:00 HM runner, the AFC Half scenario ─────────────────────
 //
 // 1:30:00 / 13.109 mi = 412 sec/mi ≈ 6:52/mi race pace.
 // At Daniels VDOT ~48 a 1:30 half is roughly the right finishing
@@ -65,7 +65,7 @@ function buildFixture(): ResolvedFitness {
   };
 }
 
-describe('Fitness resolver — pace consistency for a 1:30 HM runner', () => {
+describe('Fitness resolver, pace consistency for a 1:30 HM runner', () => {
   const fitness = buildFixture();
 
   it('race-pace band brackets the goal pace ± 10 s/mi', () => {
@@ -93,7 +93,7 @@ describe('Fitness resolver — pace consistency for a 1:30 HM runner', () => {
     expect(loop).toBeDefined();
     if (loop?.kind === 'loop') {
       const work = loop.items[0];
-      // Should be 6:42-7:02/mi — the user's actual race pace ±10s
+      // Should be 6:42-7:02/mi, the user's actual race pace ±10s
       expect(work.pace).toBe('6:42–7:02/mi');
       // Verify it's NOT the legacy hardcoded value
       expect(work.pace).not.toBe('7:30–7:50/mi');
@@ -120,7 +120,7 @@ describe('Fitness resolver — pace consistency for a 1:30 HM runner', () => {
     const d = describeWorkout('Easy', 'easy', fitness);
     const easyStep = d.steps[0];
     if (easyStep?.kind === 'simple') {
-      // For VDOT 48, E pace is roughly 8:30-9:30 — must be the resolved
+      // For VDOT 48, E pace is roughly 8:30-9:30, must be the resolved
       // band, not the legacy hardcoded "9:00-9:30/mi"
       expect(easyStep.pace).toBe(fmtPaceBand(fitness.paces.E));
     }
@@ -147,7 +147,7 @@ describe('Fitness resolver — pace consistency for a 1:30 HM runner', () => {
   });
 });
 
-describe('Fitness resolver — HR zones from max HR', () => {
+describe('Fitness resolver, HR zones from max HR', () => {
   const fitness = buildFixture();
 
   it('Z2 (Easy) band brackets 60-70% of max HR', () => {
@@ -167,7 +167,7 @@ describe('Fitness resolver — HR zones from max HR', () => {
   });
 });
 
-describe('Fitness resolver — race-pace fallback', () => {
+describe('Fitness resolver, race-pace fallback', () => {
   it('falls back to threshold band when no active race', () => {
     const fitness = buildFixture();
     const noRace: ResolvedFitness = {

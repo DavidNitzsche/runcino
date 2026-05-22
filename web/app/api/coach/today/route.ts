@@ -1,8 +1,8 @@
 /**
- * /api/coach/today — daily prescription endpoint.
+ * /api/coach/today, daily prescription endpoint.
  *
  * Stage 3 wired: routes through `coach.prescribeWorkout` + `coach.
- * assessReadiness`. Both are deterministic — no Claude call, no API
+ * assessReadiness`. Both are deterministic, no Claude call, no API
  * key needed. The legacy `today` + `state` envelope is preserved
  * (iOS reads them); a `coach` sub-object carries the workout
  * prescription, readiness, and citations.
@@ -26,7 +26,7 @@ import { requireActiveUser } from '../../../../lib/auth';
 export async function GET() {
   try {
     // Pre-resolve userId so gatherCoachState can load the aggregate
-    // VDOT — keeps engine pace decisions aligned with /profile UI.
+    // VDOT, keeps engine pace decisions aligned with /profile UI.
     let userId: string | undefined;
     try { userId = (await requireActiveUser()).id; } catch { /* unauth ok */ }
     const state = await gatherCoachState({ userId });

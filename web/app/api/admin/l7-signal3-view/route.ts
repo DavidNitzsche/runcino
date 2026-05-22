@@ -16,7 +16,7 @@ import { computeAggregateVdot } from '@/lib/compute-vdot';
 import { query } from '@/lib/db';
 
 function fmtPace(s: number | null): string {
-  if (s == null || s <= 0) return '—';
+  if (s == null || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
@@ -87,8 +87,8 @@ export async function GET(req: NextRequest) {
         : signal3.firesDown
           ? `Signal 3 fires DOWN · ${signal3.slowerCount} interval workouts at ${signal3.slowerWeight.toFixed(1)}w trending slow at controlled HR.`
           : signal3.observations.length < 3
-            ? `Only ${signal3.observations.length} interval-effort workouts in last ${42} days. Need 3 to fire — system correctly waiting.`
-            : `Observations within noise floor (±5 s/mi of prescribed I-pace). System holding — no I-pace fitness drift detected.`,
+            ? `Only ${signal3.observations.length} interval-effort workouts in last ${42} days. Need 3 to fire, system correctly waiting.`
+            : `Observations within noise floor (±5 s/mi of prescribed I-pace). System holding, no I-pace fitness drift detected.`,
     },
   });
 }

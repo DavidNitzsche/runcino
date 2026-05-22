@@ -4,11 +4,11 @@
 //
 //  The v4 design system (designs/V4_DESIGN_LAW.md +
 //  web/app/components/v4/tokens.ts) translated to SwiftUI. Import these
-//  instead of inlining magic numbers — same rule as the web tokens.
+//  instead of inlining magic numbers, same rule as the web tokens.
 //
 //  FONTS: Bebas Neue (display/numbers), Inter (body), Oswald (sub-headers)
 //  are NOT system fonts. They must be bundled into the target (the .ttf
-//  files + an Info.plist UIAppFonts entry) before they render — otherwise
+//  files + an Info.plist UIAppFonts entry) before they render, otherwise
 //  SwiftUI silently falls back to the system font. See the build notes.
 //
 
@@ -28,7 +28,7 @@ enum Faff {
         static let pillBg    = Color.ink04
         static let track     = Color(hex: 0x080808).opacity(0.07)
 
-        // Semantic — color only when it carries meaning.
+        // Semantic, color only when it carries meaning.
         static let recovery  = Color(hex: 0x3EBD41)   // green · on plan
         static let milestone = Color(hex: 0xF3AD38)   // amber · today
         static let race      = Color(hex: 0xE88021)   // orange · brand (sparingly)
@@ -42,7 +42,7 @@ enum Faff {
         /// Darkened amber for TEXT/icons on `amberWash` (milestone #D4900A
         /// fails contrast as on-wash text). Readiness number, "Watch Load".
         static let amberInk   = Color(hex: 0xB3450A)
-        /// Data-viz only — descent/elevation grade (Race detail). Not chrome.
+        /// Data-viz only, descent/elevation grade (Race detail). Not chrome.
         static let dataBlue   = Color(hex: 0x008FEC)
         static let dataBlueWash = Color(hex: 0x008FEC).opacity(0.12)
         /// Hairline border on stat pills / ghost buttons.
@@ -54,7 +54,7 @@ enum Faff {
     // mockup in iphone-handoff.html uses these smaller sizes).
     enum F {
         // Bebas Neue is static (one weight). Inter + Oswald are variable
-        // fonts — reference the default PostScript name and shift weight
+        // fonts, reference the default PostScript name and shift weight
         // along the wght axis with .weight().
         static func display(_ size: CGFloat) -> Font { .custom("BebasNeue-Regular", size: size) }
         static func inter(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {

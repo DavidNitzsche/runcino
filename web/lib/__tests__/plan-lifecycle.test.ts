@@ -1,7 +1,7 @@
 /**
  * plan-lifecycle · pure decision rules.
  *
- * Tests lifecycleCheck() in isolation — no DB. Confirms:
+ * Tests lifecycleCheck() in isolation, no DB. Confirms:
  *   - first-time (no plan)
  *   - transition (goal passed)
  *   - transition (new A-race)

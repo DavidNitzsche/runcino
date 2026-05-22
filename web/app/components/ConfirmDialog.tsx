@@ -1,5 +1,5 @@
 /**
- * ConfirmDialog — destructive-action confirmation modal.
+ * ConfirmDialog, destructive-action confirmation modal.
  *
  * Composes the Modal primitives (ModalOverlay/Modal/ModalHeader/etc.) into
  * the canonical pattern from designs/_template-confirm-2026-05-09.html:
@@ -17,7 +17,7 @@
  *     onCancel={() => setShowConfirm(false)}
  *   />
  *
- * Replaces `window.confirm()` — same blocking intent, no OS chrome,
+ * Replaces `window.confirm()`, same blocking intent, no OS chrome,
  * matches the locked design system.
  */
 
@@ -36,7 +36,7 @@ export interface ConfirmDialogProps {
   open: boolean;
   /** Short uppercase label above the title (e.g. "DELETE", "RETIRE"). */
   eyebrow: string;
-  /** Headline question — typically "Delete <thing>?". */
+  /** Headline question, typically "Delete <thing>?". */
   title: ReactNode;
   /** Description of what the action does. */
   body?: ReactNode;
@@ -46,7 +46,7 @@ export interface ConfirmDialogProps {
   confirmLabel?: string;
   /** Label for the cancel button. Default: "Cancel". */
   cancelLabel?: string;
-  /** Called on confirm. May be async — the button is disabled while pending. */
+  /** Called on confirm. May be async, the button is disabled while pending. */
   onConfirm: () => void | Promise<void>;
   /** Called on cancel (× button, Escape, or backdrop click). */
   onCancel: () => void;

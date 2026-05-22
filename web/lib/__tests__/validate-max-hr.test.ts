@@ -1,5 +1,5 @@
 /**
- * Tests for validate-max-hr — the rules of the FIRST adaptive module.
+ * Tests for validate-max-hr, the rules of the FIRST adaptive module.
  *
  * Covers the philosophy guards specific to max HR:
  *   - Multi-peak requirement (single peaks don't fire)
@@ -9,7 +9,7 @@
  *   - No fire when stored is consistent with race data
  *
  * We test the PURE logic of validateMaxHr by mocking the input
- * conditions — we don't need a real DB connection because the
+ * conditions, we don't need a real DB connection because the
  * function's branching is fully determined by the inputs we feed
  * it via dependency injection of the data layer. For now we test
  * the verdict shape contract directly with hand-built peaks.
@@ -18,7 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import type { MaxHrValidationVerdict } from '../validate-max-hr';
 
-// Synthetic verdict-shape tests — these would normally be built by
+// Synthetic verdict-shape tests, these would normally be built by
 // validateMaxHr() from DB rows. We construct them directly to verify
 // the recommendation logic's KIND classifications match what the UI
 // expects.

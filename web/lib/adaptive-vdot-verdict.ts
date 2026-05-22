@@ -1,5 +1,5 @@
 /**
- * Adaptive VDOT verdict — combines L7 signals into a banner-shape
+ * Adaptive VDOT verdict, combines L7 signals into a banner-shape
  * recommendation. Mirrors the suspect-ceiling pattern that fired
  * successfully on David's real data 2026-05-19:
  *
@@ -23,7 +23,7 @@
  *   When BOTH fire in the same direction, they merge into one banner
  *   with both evidence panels and bump = max(s1Bump, s2Bump) capped
  *   at 1.5. Same direction corroborates confidence but doesn't
- *   compound magnitude — the conservative-on-upside discipline says
+ *   compound magnitude, the conservative-on-upside discipline says
  *   evidence converges, not amplifies.
  *
  *   When they fire in OPPOSITE directions (rare: S1 says faster, S2
@@ -32,7 +32,7 @@
  *   verdict returns 'no-finding' with a contradiction note so the
  *   user can see the disagreement on the diagnostic surface.
  *
- * Asymmetric on purpose — bumping VDOT up has real workout-effect
+ * Asymmetric on purpose, bumping VDOT up has real workout-effect
  * (faster prescriptions = harder workouts = injury risk) so the
  * threshold is higher. Investigating a downgrade is lower-risk
  * (we propose investigation, not auto-modification).
@@ -56,17 +56,17 @@ import { formatCrossReference, type CrossReference } from './coach-voice';
  * Returns a cross-reference clause + nav target when Signal 4 directly
  * fed the bump, otherwise undefined.  Earned-not-decorative: the PR
  * result must have literally driven the s4Bump points calculation
- * (s4FiresUp === true).  Soft-positive Signal 4 doesn't qualify — it
+ * (s4FiresUp === true).  Soft-positive Signal 4 doesn't qualify, it
  * corroborates but didn't drive the bump math.
  *
- * Picks the MOST RECENT PR — single name beats listing all, per the
+ * Picks the MOST RECENT PR, single name beats listing all, per the
  * frequency-cap rule (one cross-reference per surface per render).
  * computeSignal4 builds prsInWindow ASCENDING by date (walks the
  * chronological list tracking running best), so the last element is
  * the most recent.
  *
  * Relation: 'contributing to' (causal, grammatically subject-position
- * — see coach-voice.ts).  The PR's existence drove the bump number.
+ *, see coach-voice.ts).  The PR's existence drove the bump number.
  *
  * Exported for unit testing.
  */
@@ -133,7 +133,7 @@ export interface AdaptiveVdotVerdict {
         /** V7 cross-reference · fires when Signal 4 PR trajectory
          *  directly fed the bump-points calculation.  Names the most
          *  recent contributing PR and links to /races#personal-records.
-         *  Relation: 'contributing to' (causal — the PR result
+         *  Relation: 'contributing to' (causal, the PR result
          *  literally drove the s4Bump number). */
         crossRef?: CrossReference;
       }
@@ -150,7 +150,7 @@ export interface AdaptiveVdotVerdict {
 
 /** Map total faster-weight delta into a proposed VDOT bump.
  *  Conservative: 2.5 weight ≈ 0.5 VDOT, 4.0 weight ≈ 1.0 VDOT.
- *  Caps at 1.5 points per banner — bigger jumps need more evidence
+ *  Caps at 1.5 points per banner, bigger jumps need more evidence
  *  across more banners, not a single large recommendation. */
 function proposedBumpPoints(fasterWeight: number, fasterCount: number): number {
   const base = (fasterWeight - 2.0) * 0.4; // 2.5w → 0.2, 3.5w → 0.6, 5w → 1.2
@@ -276,7 +276,7 @@ export async function buildAdaptiveVdotVerdict(
         hasFinding: false,
         recommendation: {
           kind: 'race-week-suspended',  // reusing kind for "any suspension"
-          reason: `Signals suspended · you marked yourself injured ${gap.daysSinceLastRun != null ? `${gap.daysSinceLastRun} days ago` : ''}. Adaptive evaluation pauses until activity resumes — missed workouts during recovery should never read as fitness regression.`,
+          reason: `Signals suspended · you marked yourself injured ${gap.daysSinceLastRun != null ? `${gap.daysSinceLastRun} days ago` : ''}. Adaptive evaluation pauses until activity resumes, missed workouts during recovery should never read as fitness regression.`,
           daysToRace: 0,
         },
       };
@@ -291,7 +291,7 @@ export async function buildAdaptiveVdotVerdict(
       hasFinding: false,
       recommendation: {
         kind: 'race-week-suspended',
-        reason: `${daysToRace} days from your next race — taper distorts paces, adaptive signals are suspended.`,
+        reason: `${daysToRace} days from your next race, taper distorts paces, adaptive signals are suspended.`,
         daysToRace,
       },
     };
@@ -349,7 +349,7 @@ export async function buildAdaptiveVdotVerdict(
       recommendation: {
         kind: 'no-finding',
         reason:
-          `Adaptive signals disagree this period — at least one signal points up while another points down. ` +
+          `Adaptive signals disagree this period, at least one signal points up while another points down. ` +
           `S1=${dirOf(s1FiresUp, s1FiresDown)}, S2=${dirOf(s2FiresUp, s2FiresDown)}, S3=${dirOf(s3FiresUp, s3FiresDown)}, S4=${dirOf(s4FiresUp, false)}. ` +
           `When evidence cuts in multiple directions, the most likely explanation is one window had a ` +
           `non-representative sample (illness, weather cluster, missed sessions). Holding off on any change.`,
@@ -371,7 +371,7 @@ export async function buildAdaptiveVdotVerdict(
     // Signal 3 reuses Signal 1's bump math (same shape: count + weight).
     const s3Bump = s3FiresUp ? proposedBumpPoints(signal3.fasterWeight, signal3.fasterCount) : 0;
     // Signal 4 · PR trajectory bump. Each PR is concrete fitness
-    // evidence — race performance is the strongest signal we have.
+    // evidence, race performance is the strongest signal we have.
     // Scale with count: 3 PRs = 0.5 pts, 4 PRs = 0.8 pts, 5+ PRs caps
     // at 1.0 pts. Distinct-distance bonus (broad fitness) adds 0.2.
     const s4Bump = s4FiresUp
@@ -382,7 +382,7 @@ export async function buildAdaptiveVdotVerdict(
         )
       : 0;
     // Multiple firing: corroboration, take the LARGER bump (capped).
-    // Conservative on upside — same direction converges confidence,
+    // Conservative on upside, same direction converges confidence,
     // doesn't compound magnitude.
     const bumpPoints = Math.min(1.5, Math.max(s1Bump, s2Bump, s3Bump, s4Bump));
     const suggestedVdot = Math.round((currentVdot + bumpPoints) * 10) / 10;
@@ -445,7 +445,7 @@ export async function buildAdaptiveVdotVerdict(
         `Suggested: bump aggregate VDOT ${currentVdot.toFixed(1)} → ${suggestedVdot.toFixed(1)}.`;
       falsifier =
         `All firing signals already exclude heat >78°F and race-recency windows. ` +
-        `A reversal in any single signal in the next two weeks would weaken the combined case — ` +
+        `A reversal in any single signal in the next two weeks would weaken the combined case, ` +
         `multi-signal corroboration is more conservative than any single one, but each signal must keep agreeing.`;
     } else {
       reason =
@@ -455,7 +455,7 @@ export async function buildAdaptiveVdotVerdict(
       const otherSignalsName = s1FiresUp ? 'Signals 2 and 3' : s2FiresUp ? 'Signals 1 and 3' : 'Signals 1 and 2';
       falsifier =
         `Heat >78°F and race-recency workouts are already filtered out. ${otherSignalsName} did not corroborate ` +
-        `this period — that's why the bump is conservative. A reversal in the firing signal would weaken the case, ` +
+        `this period, that's why the bump is conservative. A reversal in the firing signal would weaken the case, ` +
         `as would discovering a context (illness, life stress) that explained the fast paces.`;
     }
 
@@ -509,7 +509,7 @@ export async function buildAdaptiveVdotVerdict(
         ` Worth investigating: am I in a recovery week? Carrying extra fatigue? Illness?`
       : reasonParts.join(' ') + ` Worth investigating: recovery week? Fatigue? Illness?`;
     const falsifier =
-      `If you can identify a contextual reason — recovery week, poor sleep cluster, illness, life stress — ` +
+      `If you can identify a contextual reason, recovery week, poor sleep cluster, illness, life stress, ` +
       `dismiss this. The investigate path is for when execution is honest and the numbers still tell you ` +
       `something's off.`;
 
@@ -542,7 +542,7 @@ export async function buildAdaptiveVdotVerdict(
 }
 
 function formatPace(s: number | null | undefined): string {
-  if (s == null || !s || s <= 0) return '—';
+  if (s == null || !s || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;

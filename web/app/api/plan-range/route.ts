@@ -1,11 +1,11 @@
 /**
- * /api/plan-range — multi-month plan view for the /plan page.
+ * /api/plan-range, multi-month plan view for the /plan page.
  *
  * Returns one entry per day from the first of the current month through
  * `months` calendar months forward (default 4 ≈ 120 days). The /plan
  * page groups these into calendar grids and renders each month.
  *
- * Powered by `getCurrentPlan` — the plan-as-artifact lifecycle entry
+ * Powered by `getCurrentPlan`, the plan-as-artifact lifecycle entry
  * point. Every day comes from the real persisted plan (phases, volume
  * curve, doctrine-grounded workout types) rather than a per-day engine
  * simulation. Pace targets are derived from the runner's VDOT via
@@ -48,7 +48,7 @@ export interface PlanRangeApiErr {
 
 // ─── Type mapping: plan-as-artifact → RunWorkoutType ──────────────────────────
 // The /plan page renders using RunWorkoutType for colour + label logic.
-// Mapping is one-way — these strings are only for UI rendering.
+// Mapping is one-way, these strings are only for UI rendering.
 
 function mapToRunType(planType: string): RunWorkoutType {
   switch (planType) {
@@ -86,16 +86,16 @@ function mapToLabel(planType: string): string {
 
 function mapToDescription(planType: string): string {
   switch (planType) {
-    case 'easy':              return 'Easy, conversational pace — you should be able to chat the whole way.';
+    case 'easy':              return 'Easy, conversational pace, you should be able to chat the whole way.';
     case 'long':              return 'Long, easy run. Builds the endurance to go the distance.';
-    case 'threshold':         return 'A steady, comfortably hard block — right at the edge you can hold.';
+    case 'threshold':         return 'A steady, comfortably hard block, right at the edge you can hold.';
     case 'interval':          return 'Short hard reps with rest between, to sharpen your top-end speed.';
     case 'mp':                return 'A block at your goal race pace.';
-    case 'race':              return 'Race day — run your plan.';
+    case 'race':              return 'Race day, run your plan.';
     case 'shakeout':          return 'Short and easy, with a few quick strides to wake the legs up.';
-    case 'recovery':          return 'Very easy recovery run — just keep the blood moving.';
+    case 'recovery':          return 'Very easy recovery run, just keep the blood moving.';
     case 'rest':              return 'Full rest day.';
-    case 'race_week_tuneup':  return 'A short, sharp tune-up — primes the legs for race day without tiring you out.';
+    case 'race_week_tuneup':  return 'A short, sharp tune-up, primes the legs for race day without tiring you out.';
     default:                  return '';
   }
 }

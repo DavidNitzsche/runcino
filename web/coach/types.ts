@@ -1,5 +1,5 @@
 /**
- * Coach types — shared across the doctrine and engine layers.
+ * Coach types, shared across the doctrine and engine layers.
  *
  * Every coaching decision the app makes is wrapped in a CoachDecision so
  * the consumer can not only get the answer but also surface the reasoning
@@ -12,7 +12,7 @@
 /** Pointer back into the research markdown that justifies a doctrine
  *  constant or a decision. `doc` is repo-relative; `section` is the
  *  markdown heading path (e.g. "§3.1" or "§5.5 Threshold and tempo work").
- *  `snippet` is an optional short prose excerpt — used by the UI to
+ *  `snippet` is an optional short prose excerpt, used by the UI to
  *  render a hover-tooltip explaining the rule without leaving the page. */
 export interface Citation {
   /** Canonical doctrine source. The `Research/...` form is the
@@ -27,7 +27,7 @@ export interface Citation {
   snippet?: string;
 }
 
-/** Marker for which side of the coach answered. Mostly diagnostic — the
+/** Marker for which side of the coach answered. Mostly diagnostic, the
  *  consumer doesn't need to switch on it, but it shows up in logs and
  *  audits when we want to know whether a particular answer came from a
  *  rule lookup or a Claude call. */
@@ -37,19 +37,19 @@ export type CoachBrain = 'deterministic' | 'llm';
  *  be a number (taper depth %), a struct (workout prescription), a string
  *  (race-morning brief), or anything else.
  *
- *  • `answer`    — the value the consumer wants
- *  • `rationale` — one short sentence the UI can render verbatim
- *  • `citations` — at least one entry; click-throughs to research
- *  • `brain`     — which path produced it ('deterministic' | 'llm') */
+ *  • `answer`, the value the consumer wants
+ *  • `rationale`, one short sentence the UI can render verbatim
+ *  • `citations`, at least one entry; click-throughs to research
+ *  • `brain`, which path produced it ('deterministic' | 'llm') */
 export interface CoachDecision<T> {
   answer: T;
-  /** One sentence in voice — the default the UI shows on the card. */
+  /** One sentence in voice, the default the UI shows on the card. */
   rationale: string;
   /** Optional 1-paragraph plain-English explanation. The UI surfaces
    *  this when the user asks "Why?". Reads like the Coach explaining
    *  themselves; cites principles in plain language, no §-numbers. */
   explanation?: string;
-  /** Internal audit trail — the research sections that justify the
+  /** Internal audit trail, the research sections that justify the
    *  answer. NOT rendered in the default UI; available to consumers
    *  that want to expose a deep "show me the source" mode. */
   citations: Citation[];
@@ -57,10 +57,10 @@ export interface CoachDecision<T> {
 }
 
 /** Minimum context every Coach call needs. Individual methods may
- *  require additional fields — those go in their dedicated input types
+ *  require additional fields, those go in their dedicated input types
  *  (e.g. PrescribeWorkoutInput) defined alongside the method. */
 export interface CoachBaseContext {
-  /** ISO date string (YYYY-MM-DD) for "today" — explicit so the same
+  /** ISO date string (YYYY-MM-DD) for "today", explicit so the same
    *  state can be replayed deterministically in tests / retrospectives. */
   today: string;
   /** Per-user calibration overrides (Stage 4). Empty object until the
@@ -72,7 +72,7 @@ export interface CoachBaseContext {
  *  Populated by Stage 4 retrospective loop after the user's first race
  *  finishes. Stays empty for new users.
  *
- *  All fields optional — when missing, the coach falls back to doctrine. */
+ *  All fields optional, when missing, the coach falls back to doctrine. */
 export interface CoachCalibration {
   /** Multiplier applied to the published Minetti GAP polynomial. 1.0 =
    *  pure Minetti; 1.05 = this user's hills cost 5% more energy than
@@ -112,7 +112,7 @@ export interface BodySystem {
   /** State string the UI maps to color. `done` = healed; `building` =
    *  in repair; `stressed` = freshly hit. */
   state: 'done' | 'building' | 'stressed';
-  /** 0–1 — fraction healed since the stressor event. */
+  /** 0–1, fraction healed since the stressor event. */
   readiness: number;
   /** ISO date string for the projected full-heal date. `null` when the
    *  system is already healed (state === 'done' and readiness === 1). */
@@ -121,7 +121,7 @@ export interface BodySystem {
   daysToHealed: number;
 }
 
-/** Output of `Coach.bodySystems()` — the full 5-row picture. */
+/** Output of `Coach.bodySystems()`, the full 5-row picture. */
 export interface BodySystemsReport {
   /** Days since the most recent A-priority race / heavy stressor. */
   daysSincePeakStress: number;
@@ -153,7 +153,7 @@ export interface TrajectoryPoint {
   isRaceWeek: boolean;
 }
 
-/** Output of `Coach.trajectory14wk()` — the data backing the PATH chart. */
+/** Output of `Coach.trajectory14wk()`, the data backing the PATH chart. */
 export interface Trajectory14wk {
   /** Race the trajectory points toward. */
   raceName: string;
@@ -177,7 +177,7 @@ export interface Trajectory14wk {
   rationale: string;
 }
 
-/** A single key workout that "proves" race-readiness — the workouts
+/** A single key workout that "proves" race-readiness, the workouts
  *  that validate the build before race day. */
 export interface ProofSession {
   /** ISO date of the proof session. */
@@ -202,7 +202,7 @@ export interface ProofSessionsReport {
   totalProofs: number;
   buildLengthWk: number;
   sessions: ProofSession[];
-  /** The most recent COMPLETED proof — surfaces as "▲ LATEST PROOF". */
+  /** The most recent COMPLETED proof, surfaces as "▲ LATEST PROOF". */
   latestCompleted: {
     dateISO: string;
     label: string;
@@ -211,7 +211,7 @@ export interface ProofSessionsReport {
   } | null;
 }
 
-/** Output of `Coach.raceFitnessPrediction()` — the GOAL vs FITNESS vs
+/** Output of `Coach.raceFitnessPrediction()`, the GOAL vs FITNESS vs
  *  HEADROOM tile-row on /races. */
 export interface RaceFitnessPrediction {
   raceName: string;
@@ -241,7 +241,7 @@ export interface RaceFitnessPrediction {
   rationale: string;
 }
 
-/** A single day's deltas in the WEEK STRIP — actual vs planned. */
+/** A single day's deltas in the WEEK STRIP, actual vs planned. */
 export interface DayDelta {
   /** ISO date. */
   dateISO: string;
@@ -251,22 +251,22 @@ export interface DayDelta {
   plannedMi: number;
   /** Actual distance in miles, null if future. */
   actualMi: number | null;
-  /** miles delta — actualMi − plannedMi. Null when actualMi is null. */
+  /** miles delta, actualMi − plannedMi. Null when actualMi is null. */
   deltaMi: number | null;
   /** UI chip label, e.g. "+5.4 vs plan" or "ON PLAN". */
   pinLabel: string | null;
-  /** Severity of the delta — drives chip color. */
+  /** Severity of the delta, drives chip color. */
   severity: 'good' | 'neutral' | 'warn' | 'over' | null;
   /** Coach engine workout type (recovery / general_aerobic / threshold /
-   *  long_steady / rest / etc) — drives the day-cell label so each day
+   *  long_steady / rest / etc), drives the day-cell label so each day
    *  shows what's actually prescribed, not a generic "Easy". */
   type: string;
   /** Coach engine display label ("Recovery run", "Long easy",
-   *  "Threshold intervals", etc) — preferred over per-day fallbacks. */
+   *  "Threshold intervals", etc), preferred over per-day fallbacks. */
   label: string;
-  /** Quality flag — drives chip styling on quality days. */
+  /** Quality flag, drives chip styling on quality days. */
   isQuality: boolean;
-  /** Long-run flag — drives chip styling + axis emphasis on long days. */
+  /** Long-run flag, drives chip styling + axis emphasis on long days. */
   isLong: boolean;
 }
 
@@ -286,7 +286,7 @@ export interface WeekDeltasReport {
   days: DayDelta[];
   /** Highest-signal headline (e.g. "+8.1 over plan"). */
   rationale: string;
-  /** Coach narrative — multi-sentence context for the THIS WEEK card.
+  /** Coach narrative, multi-sentence context for the THIS WEEK card.
    *  Explains phase, what this week's prescription is doing, key
    *  beats (rest days, long run, quality returns), and what to watch.
    *  Drives the "COACH THIS WEEK" side panel. */
@@ -315,7 +315,7 @@ export interface EngineDetail {
 
 export interface EngineDetailsReport {
   details: EngineDetail[];
-  /** Plan integrity — count of doctrine rules passed / total. */
+  /** Plan integrity, count of doctrine rules passed / total. */
   planIntegrity: {
     rulesPassed: number;
     rulesTotal: number;
@@ -325,7 +325,7 @@ export interface EngineDetailsReport {
   };
 }
 
-/** Output of `Coach.runRead()` — the Coach Read card on a single run's
+/** Output of `Coach.runRead()`, the Coach Read card on a single run's
  *  detail page. Speaks in voice; surfaces decision deltas. */
 export interface RunReadReport {
   /** One-line verdict / hero phrase (e.g. "Recovery run, but you
@@ -344,11 +344,11 @@ export interface RunReadReport {
   }>;
 }
 
-/** Output of `Coach.coachRead()` — the Coach Read mini-takeaway under
+/** Output of `Coach.coachRead()`, the Coach Read mini-takeaway under
  *  a race recap. Single verdict + one body sentence. */
 export interface CoachReadReport {
   verdict: string;
   body: string;
-  /** Optional chip — "ON TRACK", "AHEAD OF PLAN", etc. */
+  /** Optional chip, "ON TRACK", "AHEAD OF PLAN", etc. */
   pin: string | null;
 }

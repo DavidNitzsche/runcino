@@ -1,5 +1,5 @@
 /**
- * Weather slowdown calculator — combines heat, dewpoint, wind, and
+ * Weather slowdown calculator, combines heat, dewpoint, wind, and
  * altitude into a single race-day pace adjustment.
  *
  * Source doctrine: web/coach/doctrine/weather.ts (Research/06).
@@ -32,7 +32,7 @@ import {
 export interface WeatherSlowdownInput {
   /** Air temperature, °F. Required. */
   tairF: number;
-  /** Dewpoint, °F. Optional — when present, drives a Td-aware
+  /** Dewpoint, °F. Optional, when present, drives a Td-aware
    *  calculation; when absent, falls back to Tair-only heuristic. */
   dewpointF?: number;
   /** Sustained wind speed, mph. Net headwind (positive) on an
@@ -47,7 +47,7 @@ export interface WeatherSlowdownInput {
   /** Goal pace, seconds per mile. When provided, the result includes
    *  a per-mile seconds estimate. */
   runnerPaceSPerMi?: number;
-  /** Runner ability tier — used to select the right Maughan heat
+  /** Runner ability tier, used to select the right Maughan heat
    *  curve. 'elite' (sub-3:00 marathon), 'mid_pack' (3:00-4:30),
    *  'slow' (4:30+). Default: 'mid_pack'. */
   abilityTier?: 'elite' | 'mid_pack' | 'slow';
@@ -89,7 +89,7 @@ const ABILITY_KEY: Record<NonNullable<WeatherSlowdownInput['abilityTier']>, 'eli
 };
 
 /** Distance scaling factor for heat + altitude impact. The Maughan/
- *  Hadley research is calibrated for marathon distance — cumulative
+ *  Hadley research is calibrated for marathon distance, cumulative
  *  heat load over 3+ hours. Shorter races have proportionally less
  *  exposure: a half is roughly half the impact, a 5K nearly negligible.
  *  Ultras compound the other direction. */
@@ -100,7 +100,7 @@ function distanceScaleFactor(raceDistanceMi: number | undefined): number {
   if (d >= 11)   return 0.5;   // half marathon
   if (d >= 7)    return 0.35;  // 10K
   if (d >= 3)    return 0.25;  // 5K
-  return 0.20;                  // shorter than 5K — tiny exposure
+  return 0.20;                  // shorter than 5K, tiny exposure
 }
 
 /** Linearly interpolate a percentage within a banded range. When
@@ -132,7 +132,7 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
   let heatRationale: string | null = null;
 
   if (input.dewpointF != null) {
-    // Td-aware path — use Tair+Td sum table (Hadley framework, more
+    // Td-aware path, use Tair+Td sum table (Hadley framework, more
     // accurate than Tair alone). Linear-interpolated within the band
     // so cool-edge conditions get the band-low pct rather than mid.
     const sum = input.tairF + input.dewpointF;
@@ -141,7 +141,7 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
     );
     if (row && row.pctLow != null && row.pctHigh != null && row.sumHighF != null) {
       heatPct = bandLerp(sum, row.sumLowF, row.sumHighF, row.pctLow, row.pctHigh);
-      heatRationale = `${input.tairF}°F + ${input.dewpointF}°F dewpoint (sum ${sum}) — ${row.notes.toLowerCase()}.`;
+      heatRationale = `${input.tairF}°F + ${input.dewpointF}°F dewpoint (sum ${sum}), ${row.notes.toLowerCase()}.`;
     }
   } else {
     // Tair-only fallback per Research/06 §12 single-number table.
@@ -151,7 +151,7 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
     if (row) {
       heatPct = bandLerp(input.tairF, row.tairFLow, row.tairFHigh, row.slowdownPctLow, row.slowdownPctHigh);
       if (heatPct > 0) {
-        heatRationale = `${input.tairF}°F start — heat costs about ${heatPct.toFixed(1)}% (marathon-equivalent) for a ${tier === 'elite' ? 'sub-3 marathoner' : tier === 'slow' ? '4:30+ runner' : 'mid-pack runner'}.`;
+        heatRationale = `${input.tairF}°F start, heat costs about ${heatPct.toFixed(1)}% (marathon-equivalent) for a ${tier === 'elite' ? 'sub-3 marathoner' : tier === 'slow' ? '4:30+ runner' : 'mid-pack runner'}.`;
       }
     }
 
@@ -208,7 +208,7 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
   let windSecPerMi = 0;
   let windRationale: string | null = null;
   // Wind floor: <5 mph is essentially noise (table starts at 5 mph,
-  // and at that level the net out-and-back cost is ~1-2 sec/mi —
+  // and at that level the net out-and-back cost is ~1-2 sec/mi, 
   // inside any pacing variability). Skip below 5 mph entirely.
   // At 5 mph we still skip because after the 0.35 out-and-back factor
   // the cost rounds to 1-2 sec/mi which is a noise-band callout.
@@ -219,11 +219,11 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
     if (row) {
       windSecPerMi = tablePace === '6:00' ? row.headwindCostS6Min : row.headwindCostS8Min;
       // Out-and-back rule: net loss is ~30-40% of headwind cost (the
-      // brief always assumes net headwind — point-to-points should
+      // brief always assumes net headwind, point-to-points should
       // override).
       windSecPerMi = Math.round(windSecPerMi * 0.35);
       if (windSecPerMi >= 2) {
-        windRationale = `${input.windMph} mph wind — net cost on an out-and-back course about +${windSecPerMi} sec/mi.`;
+        windRationale = `${input.windMph} mph wind, net cost on an out-and-back course about +${windSecPerMi} sec/mi.`;
       } else {
         windSecPerMi = 0;  // Inside noise band; suppress.
       }
@@ -255,13 +255,13 @@ export function computeWeatherSlowdown(input: WeatherSlowdownInput): WeatherSlow
     bailReason = HARD_CANCEL_TRIGGERS.value.find(t => t.trigger.includes('Td'))?.reason;
   } else if (input.tairF >= 90 && (input.dewpointF == null || input.dewpointF >= 70)) {
     bailFlag = 'cancel';
-    bailReason = 'Tair ≥90°F with high dewpoint — ACSM black-flag conditions.';
+    bailReason = 'Tair ≥90°F with high dewpoint, ACSM black-flag conditions.';
   } else if (input.dewpointF != null && input.dewpointF >= 70) {
     bailFlag = 'easy_only';
     bailReason = QUALITY_SESSION_BAIL_TRIGGERS.value.find(t => t.trigger.includes('Td'))?.reason;
   } else if (heatPct >= 5 || (input.windMph ?? 0) >= 20) {
     bailFlag = 'caution';
-    bailReason = 'Significant adjustment needed — pace conservatively, target finish over time.';
+    bailReason = 'Significant adjustment needed, pace conservatively, target finish over time.';
   }
 
   const rationale = [heatRationale, altitudeRationale, windRationale].filter((s): s is string => s != null);
@@ -294,5 +294,5 @@ export function formatSlowdownForBrief(s: WeatherSlowdown): string | null {
   } else if (s.breakdown.windSecPerMi >= 2) {
     parts.push(`wind alone adds about +${s.breakdown.windSecPerMi} sec/mi`);
   }
-  return parts.join(' — ');
+  return parts.join(', ');
 }

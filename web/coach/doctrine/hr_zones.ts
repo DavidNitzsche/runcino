@@ -1,12 +1,12 @@
 /**
- * Doctrine — Heart rate zones, HRmax estimation, LTHR, HRV, recovery
+ * Doctrine, Heart rate zones, HRmax estimation, LTHR, HRV, recovery
  * decision rules.
  *
  * Source: Research/03-heart-rate-zones.md
  *
  * The canonical HR-based prescription reference. Engine consumers:
  *
- *   - coach-engine.ts:344  applyConstraints — replaces magic
+ *   - coach-engine.ts:344  applyConstraints, replaces magic
  *                          `avgHr >= 152` cutoff with research-backed
  *                          threshold (RHR_RECOVERY_DECISION_RULES /
  *                          %HRmax band Z3 boundary).
@@ -87,7 +87,7 @@ export const HRMAX_FORMULA_SELECTION: Cited<Array<{
   value: [
     { profile: 'General adult, no test data',         formula: 'tanaka',              note: 'Or Nes for similar accuracy.' },
     { profile: 'Marathon runner (men)',               formula: 'tanaka' },
-    { profile: 'Marathon runner (women)',             formula: 'tanaka',              note: 'Subtract 5 bpm — Tanaka over-predicts for women marathoners.' },
+    { profile: 'Marathon runner (women)',             formula: 'tanaka',              note: 'Subtract 5 bpm, Tanaka over-predicts for women marathoners.' },
     { profile: 'Athlete >50',                         formula: 'nes_hunt',            note: 'Largest older sample.' },
     { profile: 'Children/adolescents (<16)',          formula: 'no_formula_reliable' },
     { profile: 'Highly trained / elite',              formula: 'field_test_required' },
@@ -222,7 +222,7 @@ export const LTHR_30MIN_TT_PROTOCOL: Cited<{
     steps: [
       'Solo, flat (track or road), no draft, no pacers.',
       '15 min warm-up + strides.',
-      '30 min hard TT — controlled start, strong finish; ~10K race effort.',
+      '30 min hard TT, controlled start, strong finish; ~10K race effort.',
       'Press lap at 10 min.',
       'LTHR = average HR during final 20 min.',
     ],
@@ -230,7 +230,7 @@ export const LTHR_30MIN_TT_PROTOCOL: Cited<{
     measurement: 'Average HR during final 20 minutes of the 30-min TT.',
   },
   citations: [
-    cite('§6 Lactate Threshold HR (LTHR) — Friel System › Determining LTHR', '30-min TT protocol, LTHR = avg HR final 20 min, retest every 6-12 weeks', 'research', '03'),
+    cite('§6 Lactate Threshold HR (LTHR), Friel System › Determining LTHR', '30-min TT protocol, LTHR = avg HR final 20 min, retest every 6-12 weeks', 'research', '03'),
   ],
 };
 
@@ -246,12 +246,12 @@ export const FRIEL_LTHR_ZONES: Cited<Record<FrielZone, {
     z2_aerobic:            { pctLthrLow: 85,  pctLthrHigh: 89,  description: 'Long-run aerobic base' },
     z3_tempo:              { pctLthrLow: 90,  pctLthrHigh: 94,  description: 'Sub-LT steady' },
     z4_subthreshold:       { pctLthrLow: 95,  pctLthrHigh: 99,  description: 'Just below LT' },
-    z5a_threshold:         { pctLthrLow: 100, pctLthrHigh: 102, description: 'At LT — cruise intervals' },
+    z5a_threshold:         { pctLthrLow: 100, pctLthrHigh: 102, description: 'At LT, cruise intervals' },
     z5b_aerobic_capacity:  { pctLthrLow: 103, pctLthrHigh: 106, description: 'VO2max work, 3-5 min' },
     z5c_anaerobic:         { pctLthrLow: 107, pctLthrHigh: 130, description: 'Short reps, neuromuscular' },
   },
   citations: [
-    cite('§6 Lactate Threshold HR (LTHR) — Friel System › Friel 7-Zone Running HR Table', 'Z1 <85% / Z2 85-89% / Z3 90-94% / Z4 95-99% / Z5a 100-102% / Z5b 103-106% / Z5c >106% LTHR', 'research', '03'),
+    cite('§6 Lactate Threshold HR (LTHR), Friel System › Friel 7-Zone Running HR Table', 'Z1 <85% / Z2 85-89% / Z3 90-94% / Z4 95-99% / Z5a 100-102% / Z5b 103-106% / Z5c >106% LTHR', 'research', '03'),
   ],
 };
 
@@ -391,7 +391,7 @@ export const HRV_DAILY_PROTOCOL: Cited<{
   },
   note: 'For daily training decisions, RMSSD or LnRMSSD is standard. SDNN influenced by both branches; less specific to recovery.',
   citations: [
-    cite('§10 HRV — Daily Protocol', 'Within ~5 min of waking, supine. 1 min stabilization + 1 min recording. RMSSD/LnRMSSD primary.', 'research', '03'),
+    cite('§10 HRV, Daily Protocol', 'Within ~5 min of waking, supine. 1 min stabilization + 1 min recording. RMSSD/LnRMSSD primary.', 'research', '03'),
   ],
 };
 
@@ -414,7 +414,7 @@ export const HRV_INTERPRETATION_PATTERNS: Cited<Array<{
   ],
   note: 'A single HRV value is noise. Use 7-day rolling average vs. individual normal range (rolling mean ± SD or ±20%). Act on trend, not single readings.',
   citations: [
-    cite('§10 HRV — Interpreting Daily vs. Trend', 'Pattern → interpretation table', 'research', '03'),
+    cite('§10 HRV, Interpreting Daily vs. Trend', 'Pattern → interpretation table', 'research', '03'),
   ],
 };
 
@@ -464,7 +464,7 @@ export const HR_VS_PACE_DIVERGENCE: Cited<Array<{
   ],
   note: 'Coaching: easy/long aerobic prioritize HR; threshold/tempo use both, trust lower-intensity signal on disagreement; VO2max (3-5 min) pace primary, confirm HR reaches band; reps/sprints pace and RPE only.',
   citations: [
-    cite('§11 HR vs. Pace — Divergence Patterns', 'Condition → pace effect, HR effect, true effort metric', 'research', '03'),
+    cite('§11 HR vs. Pace, Divergence Patterns', 'Condition → pace effect, HR effect, true effort metric', 'research', '03'),
   ],
 };
 
@@ -518,7 +518,7 @@ export const HR_UTILITY_BY_REP_DURATION: Cited<Array<{
     { repLength: '5-15 min (T)',           repLengthLowS: 300, repLengthHighS: 900,  hrUtility: 'steady_state_achievable', primaryAnchor: 'hr_pace' },
     { repLength: '≥15 min',                repLengthLowS: 900, repLengthHighS: null, hrUtility: 'reliable',               primaryAnchor: 'hr' },
   ],
-  note: 'HR rises with half-time of ~30 s on intensity step-up, plateauing at 90-180 s. Recovery half-time ~30 s, slower in fatigue or heat. HR is also a poor index of true recovery between reps (Sangan 2015) — use fixed time-recovery, not HR-based.',
+  note: 'HR rises with half-time of ~30 s on intensity step-up, plateauing at 90-180 s. Recovery half-time ~30 s, slower in fatigue or heat. HR is also a poor index of true recovery between reps (Sangan 2015), use fixed time-recovery, not HR-based.',
   citations: [
     cite('§13 Why HR is Unreliable for Short Intervals', 'HR rises with half-time of ~30 s, plateaus at 90-180 s. Rep length → HR utility table.', 'research', '03'),
   ],
@@ -526,7 +526,7 @@ export const HR_UTILITY_BY_REP_DURATION: Cited<Array<{
 
 // ── Decision logic: HR vs pace vs RPE ──────────────────────────────
 
-/** Master decision table — for each workout type, which metric is
+/** Master decision table, for each workout type, which metric is
  *  primary and which is secondary. Drives coach prescription style. */
 export const COACH_BY_METRIC_DECISION: Cited<Array<{
   workoutType: string;
@@ -556,7 +556,7 @@ export const COACH_BY_METRIC_DECISION: Cited<Array<{
   ],
   note: 'Master rule: pace = objective external (what got done); HR = physiological internal (what it cost); RPE = integrated perceived. Coach by the metric reflecting the adaptive stimulus: internal (HR/RPE) for aerobic/recovery work, external (pace) for VO2max and speed.',
   citations: [
-    cite('§14 Decision Logic — Coach by HR vs. Pace vs. RPE', 'Workout type → primary metric, secondary metric, notes', 'research', '03'),
+    cite('§14 Decision Logic, Coach by HR vs. Pace vs. RPE', 'Workout type → primary metric, secondary metric, notes', 'research', '03'),
   ],
 };
 
@@ -649,7 +649,7 @@ export const HR_COACHING_HEURISTICS: Cited<Array<{
   value: [
     { trigger: 'Morning RHR +7 bpm above baseline',                              action: 'Easy day' },
     { trigger: 'HRV trending down 5+ days + RHR trending up',                    action: 'Unload week' },
-    { trigger: 'Cardiac drift >5% in a Z2 run that previously showed <5%',       action: 'Heat, fatigue, or detraining — investigate' },
+    { trigger: 'Cardiac drift >5% in a Z2 run that previously showed <5%',       action: 'Heat, fatigue, or detraining, investigate' },
     { trigger: 'HR not reaching VO2max band by rep 3 of 5 × 3 min',              action: 'Pace too slow' },
     { trigger: 'Easy-pace HR dropping at fixed pace over weeks',                 action: 'Aerobic adaptation working' },
     { trigger: 'Easy-pace HR rising at fixed pace over weeks',                   action: 'Under-recovery or stress' },

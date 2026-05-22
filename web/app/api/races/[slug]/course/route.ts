@@ -2,7 +2,7 @@
  * GET /api/races/[slug]/course
  *
  * Lightweight course payload for the native race-detail screen. The
- * raw GPX is ~1.6 MB — far too heavy to ship to a phone — so this
+ * raw GPX is ~1.6 MB, far too heavy to ship to a phone, so this
  * endpoint parses it server-side (analyzeGpx) and returns a
  * DOWNSAMPLED geometry (~160 points) plus the stored phase-by-phase
  * pacing and net-elevation stats. One call gives the detail screen
@@ -53,7 +53,7 @@ function distKeyFor(distanceMi: number): 'mileS' | 'km5S' | 'km10S' | 'km15S' | 
 }
 
 /**
- * Race projection. Sources current VDOT from vdotSnapshot — the ONE
+ * Race projection. Sources current VDOT from vdotSnapshot, the ONE
  * unified accessor (Tier 1 = aggregate, the same number /profile + the
  * web race page show; Tier 2 = single-best fallback when there are no
  * curated races). Identical to what the overview/coach engine use, so
@@ -65,7 +65,7 @@ async function computeProjection(userId: string | null | undefined, distanceMi: 
   try {
     return await computeProjectionInner(userId, distanceMi, goalFinishS);
   } catch (e) {
-    // A projection failure must never take down the course payload — the
+    // A projection failure must never take down the course payload, the
     // map, profile and pacing still render without it.
     console.warn('[api/races/course] projection failed for', userId, e);
     return null;
@@ -140,7 +140,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const { trkpts, cumDistM, gradesPct, stats } = analysis;
   const n = trkpts.length;
 
-  // Prefer DEM elevations (parallel to trkpts) when present — they're
+  // Prefer DEM elevations (parallel to trkpts) when present, they're
   // cleaner than barometric/GPS ele. Fall back to GPX ele otherwise.
   const dem = race.demElevations;
   const eleM = (dem && dem.length === n) ? dem : trkpts.map((p) => p[2]);
@@ -185,14 +185,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     .filter((iv): iv is Extract<typeof iv, { kind: 'fuel' }> => iv.kind === 'fuel')
     .map((iv) => ({ number: iv.gel_number, atMi: iv.at_mi, item: iv.item, label: iv.label }));
 
-  // Race projection — identical math to the /races/[slug] web page.
+  // Race projection, identical math to the /races/[slug] web page.
   const projection = await computeProjection(
     userId ?? null,
     race.meta.distanceMi,
     plan?.goal?.finish_time_s ?? 0,
   );
 
-  // Race-day execution brief — generated at T−7d. Null until then; the
+  // Race-day execution brief, generated at T−7d. Null until then; the
   // iPhone shows the same honest "awaiting" empty state the web does.
   const b = plan?.brief;
   const brief = b ? {

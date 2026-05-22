@@ -19,9 +19,9 @@
  *   - date is YYYY-MM-DD local. Historical weather doesn't change.
  *
  * Caller contract:
- *   - Returns `null` (NOT a throw) on any failure — network, parse,
+ *   - Returns `null` (NOT a throw) on any failure, network, parse,
  *     missing coords, missing date. The signal module treats null
- *     as "context unknown" — no attenuation, observation keeps its
+ *     as "context unknown", no attenuation, observation keeps its
  *     baseline weight. Conservative: we never block fitness signal
  *     because the weather API was flaky.
  *
@@ -61,7 +61,7 @@ export async function getWorkoutTemperatureF(
     }
   } catch { /* fall through to fetch */ }
 
-  // Cache miss — fetch + persist.
+  // Cache miss, fetch + persist.
   let tempF: number | null = null;
   try {
     const summary = await fetchHistoricalWeather(lat, lon, dateISO, 7);

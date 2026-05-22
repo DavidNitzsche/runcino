@@ -31,7 +31,7 @@ export interface SyncError {
   ok: false;
   error: string;
   /** When the failure was the refresh-token swap, the connector row is
-   *  likely stale — the user needs to reconnect Strava. */
+   *  likely stale, the user needs to reconnect Strava. */
   needsReconnect?: boolean;
 }
 
@@ -137,11 +137,11 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
   );
 
   // Writeback: rename the Strava activity to match the planned
-  // workout. Previously this only fired from the webhook handler —
+  // workout. Previously this only fired from the webhook handler, 
   // if Strava's webhook had latency or dropped, the rename never
   // happened. Now syncSingleActivity ALSO triggers writeback as a
   // belt-and-suspenders path. The writeback function itself is
-  // idempotent — re-fire safety is handled inside pushWorkoutNameToStrava
+  // idempotent, re-fire safety is handled inside pushWorkoutNameToStrava
   // (skips when the name already looks like a runcino-set name).
   try {
     const { pushWorkoutNameToStrava } = await import('./strava-writeback');
@@ -177,16 +177,16 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
       }
     }
   } catch (e) {
-    // Writeback is best-effort — never block the sync on its failure.
+    // Writeback is best-effort, never block the sync on its failure.
     console.warn('[sync-strava-user] writeback failed', activity.id, e);
   }
 
-  // Shoe auto-assign — ported from dev branch commit 29887d6
+  // Shoe auto-assign, ported from dev branch commit 29887d6
   // ("feat(sync): shoe-picker with preferred-wins + ambiguity
   // bailout"). Pick a shoe IF the planned workout type maps to
   // a single clear choice in the rotation; bail out otherwise.
   //
-  // Gated on the row's CURRENT shoe_id being NULL — never overwrite
+  // Gated on the row's CURRENT shoe_id being NULL, never overwrite
   // a manual pick. Re-fire safety: the COALESCE check inside the
   // UPDATE handles concurrent writes from the manual /shoe endpoint.
   try {
@@ -220,7 +220,7 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
       }
     }
   } catch (e) {
-    // Auto-assign is best-effort — never block the sync.
+    // Auto-assign is best-effort, never block the sync.
     console.warn('[sync-strava-user] shoe auto-assign failed', activity.id, e);
   }
 
@@ -292,7 +292,7 @@ export async function getActivityDetail(userId: string, activityId: number | str
 }
 
 /**
- * Webhook delete event — remove the activity from strava_activities.
+ * Webhook delete event, remove the activity from strava_activities.
  * Idempotent: missing row is a no-op.
  */
 export async function deleteActivityForUser(userId: string, activityId: number): Promise<void> {
@@ -312,7 +312,7 @@ export async function deleteActivityForUser(userId: string, activityId: number):
 }
 
 /**
- * Webhook deauth — Strava sends an athlete update with
+ * Webhook deauth, Strava sends an athlete update with
  * `authorized: false` when the user revokes access from their Strava
  * settings page. Mark the connector disconnected so the app stops
  * trying to use a dead token.
@@ -416,7 +416,7 @@ async function fetchYtdActivities(accessToken: string): Promise<StravaActivity[]
 
 /**
  * Sync Strava activities for a single user. Returns a tagged result
- * the caller can branch on. Never throws — failures come back as
+ * the caller can branch on. Never throws, failures come back as
  * { ok: false, error }.
  */
 export async function syncStravaForUser(userId: string): Promise<SyncResult | SyncError> {
@@ -431,7 +431,7 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
   const row = rows[0];
   if (!row) return { ok: false, error: 'Strava is not connected for this user.' };
   if (!row.refresh_token) {
-    return { ok: false, error: 'No refresh token on file — reconnect Strava.', needsReconnect: true };
+    return { ok: false, error: 'No refresh token on file, reconnect Strava.', needsReconnect: true };
   }
 
   // 2. Refresh the access token. Strava rotates refresh tokens on each
@@ -487,7 +487,7 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
     return { ok: false, error: msg };
   }
 
-  // 4. Upsert into strava_activities — keyed by user_uuid so multi-tenant
+  // 4. Upsert into strava_activities, keyed by user_uuid so multi-tenant
   //    queries can scope by user. One transaction so partial failure
   //    rolls back cleanly.
   const fetchedAt = new Date();

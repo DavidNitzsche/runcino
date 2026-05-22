@@ -1,5 +1,5 @@
 /**
- * Preview gallery — visual QA harness for the May 2026 component library.
+ * Preview gallery, visual QA harness for the May 2026 component library.
  *
  * Renders every component from `app/components/` in a single page at
  * `/components/preview`. This is purely for visual inspection during
@@ -354,13 +354,13 @@ export default function PreviewGalleryPage() {
           <Field label="Race name" help="The pretty name. Coach uses this in plan emails.">
             <Input defaultValue="Americas Finest City Half" />
           </Field>
-          <Field label="Goal time" help={<>Target finish — pace zones derive from this.</>}>
+          <Field label="Goal time" help={<>Target finish, pace zones derive from this.</>}>
             <Input type="text" className="num" defaultValue="1:35:00" placeholder="HH:MM:SS" />
           </Field>
           <Field label="Distance">
             <InputWithUnit type="number" defaultValue={13.1} unit="MI" />
           </Field>
-          <Field label="Priority" help="Custom Dropdown — Radix-powered, no native popup.">
+          <Field label="Priority" help="Custom Dropdown, Radix-powered, no native popup.">
             <Dropdown value={priority} onValueChange={setPriority} ariaLabel="Race priority">
               <DropdownItem value="A">A · season anchor</DropdownItem>
               <DropdownItem value="B">B · tune-up</DropdownItem>
@@ -508,7 +508,7 @@ export default function PreviewGalleryPage() {
           </CardHeader>
           <p className="field-help">
             Native <code>confirm()</code> dialogs are OS-themed and block the JS thread. Use the
-            existing <b>&lt;Modal&gt;</b> primitives with a danger button instead — same focus
+            existing <b>&lt;Modal&gt;</b> primitives with a danger button instead, same focus
             management, no chrome leak.
           </p>
           <div style={{ marginTop: 12 }}>
@@ -705,7 +705,7 @@ export default function PreviewGalleryPage() {
             <ModalBody>
               <p className="field-help">
                 You have unsaved edits to the race goal. Closing now will lose them. This
-                replaces <code>window.confirm()</code> — same blocking-intent, no OS chrome.
+                replaces <code>window.confirm()</code>, same blocking-intent, no OS chrome.
               </p>
             </ModalBody>
             <ModalFooter>
@@ -722,7 +722,7 @@ export default function PreviewGalleryPage() {
 
       <div className="footnote">
         <span>
-          <b>/components/preview</b> — visual QA harness · May 2026 design system
+          <b>/components/preview</b>, visual QA harness · May 2026 design system
         </span>
         <span>Last updated 2026-05-11</span>
       </div>

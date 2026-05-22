@@ -5,7 +5,7 @@
  * extreme uphill and downhill slopes," J Appl Physiol 93(3):1039-1046.
  *
  * The polynomial is fit to treadmill measurements across grades in
- * [-0.45, +0.45]. Outside that range we clamp — extrapolation is
+ * [-0.45, +0.45]. Outside that range we clamp, extrapolation is
  * untrustworthy.
  *
  * This is the same model Strava uses for GAP.
@@ -24,11 +24,11 @@ export function minettiCost(g: number): number {
   );
 }
 
-/** Flat-ground baseline — C(0). */
+/** Flat-ground baseline, C(0). */
 export const FLAT_COST = minettiCost(0); // 3.6
 
 /**
- * Grade Adjustment Factor — the ratio of energy cost at grade g to
+ * Grade Adjustment Factor, the ratio of energy cost at grade g to
  * flat-ground cost. Multiply flat-equivalent pace by this to get the
  * pace you'd have to run at grade g to expend the same energy per second.
  *

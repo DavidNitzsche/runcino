@@ -1,5 +1,5 @@
 /**
- * /api/fitness — returns the user's resolved fitness bundle.
+ * /api/fitness, returns the user's resolved fitness bundle.
  *
  * Single source of truth for every client island that needs to render
  * paces/zones tuned to the runner: the workout modal, training cells,

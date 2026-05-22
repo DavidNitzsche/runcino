@@ -6,11 +6,11 @@
  * weekly mileage. Produces daily workouts that can be rendered in the
  * UI today and compiled to WorkoutKit CustomWorkouts tomorrow.
  *
- * Deterministic by design — swappable for Claude-authored plans later.
+ * Deterministic by design, swappable for Claude-authored plans later.
  * The schema (TrainingBlock, WeekPlan, DayWorkout) is the contract;
  * the engine behind `generateBlock` is the pluggable part.
  *
- * Coaching philosophy: loosely Pfitzinger — mid-week quality, long
+ * Coaching philosophy: loosely Pfitzinger, mid-week quality, long
  * Saturday, Sunday as the recovery or supporting easy run. Customize
  * by changing WEEKLY_STRUCTURE or PHASE_RATIOS.
  */
@@ -41,7 +41,7 @@ export interface DayWorkout {
   targetPaceSPerMi: number | null;
   /** Target HR zone label (Z1..Z5 or null) */
   targetHrZone: string | null;
-  /** Human-readable rationale — 1-2 sentences */
+  /** Human-readable rationale, 1-2 sentences */
   rationale: string;
 }
 
@@ -78,7 +78,7 @@ export interface GenerateInput {
   hilly?: boolean;
 }
 
-// —————————————————————————— Phase ratios ————————————————————————————
+//, , , , , , , , , , , , , , , , , , , , , , , , , , Phase ratios, , , , , , , , , , , , , , , , , , , , , , , , , , , , 
 
 // How much of the total build each phase takes.
 // Overridable per philosophy later.
@@ -107,7 +107,7 @@ function mileageCurve(weeksTotal: number): number[] {
   return curve;
 }
 
-// ——————————————————— Weekly structure by phase —————————————————————
+//, , , , , , , , , , , , , , , , , , , Weekly structure by phase, , , , , , , , , , , , , , , , , , , , , 
 
 type WeeklyDaySpec = {
   dow: DayWorkout['dow'];
@@ -155,7 +155,7 @@ const WEEKLY_STRUCTURE: Record<PhaseLabel, WeeklyDaySpec[]> = {
   ],
 };
 
-// —————————————————— Pace targets by workout kind ————————————————————
+//, , , , , , , , , , , , , , , , , , Pace targets by workout kind, , , , , , , , , , , , , , , , , , , , 
 
 function paceFor(kind: WorkoutKind, basePace: number): number | null {
   // Pace offsets are in seconds per mile relative to baseline marathon
@@ -226,7 +226,7 @@ function rationaleFor(kind: WorkoutKind, phase: PhaseLabel, weekNum: number, tot
     case 'rest':
       return 'Recovery is training. Legs rebuild here.';
     case 'recovery':
-      return 'Mid-week flush — super-easy blood flow, nothing more.';
+      return 'Mid-week flush, super-easy blood flow, nothing more.';
     case 'easy':
       return phase === 'base'
         ? 'Aerobic volume. Build the mitochondrial base.'
@@ -235,7 +235,7 @@ function rationaleFor(kind: WorkoutKind, phase: PhaseLabel, weekNum: number, tot
       return phase === 'peak'
         ? 'Peak long. This is the one that says "you can do this."'
         : phase === 'taper'
-          ? 'Race-simulation long. Shorter than peak — maintains feel.'
+          ? 'Race-simulation long. Shorter than peak, maintains feel.'
           : 'Classic long run. Aerobic capacity and mental durability.';
     case 'long_hilly':
       return 'Course-specific. Match the race profile for hills + descents.';
@@ -245,14 +245,14 @@ function rationaleFor(kind: WorkoutKind, phase: PhaseLabel, weekNum: number, tot
         : 'Marathon-specific quality. Rehearse race effort.';
     case 'intervals':
       return phase === 'peak'
-        ? 'VO2 max work. Sharpens the top end — short, fast, full recovery.'
+        ? 'VO2 max work. Sharpens the top end, short, fast, full recovery.'
         : 'Structured speed. Adds a gear above tempo.';
     case 'strides':
       return 'Neuromuscular polish. Keep the legs snappy without fatigue.';
   }
 }
 
-// ————————————————— Phase assignment by week number —————————————————
+//, , , , , , , , , , , , , , , , , Phase assignment by week number, , , , , , , , , , , , , , , , , 
 
 function phaseForWeek(weekNumber: number, weeksTotal: number): PhaseLabel {
   const basePct = PHASE_RATIOS.base;
@@ -274,7 +274,7 @@ function phaseStarts(weeksTotal: number): Record<PhaseLabel, number> {
   };
 }
 
-// —————————————————————————— Date helpers ————————————————————————————
+//, , , , , , , , , , , , , , , , , , , , , , , , , , Date helpers, , , , , , , , , , , , , , , , , , , , , , , , , , , , 
 
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + 'T12:00:00Z');
@@ -293,7 +293,7 @@ function dowName(offset: number): DayWorkout['dow'] {
   return (['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const)[offset];
 }
 
-// ——————————————————————————— Engine ————————————————————————————————
+//, , , , , , , , , , , , , , , , , , , , , , , , , , , Engine, , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , 
 
 export function generateWeek(
   weekNumber: number,
@@ -333,7 +333,7 @@ export function generateWeek(
   });
 
   const narrative =
-    phase === 'base'  ? `Base week ${weekNumber}. Aerobic volume — trust the easy days.` :
+    phase === 'base'  ? `Base week ${weekNumber}. Aerobic volume, trust the easy days.` :
     phase === 'build' ? `Build week ${weekNumber}. First real quality work of the cycle.` :
     phase === 'peak'  ? `Peak week ${weekNumber}. Hardest of the cycle. After this, it's all downhill.` :
                         `Taper week ${weekNumber}. Volume drops; intensity stays. Protect the gains.`;

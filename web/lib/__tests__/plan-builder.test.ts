@@ -76,7 +76,7 @@ describe('peakLongRunForLevel', () => {
   });
 });
 
-describe('buildPlan — race-prep HM intermediate', () => {
+describe('buildPlan, race-prep HM intermediate', () => {
   it('ramps from 25mpw current → 35mpw peak, peak long 12mi, taper drops 30-50%', async () => {
     const state = makeState(25, 10, TODAY);
     const raceDateISO = '2026-08-01'; // 12 weeks out
@@ -190,7 +190,7 @@ describe('buildPlan — race-prep HM intermediate', () => {
   });
 });
 
-describe('buildPlan — race-prep HM beginner', () => {
+describe('buildPlan, race-prep HM beginner', () => {
   it('ramps from 15mpw → 22-28 peak, peak long 10mi', async () => {
     const state = makeState(15, 7, TODAY);
     const plan = await buildPlan({
@@ -209,7 +209,7 @@ describe('buildPlan — race-prep HM beginner', () => {
   });
 });
 
-describe('buildPlan — maintenance mode', () => {
+describe('buildPlan, maintenance mode', () => {
   it('produces 16 weeks, 1 quality/week, long run at ~50% of historical longest', async () => {
     const state = makeState(25, 10, TODAY);  // longest training = 10
     const plan = await buildPlan({
@@ -220,14 +220,14 @@ describe('buildPlan — maintenance mode', () => {
     expect(plan.mode).toBe('maintenance');
     expect(plan.weeks.length).toBe(16);
 
-    // 1 quality/week (or 0 on cutback) — across the plan, every week has at most 1
+    // 1 quality/week (or 0 on cutback), across the plan, every week has at most 1
     for (const wk of plan.weeks) {
       const quality = wk.workouts.filter(w => w.isQuality);
       expect(quality.length).toBeLessThanOrEqual(1);
     }
     // Long-run target around ~50% of longest training run (5 mi here),
     // peak band-defined at 12 (intermediate). Builder uses 50% rule for
-    // maintenance — but its peak ceiling is the intermediate HM long (12).
+    // maintenance, but its peak ceiling is the intermediate HM long (12).
     // Either way, the long should be > 0 and <= 12.
     for (const wk of plan.weeks) {
       const long = wk.workouts.find(w => w.isLong);

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Adaptive VDOT banner — L7 surface.
+ * Adaptive VDOT banner, L7 surface.
  *
  * Renders on /profile Coach Reads when the verdict has a finding
  * (vdot-bump-suggested or vdot-downgrade-investigate). Same shape
@@ -29,7 +29,7 @@ type Evidence = {
   actualAvgHr: number | null;
   /** Temperature at workout start in °F. When present and ≤78°F,
    *  shown beside HR as confirmation the evidence passed the heat
-   *  filter. null when location unknown — display omits the chip. */
+   *  filter. null when location unknown, display omits the chip. */
   temperatureF: number | null;
 };
 
@@ -47,7 +47,7 @@ export type AdaptiveVdotVerdictForUI = {
 };
 
 function fmtPace(s: number | null): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;
@@ -145,7 +145,7 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
         {verdict.reason}
         {verdict.crossRef && (
           <span style={{ color: 'rgba(8,8,8,.65)' }}>
-            {' — '}
+            {', '}
             <a
               href={verdict.crossRef.href}
               style={{ color: 'inherit', textDecoration: 'underline', textDecorationStyle: 'dotted' }}

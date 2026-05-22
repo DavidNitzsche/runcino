@@ -1,5 +1,5 @@
 /**
- * POST /api/connectors/:provider/disconnect — soft-delete a connector.
+ * POST /api/connectors/:provider/disconnect, soft-delete a connector.
  *
  * Sets disconnected_at = NOW() on the connector_tokens row for the
  * current user + provider. The row stays for audit/history; reconnecting

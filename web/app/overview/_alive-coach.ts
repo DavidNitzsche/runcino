@@ -9,7 +9,7 @@
  *   loadAliveCoachData({ state, today, fetchedAt, checkin? })
  *     → AliveCoachData
  *
- * The loader is pure — it takes inputs the caller already has (CoachState,
+ * The loader is pure, it takes inputs the caller already has (CoachState,
  * the cache fetchedAt epoch, the optional checkin aggregate) and produces:
  *
  *   - 4-6 "coach is watching" chips, each grounded in a real signal with
@@ -25,7 +25,7 @@
  * existing `OverviewData`.
  *
  * No file in this module touches data.ts, page.tsx, TodayCard, or the
- * plan-adapted card — Wave F owns those.
+ * plan-adapted card, Wave F owns those.
  */
 
 import type {
@@ -60,11 +60,11 @@ export interface WatchingChip {
   /** Color/variant for the chip. */
   variant: 'green' | 'amber' | 'muted' | 'warn';
   /** True when this signal is the most recent thing the coach acted on
-   *  — the strip lights this chip with a subtle accent. */
+   *, the strip lights this chip with a subtle accent. */
   isFresh?: boolean;
 }
 
-/** Output of `loadAliveCoachData()` — three surfaces in one call. */
+/** Output of `loadAliveCoachData()`, three surfaces in one call. */
 export interface AliveCoachData {
   /** 4-6 chips for the "Coach is watching" strip. Ordered by importance:
    *  data freshness first (Strava, check-in), then state (streak,
@@ -75,8 +75,8 @@ export interface AliveCoachData {
    *   - A race has no goal time
    *   The card renders an empty-state CTA in that case. */
   pathToRace: CoachDecision<PathToRaceResult> | null;
-  /** NEXT PUSH decision. Always present — the report may have zero
-   *  pushes, which the card renders as "Plan steady — keep executing". */
+  /** NEXT PUSH decision. Always present, the report may have zero
+   *  pushes, which the card renders as "Plan steady, keep executing". */
   nextPushes: CoachDecision<NextPushesReport>;
 }
 
@@ -87,7 +87,7 @@ export interface LoadAliveCoachInput {
   /** ISO date string anchoring "today". */
   today: string;
   /** Epoch millis when the Strava cache was last refreshed. null when
-   *  Strava isn't connected — strip shows a NOT CONNECTED chip. */
+   *  Strava isn't connected, strip shows a NOT CONNECTED chip. */
   stravaFetchedAtMs: number | null;
   /** Already-aggregated check-in summary if available. null = the
    *  feature isn't wired yet for this user (strip surfaces an honest
@@ -98,7 +98,7 @@ export interface LoadAliveCoachInput {
   pathToRace: CoachDecision<PathToRaceResult> | null;
   /** Pre-computed NextPushes report (server-side). */
   nextPushes: CoachDecision<NextPushesReport>;
-  /** Pre-computed readiness assessment (server-side) — drives the
+  /** Pre-computed readiness assessment (server-side), drives the
    *  READINESS chip variant. */
   readiness: CoachDecision<ReadinessAssessment>;
 }
@@ -174,17 +174,17 @@ export function loadAliveCoachData(input: LoadAliveCoachInput): AliveCoachData {
   }
 
   // 3. Streak (consecutiveRunDays). The user wants the strip to feel
-  //    alive — streak is the most concrete "you've shown up" signal.
+  //    alive, streak is the most concrete "you've shown up" signal.
   const streak = state.recovery.consecutiveRunDays;
   watching.push({
     id: 'streak',
     label: 'STREAK',
-    value: streak > 0 ? `${streak} DAY${streak === 1 ? '' : 'S'}` : '—',
+    value: streak > 0 ? `${streak} DAY${streak === 1 ? '' : 'S'}` : '-',
     hint: streak === 0 ? 'no run logged' : streak >= 7 ? 'protect it' : undefined,
     variant: streak >= 7 ? 'green' : streak > 0 ? 'amber' : 'muted',
   });
 
-  // 4. Readiness — pre-computed server-side; chip reads the same as
+  // 4. Readiness, pre-computed server-side; chip reads the same as
   //    the readiness card on the page.
   const r = readiness.answer;
   watching.push({
@@ -197,7 +197,7 @@ export function loadAliveCoachData(input: LoadAliveCoachInput): AliveCoachData {
     variant: r.level === 'green' ? 'green' : r.level === 'yellow' ? 'amber' : 'warn',
   });
 
-  // 5. Easy share — polarized 80/20 baseline (Research/00a §TID).
+  // 5. Easy share, polarized 80/20 baseline (Research/00a §TID).
   const easy = state.intensity.easyShare14d;
   if (state.intensity.easyMi14d + state.intensity.hardMi14d > 5) {
     const easyPct = Math.round(easy * 100);
@@ -210,7 +210,7 @@ export function loadAliveCoachData(input: LoadAliveCoachInput): AliveCoachData {
     });
   }
 
-  // 6. Next A-race anchor — the chip the strip ends on to keep the
+  // 6. Next A-race anchor, the chip the strip ends on to keep the
   //    runner's eye pointed at the goal.
   if (nextA) {
     watching.push({

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * RunDetailModal — modal showing a completed run's details + the
+ * RunDetailModal, modal showing a completed run's details + the
  * matching planned workout.
  *
  * Triggered by clicking a row in /log's Recent Runs list. Fetches
@@ -57,13 +57,13 @@ function fmtDate(iso: string): string {
   return `${DOW_LONG[d.getUTCDay()]} · ${MONTH_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 function fmtPace(sPerMi: number): string {
-  if (!sPerMi || sPerMi <= 0) return '—';
+  if (!sPerMi || sPerMi <= 0) return ', ';
   const m = Math.floor(sPerMi / 60);
   const s = sPerMi % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 function fmtTime(sec: number): string {
-  if (!sec || sec <= 0) return '—';
+  if (!sec || sec <= 0) return ', ';
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
@@ -152,7 +152,7 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
                 <div className="rd-stat-label">Pace</div>
               </div>
               <div className="rd-stat">
-                <div className="rd-stat-val">{run.avgHr ?? '—'}<small>bpm</small></div>
+                <div className="rd-stat-val">{run.avgHr ?? '-'}<small>bpm</small></div>
                 <div className="rd-stat-label">Avg HR</div>
               </div>
             </div>

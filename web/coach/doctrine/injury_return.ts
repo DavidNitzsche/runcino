@@ -1,5 +1,5 @@
 /**
- * Doctrine — Injury return-to-run protocols.
+ * Doctrine, Injury return-to-run protocols.
  *
  * Source: Research/05-injury-return-protocols.md
  *
@@ -19,7 +19,7 @@ import { cite, type Cited } from './cite';
 
 // ── General principles ────────────────────────────────────────────
 
-/** 8-stage walk-run protocol — universal RTR scaffold for any injury
+/** 8-stage walk-run protocol, universal RTR scaffold for any injury
  *  requiring layoff >2 weeks. */
 export const WALK_RUN_PROTOCOL: Cited<Array<{
   stage: number;
@@ -40,7 +40,7 @@ export const WALK_RUN_PROTOCOL: Cited<Array<{
     { stage: 7, runMin: 12,               walkMin: 2,    repeats: 2,    totalRunMin: 24, sessionsPerWeekLow: 3, sessionsPerWeekHigh: 4 },
     { stage: 8, runMin: 28 /* 25-30 */,   walkMin: null, repeats: null, totalRunMin: 28, sessionsPerWeekLow: 4, sessionsPerWeekHigh: 4 },
   ],
-  note: 'Spend ≥2 sessions at each stage before progressing. If pain or swelling rises, drop back one stage and re-attempt after 48-72h. Surface flat/firm/predictable for stages 1-5; soft/rolling only after stage 6. Pace easy/conversational only — no tempo, intervals, or hills until full continuous-running base is restored.',
+  note: 'Spend ≥2 sessions at each stage before progressing. If pain or swelling rises, drop back one stage and re-attempt after 48-72h. Surface flat/firm/predictable for stages 1-5; soft/rolling only after stage 6. Pace easy/conversational only, no tempo, intervals, or hills until full continuous-running base is restored.',
   citations: [
     cite('§1.1 The Walk-Run Protocol Structure', '8-stage progression: stage 1 (1/4 × 5) to stage 8 (25-30 min continuous). Run-walk ratio shifts toward more running over time.', 'research', '05'),
   ],
@@ -60,7 +60,7 @@ export const PAIN_MONITORING_RULES: Cited<{
       redMin: 6,
     },
     twentyFourHourRule: 'Same or better than baseline within 24h: tolerated. Worse but resolves by 48h: hold load, repeat stage. Still worse at 48h: drop a stage.',
-    locationRule: 'Pain must be at original injury site only. New pain elsewhere (especially compensatory) means form is breaking down — reduce volume or stop.',
+    locationRule: 'Pain must be at original injury site only. New pain elsewhere (especially compensatory) means form is breaking down, reduce volume or stop.',
     bsiException: 'For bone stress injury, the 24h rule is stricter: any pain during running on a healing bone is a red light.',
   },
   note: 'Day-of-session pain ≤3/10 is the broadest evidence-based threshold (Silbernagel pain-monitoring model). 24h rule applies primarily to tendinopathy and overuse soft-tissue injury.',
@@ -77,7 +77,7 @@ export const CROSS_TRAIN_VS_REST: Cited<Array<{
   value: [
     { scenario: 'Acute injury, first 24-72h',           recommendation: 'Relative rest. Avoid aggravating motion. Walking OK if pain-free.' },
     { scenario: 'Soft-tissue injury beyond 72h',        recommendation: 'Cross-train at intensities that don\'t reproduce symptoms.' },
-    { scenario: 'Tendinopathy (any stage)',             recommendation: 'Complete rest is contraindicated — tendons require load to remodel.' },
+    { scenario: 'Tendinopathy (any stage)',             recommendation: 'Complete rest is contraindicated, tendons require load to remodel.' },
     { scenario: 'Low-risk BSI',                         recommendation: 'Non-impact only (pool, cycle, elliptical) until pain-free walking ≥7 days.' },
     { scenario: 'High-risk BSI',                        recommendation: 'Non-weight-bearing only until clinician clears.' },
     { scenario: 'Post-surgical',                        recommendation: 'Follow surgeon\'s protocol.' },
@@ -110,7 +110,7 @@ export const REBUILD_PROGRESSION: Cited<{
       '2. Strides (4-6 × 15-20 sec controlled fast, full recovery)',
       '3. Tempo / threshold (begin 2 × 8 min)',
       '4. VO2max intervals',
-      '5. Hills and sprints (last — peak impact load)',
+      '5. Hills and sprints (last, peak impact load)',
     ],
     tendinopathyBsiContinuousEasyMinWeeks: 4,
     tendinopathyBsiThresholdMinWeeks: 6,
@@ -146,13 +146,13 @@ export const UNIVERSAL_RED_FLAGS: Cited<{
       'Amenorrhea or menstrual irregularity in female runners',
       'Recurrent stress fractures (>1)',
       'Disordered eating signs, unintended weight loss, low BMI',
-      'BSI in non-weight-bearing bone (rib, sacrum, pelvis) — suggests low energy availability',
+      'BSI in non-weight-bearing bone (rib, sacrum, pelvis), suggests low energy availability',
     ],
     jointSpecific: {
       knee:       ['Locking', 'Giving way', 'True effusion'],
       hip:        ['C-sign', 'Restricted internal rotation in flexion (intra-articular pathology)'],
       ankleFoot:  ['Inability to weight-bear immediately after acute injury (Ottawa rules)'],
-      calf:       ['Unilateral swelling, warmth, calf tenderness — rule out DVT'],
+      calf:       ['Unilateral swelling, warmth, calf tenderness, rule out DVT'],
     },
     emergencySpinal: [
       'Bilateral leg weakness or numbness',
@@ -160,7 +160,7 @@ export const UNIVERSAL_RED_FLAGS: Cited<{
       'New bowel/bladder dysfunction',
     ],
   },
-  note: 'Spinal red flags are an emergency — refer to ED, not clinic.',
+  note: 'Spinal red flags are an emergency, refer to ED, not clinic.',
   citations: [
     cite('§1.6 Red Flags Requiring Medical Evaluation', 'Universal + REDs/triad + joint-specific + cauda equina/spinal emergency', 'research', '05'),
   ],
@@ -200,7 +200,7 @@ export interface InjuryEntry {
   riskLevel: 'low' | 'moderate' | 'high';
   expectedRTRWeeksLow: number;
   expectedRTRWeeksHigh: number;
-  /** Headline coaching protocol — the load-management directive. */
+  /** Headline coaching protocol, the load-management directive. */
   coreProtocol: string;
   /** Critical red flags specific to this injury. */
   redFlags: string[];
@@ -229,7 +229,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
     },
     {
       id: 'achilles_tendinopathy_mid',
-      name: 'Achilles Tendinopathy — Mid-Portion',
+      name: 'Achilles Tendinopathy, Mid-Portion',
       category: 'tendinopathy',
       riskLevel: 'moderate',
       expectedRTRWeeksLow: 6, expectedRTRWeeksHigh: 12,
@@ -241,11 +241,11 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
     },
     {
       id: 'achilles_tendinopathy_insertional',
-      name: 'Achilles Tendinopathy — Insertional',
+      name: 'Achilles Tendinopathy, Insertional',
       category: 'tendinopathy',
       riskLevel: 'moderate',
       expectedRTRWeeksLow: 8, expectedRTRWeeksHigh: 14,
-      coreProtocol: 'Eccentric calf raises modified — DO NOT drop below floor level (avoid compressive load on insertion). Heel lift 6-12mm helpful early. Same pain rules.',
+      coreProtocol: 'Eccentric calf raises modified, DO NOT drop below floor level (avoid compressive load on insertion). Heel lift 6-12mm helpful early. Same pain rules.',
       redFlags: ['Bony enlargement at heel (Haglund deformity)', 'Severe local swelling', 'Loss of plantarflexion strength'],
       crossTrainOK: ['Pool', 'Cycle'],
       contraindications: ['Below-floor eccentric calf raises', 'Hill running (compresses insertion)'],
@@ -257,7 +257,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       category: 'iliotibial',
       riskLevel: 'low',
       expectedRTRWeeksLow: 4, expectedRTRWeeksHigh: 8,
-      coreProtocol: 'Hip-abductor strengthening (side-lying leg raises, monster walks, single-leg squats). Reduce running volume; avoid downhill and cambered surfaces. ITB foam-rolling has weak evidence — strength is the primary driver.',
+      coreProtocol: 'Hip-abductor strengthening (side-lying leg raises, monster walks, single-leg squats). Reduce running volume; avoid downhill and cambered surfaces. ITB foam-rolling has weak evidence, strength is the primary driver.',
       redFlags: ['True knee effusion', 'Mechanical locking', 'Pain at lateral tibial plateau persisting at rest'],
       crossTrainOK: ['Pool', 'Cycle (steep saddle position to avoid IT band tension)', 'Elliptical'],
       contraindications: ['Downhill running early', 'Cambered roads'],
@@ -269,7 +269,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       category: 'patellofemoral',
       riskLevel: 'low',
       expectedRTRWeeksLow: 4, expectedRTRWeeksHigh: 12,
-      coreProtocol: 'Hip and quadriceps strengthening (gluteus medius primary, VMO secondary). Correct cadence (target ~170-180 spm) — overstriding loads patellofemoral joint. Reduce volume by 30-50% during reactive phase.',
+      coreProtocol: 'Hip and quadriceps strengthening (gluteus medius primary, VMO secondary). Correct cadence (target ~170-180 spm), overstriding loads patellofemoral joint. Reduce volume by 30-50% during reactive phase.',
       redFlags: ['Locking, catching, true effusion', 'Pain at rest or night pain', 'Giving way (suspect ligamentous instability)'],
       crossTrainOK: ['Pool', 'Cycle (high seat, low resistance)'],
       contraindications: ['Deep squats early', 'Stairs descending in pain', 'Downhill running'],
@@ -281,7 +281,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       category: 'tendinopathy',
       riskLevel: 'moderate',
       expectedRTRWeeksLow: 8, expectedRTRWeeksHigh: 16,
-      coreProtocol: 'Heavy slow resistance — single-leg decline squats or leg-press eccentrics, 3 sets × 15 reps × 3 days/week. Isometric holds (45 s × 5) for in-season pain management. Tendon needs load to remodel — do not rest.',
+      coreProtocol: 'Heavy slow resistance, single-leg decline squats or leg-press eccentrics, 3 sets × 15 reps × 3 days/week. Isometric holds (45 s × 5) for in-season pain management. Tendon needs load to remodel, do not rest.',
       redFlags: ['Sudden inability to extend knee (suspect rupture)', 'Marked swelling', 'Quadriceps weakness >50%'],
       crossTrainOK: ['Cycle (low resistance)', 'Pool'],
       contraindications: ['Plyometric volume too early', 'Uphill sprints early'],
@@ -306,9 +306,9 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       riskLevel: 'high',
       expectedRTRWeeksLow: 8, expectedRTRWeeksHigh: 24,
       coreProtocol: 'IMAGING (MRI for grade) before any return decision. Non-impact for ≥6 weeks (high-risk site) or until pain-free walking ≥7 days (low-risk). Then walk-run protocol stage 1 only after clinician clears.',
-      redFlags: ['ANY focal bone pain on running', 'Pain on hop test', 'Night pain', 'High-risk sites (anterior tibia, femoral neck, navicular, sacrum) — refer immediately'],
+      redFlags: ['ANY focal bone pain on running', 'Pain on hop test', 'Night pain', 'High-risk sites (anterior tibia, femoral neck, navicular, sacrum), refer immediately'],
       crossTrainOK: ['Pool only initially', 'Cycle once pain-free walking ≥7d'],
-      contraindications: ['Running through focal bone pain — non-negotiable'],
+      contraindications: ['Running through focal bone pain, non-negotiable'],
       researchSection: '§9',
     },
     {
@@ -329,7 +329,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       category: 'tendinopathy',
       riskLevel: 'moderate',
       expectedRTRWeeksLow: 12, expectedRTRWeeksHigh: 24,
-      coreProtocol: 'Isometric loading early (long-lever bridges 45 s × 5). HSR progression. Avoid prolonged sitting (compresses tendon). Sprint and downhill last to return. Long course — patience required.',
+      coreProtocol: 'Isometric loading early (long-lever bridges 45 s × 5). HSR progression. Avoid prolonged sitting (compresses tendon). Sprint and downhill last to return. Long course, patience required.',
       redFlags: ['Sciatic nerve symptoms (radiation past knee)', 'Severe seated pain', 'Bone pain at ischial tuberosity'],
       crossTrainOK: ['Pool', 'Cycle (limit prolonged sitting; stand often)'],
       contraindications: ['Forward-bend stretching early (compressive)', 'Hill sprints early'],
@@ -342,7 +342,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       riskLevel: 'moderate',
       expectedRTRWeeksLow: 2, expectedRTRWeeksHigh: 8,
       coreProtocol: 'POLICE early. Calf eccentric raises in two positions (knee straight = gastroc, knee bent = soleus) once pain-free isometrics. Heel lift can offload during return. Avoid hills early.',
-      redFlags: ['Sudden tearing pain with limp', 'Unilateral swelling, warmth, calf tenderness — rule out DVT', 'Palpable defect'],
+      redFlags: ['Sudden tearing pain with limp', 'Unilateral swelling, warmth, calf tenderness, rule out DVT', 'Palpable defect'],
       crossTrainOK: ['Pool', 'Cycle (low resistance)'],
       contraindications: ['Hills, sprints, plyometrics until both straight- and bent-knee raises symmetric'],
       researchSection: '§12',
@@ -366,7 +366,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       riskLevel: 'low',
       expectedRTRWeeksLow: 4, expectedRTRWeeksHigh: 12,
       coreProtocol: 'Hip-stabilizer + glute strengthening. Address sitting tolerance (avoid prolonged compression). Sciatic neural mobilization. Reduce running volume during reactive phase.',
-      redFlags: ['Frank radiculopathy (radiation past knee)', 'Bilateral symptoms', 'Saddle anaesthesia (cauda equina — emergency)'],
+      redFlags: ['Frank radiculopathy (radiation past knee)', 'Bilateral symptoms', 'Saddle anaesthesia (cauda equina, emergency)'],
       crossTrainOK: ['Pool', 'Cycle (avoid prolonged sitting)'],
       contraindications: ['Aggressive piriformis stretches early (can irritate)'],
       researchSection: '§14',
@@ -401,7 +401,7 @@ export const INJURY_CATALOG: Cited<InjuryEntry[]> = {
       category: 'forefoot_nerve',
       riskLevel: 'low',
       expectedRTRWeeksLow: 3, expectedRTRWeeksHigh: 8,
-      coreProtocol: 'Metatarsal pads or full-length insoles. Reduce running volume. Foot-intrinsics strengthening. Re-evaluate forefoot strike pattern (high forefoot load) — gradual cadence increase if needed.',
+      coreProtocol: 'Metatarsal pads or full-length insoles. Reduce running volume. Foot-intrinsics strengthening. Re-evaluate forefoot strike pattern (high forefoot load), gradual cadence increase if needed.',
       redFlags: ['Focal swelling at single MT head (suspect stress fracture)', 'Numbness between toes', 'Severe night pain'],
       crossTrainOK: ['Pool', 'Cycle'],
       contraindications: ['Minimalist shoes on hard surfaces', 'Forefoot-strike running drills early'],

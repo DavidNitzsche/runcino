@@ -1,5 +1,5 @@
 /**
- * Auth — bcrypt hashing, session cookie management, server-side
+ * Auth, bcrypt hashing, session cookie management, server-side
  * session lookup. No email verification, no password reset for v1
  * (defer infra). Sign-up → immediate session cookie → logged in.
  *
@@ -49,7 +49,7 @@ export interface AuthUser {
   location: string | null;
   status: UserStatus;
   is_admin: boolean;
-  /** Max HR (bpm) — null when unset. When set, coach uses %max
+  /** Max HR (bpm), null when unset. When set, coach uses %max
    *  zones in HR commentary instead of qualitative bands. */
   max_hr: number | null;
   /** Brand accent (`#RRGGBB`) the user picked on /profile. null falls
@@ -74,7 +74,7 @@ function ttlDate(): Date {
 
 /**
  * Hash a plaintext password with bcrypt (cost 12). The returned string
- * embeds the salt + cost so it's self-contained — no separate salt
+ * embeds the salt + cost so it's self-contained, no separate salt
  * column needed in the DB.
  */
 export async function hashPassword(plain: string): Promise<string> {
@@ -120,12 +120,12 @@ export async function signupUser(email: string, password: string, name: string):
   const user = rows[0];
   if (!user) throw new Error('Failed to create user');
 
-  // Legacy-owner backfill — runs IF this email is LEGACY_OWNER_EMAIL.
+  // Legacy-owner backfill, runs IF this email is LEGACY_OWNER_EMAIL.
   // No-op for everyone else.
   try {
     await maybeBackfillLegacyOwner(user.id, user.email);
   } catch (e) {
-    // Don't fail signup if the backfill errors — log + continue.
+    // Don't fail signup if the backfill errors, log + continue.
     // The user can re-trigger via the /api/admin/backfill route later.
     console.error('[auth] backfill failed:', e);
   }
@@ -228,7 +228,7 @@ export async function getCurrentUser(req?: { headers: Headers } | Request): Prom
           query(`UPDATE sessions SET last_used_at = NOW() WHERE session_token = $1;`, [bearer]).catch(() => {});
           return rows[0];
         }
-        // Bearer present but invalid — don't fall through to cookie;
+        // Bearer present but invalid, don't fall through to cookie;
         // an invalid bearer should fail explicitly, not silently
         // succeed via an unrelated cookie session.
         return null;
@@ -252,7 +252,7 @@ export async function getCurrentUser(req?: { headers: Headers } | Request): Prom
   const u = rows[0];
   if (!u) return null;
 
-  // Touch last_used_at — fire-and-forget so it doesn't block the response
+  // Touch last_used_at, fire-and-forget so it doesn't block the response
   query(`UPDATE sessions SET last_used_at = NOW() WHERE session_token = $1;`, [token]).catch(() => {});
 
   return u;
@@ -260,7 +260,7 @@ export async function getCurrentUser(req?: { headers: Headers } | Request): Prom
 
 /**
  * Server-side helper that REQUIRES a logged-in user. Returns the user
- * or throws — for use in Server Components / Route Handlers that should
+ * or throws, for use in Server Components / Route Handlers that should
  * only ever run authenticated.
  */
 export async function requireUser(): Promise<AuthUser> {
@@ -305,12 +305,12 @@ export async function requireAdmin(): Promise<AuthUser> {
  * idempotent backfills.
  *
  * Accepts EITHER:
- *   - A standard admin session (cookie) — same as requireAdmin().
+ *   - A standard admin session (cookie), same as requireAdmin().
  *   - An `Authorization: Bearer <token>` header matching the
  *     `ADMIN_OPERATIONAL_TOKEN` env var.
  *
  * Returns the bound admin user. When the bearer-token path is used,
- * the user is the LEGACY_OWNER_EMAIL (David) — the rationale being
+ * the user is the LEGACY_OWNER_EMAIL (David), the rationale being
  * that the agent acts on the owner's behalf, never on another user's.
  *
  * SCOPE · only endpoints that are read-only OR idempotent +
@@ -336,7 +336,7 @@ export async function requireAdminOrOpToken(req: { headers: Headers } | Request)
     const presented = auth.slice('Bearer '.length).trim();
     const expected = process.env.ADMIN_OPERATIONAL_TOKEN?.trim();
     if (expected && expected.length >= 32 && presented === expected) {
-      // Token matches — bind to the legacy owner so the rest of the
+      // Token matches, bind to the legacy owner so the rest of the
       // pipeline (admin.id, RBAC) works exactly as it would for a
       // session-authed call.
       const legacyOwner = (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
@@ -356,7 +356,7 @@ export async function requireAdminOrOpToken(req: { headers: Headers } | Request)
 }
 
 /**
- * Sign out — deletes the session row + clears the cookie.
+ * Sign out, deletes the session row + clears the cookie.
  */
 export async function logoutUser(): Promise<void> {
   const jar = await cookies();

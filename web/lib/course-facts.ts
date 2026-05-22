@@ -66,9 +66,9 @@ export interface CourseFacts {
       start_elevation_ft?: number;
       /** Verified finish elevation from official source. */
       finish_elevation_ft?: number;
-      /** Verified peak elevation — overrides noisy GPX computation when present. */
+      /** Verified peak elevation, overrides noisy GPX computation when present. */
       peak_elevation_ft?: number;
-      /** Mile mark of the peak — overrides GPX when present. */
+      /** Mile mark of the peak, overrides GPX when present. */
       peak_mi?: number;
     };
     expected_tolerances: {
@@ -91,7 +91,7 @@ export interface CourseFacts {
 }
 
 /** Returns the curated facts file for a known course, or null if the slug
- *  is unrecognized — callers can then fall back to synthesizeCourseFacts(). */
+ *  is unrecognized, callers can then fall back to synthesizeCourseFacts(). */
 export function getCourseFacts(slug: string): CourseFacts | null {
   switch (slug) {
     case 'big-sur-marathon':     return bigSur as CourseFacts;
@@ -117,7 +117,7 @@ export function synthesizeCourseFacts(
     race: {
       name: meta.name,
       slug: meta.slug,
-      description: `${meta.name} (custom course — synthesized from uploaded GPX).`,
+      description: `${meta.name} (custom course, synthesized from uploaded GPX).`,
       course_type: meta.type ?? (isLoop ? 'loop' : 'point_to_point'),
       typical_date: meta.date,
       expected_facts: {
@@ -128,7 +128,7 @@ export function synthesizeCourseFacts(
         net_ft: Math.round((track.demGainFt ?? track.smoothedGainFt) - (track.demLossFt ?? track.smoothedLossFt)),
       },
       // Permissive tolerances so the synthesized "expected" never errors
-      // its own GPX out — this validation is meaningful only for curated
+      // its own GPX out, this validation is meaningful only for curated
       // courses where expected_facts come from primary sources.
       expected_tolerances: { distance_mi: 99, gain_ft: 99999, loss_ft: 99999 },
       sources: [],
@@ -235,7 +235,7 @@ export interface FactsValidation {
 
 /**
  * Pre-flight check: compare a parsed GPX against the expected course facts.
- * Returns warnings/errors instead of throwing — callers decide whether to
+ * Returns warnings/errors instead of throwing, callers decide whether to
  * proceed.
  */
 export function validateGpxAgainstCourse(

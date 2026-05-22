@@ -1,5 +1,5 @@
 /**
- * /api/profile/accent — write the brand accent color on the user row.
+ * /api/profile/accent, write the brand accent color on the user row.
  *
  * Stored on users.accent_color. The root layout reads it server-side
  * and stamps --accent / --orange onto <html>, so the entire app picks

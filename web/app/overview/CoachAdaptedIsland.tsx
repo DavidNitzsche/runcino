@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * "Coach updated your plan" — a dismissible card pinned at the top of
+ * "Coach updated your plan", a dismissible card pinned at the top of
  * /overview that surfaces recent plan adaptations (grouped by reason, with
  * the day(s) touched) so a change never happens
  * silently. Client island: the parent page is a server component.
@@ -93,7 +93,7 @@ export function CoachAdaptedIsland() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, action: 'dismiss' }),
       });
-    } catch { /* ignore — UI already cleared; server retry on next dismiss */ }
+    } catch { /* ignore, UI already cleared; server retry on next dismiss */ }
   };
 
   if ((dismissed || groups.length === 0) && pending.length === 0) return null;

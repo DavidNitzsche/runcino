@@ -1,12 +1,12 @@
 /**
- * ConnectBanner — the orange-tinted "Connect Strava to start tracking"
+ * ConnectBanner, the orange-tinted "Connect Strava to start tracking"
  * banner that rides at the top of every in-app page when the user has
  * zero activity-source connectors active.
  *
  * Source spec: designs/empty-states-v4.html §Shared component.
  *
  * The banner is dismissible per-session via local state but reappears
- * on every page reload until a source is connected — that's intentional;
+ * on every page reload until a source is connected, that's intentional;
  * the prompt is too important to permanently dismiss.
  */
 
@@ -41,7 +41,7 @@ export function ConnectBanner({ show = true }: Props) {
         <div className="faff-connect-banner-sub">
           Your plan is set. Pull in your runs to see{' '}
           <strong>readiness, form, and load</strong>. We backfill your full activity history
-          on connect — usually under a minute.
+          on connect, usually under a minute.
         </div>
       </div>
       <div className="faff-connect-banner-actions">

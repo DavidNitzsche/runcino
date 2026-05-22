@@ -7,7 +7,7 @@
  * Real sources are wired where they exist (race calendar from Postgres
  * via /api/races, Coach predictions via /api/races-page, Strava cache
  * for results). Stubs are clearly marked with `// TODO: wire to <source>`.
- * The shapes are stable — when the real engine ships, only the bodies
+ * The shapes are stable, when the real engine ships, only the bodies
  * of each helper change.
  */
 
@@ -32,7 +32,7 @@ import type { RacesApiRacePrediction, RacesApiTaperReport } from '../api/races-p
 export interface RacesData {
   /** ISO "today". Locked once per load. */
   today: string;
-  /** Profile snapshot — name + greeting tone. Identical to other pages. */
+  /** Profile snapshot, name + greeting tone. Identical to other pages. */
   profile: ProfileSnapshot;
   /** Coach engine state (read-only by the UI). */
   state: CoachState;
@@ -50,7 +50,7 @@ export interface RacesData {
   predictions: Map<string, RacesApiRacePrediction>;
   /** Taper depths per imminent race, keyed by slug. */
   tapers: Map<string, RacesApiTaperReport>;
-  /** Body-systems report — only present when A race is ≤14 days. */
+  /** Body-systems report, only present when A race is ≤14 days. */
   bodySystems: CoachDecision<BodySystemsReport> | null;
   /** 14-week trajectory for the phase backbone. */
   trajectory: CoachDecision<Trajectory14wk>;
@@ -97,7 +97,7 @@ export interface ARaceHero {
   /** Predicted pace, e.g. "7:00/MI". */
   fitnessPace: string;
   /** VDOT label (e.g. "VDOT 50.4"). null when no usable race result yet
-   *  — the UI renders "NO VDOT YET" rather than a hardcoded number. */
+   *, the UI renders "NO VDOT YET" rather than a hardcoded number. */
   vdotLabel: string | null;
   /** Headroom s/mi; positive = on track. */
   headroomSPerMi: number;
@@ -142,14 +142,14 @@ export interface LatestRecap {
   splitNegative: boolean | null;
   /** Coach read text. Stub for now. */
   coachRead: string;
-  /** Place text (e.g. "247/3.2k") — null when unknown. */
+  /** Place text (e.g. "247/3.2k"), null when unknown. */
   place: string | null;
   /** Place sub (e.g. "TOP 8% · AG #23"). */
   placeSub: string | null;
   /** Conditions tile, or null if no weather captured. */
   conditions: { value: string; unit: string; sub: string } | null;
   /** AvgHR tile, or null if not captured. `pctMax` is null when the
-   *  runner's max HR is unknown — render a qualitative `zone` read
+   *  runner's max HR is unknown, render a qualitative `zone` read
    *  instead of a fabricated percentage. */
   avgHr: { value: number; pctMax: number | null; zone: string } | null;
   /** Verdict pin label ("PR" / "FINISHED" / "DNF" / null). */
@@ -187,7 +187,7 @@ export interface SeasonMarker {
   caption: string;
   /** Priority A/B/C. */
   priority: 'A' | 'B' | 'C';
-  /** Tone — drives color + dot shape. */
+  /** Tone, drives color + dot shape. */
   tone: 'pr' | 'past' | 'upcoming-a' | 'upcoming-b' | 'upcoming-c' | 'today';
   /** Was this a PR? */
   isPR: boolean;
@@ -209,7 +209,7 @@ interface RacesApiOk {
   bodySystems: CoachDecision<BodySystemsReport> | null;
   trajectory: CoachDecision<Trajectory14wk>;
   /** Runner display name from `profile.full_name`. null when no profile
-   *  row exists — UI renders "Runner". */
+   *  row exists, UI renders "Runner". */
   profileName: string | null;
 }
 
@@ -305,7 +305,7 @@ function getProfileSnapshot(today: string, profileName: string | null): ProfileS
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// A-RACE hero — pulls from Coach.raceFitnessPrediction
+// A-RACE hero, pulls from Coach.raceFitnessPrediction
 // ─────────────────────────────────────────────────────────────────────
 
 function getARaceHero(
@@ -323,33 +323,33 @@ function getARaceHero(
 
   const distanceLabel = distanceLabelFor(nextA.meta.distanceMi);
   // TODO: wire to a location field on SavedRace.meta (doesn't exist
-  // today — names like "Sombrero Half" don't carry city/state). For now
+  // today, names like "Sombrero Half" don't carry city/state). For now
   // we slot the distance label only and let the runner read context from
   // the race name itself.
   const longDateLine = formatLongDateLine(nextA.meta.date, distanceLabel);
 
   // Goal vs fitness comes from Coach.raceFitnessPrediction. The
   // /api/races-page route already filtered out races with malformed
-  // goalDisplay — but the prediction may still be missing if the goal
+  // goalDisplay, but the prediction may still be missing if the goal
   // failed to parse. Fall back to goal-only rendering.
   const goalTime = pred?.goalDisplay ?? nextA.meta.goalDisplay;
   const goalPaceS = pred?.goalPaceSPerMi ?? null;
-  const fitnessTime = pred?.predictedDisplay ?? '—';
+  const fitnessTime = pred?.predictedDisplay ?? '-';
   const fitnessPace = pred?.predictedPaceSPerMi ?? null;
   const headroom = pred?.headroomSPerMi ?? 0;
 
-  // VDOT — prefer the prediction's own VDOT (race-specific), else fall
+  // VDOT, prefer the prediction's own VDOT (race-specific), else fall
   // back to the dashboard snapshot (strongest recent race ≤ half). null
-  // when no usable race result is logged — UI renders "NO VDOT YET"
+  // when no usable race result is logged, UI renders "NO VDOT YET"
   // rather than a hardcoded number.
   const snap = vdotSnapshot(state);
   const vdot = pred?.vdot ?? snap?.vdot ?? null;
   const vdotLabel = vdot != null ? `VDOT ${vdot.toFixed(1)}` : null;
   const confidence = pred?.confidence ?? 'medium';
 
-  // Build window — base phase typically opens 14 days after a recovery
+  // Build window, base phase typically opens 14 days after a recovery
   // window from the most recent race. TODO: wire to Coach.trajectory14wk
-  // phase boundaries (Stage 7 — plan-templates engine consumer). For now
+  // phase boundaries (Stage 7, plan-templates engine consumer). For now
   // we surface an approximation: 14 days from today if the runner is in
   // recovery, else 0.
   const buildStartsInDays = computeBuildStartsInDays(today);
@@ -367,9 +367,9 @@ function getARaceHero(
     location: '',
     longDateLine,
     goalTime,
-    goalPace: goalPaceS != null ? `${fmtPace(goalPaceS)}/MI` : '—',
+    goalPace: goalPaceS != null ? `${fmtPace(goalPaceS)}/MI` : '-',
     fitnessPredicts: fitnessTime,
-    fitnessPace: fitnessPace != null ? `${fmtPace(fitnessPace)}/MI` : '—',
+    fitnessPace: fitnessPace != null ? `${fmtPace(fitnessPace)}/MI` : '-',
     vdotLabel,
     headroomSPerMi: headroom,
     confidenceLabel: confidence.toUpperCase(),
@@ -393,7 +393,7 @@ function getUpNextInset(
     name: nextB.meta.name,
     daysToRace: daysToB,
     shortDate: formatShortDate(nextB.meta.date),
-    // TODO: wire to race_week.ts B-race classification — for now we
+    // TODO: wire to race_week.ts B-race classification, for now we
     // default to "TUNE-UP". Once Stage 7 lands the Coach will classify
     // B-races as TUNE-UP / FITNESS CHECK / OPENER based on phase position.
     tuneupTag: 'TUNE-UP',
@@ -401,7 +401,7 @@ function getUpNextInset(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Latest recap — most recent past race with actualResult
+// Latest recap, most recent past race with actualResult
 // ─────────────────────────────────────────────────────────────────────
 
 function getLatestRecap(past: SavedRace[], state: CoachState): LatestRecap | null {
@@ -418,8 +418,8 @@ function getLatestRecap(past: SavedRace[], state: CoachState): LatestRecap | nul
   const distanceLabel = distanceLabelFor(target.meta.distanceMi);
   const distanceFull = formatRecapDistance(target);
 
-  const finishDisplay = result?.finishDisplay ?? '—:—:—';
-  const paceDisplay = result?.paceDisplay ?? '—';
+  const finishDisplay = result?.finishDisplay ?? ', :, :, ';
+  const paceDisplay = result?.paceDisplay ?? '-';
   const isPR = !!result?.isPR;
 
   const goalS = parseGoalS(target.meta.goalDisplay);
@@ -434,10 +434,10 @@ function getLatestRecap(past: SavedRace[], state: CoachState): LatestRecap | nul
     prLabel = delta < 0 ? `BEAT GOAL · ${fmtDelta(delta)}` : `MISSED GOAL · ${fmtDelta(delta)}`;
   }
 
-  // Split direction — derive from per-mile splits when available.
+  // Split direction, derive from per-mile splits when available.
   const splitInfo = computeSplitDelta(result);
 
-  // Place — from bestEfforts is not the same shape. We don't have a
+  // Place, from bestEfforts is not the same shape. We don't have a
   // structured place field. TODO: wire to a `place` column on
   // actualResult (does NOT exist today). Surface null so the UI can
   // hide the tile rather than show fake data.
@@ -446,7 +446,7 @@ function getLatestRecap(past: SavedRace[], state: CoachState): LatestRecap | nul
 
   // Resolve the runner's real max HR from coach-state (users.max_hr
   // override → Apple-ingest peak → computed activity peak). Null when
-  // unknown — we then fall back to a qualitative read rather than
+  // unknown, we then fall back to a qualitative read rather than
   // fabricating a %-of-max against a hardcoded ceiling.
   const maxHr = state.recovery.maxHrBpm ?? null;
   const avgHr = result?.avgHr != null
@@ -463,12 +463,12 @@ function getLatestRecap(past: SavedRace[], state: CoachState): LatestRecap | nul
         }
     : null;
 
-  // Conditions — no weather field on ActualResult yet. TODO: wire to
+  // Conditions, no weather field on ActualResult yet. TODO: wire to
   // /api/weather + race-day capture (Stage 5 fueling/weather pull
   // doesn't currently store result-time conditions). Surface null.
   const conditions: LatestRecap['conditions'] = null;
 
-  // Coach read — Stage R Coach.coachRead is not implemented (throws).
+  // Coach read, Stage R Coach.coachRead is not implemented (throws).
   // Synthesize a short readout from the result + goal.
   const coachRead = synthesizeCoachRead(target, result, delta);
 
@@ -509,7 +509,7 @@ function synthesizeCoachRead(
   result: ActualResult | null,
   delta: number | null,
 ): string {
-  // TODO: wire to Coach.coachRead() — Stage R "Retrospective loop"
+  // TODO: wire to Coach.coachRead(), Stage R "Retrospective loop"
   // pending. Until then we produce a 2-sentence readout from the data
   // we have (avg pace + PR-ness + headline name).
   if (!result) {
@@ -518,7 +518,7 @@ function synthesizeCoachRead(
   const paceLine = `Sustained ${result.paceDisplay}/mi`;
   const surface = race.meta.distanceMi >= 24 ? ' on the full distance' : '';
   if (result.isPR && delta != null && delta < 0) {
-    return `${paceLine}${surface} for a lifetime PR ${fmtDelta(delta)} under the goal. Aerobic engine confirmed — momentum carries forward.`;
+    return `${paceLine}${surface} for a lifetime PR ${fmtDelta(delta)} under the goal. Aerobic engine confirmed, momentum carries forward.`;
   }
   if (delta != null && delta < 0) {
     return `${paceLine}${surface}, ${fmtDelta(delta)} faster than goal. Fitness landed where projected.`;
@@ -526,7 +526,7 @@ function synthesizeCoachRead(
   if (delta != null && delta > 0) {
     return `${paceLine}${surface}, ${fmtDelta(delta)} off the goal. Bank the effort and review pace strategy before the next A.`;
   }
-  return `${paceLine}${surface}. Result recorded — fuller Coach Read when retrospective lands.`;
+  return `${paceLine}${surface}. Result recorded, fuller Coach Read when retrospective lands.`;
 }
 
 function computeSplitDelta(result: ActualResult | null): { label: string; negative: boolean } | null {
@@ -547,7 +547,7 @@ function computeSplitDelta(result: ActualResult | null): { label: string; negati
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Season timeline — past + today + future on a year scale
+// Season timeline, past + today + future on a year scale
 // ─────────────────────────────────────────────────────────────────────
 
 function getSeasonTimeline(all: SavedRace[], today: string): SeasonTimeline {
@@ -647,7 +647,7 @@ const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', '
 const DAYS_OF_WEEK = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 export function fmtPace(sPerMi: number): string {
-  if (!isFinite(sPerMi) || sPerMi <= 0) return '—';
+  if (!isFinite(sPerMi) || sPerMi <= 0) return ', ';
   const mm = Math.floor(sPerMi / 60);
   const ss = Math.round(sPerMi - mm * 60);
   return `${mm}:${ss.toString().padStart(2, '0')}`;

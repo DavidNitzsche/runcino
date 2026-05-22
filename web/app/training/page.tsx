@@ -1,13 +1,13 @@
 /**
- * /training — fresh React port of designs/training-v4.html.
+ * /training, fresh React port of designs/training-v4.html.
  *
  * Five sections matching the approved mockup:
- *   1. Coach strip — cycle voice + Next-Milestone countdown card
- *   2. Phase Hero — massive "BASE" phase wordmark + 4 stat pills /
+ *   1. Coach strip, cycle voice + Next-Milestone countdown card
+ *   2. Phase Hero, massive "BASE" phase wordmark + 4 stat pills /
  *                   Plan Arc · 14 Weeks Total timeline (right column)
- *   3. Full Schedule — 14-bar volume curve + 14-week calendar grid
- *   4. Plan Adapted feed — last 7 days of coach adjustments
- *   5. Your Paces — VDOT-derived training zones (E/M/T/I/R)
+ *   3. Full Schedule, 14-bar volume curve + 14-week calendar grid
+ *   4. Plan Adapted feed, last 7 days of coach adjustments
+ *   5. Your Paces, VDOT-derived training zones (E/M/T/I/R)
  *
  * Server component: requires auth via getCurrentUser, fetches the
  * active plan + user prefs from Postgres, computes phase context,
@@ -58,7 +58,7 @@ export default async function TrainingPage() {
   const tz = userTimezone(user.location);
   const today = todayISO(tz);
   // The runner's REAL coach-generated plan (same artifact /overview +
-  // /api/overview serve). No synthetic fallback — when there's no plan yet,
+  // /api/overview serve). No synthetic fallback, when there's no plan yet,
   // we say so honestly rather than render a fabricated one.
   const weeks = await getRealPlanWeeks(await resolvePlanUserId());
   if (weeks.length === 0) {
@@ -72,7 +72,7 @@ export default async function TrainingPage() {
               <div className="coach-label"><span className="dot-green"></span><span>Plan</span></div>
               <p className="coach-briefing">
                 No active training plan yet. Your coach builds it from your goal race and recent
-                training — set a goal race in your profile and your weeks will appear here.
+                training, set a goal race in your profile and your weeks will appear here.
               </p>
             </div>
           </div>
@@ -105,7 +105,7 @@ export default async function TrainingPage() {
   const goalRace =
     upcomingRaces.find((r) => r.meta.priority === 'A') ?? upcomingRaces[0] ?? null;
   const goalRaceName = goalRace?.meta.name ?? 'No goal race set';
-  // "Aug 16, 2026" — fmtShortDate gives "Aug 16"; append the ISO year.
+  // "Aug 16, 2026", fmtShortDate gives "Aug 16"; append the ISO year.
   const goalRaceDateLabel = goalRace ? `${fmtShortDate(goalRace.meta.date)}, ${goalRace.meta.date.slice(0, 4)}` : null;
   const goalRaceDistanceMi = goalRace?.meta.distanceMi ?? null;
 
@@ -117,7 +117,7 @@ export default async function TrainingPage() {
   const raceDate = goalRace?.meta.date ?? lastPlanDay;
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
 
-  // Coach brief — the SAME generateBriefing the Today/overview surfaces
+  // Coach brief, the SAME generateBriefing the Today/overview surfaces
   // use, not hardcoded prose. Inputs assembled like /api/overview.
   const curWeekIdx = weeks.indexOf(currentWeek);
   const previousWeek = curWeekIdx > 0 ? weeks[curWeekIdx - 1] : null;
@@ -221,7 +221,7 @@ export default async function TrainingPage() {
     isRace: w.phase === 'RACE_WEEK',
   }));
 
-  // Plan Adapted feed — last 7 days of REAL coach adjustments from the
+  // Plan Adapted feed, last 7 days of REAL coach adjustments from the
   // same plan_mutations log the /overview "Coach updated your plan" card
   // reads. Grouped by reason; direction inferred from the change.
   const activePlan = await getActivePlan(await resolvePlanUserId()).catch(() => null);
@@ -240,7 +240,7 @@ export default async function TrainingPage() {
       }));
   }
 
-  // VDOT-derived training paces — from the SAME resolveFitness the rest of
+  // VDOT-derived training paces, from the SAME resolveFitness the rest of
   // the app uses (anchored on the aggregate VDOT). No longer hardcoded null.
   const fitness = await resolveFitness(user.id, today).catch(() => null);
   const VDOT: number | null = fitness ? Math.round(fitness.vdot.value) : null;
@@ -296,7 +296,7 @@ export default async function TrainingPage() {
             <div className="hero-title">{PHASES.find((p) => p.key === phaseKey)?.label.toUpperCase() ?? 'BASE'}</div>
             <div className="hero-sub">{phaseKey === 'BASE' ? 'Aerobic Foundation' : phaseKey === 'BUILD' ? 'Threshold Build' : phaseKey === 'PEAK' ? 'Race Specificity' : phaseKey === 'TAPER' ? 'Sharpen' : 'Race Week'}</div>
             <p className="hero-explainer">
-              The {PHASES.find((p) => p.key === phaseKey)?.label} phase builds the engine — frequency over intensity, easy miles over fast ones. You&rsquo;re stacking weeks of consistent volume so the harder work later has somewhere to land. One quality session per week (threshold tempo); everything else stays conversational.
+              The {PHASES.find((p) => p.key === phaseKey)?.label} phase builds the engine, frequency over intensity, easy miles over fast ones. You&rsquo;re stacking weeks of consistent volume so the harder work later has somewhere to land. One quality session per week (threshold tempo); everything else stays conversational.
             </p>
             <div className="stats-row">
               <div className="stat-pill">
@@ -451,7 +451,7 @@ export default async function TrainingPage() {
                           <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
                             {isToday ? 'Rest · Today' : 'Rest'}
                           </span>
-                          <span className="cal-cell-rest-dash">—</span>
+                          <span className="cal-cell-rest-dash">, </span>
                         </>
                       ) : (
                         <>
@@ -513,7 +513,7 @@ export default async function TrainingPage() {
           <div className="paces-header">
             <div className="paces-title-group">
               <div className="paces-title">Your Paces</div>
-              <div className="paces-sub">{VDOT ? <><strong>Fitness score {VDOT}</strong> · your training paces</> : 'No data yet — log a recent race to set your training paces'}</div>
+              <div className="paces-sub">{VDOT ? <><strong>Fitness score {VDOT}</strong> · your training paces</> : 'No data yet, log a recent race to set your training paces'}</div>
             </div>
           </div>
           {PACES.length === 0 ? (

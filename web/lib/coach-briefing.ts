@@ -7,10 +7,10 @@
  *
  * Mondays reflect on last week + frame the new one. Tue–Sat talk
  * about today's workout in context of the week's arc. Sunday is the
- * long-run day — frame it as the week's centerpiece. Rest days
+ * long-run day, frame it as the week's centerpiece. Rest days
  * (whichever DOW) get rest-specific copy.
  *
- * Inputs are intentionally small — anything more would push toward
+ * Inputs are intentionally small, anything more would push toward
  * LLM-generation territory. The point here is to swap mechanical
  * "Today is easy at 5.5mi." copy for something that reads like a
  * person who can see your data.
@@ -33,7 +33,7 @@ interface BriefingInput {
   thisWeekSoFar: WeekStats;
   /** Today's planned workout (or null on rest days). */
   todayDay: PlanWeekDay | null;
-  /** Local hour 0-23 — drives the "Good morning / afternoon / evening"
+  /** Local hour 0-23, drives the "Good morning / afternoon / evening"
    *  prefix. Caller passes the user's local time so the greeting
    *  matches what the runner sees on the wall clock. Defaults to 8
    *  (morning) when omitted, so existing callers don't regress. */
@@ -67,9 +67,9 @@ function fmtMonthDay(iso: string): string {
 
 /** Adverb that frames how close the runner is to the start line. */
 function urgencyFraming(daysToRace: number): string {
-  if (daysToRace <= 14)   return `Race week is the next horizon — ${daysToRace} days out.`;
+  if (daysToRace <= 14)   return `Race week is the next horizon, ${daysToRace} days out.`;
   if (daysToRace <= 28)   return `Taper is on the horizon (${daysToRace} days to the start).`;
-  if (daysToRace <= 56)   return `Build phase territory — ${daysToRace} days to race.`;
+  if (daysToRace <= 56)   return `Build phase territory, ${daysToRace} days to race.`;
   return `${daysToRace} days to the start line.`;
 }
 
@@ -95,7 +95,7 @@ function pickKeyWorkout(week: PlanWeek): PlanWeekDay | null {
 function intensityCopyFor(type: string): string {
   if (type === 'easy' || type === 'recovery') return 'Conversational pace; the work is built on the easy days.';
   if (type === 'long')    return 'Time on feet is the stimulus; pace stays conversational, last 20 can drift if it feels natural.';
-  if (type === 'quality') return 'Comfortably hard — controlled threshold effort, work then cool down easy.';
+  if (type === 'quality') return 'Comfortably hard, controlled threshold effort, work then cool down easy.';
   if (type === 'race')    return 'Race day. Conserve early, commit late.';
   return '';
 }
@@ -138,7 +138,7 @@ export function generateBriefing(input: BriefingInput): string {
         lastWeekSentence += ` Long run was ${L.mi} mi at ${fmtPace(L.paceSPerMi)}.`;
       }
     } else if (previousWeek) {
-      lastWeekSentence = `Last week was a rest reset — no logged runs.`;
+      lastWeekSentence = `Last week was a rest reset, no logged runs.`;
     } else {
       lastWeekSentence = `Fresh start to the cycle.`;
     }
@@ -160,9 +160,9 @@ export function generateBriefing(input: BriefingInput): string {
     // Today's piece
     let todaySentence = '';
     if (isRest) {
-      todaySentence = `Today's a rest — use it.`;
+      todaySentence = `Today's a rest, use it.`;
     } else if (todayDay) {
-      todaySentence = `Today is ${todayDay.label.toLowerCase()} at ${todayDay.distanceMi} mi — ${intensityCopyFor(todayDay.type)}`;
+      todaySentence = `Today is ${todayDay.label.toLowerCase()} at ${todayDay.distanceMi} mi, ${intensityCopyFor(todayDay.type)}`;
     }
 
     return [
@@ -187,7 +187,7 @@ export function generateBriefing(input: BriefingInput): string {
     const sundayLong = currentWeek.days.find((d) => d.type === 'long' || d.type === 'race');
     let sundayMention = '';
     if (sundayLong && sundayLong.date > today) {
-      sundayMention = ` Sunday is ${sundayLong.distanceMi} mi ${sundayLong.type === 'race' ? '— race day' : '— save the legs'}.`;
+      sundayMention = ` Sunday is ${sundayLong.distanceMi} mi ${sundayLong.type === 'race' ? ', race day' : ', save the legs'}.`;
     }
     return `Today is ${todayDay.label.toLowerCase()} at ${todayDay.distanceMi} mi. ${intensityCopyFor(todayDay.type)}${sundayMention} ${urgencyFraming(daysToRace)}`;
   }

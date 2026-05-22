@@ -3,14 +3,14 @@
  *
  * The native file-input button paints with OS chrome ("Choose File" gray
  * button, system font, locale-translated label). This is a styled drop zone
- * with a hidden native input under the hood — the file picker dialog itself
+ * with a hidden native input under the hood, the file picker dialog itself
  * is OS-controlled and unavoidable, but every pixel inside our page matches.
  *
  *   <FileDrop accept=".gpx" onFile={(content, file) => …} />
  *
  * Emits via:
- *   - onFile(text, file) — when readAs is "text" (default)
- *   - onFiles(files)     — raw FileList access for multi-file flows
+ *   - onFile(text, file), when readAs is "text" (default)
+ *   - onFiles(files), raw FileList access for multi-file flows
  */
 
 'use client';

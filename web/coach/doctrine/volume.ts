@@ -1,5 +1,5 @@
 /**
- * Doctrine §4 — Base / maintenance training: weekly volume.
+ * Doctrine §4, Base / maintenance training: weekly volume.
  *
  * Extracted from docs/coaching-research.md §4.1, §4.2, §4.3.
  * What easy volume actually does, how much is realistic, and how to
@@ -51,7 +51,7 @@ export const PEAK_WEEK_VOLUME_MI: Cited<{
 /** Weekly mileage allocation for general aerobic / endurance work. */
 export const GA_PCT_OF_WEEKLY_MILEAGE: Cited<{ low: number; high: number }> = {
   value: { low: 50, high: 70 },
-  note: 'GA/endurance is the bread and butter — 50–70 % of weekly mileage for most runners.',
+  note: 'GA/endurance is the bread and butter, 50–70 % of weekly mileage for most runners.',
   citations: [cite('§5.2', 'For most runners these account for 50 to 70 percent of total weekly mileage.')],
 };
 
@@ -85,14 +85,14 @@ export const MAINTENANCE_BLOCK: Cited<{
   ],
 };
 
-/** Weekly volume progression rules — Research/00a §Volume progression rules. */
+/** Weekly volume progression rules, Research/00a §Volume progression rules. */
 export const VOLUME_PROGRESSION: Cited<{
   /** Conservative weekly increase cap for trained athletes (pct). */
   weeklyIncreaseCapPct: number;
   /** Single-session long-run spike cap vs prior longest long run (pct).
    *  Exceeding raises injury risk significantly. */
   singleSessionSpikeCapPctOfPriorLongRun: number;
-  /** Injury risk increase when spike cap exceeded — Gabbett 2016. */
+  /** Injury risk increase when spike cap exceeded, Gabbett 2016. */
   injuryRiskIncreasePct: number;
 }> = {
   value: {
@@ -107,7 +107,7 @@ export const VOLUME_PROGRESSION: Cited<{
   ],
 };
 
-/** Cutback / down-week rules — every 3rd or 4th week. */
+/** Cutback / down-week rules, every 3rd or 4th week. */
 export const CUTBACK_WEEK_RULES: Cited<{
   /** How often to take a down week (weeks of build before cutback). */
   frequencyWeeksLow: number;
@@ -149,7 +149,7 @@ export const TAPER_VOLUME_RULES: Cited<{
       marathon: { low: 3, high: 4 },
     },
   },
-  note: 'Taper reduces 50–70% from peak weekly volume. Intensity preserved — volume drops, quality touches remain.',
+  note: 'Taper reduces 50–70% from peak weekly volume. Intensity preserved, volume drops, quality touches remain.',
   citations: [
     cite('§12 Tapering', 'Reduce 50–70% from peak weekly volume over 2–4 weeks depending on race distance', 'research', '00a'),
   ],

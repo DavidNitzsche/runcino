@@ -59,7 +59,7 @@ export function planFueling(input: FuelPlanInput): FuelPlan {
   }
 
   // Snap each ideal anchor to the nearest phase boundary (start_mi)
-  // that's within 1 mile — otherwise keep the ideal position.
+  // that's within 1 mile, otherwise keep the ideal position.
   const boundaryMiles = phases.map(p => p.startMi).concat(
     phases.length > 0 ? [phases[phases.length - 1].endMi] : []
   );

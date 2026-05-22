@@ -1,9 +1,9 @@
 /**
- * Strava activity writeback — rename + describe Strava activities to
+ * Strava activity writeback, rename + describe Strava activities to
  * match what the runner did in the faff.run plan.
  *
  * Triggered from the webhook `create` handler in /api/strava/webhook
- * (NEVER on `update` — that would clobber the runner's manual edits
+ * (NEVER on `update`, that would clobber the runner's manual edits
  * forever after the first sync).
  *
  * Decisions (locked with David 2026-05-18):
@@ -17,7 +17,7 @@
  *     faff.run block PLUS any pre-existing Strava description below
  *     it (separated by an em-dash divider).
  *
- * Required scope: activity:write — added to /api/strava/connect.
+ * Required scope: activity:write, added to /api/strava/connect.
  * Existing connections need to re-authorize once.
  */
 
@@ -58,7 +58,7 @@ interface ActualStats {
 }
 
 function fmtPace(sPerMi: number): string {
-  if (!sPerMi || sPerMi <= 0) return '—';
+  if (!sPerMi || sPerMi <= 0) return ', ';
   const m = Math.floor(sPerMi / 60);
   const s = sPerMi % 60;
   return `${m}:${String(s).padStart(2, '0')}/mi`;
@@ -85,13 +85,13 @@ export function formatPlanDescription(
   const actualLine = actualBits.join(' ');
 
   // Build a compact text version of the recipe for the Strava
-  // description (plain text — no nested formatting).
+  // description (plain text, no nested formatting).
   const stepLines = desc.steps.length === 0
     ? []
     : ['', 'WORKOUT', ...desc.steps.flatMap((s, i) => {
         const num = `${i + 1}.`;
         if (s.kind === 'simple') {
-          return [`  ${num} ${s.name} — ${s.duration} at ${s.pace} (${s.zone})`];
+          return [`  ${num} ${s.name}, ${s.duration} at ${s.pace} (${s.zone})`];
         }
         const lines = [`  ${num} ${s.name}`, `      ${s.times} rounds of:`];
         for (const item of s.items) {
@@ -116,25 +116,25 @@ export function formatPlanDescription(
   const existing = (existingDescription || '').trim();
   if (!existing) return block;
   // Don't duplicate the block if the activity already has it
-  // (re-fire safety — webhook update events shouldn't trigger writeback
+  // (re-fire safety, webhook update events shouldn't trigger writeback
   // but if one slips through, this prevents stacking).
   if (existing.startsWith('faff.run · ')) {
     // Replace whatever's above the first em-dash divider (if any) with
     // our fresh block; preserve whatever's below.
-    const dividerIdx = existing.indexOf('\n—\n');
+    const dividerIdx = existing.indexOf('\n, \n');
     if (dividerIdx >= 0) {
-      return `${block}\n—\n${existing.slice(dividerIdx + 3)}`;
+      return `${block}\n, \n${existing.slice(dividerIdx + 3)}`;
     }
     return block;
   }
-  return `${block}\n—\n${existing}`;
+  return `${block}\n, \n${existing}`;
 }
 
 interface TokenRow { access_token: string; refresh_token: string | null; }
 
 /**
  * Refresh + return a fresh access token for the user. We re-refresh on
- * every writeback call so a stale token never silently 401s — Strava
+ * every writeback call so a stale token never silently 401s, Strava
  * rotates refresh tokens, we persist the new one immediately.
  */
 async function freshAccessToken(userId: string): Promise<string | null> {
@@ -198,11 +198,11 @@ export interface WritebackResult {
 
 /**
  * Push name + description back to Strava if all guards pass.
- * Returns { pushed: false, reason } when skipped — caller can log.
+ * Returns { pushed: false, reason } when skipped, caller can log.
  */
 export async function pushWorkoutNameToStrava(p: WritebackParams): Promise<WritebackResult> {
   if (!p.day) return { pushed: false, reason: 'no matching plan day' };
-  if (p.day.type === 'race') return { pushed: false, reason: 'race day — never overwrite' };
+  if (p.day.type === 'race') return { pushed: false, reason: 'race day, never overwrite' };
   if (p.day.isRest || p.day.distanceMi === 0) return { pushed: false, reason: 'rest day' };
   if (!isStravaDefaultName(p.currentName)) {
     return { pushed: false, reason: `custom name "${p.currentName}" preserved` };

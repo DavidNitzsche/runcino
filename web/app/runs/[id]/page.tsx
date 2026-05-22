@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * /runs/[id] — single Strava activity detail.
+ * /runs/[id], single Strava activity detail.
  *
  * Renders the route polyline (decoded inline, no map deps), per-mile
  * splits, best efforts, HR + cadence stats, suffer score, description.
@@ -183,7 +183,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   );
 }
 
-/** Canonical hero matching _template-detail-2026-05-09.html — eyebrow + h1 left,
+/** Canonical hero matching _template-detail-2026-05-09.html, eyebrow + h1 left,
  *  5 KPI tiles right (Distance / Time / Pace / HR / Elev). */
 function RunHero({ activity, pacePerMi, isRace }: { activity: RichActivity; pacePerMi: string; isRace: boolean }) {
   return (
@@ -206,12 +206,12 @@ function RunHero({ activity, pacePerMi, isRace }: { activity: RichActivity; pace
         />
         <KpiTile
           label="AVG HR"
-          value={activity.avgHr ? String(Math.round(activity.avgHr)) : '—'}
+          value={activity.avgHr ? String(Math.round(activity.avgHr)) : '-'}
           unit={activity.avgHr ? 'BPM' : undefined}
         />
         <KpiTile
           label="CADENCE"
-          value={activity.avgCadence ? String(Math.round(activity.avgCadence)) : '—'}
+          value={activity.avgCadence ? String(Math.round(activity.avgCadence)) : '-'}
           unit={activity.avgCadence ? 'SPM' : undefined}
         />
         <KpiTile
@@ -297,7 +297,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 /* ── Route polyline ─────────────────────────────────────────
    Decodes Strava's encoded summary polyline into lat/lon points,
    normalizes them to the SVG viewport, draws as a single <path>.
-   No map provider, no API key, no tiles — just the route shape on
+   No map provider, no API key, no tiles, just the route shape on
    a dark background. Good enough to confirm "yes that's the run." */
 function RoutePoly({ polyline }: { polyline: string | null }) {
   if (!polyline) {
@@ -413,7 +413,7 @@ function SplitsTable({ miles }: { miles: NonNullable<RichActivity['miles']> }) {
               <td style={{ padding: '12px 18px', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t1)', fontWeight: 700 }}>{m.mile}</td>
               <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t0)', fontWeight: 700 }}>{m.paceDisplay}</td>
               <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t1)' }}>{fmtT(m.elapsedS)}</td>
-              <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t2)' }}>{m.avgHr ? Math.round(m.avgHr) : '—'}</td>
+              <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: 'var(--color-t2)' }}>{m.avgHr ? Math.round(m.avgHr) : '-'}</td>
               <td style={{ padding: '12px 18px', textAlign: 'right', fontFamily: 'var(--font-data)', fontVariantNumeric: 'tabular-nums', color: m.elevDeltaFt > 0 ? '#f9a87c' : m.elevDeltaFt < 0 ? '#7fd6a1' : 'var(--color-t3)' }}>
                 {m.elevDeltaFt > 0 ? '+' : ''}{m.elevDeltaFt}
               </td>
@@ -430,14 +430,14 @@ function SplitsTable({ miles }: { miles: NonNullable<RichActivity['miles']> }) {
 function RunningFormTile({ dynamics, avgCadence }: { dynamics: RunDynamics | null; avgCadence: number | null }) {
   const cadence = avgCadence ?? dynamics?.cadence ?? null;
   const cells: Array<{ label: string; value: string; unit: string }> = [
-    { label: 'Cadence',      value: cadence != null ? String(Math.round(cadence)) : '—', unit: cadence != null ? 'spm' : '' },
-    { label: 'Stride',       value: dynamics?.stride_length != null ? dynamics.stride_length.toFixed(2) : '—', unit: dynamics?.stride_length != null ? 'm' : '' },
-    { label: 'Vert Osc',     value: dynamics?.vertical_oscillation != null ? dynamics.vertical_oscillation.toFixed(1) : '—', unit: dynamics?.vertical_oscillation != null ? 'cm' : '' },
-    { label: 'Grnd Contact', value: dynamics?.ground_contact_time != null ? String(Math.round(dynamics.ground_contact_time)) : '—', unit: dynamics?.ground_contact_time != null ? 'ms' : '' },
-    { label: 'Vert Ratio',   value: dynamics?.vertical_ratio != null ? dynamics.vertical_ratio.toFixed(1) : '—', unit: dynamics?.vertical_ratio != null ? '%' : '' },
-    { label: 'Run Power',    value: dynamics?.run_power != null ? String(Math.round(dynamics.run_power)) : '—', unit: dynamics?.run_power != null ? 'W' : '' },
+    { label: 'Cadence',      value: cadence != null ? String(Math.round(cadence)) : '-', unit: cadence != null ? 'spm' : '' },
+    { label: 'Stride',       value: dynamics?.stride_length != null ? dynamics.stride_length.toFixed(2) : '-', unit: dynamics?.stride_length != null ? 'm' : '' },
+    { label: 'Vert Osc',     value: dynamics?.vertical_oscillation != null ? dynamics.vertical_oscillation.toFixed(1) : '-', unit: dynamics?.vertical_oscillation != null ? 'cm' : '' },
+    { label: 'Grnd Contact', value: dynamics?.ground_contact_time != null ? String(Math.round(dynamics.ground_contact_time)) : '-', unit: dynamics?.ground_contact_time != null ? 'ms' : '' },
+    { label: 'Vert Ratio',   value: dynamics?.vertical_ratio != null ? dynamics.vertical_ratio.toFixed(1) : '-', unit: dynamics?.vertical_ratio != null ? '%' : '' },
+    { label: 'Run Power',    value: dynamics?.run_power != null ? String(Math.round(dynamics.run_power)) : '-', unit: dynamics?.run_power != null ? 'W' : '' },
   ];
-  const hasAny = cells.some((c) => c.value !== '—');
+  const hasAny = cells.some((c) => c.value !== ', ');
   if (!hasAny) return null;
 
   return (
@@ -455,7 +455,7 @@ function RunningFormTile({ dynamics, avgCadence }: { dynamics: RunDynamics | nul
             background: 'var(--color-l2)', border: '1px solid var(--color-l4)', borderRadius: 8,
           }}>
             <span style={{ fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--color-t3)', fontWeight: 700 }}>{c.label}</span>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 22, color: c.value === '—' ? 'var(--color-t3)' : 'var(--color-t0)', letterSpacing: '-.01em' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 22, color: c.value === ', ' ? 'var(--color-t3)' : 'var(--color-t0)', letterSpacing: '-.01em' }}>
               {c.value}{c.unit && <small style={{ fontSize: 11, color: 'var(--color-t3)', marginLeft: 2 }}>{c.unit}</small>}
             </span>
           </div>
@@ -555,7 +555,7 @@ function fmtT(s: number): string {
 }
 
 /** Decode a Google-style encoded polyline into [lat, lon][]. Self-
- *  contained (no deps) — based on the standard reference algorithm
+ *  contained (no deps), based on the standard reference algorithm
  *  from Strava + Google maps documentation. */
 function decodePolyline(str: string): Array<[number, number]> {
   const out: Array<[number, number]> = [];

@@ -1,5 +1,5 @@
 /**
- * Regression tests for coach-engine.simulateRange — specifically the
+ * Regression tests for coach-engine.simulateRange, specifically the
  * post-race-with-far-goal-race scenario that produced an all-REST
  * plan from May 23 onward for ~100 days.
  *
@@ -114,7 +114,7 @@ function chunkByMonSun<T>(days: T[], firstDateISO: string): T[][] {
   return out;
 }
 
-describe('simulateRange — post-race + far-goal-race scenario', () => {
+describe('simulateRange, post-race + far-goal-race scenario', () => {
   for (const inWindow of [false, true]) {
     describe(`inWindow=${inWindow}`, () => {
       const state = makePostRaceState({ inWindow });
@@ -138,11 +138,11 @@ describe('simulateRange — post-race + far-goal-race scenario', () => {
       it('every Mon-Sun week after day +21 (excluding race + post-race weeks) has at least one long run', () => {
         // Day +21 (May 12 + 21 = Jun 2) is well past the marathon
         // recovery window. Beyond that point, every full Mon-Sun chunk
-        // should anchor a long run — EXCEPT the race week itself
+        // should anchor a long run, EXCEPT the race week itself
         // (which substitutes a shakeout + race for the long run) and
         // the 14-day half-marathon recovery window after the AFC Half
         // (Aug 17-30). Inside that window the engine prescribes
-        // graduated recovery, no long run — that's doctrine.
+        // graduated recovery, no long run, that's doctrine.
         const dayPlus21Idx = days.findIndex(d => d.date === '2026-06-02');
         expect(dayPlus21Idx).toBeGreaterThan(0);
         const tail = days.slice(dayPlus21Idx);

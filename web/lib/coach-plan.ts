@@ -1,5 +1,5 @@
 /**
- * Plan-template engine — Stage 4 of the /Research/ migration.
+ * Plan-template engine, Stage 4 of the /Research/ migration.
  *
  * Source: Research/22-plan-templates.md (extracted to coach/doctrine/plan_templates.ts)
  *
@@ -51,7 +51,7 @@ function findById(id: string): PlanTemplate | null {
 }
 
 /** Infer experience level from training volume. Beginner <25 mpw,
- *  intermediate 25-45 mpw, advanced 45+ mpw. Heuristic — once user
+ *  intermediate 25-45 mpw, advanced 45+ mpw. Heuristic, once user
  *  profile gathers explicit experience-level data, replace with that. */
 export function inferExperienceLevel(state: CoachState): ExperienceLevel {
   const wkAvg = state.volume.weeklyAvg4w;
@@ -79,14 +79,14 @@ export function templateWorkoutType(template: PlanTemplate, jsDow: number): RunW
 
 /** Map a free-form workout description (from PLAN_TEMPLATES) to a
  *  canonical RunWorkoutType. Patterns mirror what the templates
- *  actually contain in plan_templates.ts — additions there should
+ *  actually contain in plan_templates.ts, additions there should
  *  add a matching pattern here. Tested against every entry in the
  *  catalog as of Stage 4 ship. */
 export function classifyWorkoutString(rawInput: string): RunWorkoutType | null {
   const s = rawInput.trim();
   const lower = s.toLowerCase();
 
-  // Rest first — most explicit
+  // Rest first, most explicit
   if (/^rest(\s|$|\/|\bor\b)/i.test(s)) return 'rest';
   if (/^xt or rest/i.test(s)) return 'rest';
   if (/^rest or/i.test(s)) return 'rest';
@@ -95,7 +95,7 @@ export function classifyWorkoutString(rawInput: string): RunWorkoutType | null {
   if (/^race\b/i.test(s) || /\bRACE\b/.test(s)) return 'race';
   if (/shakeout/i.test(lower)) return 'shakeout';
 
-  // Long-run variants — order matters; most-specific first.
+  // Long-run variants, order matters; most-specific first.
   // RunWorkoutType doesn't have a separate fast_finish or
   // dress_rehearsal; both classify as long_mp_block (template detail
   // lives in workouts.ts catalog; engine treats them as MP-blocked
@@ -122,10 +122,10 @@ export function classifyWorkoutString(rawInput: string): RunWorkoutType | null {
   if (/×\s*\d+\s*mi.*@\s*(i|5k|3k|10k)\b/i.test(s)) return 'vo2';
   if (/×\s*1\s*mi.*5k.*pace/i.test(s)) return 'vo2';
 
-  // Speed / R-pace work — strides_appended is the engine's strides type
+  // Speed / R-pace work, strides_appended is the engine's strides type
   if (/×\s*(200|400|600)\s*m.*@\s*r\b/i.test(s)) return 'strides_appended';
 
-  // Hill work — treat as VO2 stimulus (engine has no dedicated hill type)
+  // Hill work, treat as VO2 stimulus (engine has no dedicated hill type)
   if (/hill\s*sprint/i.test(lower)) return 'strides_appended';
   if (/hill\s*repeat|hill\s*circuit/i.test(lower)) return 'vo2';
 
@@ -138,7 +138,7 @@ export function classifyWorkoutString(rawInput: string): RunWorkoutType | null {
   // Recovery
   if (/recovery|rec\b/i.test(s) && !/recovery\s*=\s*\d/i.test(s)) return 'recovery';
 
-  // Easy / general aerobic — broadest catch
+  // Easy / general aerobic, broadest catch
   if (/^\d+\s*mi\s*(e|ga|easy)\b|easy|general\s*aerobic|^ga\b/i.test(s)) return 'general_aerobic';
 
   return null;

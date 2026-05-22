@@ -1,5 +1,5 @@
 /**
- * Doctrine §12 — Masters considerations (35+).
+ * Doctrine §12, Masters considerations (35+).
  *
  * Extracted from docs/coaching-research.md §12.
  * Age-related performance changes and what they mean for prescription.
@@ -49,7 +49,7 @@ export const PERFORMANCE_AGE_CURVE: Cited<{
 
 /** Practical adjustments for masters runners (35+). */
 export const MASTERS_ADJUSTMENTS: Cited<{
-  /** VO2max work emphasis (counter-intuitive — more, not less). */
+  /** VO2max work emphasis (counter-intuitive, more, not less). */
   vo2EmphasisShouldIncrease: true;
   /** Two hard sessions/week often beats three after 45. */
   hardSessionsPerWeekAfter45: number;

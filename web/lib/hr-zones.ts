@@ -1,5 +1,5 @@
 /**
- * HR zones — single source of truth for zone computation.
+ * HR zones, single source of truth for zone computation.
  *
  * S1 cleanup (David round 3): round 1 fixed buildHrZones in
  * fitness-resolver.ts to use HRR (Karvonen) when restingHr is known.
@@ -89,15 +89,15 @@ export function buildHrZonesBundle(
 }
 
 /**
- * The "hard effort" HR floor — the bottom of the Threshold zone (Z4).
+ * The "hard effort" HR floor, the bottom of the Threshold zone (Z4).
  *
  * A run averaging at/above this is a genuinely hard session for recovery
  * purposes. Uses Karvonen %HRR (resting + 0.80 × reserve) when resting HR
- * is known — more accurate for trained runners with low resting HR — and
+ * is known, more accurate for trained runners with low resting HR, and
  * falls back to 0.80 × maxHr otherwise.
  *
  * Cited: Research/03 §4 (Z4 Threshold = 80–90% / "comfortably hard") and
- * §5 (Karvonen HRR). This is THE single definition of "hard by HR" — every
+ * §5 (Karvonen HRR). This is THE single definition of "hard by HR", every
  * consumer (readiness, plan-building 24h-recovery, run debrief) routes
  * through here so they can't drift apart again. Returns null when maxHr is
  * unknown (caller falls back to its own default).

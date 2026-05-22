@@ -10,7 +10,7 @@
  * authoritative distance, coords, and elevation. Research only needs to
  * cover what the GPX can't tell us: aid stations, course type, warnings.
  *
- * Every nullable field is null because Claude could not verify it —
+ * Every nullable field is null because Claude could not verify it, 
  * not because it doesn't exist. Throws only if distance_mi is
  * unresolvable (plan is impossible without it).
  */
@@ -19,23 +19,23 @@ import type { CourseResearch } from './types';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 
-// In-process cache — survives across requests on the same server instance.
+// In-process cache, survives across requests on the same server instance.
 // Keyed by "race_name_lowercase|YYYY-MM-DD". Cleared on process restart.
 const researchCache = new Map<string, CourseResearch>();
 
 const SYSTEM_PROMPT = `
 You are a race research assistant for faff.run, a runner's race planning tool.
 Use web_search to find race logistics from the official race website.
-The runner may have already uploaded their own GPX file — your job is the information
+The runner may have already uploaded their own GPX file, your job is the information
 that the GPX can't tell us: aid stations, course warnings, and race logistics.
 
 ## Search strategy
 
-**STEP 1 — Find the official race website**
+**STEP 1, Find the official race website**
 Search "[race name] official site" or "[race name] [year] registration".
 Identify the official race domain (e.g. bigsurmarathon.org, lamarathon.com).
 
-**STEP 2 — Read the official website for race logistics**
+**STEP 2, Read the official website for race logistics**
 From the official race website find:
 - Aid station mile markers from the CURRENT YEAR's athlete guide / course map PDF
 - Course type: point-to-point, loop, or out-and-back
@@ -44,23 +44,23 @@ From the official race website find:
 - Elevation gain/loss from the official course profile (summary stats, not the shape)
 - Any course route or finish line changes in the last 3 years
 
-**STEP 3 — Cross-check against the runner's GPX (if provided in the user message)**
+**STEP 3, Cross-check against the runner's GPX (if provided in the user message)**
 If the user message includes GPX data (distance, gain, start coords), compare against
 what you found on the official site. Flag any significant discrepancies in research_notes
 and course_warnings (e.g. wrong course year, out-and-back vs point-to-point mismatch).
 
 ## Hard rules
 1. Never invent a fact. Null means "could not verify from a citable source."
-2. primary_source_url must be the official race domain — not a blog, not a race aggregator.
+2. primary_source_url must be the official race domain, not a blog, not a race aggregator.
 3. aid_station_miles only from the official race website or official course map PDF.
-4. Return ONLY valid JSON — no markdown fences, no commentary before or after.
+4. Return ONLY valid JSON, no markdown fences, no commentary before or after.
 
 ## Output schema
 
 {
   "race_name": string,
   "slug": string (kebab-case),
-  "distance_mi": number (required — best known value; 26.2188 for marathon, 13.1094 for half),
+  "distance_mi": number (required, best known value; 26.2188 for marathon, 13.1094 for half),
   "distance_m": number,
   "course_type": "point_to_point" | "loop" | "out_and_back",
   "total_gain_ft": number | null,   // always set both gain AND loss together, or null both
@@ -81,7 +81,7 @@ and course_warnings (e.g. wrong course year, out-and-back vs point-to-point mism
 }
 
 flagged_fields: list each null field that you couldn't verify.
-research_notes: describe your GPX search effort — what you tried, what you found, what failed.
+research_notes: describe your GPX search effort, what you tried, what you found, what failed.
 `.trim();
 
 export interface GpxContext {
@@ -131,7 +131,7 @@ Find from the official race website:
 1. Aid station mile markers (from the current year's athlete guide or course map)
 2. Course type (point-to-point, loop, out-and-back)
 3. Start and finish location names
-4. Course warnings — road closures, cutoffs, weather, camber, notable climbs
+4. Course warnings, road closures, cutoffs, weather, camber, notable climbs
 5. Any course route or finish line changes in the last 3 years
 
 Pay particular attention to: has the finish line or course route changed recently?
@@ -189,7 +189,7 @@ Return the JSON object only.`;
     );
   }
 
-  // Coerce everything else — missing = null
+  // Coerce everything else, missing = null
   const research: CourseResearch = {
     race_name: String(parsed.race_name ?? raceName),
     slug: String(parsed.slug ?? raceName.toLowerCase().replace(/[^a-z0-9]+/g, '-')),

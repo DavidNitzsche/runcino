@@ -1,5 +1,5 @@
 /**
- * Strength prescription module — Amp-aware.
+ * Strength prescription module, Amp-aware.
  *
  * Source docs:
  *   - docs/coaching-research.md §6 (heavy resistance + plyometrics
@@ -11,7 +11,7 @@
  *     prevention).
  *
  * The Amp:
- *   - Three core resistance modes — Fixed (constant), Band (light→heavy
+ *   - Three core resistance modes, Fixed (constant), Band (light→heavy
  *     through the rep), Eccentric (heavier on the lowering phase).
  *   - 600+ movements across Strength, Pilates, HIIT, Mobility.
  *   - Apple Health integration → workouts will sync through HealthKit
@@ -40,12 +40,12 @@ export interface StrengthPrescription {
   durationMin: number;
   description: string;
   ampMode: AmpMode;
-  /** The full curated Amp workout for the day — name, blocks of
+  /** The full curated Amp workout for the day, name, blocks of
    *  movements, intent, benefit. Surfaced on the dashboard so the
    *  runner can follow it directly or use it as a template for an
    *  Amp AI-generated session. null when no curated match. */
   workout: AmpWorkout | null;
-  /** Legacy fields — keep for callers that haven't migrated to the
+  /** Legacy fields, keep for callers that haven't migrated to the
    *  workout structure. focus is the bullet list shown when no full
    *  workout structure is rendered. */
   ampSuggestions: string[];
@@ -105,7 +105,7 @@ function buildPrescription(type: StrengthSessionType, phase: Phase): StrengthPre
 function buildPrescriptionInner(type: StrengthSessionType, phase: Phase): StrengthPrescription {
   switch (type) {
     case 'heavy':
-      // BASE / BUILD heavy day — runner-first. Doc §11 says eccentric
+      // BASE / BUILD heavy day, runner-first. Doc §11 says eccentric
       // mode 1×/week minimum for tendon health; we route the heavy
       // session through Eccentric mode in BUILD when the runner is
       // accumulating eccentric load anyway from descents.
@@ -113,35 +113,35 @@ function buildPrescriptionInner(type: StrengthSessionType, phase: Phase): Streng
         type: 'heavy',
         label: 'Heavy lift · Amp',
         durationMin: 35,
-        description: 'Heavy compound work · 3-5 sets × 3-6 reps at high cable tension · long rest (2-3 min) · focus on intent and bar speed, not failure. Amp\'s Eccentric mode (heavier on the lowering phase) doubles as runner-specific tendon protection — Achilles, patellar, hamstring complex.',
+        description: 'Heavy compound work · 3-5 sets × 3-6 reps at high cable tension · long rest (2-3 min) · focus on intent and bar speed, not failure. Amp\'s Eccentric mode (heavier on the lowering phase) doubles as runner-specific tendon protection, Achilles, patellar, hamstring complex.',
         ampMode: phase === 'BUILD' || phase === 'BASE' ? 'Eccentric' : 'Fixed',
         workout: null,
         ampSuggestions: ['Lower Body Strength', 'Posterior Chain Power', 'Single-Leg Strength'],
         focus: [
-          'Single-leg Romanian deadlift (Stiff Deadlift, single-leg variant) — hamstring + glute, eccentric overload',
-          'Hip Thrust — glute max, the running propulsion engine',
-          'Bulgarian split squat / Elevated Front Squat — quad eccentric tolerance for descents',
-          'Single Leg Hamstring Curl (ankle strap) — direct hamstring strength',
-          'Calf raise — slow eccentric, Achilles tendon stiffness',
+          'Single-leg Romanian deadlift (Stiff Deadlift, single-leg variant), hamstring + glute, eccentric overload',
+          'Hip Thrust, glute max, the running propulsion engine',
+          'Bulgarian split squat / Elevated Front Squat, quad eccentric tolerance for descents',
+          'Single Leg Hamstring Curl (ankle strap), direct hamstring strength',
+          'Calf raise, slow eccentric, Achilles tendon stiffness',
         ],
       };
 
     case 'power':
-      // BUILD / TAPER power day — neuromuscular, fully recovered.
+      // BUILD / TAPER power day, neuromuscular, fully recovered.
       return {
         type: 'power',
         label: 'Power + plyo · Amp',
         durationMin: 30,
-        description: 'Plyo + power · 3-5 sets × 5-10 contacts · fully recovered between sets · explosive intent. Amp\'s Band mode loads peak contraction at the top of the movement — ideal for jump squats, donkey kicks, hip-drive work. Caps neuromuscular sharpness without aerobic cost.',
+        description: 'Plyo + power · 3-5 sets × 5-10 contacts · fully recovered between sets · explosive intent. Amp\'s Band mode loads peak contraction at the top of the movement, ideal for jump squats, donkey kicks, hip-drive work. Caps neuromuscular sharpness without aerobic cost.',
         ampMode: 'Band',
         workout: null,
         ampSuggestions: ['Plyometric Athletic', 'Jump + Lift Combo', 'Lower-Body Power'],
         focus: [
-          'Resisted Jump Squat — explosive triple-extension',
-          'Donkey Kick / Kickback to Extension Combo — glute drive',
-          'Pogo hops — calf reactive strength',
-          'Split Squat with explosive concentric — running-stride pattern',
-          'A-skips / B-skips with cable resistance — running mechanics under load',
+          'Resisted Jump Squat, explosive triple-extension',
+          'Donkey Kick / Kickback to Extension Combo, glute drive',
+          'Pogo hops, calf reactive strength',
+          'Split Squat with explosive concentric, running-stride pattern',
+          'A-skips / B-skips with cable resistance, running mechanics under load',
         ],
       };
 
@@ -167,15 +167,15 @@ function buildPrescriptionInner(type: StrengthSessionType, phase: Phase): Streng
         type: 'mobility',
         label: 'Mobility flow · Amp',
         durationMin: 20,
-        description: 'Hip openers, ankle/calf range, T-spine, glute activation · light cable feedback through stretches · no heavy load. Amp\'s mobility library is underused by most owners — treat it as legitimate work, not filler.',
+        description: 'Hip openers, ankle/calf range, T-spine, glute activation · light cable feedback through stretches · no heavy load. Amp\'s mobility library is underused by most owners, treat it as legitimate work, not filler.',
         ampMode: 'Mobility',
         workout: null,
         ampSuggestions: ['Mobility Flow', 'Hip + Ankle Range', 'Recovery Day'],
         focus: [
-          'Hip flexor / 90/90 / pigeon — desk-runner staple',
-          'Ankle dorsiflexion + calf wall stretch — Achilles range',
-          'T-spine rotation — stride rotation efficiency',
-          'World\'s Greatest to Hamstring Stretch — full posterior chain',
+          'Hip flexor / 90/90 / pigeon, desk-runner staple',
+          'Ankle dorsiflexion + calf wall stretch, Achilles range',
+          'T-spine rotation, stride rotation efficiency',
+          'World\'s Greatest to Hamstring Stretch, full posterior chain',
           'Glute bridges (activation, no load)',
         ],
       };
@@ -183,7 +183,7 @@ function buildPrescriptionInner(type: StrengthSessionType, phase: Phase): Streng
     case 'rest':
       return {
         type: 'rest', label: 'No strength today',
-        durationMin: 0, description: 'Skip — recovery is the workout.',
+        durationMin: 0, description: 'Skip, recovery is the workout.',
         ampMode: 'Fixed', workout: null, ampSuggestions: [], focus: [],
       };
   }

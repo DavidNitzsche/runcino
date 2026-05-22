@@ -134,7 +134,7 @@ function validatePhase(p: WatchCompletionPhaseInput, i: number): ValidationError
 /**
  * Validate a completion payload.  Returns null when valid, otherwise
  * the first reason it failed.  Unlike the HealthKit batch ingest, a
- * completion is one atomic record — partial acceptance makes no sense,
+ * completion is one atomic record, partial acceptance makes no sense,
  * so a single bad field rejects the whole payload.
  */
 export function validateCompletion(c: WatchCompletionInput): ValidationError | null {
@@ -238,13 +238,13 @@ export async function storeCompletion(
     );
 
     // Also surface the run as a FIRST-CLASS activity so it shows everywhere
-    // the app lists runs (overview recap, log, week strip, mileage, recap) —
+    // the app lists runs (overview recap, log, week strip, mileage, recap), 
     // not just in "done" detection. A faff-watch run never reaches Strava,
     // so without this it's invisible. Non-fatal: a failure here must never
     // break the completion store above.
     try {
       await upsertWatchRunActivity(userId, completion);
-    } catch { /* best-effort — completion is already saved */ }
+    } catch { /* best-effort, completion is already saved */ }
 
     return {
       ok: true,
@@ -270,7 +270,7 @@ function syntheticRunId(userId: string, workoutId: string): number {
   return -(Math.abs(h) + 1); // negative → outside Strava's positive id space
 }
 
-/** Minimal shape needed to surface a completion as a run — satisfied by both
+/** Minimal shape needed to surface a completion as a run, satisfied by both
  *  WatchCompletionInput (live POST) and a workout_completions DB row (backfill). */
 interface WatchRunFields {
   workoutId: string;
@@ -326,7 +326,7 @@ async function upsertWatchRunActivity(userId: string, c: WatchRunFields): Promis
 
 /**
  * Backfill: surface any already-stored watch completions as run rows. Runs
- * are idempotent upserts, so this is safe to call on a normal page/API load —
+ * are idempotent upserts, so this is safe to call on a normal page/API load, 
  * it catches completions that synced BEFORE the surfacing logic existed (or
  * before it deployed). Scoped to the recent window to stay cheap.
  */
@@ -358,5 +358,5 @@ export async function backfillWatchRunsAsActivities(userId: string, sinceDays = 
         maxHr: r.max_hr != null ? Number(r.max_hr) : null,
       });
     }
-  } catch { /* best-effort — never block the caller */ }
+  } catch { /* best-effort, never block the caller */ }
 }

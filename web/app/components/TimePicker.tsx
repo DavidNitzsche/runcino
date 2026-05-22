@@ -1,7 +1,7 @@
 /**
  * TimePicker · masked text input for durations
  *
- * Runners type goal/split times — `1:35:00` or `42:15`. Native
+ * Runners type goal/split times, `1:35:00` or `42:15`. Native
  * <input type="time"> opens a clock UI that's OS-themed and doesn't
  * understand durations longer than 24 hours. This is just a styled
  * text input with format normalization on blur.
@@ -9,9 +9,9 @@
  *   <TimePicker value={t} onValueChange={setT} format="HH:MM:SS" />
  *
  * Format options:
- *   - "HH:MM:SS" — long durations (marathons, ultras)
- *   - "MM:SS"    — splits, intervals
- *   - "auto"     — accept either, normalize to whichever fits
+ *   - "HH:MM:SS", long durations (marathons, ultras)
+ *   - "MM:SS", splits, intervals
+ *   - "auto", accept either, normalize to whichever fits
  *
  * Validation runs on blur: invalid input is cleared. Caller gets clean
  * values via onValueChange.

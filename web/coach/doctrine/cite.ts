@@ -5,7 +5,7 @@
  * directly from `./cite` rather than transiting through the index
  * barrel. The barrel pattern (`export *` from many topic files) plus
  * top-level `cite()` calls inside those topic files exposed a TDZ
- * bug under Turbopack/Next.js production bundling — the chunk could
+ * bug under Turbopack/Next.js production bundling, the chunk could
  * end up calling cite() before the function declaration's `let`
  * binding was reached.
  *
@@ -19,8 +19,8 @@ import type { Citation } from '../types';
 export interface Cited<T> {
   value: T;
   citations: Citation[];
-  /** Optional human-readable note alongside the value — surfaces in
-   *  Coach rationale strings ("polarized 80 / 5 / 15 — see §3.1"). */
+  /** Optional human-readable note alongside the value, surfaces in
+   *  Coach rationale strings ("polarized 80 / 5 / 15, see §3.1"). */
   note?: string;
 }
 

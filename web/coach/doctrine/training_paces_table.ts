@@ -1,5 +1,5 @@
 /**
- * Doctrine — Daniels canonical training paces table (VDOT 30–72).
+ * Doctrine, Daniels canonical training paces table (VDOT 30–72).
  *
  * Source images (committed in docs/references/):
  *   - daniels-table-1-race-times.png         (race times by VDOT)
@@ -33,7 +33,7 @@
  * catch silent drift.
  *
  * E pace storage convention: single value `eS` (Table 2 / 10K-derived
- * midpoint). The resolver synthesizes the ±10s training range —
+ * midpoint). The resolver synthesizes the ±10s training range, 
  * matches Daniels' published range width across VDOT 30–60. Storage
  * stays clean; range presentation lives in the resolver per David's
  * round 2 decision.
@@ -47,11 +47,11 @@ import { cite, type Cited } from './cite';
 
 /** Single row of the Daniels training-paces table. All times in
  *  seconds. Optional fields = blank in Daniels' published source at
- *  that VDOT (not "unknown" — explicitly published-blank). */
+ *  that VDOT (not "unknown", explicitly published-blank). */
 export interface VdotTrainingRow {
   vdot: number;
 
-  // ── Race times (Table 1) — all in seconds ──────────────────────
+  // ── Race times (Table 1), all in seconds ──────────────────────
   race1500S:    number;
   raceMileS:    number;
   race3kS:      number;
@@ -64,14 +64,14 @@ export interface VdotTrainingRow {
 
   // ── E pace (single value; resolver synthesizes ±10s range) ─────
   /** Easy/Long pace per mile (single value). Resolver returns
-   *  eLow = eS + 10, eHigh = eS - 10 — matching Daniels' published
+   *  eLow = eS + 10, eHigh = eS - 10, matching Daniels' published
    *  range width across VDOT 30–60 from the 10K-derived image. */
   eS: number;
 
   // ── M pace (Table 2) ───────────────────────────────────────────
   mS: number;
 
-  // ── T pace (Table 2 — all three units published) ───────────────
+  // ── T pace (Table 2, all three units published) ───────────────
   tMileS: number;
   t400S:  number;
   t1000S: number;
@@ -130,7 +130,7 @@ export const TRAINING_PACES_TABLE: Cited<VdotTrainingRow[]> = {
     { vdot: 45, race1500S: 356, raceMileS: 385, race3kS: 760,  race2miS: 820,  race5kS: 1310, race10kS: 2716, race15kS: 4180, raceHalfS: 6020,  raceMarathonS: 12506,
       eS: 540, mS: 477, tMileS: 445, t400S: 111, t1000S: 278, i400S: 102, i1000S: 256, i1200S: 307, r200S: 47, r400S: 95 },
     { vdot: 46, race1500S: 350, raceMileS: 377, race3kS: 746,  race2miS: 805,  race5kS: 1285, race10kS: 2665, race15kS: 4102, raceHalfS: 5907,  raceMarathonS: 12279,
-      // VDOT 46 i400S: marked undefined per round 1 spot-check —
+      // VDOT 46 i400S: marked undefined per round 1 spot-check, 
       // original "1:40" had ambiguous provenance (interpolation vs
       // direct read). Resolver derives I-mile from i1000S × 1.609.
       eS: 530, mS: 469, tMileS: 437, t400S: 109, t1000S: 273, i400S: undefined as unknown as number, i1000S: 252, i1200S: 300, r200S: 46, r400S: 94 },
@@ -148,7 +148,7 @@ export const TRAINING_PACES_TABLE: Cited<VdotTrainingRow[]> = {
     // for I-mile may begin in this range, but round-1 spot-check
     // verified the derived path (i1000 × 1.609); I cannot confidently
     // distinguish published-vs-derived for these rows from the
-    // compressed source. Resolver falls back to derivation — same
+    // compressed source. Resolver falls back to derivation, same
     // value, honest source label.
     { vdot: 52, race1500S: 313, raceMileS: 338, race3kS: 669,  race2miS: 722,  race5kS: 1157, race10kS: 2399, race15kS: 3689, raceHalfS: 5311,  raceMarathonS: 11076,
       eS: 480, mS: 422, tMileS: 398, t400S: 98, t1000S: 247, i400S: 90, i1000S: 228, i1200S: 273, r200S: 41, r400S: 83, r800S: 166 },
@@ -207,22 +207,22 @@ export const TRAINING_PACES_TABLE: Cited<VdotTrainingRow[]> = {
     { vdot: 72, race1500S: 234, raceMileS: 253, race3kS: 502,  race2miS: 542,  race5kS: 874,  race10kS: 1816, race15kS: 2784, raceHalfS: 4002,  raceMarathonS: 8384,
       eS: 353, mS: 320, tMileS: 306, t400S: 73, t1000S: 190, i400S: 70, i1000S: 175, i1200S: 210, iMileS: 281, r200S: 31, r400S: 62, r800S: 123 },
   ],
-  note: 'VDOT 30 (floor) to VDOT 72 (ceiling). Linear interpolation between integer rows for finer resolution. Clamp out-of-range VDOTs to nearest bounded row. Snapshot tests pin VDOT 30, 40, 46, 48, 50, 60 only — VDOT 61–72 pending second-source verification.',
+  note: 'VDOT 30 (floor) to VDOT 72 (ceiling). Linear interpolation between integer rows for finer resolution. Clamp out-of-range VDOTs to nearest bounded row. Snapshot tests pin VDOT 30, 40, 46, 48, 50, 60 only, VDOT 61–72 pending second-source verification.',
   citations: [
     cite(
-      'Daniels Table 2 — Training intensities by VDOT',
+      'Daniels Table 2, Training intensities by VDOT',
       'Single-value pace columns (M, T, I, R at published units) traced to daniels-table-2-training-intensities.png in docs/references/.',
       'research',
       '01',
     ),
     cite(
-      'Daniels Easy/Long pace range — 10K-derived',
+      'Daniels Easy/Long pace range, 10K-derived',
       'E pace ranges traced to daniels-paces-10k-derived.png in docs/references/. Single eS value stored = range midpoint; resolver expands ±10s.',
       'research',
       '01',
     ),
     cite(
-      'Daniels Table 1 — Race times by VDOT',
+      'Daniels Table 1, Race times by VDOT',
       'Race-time columns traced to daniels-table-1-race-times.png in docs/references/.',
       'research',
       '01',

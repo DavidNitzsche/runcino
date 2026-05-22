@@ -1,5 +1,5 @@
 /**
- * /api/plan — Orchestrator.
+ * /api/plan, Orchestrator.
  *
  * Pipeline:
  * 1. Parse GPX immediately if uploaded (ground truth for geometry)
@@ -33,10 +33,10 @@ export async function POST(req: Request) {
   if (!race_date?.trim()) return new Response('Missing race_date', { status: 400 });
 
   const goalFinishS = parseHMS(goal_time ?? '');
-  if (!goalFinishS) return new Response('Invalid goal_time — use h:mm:ss', { status: 400 });
+  if (!goalFinishS) return new Response('Invalid goal_time, use h:mm:ss', { status: 400 });
 
   // ── Step 1: Parse GPX immediately if provided ──────────────────────────────
-  // Parsing is fast (<100ms) — do it before research so we can pass GPX context
+  // Parsing is fast (<100ms), do it before research so we can pass GPX context
   // to Claude, which lets it cross-check against the official course data.
   let gpxText: string | null = gpx_text?.trim() || null;
   let gpxSource: RacePlan['gpx_source'] = gpxText ? 'user_upload' : null;
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
   }
 
   // ── Step 4: Apply GPX geometry to course object ────────────────────────────
-  // GPX is ground truth — override research estimates with measured values.
+  // GPX is ground truth, override research estimates with measured values.
   if (gpxText && preTrack) {
     const first = preTrack.points[0];
     const last = preTrack.points[preTrack.points.length - 1];
@@ -123,7 +123,7 @@ export async function POST(req: Request) {
       course.distance_m = Math.round(preTrack.totalDistanceM);
       console.log(`[GPX] Distance: ${researchDist.toFixed(2)}mi → ${course.distance_mi}mi`);
     } else {
-      console.warn(`[GPX] Distance mismatch — research: ${researchDist.toFixed(2)}mi, GPX: ${gpxDistanceMi.toFixed(2)}mi`);
+      console.warn(`[GPX] Distance mismatch, research: ${researchDist.toFixed(2)}mi, GPX: ${gpxDistanceMi.toFixed(2)}mi`);
     }
 
     // Always use GPX elevation (it's measured, not estimated)
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
     course.net_elevation_ft = Math.round(preTrack.smoothedGainFt - preTrack.smoothedLossFt);
     console.log(`[GPX] Elevation: +${course.total_gain_ft}ft / -${course.total_loss_ft}ft`);
   } else {
-    console.log('[GPX] No GPX — even splits');
+    console.log('[GPX] No GPX, even splits');
   }
 
   // ── Step 5: Build plan ─────────────────────────────────────────────────────

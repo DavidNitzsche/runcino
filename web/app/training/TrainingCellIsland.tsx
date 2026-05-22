@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TrainingCell — clickable wrapper for a single cell in the 14-week
+ * TrainingCell, clickable wrapper for a single cell in the 14-week
  * calendar grid on /training. Click opens the same workout detail
  * modal that /overview uses (via shared WorkoutModalProvider).
  *
@@ -22,7 +22,7 @@ interface Props {
 export function TrainingCell({ day, className, children }: Props) {
   const { openFor } = useModal();
   // Race-day cells navigate to the full race plan instead of opening
-  // the modal — there's a whole race plan page (course profile,
+  // the modal, there's a whole race plan page (course profile,
   // phase-by-phase, fueling, etc.) that a generic workout modal can't
   // hold. Cells without raceSlug still open the modal as before.
   if (day.type === 'race' && day.raceSlug) {
@@ -54,7 +54,7 @@ export function TrainingCell({ day, className, children }: Props) {
       type="button"
       className={`${className} cal-cell-btn`}
       onClick={() => openFor(day)}
-      aria-label={`${day.label} — ${day.distanceMi} mi`}
+      aria-label={`${day.label}, ${day.distanceMi} mi`}
     >
       {children}
       <style jsx>{`

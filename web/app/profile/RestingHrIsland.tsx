@@ -8,7 +8,7 @@
  * the fitness resolver picks it up so freshness math and goal-pace
  * adjustments can use it.
  *
- * Modeled after MaxHrIsland.tsx — same shape and styling.
+ * Modeled after MaxHrIsland.tsx, same shape and styling.
  */
 
 import { useEffect, useState } from 'react';
@@ -83,14 +83,14 @@ export function RestingHrIsland() {
       {!editing && (
         <>
           <div className="rhr-row">
-            <span className="rhr-val">{state.value ?? '—'}</span>
+            <span className="rhr-val">{state.value ?? '-'}</span>
             {state.value && <span className="rhr-unit">bpm</span>}
           </div>
           <div className="rhr-source">
             {state.source === 'manual' && <>Set manually</>}
             {state.source === 'none' && (
               <>
-                No data yet — once set, the coach uses it for freshness
+                No data yet, once set, the coach uses it for freshness
                 tracking (rising RHR = accumulating fatigue) and goal-
                 pace nudges. Wearable-based auto-compute is coming.
               </>

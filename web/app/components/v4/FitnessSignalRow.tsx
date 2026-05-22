@@ -1,5 +1,5 @@
 /**
- * v4 fitness signal row — Effort / Load / Mileage / Easy Pace / Strain.
+ * v4 fitness signal row, Effort / Load / Mileage / Easy Pace / Strain.
  *
  * Each row: label on the left, ±value on the right (color-coded), bar
  * below with a fill colored to match. Lives in the hero-right column
@@ -21,7 +21,7 @@ export interface FitnessSignal {
   value: string;
   /** Bar fill percent, 0..100. */
   fillPct: number;
-  /** Color tone — green = positive, amber = neutral, warn = negative,
+  /** Color tone, green = positive, amber = neutral, warn = negative,
    *  dim = no signal. */
   tone: SignalTone;
 }

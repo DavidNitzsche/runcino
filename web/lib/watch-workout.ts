@@ -43,7 +43,7 @@ export type WatchHaptic =
   | 'end';
 
 export interface WatchPhase {
-  /** Phase class — drives the watch UI screen choice (WORK / RECOVERY etc.). */
+  /** Phase class, drives the watch UI screen choice (WORK / RECOVERY etc.). */
   type: WatchPhaseType;
   /** Display label · "Warmup", "Interval 3/6", "Recovery 3/6". */
   label: string;
@@ -58,7 +58,7 @@ export interface WatchPhase {
   haptic: WatchHaptic;
   /** How the rep is measured.  Omitted == 'time' (the watch defaults to
    *  time, so older payloads are unaffected).  'distance' reps count down
-   *  by GPS distance, not the clock — e.g. a 6 mi easy run or an 800 m rep. */
+   *  by GPS distance, not the clock, e.g. a 6 mi easy run or an 800 m rep. */
   repUnit?: 'time' | 'distance';
   /** Fixed rep distance in miles · set only on distance reps. durationSec is
    *  still carried as a time estimate (totals, fallback). */
@@ -66,7 +66,7 @@ export interface WatchPhase {
 }
 
 export interface WatchWorkout {
-  /** Stable id — used by the completion writeback to identify which
+  /** Stable id, used by the completion writeback to identify which
    *  workout was executed.  Format: ISO date + workout label slug. */
   workoutId: string;
   /** Short display name on the watch's idle/start screen. */
@@ -110,7 +110,7 @@ function paceForZone(zone: 'E' | 'M' | 'T' | 'I' | 'R' | 'race-pace', paces: Dan
 
 /**
  * Parse a duration string from a WorkoutTemplate ("15 min", "90 sec",
- * "7 min", "1 mi" — when mile-based) into seconds.
+ * "7 min", "1 mi", when mile-based) into seconds.
  *
  * Mile-based durations need a pace assumption to convert.  For
  * threshold work, "1 mi at T-pace" → T-pace * 1 = ~6:30.  Caller
@@ -126,7 +126,7 @@ export function parseDurationSec(duration: string, milePaceSec?: number): number
   if (miMatch && milePaceSec) {
     return Math.round(parseFloat(miMatch[1]) * milePaceSec);
   }
-  // Unparseable — default to 5 minutes so the watch doesn't crash;
+  // Unparseable, default to 5 minutes so the watch doesn't crash;
   // logged for follow-up.
   return 300;
 }
@@ -155,7 +155,7 @@ export function parseRepMeasure(
   if (km) return distance(parseFloat(km[1]) * 0.621371);
   const mi = t.match(/^(\d+(?:\.\d+)?)\s*mi/);
   if (mi) return distance(parseFloat(mi[1]));
-  const m = t.match(/^(\d+(?:\.\d+)?)\s*m\b/);   // "800 m", "800m" — \b excludes "min"
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*m\b/);   // "800 m", "800m", \b excludes "min"
   if (m) return distance(parseFloat(m[1]) / 1609.344);
   return { unit: 'time', durationSec: parseDurationSec(duration, milePaceSec) };
 }
@@ -347,12 +347,12 @@ export function buildWatchWorkout(
  * The catalog isn't exported from workout-descriptions (intentional
  * encapsulation), so we resolve via a focused query: build a temp
  * WorkoutDescription via describeWorkout and reverse-derive structure
- * — but that loses zoneRef.  Instead we re-declare a minimal
+ *, but that loses zoneRef.  Instead we re-declare a minimal
  * structural lookup here.  Future cleanup: export TEMPLATES from
  * workout-descriptions.ts and import here.
  *
  * For now, return null when label doesn't match a known structured
- * workout — caller falls back to single-phase shape.
+ * workout, caller falls back to single-phase shape.
  */
 function lookupTemplate(label: string): null | {
   steps: Array<

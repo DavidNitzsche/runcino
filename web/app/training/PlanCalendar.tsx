@@ -293,7 +293,7 @@ function WorkoutCell({ w, phaseColor, onOpen, today }: {
         color: isRest ? 'var(--t3)' : isRace ? 'var(--race)' : accentColor,
         lineHeight: 1.1,
       }}>
-        {isRest ? '—' : label}
+        {isRest ? ', ' : label}
       </div>
 
       {/* Distance */}

@@ -3,8 +3,8 @@
  *
  * The watch's slice of the phone read (watch-app.html §G). A body-state
  * glance that answers "am I recovered?" without opening the full app, and
- * the data source for the face complication. Works on ANY day — rest, race,
- * or workout — unlike /api/watch/today which returns null on rest/race days.
+ * the data source for the face complication. Works on ANY day, rest, race,
+ * or workout, unlike /api/watch/today which returns null on rest/race days.
  *
  * Auth: Bearer access token (native). Cookie also accepted for desktop curl.
  *
@@ -21,7 +21,7 @@
  *   }
  *
  * The same computeReadinessScore() the web /overview ring + iPhone Today
- * card read from — single source of truth for the readiness voice.
+ * card read from, single source of truth for the readiness voice.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const state = await gatherCoachState({ userId: user.id });
     // Parity with /api/overview + the web/iPhone readiness: pass the runner's
     // real max HR (so HR-based "hard effort" detection works) and the Z2
-    // finding — passing null here reintroduced the inflated-score divergence.
+    // finding, passing null here reintroduced the inflated-score divergence.
     const maxHr = state.recovery?.maxHrBpm ?? null;
     const rhr = state.recovery?.rhrBpm ?? null;
     const vdot = state.aggregateVdotValue;

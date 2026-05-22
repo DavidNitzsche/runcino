@@ -1,15 +1,15 @@
 /**
- * Race feasibility validator — second adaptive module.
+ * Race feasibility validator, second adaptive module.
  *
  * Compares the user's stored race goal time to what their current
  * VDOT predicts for the race distance. Surfaces a verdict like:
  *
  *   "Your VDOT 45.9 (Top 3 efforts: 10K 44:57, Marathon 3:30:25,
  *    Half 1:34:54) implies a predicted HM of 1:38. Goal of 1:30 is
- *    ~8 minutes more aggressive — stretch territory."
+ *    ~8 minutes more aggressive, stretch territory."
  *
  *   "We'd revise this once a race within 4 weeks moves you above
- *    VDOT 49 — at that point the goal becomes realistic."
+ *    VDOT 49, at that point the goal becomes realistic."
  *
  * Follows the adaptive-pattern philosophy: evidence-backed,
  * falsifier required, asymmetric thresholds (flagging 'stretch' is
@@ -48,9 +48,9 @@ export interface RaceFeasibilityVerdict {
     | 'fair'           // within ±1 min of predicted
     | 'conservative'   // > 1 min easier than predicted
     | 'no-data'        // not enough race history
-    | 'too-close'      // race within 7 days — don't nag, just race
+    | 'too-close'      // race within 7 days, don't nag, just race
     ;
-  /** Human-readable reason — quotes the math. */
+  /** Human-readable reason, quotes the math. */
   reason: string;
   /** What would change this verdict. */
   falsifier: string;
@@ -68,7 +68,7 @@ const AGGRESSIVE_S = 120;           // 1-2 min ambitious
 const TOO_CLOSE_DAYS = 7;           // within race week, suppress nags
 
 function fmtTime(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = Math.floor(s % 60);
@@ -78,7 +78,7 @@ function fmtTime(s: number): string {
 }
 
 function fmtPace(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2,'0')}/mi`;
@@ -121,7 +121,7 @@ export async function validateRaceFeasibility(
       verdict: 'no-data',
       reason: 'No upcoming race on the calendar.',
       falsifier:
-        "Add a race in /races/new — we'll start comparing your stored goal " +
+        "Add a race in /races/new, we'll start comparing your stored goal " +
         "to your current VDOT and flag stretch goals.",
       evidence: [],
     };
@@ -148,7 +148,7 @@ export async function validateRaceFeasibility(
     goalPaceSPerMi,
   };
 
-  // Suppress feasibility nags inside race week — too late to change
+  // Suppress feasibility nags inside race week, too late to change
   // goals; just race. The pattern is: "the recommendation needs to
   // be actionable; nagging during race week isn't."
   if (daysAway <= TOO_CLOSE_DAYS) {
@@ -157,7 +157,7 @@ export async function validateRaceFeasibility(
       race: raceMeta,
       predicted: null,
       verdict: 'too-close',
-      reason: `${race.meta.name} is ${daysAway} day${daysAway === 1 ? '' : 's'} away — past the point where feasibility math is useful. Trust the work, execute the plan.`,
+      reason: `${race.meta.name} is ${daysAway} day${daysAway === 1 ? '' : 's'} away, past the point where feasibility math is useful. Trust the work, execute the plan.`,
       falsifier: 'Feasibility check returns after the race finishes.',
       evidence: [],
     };
@@ -171,7 +171,7 @@ export async function validateRaceFeasibility(
       race: raceMeta,
       predicted: null,
       verdict: 'no-data',
-      reason: 'No race history with HR/time data — can\'t back-calculate fitness yet.',
+      reason: 'No race history with HR/time data, can\'t back-calculate fitness yet.',
       falsifier:
         'Log a 5K, 10K, or half marathon (with HR data preferred) and the ' +
         'validator will start comparing your goal to predicted fitness.',
@@ -201,7 +201,7 @@ export async function validateRaceFeasibility(
   const predictedFinishS = row[distKey];
   const predictedPaceSPerMi = Math.round(predictedFinishS / distanceMi);
 
-  // C4 · PR anchor — pull the user's best goal-distance PR (race-source
+  // C4 · PR anchor, pull the user's best goal-distance PR (race-source
   // only, per L6 source-of-truth) to produce a time-delta framing
   // alongside the VDOT framing. "Your HM PR is 1:34:54. Goal 1:30 is
   // 4:54 faster, requiring ~3.7 VDOT pts of fitness gain."
@@ -269,7 +269,7 @@ export async function validateRaceFeasibility(
     const vdotPart = vdotEst != null
       ? `, requiring roughly ${vdotEst} VDOT points of fitness gain over ${daysAway} days`
       : '';
-    return `Your ${prAnchor.name} PR is ${prAnchor.finishDisplay} (${prAnchor.date}). Goal ${race.meta.goalDisplay} is ${delta} faster — about ${sPerMi} sec/mi improvement${vdotPart}. `;
+    return `Your ${prAnchor.name} PR is ${prAnchor.finishDisplay} (${prAnchor.date}). Goal ${race.meta.goalDisplay} is ${delta} faster, about ${sPerMi} sec/mi improvement${vdotPart}. `;
   }
   // Convention: positive gap = goal is HARDER than predicted (goal
   // is a faster time than what VDOT predicts). Negative gap = goal
@@ -297,7 +297,7 @@ export async function validateRaceFeasibility(
   // 4. Categorize the gap.
   // ASYMMETRIC: stretch and conservative both fire only when the gap
   // is meaningful (>2 min stretch, >1 min conservative). "Fair" is
-  // the dominant outcome — the system doesn't constantly second-guess.
+  // the dominant outcome, the system doesn't constantly second-guess.
   let verdict: RaceFeasibilityVerdict['verdict'];
   let reason: string;
   let falsifier: string;
@@ -307,46 +307,46 @@ export async function validateRaceFeasibility(
 
   // New convention: gap > 0 = harder than predicted; gap < 0 = easier.
   if (gapSeconds > AGGRESSIVE_S) {
-    // >2 min more aggressive — stretch
+    // >2 min more aggressive, stretch
     verdict = 'stretch';
     const ambitiousBy = fmtTime(gapSeconds);
     reason =
       prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts a ${predDispl} finish for ${race.meta.name}. ` +
-      `Goal of ${goalDispl} is ${ambitiousBy} more aggressive — stretch territory. ` +
+      `Goal of ${goalDispl} is ${ambitiousBy} more aggressive, stretch territory. ` +
       `Possible with a strong build cycle, but treat it as a reach goal not a base prediction.`;
     falsifier =
       `We'd revise to 'aggressive' if a race in the next 4-8 weeks pushes your VDOT to ${(agg.value + 2).toFixed(0)}, ` +
       `or to 'fair' at VDOT ${(agg.value + 4).toFixed(0)}+.`;
   } else if (gapSeconds > FAIR_TOLERANCE_S) {
-    // 1-2 min more aggressive — aggressive
+    // 1-2 min more aggressive, aggressive
     verdict = 'aggressive';
     const ambitiousBy = fmtTime(gapSeconds);
     reason =
       prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts ${predDispl}. ` +
-      `Goal of ${goalDispl} is ${ambitiousBy} more aggressive — ambitious but in reach with a strong build.`;
+      `Goal of ${goalDispl} is ${ambitiousBy} more aggressive, ambitious but in reach with a strong build.`;
     falsifier =
       `We'd revise to 'fair' if a race in the next 4 weeks moves your VDOT up by ` +
       `~2 points (about 1 min/mi faster at HM pace).`;
   } else if (gapSeconds >= -FAIR_TOLERANCE_S) {
-    // Within ±1 min of predicted — fair
+    // Within ±1 min of predicted, fair
     verdict = 'fair';
     reason =
       prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts ${predDispl}. ` +
-      `Goal of ${goalDispl} is within ±1 min — fair and realistic.`;
+      `Goal of ${goalDispl} is within ±1 min, fair and realistic.`;
     falsifier =
       `We'd revise to 'stretch' if you tighten the goal by >2 min, or 'conservative' ` +
       `if you ease it by >1 min.`;
   } else {
-    // >1 min easier — conservative
+    // >1 min easier, conservative
     verdict = 'conservative';
     const easierBy = fmtTime(Math.abs(gapSeconds));
     reason =
       prAnchorLine() +
       `Your VDOT ${agg.value.toFixed(1)} predicts a ${predDispl} finish for ${race.meta.name}. ` +
-      `Goal of ${goalDispl} is ${easierBy} easier than predicted — you have room to push if you want.`;
+      `Goal of ${goalDispl} is ${easierBy} easier than predicted, you have room to push if you want.`;
     falsifier =
       `We'd revise to 'fair' if you bump the goal closer to ${predDispl}, or ` +
       `if a race in the next 4 weeks moves your VDOT down.`;

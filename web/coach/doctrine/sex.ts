@@ -1,5 +1,5 @@
 /**
- * Doctrine — Sex-specific training, physiology, and screening.
+ * Doctrine, Sex-specific training, physiology, and screening.
  *
  * Source: Research/13-sex-specific-training.md
  *
@@ -24,7 +24,7 @@ export const MENSTRUAL_CYCLE_GUIDANCE: Cited<{
       { phase: 'Late follicular',                     daysApprox: '6-13',    physiology: 'Estrogen rising; testosterone peak around ovulation. Highest perceived strength.', trainingNote: 'Window where many women feel best. Train normally.' },
       { phase: 'Ovulation',                            daysApprox: '~14',     physiology: 'LH surge; some women experience injury vulnerability spike (laxity).',           trainingNote: 'No strong evidence for adjustment; some elite programs reduce eccentric load.' },
       { phase: 'Early luteal',                         daysApprox: '15-22',   physiology: 'Progesterone rising; core temp elevated 0.3-0.5°C; HR rises ~5 bpm submax.',     trainingNote: 'Heat tolerance reduced. RPE rises at fixed pace. Adjust by HR/RPE in heat.' },
-      { phase: 'Late luteal (PMS)',                    daysApprox: '23-28',   physiology: 'Progesterone peak then drop; mood/sleep disruption common; appetite shifts.',     trainingNote: 'Sleep + carb intake matter more. Variable individual response — track personally.' },
+      { phase: 'Late luteal (PMS)',                    daysApprox: '23-28',   physiology: 'Progesterone peak then drop; mood/sleep disruption common; appetite shifts.',     trainingNote: 'Sleep + carb intake matter more. Variable individual response, track personally.' },
     ],
     cycleBasedPeriodizationEvidence: 'Cycle-based periodization research is in equipoise. Some studies (McNulty 2020 review) find tiny effect sizes; others find phase-specific differences. Honest current state: track your own pattern; adjust based on your data, not population averages.',
     trackingRecommendation: 'Log cycle day + subjective effort + sleep + workout outcomes for 3 cycles before drawing conclusions about personal pattern.',
@@ -55,7 +55,7 @@ export const HORMONAL_CONTRACEPTION_NOTES: Cited<{
       performanceEvidence: 'Mixed; small effect sizes. Modern combined OCP probably has minimal performance impact for most users.',
     },
     iud: 'Hormonal IUD (Mirena) provides local progestin; minimal systemic effect on training.',
-    dmpa: 'Depo-Provera (DMPA) — reduces bone density meaningfully. Caution in distance runners (already at BSI risk). Consider alternatives if BSI history.',
+    dmpa: 'Depo-Provera (DMPA), reduces bone density meaningfully. Caution in distance runners (already at BSI risk). Consider alternatives if BSI history.',
     generalRule: 'Choice of contraception is a clinical decision, not a coaching one. Coach acknowledges contraception status when setting expectations + monitoring iron/bone health.',
   },
   citations: [
@@ -75,7 +75,7 @@ export const PREGNANCY_RUNNING: Cited<{
     generalRule: 'Healthy pregnancies tolerate continued running. ACOG guidelines (2020) support 150+ min/week moderate exercise. Pre-pregnancy runners can usually continue at reduced intensity through pregnancy.',
     trimesterGuidance: [
       { trimester: 1, description: 'Often hardest due to fatigue/nausea',                modifications: ['Reduce intensity if needed', 'Prioritize hydration', 'Iron + folate adequate'] },
-      { trimester: 2, description: 'Often best — energy returns, bump not yet limiting', modifications: ['Most women run normally', 'Avoid overheating', 'Watch for round-ligament pain'] },
+      { trimester: 2, description: 'Often best, energy returns, bump not yet limiting', modifications: ['Most women run normally', 'Avoid overheating', 'Watch for round-ligament pain'] },
       { trimester: 3, description: 'Volume + intensity drop naturally',                   modifications: ['Switch to walk/run or cross-train', 'Stop if pelvic/abdominal pain', 'Avoid supine positioning post-20 wk'] },
     ],
     contraindications: [
@@ -215,7 +215,7 @@ export const BONE_DENSITY_CONSIDERATIONS: Cited<{
       'Low body fat % (<12% female, <5% male)',
       'Family history of osteoporosis',
       'Chronic glucocorticoid use',
-      'BSI history (especially trabecular bone — femoral neck, sacrum)',
+      'BSI history (especially trabecular bone, femoral neck, sacrum)',
       'DMPA (Depo-Provera) contraceptive use',
       'Adolescent training without adequate energy',
       'Smoking, excess alcohol',
@@ -235,7 +235,7 @@ export const BONE_DENSITY_CONSIDERATIONS: Cited<{
       'Vitamin D 1000-2000 IU/day; check serum 25-OH-D annually',
       'Protein 1.4-2.0 g/kg/day distributed across meals',
       'Energy availability ≥45 kcal/kg FFM/day for bone health',
-      'Monitor menstrual cycle (premenopausal female) — amenorrhea = risk',
+      'Monitor menstrual cycle (premenopausal female), amenorrhea = risk',
     ],
   },
   citations: [

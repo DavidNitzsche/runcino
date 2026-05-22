@@ -1,5 +1,5 @@
 /**
- * Weekly insights — plan-aware pattern detection.
+ * Weekly insights, plan-aware pattern detection.
  *
  * Earlier version compared actuals to prior 4-week behavior, which got
  * the framing exactly backward: the coach IS the plan, so adherence
@@ -8,12 +8,12 @@
  * where mileage was deliberately low and pace was deliberately fast).
  *
  * Current rubric:
- *   1. Easy pace vs PLANNED easy band — flag when actual is faster
+ *   1. Easy pace vs PLANNED easy band, flag when actual is faster
  *      than target (real "creep"). Slowdown toward target = good
  *      adherence, not a fatigue flag.
- *   2. Mileage vs PLANNED weekly mileage — flag when actual is
+ *   2. Mileage vs PLANNED weekly mileage, flag when actual is
  *      meaningfully ABOVE plan. Below plan is just a missed session.
- *   3. Long-run trend — actual long miles climbing across recent
+ *   3. Long-run trend, actual long miles climbing across recent
  *      weeks is positive (healthy progression).
  *
  * Insight = 1 sentence, actionable, cites numbers, no hedging.
@@ -24,7 +24,7 @@ import { query } from './db';
 export interface WeeklyInsight {
   /** Short headline-able text. */
   text: string;
-  /** Visual tone — controls the dot color in the UI. */
+  /** Visual tone, controls the dot color in the UI. */
   tone: 'green' | 'amber' | 'blue';
 }
 
@@ -46,7 +46,7 @@ interface ActivityRow {
 }
 
 function fmtPace(s: number): string {
-  if (!s || s <= 0) return '—';
+  if (!s || s <= 0) return ', ';
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}/mi`;
 }
 
@@ -60,7 +60,7 @@ function median(nums: number[]): number {
 /**
  * Compute weekly insights for a user given a "today" anchor + plan context.
  *
- * planContext is REQUIRED — the coach measures adherence against the plan,
+ * planContext is REQUIRED, the coach measures adherence against the plan,
  * not against prior weeks. Without it, insights would (and did) misread
  * recovery weeks as red flags.
  */
@@ -100,7 +100,7 @@ export async function generateWeeklyInsights(
 
   const insights: WeeklyInsight[] = [];
   // Positive/neutral plain-language reads, surfaced only when nothing's
-  // wrong — so the card always says something useful instead of going empty.
+  // wrong, so the card always says something useful instead of going empty.
   const goodNotes: WeeklyInsight[] = [];
   const { thisWeekPlannedMi, easyPaceLowSec, easyPaceHighSec, phase } = planContext;
 
@@ -123,12 +123,12 @@ export async function generateWeeklyInsights(
   if (easyPaces.length >= 3) {
     const thisMed = median(easyPaces);
     if (thisMed < easyPaceLowSec - 15) {
-      // Faster than the easy band's fast edge — real "creep".
+      // Faster than the easy band's fast edge, real "creep".
       // Falsifier line tells the runner what would un-fire this.
       const delta = easyPaceLowSec - thisMed;
       insights.push({
         text:
-          `Easy pace (last 7 days, ${easyPaces.length} runs) is ${fmtPace(thisMed)} — ` +
+          `Easy pace (last 7 days, ${easyPaces.length} runs) is ${fmtPace(thisMed)}, ` +
           `${Math.round(delta)} sec/mi below the ${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} ` +
           `plan target. Easy days work best when they stay easy. ` +
           `We'd let this go if next week's easy median lands back in band.`,
@@ -138,15 +138,15 @@ export async function generateWeeklyInsights(
       // Slower than the easy band's slow edge (outside taper/race week)
       insights.push({
         text:
-          `Easy pace (last 7 days, ${easyPaces.length} runs) is ${fmtPace(thisMed)} — ` +
+          `Easy pace (last 7 days, ${easyPaces.length} runs) is ${fmtPace(thisMed)}, ` +
           `${Math.round(thisMed - easyPaceHighSec)} sec/mi slower than the ` +
           `${fmtPace(easyPaceLowSec)}–${fmtPace(easyPaceHighSec)} target. ` +
-          `Could be fatigue, heat, or terrain — worth a check-in. ` +
+          `Could be fatigue, heat, or terrain, worth a check-in. ` +
           `If next week's median lands back in band this resolves itself.`,
         tone: 'amber',
       });
     } else {
-      // Right in the band — a real positive worth saying plainly.
+      // Right in the band, a real positive worth saying plainly.
       goodNotes.push({
         text: `Your easy runs are landing right where they should (${easyPaces.length} runs around ${fmtPace(median(easyPaces))}). That's the discipline that builds your engine.`,
         tone: 'green',
@@ -160,11 +160,11 @@ export async function generateWeeklyInsights(
   // The lookback window is a ROLLING last-7-days, not the Mon–Sun
   // calendar week. Early in the week those trailing 7 days mostly
   // reflect LAST week's running, so we can't fairly say you're "on
-  // plan" or "short" for the current week yet — and claiming "X of Y
+  // plan" or "short" for the current week yet, and claiming "X of Y
   // this week" mid-week reads as if the week were already finished.
   // So: only render the on-plan / short verdict once the week is
   // essentially complete (Sat/Sun), when the trailing 7 days line up
-  // with the current plan week. "Over plan" stays on every day —
+  // with the current plan week. "Over plan" stays on every day, 
   // running well past a full week's mileage is a real signal anytime.
   const dowMon0 = (new Date(todayISO + 'T00:00:00Z').getUTCDay() + 6) % 7; // Mon=0 … Sun=6
   const weekEssentiallyComplete = dowMon0 >= 5; // Sat or Sun
@@ -174,7 +174,7 @@ export async function generateWeeklyInsights(
       insights.push({
         text:
           `${totalThis.toFixed(0)} mi (last 7 days) vs ${thisWeekPlannedMi.toFixed(0)} planned (+${overPct}%). ` +
-          `Over plan — back off the extra running on easy days to leave room for the quality work. ` +
+          `Over plan, back off the extra running on easy days to leave room for the quality work. ` +
           `If next week lands within ±10% of plan this resolves itself.`,
         tone: 'amber',
       });
@@ -183,13 +183,13 @@ export async function generateWeeklyInsights(
       insights.push({
         text:
           `${totalThis.toFixed(0)} mi this week vs ${thisWeekPlannedMi.toFixed(0)} planned (${pct}% short). ` +
-          `Missed sessions adding up — check back in or adjust next week's plan. ` +
+          `Missed sessions adding up, check back in or adjust next week's plan. ` +
           `One short week is fine; two in a row means the plan needs to bend.`,
         tone: 'amber',
       });
     } else if (overPct > -40 && overPct < 25 && weekEssentiallyComplete) {
       goodNotes.push({
-        text: `Mileage is right on plan — ${totalThis.toFixed(0)} of ${thisWeekPlannedMi.toFixed(0)} mi this week. Steady is exactly what works.`,
+        text: `Mileage is right on plan, ${totalThis.toFixed(0)} of ${thisWeekPlannedMi.toFixed(0)} mi this week. Steady is exactly what works.`,
         tone: 'green',
       });
     }
@@ -213,7 +213,7 @@ export async function generateWeeklyInsights(
     const delta = longestThis - longestPriorMedian;
     if (delta >= 2 && longestThis >= 8 && phase !== 'TAPER' && phase !== 'RACE_WEEK') {
       insights.push({
-        text: `Long run climbing — ${longestThis.toFixed(1)} mi this week vs ${longestPriorMedian.toFixed(1)} 4-week median. Healthy progression.`,
+        text: `Long run climbing, ${longestThis.toFixed(1)} mi this week vs ${longestPriorMedian.toFixed(1)} 4-week median. Healthy progression.`,
         tone: 'green',
       });
     }

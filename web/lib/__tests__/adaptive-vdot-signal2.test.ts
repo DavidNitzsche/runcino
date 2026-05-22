@@ -1,5 +1,5 @@
 /**
- * L7 Signal 2 tests — pace at fixed HR drift.
+ * L7 Signal 2 tests, pace at fixed HR drift.
  *
  * The DB query layer is exercised in integration; these tests cover
  * the threshold math + volume-gate behavior via direct mirrors of the
@@ -78,10 +78,10 @@ describe('L7 Signal 2 · context filter parity with Signal 1', () => {
   // Signal 2 reuses HEAT_CEILING_F + RACE_RECENCY_DAYS from Signal 1.
   // This pins that no one accidentally diverges them. Drifting these
   // values across signals would mean "what counts as filtered for one
-  // doesn't count for the other" — exactly the kind of inconsistency
+  // doesn't count for the other", exactly the kind of inconsistency
   // the rule-encoding discipline is meant to prevent.
   it('heat ceiling 78°F shared with Signal 1', () => {
-    // Verified by import — if HEAT_CEILING_F changes in adaptive-vdot-
+    // Verified by import, if HEAT_CEILING_F changes in adaptive-vdot-
     // signals.ts, Signal 2 picks it up automatically because the import
     // is the source of truth.
     expect(78).toBe(78);

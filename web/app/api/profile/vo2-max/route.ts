@@ -1,12 +1,12 @@
 /**
- * /api/profile/vo2-max — read + write for the Apple Health VO2max
+ * /api/profile/vo2-max, read + write for the Apple Health VO2max
  *  manual entry.
  *
- *  GET  → { ok, value, updatedAt, source } — current Apple VO2max.
+ *  GET  → { ok, value, updatedAt, source }, current Apple VO2max.
  *  POST { value: number | null } → upsert (null clears).
  *
  *  Apple VO2max is a WELLNESS signal. This endpoint exists to capture
- *  it for trend display and cold-start fallback only — it never feeds
+ *  it for trend display and cold-start fallback only, it never feeds
  *  the pace/zone/feasibility engine. See lib/vo2max-apple.ts.
  *
  *  Separate from /api/profile/edit because the value needs to be

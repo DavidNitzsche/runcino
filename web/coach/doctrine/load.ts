@@ -1,5 +1,5 @@
 /**
- * Doctrine §13 — Training load and injury risk.
+ * Doctrine §13, Training load and injury risk.
  *
  * Extracted from docs/coaching-research.md §13.1, §13.2.
  * The 10% rule is not the most important variable. Single-session
@@ -7,7 +7,7 @@
  */
 import { cite, type Cited } from './cite';
 
-/** Single-session spike — the strongest predictor of injury per the
+/** Single-session spike, the strongest predictor of injury per the
  *  2025 5,200-runner cohort study. */
 export const SINGLE_SESSION_SPIKE: Cited<{
   /** % above the longest recent run that triggers each risk band. */
@@ -26,7 +26,7 @@ export const SINGLE_SESSION_SPIKE: Cited<{
     ceilingPctAboveLongestRecent: 10,
     longestRecentLookbackDays: 30,
   },
-  note: 'The dangerous thing isn\'t a 15 % weekly mileage increase — it\'s putting all of that increase into one run.',
+  note: 'The dangerous thing isn\'t a 15 % weekly mileage increase, it\'s putting all of that increase into one run.',
   citations: [
     cite('§13.1', 'Running a single session 10 percent or more longer than the longest run in the past 30 days raised injury risk substantially'),
     cite('§13.1', '10–30 % spike: 64 % higher injury risk; 30–100 % spike: 52 % higher; >100 % spike: more than doubled'),

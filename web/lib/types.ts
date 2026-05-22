@@ -6,7 +6,7 @@
 export interface GpxPoint {
   lat: number;
   lon: number;
-  eleM: number;            // GPS elevation — kept for reference; never use for grade
+  eleM: number;            // GPS elevation, kept for reference; never use for grade
   distM: number;           // cumulative distance from start, meters
   demEleM?: number;        // DEM elevation injected by elevation pipeline; undefined until pipeline runs
 }

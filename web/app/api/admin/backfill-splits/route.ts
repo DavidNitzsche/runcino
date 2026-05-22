@@ -13,9 +13,9 @@
  * caller can decide whether to re-invoke.
  *
  * Query params:
- *   - limit (optional, default 20, max 50) — # of activities to backfill
+ *   - limit (optional, default 20, max 50), # of activities to backfill
  *     in this invocation. Caller can poll to backfill all.
- *   - since (optional, ISO date, default 6 weeks ago) — only backfill
+ *   - since (optional, ISO date, default 6 weeks ago), only backfill
  *     activities after this date. L7 Signal 2 needs ~8 weeks of data,
  *     so default to 6 weeks for the first signal pass.
  *
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       }
       const norm = normalizeActivity(detail);
       if (!norm.splits || norm.splits.length === 0) {
-        // Strava returned the activity but no splits_standard — common
+        // Strava returned the activity but no splits_standard, common
         // for treadmill / manual-entry runs. Mark as skipped so we
         // don't try again next poll.
         results.push({ id: row.id, date: row.date, status: 'skipped', note: 'no splits_standard in detail' });

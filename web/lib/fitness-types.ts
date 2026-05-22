@@ -1,5 +1,5 @@
 /**
- * Fitness types + pure formatters — safe for client AND server.
+ * Fitness types + pure formatters, safe for client AND server.
  *
  * The full fitness-resolver.ts module hits Postgres so it can only
  * run on the server. Client islands (the workout modal, training
@@ -32,7 +32,7 @@ export interface FitnessVdot {
     distanceMi: number;
     finishS: number;
     vdot: number;
-    /** Provenance of finishS — 'races' = curated chip time, 'strava' = raw Strava. */
+    /** Provenance of finishS, 'races' = curated chip time, 'strava' = raw Strava. */
     source?: 'races' | 'strava';
     /** Total weight in the aggregate (recency × length × tier). */
     weight?: number;
@@ -65,7 +65,7 @@ export interface FitnessMaxHr {
    *  derived from activity peaks · 'none'. */
   source: 'manual' | 'auto' | 'computed' | 'none';
   sourceLabel?: string;
-  /** Automatic value (Apple/computed) even when a manual override wins —
+  /** Automatic value (Apple/computed) even when a manual override wins, 
    *  for the "Apple Health now sees N" prompt. */
   autoValue?: number | null;
 }

@@ -1,5 +1,5 @@
 /**
- * Topbar — page-top navigation band.
+ * Topbar, page-top navigation band.
  *
  * Anatomy: optional BACK button · italic-gradient faff.run wordmark
  * (replaces the legacy single-letter brand mark) · tab row · clock /
@@ -19,7 +19,7 @@ export interface TopbarProps {
   back?: { href: string; label?: string };
   /** Right-side clock content. Default: hidden. */
   clock?: ReactNode;
-  /** Hide the brand mark entirely (rare — used on the very first onboarding screen). */
+  /** Hide the brand mark entirely (rare, used on the very first onboarding screen). */
   hideBrand?: boolean;
   /** If true, appends a small "Admin" link at the end of the tab row. Render this only for admin users. */
   showAdmin?: boolean;

@@ -1,5 +1,5 @@
 /**
- * GET /api/auth/me — returns the currently-logged-in user or null.
+ * GET /api/auth/me, returns the currently-logged-in user or null.
  * Used by client components to know if they should show signed-in UI.
  */
 

@@ -1,13 +1,13 @@
 /**
- * /races — fresh React port of designs/races-v4.html.
+ * /races, fresh React port of designs/races-v4.html.
  *
  * Sections:
- *   1. Coach strip — race calendar narrative + VDOT anchor card
- *   2. A-race hero — AFC Half wordmark + 3 stats + Path to the Line
+ *   1. Coach strip, race calendar narrative + VDOT anchor card
+ *   2. A-race hero, AFC Half wordmark + 3 stats + Path to the Line
  *      + Coach's next move + coach take
- *   3. Upcoming Races — horizontal timeline (race stations)
- *   4. Recent Races — past finishes
- *   5. PRs by distance — 6 PR cards
+ *   3. Upcoming Races, horizontal timeline (race stations)
+ *   4. Recent Races, past finishes
+ *   5. PRs by distance, 6 PR cards
  *
  * Seed data mirrors designs/races-v4.html for the legacy owner. Real
  * race CRUD wiring is a follow-up.
@@ -64,7 +64,7 @@ interface RecentRace {
   priority: 'A' | 'B' | 'C';
   note?: string;
   currentAnchor?: boolean;
-  /** Where clicking the row goes — a race detail/recap or a run recap. */
+  /** Where clicking the row goes, a race detail/recap or a run recap. */
   href?: string;
 }
 
@@ -74,7 +74,7 @@ function fmtMonthDay(iso: string): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 function fmtTime(sec: number): string {
-  if (!sec || sec <= 0) return '—';
+  if (!sec || sec <= 0) return ', ';
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
@@ -82,7 +82,7 @@ function fmtTime(sec: number): string {
   return `${m}:${String(s).padStart(2,'0')}`;
 }
 function fmtPace(sPerMi: number): string {
-  if (!sPerMi || sPerMi <= 0) return '—';
+  if (!sPerMi || sPerMi <= 0) return ', ';
   const m = Math.floor(sPerMi / 60);
   const s = sPerMi % 60;
   return `${m}:${String(s).padStart(2, '0')}/mi`;
@@ -125,7 +125,7 @@ export default async function RacesPage() {
         daysAway,
         distanceLabel: distLabel,
         distanceMi: dist,
-        goal: r.meta.goalDisplay || '—',
+        goal: r.meta.goalDisplay || '-',
         priority: r.meta.priority ?? 'A',
         slug: r.slug,
       };
@@ -206,7 +206,7 @@ export default async function RacesPage() {
 
   // Aggregate VDOT from this year's Strava history (best-effort per
   // canonical distance, recency-weighted, top 3 averaged). Coach uses
-  // this as the STARTING POINT — specific training runs nudge it
+  // this as the STARTING POINT, specific training runs nudge it
   // forward from here as the cycle progresses.
   const vdotAgg = await computeAggregateVdot(auth.id);
 
@@ -225,7 +225,7 @@ export default async function RacesPage() {
     ? computeRaceProjection(vdotAgg.value, aRace.distanceMi, aRaceGoalFinishS, Math.ceil(aRace.daysAway / 7))
     : null;
 
-  // ── 3. PRs by canonical distance — races first, Strava fallback ──
+  // ── 3. PRs by canonical distance, races first, Strava fallback ──
   //
   // L5 fix (David 2026-05-19 round 2): the prior implementation read
   // ONLY from strava_activities.canonicalLabel and showed "No PRs"
@@ -239,7 +239,7 @@ export default async function RacesPage() {
   //   3. Visual distinction: race PRs authoritative, Strava PRs
   //      provisional with "race this distance to lock it in"
   //
-  // Strava PRs do NOT enter aggregate VDOT — that contract stays
+  // Strava PRs do NOT enter aggregate VDOT, that contract stays
   // intact in compute-vdot (strict Option-B). The PR card surfaces
   // them as fitness context only.
   function inferCanonicalLocal(distMi: number): { label: string; canonicalMi: number } | null {
@@ -301,7 +301,7 @@ export default async function RacesPage() {
     }
   }
 
-  // Strava fallback — only for canonical distances NOT covered by a race PR
+  // Strava fallback, only for canonical distances NOT covered by a race PR
   interface BestRow { canonical_label: string; finish_s: number; date: string }
   const bestRows = await query<BestRow>(
     `WITH bests AS (
@@ -340,7 +340,7 @@ export default async function RacesPage() {
   const PRs: PR[] = [...racePRs.values(), ...stravaPRs]
     .sort((a, b) => (distanceOrder[a.canonicalLabel] ?? 99) - (distanceOrder[b.canonicalLabel] ?? 99));
 
-  // C5 · Per-PR coaching lines — classification logic + canonical
+  // C5 · Per-PR coaching lines, classification logic + canonical
   // strings live in lib/pr-coaching.ts (consolidated during V6).
   // This loop maps each PR to its role and pulls the canonical line.
   const goalCanonical = aRace ? inferCanonicalLocal(aRace.distanceMi)?.label : null;
@@ -370,14 +370,14 @@ export default async function RacesPage() {
             <p className="coach-briefing">
               {aRace ? (
                 <>
-                  <strong>{aRace.name} is {aRace.daysAway} days out</strong> — your A-race for this cycle and the only one that counts on the fitness ledger. You&apos;re in week 1 of 14, banking base miles. First half-pace work lands at week 5 — that&apos;s where the <strong>{aRace.goal} starts to feel real</strong>. No tune-up B-race on the calendar yet; we&apos;ll slot one around week 10 if you want a dress rehearsal.
+                  <strong>{aRace.name} is {aRace.daysAway} days out</strong>, your A-race for this cycle and the only one that counts on the fitness ledger. You&apos;re in week 1 of 14, banking base miles. First half-pace work lands at week 5, that&apos;s where the <strong>{aRace.goal} starts to feel real</strong>. No tune-up B-race on the calendar yet; we&apos;ll slot one around week 10 if you want a dress rehearsal.
                 </>
               ) : recent.length > 0 ? (
                 /* E3 · no-upcoming-race + has-past-races state.
                    Acknowledges the most recent finish and prompts the
                    runner to anchor the next training cycle. */
                 <>
-                  Your most recent race was <strong>{recent[0].name} on {recent[0].date}</strong>. Without a new A-race on the calendar, training defaults to maintaining current fitness — no progression, no taper math, no race-specific work.{' '}
+                  Your most recent race was <strong>{recent[0].name} on {recent[0].date}</strong>. Without a new A-race on the calendar, training defaults to maintaining current fitness, no progression, no taper math, no race-specific work.{' '}
                   <strong>Set a new goal race to anchor your next cycle.</strong>{' '}
                   <a href="/races/add" style={{ color: 'var(--orange, #E85D26)', textDecoration: 'underline' }}>Add a race →</a>
                 </>
@@ -385,7 +385,7 @@ export default async function RacesPage() {
                 /* E3 · no-upcoming-race + no-past-races state.
                    Cold-start prompt with clear next action. */
                 <>
-                  <strong>No upcoming race set.</strong> Plan defaults to maintaining fitness — aerobic base, no progression toward a specific finish line, no race-specific intensity work.{' '}
+                  <strong>No upcoming race set.</strong> Plan defaults to maintaining fitness, aerobic base, no progression toward a specific finish line, no race-specific intensity work.{' '}
                   <strong>Set a goal race to anchor training.</strong>{' '}
                   <a href="/races/add" style={{ color: 'var(--orange, #E85D26)', textDecoration: 'underline' }}>Add a race →</a>
                 </>
@@ -400,7 +400,7 @@ export default async function RacesPage() {
                 className="vdot-anchor-num"
                 style={{ color: vdotAgg ? '#080808' : 'rgba(8,8,8,.32)' }}
               >
-                {vdotAgg ? vdotAgg.value.toFixed(1) : '—'}
+                {vdotAgg ? vdotAgg.value.toFixed(1) : '-'}
               </span>
             </div>
             <div className="vdot-anchor-fresh">
@@ -484,7 +484,7 @@ export default async function RacesPage() {
                     <>
                       <div className="path-stat">
                         <div className="path-stat-label">Current Fitness</div>
-                        <div className="path-stat-value">{maintainFinishS > 0 ? fmtTime(maintainFinishS) : '—'}</div>
+                        <div className="path-stat-value">{maintainFinishS > 0 ? fmtTime(maintainFinishS) : '-'}</div>
                         <div className="path-stat-sub">At your current fitness score of {raceProjection.currentVdot.toFixed(1)}</div>
                       </div>
                       <div className="path-stat">
@@ -500,19 +500,19 @@ export default async function RacesPage() {
                   <>
                     <div className="path-stat">
                       <div className="path-stat-label">Current Fitness</div>
-                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</div>
+                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </div>
                       <div className="path-stat-sub">No data</div>
                     </div>
                     <div className="path-stat">
                       <div className="path-stat-label">Gap to Goal</div>
-                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</div>
+                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </div>
                       <div className="path-stat-sub">No data</div>
                     </div>
                   </>
                 )}
                 {/* V3 · Trajectory directional indicator from L7 signals.
                     Replaces the "Feasibility · No data" stub when L7
-                    evidence is available. Falls back to silent — the
+                    evidence is available. Falls back to silent, the
                     runner sees the same "No data" placeholder until
                     signals + verdict accumulate enough to make a call.
                     Falsifier rendered INLINE under the headline (not as
@@ -539,7 +539,7 @@ export default async function RacesPage() {
                 ) : (
                   <div className="path-stat">
                     <div className="path-stat-label">Trajectory</div>
-                    <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</div>
+                    <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>, </div>
                     <div className="path-stat-sub">No data</div>
                   </div>
                 )}
@@ -605,7 +605,7 @@ export default async function RacesPage() {
                     <span className={`races-recent-priority p-${race.priority.toLowerCase()}`}>{race.priority}</span>
                     <div className="races-recent-info">
                       <div className="races-recent-name">{race.name}</div>
-                      <div className="races-recent-meta">{race.distanceLabel}{race.goal !== '—' ? ` · goal ${race.goal}` : ''}</div>
+                      <div className="races-recent-meta">{race.distanceLabel}{race.goal !== ', ' ? ` · goal ${race.goal}` : ''}</div>
                     </div>
                     <div className="races-recent-time">{race.daysAway}d away</div>
                     <div className="races-recent-pace" />
@@ -670,14 +670,14 @@ export default async function RacesPage() {
             <div className="card-title-group">
               <div className="card-title">Personal Records</div>
               <div className="card-sub">
-                Your bests by distance — race results are the real thing; training efforts are noted as context.
+                Your bests by distance, race results are the real thing; training efforts are noted as context.
               </div>
             </div>
           </div>
 
           {PRs.length === 0 ? (
             <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
-              No PRs yet — log past races to populate.
+              No PRs yet, log past races to populate.
             </div>
           ) : (
             <div className="races-pr-grid">

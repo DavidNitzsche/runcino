@@ -1,5 +1,5 @@
 /**
- * /api/build-plan — run the full pacing pipeline and return a .runcino.json
+ * /api/build-plan, run the full pacing pipeline and return a .runcino.json
  * payload plus a summary for UI display.
  */
 
@@ -39,7 +39,7 @@ type Body = {
   strategy: 'even_effort' | 'even_split' | 'negative_split';
   toleranceSPerMi: number;
   weatherText?: string;
-  /** Optional fueling overrides — defaults: Maurten / 40g / 60 g/hr */
+  /** Optional fueling overrides, defaults: Maurten / 40g / 60 g/hr */
   gelBrand?: string;
   gelCarbsG?: number;
   carbTargetGPerHr?: number;
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
     segmentDistanceM: 800,
   };
   const segments = buildSegments(track, pacingInput);
-  // Synthesized facts have empty phases[] — fall back to geometric grouping
+  // Synthesized facts have empty phases[], fall back to geometric grouping
   // so a brand-new course still gets a sensible 5-6 phase breakdown.
   const phases = groupPhases(
     segments,

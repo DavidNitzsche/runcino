@@ -5,24 +5,24 @@
  * stress, each 1-10) and folds them into the compact summary the Coach
  * engine consumes. The Coach reads this via `state.checkin` (added in
  * coach-state.ts) so `assessReadiness` and `adjustForReality` don't have
- * to know where the bytes live — only the shape.
+ * to know where the bytes live, only the shape.
  *
  * Doctrine grounding for thresholds + the count-based decision rule:
  *
  *   @research Research/00b-recovery-protocols.md §Warning Signs of
- *             Incomplete Recovery — Qualitative Signals · Decision
+ *             Incomplete Recovery, Qualitative Signals · Decision
  *             Matrix
- *   @research Research/00b-recovery-protocols.md §Sleep — The Highest-
+ *   @research Research/00b-recovery-protocols.md §Sleep, The Highest-
  *             ROI Recovery Tool (energy/sleep proxy)
  *
  * What constitutes a "poor" day is conservative:
  *   energy   ≤ 4   → poor   (Hooper-axis low end)
- *   soreness ≥ 7   → poor   (qualitative warning sign — persistent)
- *   stress   ≥ 7   → poor   (qualitative warning sign — mood/stress)
+ *   soreness ≥ 7   → poor   (qualitative warning sign, persistent)
+ *   stress   ≥ 7   → poor   (qualitative warning sign, mood/stress)
  * Any one of those firing flips the day to "poor" so the engine has a
  * literal count to feed the doctrine's Decision Matrix.
  *
- * When no rows exist in the window, the aggregate is null — same NO
+ * When no rows exist in the window, the aggregate is null, same NO
  * DATA YET contract Wave B enforced. No synthesized fallbacks.
  */
 
@@ -60,7 +60,7 @@ export interface CheckinAggregate {
   loggedToday: boolean;
 }
 
-/** Threshold marker — a day is "poor" if any one signal is at or past
+/** Threshold marker, a day is "poor" if any one signal is at or past
  *  the cutoff. Per doctrine, qualitative signals carry weight when they
  *  persist; the count surfaces that pattern. */
 export function isPoorRow(row: CheckinRow): boolean {
@@ -126,7 +126,7 @@ export async function gatherCheckinAggregate(
     );
     return aggregateCheckins(rows, todayISO);
   } catch {
-    // DATABASE_URL not set or table unavailable — same shape as 0 rows.
+    // DATABASE_URL not set or table unavailable, same shape as 0 rows.
     return aggregateCheckins([], todayISO);
   }
 }

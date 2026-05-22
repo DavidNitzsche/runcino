@@ -37,7 +37,7 @@ export interface NormalizedActivity {
   kudosCount: number;
   achievementCount: number;
   sufferScore: number | null;
-  /** Time at the canonical race distance — sourced from Strava's
+  /** Time at the canonical race distance, sourced from Strava's
    *  best_efforts. For a half marathon ran as a 13.4 mi activity,
    *  this is the time at exactly 13.10 mi (the chip-time finish).
    *  null when activity detail hasn't been fetched OR the activity
@@ -74,7 +74,7 @@ function readCache(): CachedPayload | null {
 
 function writeCache(payload: CachedPayload): void {
   if (typeof window === 'undefined') return;
-  try { window.localStorage.setItem(CACHE_KEY, JSON.stringify(payload)); } catch { /* quota — ignore */ }
+  try { window.localStorage.setItem(CACHE_KEY, JSON.stringify(payload)); } catch { /* quota, ignore */ }
 }
 
 export async function fetchActivities(force = false): Promise<CachedPayload> {

@@ -1,12 +1,12 @@
 /**
- * v4 buttons — the two action affordances from overview-v4.html.
+ * v4 buttons, the two action affordances from overview-v4.html.
  *
  * Primary  → solid ink fill, white text, used for the "do it" action
  *            (OPEN WORKOUT, LOG CHECK-IN, MARK COMPLETE).
  * Ghost    → bordered, no fill, used for the secondary action
  *            (SKIP TODAY, etc.). Picks up amber when in "skipped" state.
  *
- * Inline styles only — no new CSS classes. Tokens come from globals.css
+ * Inline styles only, no new CSS classes. Tokens come from globals.css
  * (--ink, --line-2, --milestone for amber).
  */
 

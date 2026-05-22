@@ -1,8 +1,8 @@
 /**
- * /api/strava/sync — match Strava activities to saved races and write
+ * /api/strava/sync, match Strava activities to saved races and write
  * actualResult into Postgres.
  *
- * GET / POST — both refresh the activity cache (if stale) and run the
+ * GET / POST, both refresh the activity cache (if stale) and run the
  * race matcher across every saved race in Postgres. Returns
  * { updated: string[], fetchedAt } so the client can decide whether
  * to re-fetch /api/races.
@@ -25,7 +25,7 @@ import type { ActualResult } from '../../../../lib/storage-types';
 
 async function runSync(): Promise<{ updated: string[]; fetchedAt: string | null; error?: string }> {
   if (!process.env.STRAVA_REFRESH_TOKEN) {
-    return { updated: [], fetchedAt: null, error: 'STRAVA_REFRESH_TOKEN not set — visit /api/strava/connect to capture it.' };
+    return { updated: [], fetchedAt: null, error: 'STRAVA_REFRESH_TOKEN not set, visit /api/strava/connect to capture it.' };
   }
 
   await ensureSeed();
@@ -117,7 +117,7 @@ function findMatchByDate(activities: NormalizedActivity[], dateISO: string, dist
 }
 
 /** Reconstruct the minimum StravaActivity shape activityToResult()
- *  expects when we don't have the full detail cached — miles +
+ *  expects when we don't have the full detail cached, miles +
  *  best_efforts will be missing, which is fine; they fill in after
  *  the next detail fetch. */
 function toStravaShape(n: NormalizedActivity): StravaActivity {
@@ -140,11 +140,11 @@ function toStravaShape(n: NormalizedActivity): StravaActivity {
   };
 }
 
-// Both methods do the same thing — POST kept for legacy callers (the
+// Both methods do the same thing, POST kept for legacy callers (the
 // old client used to send a races[] body), GET added so the Overview
 // page can trigger a sync via a plain background fetch.
 export async function POST() {
-  // Body is ignored — server is the source of truth for which races exist.
+  // Body is ignored, server is the source of truth for which races exist.
   const result = await runSync();
   return Response.json(result, { status: 200 });
 }

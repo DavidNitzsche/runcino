@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * v4 schedule modal — the "View Full Schedule →" popup from the week
+ * v4 schedule modal, the "View Full Schedule →" popup from the week
  * card. Phase-grouped list of every week in the active plan, with the
  * current week highlighted.
  *

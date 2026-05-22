@@ -1,5 +1,5 @@
 /**
- * v4 component library — the design-system primitives extracted from
+ * v4 component library, the design-system primitives extracted from
  * overview-v4.html. Every page redesigned to the new doctrine should
  * compose from these primitives instead of inlining styles.
  *

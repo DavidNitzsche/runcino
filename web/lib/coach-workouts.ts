@@ -64,14 +64,14 @@ export interface RunPrescription {
 function goalPaceSPerMi(state: CoachState): number | null {
   const r = state.races.nextA;
   if (r && r.goalFinishS && r.distanceMi > 0) return Math.round(r.goalFinishS / r.distanceMi);
-  // No goal race — use recent weekly volume + an aerobic pace estimate.
+  // No goal race, use recent weekly volume + an aerobic pace estimate.
   // The recent activities have actual paces; use the median of the
   // mile-weighted easy pace as the anchor.
   return null;
 }
 
 function paceFor(type: RunWorkoutType, state: CoachState): PaceTarget | null {
-  // 1. VDOT-derived band (preferred) — anchored on the runner's most
+  // 1. VDOT-derived band (preferred), anchored on the runner's most
   //    recent strong race result. Doctrine source: Daniels VDOT table
   //    + PACE_ZONE_WIDTH (Research/01).
   const vdotTarget = paceTargetFromVdot(state, type);
@@ -288,7 +288,7 @@ function pickPrimaryQualityDow(prefs: DayPrefs): number | null {
   return prefs.qualityDows[0] ?? null;
 }
 
-/** Picks a secondary quality day (medium-long) — the second
+/** Picks a secondary quality day (medium-long), the second
  *  user-quality-day that's NOT the long-run day. */
 function pickSecondaryQualityDow(prefs: DayPrefs): number | null {
   const used = new Set<number>();
@@ -302,7 +302,7 @@ function pickSecondaryQualityDow(prefs: DayPrefs): number | null {
   return null;
 }
 
-/** Post-long recovery dow — used inside defaultByDow for the "easy day
+/** Post-long recovery dow, used inside defaultByDow for the "easy day
  *  after the long" slot. Mirrors recoveryDowFor() in coach-engine. */
 function postLongRecoveryDow(prefs: DayPrefs): number {
   return (prefs.longRunDow + 1) % 7;
@@ -363,7 +363,7 @@ export function defaultByDow(phase: Phase, dow: number, prefs: DayPrefs): Defaul
     if (dow === (prefs.longRunDow + 6) % 7) return { primary: 'rest' };
     return { primary: 'general_aerobic' };
   }
-  // BASE_MAINTENANCE — default state.
+  // BASE_MAINTENANCE, default state.
   if (dow === longDow) return { primary: 'long_steady' };
   if (dow === primaryQualityDow) return { primary: 'threshold' };
   if (dow === recoveryDow) return { primary: 'recovery' };

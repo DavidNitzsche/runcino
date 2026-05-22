@@ -11,13 +11,13 @@
  *
  *   E4 (miss-3-days coaching):
  *     0-2 days   · silent
- *     3-4 days   · "Three days off — planned recovery or unexpected?"
+ *     3-4 days   · "Three days off, planned recovery or unexpected?"
  *     5-7 days   · "It's been N days. Worth checking if the plan needs
  *                  adjusting."
  *
  * Both surfaces share the same "days since last run" measurement; they
  * differ in user-affordance shape. E4 fires within the E1 silent zone
- * (3-7 days), so they don't compete — the 8-day mark transitions from
+ * (3-7 days), so they don't compete, the 8-day mark transitions from
  * E4 ("worth checking") to E1 ("everything OK?").
  *
  * STATE PERSISTENCE
@@ -34,7 +34,7 @@
  *
  * SOURCE OF TRUTH
  *   Last activity date pulled from strava_activities WHERE distance > 0.
- *   Doesn't filter on workoutType — any run counts as "running activity"
+ *   Doesn't filter on workoutType, any run counts as "running activity"
  *   for the purpose of "are they still running."
  */
 

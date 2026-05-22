@@ -1,5 +1,5 @@
 /**
- * /api/races/rebuild-all — backfill every saved race through the
+ * /api/races/rebuild-all, backfill every saved race through the
  * current pacing pipeline.
  *
  * Used once after material changes to the pacing math (pace floor,
@@ -17,7 +17,7 @@ import { listRacesDB } from '../../../../lib/race-store';
 
 export async function POST(req: Request) {
   const races = await listRacesDB();
-  // Same fix as /api/races/[slug]/rebuild — Railway's req.url origin
+  // Same fix as /api/races/[slug]/rebuild, Railway's req.url origin
   // is 0.0.0.0:$PORT which can't be fetched from inside the same
   // container. Use the public domain when it's set in env.
   const origin = process.env.RAILWAY_PUBLIC_DOMAIN
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     : new URL(req.url).origin;
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  // Past races are locked — they're historical artifacts (the plan
+  // Past races are locked, they're historical artifacts (the plan
   // alongside the actualResult tells the story of what was planned vs
   // what happened). Rebuilding them would erase that history. Only
   // touch upcoming races, where the plan is still a living document.
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
   for (const race of upcoming) {
     try {
-      // Snap to the canonical race distance when within 5% — fixes
+      // Snap to the canonical race distance when within 5%, fixes
       // races built before the canonical-distance picker existed (which
       // saved the GPS-measured 13.24 instead of 13.10 for halves, etc).
       const distanceMi = snapToCanonical(race.meta.distanceMi);

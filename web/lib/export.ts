@@ -34,7 +34,7 @@ export interface AssembleInput {
 
 /** Build the flat intervals[] array from phases + fuel + landmarks.
  *  Guarantees contiguity in mile space. Returns the schema-shaped
- *  (snake_case) interval list — matches FaffPlan.intervals exactly,
+ *  (snake_case) interval list, matches FaffPlan.intervals exactly,
  *  not the camelCase Interval type used internally elsewhere. */
 type SchemaInterval = FaffPlan['intervals'][number];
 export function buildIntervals(

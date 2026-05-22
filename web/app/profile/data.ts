@@ -45,7 +45,7 @@ export type {
 } from '../api/profile/route';
 
 // ─────────────────────────────────────────────────────────────────────
-// Public type — page renders against this shape
+// Public type, page renders against this shape
 // ─────────────────────────────────────────────────────────────────────
 
 export interface ProfileData {
@@ -148,7 +148,7 @@ export function formatTopbarClock(d: Date): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Accent color resolver — maps wire accent names to var(--...) strings
+// Accent color resolver, maps wire accent names to var(--...) strings
 // ─────────────────────────────────────────────────────────────────────
 
 export function accentVar(name: string): string {

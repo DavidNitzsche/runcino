@@ -1,5 +1,5 @@
 /**
- * CoachRead — coach-blue tinted lead card from the locked run-detail
+ * CoachRead, coach-blue tinted lead card from the locked run-detail
  * template (and reusable on Overview / Training / Races for any "Coach
  * has decided X" surface).
  *
@@ -35,9 +35,9 @@ export interface CoachReadProps {
   /** Optional badge in the top-right (e.g. "+12% BASELINE UNLOCKED"). */
   pin?: ReactNode;
   pinVariant?: CardPinVariant;
-  /** The verdict sentence — large, section-size, leading. */
+  /** The verdict sentence, large, section-size, leading. */
   title: ReactNode;
-  /** Body copy children — typically a <p> with <b> highlights. */
+  /** Body copy children, typically a <p> with <b> highlights. */
   children?: ReactNode;
   /** Optional decision deltas. */
   deltas?: CoachReadDelta[];

@@ -1,5 +1,5 @@
 /**
- * Doctrine §6 — Strength training for runners.
+ * Doctrine §6, Strength training for runners.
  *
  * Extracted from docs/coaching-research.md §6.1, §6.2, §6.3 and
  * docs/amp-research.md (Amp resistance modes used by amp-workouts.ts).
@@ -8,7 +8,7 @@ import { cite, type Cited } from './cite';
 
 export type RunPhase = 'base' | 'build' | 'peak' | 'taper';
 
-/** Heavy resistance — what "heavy" means for a runner. */
+/** Heavy resistance, what "heavy" means for a runner. */
 export const HEAVY_RESISTANCE: Cited<{
   pct1RMLow: number;
   pct1RMHigh: number;
@@ -18,7 +18,7 @@ export const HEAVY_RESISTANCE: Cited<{
   setsHigh: number;
   /** Adaptation appears at this duration. */
   durationWeeksMin: number;
-  /** Improvement target — running economy, not VO2 / HR / lactate. */
+  /** Improvement target, running economy, not VO2 / HR / lactate. */
   primaryAdaptation: 'running_economy';
 }> = {
   value: {
@@ -28,7 +28,7 @@ export const HEAVY_RESISTANCE: Cited<{
     durationWeeksMin: 10,
     primaryAdaptation: 'running_economy',
   },
-  note: 'Neural and tendon-stiffness focused — not bodybuilding, not muscle-endurance reps.',
+  note: 'Neural and tendon-stiffness focused, not bodybuilding, not muscle-endurance reps.',
   citations: [
     cite('§6.1', 'Heavy resistance training with loads above 80 percent of 1RM (often 90 percent) improves running economy and time-trial performance more than plyometric training alone.'),
     cite('§6.1', 'The benefit appears at training durations of 10+ weeks'),
@@ -36,7 +36,7 @@ export const HEAVY_RESISTANCE: Cited<{
   ],
 };
 
-/** Plyometric work — improves running economy at slower paces. */
+/** Plyometric work, improves running economy at slower paces. */
 export const PLYOMETRICS: Cited<{
   setsLow: number;
   setsHigh: number;
@@ -86,7 +86,7 @@ export const STRENGTH_INJURY_REDUCTION_PCT: Cited<number> = {
 };
 
 /** Amp-specific resistance modes. From amp-research.md.
- *  amp-workouts.ts already references these — formalize here. */
+ *  amp-workouts.ts already references these, formalize here. */
 export const AMP_MODES: Cited<{
   fixed: { description: string };
   band: { description: string };
@@ -95,10 +95,10 @@ export const AMP_MODES: Cited<{
   dropSet: { description: string };
 }> = {
   value: {
-    fixed: { description: 'Constant resistance throughout the rep — equivalent to lifting a barbell.' },
-    band: { description: 'Resistance increases as you stretch the cable — peak load at end-range.' },
+    fixed: { description: 'Constant resistance throughout the rep, equivalent to lifting a barbell.' },
+    band: { description: 'Resistance increases as you stretch the cable, peak load at end-range.' },
     eccentric: { description: 'Heavier on the lowering phase than the lifting phase. The Amplify mode.' },
-    tempo: { description: 'Cadence-controlled reps — useful for power and rhythm.' },
+    tempo: { description: 'Cadence-controlled reps, useful for power and rhythm.' },
     dropSet: { description: 'Auto-decreases load as fatigue accumulates within a set.' },
   },
   citations: [cite('§3.1', 'Fixed mode … constant resistance', 'amp')],

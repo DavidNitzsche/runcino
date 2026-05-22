@@ -1,5 +1,5 @@
 /**
- * faff.run React component library — barrel.
+ * faff.run React component library, barrel.
  *
  * The May 2026 design-system primitives. Import from here to keep
  * imports clean:
@@ -8,7 +8,7 @@
  *            ModalOverlay, Modal, MileChip, CoachRead, EmptyState } from '@/app/components';
  *
  * Co-located legacy components (CourseMap, ElevationChart, PhaseCards)
- * are kept exported alongside for now — they pre-date the May 2026
+ * are kept exported alongside for now, they pre-date the May 2026
  * design and will be migrated to the new system in a separate pass.
  */
 

@@ -14,7 +14,7 @@ import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import { query } from '@/lib/db';
 
 function fmtPace(s: number | null): string {
-  if (s == null || s <= 0) return '—';
+  if (s == null || s <= 0) return ', ';
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}/mi`;

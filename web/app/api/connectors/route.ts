@@ -1,8 +1,8 @@
 /**
- * GET /api/connectors — list the current user's connectors.
+ * GET /api/connectors, list the current user's connectors.
  *
  * Returns { connectors: [{ provider, connected_at, last_sync_at,
- *   activities_count, disconnected_at }] } — never the actual tokens.
+ *   activities_count, disconnected_at }] }, never the actual tokens.
  *
  * Used by /profile Connectors card + the day-1 Connect banner to
  * decide whether to show its prompt.
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Active connectors — what the banner check reads.
+  // Active connectors, what the banner check reads.
   //
   // last_sync_at + activities_count on connector_tokens aren't populated
   // by the legacy env-var sync path (it writes to strava_sync_state +
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   );
 
   // Debug mode: ?debug=1 returns extra context so a user can see WHY
-  // the banner is or isn't showing — common cause is being signed in
+  // the banner is or isn't showing, common cause is being signed in
   // as a different account than the one that connected Strava.
   if (req.nextUrl.searchParams.get('debug') === '1') {
     // Include disconnected rows + count to spot stale records
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
           ? 'You have disconnected rows but no active connectors. Reconnect Strava to write a fresh row.'
           : rows.length === 0 && allRows.length === 0
           ? 'No connector rows for this user. Either Strava callback failed to persist, or you may be signed in as a different account than the one that connected.'
-          : 'Active connectors present — banner should hide.',
+          : 'Active connectors present, banner should hide.',
       },
     });
   }

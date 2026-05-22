@@ -1,5 +1,5 @@
 /**
- * v4 design tokens — LAW.
+ * v4 design tokens, LAW.
  *
  * Every spacing, sizing, and typography value used by the v4 primitives
  * lives here. Components import these instead of inlining magic numbers.
@@ -18,7 +18,7 @@
  */
 
 // ─────────────────────────────────────────────────────────────────────
-// Spacing — the only six values allowed for vertical/horizontal rhythm
+// Spacing, the only six values allowed for vertical/horizontal rhythm
 // ─────────────────────────────────────────────────────────────────────
 
 export const SPACING = {
@@ -40,33 +40,33 @@ export const SPACING = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
-// Sizing — fixed widths, heights, radii
+// Sizing, fixed widths, heights, radii
 // ─────────────────────────────────────────────────────────────────────
 
 export const SIZING = {
   /** Page max-width. Anything larger feels too wide on desktop. */
   pageMaxWidth: '1280px',
-  /** Right-column width of the hero card. Fixed — never flexes. The
+  /** Right-column width of the hero card. Fixed, never flexes. The
    *  left column flexes to fill remaining space. */
   heroRightCol: '460px',
   /** Right-side check-in card width on the coach strip. */
   coachCheckinWidth: '300px',
-  /** Min-height of the coach strip — keeps short briefings from
+  /** Min-height of the coach strip, keeps short briefings from
    *  collapsing the section. The briefing copy should trim to fit,
    *  not the strip shrink. */
   coachStripMinHeight: '160px',
   /** Hero card border radius. */
   heroRadius: '20px',
-  /** Week card border radius. Smaller than hero on purpose — the
+  /** Week card border radius. Smaller than hero on purpose, the
    *  hero is the centerpiece. */
   weekRadius: '16px',
-  /** Modal card border radius. Larger than hero — modals feel softer. */
+  /** Modal card border radius. Larger than hero, modals feel softer. */
   modalRadius: '24px',
   /** Pill / button border radius. */
   pillRadius: '10px',
   /** Small chip / range track radius. */
   chipRadius: '8px',
-  /** Slider thumb / dot radius — circular. */
+  /** Slider thumb / dot radius, circular. */
   dotRadius: '50%',
   /** Standard button vertical padding (matches v4 .btn-primary). */
   buttonPaddingY: '14px',
@@ -78,7 +78,7 @@ export const SIZING = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
-// Typography — font, size, weight, letter-spacing, line-height
+// Typography, font, size, weight, letter-spacing, line-height
 // ─────────────────────────────────────────────────────────────────────
 
 export const FONT = {
@@ -103,14 +103,14 @@ export const TYPE = {
     lineHeight: 0.86,
     letterSpacing: '-4px',
   },
-  /** Modal title (compact hero — same shape, smaller scale). */
+  /** Modal title (compact hero, same shape, smaller scale). */
   modalTitle: {
     fontFamily: FONT.display,
     fontSize: '88px',
     lineHeight: 0.86,
     letterSpacing: 'normal',
   },
-  /** Schedule-modal title — between hero and modal. */
+  /** Schedule-modal title, between hero and modal. */
   scheduleTitle: {
     fontFamily: FONT.display,
     fontSize: '52px',
@@ -130,7 +130,7 @@ export const TYPE = {
     fontSize: '32px',
     lineHeight: 1,
   },
-  /** Stat pill unit (mi, /mi, min, bpm) — sits to the right of the
+  /** Stat pill unit (mi, /mi, min, bpm), sits to the right of the
    *  value at the same baseline. */
   statUnit: {
     fontFamily: FONT.body,
@@ -150,7 +150,7 @@ export const TYPE = {
     lineHeight: 1,
     color: 'rgba(13,15,18,.55)',
   },
-  /** Mid-emphasis label inside cards — pill labels, stat labels,
+  /** Mid-emphasis label inside cards, pill labels, stat labels,
    *  trend labels. 12px Inter uppercase, tight tracking. */
   label: {
     fontFamily: FONT.body,
@@ -168,7 +168,7 @@ export const TYPE = {
     color: 'rgba(13,15,18,.35)',
     textTransform: 'uppercase' as const,
   },
-  /** Sub-header style — segment row label, day workout name.
+  /** Sub-header style, segment row label, day workout name.
    *  Oswald 13px semibold. */
   subHeader: {
     fontFamily: FONT.sub,
@@ -205,7 +205,7 @@ export const TYPE = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
-// Color tokens — pull from globals.css, but the v4 primitives need
+// Color tokens, pull from globals.css, but the v4 primitives need
 // them as inline-style values. The recovery green and amber milestone
 // are referenced across cards; warn-red for errors only.
 // ─────────────────────────────────────────────────────────────────────
@@ -221,7 +221,7 @@ export const COLOR = {
   ink: 'var(--ink, #080808)',
   /** Body-text muted. */
   textMuted: 'rgba(13,15,18,.55)',
-  /** Label / eyebrow text — even more muted. */
+  /** Label / eyebrow text, even more muted. */
   textDim: 'rgba(13,15,18,.35)',
   /** Faintest text (rest day em-dash, used sparingly). */
   textFaint: 'rgba(13,15,18,.20)',
@@ -255,14 +255,14 @@ export const COLOR = {
 export const SHADOW = {
   /** Standard card elevation. Used on every white card. */
   card: '0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04)',
-  /** Modal elevation — heavier. */
+  /** Modal elevation, heavier. */
   modal: '0 24px 80px rgba(0,0,0,.22)',
   /** Slider thumb. */
   thumb: '0 1px 6px rgba(0,0,0,.16)',
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────
-// Layout grid — column rhythm. All rows on a v4 page divide 12.
+// Layout grid, column rhythm. All rows on a v4 page divide 12.
 // ─────────────────────────────────────────────────────────────────────
 
 export const GRID = {

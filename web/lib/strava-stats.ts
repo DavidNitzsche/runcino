@@ -1,7 +1,7 @@
 /**
  * Pure rollups + comparisons over the year's Strava activities.
  *
- * No fetching, no React — just derivations. Pages get the activities
+ * No fetching, no React, just derivations. Pages get the activities
  * array from useActivities() and pass it in here for the headline
  * numbers: YTD miles, weekly mileage, longest run, race totals, plus
  * the "fun stat" comparisons that make the numbers tangible.
@@ -95,7 +95,7 @@ export function dailyMiles(activities: NormalizedActivity[], days = 7): Array<{ 
   return out;
 }
 
-/** Year-of-running heatmap data — one cell per day from Jan 1 to today,
+/** Year-of-running heatmap data, one cell per day from Jan 1 to today,
  *  columns = ISO weeks, rows = days of week (Mon top, Sun bottom).
  *  Returned as a flat array of {date, miles, runs} ordered by date so
  *  the renderer can snap each entry into its column/row by week-of-year
@@ -148,18 +148,18 @@ export function currentWeekDays(activities: NormalizedActivity[]): Array<{ date:
   return out;
 }
 
-/** Training "pulse" — phase inference + recent vs prior mileage delta +
+/** Training "pulse", phase inference + recent vs prior mileage delta +
  *  long-run progression + quality-day count. Drives the Training tile
  *  on the Overview page so the dashboard breathes with state instead of
  *  showing the same blank chips year-round.
  *
- *  Phase rules (priority order — first match wins):
+ *  Phase rules (priority order, first match wins):
  *    A race within 7 days   → TAPER
  *    A race within 8-21     → PEAK
  *    A race within 22-56    → RACE MONTH
  *    Race finished ≤14 days → POST-RACE (recovery, intentional volume drop)
  *    4w/4w mileage Δ > +10% → BUILDING
- *    Else                   → BASE BLOCK ("maintain the base" — the
+ *    Else                   → BASE BLOCK ("maintain the base", the
  *                             default state, not a fallback)
  *
  *  Note: "DETRAINING" is intentionally NOT a phase. Volume drops are
@@ -194,7 +194,7 @@ export function trainingPulse(
   const deltaPct = prior4wkMi > 0 ? (recent4wkMi - prior4wkMi) / prior4wkMi : null;
   const weeklyAvg = Math.round((recent4wkMi / 4) * 10) / 10;
 
-  // Most recent finished race (any priority) — drives the POST-RACE
+  // Most recent finished race (any priority), drives the POST-RACE
   // phase since volume drops after a race are recovery, not detraining.
   const todayISO = new Date().toISOString().slice(0, 10);
   const recentRaces = activities
@@ -241,9 +241,9 @@ export function trainingPulse(
     daysToRace = Math.round((target.getTime() - today.getTime()) / 86_400_000);
   }
 
-  // Phase inference — race-window first, then post-race recovery, then
+  // Phase inference, race-window first, then post-race recovery, then
   // trend. BASE BLOCK is the default ("maintain the base"), not a
-  // fallback — most runners spend most of the year in this phase.
+  // fallback, most runners spend most of the year in this phase.
   let phase: TrainingPulse['phase'];
   if (daysToRace != null && daysToRace >= 0 && daysToRace <= 7)       phase = 'TAPER';
   else if (daysToRace != null && daysToRace > 7 && daysToRace <= 21)  phase = 'PEAK';
@@ -311,7 +311,7 @@ export interface FunStat {
 export function funStats(roll: YearRollup): FunStat[] {
   const out: FunStat[] = [];
 
-  // Distance comparisons — each landmark gets a short personality
+  // Distance comparisons, each landmark gets a short personality
   // kicker. The kicker plays in once you cross that threshold.
   const DIST: Array<{ mi: number; name: string; quip: string }> = [
     { mi: 26.22,  name: 'a marathon',                              quip: 'A whole marathon. You did several of those, actually.' },
@@ -344,15 +344,15 @@ export function funStats(roll: YearRollup): FunStat[] {
     });
   }
 
-  // Vertical — total elevation gain compared to landmarks. Show the
+  // Vertical, total elevation gain compared to landmarks. Show the
   // remaining gap in ft when it\'s under 1000 (rounding to 0.0K ft is
   // not a personality, that\'s just a bug).
   const VERT: Array<{ ft: number; name: string; quip: string }> = [
     { ft: 1454,   name: 'the Empire State Building',           quip: 'Empire State Building, sidewalk to spire.' },
     { ft: 4421,   name: 'Half Dome',                           quip: 'Half Dome, valley floor to summit.' },
-    { ft: 6288,   name: 'Mt. Washington',                      quip: 'Mt. Washington — they sell t-shirts for less.' },
+    { ft: 6288,   name: 'Mt. Washington',                      quip: 'Mt. Washington, they sell t-shirts for less.' },
     { ft: 10000,  name: 'a passenger jet at cruise',           quip: 'Roughly cruising altitude on a regional jet.' },
-    { ft: 14505,  name: 'Mt. Whitney',                         quip: 'Mt. Whitney — the highest point in the lower 48. No permit needed.' },
+    { ft: 14505,  name: 'Mt. Whitney',                         quip: 'Mt. Whitney, the highest point in the lower 48. No permit needed.' },
     { ft: 19341,  name: 'Kilimanjaro',                         quip: 'Kilimanjaro. Bring oxygen anyway.' },
     { ft: 29029,  name: 'Everest',                             quip: 'A whole Everest. Sherpas would unionize.' },
     { ft: 60000,  name: 'two Everests',                        quip: 'Two Everests. The atmosphere is taking it personally.' },
@@ -364,7 +364,7 @@ export function funStats(roll: YearRollup): FunStat[] {
     const factor = roll.totalElevFt / vertHit.ft;
     const factorStr = factor >= 1.5 ? `${factor.toFixed(1)}× ` : '';
     const gapFt = vertNext ? vertNext.ft - roll.totalElevFt : null;
-    const gapStr = gapFt == null ? '' : (gapFt < 1000 ? ` Just ${Math.round(gapFt)} ft to ${vertNext!.name} — basically next weekend.` : ` ${Math.round(gapFt / 1000)}K ft to ${vertNext!.name}.`);
+    const gapStr = gapFt == null ? '' : (gapFt < 1000 ? ` Just ${Math.round(gapFt)} ft to ${vertNext!.name}, basically next weekend.` : ` ${Math.round(gapFt / 1000)}K ft to ${vertNext!.name}.`);
     out.push({
       label: 'Vertical climbed',
       value: `${roll.totalElevFt.toLocaleString()} ft`,
@@ -378,7 +378,7 @@ export function funStats(roll: YearRollup): FunStat[] {
     });
   }
 
-  // Time on feet — each quip uses a DIFFERENT reference unit from the
+  // Time on feet, each quip uses a DIFFERENT reference unit from the
   // headline value (which is already days/hours via fmtBigDuration), so
   // the detail line adds new info instead of restating the value.
   const TIME: Array<{ s: number; quip: (n: number) => string }> = [
@@ -388,7 +388,7 @@ export function funStats(roll: YearRollup): FunStat[] {
     { s: 24 * 3600,              quip: n => `About ${(n * 24 / 49).toFixed(1)}× a full Breaking Bad rewatch (62 episodes).` },
     { s: 49 * 3600,              quip: n => `${n.toFixed(1)}× every episode of Breaking Bad. End to end. Yeah, science.` },
     { s: 86 * 3600,              quip: n => `${n.toFixed(1)}× every Friends episode ever made. They weren\'t on a break.` },
-    { s: 200 * 3600,             quip: n => `Comparable to ${(n * 200 / 168).toFixed(1)} full work weeks — except moving the whole time.` },
+    { s: 200 * 3600,             quip: n => `Comparable to ${(n * 200 / 168).toFixed(1)} full work weeks, except moving the whole time.` },
   ];
   const tHit = TIME.filter(t => t.s <= roll.totalMovingS).pop();
   if (tHit) {
@@ -407,7 +407,7 @@ export function funStats(roll: YearRollup): FunStat[] {
     const flavor = sharePct < 10
       ? 'The other 90% was rehearsal.'
       : sharePct < 20
-      ? 'Most miles are still rehearsal — but the bibs are adding up.'
+      ? 'Most miles are still rehearsal, but the bibs are adding up.'
       : sharePct < 35
       ? 'Race-heavy season. Recovery thanks you for nothing.'
       : 'You basically race for fun at this point.';
@@ -444,10 +444,10 @@ export function funStats(roll: YearRollup): FunStat[] {
     const m = Math.floor(roll.avgPaceSPerMi / 60);
     const s = roll.avgPaceSPerMi % 60;
     const hrFlavor = roll.avgHr == null ? 'Mile-weighted across every run.'
-      : roll.avgHr < 140 ? `Avg HR ${roll.avgHr} bpm — chatty pace, mostly.`
-      : roll.avgHr < 155 ? `Avg HR ${roll.avgHr} bpm — comfortable but committed.`
-      : roll.avgHr < 170 ? `Avg HR ${roll.avgHr} bpm — you don\'t mess around.`
-      : `Avg HR ${roll.avgHr} bpm — sustained suffering, applauded by Garmin.`;
+      : roll.avgHr < 140 ? `Avg HR ${roll.avgHr} bpm, chatty pace, mostly.`
+      : roll.avgHr < 155 ? `Avg HR ${roll.avgHr} bpm, comfortable but committed.`
+      : roll.avgHr < 170 ? `Avg HR ${roll.avgHr} bpm, you don\'t mess around.`
+      : `Avg HR ${roll.avgHr} bpm, sustained suffering, applauded by Garmin.`;
     out.push({
       label: 'Year average pace',
       value: `${m}:${String(s).padStart(2, '0')}/mi`,
@@ -455,7 +455,7 @@ export function funStats(roll: YearRollup): FunStat[] {
     });
   }
 
-  // Longest single run — independent of races, more "what was your
+  // Longest single run, independent of races, more "what was your
   // outer-edge day" stat. Adds variety to the section.
   if (roll.longestRunMi > 0) {
     const lr = roll.longestRunMi;
@@ -484,11 +484,11 @@ function fmtBigDuration(s: number): string {
 }
 
 /** Given a list of activities, find personal bests across canonical
- *  distances. Operates on per-activity moving time vs distance — not
+ *  distances. Operates on per-activity moving time vs distance, not
  *  Strava best_efforts (which require detail fetches). Useful for an
  *  app-wide "PR shelf" without paying N detail-fetch round trips. */
 export function naivePRs(activities: NormalizedActivity[]): Array<{ label: string; distMi: number; bestS: number | null; activityId: number | null; date: string | null }> {
-  // Looser tolerances than v1 so a marathon at 26.81 mi (Big Sur — GPS
+  // Looser tolerances than v1 so a marathon at 26.81 mi (Big Sur, GPS
   // routinely measures long) still counts toward the marathon best, a
   // half at 13.5 (Point Mugu) counts toward the half, etc. Tight enough
   // that a 7-mi training run doesn't accidentally win the 10K bucket.
@@ -503,7 +503,7 @@ export function naivePRs(activities: NormalizedActivity[]): Array<{ label: strin
     const within = activities.filter(a => Math.abs(a.distanceMi - b.distMi) <= b.tol);
     if (within.length === 0) return { label: b.label, distMi: b.distMi, bestS: null, activityId: null, date: null };
     // Lowest moving time wins. Strava's own best_efforts would split
-    // mid-run efforts here too — this is a coarser "your best whole run
+    // mid-run efforts here too, this is a coarser "your best whole run
     // close to that distance" instead.
     const best = within.slice().sort((a, b) => a.movingTimeS - b.movingTimeS)[0];
     return { label: b.label, distMi: b.distMi, bestS: best.movingTimeS, activityId: best.id, date: best.date };
@@ -515,7 +515,7 @@ export function naivePRs(activities: NormalizedActivity[]): Array<{ label: strin
  *  tagged at the time.
  *
  *  Without the tag, we have to disambiguate race names from training
- *  names. Training names include "race" too — "Race Pace Mile Reps",
+ *  names. Training names include "race" too, "Race Pace Mile Reps",
  *  "20mi Race Practice Long Run", "Race-Pace Tempo." The naive
  *  /race|marathon|half/ regex was misclassifying those.
  *
@@ -526,7 +526,7 @@ export function naivePRs(activities: NormalizedActivity[]): Array<{ label: strin
  *    3. AND must NOT contain training-language exclusions
  *       (tempo, repeats, intervals, easy, recovery, long run,
  *        race pace, race practice, etc).
- *  This catches Big Sur / Sombrero / LA / Rose Bowl / Point Mugu —
+ *  This catches Big Sur / Sombrero / LA / Rose Bowl / Point Mugu, 
  *  it does NOT catch "Race Pace Mile Reps" or "20mi Race Practice
  *  Long Run". Strava-tagged races (Disney "Powered by the Mouse for
  *  a PR", which doesn't match by name) still surface via rule #1. */
@@ -541,7 +541,7 @@ export function isProbablyRace(a: NormalizedActivity): boolean {
 
 /** Easy / hard split for the last N days. "Easy" is mile-weighted by
  *  avg HR being below the threshold; "hard" is at or above. Threshold
- *  defaults to 152 bpm — close to a typical aerobic ceiling for an
+ *  defaults to 152 bpm, close to a typical aerobic ceiling for an
  *  endurance-focused runner; tunable per athlete once HealthKit data
  *  lands. Returns the easy share as a fraction in [0, 1]. */
 export interface EffortBalance {
@@ -555,7 +555,7 @@ export interface EffortBalance {
   totalSamples: number;
 }
 
-/** Name-pattern classifier — "is this a hard training run?". The
+/** Name-pattern classifier, "is this a hard training run?". The
  *  HR-threshold approach was unreliable: a well-trained runner can
  *  hit tempo/threshold work at 145-150 bpm, which falls below the
  *  152 default and gets misclassified as easy. Name patterns reflect
@@ -572,7 +572,7 @@ export function effortBalance(activities: NormalizedActivity[], windowDays = 14,
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - windowDays);
   const cutoffISO = cutoff.toISOString().slice(0, 10);
-  // Exclude races from the intensity calculation — the 80/20 rule
+  // Exclude races from the intensity calculation, the 80/20 rule
   // applies to TRAINING. A race is a competitive effort, not a
   // training choice.
   const inWindow = activities.filter(a => a.date >= cutoffISO && !isProbablyRace(a));
@@ -616,20 +616,20 @@ export interface QualitySessionScore {
   /** actual / prescribed. <1 = faster than target. null when no prescribed. */
   paceRatio: number | null;
   avgHr: number | null;
-  /** True when avgHr < hrCeiling — HR stayed in controlled threshold zone. */
+  /** True when avgHr < hrCeiling, HR stayed in controlled threshold zone. */
   hrControlled: boolean | null;
   verdict: QualityVerdict;
 }
 
 /** True when the activity looks like an intentional quality session
- *  (tempo, threshold, intervals, VO2, etc.) — used here and by the
+ *  (tempo, threshold, intervals, VO2, etc.), used here and by the
  *  lazy-detail fetcher in /api/strava/bests. */
 export function isQualityWorkout(a: NormalizedActivity): boolean {
   return a.workoutType === 3 || HARD_NAME_RE.test(a.name);
 }
 
 /** Interval/rep sessions have moving-rest laps that drag the overall pace
- *  below the rep pace — can't score by overall pace. Score them using
+ *  below the rep pace, can't score by overall pace. Score them using
  *  the canonical best-effort segment (fastest 5K/10K split) instead,
  *  which is available when detail has been fetched from Strava. */
 const FRAGMENTED_QUALITY_RE = /\b(interval|repeat|rep\b|vo2|yasso|pyramid)\b/i;
@@ -645,12 +645,12 @@ function isScorable(a: NormalizedActivity): boolean {
   // Interval sessions: score via canonical best effort (fastest contiguous
   // segment at a canonical distance). Only scoreable when detail is cached.
   if (isIntervalSession(a)) return a.canonicalFinishS != null && a.canonicalDistanceMi != null;
-  return true; // continuous session — overall moving pace is the target
+  return true; // continuous session, overall moving pace is the target
 }
 
 /** Score a single quality session against its prescribed pace.
  *  For interval sessions: uses the canonical best-effort pace (fastest
- *  contiguous segment at a canonical distance — e.g., fastest 5K split in
+ *  contiguous segment at a canonical distance, e.g., fastest 5K split in
  *  an 8×800m workout) rather than the overall moving pace, which includes
  *  jogging recovery and understates actual rep speed.
  *  hrCeiling: avg HR above this signals a max effort, not controlled threshold. */

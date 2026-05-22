@@ -7,7 +7,7 @@
  *
  * The watch executes the prescribed phases array; at the end the
  * iPhone bridge (which holds the auth token) POSTs the structured
- * result here — what the runner actually ran vs. what was prescribed.
+ * result here, what the runner actually ran vs. what was prescribed.
  * This is the simpler companion path to /api/health/ingest, which
  * carries biometric time-series separately.
  *

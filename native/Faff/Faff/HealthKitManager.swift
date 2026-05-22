@@ -3,8 +3,8 @@
 //  Faff
 //
 //  The roots of the Apple Health integration (docs/native/05 §Health).
-//  Reads the biometric streams Faff's coaching surfaces consume — resting
-//  HR, max HR, VO2max, sleep — and batch-uploads them to
+//  Reads the biometric streams Faff's coaching surfaces consume, resting
+//  HR, max HR, VO2max, sleep, and batch-uploads them to
 //  POST /api/health/ingest, which UPSERTs by (type, dateISO).
 //
 //  Authorization + reads run against the live HKHealthStore. The
@@ -35,14 +35,14 @@ final class HealthKitManager: ObservableObject {
     @Published var lastMessage: String?
 
     // ── Live display metrics (read straight from HealthKit for the
-    //    Health tab tiles — no backend round-trip needed to show them).
+    //    Health tab tiles, no backend round-trip needed to show them).
     @Published var hrvMs: Double?
     @Published var restingHrBpm: Double?
     @Published var sleepHours: Double?
     @Published var vo2Max: Double?
     @Published var respiratoryRate: Double?
     @Published var wristTempC: Double?
-    // Running dynamics — a 30-day average across runs (cumulative, for the
+    // Running dynamics, a 30-day average across runs (cumulative, for the
     // Health tab). Per-run dynamics for the recap come from runDynamics().
     @Published var cadenceSpm: Double?
     @Published var strideM: Double?
@@ -140,7 +140,7 @@ final class HealthKitManager: ObservableObject {
 
         guard !samples.isEmpty else {
             status = .done
-            lastMessage = "Connected — no recent Health samples to sync yet."
+            lastMessage = "Connected, no recent Health samples to sync yet."
             return
         }
         guard TokenStore.shared.accessToken != nil else {
@@ -158,7 +158,7 @@ final class HealthKitManager: ObservableObject {
                 let result = try await FaffAPI.shared.ingestHealthSamples(slice)
                 ingested += result.ingested
             }
-            // GPS routes (map + per-mile splits) for watch-only runs — best
+            // GPS routes (map + per-mile splits) for watch-only runs, best
             // effort, never blocks or fails the vitals sync.
             await collectAndUploadRoutes(daysBack: window)
             UserDefaults.standard.set(true, forKey: backfilledKey)
@@ -178,7 +178,7 @@ final class HealthKitManager: ObservableObject {
     ///
     /// Self-healing: if the `connected` flag is unset (reinstall / older build /
     /// access granted outside our connect flow) but vitals are actually
-    /// readable, adopt it and sync — otherwise a runner with Health authorized
+    /// readable, adopt it and sync, otherwise a runner with Health authorized
     /// would never get a readiness score. Never prompts: we only adopt when a
     /// real read returns data, and we don't call requestAuthorization here.
     func syncIfConnected() async {
@@ -194,29 +194,29 @@ final class HealthKitManager: ObservableObject {
 
     // MARK: - Reads → backend sample shape
 
-    /// Pull the last `daysBack` days of every ingestable stream — vitals
+    /// Pull the last `daysBack` days of every ingestable stream, vitals
     /// (resting/max HR, HRV, VO₂max, sleep, respiration, wrist temp) and
     /// daily running dynamics (cadence, stride, oscillation, ground
-    /// contact, vertical ratio, power) — for POST /api/health/ingest.
+    /// contact, vertical ratio, power), for POST /api/health/ingest.
     nonisolated func collectSamples(daysBack: Int) async -> [HealthSample] {
         var out: [HealthSample] = []
         let bpm = HKUnit.count().unitDivided(by: .minute())
 
-        // Resting HR — daily average.
+        // Resting HR, daily average.
         for (date, stat) in await dailyStats(HKQuantityType(.restingHeartRate), options: .discreteAverage, days: daysBack) {
             if let q = stat.averageQuantity() {
                 out.append(HealthSample(type: "resting_hr", value: q.doubleValue(for: bpm).rounded(),
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // Max HR — daily maximum.
+        // Max HR, daily maximum.
         for (date, stat) in await dailyStats(HKQuantityType(.heartRate), options: .discreteMax, days: daysBack) {
             if let q = stat.maximumQuantity() {
                 out.append(HealthSample(type: "max_hr", value: q.doubleValue(for: bpm).rounded(),
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // HRV (SDNN) — daily average, in milliseconds.
+        // HRV (SDNN), daily average, in milliseconds.
         let ms = HKUnit.secondUnit(with: .milli)
         for (date, stat) in await dailyStats(HKQuantityType(.heartRateVariabilitySDNN), options: .discreteAverage, days: daysBack) {
             if let q = stat.averageQuantity() {
@@ -224,17 +224,17 @@ final class HealthKitManager: ObservableObject {
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // VO2max — single most-recent reading.
+        // VO2max, single most-recent reading.
         if let (date, v) = await mostRecentQuantity(HKQuantityType(.vo2Max), unit: HKUnit(from: "ml/kg*min")) {
             out.append(HealthSample(type: "vo2_max", value: (v * 10).rounded() / 10,
                                     dateISO: Self.isoDay(date), source: "apple_health"))
         }
-        // Sleep — asleep hours per night.
+        // Sleep, asleep hours per night.
         for (day, hours) in await sleepHoursByDay(days: daysBack) where hours > 0 {
             out.append(HealthSample(type: "sleep_hours", value: (hours * 10).rounded() / 10,
                                     dateISO: day, source: "apple_health"))
         }
-        // Respiration — daily average (breaths/min).
+        // Respiration, daily average (breaths/min).
         let perMin = HKUnit.count().unitDivided(by: .minute())
         for (date, stat) in await dailyStats(HKQuantityType(.respiratoryRate), options: .discreteAverage, days: daysBack) {
             if let q = stat.averageQuantity() {
@@ -242,14 +242,14 @@ final class HealthKitManager: ObservableObject {
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // Wrist temperature — nightly reading (°C).
+        // Wrist temperature, nightly reading (°C).
         for (date, stat) in await dailyStats(HKQuantityType(.appleSleepingWristTemperature), options: .discreteAverage, days: daysBack) {
             if let q = stat.averageQuantity() {
                 out.append(HealthSample(type: "wrist_temp", value: (q.doubleValue(for: .degreeCelsius()) * 10).rounded() / 10,
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // Running dynamics — one daily average per day that has runs. The
+        // Running dynamics, one daily average per day that has runs. The
         // dynamics quantities are only recorded during runs, so a daily
         // discreteAverage is the day's running form.
         let strideByDay = await dailyAvgMap(HKQuantityType(.runningStrideLength), unit: .meter(), days: daysBack)
@@ -261,7 +261,7 @@ final class HealthKitManager: ObservableObject {
         for (day, v) in oscByDay    { out.append(HealthSample(type: "vertical_oscillation", value: (v * 10).rounded() / 10, dateISO: day, source: "apple_health")) }
         for (day, v) in gctByDay    { out.append(HealthSample(type: "ground_contact_time", value: v.rounded(), dateISO: day, source: "apple_health")) }
         for (day, v) in powerByDay  { out.append(HealthSample(type: "run_power", value: v.rounded(), dateISO: day, source: "apple_health")) }
-        // Derived form — HealthKit has no direct cadence/vertical-ratio quantity,
+        // Derived form, HealthKit has no direct cadence/vertical-ratio quantity,
         // so compute them from the day's averages:
         //   cadence (spm)      = speed (m/s) ÷ stride (m) × 60
         //   vertical ratio (%) = osc (cm)    ÷ stride (m)         (cm ÷ m collapses to %)
@@ -273,7 +273,7 @@ final class HealthKitManager: ObservableObject {
                 out.append(HealthSample(type: "vertical_ratio", value: (osc / st * 10).rounded() / 10, dateISO: day, source: "apple_health"))
             }
         }
-        // Body composition (smart-scale) — slow-moving; one daily average.
+        // Body composition (smart-scale), slow-moving; one daily average.
         let kg = HKUnit.gramUnit(with: .kilo)
         for (date, stat) in await dailyStats(HKQuantityType(.bodyMass), options: .discreteAverage, days: daysBack) {
             if let q = stat.averageQuantity() {
@@ -293,21 +293,21 @@ final class HealthKitManager: ObservableObject {
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // HR recovery (1 min post-exertion drop) — daily max (best of the day).
+        // HR recovery (1 min post-exertion drop), daily max (best of the day).
         for (date, stat) in await dailyStats(HKQuantityType(.heartRateRecoveryOneMinute), options: .discreteMax, days: daysBack) {
             if let q = stat.maximumQuantity() {
                 out.append(HealthSample(type: "hr_recovery", value: q.doubleValue(for: bpm).rounded(),
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // Active energy — daily cumulative total (kcal).
+        // Active energy, daily cumulative total (kcal).
         for (date, stat) in await dailyStats(HKQuantityType(.activeEnergyBurned), options: .cumulativeSum, days: daysBack) {
             if let q = stat.sumQuantity() {
                 out.append(HealthSample(type: "active_energy", value: q.doubleValue(for: .kilocalorie()).rounded(),
                                         dateISO: Self.isoDay(date), source: "apple_health"))
             }
         }
-        // Blood oxygen (SpO₂) — daily average, fraction → %.
+        // Blood oxygen (SpO₂), daily average, fraction → %.
         for (date, stat) in await dailyStats(HKQuantityType(.oxygenSaturation), options: .discreteAverage, days: daysBack) {
             if let q = stat.averageQuantity() {
                 out.append(HealthSample(type: "spo2", value: (q.doubleValue(for: .percent()) * 1000).rounded() / 10,
@@ -420,7 +420,7 @@ final class HealthKitManager: ObservableObject {
     // MARK: - Live display metrics (direct HealthKit reads)
 
     /// Read the latest vitals + the most-recent run's dynamics and publish
-    /// them for the Health tab tiles. Best-effort — any unavailable metric
+    /// them for the Health tab tiles. Best-effort, any unavailable metric
     /// stays nil and the tile shows its honest "No data" state.
     func refreshDisplayMetrics() async {
         guard isAvailable else { return }
@@ -434,19 +434,19 @@ final class HealthKitManager: ObservableObject {
         let sleep = await sleepHoursByDay(days: 2)
         if let latest = sleep.keys.sorted().last, let h = sleep[latest], h > 0 { sleepHours = (h * 10).rounded() / 10 }
 
-        // Body composition (smart-scale) + recovery/energy — latest readings.
+        // Body composition (smart-scale) + recovery/energy, latest readings.
         let kg = HKUnit.gramUnit(with: .kilo)
         if let (_, v) = await mostRecentQuantity(HKQuantityType(.bodyMass), unit: kg) { weightKg = (v * 10).rounded() / 10 }
         if let (_, v) = await mostRecentQuantity(HKQuantityType(.bodyFatPercentage), unit: .percent()) { bodyFatPct = (v * 1000).rounded() / 10 }
         if let (_, v) = await mostRecentQuantity(HKQuantityType(.leanBodyMass), unit: kg) { leanMassKg = (v * 10).rounded() / 10 }
         if let (_, v) = await mostRecentQuantity(HKQuantityType(.heartRateRecoveryOneMinute), unit: bpm) { hrRecoveryBpm = v.rounded() }
         if let (_, v) = await mostRecentQuantity(HKQuantityType(.oxygenSaturation), unit: .percent()) { spo2Pct = (v * 1000).rounded() / 10 }
-        // Active energy — today's cumulative total.
+        // Active energy, today's cumulative total.
         let dayStart = Calendar.current.startOfDay(for: Date())
         let todayPred = HKQuery.predicateForSamples(withStart: dayStart, end: Date(), options: .strictStartDate)
         if let kcal = await sum(HKQuantityType(.activeEnergyBurned), unit: .kilocalorie(), predicate: todayPred) { activeEnergyKcal = kcal.rounded() }
 
-        // Running dynamics — CUMULATIVE: a 30-day average across every run,
+        // Running dynamics, CUMULATIVE: a 30-day average across every run,
         // not the last run. The per-run breakdown lives on the run recap.
         // The dynamics quantities are only recorded by the watch during
         // runs, so a windowed discreteAverage naturally averages over runs.
@@ -465,7 +465,7 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
-    /// Per-run running dynamics for the run recap — averaged over the
+    /// Per-run running dynamics for the run recap, averaged over the
     /// running workout on a given calendar day. This is the LAST-RUN read
     /// (the recap's job); the Health tab shows the cumulative 30-day avg.
     struct RunDynamics: Equatable {
@@ -497,7 +497,7 @@ final class HealthKitManager: ObservableObject {
     }
 
     /// The running workout on a calendar day (UTC day window matches the
-    /// recap's date key) — the latest-ending run that day.
+    /// recap's date key), the latest-ending run that day.
     private nonisolated func runWorkout(onDateISO dateISO: String) async -> HKWorkout? {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
         guard let day = f.date(from: String(dateISO.prefix(10))) else { return nil }
@@ -626,7 +626,7 @@ extension HealthKitManager {
             .sorted { $0.timestamp < $1.timestamp }
         guard locs.count >= 2 else { return nil }
 
-        // Per-mile splits — walk the path accumulating distance + time.
+        // Per-mile splits, walk the path accumulating distance + time.
         let mileMeters = 1609.344
         var splits: [RouteSplitUpload] = []
         var distSoFar = 0.0, lastMileMark = 0.0

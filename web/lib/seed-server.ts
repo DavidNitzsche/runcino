@@ -5,15 +5,15 @@
  *
  * On first /api/races call, reads the bundled .runcino.json + GPX
  * pairs out of web/public/, upserts the race plan into Postgres
- * without touching actual_result. Idempotent — a tracking row in
+ * without touching actual_result. Idempotent, a tracking row in
  * `strava_sync_state` keys off SEED_VERSION so re-deploys don't
  * pointlessly re-write rows, but a version bump WILL refresh the
  * plan + GPX (preserving actual_result).
  *
  * Seed version cadence:
- *   v1 → v2 — 5-phase structure
- *   v2 → v3 — Big Sur goal corrected from 3:50 → 3:40
- *   v3 → v4 — Postgres migration; first server-side seed
+ *   v1 → v2, 5-phase structure
+ *   v2 → v3, Big Sur goal corrected from 3:50 → 3:40
+ *   v3 → v4, Postgres migration; first server-side seed
  */
 
 import { promises as fs } from 'node:fs';
@@ -94,7 +94,7 @@ async function runSeed(): Promise<void> {
       });
     } catch (e) {
       console.error(`[seed-server] failed to seed ${seed.slug}:`, e);
-      // Don't mark seeded if we couldn't read files — try again next request.
+      // Don't mark seeded if we couldn't read files, try again next request.
       return;
     }
   }

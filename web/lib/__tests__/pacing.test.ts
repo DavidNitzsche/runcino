@@ -40,7 +40,7 @@ describe('segmentCourse', () => {
   });
 });
 
-describe('applyStrategy — even effort', () => {
+describe('applyStrategy, even effort', () => {
   const xml = readFileSync(
     resolve(__dirname, '..', '..', 'public', 'sample-bigsur.gpx'),
     'utf8'
@@ -88,7 +88,7 @@ describe('applyStrategy — even effort', () => {
   });
 });
 
-describe('applyStrategy — even split', () => {
+describe('applyStrategy, even split', () => {
   it('assigns the same pace everywhere', () => {
     const xml = readFileSync(
       resolve(__dirname, '..', '..', 'public', 'sample-bigsur.gpx'),

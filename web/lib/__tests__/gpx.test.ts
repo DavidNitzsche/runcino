@@ -61,7 +61,7 @@ describe('parseGpx on Big Sur sample GPX', () => {
     // The synthetic GPX is shorter than 42.2 km because our waypoints
     // are approximate crow-flies points along Highway 1, and the actual
     // winding road is longer than the haversine sum between them. For
-    // algorithm development this is fine — elevation profile shape is
+    // algorithm development this is fine, elevation profile shape is
     // what matters. Real 2024 GPX measures ~42.2 km.
     const track = parseGpx(xml);
     expect(track.totalDistanceM).toBeGreaterThan(35_000);

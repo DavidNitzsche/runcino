@@ -3,11 +3,11 @@
  *
  * Two layers:
  *
- *   1. Pure logic — proposedBumpPoints arithmetic + threshold
+ *   1. Pure logic, proposedBumpPoints arithmetic + threshold
  *      constants. Test pins the values that gate "is this evidence
  *      enough to fire?" so an accidental edit trips the suite.
  *
- *   2. Context filter behavior — exercises evaluateActivities()
+ *   2. Context filter behavior, exercises evaluateActivities()
  *      with hand-built activity + context fixtures, asserting the
  *      three David-spec scenarios:
  *        (a) 3 faster workouts in normal conditions → bump fires
@@ -58,7 +58,7 @@ describe('Adaptive VDOT · bump-point math', () => {
     expect(proposedBumpPoints(10.0, 10)).toBe(1.5);
   });
 
-  it('respects the asymmetric discipline — small bumps need real evidence', () => {
+  it('respects the asymmetric discipline, small bumps need real evidence', () => {
     expect(proposedBumpPoints(2.5, 3)).toBe(0.3);
     expect(proposedBumpPoints(2.5, 3)).toBeLessThan(0.5);
   });
@@ -90,7 +90,7 @@ describe('Adaptive VDOT · thresholds locked', () => {
 
 /** Build a synthetic threshold-effort activity ~5-6 sec/mi faster
  *  than VDOT 46.6's T center (~7:00/mi → 6:54 - 6:55/mi).
- *  Default avgHr lands at 89% max (160 bpm @ 180 max) — comfortably
+ *  Default avgHr lands at 89% max (160 bpm @ 180 max), comfortably
  *  inside Z4. Override any field via the partial. */
 function fasterTWorkout(date: string, overrides: Partial<ActivityData> = {}): ActivityData {
   return {
@@ -227,7 +227,7 @@ describe('Adaptive VDOT · context filters (David spec scenarios)', () => {
     }
   });
 
-  it('hr-missing is SOFT attenuation (×0.6) — does not zero, can still fire with enough volume', () => {
+  it('hr-missing is SOFT attenuation (×0.6), does not zero, can still fire with enough volume', () => {
     const noHr = (date: string) => ({ data: fasterTWorkout(date, { avgHr: 0 }), context: cleanContext });
     const activities = [noHr('2026-05-18'), noHr('2026-05-11'), noHr('2026-05-04'), noHr('2026-04-27'), noHr('2026-04-20')];
     const result = evaluateActivities(activities, 46.6, 180);

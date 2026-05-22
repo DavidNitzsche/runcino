@@ -3,7 +3,7 @@
  *
  * Pure-logic coverage of validateProfileInput is run always. The DB
  * round-trip (saveProfile → getProfile) only runs when DATABASE_URL
- * is set — locally and on Railway it is; in pure-CI it can be opted
+ * is set, locally and on Railway it is; in pure-CI it can be opted
  * out by leaving DATABASE_URL unset. We mark the integration test
  * `.skip` in that case so the suite still reports a meaningful count.
  */
@@ -109,7 +109,7 @@ describe('validateProfileInput', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
-// Round-trip integration test — only runs when DATABASE_URL is set.
+// Round-trip integration test, only runs when DATABASE_URL is set.
 // Uses a non-'me' user_id so it can't clobber the dev profile.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ dbDescribe('saveProfile + getProfile round-trip (DATABASE_URL required)', () => 
     expect(read!.hrmax).toBe(saved.hrmax);
   });
 
-  it('upserts on conflict — second save overwrites first', async () => {
+  it('upserts on conflict, second save overwrites first', async () => {
     await saveProfile({ full_name: 'First', age: 30 }, TEST_USER);
     const second = await saveProfile({ full_name: 'Second', age: 50, hrmax: 170 }, TEST_USER);
     expect(second.full_name).toBe('Second');

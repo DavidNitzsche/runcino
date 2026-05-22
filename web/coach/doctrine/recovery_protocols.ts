@@ -1,5 +1,5 @@
 /**
- * Doctrine — Recovery and rest protocols (in-week, cutback, post-race).
+ * Doctrine, Recovery and rest protocols (in-week, cutback, post-race).
  *
  * Source: Research/00b-recovery-protocols.md
  *
@@ -97,7 +97,7 @@ export const RECOVERY_VS_EASY_RUN: Cited<{
       hrMaxPctMax: 60,
       durationMinLow: 20, durationMinHigh: 45,
       paceVsMpSPerMiSlowerLow: 60, paceVsMpSPerMiSlowerHigh: 90,
-      stimulus: 'Minimal — purpose is circulation, not adaptation',
+      stimulus: 'Minimal, purpose is circulation, not adaptation',
     },
     easyRun: {
       rpeLow: 3, rpeHigh: 4,
@@ -202,12 +202,12 @@ export const RECOVERY_MODALITY_TIERS: Cited<Array<{
     { tier: 'C_weak_mixed',              modality: 'Contrast water therapy',            evidenceSummary: 'Small benefit for soreness/strength; not clearly superior to single-modality approaches' },
     { tier: 'C_weak_mixed',              modality: 'Pneumatic compression boots',        evidenceSummary: 'Subjective improvement; small or null on objective biomarkers' },
     { tier: 'C_weak_mixed',              modality: 'Foam rolling',                       evidenceSummary: 'Short-term ROM and perceived soreness benefits; small effect size' },
-    { tier: 'D_insufficient_or_negative', modality: 'IV vitamin/saline therapy',          evidenceSummary: 'No clear evidence of benefit over oral hydration. WADA prohibits IV >100 mL/12h in-competition. Bypasses GI filtration — risk without proven benefit.' },
+    { tier: 'D_insufficient_or_negative', modality: 'IV vitamin/saline therapy',          evidenceSummary: 'No clear evidence of benefit over oral hydration. WADA prohibits IV >100 mL/12h in-competition. Bypasses GI filtration, risk without proven benefit.' },
     { tier: 'D_insufficient_or_negative', modality: 'Cryotherapy chambers',                evidenceSummary: 'Limited evidence beyond what cold-water immersion provides' },
     { tier: 'D_insufficient_or_negative', modality: 'NSAIDs as routine recovery aid',     evidenceSummary: 'Blunt adaptation; impair tendon and bone healing; renal risk during dehydration. Use only for acute medical indications.' },
   ],
   citations: [
-    cite('§Recovery Modalities — Ranked by Evidence', '4-tier evidence ordering from systematic reviews and meta-analyses', 'research', '00b'),
+    cite('§Recovery Modalities, Ranked by Evidence', '4-tier evidence ordering from systematic reviews and meta-analyses', 'research', '00b'),
   ],
 };
 
@@ -341,7 +341,7 @@ export const MARATHON_BIOMARKER_TIMELINE: Cited<Array<{
 
 // ── Reverse periodization tissue timelines ────────────────────────
 
-/** Stable per-tissue identifiers — match the UI BodySystem['id'] union
+/** Stable per-tissue identifiers, match the UI BodySystem['id'] union
  *  so consumers can index by id rather than by string lookup. */
 export type TissueId = 'glycogen' | 'muscle' | 'connective' | 'bone' | 'cns' | 'immune';
 
@@ -351,10 +351,10 @@ export const TISSUE_RECOVERY_TIMELINES: Cited<Array<{
   recoveryWindow: string;
   /** Display-ready compact window label (e.g. "24-72h", "5-10d"). */
   windowLabel: string;
-  /** Lower bound in days — minimum the engine waits before this tissue
+  /** Lower bound in days, minimum the engine waits before this tissue
    *  is generally considered repaired. */
   windowDaysLow: number;
-  /** Upper bound in days — engine readiness math uses this as the
+  /** Upper bound in days, engine readiness math uses this as the
    *  "fully healed" cap (daysSince ≥ high → state='done'). */
   windowDaysHigh: number;
   /** True when this tissue only matters for marathon-distance and
@@ -370,7 +370,7 @@ export const TISSUE_RECOVERY_TIMELINES: Cited<Array<{
     { id: 'cns',        tissue: 'CNS / hormonal balance',              recoveryWindow: '2-4 weeks',                          windowLabel: '2-4wk',  windowDaysLow: 14, windowDaysHigh: 28, marathonOnly: false },
     { id: 'immune',     tissue: 'Immune',                              recoveryWindow: '1-3 weeks',                          windowLabel: '1-3wk',  windowDaysLow: 7,  windowDaysHigh: 21, marathonOnly: false },
   ],
-  note: 'Reverse-taper ordering matches tissue-repair timelines: rebuild volume first (week 1-2), then frequency, then duration, then strides, then short tempo, then full quality. Loading high-intensity work before connective tissue and CNS recover risks tendon injury and stress fractures — the most common post-marathon injury pattern.',
+  note: 'Reverse-taper ordering matches tissue-repair timelines: rebuild volume first (week 1-2), then frequency, then duration, then strides, then short tempo, then full quality. Loading high-intensity work before connective tissue and CNS recover risks tendon injury and stress fractures, the most common post-marathon injury pattern.',
   citations: [
     cite('§Reverse Periodization for Marathon Recovery', 'Glycogen 24-72h / muscle 5-10d / connective 2-4 wks / bone 3-6 wks / CNS+hormonal 2-4 wks / immune 1-3 wks', 'research', '00b'),
   ],
@@ -438,8 +438,8 @@ export const MULTI_RACE_CADENCE: Cited<{
       { profile: 'Marathoners >50 yr',                          perYear: '1-2' },
     ],
     marathonSpacingRisk: [
-      { spacing: '<8 weeks',     risk: 'Very high — second marathon will be 5-10% slower, injury risk elevated, recovery prolonged' },
-      { spacing: '8-12 weeks',   risk: 'High — possible for experienced runners; the second is rarely a PR' },
+      { spacing: '<8 weeks',     risk: 'Very high, second marathon will be 5-10% slower, injury risk elevated, recovery prolonged' },
+      { spacing: '8-12 weeks',   risk: 'High, possible for experienced runners; the second is rarely a PR' },
       { spacing: '12-16 weeks',  risk: 'Standard for spring + fall double-up' },
       { spacing: '16-24 weeks',  risk: 'Conservative; allows full block + taper' },
     ],
@@ -466,7 +466,7 @@ export const MULTI_RACE_CADENCE: Cited<{
     offSeasonBreakWeeks: { low: 2, high: 4 },
   },
   citations: [
-    cite('§Multiple Races Per Year — Cadence Guidelines', 'Marathon, half, 5K/10K, ultra cadence + spacing + annual planning heuristic', 'research', '00b'),
+    cite('§Multiple Races Per Year, Cadence Guidelines', 'Marathon, half, 5K/10K, ultra cadence + spacing + annual planning heuristic', 'research', '00b'),
   ],
 };
 
@@ -562,6 +562,6 @@ export const RECOVERY_HIERARCHY: Cited<string[]> = {
   ],
   note: 'When in doubt, work down this list. Higher items dominate lower ones. If items 1-6 are not in place, no amount of items 7-9 will compensate.',
   citations: [
-    cite('§Recovery Hierarchy — Single-Page Summary', '9-step priority list', 'research', '00b'),
+    cite('§Recovery Hierarchy, Single-Page Summary', '9-step priority list', 'research', '00b'),
   ],
 };

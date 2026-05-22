@@ -1,13 +1,13 @@
 /**
- * /admin — private beta gatekeeper.
+ * /admin, private beta gatekeeper.
  *
- * Server-rendered. Gated by requireAdmin() — non-admins get bounced
+ * Server-rendered. Gated by requireAdmin(), non-admins get bounced
  * (active users → /overview, signed-out → /login). Renders three
  * sections: pending requests (with Approve / Deny buttons), active
  * users, and denied users. Actions hit /api/admin/users/[id]/{approve,
  * deny,promote,demote} which all run the same admin check server-side.
  *
- * Intentionally minimal — when there are 5 users you want a list, not
+ * Intentionally minimal, when there are 5 users you want a list, not
  * a dashboard. Once we grow we can layer search/filtering on top.
  */
 
@@ -34,7 +34,7 @@ interface UserRow {
 }
 
 function fmt(ts: string | null): string {
-  if (!ts) return '—';
+  if (!ts) return ', ';
   const d = new Date(ts);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -85,11 +85,11 @@ export default async function AdminPage() {
               {pending.map((u) => (
                 <div key={u.id} className="admin-row admin-row-pending">
                   <div>
-                    <div className="admin-name">{u.name || '—'}</div>
+                    <div className="admin-name">{u.name || '-'}</div>
                     <div className="admin-email">{u.email}</div>
                   </div>
                   <div className="admin-meta">{fmt(u.created_at)}</div>
-                  <div className="admin-meta">{u.location || '—'}</div>
+                  <div className="admin-meta">{u.location || '-'}</div>
                   <div className="admin-row-actions">
                     <AdminActions userId={u.id} kind="pending" isAdmin={false} />
                   </div>
@@ -114,7 +114,7 @@ export default async function AdminPage() {
               <div key={u.id} className="admin-row">
                 <div>
                   <div className="admin-name">
-                    {u.name || '—'}
+                    {u.name || '-'}
                     {u.is_admin && <span className="admin-badge">Admin</span>}
                     {u.id === me.id && <span className="admin-badge admin-badge-self">You</span>}
                   </div>
@@ -145,11 +145,11 @@ export default async function AdminPage() {
               {denied.map((u) => (
                 <div key={u.id} className="admin-row admin-row-denied">
                   <div>
-                    <div className="admin-name">{u.name || '—'}</div>
+                    <div className="admin-name">{u.name || '-'}</div>
                     <div className="admin-email">{u.email}</div>
                   </div>
                   <div className="admin-meta">{fmt(u.created_at)}</div>
-                  <div className="admin-meta">{u.location || '—'}</div>
+                  <div className="admin-meta">{u.location || '-'}</div>
                   <div className="admin-row-actions">
                     <AdminActions userId={u.id} kind="denied" isAdmin={false} />
                   </div>

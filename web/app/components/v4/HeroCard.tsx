@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * v4 hero card — the centerpiece of /overview.
+ * v4 hero card, the centerpiece of /overview.
  *
  *   ┌─────────────────────────────────────┬──────────────────────────┐
  *   │ TODAY · BASE WEEK 3                 │ READINESS  [Ready badge] │
@@ -20,7 +20,7 @@
  *   │                                     │   Easy · Zone 2          │
  *   └─────────────────────────────────────┴──────────────────────────┘
  *
- * Left column: the workout itself — title + stats + segments + actions.
+ * Left column: the workout itself, title + stats + segments + actions.
  * Right column: readiness ring + fitness signals + intensity bar.
  *
  * State: `skipped` fades the hero and flips Skip → Undo Skip.
@@ -30,6 +30,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { StatPill } from './StatPill';
+import { approxDuration } from '@/lib/duration';
 import { SegmentsTable, type SegmentRow } from './SegmentsTable';
 import { IntensityBar } from './IntensityBar';
 import { ReadinessRing, type ReadinessLevel } from './ReadinessRing';
@@ -70,16 +71,16 @@ export interface HeroCardProps {
 
   /** Open Workout handler. */
   onOpenWorkout?: () => void;
-  /** Skip Today handler — called with the new skipped state. */
+  /** Skip Today handler, called with the new skipped state. */
   onSkipToggle?: (nextSkipped: boolean) => void;
-  /** Externally-controlled "skipped" state — survives a page reload via
+  /** Externally-controlled "skipped" state, survives a page reload via
    *  the skip-store. When undefined, the card manages it internally. */
   skipped?: boolean;
   /** True when today's planned workout includes strength training.
    *  Renders a small chip near the eyebrow so the runner sees it
    *  without scanning the calendar. */
   hasStrength?: boolean;
-  /** True when today is a rest day — intensity bar swaps to "Rest day ·
+  /** True when today is a rest day, intensity bar swaps to "Rest day ·
    *  No intensity" copy and hides the gradient bar.
    *  Source spec: designs/overview-v4.html §intensity-section.rest. */
   isRest?: boolean;
@@ -224,7 +225,7 @@ export function HeroCard(props: HeroCardProps) {
         >
           <StatPill value={stats.distanceMi != null ? stats.distanceMi.toFixed(1) : null} unit="mi" label="Distance" />
           <StatPill value={formatPace(stats.paceSecPerMi)} unit="/mi" label="Pace" />
-          <StatPill value={stats.durationMin != null ? `~${stats.durationMin}` : null} unit="min" label="Duration" />
+          <StatPill value={stats.durationMin != null ? approxDuration(stats.durationMin).value : null} unit={stats.durationMin != null ? (approxDuration(stats.durationMin).unit || undefined) : 'min'} label="Duration" />
           <StatPill value={stats.hrCapBpm != null ? `≤${stats.hrCapBpm}` : null} unit="bpm" label="Heart Rate" />
         </div>
 

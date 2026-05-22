@@ -8,12 +8,12 @@
  * accent picker.
  *
  * Modes that ship real forms today:
- *   - 'edit-shoe'   — pre-populated edit modal + soft-retire button
- *   - 'add-shoe'    — empty form, POST /api/shoes
- *   - 'edit-accent' — brand color picker (swatches + custom hex)
+ *   - 'edit-shoe', pre-populated edit modal + soft-retire button
+ *   - 'add-shoe', empty form, POST /api/shoes
+ *   - 'edit-accent', brand color picker (swatches + custom hex)
  *
  * Modes still on the original placeholder:
- *   - 'edit-profile' / 'edit-prefs' — coming in a follow-up commit
+ *   - 'edit-profile' / 'edit-prefs', coming in a follow-up commit
  */
 
 import { useEffect, useState } from 'react';
@@ -61,7 +61,7 @@ const EYEBROWS: Record<Mode, string> = {
   'edit-accent':  'Brand Accent',
 };
 
-/** Default faff.run orange — kept in sync with --orange in profile-v4.css. */
+/** Default faff.run orange, kept in sync with --orange in profile-v4.css. */
 const DEFAULT_ACCENT = '#E85D26';
 
 const ACCENT_SWATCHES: { label: string; hex: string }[] = [
@@ -359,7 +359,7 @@ function ShoeForm({ shoe, onClose }: { shoe: Shoe | null; onClose: () => void })
         <Field label="Model"><input style={INPUT_STYLE} value={model} onChange={(e) => setModel(e.target.value)} placeholder="Superblast 3" maxLength={80} /></Field>
       </div>
 
-      <Field label="Color (optional)" hint="Free-form — shown in /log when picking shoes for a run.">
+      <Field label="Color (optional)" hint="Free-form, shown in /log when picking shoes for a run.">
         <input style={INPUT_STYLE} value={color} onChange={(e) => setColor(e.target.value)} placeholder="White" maxLength={40} />
       </Field>
 
@@ -580,7 +580,7 @@ function PlaceholderForm({ mode, onClose }: { mode: 'edit-profile' | 'edit-prefs
         lineHeight: 1.55, marginTop: 24,
       }}>
         The full edit form lands in the next commit. For now, the structural
-        port of /profile is live — what you see in the cards above reflects
+        port of /profile is live, what you see in the cards above reflects
         what your account holds.
       </p>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(8,8,8,.08)' }}>

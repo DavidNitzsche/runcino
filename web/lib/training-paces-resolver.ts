@@ -1,5 +1,5 @@
 /**
- * Training-paces resolver — VDOT → ResolvedPaces with source-priority
+ * Training-paces resolver, VDOT → ResolvedPaces with source-priority
  * chain for derived columns and ±10s E-range synthesis.
  *
  * Source-priority chain (locked in spot-check round 1):
@@ -9,13 +9,13 @@
  *   rMile:  derived from r400S × 4.023
  *           > derived from r200S × 8.046  (fallback)
  *   r800S:  published in Table 2 (VDOT ≥60 only)
- *           > derived from r400S × 2      (synthetic — code-commented)
+ *           > derived from r400S × 2      (synthetic, code-commented)
  *
  * E range: storage is single `eS` value (range midpoint per Daniels).
  *          Resolver returns eLow = eS + 10, eHigh = eS - 10. The ±10s
  *          width matches Daniels' published range across VDOT 30-60
  *          from the 10K-derived image; for VDOT 61-72 this is
- *          synthetic (no Daniels-published range available) — caller
+ *          synthetic (no Daniels-published range available), caller
  *          can read `eRangeSource` to know which regime is active.
  *
  * Out-of-range VDOTs clamp to the bounded row. Linear interpolation
@@ -153,7 +153,7 @@ function resolveRMileFor(row: VdotTrainingRow): { rMileS: number; source: RMileS
 function resolveR800For(row: VdotTrainingRow): { r800S: number; source: R800Source } {
   if (row.r800S != null) return { r800S: row.r800S, source: 'published' };
   if (row.r400S != null) return { r800S: row.r400S * 2, source: 'derived-r400x2' };
-  // Final fallback — derive from r200 ×4 (200m × 4 = 800m).
+  // Final fallback, derive from r200 ×4 (200m × 4 = 800m).
   return { r800S: row.r200S * 4, source: 'derived-r400x2' };
 }
 
@@ -164,7 +164,7 @@ function resolveR800For(row: VdotTrainingRow): { r800S: number; source: R800Sour
  *
  * Linear interpolation between integer rows for fractional inputs.
  * Derived columns (iMile, rMile, r800) interpolate AFTER per-row
- * resolution — so source priority is consistent at each bracketing
+ * resolution, so source priority is consistent at each bracketing
  * row before the interpolation combines them.
  */
 export function resolveTrainingPaces(vdotInput: number): ResolvedPaces {
@@ -215,7 +215,7 @@ export function resolveTrainingPaces(vdotInput: number): ResolvedPaces {
     i1200S:      lerpOpt(lo.i1200S, hi.i1200S, t),
     // When the two bracketing rows agree on source, use it; when they
     // disagree (e.g., one published, one derived), report the LOWER
-    // tier as the source — that's the weaker guarantee, and being
+    // tier as the source, that's the weaker guarantee, and being
     // honest about it lets callers warn appropriately.
     iMileSource: pickWeakerISource(loIMile.source, hiIMile.source),
 

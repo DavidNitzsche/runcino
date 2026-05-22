@@ -1,5 +1,5 @@
 /**
- * /api/research — drive the course-research pipeline.
+ * /api/research, drive the course-research pipeline.
  *
  * Delegates to lib/course-research.researchCourse. Requires
  * ANTHROPIC_API_KEY. Without a key, returns a realistic stub keyed to
@@ -45,7 +45,7 @@ function cimStub(): CourseFacts {
     phases: [
       {
         index: 0, label: 'Folsom descent', start_mi: 0, end_mi: 6,
-        expected_mean_grade_pct: -1.2, note: 'Gradual descent off Folsom Dam. Tempting to go fast — hold back.',
+        expected_mean_grade_pct: -1.2, note: 'Gradual descent off Folsom Dam. Tempting to go fast, hold back.',
         sources: [{ url: 'https://www.runsra.org/california-international-marathon', confidence: 'primary_source_verified', verified_at: '2026-04-19' }],
       },
       {
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    // Stub — returns CIM as an example; other race names get a minimal
+    // Stub, returns CIM as an example; other race names get a minimal
     // placeholder so the UI flow remains usable.
     const isCim = body.raceName.toLowerCase().includes('california') ||
                   body.raceName.toLowerCase().includes('cim');
@@ -124,7 +124,7 @@ export async function POST(req: Request) {
       reasoning: isCim
         ? `Using cached CIM example (no ANTHROPIC_API_KEY set). Started from the official URL, confirmed distance, extracted 4 phases and 3 landmarks with source citations.`
         : `Stub mode (no ANTHROPIC_API_KEY set). Returned a minimal placeholder for "${body.raceName}". Add an API key to run real research.`,
-      unresolvedQuestions: isCim ? ['H-Street bridge mile marker cited in Runner\'s World only — verify against official course map PDF.'] : ['Live research disabled in stub mode.'],
+      unresolvedQuestions: isCim ? ['H-Street bridge mile marker cited in Runner\'s World only, verify against official course map PDF.'] : ['Live research disabled in stub mode.'],
       stub: true,
     });
   }

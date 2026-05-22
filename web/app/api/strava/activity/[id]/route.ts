@@ -1,5 +1,5 @@
 /**
- * /api/strava/activity/[id] — full detail for one activity.
+ * /api/strava/activity/[id], full detail for one activity.
  *
  * Drives /runs/[id]: route polyline + per-mile splits + best efforts +
  * description + suffer score + cadence.

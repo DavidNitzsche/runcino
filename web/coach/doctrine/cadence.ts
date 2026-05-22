@@ -1,5 +1,5 @@
 /**
- * Doctrine §10 — Cadence and running form.
+ * Doctrine §10, Cadence and running form.
  *
  * Extracted from docs/coaching-research.md §10.1, §10.2, §10.3.
  * The 180-spm "rule" is myth; cadence intervention helps a specific
@@ -59,7 +59,7 @@ export const CADENCE_INTERVENTION: Cited<{
   ],
 };
 
-/** Form work that consistently helps — independent of cadence. */
+/** Form work that consistently helps, independent of cadence. */
 export const FORM_WORK_PRIORITIES: Cited<string[]> = {
   value: [
     'hip extension and glute activation',

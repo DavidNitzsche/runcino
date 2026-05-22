@@ -3,8 +3,8 @@
 /**
  * /health · HR anchors editor.
  *
- * Shows the two HR anchors that drive every Karvonen zone on this page —
- * Max HR and Resting HR — with their provenance, and lets the runner
+ * Shows the two HR anchors that drive every Karvonen zone on this page, 
+ * Max HR and Resting HR, with their provenance, and lets the runner
  * override either inline. Saving POSTs to the existing endpoints:
  *   POST /api/profile/max-hr      { maxHr }
  *   POST /api/profile/resting-hr  { restingHr }
@@ -12,7 +12,7 @@
  * Seeded server-side from the page's resolved fitness so the values are
  * correct on first paint; the inputs re-POST and reload on save. This is
  * a slimmer, self-contained sibling of the profile MaxHrIsland /
- * RestingHrIsland — kept under app/health so the page stays isolated.
+ * RestingHrIsland, kept under app/health so the page stays isolated.
  */
 
 import { useState } from 'react';
@@ -22,8 +22,8 @@ type Anchor = 'max-hr' | 'resting-hr';
 interface AnchorState {
   value: number | null;
   source: string;
-  /** Auto (Apple Health / computed) value even when an override wins — for
-   *  the "Apple Health now sees N — use it" prompt. */
+  /** Auto (Apple Health / computed) value even when an override wins, for
+   *  the "Apple Health now sees N, use it" prompt. */
   autoValue?: number | null;
 }
 
@@ -42,7 +42,7 @@ export function HrAnchorsIsland({
       <AnchorEditor
         anchor="max-hr"
         label="Max HR"
-        hint="The ceiling — peak heart rate from a terminal effort. Anchors the top of every zone."
+        hint="The ceiling, peak heart rate from a terminal effort. Anchors the top of every zone."
         min={120}
         max={230}
         placeholder="e.g. 187"
@@ -52,7 +52,7 @@ export function HrAnchorsIsland({
       <AnchorEditor
         anchor="resting-hr"
         label="Resting HR"
-        hint="The floor — your true resting beat. Enables Karvonen (%HRR) zones, more accurate for trained runners."
+        hint="The floor, your true resting beat. Enables Karvonen (%HRR) zones, more accurate for trained runners."
         min={30}
         max={100}
         placeholder="e.g. 52"
@@ -126,7 +126,7 @@ function AnchorEditor({
           : 'No data yet';
 
   // New-peak prompt: a manual override is set, but Apple Health has since
-  // observed a HIGHER value — offer to switch back to auto.
+  // observed a HIGHER value, offer to switch back to auto.
   const showNewPeak =
     state.source === 'manual' && state.value != null &&
     state.autoValue != null && state.autoValue > state.value;
@@ -149,13 +149,13 @@ function AnchorEditor({
       {!editing ? (
         <>
           <div className="hr-anchor-row">
-            <span className="hr-anchor-val">{state.value ?? '—'}</span>
+            <span className="hr-anchor-val">{state.value ?? '-'}</span>
             {state.value != null && <span className="hr-anchor-unit">bpm</span>}
           </div>
           <div className="hr-anchor-source">{sourceWord}</div>
           {showNewPeak ? (
             <button type="button" className="hr-anchor-newpeak" onClick={() => save(null)} disabled={busy}>
-              Apple Health now sees {state.autoValue} bpm — use it
+              Apple Health now sees {state.autoValue} bpm, use it
             </button>
           ) : (
             <div className="hr-anchor-hint">{hint}</div>

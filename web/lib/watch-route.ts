@@ -8,7 +8,7 @@
  * POSTs here via /api/watch/route. /api/runs/by-date then serves the
  * polyline + splits so the recap shows a map for watch-only runs.
  *
- * IDEMPOTENCY: UNIQUE(user_id, started_at) — re-uploading the same workout
+ * IDEMPOTENCY: UNIQUE(user_id, started_at), re-uploading the same workout
  * (the Health sync re-runs on a rolling window) UPSERTs rather than
  * duplicating.
  */
@@ -23,7 +23,7 @@ export interface WatchRouteSplitInput {
 }
 
 export interface WatchRouteInput {
-  startedAt: string;     // ISO 8601 — dedupe key
+  startedAt: string;     // ISO 8601, dedupe key
   routeDate: string;     // YYYY-MM-DD local run day
   distanceMi?: number | null;
   durationSec?: number | null;

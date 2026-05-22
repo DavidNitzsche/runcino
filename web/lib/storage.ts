@@ -4,7 +4,7 @@
  * Source of truth lives in Postgres on the server (lib/race-store.ts).
  * This module is a thin fetch wrapper consumed by the React pages.
  *
- * Every function is async — the localStorage path is gone. Pages
+ * Every function is async, the localStorage path is gone. Pages
  * already load races inside `useEffect`, so they `await` here just
  * like they did the old seedIfNeeded() call.
  *
@@ -49,7 +49,7 @@ export async function listRaces(force = false): Promise<SavedRace[]> {
 
 export async function getRace(slug: string): Promise<SavedRace | null> {
   if (typeof window === 'undefined') return null;
-  // Prefer the list cache when fresh — saves a round trip.
+  // Prefer the list cache when fresh, saves a round trip.
   if (cached && Date.now() - cached.at < STALE_MS) {
     const hit = cached.races.find(r => r.slug === slug);
     if (hit) return hit;
@@ -96,5 +96,5 @@ export async function deleteRace(slug: string): Promise<void> {
 }
 
 /** Bust the client cache (useful after a server-side mutation that
- *  bypassed this module — e.g. a Strava sync that ran on the server). */
+ *  bypassed this module, e.g. a Strava sync that ran on the server). */
 export function invalidateRacesCache(): void { cached = null; }

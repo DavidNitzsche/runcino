@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const refreshToken = body.refreshToken;
   if (!refreshToken || typeof refreshToken !== 'string') {
-    // Even with no token, return ok — idempotent / opaque.  Callers
+    // Even with no token, return ok, idempotent / opaque.  Callers
     // who pass nothing get the same response as callers who pass a
     // valid token.
     return NextResponse.json({ ok: true });

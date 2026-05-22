@@ -1,5 +1,5 @@
 /**
- * Adaptive VDOT signals — passive fitness movement detection between
+ * Adaptive VDOT signals, passive fitness movement detection between
  * races. The "alive" half of "alive but not nervous."
  *
  * Three independent signals (locked with David 2026-05-19 round 2):
@@ -12,14 +12,14 @@
  *       explanation → evidence to investigate downgrade
  *     - Context filters: heat >78°F, within 7 days of any race,
  *       missing HR (soft attenuation only).
- *       Sleep filter HOOK present — wired when sleep data lands.
+ *       Sleep filter HOOK present, wired when sleep data lands.
  *
- *   SIGNAL 2 · Pace at fixed HR (longitudinal drift) — TODO
+ *   SIGNAL 2 · Pace at fixed HR (longitudinal drift), TODO
  *     Rolling 4-week average pace at HR 140 (Z2 midpoint) for
  *     easy runs. Pace improving 5+ sec/mi over 4 weeks is fitness
  *     gain; degrading 5+ sec/mi is investigate signal.
  *
- *   SIGNAL 3 · Interval pace at controlled effort — TODO
+ *   SIGNAL 3 · Interval pace at controlled effort, TODO
  *     Same pattern as Signal 1 but for I-pace workouts. Tighter
  *     HR ceiling (work intervals must stay below Z5 cap).
  *
@@ -29,7 +29,7 @@
  * 1.5 weight) into a single banner-shape verdict.
  *
  * Source-of-truth contract: this reads from strava_activities for
- * workout HR/pace data — that's correct, training data lives in
+ * workout HR/pace data, that's correct, training data lives in
  * strava_activities. compute-vdot still reads ONLY from races for
  * the race-derived aggregate. L7 doesn't break the L6 contract.
  *
@@ -70,7 +70,7 @@ export interface SignalObservation {
    *  unset faster/slower. SOFT tags (hr-missing) attenuate weight only. */
   context: string[];
   /** Temperature at workout start in °F, if known. null = unknown
-   *  (no coords, fetch failed, etc.) — does NOT count as hot. */
+   *  (no coords, fetch failed, etc.), does NOT count as hot. */
   temperatureF: number | null;
   /** Days to nearest race (past or future, taking abs). null = no
    *  races in scope. */
@@ -128,25 +128,25 @@ export interface ActivityData {
   plannedLabel?: string;
 }
 
-/** Resolved context for a single activity — passed into evaluator.
+/** Resolved context for a single activity, passed into evaluator.
  *  Caller fetches these per-activity (weather lookup, race calendar
  *  scan); the pure evaluator just consumes them. */
 export interface ActivityContext {
   temperatureF: number | null;
   daysToNearestRace: number | null;
-  /** Sleep quality flag — wired when sleep ingestion lands. Until
+  /** Sleep quality flag, wired when sleep ingestion lands. Until
    *  then, callers pass undefined and the filter is a no-op. */
   poorSleepFlag?: boolean;
 }
 
 /** Look back 6 weeks for threshold-effort activities. We're looking
- *  for sustained signals, not single workouts — 6 weeks gives 4-8
+ *  for sustained signals, not single workouts, 6 weeks gives 4-8
  *  T workouts in a healthy training block, plenty for 3-consecutive
  *  detection without dragging in stale evidence. */
 export const LOOKBACK_DAYS = 42;
 
 /** Z4 ceiling as % of max HR (for HR-in-range check). Matches the
- *  Daniels threshold band — workouts at T pace should sit in Z4
+ *  Daniels threshold band, workouts at T pace should sit in Z4
  *  with maybe a few beats into Z5 on the last reps. */
 const Z4_CEILING_PCT = 0.92;
 const Z4_FLOOR_PCT = 0.85;
@@ -157,13 +157,13 @@ const FASTER_THRESHOLD_S = 5;
 const SLOWER_THRESHOLD_S = 5;
 
 /** Heat ceiling. Anything strictly hotter than this at workout
- *  start zeros the observation's weight — fast paces in heat are
+ *  start zeros the observation's weight, fast paces in heat are
  *  evidence of grit, not fitness gain. Conservative-on-upside.
  *  Threshold from David's spec 2026-05-19 round 3. */
 export const HEAT_CEILING_F = 78;
 
 /** Race-recency window. A workout within this many days BEFORE or
- *  AFTER a race is attenuated — taper distorts paces forward, race
+ *  AFTER a race is attenuated, taper distorts paces forward, race
  *  recovery distorts paces backward. Spec: ±7 days. */
 export const RACE_RECENCY_DAYS = 7;
 
@@ -177,7 +177,7 @@ const HR_MISSING_FACTOR = 0.6;
  *  faster/slower; SOFT tags scale weight by HR_MISSING_FACTOR. */
 const HARD_CONTEXT_TAGS = new Set(['heat', 'race-recency', 'poor-sleep']);
 
-/** Result of resolving an activity into a context shape — used by
+/** Result of resolving an activity into a context shape, used by
  *  the verdict module for evidence rendering. */
 export function tagsFromContext(ctx: ActivityContext, hrPresent: boolean): string[] {
   const tags: string[] = [];
@@ -199,7 +199,7 @@ export function evaluateActivities(
   const tPaces = pacesFromVdot(currentVdot);
   const tCenterS = tPaces ? Math.round((tPaces.T.lowS + tPaces.T.highS) / 2) : null;
 
-  // Karvonen Threshold band (Z4) when resting HR is known — more accurate
+  // Karvonen Threshold band (Z4) when resting HR is known, more accurate
   // than %max for trained runners (Research/03 §4 + §5). Falls back to the
   // %max Z4_FLOOR/CEILING constants below when resting HR is absent.
   const z4Band = buildHrZonesBundle(maxHr, restingHr)?.zones.find((z) => z.tier === 'z4') ?? null;
@@ -213,14 +213,14 @@ export function evaluateActivities(
     const actualPaceS = distMi > 0 ? Math.round(timeS / distMi) : null;
     if (!actualPaceS || !tCenterS) continue;
 
-    // Identify as "threshold-like" — either matched as planned T workout
+    // Identify as "threshold-like", either matched as planned T workout
     // OR the actual pace sits in the broad T band (±25 s/mi of T center)
     // AND HR sat in Z4 territory.
     const isPlannedT = d.plannedWorkoutType === 'threshold' || d.plannedWorkoutType === 'sub_threshold' || d.plannedWorkoutType === 'threshold_intervals';
     const paceInTBand = Math.abs(actualPaceS - tCenterS) <= 25;
     if (!isPlannedT && !paceInTBand) continue;
 
-    // HR in range — within Z4 (or close to it). hrInRange=null when
+    // HR in range, within Z4 (or close to it). hrInRange=null when
     // we don't know max HR; hrInRange=false when HR was measured but
     // out of Z4 (workout was harder or easier than threshold effort).
     let hrInRange: boolean | null = null;
@@ -253,7 +253,7 @@ export function evaluateActivities(
 
     // Faster/slower flags require:
     //   - meaningful pace delta (≥ 5 s/mi)
-    //   - HR not measured as out-of-Z4 (null is OK — we couldn't measure)
+    //   - HR not measured as out-of-Z4 (null is OK, we couldn't measure)
     //   - no hard context (heat / race-recency / poor-sleep)
     const fasterEnough = paceDeltaS < -FASTER_THRESHOLD_S;
     const slowerEnough = paceDeltaS > SLOWER_THRESHOLD_S;
@@ -317,7 +317,7 @@ async function resolveActivityContext(
 }
 
 /** Fetches the race calendar entries that fall within ±RACE_RECENCY_DAYS
- *  of the lookback window — that's the set whose dates could attenuate
+ *  of the lookback window, that's the set whose dates could attenuate
  *  a workout in the window. */
 async function fetchRecentAndUpcomingRaceDates(
   userId: string,
@@ -392,25 +392,25 @@ export async function computeThresholdSignal(
   return evaluateActivities(enriched, currentVdot, maxHr, restingHr);
 }
 
-/** Signal 2 implementation lives in lib/adaptive-vdot-signal2.ts —
+/** Signal 2 implementation lives in lib/adaptive-vdot-signal2.ts, 
  *  this stub kept for the shape contract; the verdict module reads
  *  the new module directly. */
 export function computeHrPaceDriftSignal(): AdaptiveSignals['hrPaceDrift'] {
   return {
     observations: [],
     implemented: false,
-    note: 'See lib/adaptive-vdot-signal2.ts — Signal 2 now lives there with its own observation shape.',
+    note: 'See lib/adaptive-vdot-signal2.ts, Signal 2 now lives there with its own observation shape.',
   };
 }
 
-/** Signal 3 implementation lives in lib/adaptive-vdot-signal3.ts —
+/** Signal 3 implementation lives in lib/adaptive-vdot-signal3.ts, 
  *  this stub kept for the shape contract; the verdict module reads
  *  the new module directly. */
 export function computeIntervalSignal(): AdaptiveSignals['intervals'] {
   return {
     observations: [],
     implemented: false,
-    note: 'See lib/adaptive-vdot-signal3.ts — Signal 3 now lives there with its own observation shape.',
+    note: 'See lib/adaptive-vdot-signal3.ts, Signal 3 now lives there with its own observation shape.',
   };
 }
 

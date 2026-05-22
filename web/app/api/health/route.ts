@@ -1,5 +1,5 @@
 /**
- * /api/health — server-side Coach bundle for the Health tab.
+ * /api/health, server-side Coach bundle for the Health tab.
  *
  * Mirrors /api/races-page/route.ts. The Coach engine pulls in node-only
  * modules so every Coach method runs here on the server; the client
@@ -7,7 +7,7 @@
  *
  * Coach methods wired:
  *   - bodySystems()         · 5-row tissue-healing card (centerpiece)
- *                             — Glycogen / Muscle / Connective / CNS /
+ *, Glycogen / Muscle / Connective / CNS /
  *                             Immune with healed-date predictions and
  *                             "quality returns ~MAY 24" callout
  *   - assessReadiness()     · headline readiness score + level + ACWR +
@@ -37,7 +37,7 @@ import type {
 } from '../../../coach/types';
 
 // ─────────────────────────────────────────────────────────────────────
-// Stub biometric shapes — kept here (not in lib/) so when HealthKit
+// Stub biometric shapes, kept here (not in lib/) so when HealthKit
 // ingestion ships in M2 the shapes can shift in one place and the
 // route + data + page all update from a single edit.
 // ─────────────────────────────────────────────────────────────────────
@@ -90,9 +90,9 @@ export interface HealthApiHrZoneTime {
   z3Min: number;
   z4Min: number;
   z5Min: number;
-  /** Polarized share — Z1 minutes / total minutes (0–1). */
+  /** Polarized share, Z1 minutes / total minutes (0–1). */
   easyShare: number;
-  /** 14-day daily mix — each day has minutes per zone, plus a rest flag. */
+  /** 14-day daily mix, each day has minutes per zone, plus a rest flag. */
   days: HealthApiZoneDay[];
 }
 
@@ -112,9 +112,9 @@ export interface HealthApiZoneDay {
 }
 
 export interface HealthApiTrainingStress {
-  /** CTL (fitness) — 28-day load average. */
+  /** CTL (fitness), 28-day load average. */
   fitnessCtl: number;
-  /** ATL (fatigue) — 7-day load average. */
+  /** ATL (fatigue), 7-day load average. */
   fatigueAtl: number;
   /** Form = CTL − ATL. */
   formTsb: number;
@@ -126,7 +126,7 @@ export interface HealthApiTrainingStress {
   verdictLabel: string;
   /** Form chip label ("▲ FRESH" / "DETRAINING" / etc.). */
   formChip: string;
-  /** Where the numbers came from — 'derived' once the Coach computes
+  /** Where the numbers came from, 'derived' once the Coach computes
    *  CTL/ATL from Strava, 'stub' until then. */
   source: 'stub' | 'derived';
 }
@@ -155,7 +155,7 @@ export interface HealthApiMoodCheckin {
 // bodyMassTrend, cyclePhase, ferritinLevel, subjectiveAgreement).
 // ─────────────────────────────────────────────────────────────────────
 
-/** Row 1 — Expanded daily check-in (Saw 2016 / Hooper Index). */
+/** Row 1, Expanded daily check-in (Saw 2016 / Hooper Index). */
 export interface HealthApiExpandedCheckin extends HealthApiMoodCheckin {
   /** Energy slider · 1–10. Null if not logged. */
   energy: number | null;
@@ -169,7 +169,7 @@ export interface HealthApiExpandedCheckin extends HealthApiMoodCheckin {
   citation: string;
 }
 
-/** Row 1 — Agreement chip between subjective + wearable. */
+/** Row 1, Agreement chip between subjective + wearable. */
 export interface HealthApiSubjectiveAgreement {
   /** Subjective composite 0–100 from sliders. Null if not logged. */
   subjectiveScore: number | null;
@@ -185,7 +185,7 @@ export interface HealthApiSubjectiveAgreement {
   citation: string;
 }
 
-/** Row 2 — HRV deep card with CV + Plews verdict. */
+/** Row 2, HRV deep card with CV + Plews verdict. */
 export interface HealthApiHrvDetail {
   /** False until HealthKit HRV streams land. When false every metric is null. */
   isAvailable: boolean;
@@ -205,11 +205,11 @@ export interface HealthApiHrvDetail {
   series30d: number[];
   /** Citation. */
   citation: string;
-  /** Source — 'stub' until HealthKit lands. */
+  /** Source, 'stub' until HealthKit lands. */
   source: 'stub' | 'healthkit' | 'derived';
 }
 
-/** Row 3 — Form / CTL · ATL · TSB. */
+/** Row 3, Form / CTL · ATL · TSB. */
 export interface HealthApiFormReport {
   /** Chronic Training Load (28-day). */
   ctl: number;
@@ -227,7 +227,7 @@ export interface HealthApiFormReport {
   source: 'stub' | 'derived';
 }
 
-/** Row 4 — Illness early-warning composite (5 markers). */
+/** Row 4, Illness early-warning composite (5 markers). */
 export interface HealthApiIllnessMarker {
   /** Stable id. */
   id: 'rhr' | 'hrv' | 'sleepEff' | 'bodyTemp' | 'respRate';
@@ -265,7 +265,7 @@ export interface HealthApiIllnessComposite {
   source: 'stub' | 'healthkit' | 'derived';
 }
 
-/** Row 4 — Body mass trend. */
+/** Row 4, Body mass trend. */
 export interface HealthApiBodyMass {
   /** False until HealthKit weight samples land. */
   isAvailable: boolean;
@@ -287,7 +287,7 @@ export interface HealthApiBodyMass {
   source: 'stub' | 'healthkit' | 'derived';
 }
 
-/** Row 5 — Submax HR drift (earliest overtraining marker). */
+/** Row 5, Submax HR drift (earliest overtraining marker). */
 export interface HealthApiSubmaxHrDrift {
   /** False until Strava HR-stream rollup lands. */
   isAvailable: boolean;
@@ -309,7 +309,7 @@ export interface HealthApiSubmaxHrDrift {
   source: 'stub' | 'derived';
 }
 
-/** Row 5 (female users) — Cycle phase tracker. */
+/** Row 5 (female users), Cycle phase tracker. */
 export interface HealthApiCycle {
   /** False until cycle-log table lands. */
   isAvailable: boolean;
@@ -325,7 +325,7 @@ export interface HealthApiCycle {
   citation: string;
 }
 
-/** Row 5 (female users) — Ferritin / iron status. */
+/** Row 5 (female users), Ferritin / iron status. */
 export interface HealthApiFerritin {
   /** False until lab-result table lands. */
   isAvailable: boolean;
@@ -339,9 +339,9 @@ export interface HealthApiFerritin {
   citation: string;
 }
 
-/** Profile snapshot — drives sex-specific Row 5 rendering. */
+/** Profile snapshot, drives sex-specific Row 5 rendering. */
 export interface HealthApiProfile {
-  /** Sex flag — drives whether Row 5 renders. */
+  /** Sex flag, drives whether Row 5 renders. */
   sex: 'male' | 'female' | 'unspecified';
   /** Age band label. */
   ageBandLabel: string;
@@ -354,9 +354,9 @@ export interface HealthApiSignal {
   label: string;
   /** Signal weight contribution (−0.25, 0.00, +0.25). */
   weight: number;
-  /** Bar fill 0–1 — drives the % width on the right of the row. */
+  /** Bar fill 0–1, drives the % width on the right of the row. */
   fill: number;
-  /** Tone — 'good' / 'neutral' / 'warn'. */
+  /** Tone, 'good' / 'neutral' / 'warn'. */
   tone: 'good' | 'neutral' | 'warn';
 }
 
@@ -371,7 +371,7 @@ export interface HealthApiReadinessComposite {
   pinVariant: 'green' | 'amber' | 'warn';
   /** ACWR + Coach context line ("SCORE +0.30 · COACH +12% VOLUME"). */
   scoreContextLabel: string;
-  /** 5 signal bars — each renders as one row in the card. */
+  /** 5 signal bars, each renders as one row in the card. */
   signals: HealthApiSignal[];
 }
 
@@ -411,7 +411,7 @@ interface HealthApiOk {
   cycle: HealthApiCycle | null;
   ferritin: HealthApiFerritin | null;
   profile: HealthApiProfile;
-  /** Per-signal freshness map — drives the "Coach is watching" UI
+  /** Per-signal freshness map, drives the "Coach is watching" UI
    *  strip. See lib/freshness.ts for budgets. */
   freshness: FreshnessMap;
 }
@@ -449,16 +449,16 @@ export async function GET(): Promise<Response> {
       };
     } catch {
       // prescribeWorkout shouldn't throw, but if it does we still want
-      // the page to render — fall through with a null prescription.
+      // the page to render, fall through with a null prescription.
     }
 
     const readiness = buildReadinessComposite(state, readinessDecision.answer);
 
     // Profile drives the female-only Row 5 (cycle + ferritin) and the
-    // VO2max age-band label — read it first.
+    // VO2max age-band label, read it first.
     const profile = await readProfileForHealth();              // real getProfile() read
 
-    // Biometric stubs — every one of these is HealthKit-blocked per
+    // Biometric stubs, every one of these is HealthKit-blocked per
     // Research/15 + the M2 placeholder in coach-state. Local-dev values
     // mirror the locked May 9 mockup so QA renders meaningfully.
     const hrv = stubHrv();
@@ -471,7 +471,7 @@ export async function GET(): Promise<Response> {
     const trainingStress = buildTrainingStress(state);
     const moodCheckin = stubMoodCheckin(today);
 
-    // NEW research-grounded shapes — every one is a stub today.
+    // NEW research-grounded shapes, every one is a stub today.
     // TODO (Stage 7 Coach): replace each stub with the corresponding
     // Coach method when it lands. Names below match the planned
     // Coach surface so the wiring path stays obvious.
@@ -528,13 +528,13 @@ export async function GET(): Promise<Response> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Readiness composite — builds the 5-signal-bar score from the Coach's
+// Readiness composite, builds the 5-signal-bar score from the Coach's
 // assessReadiness output plus state. assessReadiness only returns
 // level/message/acwr/easyShare; the mockup wants 5 named signals with
 // per-signal weights so we synthesize those here.
 //
 // TODO: when Coach.assessReadiness grows a structured signals[] output
-// (Stage 7 — readiness signal breakdown), replace this synthesis with
+// (Stage 7, readiness signal breakdown), replace this synthesis with
 // the engine's own breakdown.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -542,7 +542,7 @@ function buildReadinessComposite(
   state: CoachState,
   readiness: { level: 'green' | 'yellow' | 'red'; message: string; acwr: number | null; easyShare: number | null },
 ): HealthApiReadinessComposite {
-  // Score band — surface a single integer the ring can render.
+  // Score band, surface a single integer the ring can render.
   // 88 = mockup default for green/BUILDING. Bracket green 80-95, yellow
   // 60-79, red <60.
   const baseScore = readiness.level === 'green' ? 88 : readiness.level === 'yellow' ? 70 : 50;
@@ -551,20 +551,20 @@ function buildReadinessComposite(
   const heavyBlock = state.flags.heavyBlockSuspected;
   const recentRaceCount = state.races.raceCount30d;
 
-  // Effort trend — pulled from volume delta 4w vs 8w.
+  // Effort trend, pulled from volume delta 4w vs 8w.
   // TODO: wire to a dedicated RPE rollup once daily RPE check-ins land.
   const effortDelta = state.volume.deltaPct4v4 ?? 0;
   const effortWeight = effortDelta < -0.05 ? 0.25 : effortDelta > 0.10 ? -0.25 : 0;
   const effortTone: HealthApiSignal['tone'] = effortWeight > 0 ? 'good' : effortWeight < 0 ? 'warn' : 'neutral';
   const effortLabel = `Effort trend · ${effortDelta >= 0 ? '+' : ''}${(effortDelta * 100).toFixed(0)}% vs 8w avg`;
 
-  // Load balance — ACWR sweet spot 0.8-1.2.
+  // Load balance, ACWR sweet spot 0.8-1.2.
   const inSweetSpot = acwr >= 0.8 && acwr <= 1.2;
   const loadWeight = inSweetSpot ? 0.25 : acwr > 1.5 || acwr < 0.5 ? -0.25 : 0;
   const loadTone: HealthApiSignal['tone'] = inSweetSpot ? 'good' : loadWeight < 0 ? 'warn' : 'neutral';
   const loadLabel = `Load balance · ${acwr.toFixed(2)} ${inSweetSpot ? '(sweet spot)' : acwr > 1.2 ? '(elevated)' : '(low)'}`;
 
-  // Mileage trend — 4w vs 8w.
+  // Mileage trend, 4w vs 8w.
   const mileTrendDelta = state.volume.deltaPct4v4 ?? 0;
   const mileWeight = Math.abs(mileTrendDelta) < 0.10 ? 0 : mileTrendDelta > 0 ? 0.25 : -0.25;
   const mileTone: HealthApiSignal['tone'] = mileWeight > 0 ? 'good' : mileWeight < 0 ? 'warn' : 'neutral';
@@ -575,7 +575,7 @@ function buildReadinessComposite(
   const easyTone: HealthApiSignal['tone'] = easyWeight > 0 ? 'good' : easyWeight < 0 ? 'warn' : 'neutral';
   const easyLabel = `Easy pace share · ${Math.round(easy * 100)}%`;
 
-  // Recent strain — race count.
+  // Recent strain, race count.
   const strainWeight = recentRaceCount >= 3 ? -0.25 : recentRaceCount === 2 ? 0 : 0.25;
   const strainTone: HealthApiSignal['tone'] = strainWeight > 0 ? 'good' : strainWeight < 0 ? 'warn' : 'neutral';
   const strainLabel = recentRaceCount === 0
@@ -620,9 +620,9 @@ function buildReadinessComposite(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Biometric stubs — HealthKit M2 wiring. Values mirror the locked May 9
+// Biometric stubs, HealthKit M2 wiring. Values mirror the locked May 9
 // mockup so local-dev QA renders meaningful charts.
-// TODO: wire to HealthKit ingestion (M2) — once the iOS app writes the
+// TODO: wire to HealthKit ingestion (M2), once the iOS app writes the
 // HealthKit JSON to iCloud each helper reads that block instead.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -677,7 +677,7 @@ function stubVo2max(today: string, ageBandLabel: string): HealthApiVo2Max {
   // HealthKit-blocked. NO DATA YET until HealthKit VO2Max samples
   // land. Month labels stay so the X-axis can render in empty state.
   // ageBandLabel comes from the real profile read (readProfileForHealth)
-  // so the percentile-band label reflects the runner — no more M 38.
+  // so the percentile-band label reflects the runner, no more M 38.
   const month = Number(today.slice(5, 7));
   const monthOrder = [
     'JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC',
@@ -728,7 +728,7 @@ function stubBodyTemp(): HealthApiBodyTemp {
 }
 
 function stubMoodCheckin(_today: string): HealthApiMoodCheckin {
-  // TODO: wire to a daily mood log table (does NOT exist today —
+  // TODO: wire to a daily mood log table (does NOT exist today, 
   // Research/20 §Mood logging defines the rule, no data path yet).
   // Surface today's logged value if present; otherwise null + the
   // banner renders the empty state.
@@ -742,7 +742,7 @@ function stubMoodCheckin(_today: string): HealthApiMoodCheckin {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// HR zones — 14-day rollup. Currently fed by Strava activity HR streams
+// HR zones, 14-day rollup. Currently fed by Strava activity HR streams
 // (when present) but the daily-mix detail isn't built yet so we surface
 // a synthesized polarized pattern matching the mockup.
 // TODO: wire to a `lib/strava-hr-zones.ts` rollup that aggregates
@@ -750,7 +750,7 @@ function stubMoodCheckin(_today: string): HealthApiMoodCheckin {
 // ─────────────────────────────────────────────────────────────────────
 
 function buildHrZones(_today: string, state: CoachState): HealthApiHrZoneTime {
-  // easyShare is REAL — derived from Strava intensity (pace-based proxy
+  // easyShare is REAL, derived from Strava intensity (pace-based proxy
   // for polarized share). The per-zone minute totals + daily mix require
   // Strava HR streams which aren't wired yet; those return NO DATA YET
   // (zero totals, empty days) until lib/strava-hr-zones.ts lands.
@@ -768,7 +768,7 @@ function buildHrZones(_today: string, state: CoachState): HealthApiHrZoneTime {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Training stress (CTL · ATL · TSB) — derived from Strava actuals once
+// Training stress (CTL · ATL · TSB), derived from Strava actuals once
 // the doctrine wearables.ts CTL/ATL calc is exposed as a Coach method.
 // TODO: add Coach.formScore(ctl, atl) once Stage 3 engine wires this up.
 // ─────────────────────────────────────────────────────────────────────
@@ -776,13 +776,13 @@ function buildHrZones(_today: string, state: CoachState): HealthApiHrZoneTime {
 function buildTrainingStress(state: CoachState): HealthApiTrainingStress {
   // Real CTL/ATL/TSB + verdict labels from the shared pure helper
   // (lib/training-load.ts), driven by state.volume per Research/00a
-  // §CTL/ATL/TSB. Identical scalars to before — the math just moved
+  // §CTL/ATL/TSB. Identical scalars to before, the math just moved
   // into the lib so /health can render the same numbers.
   const load = buildTrainingLoad({
     weeklyAvg8wMi: state.volume.weeklyAvg8w,
     last7Mi: state.volume.last7Mi,
   });
-  // 30-day TSS series — derived. Without per-day TRIMP we approximate
+  // 30-day TSS series, derived. Without per-day TRIMP we approximate
   // a flat arc around current CTL. Real series will land alongside the
   // strava activity HR-stream pipeline.
   const series30d = Array.from({ length: 30 }, (_, i) => {
@@ -808,9 +808,9 @@ function buildTrainingStress(state: CoachState): HealthApiTrainingStress {
 // so QA renders meaningfully until the engine lands.
 // ─────────────────────────────────────────────────────────────────────
 
-/** Real profile reader — replaces the prior male/M-38 hardcoded stub
+/** Real profile reader, replaces the prior male/M-38 hardcoded stub
  *  that Wave H caught. Reads sex + age from the `profile` table and
- *  surfaces a band label like "M 38" / "F 41" / "— —" when missing.
+ *  surfaces a band label like "M 38" / "F 41" / ", , " when missing.
  *  Sex 'unspecified' suppresses the female-only Row 5. */
 async function readProfileForHealth(): Promise<HealthApiProfile> {
   try {
@@ -820,16 +820,16 @@ async function readProfileForHealth(): Promise<HealthApiProfile> {
       sexRaw === 'female' || sexRaw === 'f' ? 'female'
       : sexRaw === 'male' || sexRaw === 'm' ? 'male'
       : 'unspecified';
-    const ageStr = row?.age != null ? String(row.age) : '—';
-    const sexLetter = sex === 'female' ? 'F' : sex === 'male' ? 'M' : '—';
+    const ageStr = row?.age != null ? String(row.age) : '-';
+    const sexLetter = sex === 'female' ? 'F' : sex === 'male' ? 'M' : '-';
     return {
       sex,
       ageBandLabel: `${sexLetter} ${ageStr}`,
     };
   } catch {
-    // DB down / table missing — surface a dash so the UI renders
-    // "NO PROFILE YET — set in /profile".
-    return { sex: 'unspecified', ageBandLabel: '— —' };
+    // DB down / table missing, surface a dash so the UI renders
+    // "NO PROFILE YET, set in /profile".
+    return { sex: 'unspecified', ageBandLabel: ', , ' };
   }
 }
 
@@ -887,7 +887,7 @@ async function readExpandedCheckin(today: string): Promise<HealthApiExpandedChec
       citation: 'Saw 2016 · /Research/15 §Decision Matrix',
     };
   } catch {
-    // DB down or table missing — fall back to stub silently. The page
+    // DB down or table missing, fall back to stub silently. The page
     // shouldn't 500 on a check-in lookup.
     return stubExpandedCheckin(today);
   }
@@ -913,10 +913,10 @@ function stubExpandedCheckin(_today: string): HealthApiExpandedCheckin {
 }
 
 /** HRV detail stub. Surfaces the CV + Plews-method verdict per
- *  Research/15 §HRV — Plews approach §5. */
+ *  Research/15 §HRV, Plews approach §5. */
 function stubHrvDetail(hrv: HealthBioStub): HealthApiHrvDetail {
   // HealthKit-blocked. When HRV is unavailable, return NO DATA YET.
-  // RESEARCH: Research/15 §HRV Plews approach — CV (coefficient of
+  // RESEARCH: Research/15 §HRV Plews approach, CV (coefficient of
   // variation) is the first-line destabilization signal; rises before
   // the rolling mean drops. Cannot be computed without HRV samples.
   void hrv;
@@ -936,7 +936,7 @@ function stubHrvDetail(hrv: HealthBioStub): HealthApiHrvDetail {
 
 /** Form report stub (CTL · ATL · TSB with operating band). */
 function stubFormReport(stress: HealthApiTrainingStress): HealthApiFormReport {
-  // TODO: wire to coach.formReport() (Stage 7) — Banister/Allen-Coggan
+  // TODO: wire to coach.formReport() (Stage 7), Banister/Allen-Coggan
   // fitness/fatigue model.
   // RESEARCH: /Research/00a §CTL/ATL/TSB · /Research/15 §Fitness/
   // Fatigue/Form Operating Bands.
@@ -974,7 +974,7 @@ function stubIllnessComposite(): HealthApiIllnessComposite {
   // HealthKit-blocked. All 5 markers (RHR · HRV · sleep efficiency ·
   // body temp · respiratory rate) require HealthKit samples. NO DATA
   // YET until ingestion lands.
-  // RESEARCH: /Research/15 §Spotting Illness Early — when 3+ markers
+  // RESEARCH: /Research/15 §Spotting Illness Early, when 3+ markers
   // go off simultaneously, illness is likely within 48-72h.
   return {
     isAvailable: false,
@@ -990,7 +990,7 @@ function stubIllnessComposite(): HealthApiIllnessComposite {
 /** Body-mass trend stub. Flags 2%+ drop in 14d per 00b. */
 function stubBodyMass(): HealthApiBodyMass {
   // HealthKit-blocked. NO DATA YET until HealthKit weight samples land.
-  // RESEARCH: /Research/00b §Quantitative Signals — sustained drop
+  // RESEARCH: /Research/00b §Quantitative Signals, sustained drop
   // >2% over 14 days = stress signal.
   return {
     isAvailable: false,
@@ -1005,11 +1005,11 @@ function stubBodyMass(): HealthApiBodyMass {
   };
 }
 
-/** Submax HR drift stub — earliest reliable overtraining marker. */
+/** Submax HR drift stub, earliest reliable overtraining marker. */
 function stubSubmaxHrDrift(): HealthApiSubmaxHrDrift {
   // Strava-HR-stream blocked. NO DATA YET until the per-activity HR-
   // stream rollup at fixed easy pace lands.
-  // RESEARCH: /Research/15 §Spotting Overtraining Early §4 — "HR
+  // RESEARCH: /Research/15 §Spotting Overtraining Early §4, "HR
   // for a given easy pace creeps up 3–8 bpm."
   return {
     isAvailable: false,
@@ -1024,10 +1024,10 @@ function stubSubmaxHrDrift(): HealthApiSubmaxHrDrift {
   };
 }
 
-/** Cycle stub — only renders for female users. */
+/** Cycle stub, only renders for female users. */
 function stubCycle(): HealthApiCycle {
   // Cycle-log table not yet built. NO DATA YET until cycle-log lands.
-  // RESEARCH: /Research/13 §1 Menstrual Cycle — phase-aware load.
+  // RESEARCH: /Research/13 §1 Menstrual Cycle, phase-aware load.
   return {
     isAvailable: false,
     phase: null,
@@ -1038,10 +1038,10 @@ function stubCycle(): HealthApiCycle {
   };
 }
 
-/** Ferritin stub — only renders for female users. */
+/** Ferritin stub, only renders for female users. */
 function stubFerritin(): HealthApiFerritin {
   // Lab-result table not yet built. NO DATA YET until lab results land.
-  // RESEARCH: /Research/13 §8 Iron Deficiency — threshold <30 ng/mL.
+  // RESEARCH: /Research/13 §8 Iron Deficiency, threshold <30 ng/mL.
   return {
     isAvailable: false,
     currentNgPerMl: null,
@@ -1058,7 +1058,7 @@ function stubSubjectiveAgreement(
   _hrvDetail: HealthApiHrvDetail,
 ): HealthApiSubjectiveAgreement {
   // TODO: wire to coach.subjectiveAgreement() (Stage 7).
-  // RESEARCH: /Research/15 §Decision Matrix — when subjective and
+  // RESEARCH: /Research/15 §Decision Matrix, when subjective and
   // wearable disagree, subjective wins (Saw 2016).
   void _hrvDetail;
   const objectiveScore = readiness.score;
@@ -1086,7 +1086,7 @@ function stubSubjectiveAgreement(
       ? 'Subjective and wearable agree.'
       : agreementDirection === 'subjective_lower'
       ? 'Coach is pulling back. Subjective wins ties (Saw 2016).'
-      : 'Coach holds the wearable line — body says go, signals say steady.';
+      : 'Coach holds the wearable line, body says go, signals say steady.';
   return {
     subjectiveScore,
     objectiveScore,

@@ -4,16 +4,16 @@
 //
 //  iPhone side of the iPhone↔watch bridge (WatchConnectivity).
 //
-//  Design goal: the watch workout "is just there" — no manual push.
+//  Design goal: the watch workout "is just there", no manual push.
 //  Two mechanisms cover that:
 //
-//    1. updateApplicationContext — whenever the iPhone app fetches
+//    1. updateApplicationContext, whenever the iPhone app fetches
 //       today's workout, it sets it as the session's application
 //       context. WatchConnectivity delivers the latest context to the
 //       watch automatically (even in the background), so it's present
 //       the next time the watch app opens.
 //
-//    2. didReceiveMessage — when the watch opens and is reachable, it
+//    2. didReceiveMessage, when the watch opens and is reachable, it
 //       asks the iPhone directly; we fetch fresh and reply.
 //
 //  Completion writeback: the watch sends its WatchCompletion payload via
@@ -33,7 +33,7 @@ final class WatchSync: NSObject, ObservableObject {
 
     /// Real pairing state (WCSession), surfaced in Profile so the Apple
     /// Watch row reflects whether a watch is paired with the Faff watch
-    /// app installed — there is no "connect" step; pairing is the link.
+    /// app installed, there is no "connect" step; pairing is the link.
     @Published private(set) var isPaired = false
     @Published private(set) var isWatchAppInstalled = false
 
@@ -55,7 +55,7 @@ final class WatchSync: NSObject, ObservableObject {
     // The watch hands a finished workout to the phone via transferUserInfo.
     // Uploading it to the backend can fail (no network in the background, a
     // token refresh, a transient 5xx). The OLD code POSTed once and dropped
-    // the run on any error — that's how a recorded run vanished. Now every
+    // the run on any error, that's how a recorded run vanished. Now every
     // received completion is PERSISTED and retried until the server accepts
     // it: on receive, on session activation, and on app foreground.
 
@@ -91,7 +91,7 @@ final class WatchSync: NSObject, ObservableObject {
                 ? "Workout synced ✓"
                 : "Synced \(uploaded) · \(remaining.count) pending"
         } else if !remaining.isEmpty {
-            lastSyncStatus = "\(remaining.count) workout(s) pending — will retry"
+            lastSyncStatus = "\(remaining.count) workout(s) pending, will retry"
         }
     }
 
@@ -108,11 +108,11 @@ final class WatchSync: NSObject, ObservableObject {
 
     /// Fetch today's workout and hand it to the watch as application
     /// context. Called automatically on login + on every TodayView
-    /// refresh — never from a user-facing button.
+    /// refresh, never from a user-facing button.
     func syncTodayToWatch() async {
         guard WCSession.isSupported() else { return }
         var ctx: [String: Any] = [:]
-        // Readiness glance (§G) — available any day; push it alongside the workout.
+        // Readiness glance (§G), available any day; push it alongside the workout.
         if let readiness = try? await FaffAPI.shared.fetchReadinessRaw() { ctx["readiness"] = readiness }
         do {
             let data = try await FaffAPI.shared.fetchTodayRaw()
@@ -197,7 +197,7 @@ extension WatchSync: WCSessionDelegate {
 
     /// The watch finished a workout and sent its completion payload.
     /// Persist it FIRST (so it survives an upload failure / app kill), then
-    /// flush — any failure stays queued and retries on the next activate /
+    /// flush, any failure stays queued and retries on the next activate /
     /// foreground.
     nonisolated func session(_ session: WCSession,
                              didReceiveUserInfo userInfo: [String: Any]) {

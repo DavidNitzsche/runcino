@@ -1,5 +1,5 @@
 /**
- * /api/races — list + create race plans.
+ * /api/races, list + create race plans.
  *
  * GET → SavedRace[]   (sorted: upcoming first, then past by recency)
  * POST → SavedRace    (body is a SavedRace; upserts by slug)

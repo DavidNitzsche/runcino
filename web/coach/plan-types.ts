@@ -46,12 +46,12 @@ export type TriggerKind =
   | 'quality-execution-advance'
   | 'quality-execution-retreat'
   /** Runner explicitly clicked "Skip Today" on the hero card. Ground
-   *  truth — not a fuzzy signal. Cite Research/00b §Decision Matrix
+   *  truth, not a fuzzy signal. Cite Research/00b §Decision Matrix
    *  (a missed quality day is a recovery signal). */
   | 'runner-skip';
 
 export interface SignalSnapshot {
-  /** Minimal slice of the state at trigger time — used for audit. */
+  /** Minimal slice of the state at trigger time, used for audit. */
   todayISO: string;
   poorDaysCount?: number;
   last7Mi?: number;
@@ -95,7 +95,7 @@ export interface PlanWorkout {
   isLong: boolean;
   hasStrength: boolean;
   notes: string;
-  /** Short display label override — e.g. 'Long Run · HM Finish' for HM-specific weeks.
+  /** Short display label override, e.g. 'Long Run · HM Finish' for HM-specific weeks.
    *  Null means use the default label for the workout type. */
   subLabel?: string | null;
   /** As-planned snapshot frozen at authoring time. */
@@ -136,7 +136,7 @@ export interface CoachStateSnapshot {
   qualityDows: number[];
   restDow: number;
   /** Builder algorithm version. Bump when the authoring logic changes
-   *  significantly — triggers a transparent rewrite on next load. */
+   *  significantly, triggers a transparent rewrite on next load. */
   builderVersion?: number;
 }
 
@@ -155,7 +155,7 @@ export interface Plan {
   archivedISO: string | null;
 }
 
-/** Helper — pick the inputs that drive authoring out of CoachState.
+/** Helper, pick the inputs that drive authoring out of CoachState.
  *  Pass builderVersion from plan-builder so stored snapshots carry the
  *  version that produced them. */
 export function snapshotFromState(
