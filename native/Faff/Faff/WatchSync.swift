@@ -112,6 +112,10 @@ final class WatchSync: NSObject, ObservableObject {
     func syncTodayToWatch() async {
         guard WCSession.isSupported() else { return }
         var ctx: [String: Any] = [:]
+        // Share the current Bearer token so the watch can post a finished
+        // workout straight to the backend if the watch→iPhone bridge can't
+        // reach us. Short-lived; refreshed every time we push context.
+        if let token = TokenStore.shared.accessToken { ctx["authToken"] = token }
         // Readiness glance (§G), available any day; push it alongside the workout.
         if let readiness = try? await FaffAPI.shared.fetchReadinessRaw() { ctx["readiness"] = readiness }
         do {
@@ -147,6 +151,7 @@ final class WatchSync: NSObject, ObservableObject {
     /// Reply payload for a watch-initiated request (synchronous-ish).
     fileprivate func todayReply() async -> [String: Any] {
         var reply: [String: Any] = [:]
+        if let token = TokenStore.shared.accessToken { reply["authToken"] = token }
         if let readiness = try? await FaffAPI.shared.fetchReadinessRaw() { reply["readiness"] = readiness }
         do {
             let data = try await FaffAPI.shared.fetchTodayRaw()

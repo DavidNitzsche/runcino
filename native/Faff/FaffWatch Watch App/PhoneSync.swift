@@ -34,6 +34,75 @@ final class PhoneSync: NSObject, ObservableObject {
 
     private override init() { super.init() }
 
+    // MARK: Direct-to-backend writeback (independent of the iPhone bridge)
+    //
+    // The PRIMARY path for a finished workout is transferUserInfo → iPhone →
+    // backend. But that bridge is fragile (the iPhone may be off, the app
+    // killed, the WCSession queue stalled — that's how a recorded run once
+    // vanished). So the watch ALSO posts the completion straight to the
+    // backend itself, whenever it has a network and an auth token the iPhone
+    // shared with it. The backend keys on workoutId/start-minute and is fully
+    // idempotent, so a run arriving by BOTH paths is de-duped to one row.
+
+    private let tokenKey = "faff.watch.authToken.v1"
+    private let pendingKey = "faff.watch.pendingDirect.v1"
+
+    /// Auth token the iPhone shares via application context. Persisted so it
+    /// survives watch-app restarts (the iPhone may not be reachable later).
+    private var authToken: String? {
+        get { UserDefaults.standard.string(forKey: tokenKey) }
+        set { UserDefaults.standard.set(newValue, forKey: tokenKey) }
+    }
+
+    /// Same base-URL rule as the iPhone target (FaffAPI.baseURL): an explicit
+    /// override wins, else prod. (localhost is meaningless from the watch, so
+    /// unlike the phone we don't fall back to it.)
+    private var apiBase: URL {
+        if let s = ProcessInfo.processInfo.environment["FAFF_API_BASE"], let u = URL(string: s) { return u }
+        return URL(string: "https://www.faff.run")!
+    }
+
+    private var pendingDirect: [Data] {
+        get { (UserDefaults.standard.array(forKey: pendingKey) as? [Data]) ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: pendingKey) }
+    }
+
+    private func enqueueDirect(_ data: Data) {
+        var q = pendingDirect
+        q.append(data)
+        if q.count > 50 { q.removeFirst(q.count - 50) } // bound growth
+        pendingDirect = q
+    }
+
+    /// POST every queued completion straight to the backend; drop the ones
+    /// the server accepts, keep the rest for the next attempt. No-op without
+    /// a token (the iPhone hasn't shared one yet — the transferUserInfo path
+    /// still covers the run).
+    func flushDirectCompletions() async {
+        guard let token = authToken else { return }
+        let q = pendingDirect
+        guard !q.isEmpty else { return }
+        let url = apiBase.appendingPathComponent("api/watch/workouts/complete")
+        var remaining: [Data] = []
+        for data in q {
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            req.httpBody = data
+            do {
+                let (_, resp) = try await URLSession.shared.data(for: req)
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                if (200...299).contains(code) { continue }       // accepted → drop
+                if code == 401 || code == 403 { authToken = nil } // stale token → stop using it
+                remaining.append(data)                            // retry later
+            } catch {
+                remaining.append(data)
+            }
+        }
+        pendingDirect = remaining
+    }
+
     func activate() {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
@@ -41,6 +110,8 @@ final class PhoneSync: NSObject, ObservableObject {
         session.activate()
         // Whatever the iPhone last delivered is already waiting here.
         apply(session.receivedApplicationContext)
+        // Push up anything queued while we were offline / token-less.
+        Task { await flushDirectCompletions() }
     }
 
     /// Ask the iPhone for today's workout right now (used on launch when
@@ -53,16 +124,30 @@ final class PhoneSync: NSObject, ObservableObject {
         }, errorHandler: nil)
     }
 
-    /// Queue a finished workout's result back to the iPhone.
+    /// Send a finished workout's result up two independent ways:
+    ///   1. transferUserInfo → iPhone → backend (reliable when the iPhone is
+    ///      around; survives the iPhone being briefly unreachable).
+    ///   2. a direct POST from the watch to the backend (covers the iPhone
+    ///      being off / the app killed). Persisted + retried until accepted.
+    /// The backend de-dupes, so both arriving is fine.
     func sendCompletion(_ completion: WatchCompletion) {
-        guard WCSession.isSupported() else { return }
         guard let data = try? JSONEncoder().encode(completion) else { return }
-        WCSession.default.transferUserInfo(["completion": data])
+        if WCSession.isSupported() {
+            WCSession.default.transferUserInfo(["completion": data])
+        }
+        enqueueDirect(data)
+        Task { await flushDirectCompletions() }
     }
 
     // MARK: Apply incoming context / reply
 
     fileprivate func apply(_ payload: [String: Any]) {
+        // Auth token the iPhone shares so the watch can post completions
+        // directly. Persist it; if it changed, retry any queued completions.
+        if let token = payload["authToken"] as? String, !token.isEmpty, token != authToken {
+            authToken = token
+            Task { await flushDirectCompletions() }
+        }
         // Readiness rides alongside the workout (or arrives on its own) — decode
         // it independently so a rest/race day still lights up the glance.
         if let rData = payload["readiness"] as? Data,
