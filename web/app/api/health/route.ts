@@ -25,6 +25,7 @@
  */
 
 import { gatherCoachState, type CoachState } from '../../../lib/coach-state';
+import { buildTrainingLoad } from '../../../lib/training-load';
 import { coach } from '../../../coach/coach';
 import { query } from '../../../lib/db';
 import { getProfile } from '../../../lib/profile-store';
@@ -773,36 +774,30 @@ function buildHrZones(_today: string, state: CoachState): HealthApiHrZoneTime {
 // ─────────────────────────────────────────────────────────────────────
 
 function buildTrainingStress(state: CoachState): HealthApiTrainingStress {
-  // Real CTL/ATL/TSB from state.volume (Banister fitness-fatigue model
-  // per Research/00a §CTL/ATL/TSB). CTL approximates the 8-week-rolling
-  // chronic training load; ATL the 7-day acute load. TSB = CTL − ATL.
-  // 1.8 and 1.5 are TRIMP-per-mile coefficients tuned for easy/aerobic
-  // runs (more accurate when HR streams land).
-  const ctl = state.volume.weeklyAvg8w > 0
-    ? Math.round(state.volume.weeklyAvg8w * 1.8)
-    : 0;
-  const atl = state.volume.last7Mi > 0
-    ? Math.round(state.volume.last7Mi * 1.5)
-    : 0;
-  const tsb = ctl - atl;
+  // Real CTL/ATL/TSB + verdict labels from the shared pure helper
+  // (lib/training-load.ts), driven by state.volume per Research/00a
+  // §CTL/ATL/TSB. Identical scalars to before — the math just moved
+  // into the lib so /health can render the same numbers.
+  const load = buildTrainingLoad({
+    weeklyAvg8wMi: state.volume.weeklyAvg8w,
+    last7Mi: state.volume.last7Mi,
+  });
   // 30-day TSS series — derived. Without per-day TRIMP we approximate
   // a flat arc around current CTL. Real series will land alongside the
   // strava activity HR-stream pipeline.
   const series30d = Array.from({ length: 30 }, (_, i) => {
     const drift = Math.sin((i / 30) * Math.PI) * 6; // gentle arc
-    return Math.max(0, Math.round(ctl + drift));
+    return Math.max(0, Math.round(load.fitnessCtl + drift));
   });
-  const formChip = tsb > 10 ? '▲ FRESH' : tsb > 0 ? 'NEUTRAL' : tsb > -20 ? 'BUILDING' : 'OVERLOAD';
-  const verdictLabel = tsb > 10 ? 'RACE READY' : tsb > 0 ? 'HOLDING' : 'BUILDING';
 
   return {
-    fitnessCtl: ctl,
-    fatigueAtl: atl,
-    formTsb: tsb,
+    fitnessCtl: load.fitnessCtl,
+    fatigueAtl: load.fatigueAtl,
+    formTsb: load.formTsb,
     series30d,
-    peakWindowLabel: ctl > 0 ? `CURRENT CTL ${ctl} · ATL ${atl}` : 'INSUFFICIENT VOLUME DATA',
-    verdictLabel,
-    formChip,
+    peakWindowLabel: load.peakWindowLabel,
+    verdictLabel: load.verdictLabel,
+    formChip: load.formChip,
     source: 'derived',
   };
 }

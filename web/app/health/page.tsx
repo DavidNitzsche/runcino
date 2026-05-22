@@ -27,6 +27,12 @@ import { computeReadinessScore } from '@/lib/readiness-score';
 import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { buildHrZonesBundle, type ZoneTier } from '@/lib/hr-zones';
+import { gatherCoachState } from '@/lib/coach-state';
+import { buildTrainingLoad } from '@/lib/training-load';
+import { generateWeeklyInsights } from '@/lib/weekly-insights';
+import { getRealPlanWeeks } from '@/lib/plan-weeks';
+import { resolvePlanUserId } from '@/lib/plan-user';
+import { findCurrentWeek } from '@/lib/synthetic-plan';
 import './health-v4.css';
 
 export default async function HealthPage() {
@@ -205,6 +211,35 @@ export default async function HealthPage() {
 
   const heroTitle = readyState ? stateWord.toUpperCase() : (hasBio ? 'TRACKED' : (checkin ? 'CHECK IN LOGGED' : 'NO DATA'));
 
+  // ── Training Load (CTL / ATL / TSB) — real, from coach-state volume ──
+  // Same computation /api/health serves, via the shared pure helper.
+  const coachState = await gatherCoachState({ userId: auth.id }).catch(() => null);
+  const trainingLoad = coachState
+    ? buildTrainingLoad({
+        weeklyAvg8wMi: coachState.volume.weeklyAvg8w,
+        last7Mi: coachState.volume.last7Mi,
+      })
+    : null;
+
+  // ── Weekly insights — plan-aware pattern reads (same call /overview uses) ──
+  // Needs the runner's real plan (current week's planned mileage + phase)
+  // and the VDOT-derived easy band from resolveFitness.
+  let insights: Awaited<ReturnType<typeof generateWeeklyInsights>> = [];
+  try {
+    const weeks = await getRealPlanWeeks(await resolvePlanUserId());
+    if (weeks.length > 0 && fitness) {
+      const currentWeek = findCurrentWeek(weeks, today);
+      insights = await generateWeeklyInsights(auth.id, today, {
+        thisWeekPlannedMi: currentWeek.plannedMi,
+        easyPaceLowSec: fitness.easyPaceBand.lowS,
+        easyPaceHighSec: fitness.easyPaceBand.highS,
+        phase: currentWeek.phase,
+      });
+    }
+  } catch {
+    insights = [];
+  }
+
   return (
     <div className="health-v4-page">
       <Topbar activeTab="health" showAdmin={auth.is_admin} />
@@ -357,10 +392,22 @@ export default async function HealthPage() {
             </div>
           </div>
           <div className="insights-list">
-            <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
-              No insights yet. Connect a wearable + log a few days of check-ins, and patterns
-              from the last 14 days will surface here automatically.
-            </div>
+            {insights.length > 0 ? (
+              insights.map((ins, i) => {
+                const icon = ins.tone === 'green' ? '↑' : ins.tone === 'amber' ? '!' : 'i';
+                const title = ins.tone === 'green' ? 'On track' : ins.tone === 'amber' ? 'Worth a look' : 'Pattern';
+                return (
+                  <Insight key={i} tone={ins.tone} icon={icon} title={title}>
+                    {ins.text}
+                  </Insight>
+                );
+              })
+            ) : (
+              <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
+                No insights yet. Connect a wearable + log a few days of check-ins, and patterns
+                from the last 14 days will surface here automatically.
+              </div>
+            )}
           </div>
         </div>
 
@@ -371,31 +418,50 @@ export default async function HealthPage() {
               <div className="card-title">Training Load</div>
               <div className="card-sub">Fitness / fatigue / form curves derived from training data</div>
             </div>
-            <div className="card-meta" style={{ color: 'rgba(13,15,18,.45)' }}>No data</div>
+            <div className="card-meta" style={{ color: trainingLoad?.hasData ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
+              {trainingLoad?.hasData ? trainingLoad.verdictLabel : 'No data'}
+            </div>
           </div>
 
           <div className="form-stats">
             <div className="form-stat">
               <div className="form-stat-label">Fitness</div>
-              <div className="form-stat-val" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
-              <div className="form-stat-sub">No data</div>
+              <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}>
+                {trainingLoad?.hasData ? trainingLoad.fitnessCtl : '—'}
+              </div>
+              <div className="form-stat-sub">{trainingLoad?.hasData ? 'CTL · 8-week load' : 'No data'}</div>
             </div>
             <div className="form-stat">
               <div className="form-stat-label">Fatigue</div>
-              <div className="form-stat-val" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
-              <div className="form-stat-sub">No data</div>
+              <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}>
+                {trainingLoad?.hasData ? trainingLoad.fatigueAtl : '—'}
+              </div>
+              <div className="form-stat-sub">{trainingLoad?.hasData ? 'ATL · 7-day load' : 'No data'}</div>
             </div>
             <div className="form-stat">
               <div className="form-stat-label">Form</div>
-              <div className="form-stat-val" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
-              <div className="form-stat-sub">No data</div>
+              <div
+                className={`form-stat-val${trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? ' green' : trainingLoad.formTsb < -20 ? ' orange' : '') : ''}`}
+                style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}
+              >
+                {trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? `+${trainingLoad.formTsb}` : trainingLoad.formTsb) : '—'}
+              </div>
+              <div className="form-stat-sub">{trainingLoad?.hasData ? `TSB · ${trainingLoad.formChip}` : 'No data'}</div>
             </div>
           </div>
 
-          <div style={{ padding: '40px 40px 48px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
-            Training load curves need ~30 days of activity history before they read meaningfully.
-            Keep logging runs — Strava is connected — and the chart will fill in here.
-          </div>
+          {trainingLoad?.hasData ? (
+            <div style={{ padding: '4px 40px 12px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              {trainingLoad.peakWindowLabel}. Form (TSB) = Fitness − Fatigue: positive means fresh,
+              negative means you&apos;re carrying load. A per-day curve lands once Strava activity HR
+              streams feed daily training stress.
+            </div>
+          ) : (
+            <div style={{ padding: '40px 40px 48px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
+              Training load curves need ~30 days of activity history before they read meaningfully.
+              Keep logging runs — Strava is connected — and the chart will fill in here.
+            </div>
+          )}
         </div>
 
         {/* ── RECOVERY VITALS ── */}

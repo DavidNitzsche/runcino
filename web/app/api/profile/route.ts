@@ -29,7 +29,8 @@ import type { NormalizedActivity } from '../strava/activities/route-shared';
 import { getProfile, type ProfileRow } from '../../../lib/profile-store';
 import { getUserPrefs, type PrefsRow } from '../../../lib/prefs-store';
 import { listPersonalGoals, type GoalRow } from '../../../lib/goals-store';
-import { vdotSnapshot } from '../../../lib/vdot';
+import { vdotSnapshot, pacesFromVdot } from '../../../lib/vdot';
+import { fmtPaceBand } from '../../../lib/fitness-resolver';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 import {
@@ -1100,15 +1101,17 @@ function buildEngineBlock(
     },
   ];
 
-  // Pace zone table — empty when no VDOT signal.
-  const paceZones: Array<{ label: string; accent: string; value: string }> = [];
-  // Note: when VDOT is available we'd ideally map vdotSnapshot.paces
-  // into display strings here. That requires re-snapshotting state
-  // (vdot only carries display strings via ProfileApiVdot). Until the
-  // engine surfaces a numeric paceset directly we leave the table
-  // empty when no VDOT, and the page renders "NO DATA YET" in its
-  // place. When VDOT IS available the page renders the existing
-  // hero-only tile.
+  // Pace zone table — now computed from the numeric aggregate VDOT
+  // (state.aggregateVdotValue → pacesFromVdot), the same source the
+  // training page + plan workouts use. Empty only when there's no VDOT.
+  const paceSet = state.aggregateVdotValue ? pacesFromVdot(state.aggregateVdotValue) : null;
+  const paceZones: Array<{ label: string; accent: string; value: string }> = paceSet ? [
+    { label: 'Easy',      accent: 'green',  value: `${fmtPaceBand(paceSet.E)}/mi` },
+    { label: 'Marathon',  accent: 'blue',   value: `${fmtPaceBand(paceSet.M)}/mi` },
+    { label: 'Threshold', accent: 'amber',  value: `${fmtPaceBand(paceSet.T)}/mi` },
+    { label: 'Interval',  accent: 'orange', value: `${fmtPaceBand(paceSet.I)}/mi` },
+    { label: 'Rep',       accent: 'red',    value: `${fmtPaceBand(paceSet.R)}/mi` },
+  ] : [];
 
   // Plan integrity — Wave H caught the prior hardcoded "12 of 12" pass
   // count, which never came from the engine. Until coach.engineDetails()
