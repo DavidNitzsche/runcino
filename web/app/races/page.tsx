@@ -64,6 +64,8 @@ interface RecentRace {
   priority: 'A' | 'B' | 'C';
   note?: string;
   currentAnchor?: boolean;
+  /** Where clicking the row goes — a race detail/recap or a run recap. */
+  href?: string;
 }
 
 function fmtMonthDay(iso: string): string {
@@ -161,6 +163,7 @@ export default async function RacesPage() {
           finish: fmtTime(finishS),
           pace: fmtPace(paceSec),
           priority: r.meta.priority ?? 'A',
+          href: `/races/${r.slug}`,
         };
       }),
     // Then: Strava activities tagged as Race that aren't already in saved races (best-effort dedupe by date)
@@ -182,6 +185,7 @@ export default async function RacesPage() {
         finish: fmtTime(finishS),
         pace: fmtPace(paceSec),
         priority: 'A',
+        href: `/runs/${a.id}`,
       };
     }),
   ]
@@ -651,18 +655,29 @@ export default async function RacesPage() {
             </div>
           ) : (
             <div className="races-recent-list">
-              {recent.map((r) => (
-                <div key={`${r.date}-${r.name}`} className={`races-recent-row ${r.currentAnchor ? 'is-anchor' : ''}`}>
-                  <div className="races-recent-date">{r.date.slice(5).replace('-', '/')}</div>
-                  <span className={`races-recent-priority p-${r.priority.toLowerCase()}`}>{r.priority}</span>
-                  <div className="races-recent-info">
-                    <div className="races-recent-name">{r.name}</div>
-                    <div className="races-recent-meta">{r.distanceLabel}{r.note ? ` · ${r.note}` : ''}</div>
-                  </div>
-                  <div className="races-recent-time">{r.finish}</div>
-                  <div className="races-recent-pace">{r.pace}</div>
-                </div>
-              ))}
+              {recent.map((r) => {
+                const Inner = (
+                  <>
+                    <div className="races-recent-date">{r.date.slice(5).replace('-', '/')}</div>
+                    <span className={`races-recent-priority p-${r.priority.toLowerCase()}`}>{r.priority}</span>
+                    <div className="races-recent-info">
+                      <div className="races-recent-name">{r.name}</div>
+                      <div className="races-recent-meta">{r.distanceLabel}{r.note ? ` · ${r.note}` : ''}</div>
+                    </div>
+                    <div className="races-recent-time">{r.finish}</div>
+                    <div className="races-recent-pace">{r.pace}</div>
+                    {r.href && <span className="races-recent-chev" aria-hidden>›</span>}
+                  </>
+                );
+                const cls = `races-recent-row ${r.currentAnchor ? 'is-anchor' : ''} ${r.href ? 'is-clickable' : ''}`;
+                return r.href ? (
+                  <a key={`${r.date}-${r.name}`} href={r.href} className={cls} style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
+                    {Inner}
+                  </a>
+                ) : (
+                  <div key={`${r.date}-${r.name}`} className={cls}>{Inner}</div>
+                );
+              })}
             </div>
           )}
         </div>

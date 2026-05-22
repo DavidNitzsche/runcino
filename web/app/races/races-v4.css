@@ -360,7 +360,7 @@
 .races-v4-page .races-recent-list { padding: 8px 0 4px; }
 .races-v4-page .races-recent-row {
   display: grid;
-  grid-template-columns: 70px 32px 1fr 90px 90px;
+  grid-template-columns: 70px 32px 1fr 90px 90px 14px;
   gap: 16px;
   align-items: center;
   padding: 16px 40px;
@@ -370,6 +370,22 @@
 .races-v4-page .races-recent-row:last-child { border-bottom: none; }
 .races-v4-page .races-recent-row.is-anchor {
   background: rgba(232,93,38,.04);
+}
+.races-v4-page .races-recent-row.is-clickable {
+  transition: background .12s ease;
+}
+.races-v4-page .races-recent-row.is-clickable:hover {
+  background: rgba(13,15,18,.035);
+}
+.races-v4-page .races-recent-chev {
+  font-family: 'Inter', sans-serif;
+  font-size: 18px;
+  line-height: 1;
+  color: rgba(13,15,18,.32);
+  text-align: right;
+}
+.races-v4-page .races-recent-row.is-clickable:hover .races-recent-chev {
+  color: var(--orange, #E85D26);
 }
 .races-v4-page .races-recent-date {
   font-family: 'JetBrains Mono', monospace;
@@ -436,5 +452,6 @@
     padding: 14px 20px;
   }
   .races-v4-page .races-recent-pace { display: none; }
+  .races-v4-page .races-recent-chev { display: none; }
   .races-v4-page .races-pr-grid { padding: 16px 20px 24px; }
 }
