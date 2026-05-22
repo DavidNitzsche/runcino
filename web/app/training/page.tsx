@@ -225,7 +225,7 @@ export default async function TrainingPage() {
   // same plan_mutations log the /overview "Coach updated your plan" card
   // reads. Grouped by reason; direction inferred from the change.
   const activePlan = await getActivePlan(await resolvePlanUserId()).catch(() => null);
-  let ADAPTED_ITEMS: Array<{ dir: 'up' | 'down'; date: string; change: React.ReactNode; why: string }> = [];
+  let ADAPTED_ITEMS: Array<{ dir: 'up' | 'down'; date: string; change: React.ReactNode }> = [];
   if (activePlan) {
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const muts = await listMutations(activePlan.id, since).catch(() => []);
@@ -237,7 +237,6 @@ export default async function TrainingPage() {
         dir: /\b(above plan|bump|drift|increase|step up|advance|\+|raise)\b/i.test(m.reason) ? 'up' as const : 'down' as const,
         date: formatShortDate(m.workoutDateISO),
         change: m.reason,
-        why: m.citation ?? '',
       }));
   }
 
@@ -485,7 +484,7 @@ export default async function TrainingPage() {
               <div className="adapted-title">{ADAPTED_ITEMS.length} adjustments this week</div>
               <div className="adapted-sub">Plan adapted · Last 7 days</div>
             </div>
-            <span className="adapted-pin">Doctrine driven</span>
+            <span className="adapted-pin">Coach adjusted</span>
           </div>
           <div className="adapted-items">
             {ADAPTED_ITEMS.length === 0 ? (
@@ -502,7 +501,6 @@ export default async function TrainingPage() {
                   <div className="adapted-date">{item.date}</div>
                   <div>
                     <div className="adapted-change">{item.change}</div>
-                    <div className="adapted-why">{item.why}</div>
                   </div>
                 </div>
               ))

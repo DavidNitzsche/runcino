@@ -157,10 +157,17 @@ export async function generateWeeklyInsights(
   // ── 2. Mileage vs PLANNED weekly mileage ───────────────────
   const totalThis = thisWeek.reduce((s, r) => s + (Number(r.mi) || 0), 0);
 
-  // Philosophy guard: only flag mileage deviation when this week
-  // is also far enough into the calendar to have a meaningful sample.
-  // Earlier than mid-week, the user has too few runs in this 7-day
-  // window to fairly assess "over/under plan." Also adds falsifier copy.
+  // The lookback window is a ROLLING last-7-days, not the Mon–Sun
+  // calendar week. Early in the week those trailing 7 days mostly
+  // reflect LAST week's running, so we can't fairly say you're "on
+  // plan" or "short" for the current week yet — and claiming "X of Y
+  // this week" mid-week reads as if the week were already finished.
+  // So: only render the on-plan / short verdict once the week is
+  // essentially complete (Sat/Sun), when the trailing 7 days line up
+  // with the current plan week. "Over plan" stays on every day —
+  // running well past a full week's mileage is a real signal anytime.
+  const dowMon0 = (new Date(todayISO + 'T00:00:00Z').getUTCDay() + 6) % 7; // Mon=0 … Sun=6
+  const weekEssentiallyComplete = dowMon0 >= 5; // Sat or Sun
   if (thisWeekPlannedMi > 0 && totalThis > 0 && thisWeek.length >= 3) {
     const overPct = Math.round(((totalThis - thisWeekPlannedMi) / thisWeekPlannedMi) * 100);
     if (overPct >= 25) {
@@ -171,16 +178,16 @@ export async function generateWeeklyInsights(
           `If next week lands within ±10% of plan this resolves itself.`,
         tone: 'amber',
       });
-    } else if (overPct <= -40) {
+    } else if (overPct <= -40 && weekEssentiallyComplete) {
       const pct = Math.abs(overPct);
       insights.push({
         text:
-          `${totalThis.toFixed(0)} mi (last 7 days) vs ${thisWeekPlannedMi.toFixed(0)} planned (${pct}% short). ` +
+          `${totalThis.toFixed(0)} mi this week vs ${thisWeekPlannedMi.toFixed(0)} planned (${pct}% short). ` +
           `Missed sessions adding up — check back in or adjust next week's plan. ` +
           `One short week is fine; two in a row means the plan needs to bend.`,
         tone: 'amber',
       });
-    } else {
+    } else if (overPct > -40 && overPct < 25 && weekEssentiallyComplete) {
       goodNotes.push({
         text: `Mileage is right on plan — ${totalThis.toFixed(0)} of ${thisWeekPlannedMi.toFixed(0)} mi this week. Steady is exactly what works.`,
         tone: 'green',

@@ -163,22 +163,6 @@ export function NextPushCard({ decision }: NextPushCardProps) {
                   >
                     SIGNAL · {p.signal}
                   </p>
-
-                  {/* Citation strip — the doctrine line that backs it. */}
-                  {p.citations.length > 0 && (
-                    <p
-                      style={{
-                        margin: 0,
-                        fontFamily: 'var(--f-data)',
-                        fontSize: 10,
-                        fontWeight: 500,
-                        color: 'var(--t2)',
-                        letterSpacing: '0.5px',
-                      }}
-                    >
-                      {p.citations.map((c) => c.section).join(' · ')}
-                    </p>
-                  )}
                 </div>
               </div>
             );

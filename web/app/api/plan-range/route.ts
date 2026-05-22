@@ -86,16 +86,16 @@ function mapToLabel(planType: string): string {
 
 function mapToDescription(planType: string): string {
   switch (planType) {
-    case 'easy':              return 'Easy / conversational. E pace per Daniels (Research/01).';
-    case 'long':              return 'Long aerobic run at E pace. Builds durability (Research/00a §Long runs).';
-    case 'threshold':         return 'Threshold continuous block at T pace (Research/01 §Daniels training paces).';
-    case 'interval':          return 'VO₂max intervals at I pace — 1000-1200 m reps (Research/01 §Dosing rules).';
-    case 'mp':                return 'Marathon-pace block (Research/01 §M pace).';
-    case 'race':              return 'Race day — execute per race-week pacing strategy (Research/08).';
-    case 'shakeout':          return 'Short shakeout, optional 4 strides.';
-    case 'recovery':          return 'Recovery run — below E pace. Circulation, not adaptation.';
+    case 'easy':              return 'Easy, conversational pace — you should be able to chat the whole way.';
+    case 'long':              return 'Long, easy run. Builds the endurance to go the distance.';
+    case 'threshold':         return 'A steady, comfortably hard block — right at the edge you can hold.';
+    case 'interval':          return 'Short hard reps with rest between, to sharpen your top-end speed.';
+    case 'mp':                return 'A block at your goal race pace.';
+    case 'race':              return 'Race day — run your plan.';
+    case 'shakeout':          return 'Short and easy, with a few quick strides to wake the legs up.';
+    case 'recovery':          return 'Very easy recovery run — just keep the blood moving.';
     case 'rest':              return 'Full rest day.';
-    case 'race_week_tuneup':  return 'Race week sharpener — short tune-up to prime neuromuscular readiness without adding fatigue (Research/08 §9.3).';
+    case 'race_week_tuneup':  return 'A short, sharp tune-up — primes the legs for race day without tiring you out.';
     default:                  return '';
   }
 }
