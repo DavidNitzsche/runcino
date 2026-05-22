@@ -126,7 +126,7 @@ export function GoalEditIsland({ slug, goalDisplay, goalFinishS, raceDistanceMi 
           .goal-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
           .goal-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
           .goal-err {
-            font-family: 'Inter', sans-serif; font-size: 11px; color: #B00020;
+            font-family: 'Inter', sans-serif; font-size: 11px; color: #FC4D64;
             margin-top: 6px;
           }
         `}</style>

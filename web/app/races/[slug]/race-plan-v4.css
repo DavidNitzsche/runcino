@@ -155,7 +155,7 @@
   font-family: 'Bebas Neue', sans-serif; font-size: 36px;
   line-height: 1; color: #0D0F12; margin-top: 6px;
 }
-.race-plan-v4-page .path-stat-value.green  { color: #2CA82F; }
+.race-plan-v4-page .path-stat-value.green  { color: #3EBD41; }
 .race-plan-v4-page .path-stat-value.orange { color: #E85D26; }
 .race-plan-v4-page .path-stat-sub {
   font-family: 'Inter', sans-serif; font-size: 12px;
@@ -211,7 +211,7 @@
 }
 .race-plan-v4-page .profile-phase-cell.amber  { border-color: #D4900A; }
 .race-plan-v4-page .profile-phase-cell.blue   { border-color: #2563EB; }
-.race-plan-v4-page .profile-phase-cell.green  { border-color: #2CA82F; }
+.race-plan-v4-page .profile-phase-cell.green  { border-color: #3EBD41; }
 .race-plan-v4-page .profile-phase-cell.orange { border-color: #E85D26; }
 .race-plan-v4-page .profile-phase-cell .pcell-grade {
   font-family: 'Bebas Neue', sans-serif; font-size: 18px;
@@ -219,7 +219,7 @@
 }
 .race-plan-v4-page .profile-phase-cell.amber  .pcell-grade { color: #D4900A; }
 .race-plan-v4-page .profile-phase-cell.blue   .pcell-grade { color: #2563EB; }
-.race-plan-v4-page .profile-phase-cell.green  .pcell-grade { color: #2CA82F; }
+.race-plan-v4-page .profile-phase-cell.green  .pcell-grade { color: #3EBD41; }
 .race-plan-v4-page .profile-phase-cell.orange .pcell-grade { color: #E85D26; }
 
 /* Phase-by-phase plan */
@@ -245,7 +245,7 @@
 .race-plan-v4-page .phase-card.blue   { background: rgba(37,99,235,.07); }
 .race-plan-v4-page .phase-card.blue::before   { background: #2563EB; }
 .race-plan-v4-page .phase-card.green  { background: rgba(44,168,47,.06); }
-.race-plan-v4-page .phase-card.green::before  { background: #2CA82F; }
+.race-plan-v4-page .phase-card.green::before  { background: #3EBD41; }
 .race-plan-v4-page .phase-card.orange { background: rgba(232,93,38,.08); }
 .race-plan-v4-page .phase-card.orange::before { background: #E85D26; }
 .race-plan-v4-page .phase-num {
@@ -277,7 +277,7 @@
 }
 .race-plan-v4-page .phase-range .grade-pill.amber  { background: rgba(212,144,10,.14); color: #D4900A; }
 .race-plan-v4-page .phase-range .grade-pill.blue   { background: rgba(37,99,235,.12);  color: #2563EB; }
-.race-plan-v4-page .phase-range .grade-pill.green  { background: rgba(44,168,47,.14);  color: #2CA82F; }
+.race-plan-v4-page .phase-range .grade-pill.green  { background: rgba(44,168,47,.14);  color: #3EBD41; }
 .race-plan-v4-page .phase-range .grade-pill.orange { background: rgba(232,93,38,.14);  color: #E85D26; }
 .race-plan-v4-page .phase-elev {
   font-family: 'Inter', sans-serif; font-size: 11px;
@@ -382,7 +382,7 @@
   padding: 4px 8px; border-radius: 6px; text-align: center;
 }
 .race-plan-v4-page .linked-tag.threshold { background: rgba(212,144,10,.14); color: #D4900A; }
-.race-plan-v4-page .linked-tag.long      { background: rgba(44,168,47,.14);  color: #2CA82F; }
+.race-plan-v4-page .linked-tag.long      { background: rgba(44,168,47,.14);  color: #3EBD41; }
 .race-plan-v4-page .linked-tag.race-sim  { background: rgba(232,93,38,.14);  color: #E85D26; }
 
 /* ── Fueling plan ────────────────────────────────────────── */

@@ -136,7 +136,7 @@ export function FuelEditIsland({
             .fuel-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
             .fuel-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
             .fuel-err {
-              font-family: 'Inter', sans-serif; font-size: 11px; color: #B00020;
+              font-family: 'Inter', sans-serif; font-size: 11px; color: #FC4D64;
               margin-top: 6px;
             }
           `}</style>

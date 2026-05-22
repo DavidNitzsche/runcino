@@ -104,7 +104,7 @@ export function RaceProjectionChart({ projection }: Props) {
 
         {/* Plan line */}
         {projection.hasMeaningfulPlanTrajectory && (
-          <path d={planPath} fill="none" stroke="#1f6a21" strokeWidth="1.6"
+          <path d={planPath} fill="none" stroke="#3EBD41" strokeWidth="1.6"
             strokeLinecap="round" strokeLinejoin="round" />
         )}
 
@@ -113,7 +113,7 @@ export function RaceProjectionChart({ projection }: Props) {
           r="3" fill="#E85D26" />
         {projection.hasMeaningfulPlanTrajectory && (
           <circle cx={xForWeek(projection.weeksToRace)} cy={yForTime(projection.points[projection.points.length - 1].planFinishS)}
-            r="3" fill="#1f6a21" />
+            r="3" fill="#3EBD41" />
         )}
       </svg>
 
@@ -133,7 +133,7 @@ export function RaceProjectionChart({ projection }: Props) {
         </span>
         {projection.hasMeaningfulPlanTrajectory && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ width: 10, height: 2, background: '#1f6a21', display: 'inline-block' }} />
+            <span style={{ width: 10, height: 2, background: '#3EBD41', display: 'inline-block' }} />
             If you hit prescribed · {fmtTime(projection.points[projection.points.length - 1].planFinishS)}
           </span>
         )}

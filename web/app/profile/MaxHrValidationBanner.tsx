@@ -160,7 +160,7 @@ export function MaxHrValidationBanner({ verdict }: Props) {
         }
         .mhr-keep:disabled { opacity: 0.5; cursor: not-allowed; }
         .mhr-err {
-          font-family: 'Inter', sans-serif; font-size: 11px; color: #B00020;
+          font-family: 'Inter', sans-serif; font-size: 11px; color: #FC4D64;
         }
         .mhr-banner-falsifier {
           font-family: 'Inter', sans-serif; font-size: 11px;

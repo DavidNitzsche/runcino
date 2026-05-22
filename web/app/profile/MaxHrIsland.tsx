@@ -283,8 +283,8 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
         .max-hr-save-btn { background: var(--t0); color: #fff; border-color: var(--t0); }
         .max-hr-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .max-hr-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
-        .max-hr-clear-btn { background: transparent; color: #B00020; border-color: rgba(176,0,32,.25); }
-        .max-hr-err { color: #B00020; font-size: 12px; }
+        .max-hr-clear-btn { background: transparent; color: #FC4D64; border-color: rgba(252,77,100,.25); }
+        .max-hr-err { color: #FC4D64; font-size: 12px; }
       `}</style>
     </div>
   );

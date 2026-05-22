@@ -70,7 +70,7 @@ export function Z2Sparkline({ data }: Props) {
     : deltaS >= 5  ? `↓ ${deltaS}s/mi slower`
     : 'steady';
   const trendColor = deltaS == null ? '#888'
-    : deltaS <= -5 ? '#1f6a21'
+    : deltaS <= -5 ? '#3EBD41'
     : deltaS >= 5  ? '#b3450a'
     : '#666';
 

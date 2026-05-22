@@ -454,33 +454,17 @@ export default async function OverviewPage() {
                   (suspended via injury mark OR no activity history). */}
               {readiness && readiness.score != null ? (
                 <>
-                  <div className="readiness-header">
-                    <span className="readiness-label-text">Readiness</span>
-                    <span
-                      className="badge-ready"
-                      style={{
-                        background:
-                          readiness.state === 'green' ? 'rgba(31,106,33,.12)'
-                          : readiness.state === 'yellow' ? 'rgba(232,159,38,.18)'
-                          : 'rgba(176,0,32,.12)',
-                        color:
-                          readiness.state === 'green' ? '#1f6a21'
-                          : readiness.state === 'yellow' ? '#B3450A'
-                          : '#B00020',
-                      }}
-                    >
-                      {readiness.state === 'green' ? 'GREEN' : readiness.state === 'yellow' ? 'YELLOW' : 'RED'}
-                    </span>
-                  </div>
+                  {/* No "READINESS · GREEN" header — the ring + score + the
+                      recommendation line below already say it. */}
                   <div className="readiness-ring-wrap">
                     {(() => {
                       const radius = 130;
                       const circumference = 2 * Math.PI * radius;  // ~816.81
                       const filled = (readiness.score / 100) * circumference * 0.75;  // 270° arc
                       const empty = circumference - filled;
-                      const color = readiness.state === 'green' ? '#1f6a21'
-                        : readiness.state === 'yellow' ? '#E89F26'
-                        : '#B00020';
+                      const color = readiness.state === 'green' ? '#3EBD41'
+                        : readiness.state === 'yellow' ? '#F3AD38'
+                        : '#FC4D64';
                       return (
                         <svg width="300" height="300" viewBox="0 0 300 300">
                           {/* Track */}

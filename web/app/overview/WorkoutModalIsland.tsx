@@ -173,7 +173,7 @@ export function HeroActions({ today, todayDay, completed }: { today: string; tod
          : skipped ? '↩ UNDO SKIP TODAY'
          : 'SKIP TODAY'}
       </button>
-      {err && <span style={{ color: '#B00020', fontSize: 12, marginLeft: 8 }}>{err}</span>}
+      {err && <span style={{ color: '#FC4D64', fontSize: 12, marginLeft: 8 }}>{err}</span>}
       {/* Body-attribute-driven dim — applied site-wide whenever today
           is skipped. Parent hero card opts in by selecting on this
           attribute. */}

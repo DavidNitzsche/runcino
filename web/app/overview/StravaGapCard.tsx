@@ -70,7 +70,7 @@ function stateColor(state: GapState): { accent: string; bg: string; border: stri
     case 'e1-8to14':
       return { accent: '#B3450A', bg: 'rgba(232,128,33,.06)', border: 'rgba(232,128,33,.32)' };
     case 'e1-15plus':
-      return { accent: '#B00020', bg: 'rgba(176,0,32,.05)', border: 'rgba(176,0,32,.28)' };
+      return { accent: '#FC4D64', bg: 'rgba(252,77,100,.05)', border: 'rgba(252,77,100,.28)' };
     default:
       return { accent: '#080808', bg: 'transparent', border: 'rgba(8,8,8,.10)' };
   }
@@ -175,8 +175,8 @@ export function StravaGapCard({ state, daysSinceLastRun, lastRunDate }: Props) {
             fontFamily: 'Oswald, sans-serif', fontWeight: 600,
             fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase',
             padding: '8px 13px', borderRadius: 6, cursor: 'pointer',
-            background: 'transparent', color: '#B00020',
-            border: '1px solid rgba(176,0,32,.42)',
+            background: 'transparent', color: '#FC4D64',
+            border: '1px solid rgba(252,77,100,.42)',
             opacity: busy !== null ? 0.5 : 1,
           }}
         >
@@ -197,7 +197,7 @@ export function StravaGapCard({ state, daysSinceLastRun, lastRunDate }: Props) {
         >
           {busy === 'unexpected' ? 'Dismissing…' : 'Unexpected · keep prompts'}
         </button>
-        {err && <span style={{ fontSize: 11, color: '#B00020' }}>{err}</span>}
+        {err && <span style={{ fontSize: 11, color: '#FC4D64' }}>{err}</span>}
       </div>
     </div>
   );

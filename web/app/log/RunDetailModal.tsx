@@ -241,7 +241,7 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             color: rgba(8,8,8,.45);
           }
           .rd-close:hover { color: #080808; }
-          .rd-error { color: #B00020; font-family: 'Inter', sans-serif; padding: 20px; text-align: center; }
+          .rd-error { color: #FC4D64; font-family: 'Inter', sans-serif; padding: 20px; text-align: center; }
           .rd-loading { padding: 40px; text-align: center; color: rgba(8,8,8,.55); font-family: 'Inter', sans-serif; font-size: 13px; }
 
           .rd-eyebrow {

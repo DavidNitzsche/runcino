@@ -610,7 +610,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                       background: readiness.onPace
                         ? 'rgba(62,189,65,.08)'
                         : 'rgba(232,128,33,.06)',
-                      color: readiness.onPace ? '#1f6a21' : 'var(--accent, #E85D26)',
+                      color: readiness.onPace ? '#3EBD41' : 'var(--accent, #E85D26)',
                     }}
                   >
                     {readiness.onPace ? (

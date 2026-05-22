@@ -364,7 +364,7 @@ export default async function TrainingPage() {
                     borderRadius: 6,
                     fontSize: 11,
                     fontWeight: 600,
-                    color: blockBankMi >= 0 ? '#1f6a21' : '#B3450A',
+                    color: blockBankMi >= 0 ? '#3EBD41' : '#B3450A',
                     background: blockBankMi >= 0 ? 'rgba(31,106,33,.08)' : 'rgba(232,128,33,.08)',
                   }}
                   title="Actual miles run since the block started, vs the prescribed mileage for the same elapsed time."

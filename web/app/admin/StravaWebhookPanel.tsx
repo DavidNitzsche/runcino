@@ -81,7 +81,7 @@ export function StravaWebhookPanel() {
   }
 
   if (!state) return <div className="admin-empty">Loading…</div>;
-  if (state.error) return <div className="admin-empty" style={{ color: '#B00020' }}>{state.error}</div>;
+  if (state.error) return <div className="admin-empty" style={{ color: '#FC4D64' }}>{state.error}</div>;
 
   const active = state.subscriptions ?? [];
   const isActive = active.length > 0;
@@ -92,7 +92,7 @@ export function StravaWebhookPanel() {
         <span
           style={{
             display: 'inline-block', width: 10, height: 10, borderRadius: 999,
-            background: isActive ? '#2CA82F' : '#B00020',
+            background: isActive ? '#3EBD41' : '#FC4D64',
           }}
         />
         <span style={{ fontFamily: 'Inter', fontSize: 14, fontWeight: 600 }}>

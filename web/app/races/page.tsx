@@ -28,7 +28,7 @@ import './races-v4.css';
 
 function trajectoryColor(state: 'ahead' | 'on-track' | 'behind' | 'collecting-evidence'): string {
   switch (state) {
-    case 'ahead':                return '#1f6a21';
+    case 'ahead':                return '#3EBD41';
     case 'on-track':             return '#0D6E8F';
     case 'behind':               return '#B3450A';
     case 'collecting-evidence':  return 'rgba(8,8,8,.55)';
@@ -489,7 +489,7 @@ export default async function RacesPage() {
                       </div>
                       <div className="path-stat">
                         <div className="path-stat-label">Gap to Goal</div>
-                        <div className="path-stat-value" style={{ color: onTrack ? '#1f6a21' : undefined }}>
+                        <div className="path-stat-value" style={{ color: onTrack ? '#3EBD41' : undefined }}>
                           {onTrack ? `−${fmtTime(Math.abs(gapS))}` : `+${fmtTime(gapS)}`}
                         </div>
                         <div className="path-stat-sub">{onTrack ? 'Ahead of goal' : 'Behind goal'}</div>
@@ -702,7 +702,7 @@ export default async function RacesPage() {
                         fontFamily: 'Oswald, sans-serif',
                         fontSize: 9,
                         letterSpacing: 1.2,
-                        color: '#1f6a21',
+                        color: '#3EBD41',
                         background: 'rgba(62,189,65,.10)',
                         padding: '2px 6px',
                         borderRadius: 4,

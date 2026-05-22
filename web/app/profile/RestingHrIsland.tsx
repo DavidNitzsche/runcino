@@ -187,7 +187,7 @@ export function RestingHrIsland() {
         .rhr-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
         .rhr-clear-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
         .rhr-err {
-          font-family: 'Inter', sans-serif; font-size: 12px; color: #B00020;
+          font-family: 'Inter', sans-serif; font-size: 12px; color: #FC4D64;
           flex-basis: 100%;
         }
       `}</style>

@@ -135,7 +135,7 @@ export function SubstitutionMenu({ menu }: Props) {
                   {s.prescription}
                 </div>
                 <div style={{ fontSize: 11.5, color: 'rgba(8,8,8,.62)' }}>
-                  <span style={{ color: '#1f6a21', fontWeight: 600 }}>Preserves:</span>{' '}
+                  <span style={{ color: '#3EBD41', fontWeight: 600 }}>Preserves:</span>{' '}
                   {s.preserves}
                 </div>
                 <div style={{ fontSize: 11.5, color: 'rgba(8,8,8,.62)', marginTop: 2 }}>

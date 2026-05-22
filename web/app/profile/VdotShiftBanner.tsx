@@ -44,7 +44,7 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
   if (hidden) return null;
 
   const isUp = direction === 'up';
-  const accent = isUp ? '#1f6a21' : '#b3450a';
+  const accent = isUp ? '#3EBD41' : '#b3450a';
   const bg = isUp ? 'rgba(62,189,65,.06)' : 'rgba(232,128,33,.06)';
   const border = isUp ? 'rgba(62,189,65,.30)' : 'rgba(232,128,33,.30)';
   const eyebrow = isUp ? '↑ VDOT MOVED UP · REVIEW' : '↓ VDOT MOVED DOWN · REVIEW';
@@ -166,7 +166,7 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
         >
           {busy === 'dismiss' ? 'Dismissing…' : 'Dismiss (30d)'}
         </button>
-        {err && <span style={{ fontSize: 11, color: '#B00020' }}>{err}</span>}
+        {err && <span style={{ fontSize: 11, color: '#FC4D64' }}>{err}</span>}
       </div>
 
       <div

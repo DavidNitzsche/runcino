@@ -154,8 +154,8 @@
 .health-v4-page .hr-anchor-save { background: var(--t0); color: #fff; border-color: var(--t0); }
 .health-v4-page .hr-anchor-save:disabled { opacity: 0.5; cursor: not-allowed; }
 .health-v4-page .hr-anchor-cancel { background: transparent; color: var(--t1); border-color: rgba(8,8,8,.16); }
-.health-v4-page .hr-anchor-clear { background: transparent; color: #B00020; border-color: rgba(176,0,32,.25); }
-.health-v4-page .hr-anchor-err { display: block; font-family: 'Inter', sans-serif; font-size: 12px; color: #B00020; margin-top: 8px; }
+.health-v4-page .hr-anchor-clear { background: transparent; color: #FC4D64; border-color: rgba(252,77,100,.25); }
+.health-v4-page .hr-anchor-err { display: block; font-family: 'Inter', sans-serif; font-size: 12px; color: #FC4D64; margin-top: 8px; }
 .health-v4-page .hr-anchor-provenance { padding: 12px 40px 28px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t1); line-height: 1.5; }
 .health-v4-page .hr-anchor-provenance strong { color: var(--t0); font-weight: 600; }
 

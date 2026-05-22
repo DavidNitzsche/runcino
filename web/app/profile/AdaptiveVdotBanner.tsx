@@ -61,7 +61,7 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
   if (hidden) return null;
 
   const isUp = verdict.kind === 'vdot-bump-suggested';
-  const accent = isUp ? '#1f6a21' : '#b3450a';
+  const accent = isUp ? '#3EBD41' : '#b3450a';
   const bg = isUp ? 'rgba(62,189,65,.06)' : 'rgba(232,128,33,.06)';
   const border = isUp ? 'rgba(62,189,65,.30)' : 'rgba(232,128,33,.30)';
   const eyebrow = isUp ? '↑ FITNESS DRIFT · PROPOSED BUMP' : '⚠ INVESTIGATE · WORKOUTS TRENDING SLOW';

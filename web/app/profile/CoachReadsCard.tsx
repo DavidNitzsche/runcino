@@ -414,7 +414,7 @@ export function CoachReadsCard({
             <div className="coach-reads-meta">{fitness.maxHr.sourceLabel}</div>
           )}
           {!fitness.maxHr.value && (
-            <div className="coach-reads-meta" style={{ color: '#B00020' }}>
+            <div className="coach-reads-meta" style={{ color: '#FC4D64' }}>
               No max HR — HR zones won&rsquo;t show on the debrief and the coach falls
               back to qualitative HR bands. Set it on the Heart Rate Zones card below.
             </div>
@@ -517,7 +517,7 @@ export function CoachReadsCard({
         }
         .coach-reads-flag-curated {
           background: rgba(62,189,65,.10);
-          color: #1f6a21;
+          color: #3EBD41;
         }
         .coach-reads-flag-strava {
           background: rgba(252,82,0,.08);
