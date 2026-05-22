@@ -47,7 +47,10 @@ export async function GET(req: NextRequest) {
     // finding — passing null here reintroduced the inflated-score divergence.
     const maxHr = state.recovery?.maxHrBpm ?? null;
     const rhr = state.recovery?.rhrBpm ?? null;
-    const z2 = await computeZ2CoverageFinding(user.id, today, maxHr, rhr, state.aggregateVdotValue ?? null).catch(() => null);
+    const vdot = state.aggregateVdotValue;
+    const z2 = (maxHr && rhr && vdot)
+      ? await computeZ2CoverageFinding(user.id, today, maxHr, rhr, vdot).catch(() => null)
+      : null;
     const finding = await computeReadinessScore(user.id, today, maxHr, rhr, z2);
 
     const next = state.races?.nextA ?? state.races?.nextAny ?? null;
