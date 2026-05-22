@@ -69,7 +69,10 @@ struct ContentView: View {
         guard TokenStore.shared.isLoggedIn else { return }
         await FaffAPI.shared.refreshAccessToken()
         if !TokenStore.shared.isLoggedIn { isAuthenticated = false; return }
-        // Keep the watch's workout current on every launch + foreground, 
+        // Report the device timezone so the backend dates runs / "today"
+        // where the user actually is. Idempotent; best-effort.
+        await FaffAPI.shared.reportTimezone()
+        // Keep the watch's workout current on every launch + foreground,
         // automatic, no "send to watch" step (runs on .task and scenePhase .active).
         await WatchSync.shared.syncTodayToWatch()
         // Retry uploading any watch-recorded runs that haven't reached the

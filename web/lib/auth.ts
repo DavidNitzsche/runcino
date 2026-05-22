@@ -55,6 +55,10 @@ export interface AuthUser {
   /** Brand accent (`#RRGGBB`) the user picked on /profile. null falls
    *  back to the canonical faff.run orange `#E85D26`. */
   accent_color: string | null;
+  /** IANA timezone reported by the user's device (e.g.
+   *  "America/Los_Angeles"). Drives all "today"/date math. null falls
+   *  back to the app-default FAFF_TZ in lib/dates.ts. */
+  timezone: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -114,7 +118,7 @@ export async function signupUser(email: string, password: string, name: string):
   const rows = await query<AuthUser>(
     `INSERT INTO users (email, password_hash, name, status, is_admin, approved_at)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color;`,
+     RETURNING id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, timezone;`,
     [normalizedEmail, passwordHash, name.trim(), status, isAdmin, approvedAt],
   );
   const user = rows[0];
@@ -147,7 +151,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
   const normalizedEmail = email.trim().toLowerCase();
 
   const rows = await query<AuthUser & { password_hash: string }>(
-    `SELECT id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, password_hash
+    `SELECT id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, timezone, password_hash
      FROM users WHERE email = $1 LIMIT 1;`,
     [normalizedEmail],
   );
@@ -164,7 +168,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
     id: u.id, email: u.email, name: u.name,
     onboarding_complete: u.onboarding_complete,
     location: u.location, status: u.status, is_admin: u.is_admin,
-    max_hr: u.max_hr, accent_color: u.accent_color,
+    max_hr: u.max_hr, accent_color: u.accent_color, timezone: u.timezone,
   };
 }
 
@@ -214,7 +218,7 @@ export async function getCurrentUser(req?: { headers: Headers } | Request): Prom
       const bearer = authHeader.slice('Bearer '.length).trim();
       if (bearer.length >= 16) {
         const rows = await query<AuthUser>(
-          `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color
+          `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color, u.timezone
              FROM sessions s
              JOIN users u ON u.id = s.user_id
             WHERE s.session_token = $1
@@ -242,7 +246,7 @@ export async function getCurrentUser(req?: { headers: Headers } | Request): Prom
   if (!token) return null;
 
   const rows = await query<AuthUser>(
-    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color
+    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color, u.timezone
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.session_token = $1 AND s.expires_at > NOW() AND s.revoked_at IS NULL

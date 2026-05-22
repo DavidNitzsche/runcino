@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         name: w.name || 'Run',
         type: 'easy',
         source: 'apple_health',
-      });
+      }, user.timezone);
       if (res.written) imported++; else skipped++;
     } catch {
       skipped++;

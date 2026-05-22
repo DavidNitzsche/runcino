@@ -252,6 +252,21 @@ final class FaffAPI {
         )
     }
 
+    /// Report the device's current IANA timezone so the backend dates runs
+    /// and computes "today" where the user actually is. Idempotent; safe to
+    /// call on every launch/foreground. Best-effort — failures are ignored.
+    func reportTimezone() async {
+        let tz = TimeZone.current.identifier
+        guard let data = try? JSONSerialization.data(withJSONObject: ["timezone": tz]) else { return }
+        let _: EmptyResponse? = try? await perform(
+            method: "POST",
+            path: "/api/me/timezone",
+            body: data,
+            authenticated: true,
+            as: EmptyResponse.self
+        )
+    }
+
     /// Import running workouts read from Apple Health (distance/time/HR) so a
     /// run shows up even if the watch->phone completion bridge never fired.
     /// The backend de-dupes by start time, so this is safe to re-send.

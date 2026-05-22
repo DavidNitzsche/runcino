@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const result = await storeCompletion(user.id, body);
+  const result = await storeCompletion(user.id, body, user.timezone);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }

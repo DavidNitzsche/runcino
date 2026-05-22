@@ -456,6 +456,13 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS accent_color TEXT
         CHECK (accent_color IS NULL OR accent_color ~ '^#[0-9A-Fa-f]{6}$');
     `);
+    // IANA timezone identifier reported by the user's device (e.g.
+    // "America/Los_Angeles"). Drives every "today"/date computation so a
+    // run logged at 6 PM local is dated today, not tomorrow (UTC). NULL
+    // falls back to the app-default FAFF_TZ in lib/dates.ts.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT;
+    `);
     // Pace-migration acknowledgment, set when the user confirms the
     // one-time pace-band correction from the legacy race-pace-derived
     // formula to canonical Daniels Table 2. While NULL, /profile's

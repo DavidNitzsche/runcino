@@ -195,6 +195,7 @@ export function validateCompletion(c: WatchCompletionInput): ValidationError | n
 export async function storeCompletion(
   userId: string,
   completion: WatchCompletionInput,
+  tz?: string | null,
 ): Promise<StoreCompletionResult> {
   const validation = validateCompletion(completion);
   if (validation) {
@@ -244,7 +245,7 @@ export async function storeCompletion(
     // so without this it's invisible. Non-fatal: a failure here must never
     // break the completion store above.
     try {
-      await upsertWatchRunActivity(userId, completion);
+      await upsertWatchRunActivity(userId, completion, tz);
     } catch { /* best-effort, completion is already saved */ }
 
     return {
@@ -277,7 +278,7 @@ interface WatchRunFields {
  *  writer — keyed on START TIME, so the same run from the watch, the watch
  *  direct-post, or Apple Health all converge to ONE row (and skip a Strava
  *  copy of the same session). Only real runs (completed/partial, distance>0). */
-async function upsertWatchRunActivity(userId: string, c: WatchRunFields): Promise<void> {
+async function upsertWatchRunActivity(userId: string, c: WatchRunFields, tz?: string | null): Promise<void> {
   if (c.status !== 'completed' && c.status !== 'partial') return;
   const distanceMi = c.totalDistanceMi ?? 0;
   if (!(distanceMi > 0)) return; // no distance → not a meaningful run card
@@ -299,7 +300,7 @@ async function upsertWatchRunActivity(userId: string, c: WatchRunFields): Promis
     name: 'Watch run',
     type,
     source: 'watch',
-  });
+  }, tz);
 }
 
 /**

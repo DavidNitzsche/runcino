@@ -7,29 +7,48 @@
  * through time together. Tests pin to a fixed date by stubbing now().
  */
 
-/** App-wide reference timezone. The user is in California; the server
- *  runs in UTC. Computing "today" naively against UTC means we flip
- *  to tomorrow at 4–5 PM local, highlighting the wrong day in the
- *  week strip. All date-string math goes through LA. */
+/** App-default reference timezone — the FALLBACK used only when a user
+ *  has no device-reported timezone yet (users.timezone is null). The
+ *  server runs in UTC; computing "today" naively against UTC flips to
+ *  tomorrow at 4–5 PM California time, highlighting the wrong day. Real
+ *  users now carry their own IANA tz (auto-detected by the app and
+ *  stored on users.timezone); pass it to these helpers so date math
+ *  follows wherever they actually are. */
 export const FAFF_TZ = 'America/Los_Angeles';
+
+/** Resolve a usable IANA tz, falling back to the app default. Accepts the
+ *  AuthUser.timezone shape (string | null | undefined). */
+export function resolveTz(tz?: string | null): string {
+  return tz && typeof tz === 'string' && tz.length > 0 ? tz : FAFF_TZ;
+}
 
 export function now(): Date {
   return new Date();
 }
 
-/** Today's date in YYYY-MM-DD, computed in LA timezone (en-CA locale
- *  yields ISO format). Use this anywhere you need the user's calendar
- *  date, never `new Date().toISOString().slice(0,10)` (which is UTC). */
-export function todayISO(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: FAFF_TZ });
+/** Today's date in YYYY-MM-DD, computed in the given timezone (en-CA
+ *  locale yields ISO format). Pass the user's tz; omit it only in
+ *  contexts with no user (defaults to FAFF_TZ). Never use
+ *  `new Date().toISOString().slice(0,10)` (which is UTC). */
+export function todayISO(tz?: string | null): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: resolveTz(tz) });
 }
 
-/** A Date anchored at noon UTC of LA's calendar today. Safe to pass
- *  through `setDate` / `getDate` arithmetic on any server timezone, 
- *  noon UTC is far enough from midnight that ±days never crosses
- *  a UTC date boundary. */
-export function todayDate(): Date {
-  return new Date(todayISO() + 'T12:00:00Z');
+/** The YYYY-MM-DD calendar day a given instant falls on, in the given
+ *  timezone. Use to date a run/sample from its absolute timestamp so a
+ *  6 PM-local run is dated today, not tomorrow (UTC). */
+export function dayInTz(instant: string | number | Date, tz?: string | null): string {
+  const d = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-CA', { timeZone: resolveTz(tz) });
+}
+
+/** A Date anchored at noon UTC of the given timezone's calendar today.
+ *  Safe to pass through `setDate` / `getDate` arithmetic on any server
+ *  timezone — noon UTC is far enough from midnight that ±days never
+ *  crosses a UTC date boundary. */
+export function todayDate(tz?: string | null): Date {
+  return new Date(todayISO(tz) + 'T12:00:00Z');
 }
 
 export function greeting(d: Date = now()): 'Good morning' | 'Good afternoon' | 'Good evening' {

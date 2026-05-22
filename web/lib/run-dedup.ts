@@ -13,6 +13,7 @@
  */
 
 import { query } from './db';
+import { dayInTz, resolveTz } from './dates';
 
 export interface CanonicalRun {
   /** ISO datetime the run started (local or UTC — only the minute matters). */
@@ -26,6 +27,17 @@ export interface CanonicalRun {
   type?: string;
   /** Provenance tag stored on the row ('apple_health', 'watch', …). */
   source: string;
+}
+
+/** The user's IANA timezone (users.timezone), or null. Looked up once per
+ *  write so a run's calendar date is computed where the runner actually is —
+ *  a 6 PM-local run is dated today, not tomorrow (UTC). */
+async function userTimezone(userId: string): Promise<string | null> {
+  const rows = await query<{ timezone: string | null }>(
+    `SELECT timezone FROM users WHERE id = $1 LIMIT 1`,
+    [userId],
+  ).catch(() => [] as { timezone: string | null }[]);
+  return rows[0]?.timezone ?? null;
 }
 
 /** Stable negative BIGINT id keyed on user + start-minute. Same run from any
@@ -49,13 +61,24 @@ export async function findNearbyRunId(
 ): Promise<number | null> {
   const startMs = Date.parse(startISO);
   if (!Number.isFinite(startMs)) return null;
-  const day = startISO.slice(0, 10);
+  // Scan a ±1 DAY window of calendar dates (not just the run's own day): the
+  // same session can be stored under an adjacent calendar date by a different
+  // source (a Strava copy with a slightly different start, or a legacy row
+  // dated by UTC before timezone-correct dating). The absolute-time check
+  // below (±toleranceMin) is what actually decides a match, so widening the
+  // candidate scan only adds safety — it never matches two distinct runs
+  // (real runs are 30+ min apart).
+  const startDay = startISO.slice(0, 10);
+  const base = Date.parse(`${startDay}T12:00:00Z`);
+  const days = Number.isFinite(base)
+    ? [-1, 0, 1].map((d) => new Date(base + d * 86_400_000).toISOString().slice(0, 10))
+    : [startDay];
   const rows = await query<{ id: string; start: string | null }>(
     `SELECT id::text AS id, COALESCE(data->>'startLocal', data->>'date') AS start
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) = $2`,
-    [userId, day],
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) = ANY($2)`,
+    [userId, days],
   ).catch(() => [] as { id: string; start: string | null }[]);
   for (const r of rows) {
     if (!r.start) continue;
@@ -77,6 +100,7 @@ export async function findNearbyRunId(
 export async function upsertCanonicalRun(
   userId: string,
   run: CanonicalRun,
+  tz?: string | null,
 ): Promise<{ written: boolean; id: number | null }> {
   if (!(run.distanceMi > 0)) return { written: false, id: null };
   const id = canonicalRunId(userId, run.startISO);
@@ -86,7 +110,10 @@ export async function upsertCanonicalRun(
     // this session — don't add a duplicate.
     return { written: false, id: nearby };
   }
-  const date = run.startISO.slice(0, 10);
+  // Date the run in the runner's timezone (looked up if not supplied) from its
+  // absolute start instant, so an evening run is dated today, not tomorrow.
+  const zone = resolveTz(tz ?? (await userTimezone(userId)));
+  const date = dayInTz(run.startISO, zone) || run.startISO.slice(0, 10);
   const durationS = Math.round(run.durationSec);
   const data = {
     date,
