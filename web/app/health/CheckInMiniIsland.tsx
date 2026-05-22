@@ -49,12 +49,12 @@ export function CheckInMiniIsland({ today }: { today: string }) {
       </div>
     );
     return (
-      <div className="health-checkin-mini" style={{ background: 'var(--recovery, #2CA82F)', borderRadius: 10, padding: '14px 16px', color: '#fff' }}>
+      <div className="health-checkin-mini" style={{ background: 'var(--recovery, #2CA82F)', color: '#fff' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 999, background: 'rgba(255,255,255,.22)', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>
           <span style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 12, letterSpacing: 0.4, textTransform: 'uppercase' }}>Checked in for today</span>
         </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           {stat('Energy', energy)}
           {stat('Soreness', soreness)}
           {stat('Stress', stress)}
@@ -62,7 +62,7 @@ export function CheckInMiniIsland({ today }: { today: string }) {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          style={{ marginTop: 12, width: '100%', background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.28)', borderRadius: 999, padding: '6px 0', cursor: 'pointer', fontFamily: 'Oswald, sans-serif', fontSize: 10, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: 700, color: '#fff' }}
+          style={{ width: '100%', background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.28)', borderRadius: 999, padding: '8px 0', cursor: 'pointer', fontFamily: 'Oswald, sans-serif', fontSize: 10, letterSpacing: 1.1, textTransform: 'uppercase', fontWeight: 700, color: '#fff' }}
         >
           Edit
         </button>

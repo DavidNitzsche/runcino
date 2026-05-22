@@ -53,46 +53,39 @@ export function CheckInIsland({ today }: { today: string }) {
       </div>
     );
     return (
-      <div className="coach-right">
-        <div
+      // The whole card turns green — no inner box. Overrides .coach-right's
+      // white background / right-alignment so it reads as one solid card.
+      <div className="coach-right" style={{ background: 'var(--recovery, #2CA82F)', color: '#fff', alignItems: 'stretch', justifyContent: 'flex-start', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 22, height: 22, borderRadius: 999,
+              background: 'rgba(255,255,255,.22)', color: '#fff', fontSize: 13, fontWeight: 700,
+            }}
+          >✓</span>
+          <span style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 14, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+            Checked in for today
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {stat('Energy', energy)}
+          {stat('Soreness', soreness)}
+          {stat('Stress', stress)}
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
           style={{
-            background: 'var(--recovery, #2CA82F)',
-            borderRadius: 12,
-            padding: '18px 20px',
-            color: '#fff',
+            width: '100%',
+            background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.28)',
+            borderRadius: 999, padding: '9px 0', cursor: 'pointer',
+            fontFamily: 'Oswald, sans-serif', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 700, color: '#fff',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span
-              aria-hidden
-              style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 22, height: 22, borderRadius: 999,
-                background: 'rgba(255,255,255,.22)', color: '#fff', fontSize: 13, fontWeight: 700,
-              }}
-            >✓</span>
-            <span style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 14, letterSpacing: 0.4, textTransform: 'uppercase' }}>
-              Checked in for today
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            {stat('Energy', energy)}
-            {stat('Soreness', soreness)}
-            {stat('Stress', stress)}
-          </div>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            style={{
-              marginTop: 16, width: '100%',
-              background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.28)',
-              borderRadius: 999, padding: '8px 0', cursor: 'pointer',
-              fontFamily: 'Oswald, sans-serif', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 700, color: '#fff',
-            }}
-          >
-            Edit
-          </button>
-        </div>
+          Edit
+        </button>
       </div>
     );
   }
