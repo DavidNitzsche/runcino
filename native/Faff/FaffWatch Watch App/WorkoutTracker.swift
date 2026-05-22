@@ -69,7 +69,15 @@ final class WorkoutTracker: NSObject, ObservableObject {
     @discardableResult
     func requestAuthorization() async -> Bool {
         guard available else { return false }
-        let share: Set<HKSampleType> = [HKQuantityType.workoutType()]
+        // SHARE (write) set. The route MUST be here: HKWorkoutRouteBuilder
+        // .finishRoute() silently fails to persist the GPS route without
+        // write authorization for the workoutRoute series — which is why a
+        // recorded run had no map even in Apple's own Workouts app. We also
+        // write the workout itself and its sampled quantities.
+        let share: Set<HKSampleType> = [
+            HKQuantityType.workoutType(),
+            HKSeriesType.workoutRoute(),
+        ]
         let read: Set<HKObjectType> = [
             HKQuantityType(.heartRate),
             HKQuantityType(.distanceWalkingRunning),
