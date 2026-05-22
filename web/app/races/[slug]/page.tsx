@@ -707,16 +707,6 @@ export default async function RacePlanPage({ params }: PageProps) {
                     const x = (p.end_mi / Math.max(0.01, profile.totalMi)) * 1180;
                     return <line key={`v-${i}`} x1={x} y1={20} x2={x} y2={240} stroke="rgba(13,15,18,.08)" strokeWidth="1" strokeDasharray="3 3" />;
                   })}
-                  {/* Difficulty band along bottom */}
-                  {phases.map((p, i) => {
-                    const x1 = (p.start_mi / Math.max(0.01, profile.totalMi)) * 1180;
-                    const x2 = (p.end_mi / Math.max(0.01, profile.totalMi)) * 1180;
-                    const color = phaseColor(p.mean_grade_pct);
-                    const fill = color === 'amber' ? '#D4900A'
-                      : color === 'blue' ? '#2563EB'
-                      : color === 'green' ? '#2CA82F' : '#E85D26';
-                    return <rect key={`band-${i}`} x={x1} y={245} width={Math.max(0, x2 - x1)} height={20} fill={fill} opacity={0.22} />;
-                  })}
                   {/* Mile ticks */}
                   {profile.ticks.map((mi) => {
                     const x = (mi / Math.max(0.01, profile.totalMi)) * 1180;
@@ -729,8 +719,42 @@ export default async function RacePlanPage({ params }: PageProps) {
                       <text x={6} y={label.y + 3} fontFamily="Inter, sans-serif" fontSize="10" fill="rgba(13,15,18,.40)" fontWeight="500">{label.ft} ft</text>
                     </g>
                   ))}
-                  {/* Elevation area + line */}
-                  {profile.areaD && <path d={profile.areaD} fill="rgba(13,15,18,.05)" />}
+                  {/* Elevation area — filled per phase with that phase's
+                      difficulty color, as a soft vertical gradient. Each
+                      colored rect is clipped to the area-under-the-curve
+                      shape; soft seams at the boundaries read as gentle
+                      transitions between phases. */}
+                  {profile.areaD && phases.length > 0 ? (
+                    <>
+                      <defs>
+                        <clipPath id="elev-area-clip"><path d={profile.areaD} /></clipPath>
+                        {(['amber', 'blue', 'green', 'orange'] as const).map((c) => {
+                          const hex = c === 'amber' ? '#D4900A' : c === 'blue' ? '#2563EB' : c === 'green' ? '#2CA82F' : '#E85D26';
+                          return (
+                            <linearGradient key={`grad-${c}`} id={`elev-grad-${c}`} x1="0" y1="20" x2="0" y2="240" gradientUnits="userSpaceOnUse">
+                              <stop offset="0" stopColor={hex} stopOpacity="0.06" />
+                              <stop offset="1" stopColor={hex} stopOpacity="0.34" />
+                            </linearGradient>
+                          );
+                        })}
+                      </defs>
+                      <g clipPath="url(#elev-area-clip)">
+                        {phases.map((p, i) => {
+                          const x1 = (p.start_mi / Math.max(0.01, profile.totalMi)) * 1180;
+                          const x2 = (p.end_mi / Math.max(0.01, profile.totalMi)) * 1180;
+                          const color = phaseColor(p.mean_grade_pct);
+                          return <rect key={`fill-${i}`} x={x1} y={20} width={Math.max(0, x2 - x1)} height={220} fill={`url(#elev-grad-${color})`} />;
+                        })}
+                        {/* Soft seams blend one phase color into the next */}
+                        {phases.slice(0, -1).map((p, i) => {
+                          const x = (p.end_mi / Math.max(0.01, profile.totalMi)) * 1180;
+                          return <rect key={`seam-${i}`} x={x - 7} y={20} width={14} height={220} fill="#fff" opacity={0.10} />;
+                        })}
+                      </g>
+                    </>
+                  ) : (
+                    profile.areaD && <path d={profile.areaD} fill="rgba(13,15,18,.05)" />
+                  )}
                   {profile.pathD && <path d={profile.pathD} fill="none" stroke="#0D0F12" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
                 </svg>
               </div>
