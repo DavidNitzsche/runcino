@@ -163,6 +163,30 @@ export async function GET(req: NextRequest) {
     // Splits stay empty; the rest of the response still works
   }
 
+  // Watch / Apple-Health runs are now first-class strava_activities rows (via
+  // the canonical-run writer), so they reach this MAIN path rather than the
+  // no-row fallback below — but they have NO Strava detail, so the loop above
+  // leaves the map + splits empty. Fall back to the on-device GPS route the
+  // iPhone uploaded for this date so these runs still get a recap map.
+  if ((!summaryPolyline || splits.length === 0) && user?.id) {
+    const route = await getRouteForDate(user.id, date).catch(() => null);
+    if (route) {
+      if (!summaryPolyline && route.polyline) summaryPolyline = route.polyline;
+      if (splits.length === 0 && route.splits.length > 0) {
+        splits = route.splits.map((s) => {
+          const m = Math.floor(s.paceSPerMi / 60), sec = s.paceSPerMi % 60;
+          return {
+            mile: s.mile, paceSPerMi: s.paceSPerMi,
+            paceDisplay: `${m}:${String(sec).padStart(2, '0')}`,
+            avgHr: s.avgHr, elevDeltaFt: s.elevDeltaFt ?? 0,
+          };
+        });
+      }
+      if (!startLatLng && route.startLat != null && route.startLng != null) startLatLng = [route.startLat, route.startLng];
+      if (!endLatLng && route.endLat != null && route.endLng != null) endLatLng = [route.endLat, route.endLng];
+    }
+  }
+
   // ── Apple Health for this date: per-run dynamics + the morning's
   //    recovery vitals (with 30-day baselines) so the coach take can
   //    cite the actual cause of an off day instead of guessing. ──
