@@ -319,11 +319,10 @@ export default async function ProfilePage() {
   const restingHr = fitness.restingHr.value ?? null;
   const hrBundle = buildHrZonesBundle(maxHr, restingHr);
   const useHRR = hrBundle?.framework === 'HRR';
-  const hrr = hrBundle?.hrr ?? 0;
   const HR_ZONES = hrBundle
     ? hrBundle.zones.map((z) => ({
         tier: z.tier,
-        name: z.name.replace('Z2 · Easy', 'Z2 · Easy').replace('Z5 · VO₂max', 'Z5 · VO₂max'),
+        name: z.name.replace('Z5 · VO₂max', 'Z5 · Max effort'),
         range: `${z.lowBpm}–${z.highBpm}`,
         pct: z.pctLabel,
       }))
@@ -332,7 +331,7 @@ export default async function ProfilePage() {
         { tier: 'z2', name: 'Z2 · Easy',      range: '—', pct: '60–70% max' },
         { tier: 'z3', name: 'Z3 · Steady',    range: '—', pct: '70–80% max' },
         { tier: 'z4', name: 'Z4 · Threshold', range: '—', pct: '80–90% max' },
-        { tier: 'z5', name: 'Z5 · VO₂max',    range: '—', pct: '90–100% max' },
+        { tier: 'z5', name: 'Z5 · Max effort', range: '—', pct: '90–100% max' },
       ];
 
   const bioBits: string[] = [];
@@ -475,9 +474,9 @@ export default async function ProfilePage() {
               <div className="card-sub" style={{ color: 'rgba(13,15,18,.55)' }}>
                 {maxHr
                   ? (useHRR
-                      ? `HRR (Karvonen) bands · resting ${restingHr}, max ${maxHr} → HRR ${hrr}. More accurate for trained runners with low resting HR than %max alone.`
-                      : 'Daniels %max bands · log your resting HR to switch to more accurate HRR-based zones.')
-                  : 'No data — log your max HR + recent race to populate'}
+                      ? `Personalized to your heart — resting ${restingHr}, max ${maxHr}. Using your resting rate makes these zones more accurate than max alone.`
+                      : 'Add your resting heart rate to make these zones more accurate for you.')
+                  : 'No data yet — add your max heart rate and a recent race to fill this in.'}
               </div>
             </div>
             <div className="card-meta" style={{ color: maxHr ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>

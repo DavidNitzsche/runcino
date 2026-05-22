@@ -249,7 +249,7 @@ export default async function TrainingPage() {
     { zone: 'E', pace: fmtPaceBand(fitness.paces.E), when: 'Easy / recovery', cls: 'easy' },
     { zone: 'M', pace: fmtPaceBand(fitness.paces.M), when: 'Marathon pace' },
     { zone: 'T', pace: fmtPaceBand(fitness.paces.T), when: 'Threshold / tempo', cls: 'threshold' },
-    { zone: 'I', pace: fmtPaceBand(fitness.paces.I), when: 'VO₂max intervals', cls: 'interval' },
+    { zone: 'I', pace: fmtPaceBand(fitness.paces.I), when: 'Hard intervals', cls: 'interval' },
     { zone: 'R', pace: fmtPaceBand(fitness.paces.R), when: 'Reps / speed' },
   ] : [];
 
