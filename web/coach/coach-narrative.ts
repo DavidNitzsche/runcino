@@ -82,6 +82,15 @@ export interface NarrativeDeps {
 
 const STREAK_MILESTONES = [30, 60, 90, 180] as const;
 
+/** JS getDay() int → the day name we say in coach lines. The narrative
+ *  references the runner's OWN configured long-run / quality days
+ *  (state.prefs) instead of hardcoding "Saturday"/"Tuesday" — a runner
+ *  who long-runs on Sunday should hear "Sunday." */
+const DOW_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+function dowName(dow: number): string {
+  return DOW_NAME[((dow % 7) + 7) % 7];
+}
+
 /** Public entry point. Walks the priority list top-down; the first
  *  signal that has a real trigger produces the line. Returns null when
  *  nothing fires — that is the expected outcome on a steady runner who
@@ -149,7 +158,7 @@ export async function narrativeLine(
   const streak = state.recovery.consecutiveRunDays;
   if ((STREAK_MILESTONES as readonly number[]).includes(streak)) {
     return {
-      sentence: `You just crossed ${streak} consecutive run-days — the aerobic base is real now.`,
+      sentence: `${streak} straight run-days — the aerobic base is banked; now it's about protecting the streak with truly easy days, not chasing it with hard ones.`,
       basedOn: 'run streak',
       tone: 'celebrating',
     };
@@ -170,10 +179,10 @@ export async function narrativeLine(
     })();
     if (daysStale >= 4) {
       const noun = checkin.latestDateISO == null
-        ? `No check-in on file`
+        ? `No check-in logged yet`
         : `${daysStale} days since your last check-in`;
       return {
-        sentence: `${noun} — coach is flying partly blind on energy and recovery.`,
+        sentence: `${noun} — a 10-second energy-and-soreness read is what lets the plan flex to how you actually feel, so log one before today's run.`,
         basedOn: 'check-in log',
         citation: {
           doc: 'Research/00b-recovery-protocols.md',
@@ -205,8 +214,9 @@ export async function narrativeLine(
       return Math.max(0, Math.round((t - r) / 86_400_000));
     })();
     const when = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
+    const nextStep = Math.round(recentLong.miles + 2);
     return {
-      sentence: `Your long run hit ${recentLong.miles.toFixed(1)} mi ${when} — the aerobic engine is taking hold.`,
+      sentence: `That ${recentLong.miles.toFixed(1)} mi long run ${when} is in the bank — recover off it this week, then ${nextStep} is the next honest step up.`,
       basedOn: 'recent activity',
       citation: {
         doc: 'Research/00a-distance-running-training.md',
@@ -243,8 +253,9 @@ export async function narrativeLine(
   ) {
     const dropPct = Math.round(Math.abs(deltaPct) * 100);
     const weeksOut = Math.round(nextA!.daysAway / 7);
+    const longDay = dowName(state.prefs.longRunDow);
     return {
-      sentence: `Volume is down ${dropPct}% over the last 4 weeks with ${nextA!.name} ${weeksOut} weeks out — the trajectory needs a long run this Saturday.`,
+      sentence: `Volume's down ${dropPct}% over the last month with ${nextA!.name} ${weeksOut} weeks out — that's the wrong direction this close, and ${longDay}'s long run is how you bend it back.`,
       basedOn: 'volume trend · 4w vs prior 4w',
       tone: 'reorienting',
     };
@@ -263,8 +274,11 @@ export async function narrativeLine(
     && nextA.daysAway > 21
     && !inExpectedDownPhase
   ) {
+    const qualityClause = state.prefs.qualityDows.length > 0
+      ? `${dowName(state.prefs.qualityDows[0])}'s threshold is`
+      : 'a threshold session this week is';
     return {
-      sentence: `It's been 14+ days since your last threshold session — Tuesday is the day to break that.`,
+      sentence: `Two weeks with no real speed in your legs — ${qualityClause} what keeps race pace from feeling foreign on the day.`,
       basedOn: 'intensity · last 14d',
       citation: {
         doc: 'Research/00a-distance-running-training.md',
@@ -301,8 +315,9 @@ export async function narrativeLine(
     && !inExpectedDownPhase
   ) {
     const weeks = Math.round(daysSinceLong / 7);
+    const longDay = dowName(state.prefs.longRunDow);
     return {
-      sentence: `${weeks} weeks since your last long run — Saturday eases the aerobic engine back into work.`,
+      sentence: `${weeks} weeks since your last long run — endurance fades faster than speed, so ${longDay} is the day that pulls the base back.`,
       basedOn: 'recent activity',
       citation: {
         doc: 'Research/00a-distance-running-training.md',

@@ -105,10 +105,15 @@ export function dailyBriefing(
       text: `**${inputs.raceCountdown.daysAway} days to ${inputs.raceCountdown.name}. Go get it.**`,
     });
   } else {
-    // Maintenance close — affirm the work without faking a race.
+    // Maintenance close — affirm the work without faking a race. When we
+    // know the runner's current weekly average, anchor on it: a real
+    // base number is the answer to "ready for what?".
+    const avg = state.volume.weeklyAvg4w;
     clauses.push({
       kind: 'maintenance',
-      text: 'No race on the books yet — base mileage holds you ready when one shows up.',
+      text: avg >= 5
+        ? `No race on the calendar — but you're holding **${Math.round(avg)} miles a week**, which means the day you pick one you start from fitness, not from scratch.`
+        : 'No race on the books — so the only job is to keep the base ticking over, ready the day one shows up.',
       citation: {
         doc: 'Research/00a-distance-running-training.md',
         section: '§Aerobic Base Development',
@@ -139,10 +144,21 @@ export function dailyBriefing(
 
 function pickBodyStateClause(state: CoachState): BriefingClause | null {
   // Recovery window — explicit post-race phase. Override everything.
+  // Count the days left so the runner sees the finish line, not just a
+  // vague "still recovering."
   if (state.recoveryWindowEndsISO && state.recoveryWindowEndsISO >= state.now) {
+    const daysLeft = Math.max(
+      0,
+      Math.round(
+        (Date.parse(state.recoveryWindowEndsISO + 'T12:00:00Z') -
+          Date.parse(state.now + 'T12:00:00Z')) / 86_400_000,
+      ),
+    );
     return {
       kind: 'body-state',
-      text: '**Your body is still cleaning up from the race** — let the tissues finish the job before we ask for more.',
+      text: daysLeft >= 1
+        ? `**${daysLeft} more day${daysLeft === 1 ? '' : 's'} of post-race recovery** — the legs feel fine before the deep tissue is, so keep it easy and let the window close on its own.`
+        : '**Recovery window closes today** — one more easy day, then we can start asking for real work again.',
       citation: {
         doc: 'Research/00b-recovery-protocols.md',
         section: '§Recovery by Effort (A vs B vs C Race)',
@@ -162,11 +178,15 @@ function pickBodyStateClause(state: CoachState): BriefingClause | null {
     };
   }
 
-  // Heavy-block flag — hold steady, don\'t hype.
+  // Heavy-block flag — hold steady, don\'t hype. Anchor on the actual
+  // recent load so the "back off" call has a reason attached.
   if (state.flags.heavyBlockSuspected) {
+    const last7 = Math.round(state.volume.last7Mi);
     return {
       kind: 'body-state',
-      text: 'The recent load was heavy — the next few days bias toward absorption, not more stimulus.',
+      text: last7 >= 5
+        ? `You've stacked a heavy block — ${last7} miles in the last week on top of a hard stretch. The gains land during absorption, not more pounding, so the next few days bias toward easy.`
+        : 'You\'ve been carrying a heavy block — the fitness gets banked during the easy days that follow, not by piling on more. Absorb it.',
       citation: {
         doc: 'Research/00b-recovery-protocols.md',
         section: '§Warning Signs of Incomplete Recovery',
@@ -179,7 +199,7 @@ function pickBodyStateClause(state: CoachState): BriefingClause | null {
   if (poor >= 3) {
     return {
       kind: 'body-state',
-      text: `**Last week\'s check-ins flagged ${poor} poor days** — we\'re trimming intensity until the signal clears.`,
+      text: `**${poor} of your last 7 check-ins came back rough** — that's your body asking for a lighter week, so today's the day to actually take it easy.`,
       citation: {
         doc: 'Research/00b-recovery-protocols.md',
         section: '§Decision Matrix',
@@ -188,13 +208,14 @@ function pickBodyStateClause(state: CoachState): BriefingClause | null {
   }
 
   // Volume trajectory — positive trend with good easy share is the
-  // "absorbing well" voice.
+  // "absorbing well" voice. Quantify the climb so it isn't a platitude.
   const easyShare = state.intensity.easyShare14d ?? 0.8;
   const deltaPct = state.volume.deltaPct4v4 ?? 0;
   if (deltaPct >= 0.05 && easyShare >= 0.75) {
+    const upPct = Math.round(deltaPct * 100);
     return {
       kind: 'body-state',
-      text: '**Your body is absorbing this block really well** — fitness is stacking up right on schedule.',
+      text: `**Mileage is up ${upPct}% over the last month and you've kept ${Math.round(easyShare * 100)}% of it easy** — that's exactly how fitness compounds without breaking you. Don't touch the formula.`,
       citation: {
         doc: 'Research/00a-distance-running-training.md',
         section: '§Volume progression rules',
@@ -202,11 +223,13 @@ function pickBodyStateClause(state: CoachState): BriefingClause | null {
     };
   }
 
-  // Volume sliding moderately — not a panic, but worth naming.
+  // Volume sliding moderately — not a panic, but name the number and
+  // the fix so it isn't vague hand-wringing.
   if (deltaPct <= -0.10) {
+    const downPct = Math.round(Math.abs(deltaPct) * 100);
     return {
       kind: 'body-state',
-      text: 'Volume\'s been drifting down — nothing dramatic, but worth nudging back up this week.',
+      text: `Your weekly mileage has slipped ${downPct}% versus the month before — not a crisis, but string two normal weeks together before it becomes a hole to climb out of.`,
       citation: {
         doc: 'Research/00a-distance-running-training.md',
         section: '§Volume progression rules',
@@ -214,11 +237,12 @@ function pickBodyStateClause(state: CoachState): BriefingClause | null {
     };
   }
 
-  // Easy-share is wrong — too much hard.
+  // Easy-share is wrong — too much hard. Cite the actual share so the
+  // runner sees the gap from the 80% target.
   if (easyShare < 0.70 && (state.intensity.hardMi14d ?? 0) > 5) {
     return {
       kind: 'body-state',
-      text: 'Your last two weeks have run a bit hot on intensity — let\'s pull the easy days truly easy.',
+      text: `Only ${Math.round(easyShare * 100)}% of your last two weeks was truly easy — that's well under the 80% that lets hard days land hard. Bank the slow miles so the fast ones count.`,
       citation: {
         doc: 'Research/00a-distance-running-training.md',
         section: '§Training Intensity Distribution (TID)',
@@ -226,10 +250,20 @@ function pickBodyStateClause(state: CoachState): BriefingClause | null {
     };
   }
 
+  // Neutral / steady state — make it specific by leaning on the run
+  // streak when there's one worth naming.
+  const streak = state.recovery.consecutiveRunDays;
+  if (streak >= 7) {
+    return {
+      kind: 'body-state',
+      text: `**${streak} straight days on your feet** — the engine's running clean, so today's job is to keep the easy stuff honest and not let the streak turn into junk miles.`,
+    };
+  }
+
   // Neutral / steady state — affirmative but not generic.
   return {
     kind: 'body-state',
-    text: 'You\'re holding the line — consistency is doing exactly what consistency does.',
+    text: 'You\'re holding the line — and steady, boring weeks are what quietly move your fitness. Keep stacking them.',
   };
 }
 
@@ -301,9 +335,59 @@ function pickTodayWorkoutClause(workout: NonNullable<BriefingInputs['workout']>)
 }
 
 function pickWeekPreviewClause(state: CoachState): BriefingClause | null {
-  // For now, pull from state.flags + recent races to phrase a preview.
-  // When the plan-as-artifact lookup is wired into BriefingInputs, this
-  // becomes more specific ("tempo Tuesday and a long run Friday").
-  // Skipping for steady runners — the briefing is already 3+ sentences.
+  // Forward-looking single clause — what the next push is, anchored on a
+  // real signal the runner can't read off today's card. We stay quiet
+  // during expected down-phases (recovery/rebuild/heavy block) so we
+  // don't push work doctrine says to skip.
+  const inDownPhase =
+    (state.recoveryWindowEndsISO != null && state.recoveryWindowEndsISO >= state.now) ||
+    state.flags.rebuildAfterBreak ||
+    state.flags.heavyBlockSuspected;
+  if (inDownPhase) return null;
+
+  // Stale long run is the loudest forward signal — name the gap and the
+  // day it gets fixed.
+  const longest = state.volume.longestTrainingRunLast28Mi;
+  const recentLong = state.volume.last7Days
+    .filter((d) => d.miles >= 10)
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (longest >= 8 && !recentLong) {
+    return {
+      kind: 'week-preview',
+      text: `Your longest in a month is ${longest.toFixed(1)} mi and it's been over a week — Saturday's long run is the one session that moves the needle, so guard it.`,
+      citation: {
+        doc: 'Research/00a-distance-running-training.md',
+        section: '§The Seven Workout Categories — 4. Long run',
+      },
+    };
+  }
+
+  // Quiet on intensity — when there's an A-race out far enough to train
+  // for and no hard work logged, the next push is a quality day.
+  const nextA = state.races.nextA;
+  const hasTrainableA = nextA != null && nextA.daysAway > 21;
+  if (hasTrainableA && state.intensity.hardMi14d < 1) {
+    const weeksOut = Math.round(nextA!.daysAway / 7);
+    return {
+      kind: 'week-preview',
+      text: `${weeksOut} weeks to ${nextA!.name} and your legs haven't seen real speed in two weeks — one threshold session this week starts sharpening the edge.`,
+      citation: {
+        doc: 'Research/00a-distance-running-training.md',
+        section: '§The Seven Workout Categories — 5. Threshold / tempo',
+      },
+    };
+  }
+
+  // When the build is healthy and a race is in range, point at the goal
+  // gap so the week has a "why."
+  if (hasTrainableA) {
+    const weeksOut = Math.round(nextA!.daysAway / 7);
+    return {
+      kind: 'week-preview',
+      text: `${weeksOut} weeks of runway left to ${nextA!.name} — enough to bank real fitness if every week earns its keep.`,
+    };
+  }
+
+  // No race + healthy build: nothing forward-looking worth a clause.
   return null;
 }
