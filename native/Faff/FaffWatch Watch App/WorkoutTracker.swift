@@ -53,6 +53,10 @@ final class WorkoutTracker: NSObject, ObservableObject {
     private var cadSum = 0
     private var cadCount = 0
     var avgCadence: Int? { cadCount > 0 ? Int((Double(cadSum) / Double(cadCount)).rounded()) : nil }
+    /// Running cadence is derived from the cumulative step count between
+    /// HealthKit batches (no single live "cadence" quantity type exists).
+    private var lastStepCount: Double = 0
+    private var lastStepDate: Date?
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
 
@@ -66,6 +70,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
             HKQuantityType(.heartRate),
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.activeEnergyBurned),
+            HKQuantityType(.runningSpeed),   // device pace (treadmill + outdoor), not just GPS
+            HKQuantityType(.stepCount),      // device cadence
             HKObjectType.workoutType(),
             HKSeriesType.workoutRoute(),
         ]
@@ -91,6 +97,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // a race reading "0 to go / fuel done" before it begins).
         distanceMi = 0; paceSPerMi = 0; heartRate = 0; cadence = 0; activeEnergyKcal = 0
         maxHr = 0; hrSum = 0; hrCount = 0; cadSum = 0; cadCount = 0
+        lastStepCount = 0; lastStepDate = nil
         mockPaused = false
         #if targetEnvironment(simulator)
         startSimulatorMock(); return
@@ -179,7 +186,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
     // MARK: - Apply samples (main actor)
 
-    fileprivate func apply(hr: Int?, dist: Double?, energy: Int?) {
+    fileprivate func apply(hr: Int?, dist: Double?, energy: Int?,
+                           speedMps: Double? = nil, steps: Double? = nil) {
         if let hr, hr > 0 {
             heartRate = hr
             hrSum += hr
@@ -188,6 +196,27 @@ final class WorkoutTracker: NSObject, ObservableObject {
         }
         if let dist { distanceMi = dist }
         if let energy { activeEnergyKcal = energy }
+        // Pace from HealthKit running speed (more reliable than raw GPS speed,
+        // and works on a treadmill). GPS speed in applyLocations is the fallback.
+        if let speedMps, speedMps > 0.2 {
+            paceSPerMi = Int((1609.344 / speedMps).rounded())
+        }
+        // Cadence (spm) from the change in cumulative step count over wall time.
+        if let steps {
+            let now = Date()
+            if let last = lastStepDate {
+                let dt = now.timeIntervalSince(last)
+                if dt >= 1 {
+                    let spm = Int((((steps - lastStepCount) / dt) * 60).rounded())
+                    if spm > 0 && spm < 320 {        // sane running-cadence guard
+                        cadence = spm; cadSum += spm; cadCount += 1
+                    }
+                    lastStepCount = steps; lastStepDate = now
+                }
+            } else {
+                lastStepCount = steps; lastStepDate = now
+            }
+        }
     }
 
     fileprivate func applyLocations(_ locs: [CLLocation]) {
@@ -235,9 +264,12 @@ extension WorkoutTracker: HKLiveWorkoutBuilderDelegate {
     nonisolated func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder,
                                     didCollectDataOf collectedTypes: Set<HKSampleType>) {
         let bpm = HKUnit.count().unitDivided(by: .minute())
+        let mps = HKUnit.meter().unitDivided(by: .second())
         var hr: Int?
         var dist: Double?
         var energy: Int?
+        var speed: Double?
+        var steps: Double?
         for type in collectedTypes {
             guard let qt = type as? HKQuantityType,
                   let stats = workoutBuilder.statistics(for: qt) else { continue }
@@ -247,12 +279,16 @@ extension WorkoutTracker: HKLiveWorkoutBuilderDelegate {
                 if let q = stats.sumQuantity() { dist = q.doubleValue(for: .mile()) }
             } else if qt == HKQuantityType(.activeEnergyBurned) {
                 if let q = stats.sumQuantity() { energy = Int(q.doubleValue(for: .kilocalorie()).rounded()) }
+            } else if qt == HKQuantityType(.runningSpeed) {
+                if let q = stats.mostRecentQuantity() { speed = q.doubleValue(for: mps) }
+            } else if qt == HKQuantityType(.stepCount) {
+                if let q = stats.sumQuantity() { steps = q.doubleValue(for: .count()) }
             }
         }
         // Capture by value — the loop is done mutating these, and capturing the
         // `var`s directly in the concurrent Task is a Swift 6 error.
-        let hrV = hr, distV = dist, energyV = energy
-        Task { @MainActor in self.apply(hr: hrV, dist: distV, energy: energyV) }
+        let hrV = hr, distV = dist, energyV = energy, speedV = speed, stepsV = steps
+        Task { @MainActor in self.apply(hr: hrV, dist: distV, energy: energyV, speedMps: speedV, steps: stepsV) }
     }
 }
 
