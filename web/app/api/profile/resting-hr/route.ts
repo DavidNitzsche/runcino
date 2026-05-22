@@ -24,13 +24,16 @@ export async function GET() {
   try { user = await requireActiveUser(); }
   catch { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); }
 
-  const rows = await query<{ resting_hr: number | null }>(
-    `SELECT resting_hr FROM users WHERE id = $1 LIMIT 1`, [user.id],
+  const rows = await query<{ resting_hr: number | null; resting_hr_override: number | null }>(
+    `SELECT resting_hr, resting_hr_override FROM users WHERE id = $1 LIMIT 1`, [user.id],
   );
-  const value = rows[0]?.resting_hr ?? null;
+  const override = rows[0]?.resting_hr_override ?? null;
+  const auto = rows[0]?.resting_hr ?? null;
+  const value = override ?? auto;
   return NextResponse.json({
     value,
-    source: value ? 'manual' : 'none',
+    source: override != null ? 'manual' : auto != null ? 'auto' : 'none',
+    autoValue: auto,
   });
 }
 
@@ -45,7 +48,7 @@ export async function POST(req: Request) {
 
   if (body.restingHr === null) {
     // Clear the manual override
-    await query(`UPDATE users SET resting_hr = NULL WHERE id = $1`, [user.id]);
+    await query(`UPDATE users SET resting_hr_override = NULL WHERE id = $1`, [user.id]);
     return NextResponse.json({ value: null, source: 'none' });
   }
 
@@ -57,6 +60,7 @@ export async function POST(req: Request) {
     );
   }
 
-  await query(`UPDATE users SET resting_hr = $2 WHERE id = $1`, [user.id, Math.round(v)]);
+  // Override column wins; Apple ingest keeps writing resting_hr underneath.
+  await query(`UPDATE users SET resting_hr_override = $2 WHERE id = $1`, [user.id, Math.round(v)]);
   return NextResponse.json({ value: Math.round(v), source: 'manual' });
 }

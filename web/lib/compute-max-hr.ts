@@ -127,20 +127,35 @@ export async function computeMaxHrFromActivities(userId: string): Promise<Comput
  */
 export async function resolveEffectiveMaxHr(userId: string): Promise<{
   value: number | null;
-  source: 'manual' | 'computed' | 'none';
+  source: 'manual' | 'auto' | 'computed' | 'none';
   computed?: ComputedMaxHr | null;
+  /** The automatic value (Apple-ingest `max_hr` → computed activity peak),
+   *  regardless of whether a manual override is winning. Lets the UI offer
+   *  "Apple Health now sees N — use it" when a higher peak appears. */
+  autoValue?: number | null;
 }> {
-  const rows = await query<{ max_hr: number | null }>(
-    `SELECT max_hr FROM users WHERE id = $1 LIMIT 1`,
+  const rows = await query<{ max_hr: number | null; max_hr_override: number | null }>(
+    `SELECT max_hr, max_hr_override FROM users WHERE id = $1 LIMIT 1`,
     [userId],
   );
-  const stored = rows[0]?.max_hr ?? null;
-  if (stored) {
-    return { value: stored, source: 'manual' };
+  const override = rows[0]?.max_hr_override ?? null;
+  const auto = rows[0]?.max_hr ?? null;   // Apple-ingest ratcheted value
+  // Resolve the AUTO value: stored Apple value, else computed activity peak.
+  let autoValue = auto;
+  let computed: ComputedMaxHr | null = null;
+  if (autoValue == null) {
+    computed = await computeMaxHrFromActivities(userId);
+    autoValue = computed?.value ?? null;
   }
-  const computed = await computeMaxHrFromActivities(userId);
+  // Manual override wins until cleared.
+  if (override) {
+    return { value: override, source: 'manual', autoValue, computed };
+  }
+  if (auto) {
+    return { value: auto, source: 'auto', autoValue, computed };
+  }
   if (computed) {
-    return { value: computed.value, source: 'computed', computed };
+    return { value: computed.value, source: 'computed', computed, autoValue };
   }
-  return { value: null, source: 'none' };
+  return { value: null, source: 'none', autoValue: null };
 }

@@ -23,6 +23,7 @@ async function buildPayload(userId: string) {
   return {
     value: resolved.value,
     source: resolved.source,
+    autoValue: resolved.autoValue ?? null,
     computed,
   };
 }
@@ -50,16 +51,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'maxHr must be a number between 100 and 230, or null to clear' }, { status: 400 });
     }
   }
+  // Writes the OVERRIDE column (not the Apple-ingest `max_hr`), so a manual
+  // value wins until cleared while Apple's auto value keeps ratcheting
+  // underneath. null clears the override → back to auto.
   await query(
     `UPDATE users
-        SET max_hr = $2,
-            -- Setting a new max HR clears any prior validation dismissal
-            -- so the user can be re-prompted if their stored value
-            -- diverges from race data in the future.
+        SET max_hr_override = $2,
             max_hr_validation_dismissed_at = NULL,
-            -- V7 item 4 · stamp max HR change so the Z2 sparkline
-            -- cross-reference can detect recalibration within its
-            -- window.  Cleared (NULL) when max HR is cleared too.
             max_hr_updated_at = CASE WHEN $2 IS NULL THEN NULL ELSE NOW() END,
             updated_at = NOW()
       WHERE id = $1`,

@@ -438,6 +438,18 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS resting_hr INTEGER
         CHECK (resting_hr IS NULL OR (resting_hr >= 30 AND resting_hr <= 100));
     `);
+    // Split: max_hr / resting_hr are the AUTO values (Apple Health ingest
+    // ratchets them); *_override are the runner's MANUAL override, which
+    // wins until cleared. Previously the manual edit and Apple ingest both
+    // wrote max_hr, so whichever ran last won — overrides got clobbered.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr_override INTEGER
+        CHECK (max_hr_override IS NULL OR (max_hr_override >= 100 AND max_hr_override <= 230));
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS resting_hr_override INTEGER
+        CHECK (resting_hr_override IS NULL OR (resting_hr_override >= 30 AND resting_hr_override <= 100));
+    `);
     // User-chosen brand accent color (`#RRGGBB`). Null falls back to the
     // canonical faff.run orange (#E85D26) in app/layout.tsx.
     await client.query(`

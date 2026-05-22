@@ -33,7 +33,7 @@ interface ComputedMaxHr {
 }
 interface State {
   value: number | null;
-  source: 'manual' | 'computed' | 'none';
+  source: 'manual' | 'auto' | 'computed' | 'none';
   computed: ComputedMaxHr | null;
 }
 
@@ -46,7 +46,7 @@ function fmtDate(iso: string): string {
 
 export interface MaxHrInitialState {
   value: number | null;
-  source: 'manual' | 'computed' | 'none';
+  source: 'manual' | 'auto' | 'computed' | 'none';
 }
 
 /** Optional server-side initial state. When provided, the island
@@ -132,6 +132,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
           </div>
           <div className="max-hr-source">
             {state.source === 'manual' && <>Manual override · applies across the app</>}
+            {state.source === 'auto' && <>From Apple Health · auto-updates as harder efforts sync</>}
             {state.source === 'computed' && state.computed && (
               <>
                 {(() => {

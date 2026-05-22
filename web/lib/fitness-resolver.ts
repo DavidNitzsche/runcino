@@ -65,11 +65,14 @@ async function getUserLevel(userId: string): Promise<string> {
 
 async function getRestingHr(userId: string): Promise<FitnessRestingHr> {
   try {
-    const rows = await query<{ resting_hr: number | null }>(
-      `SELECT resting_hr FROM users WHERE id = $1 LIMIT 1`, [userId],
+    const rows = await query<{ resting_hr: number | null; resting_hr_override: number | null }>(
+      `SELECT resting_hr, resting_hr_override FROM users WHERE id = $1 LIMIT 1`, [userId],
     );
-    const stored = rows[0]?.resting_hr ?? null;
-    if (stored) return { value: stored, source: 'manual' };
+    const override = rows[0]?.resting_hr_override ?? null;
+    const auto = rows[0]?.resting_hr ?? null;   // Apple-ingest value
+    // Manual override wins; otherwise the auto (Apple Health) value.
+    if (override) return { value: override, source: 'manual' };
+    if (auto) return { value: auto, source: 'auto' as FitnessRestingHr['source'] };
     return { value: null, source: 'none' };
   } catch { return { value: null, source: 'none' }; }
 }
@@ -208,8 +211,10 @@ export async function resolveFitness(userId: string, today: string): Promise<Res
   const paces = pacesFromVdot(vdot.value) ?? pacesFromVdot(45)!;
   const maxHr: FitnessMaxHr = {
     value: maxHrRaw.value, source: maxHrRaw.source,
+    autoValue: maxHrRaw.autoValue ?? null,
     sourceLabel:
       maxHrRaw.source === 'manual' ? 'Manual override'
+      : maxHrRaw.source === 'auto' ? 'Apple Health · auto'
       : maxHrRaw.source === 'computed' && maxHrRaw.computed
         ? `Peak from ${maxHrRaw.computed.source.name} (${maxHrRaw.computed.source.date})`
         : undefined,
