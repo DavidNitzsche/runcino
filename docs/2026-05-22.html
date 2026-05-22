@@ -119,6 +119,22 @@
     </ul>
   </div>
 
+  <h2>Then — finished the rest (full autonomous pass)</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Displayed-only signals now feed the coach</strong> (research-cited): <strong>HRV</strong> vs trailing baseline
+      (Research/03 §10), <strong>resting HR</strong> vs baseline (§9), and <strong>last-night sleep</strong> (Research/00b) are
+      real readiness inputs — each shows its actual numbers in the breakdown.</li>
+      <li><strong>Body weight → CoachState</strong> (W/kg on the run-power tile; fueling context available to the coach).</li>
+      <li><strong>HR anchors editor</strong> — Max HR + Resting HR are auto-from-Apple with a manual override that wins until
+      cleared, editable on both the iPhone Health page and the web Health page (existing override endpoints).</li>
+      <li><strong>iPhone Health → control center</strong>: readiness hero, HR anchors, HR zone scale, recovery vitals, body
+      composition, running dynamics, training load.</li>
+      <li><strong>Web Health → dashboard</strong>: HR zones card, HR anchors editor island, body-composition section, kept
+      vitals/dynamics/load.</li>
+    </ul>
+  </div>
+
   <h2>Verified</h2>
   <div class="card">
     <p style="margin:0;">Live admin diagnostic (runs the real computation as the owner): readiness now
@@ -126,14 +142,14 @@
     no longer the false 50/red from mislabeling easy runs. Web <code>tsc</code> clean; iOS <code>BUILD SUCCEEDED</code>.</p>
   </div>
 
-  <h2>Still open — next session</h2>
+  <h2>Still open — genuinely remaining</h2>
   <div class="card">
     <table>
       <tr><th>Item</th><th>Status</th></tr>
-      <tr><td>Editable HR anchors UI (max/resting HR override). Auto-from-Apple already works; the manual override <em>control</em> isn't built.</td><td><span class="tag t-next">Next</span></td></tr>
-      <tr><td>Ground-up Health <em>dashboard</em> redesign (iPhone + web). This session added zones + body-comp + honest breakdowns to the existing structure; the full control-center rebuild remains.</td><td><span class="tag t-next">Next</span></td></tr>
-      <tr><td>Wire HRV (morning baseline deviation) + sleep into readiness — data already flows; the <code>contextMultiplier</code> attenuation path has no production caller.</td><td><span class="tag t-next">Next (research-cited)</span></td></tr>
-      <tr><td>Wire body weight into running-power (W/kg) + fueling (g/kg) where Research-cited.</td><td><span class="tag t-next">Next</span></td></tr>
+      <tr><td>Body weight → fueling targets (g/kg/day). Weight now reaches the coach + W/kg is shown; the explicit daily-carb rule needs its own Research/18 citation pass.</td><td><span class="tag t-next">Next (cited rule)</span></td></tr>
+      <tr><td>HR recovery + SpO₂ as <em>scored</em> coach signals. Both are ingested + displayed; turning them into readiness inputs needs a clean cited threshold.</td><td><span class="tag t-next">Next (cited rule)</span></td></tr>
+      <tr><td>Surface the run's HR zone on the run-recap screen (the debrief text already names it; a visual marker on the zone scale would complete it).</td><td><span class="tag t-next">Polish</span></td></tr>
+      <tr><td>Watch §G readiness glance/complication — owned by the watch agent (backend data already shipped).</td><td><span class="tag t-next">Watch agent</span></td></tr>
     </table>
   </div>
 
