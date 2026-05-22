@@ -24,7 +24,20 @@ export async function getCompletedDates(userId: string, fromISO: string, toISO: 
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
     [userId, fromISO, toISO],
   );
-  return new Set(rows.map((r) => r.day).filter(Boolean));
+  const set = new Set(rows.map((r) => r.day).filter(Boolean));
+  // Also count Apple-Watch completions that never reached Strava. The
+  // workoutId is "YYYY-MM-DD-<slug>" → its date prefix is the run's day.
+  const wc = await query<DateRow>(
+    `SELECT DISTINCT LEFT(workout_id, 10) AS day
+       FROM workout_completions
+      WHERE user_id = $1
+        AND status IN ('completed','partial')
+        AND workout_id ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+        AND LEFT(workout_id, 10) BETWEEN $2 AND $3`,
+    [userId, fromISO, toISO],
+  ).catch(() => [] as DateRow[]);
+  for (const r of wc) if (r.day) set.add(r.day);
+  return set;
 }
 
 /**
@@ -50,6 +63,28 @@ export async function getCompletedMileageByDate(userId: string | null | undefine
   const out = new Map<string, number>();
   for (const r of rows) {
     if (r.day) out.set(r.day, Math.round(Number(r.mi) * 10) / 10);
+  }
+  // Fold in Apple-Watch completions (runs that never synced to Strava).
+  // Date comes from the workoutId prefix ("YYYY-MM-DD-<slug>"). Take the
+  // MAX per day, not the sum — a run logged in BOTH Strava and a watch
+  // completion must not double-count.
+  if (userId) {
+    const wc = await query<Row>(
+      `SELECT LEFT(workout_id, 10) AS day, SUM(total_distance_mi) AS mi
+         FROM workout_completions
+        WHERE user_id = $1
+          AND status IN ('completed','partial')
+          AND total_distance_mi IS NOT NULL
+          AND workout_id ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+          AND LEFT(workout_id, 10) BETWEEN $2 AND $3
+        GROUP BY LEFT(workout_id, 10)`,
+      [userId, fromISO, toISO],
+    ).catch(() => [] as Row[]);
+    for (const r of wc) {
+      if (!r.day) continue;
+      const mi = Math.round(Number(r.mi) * 10) / 10;
+      out.set(r.day, Math.max(out.get(r.day) ?? 0, mi));
+    }
   }
   return out;
 }

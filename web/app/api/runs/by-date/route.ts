@@ -43,7 +43,53 @@ export async function GET(req: NextRequest) {
     [user?.id ?? null, date],
   );
   const row = rows[0];
-  if (!row) return NextResponse.json({ ok: true, run: null });
+  if (!row) {
+    // No Strava activity for this date — fall back to an Apple-Watch
+    // completion that never synced to Strava. The watch workoutId is
+    // "YYYY-MM-DD-<slug>", so we match the date off its prefix (timezone-
+    // proof, unlike completed_at). Gives the Today hero its actuals +
+    // flips it out of "NOT LOGGED"; splits/map aren't available.
+    const wc = await query<{
+      workout_id: string; total_distance_mi: string | null; total_duration_sec: number | null;
+      avg_hr: number | null; max_hr: number | null;
+    }>(
+      `SELECT workout_id, total_distance_mi, total_duration_sec, avg_hr, max_hr
+         FROM workout_completions
+        WHERE user_id = $1
+          AND LEFT(workout_id, 10) = $2
+          AND total_distance_mi IS NOT NULL
+        ORDER BY recorded_at DESC
+        LIMIT 1`,
+      [user?.id ?? null, date],
+    ).catch(() => [] as never[]);
+    const c = wc[0];
+    if (!c) return NextResponse.json({ ok: true, run: null });
+    const dist = Number(c.total_distance_mi) || 0;
+    const dur = Number(c.total_duration_sec) || 0;
+    const maxHrEff = await resolveEffectiveMaxHr(uid).catch(() => ({ value: null as number | null }));
+    return NextResponse.json({
+      ok: true,
+      maxHr: maxHrEff.value ?? null,
+      run: {
+        id: `wc-${c.workout_id}`,
+        name: 'Run',
+        description: null,
+        date,
+        distanceMi: dist,
+        movingTimeS: dur,
+        paceSPerMi: dist > 0 ? Math.round(dur / dist) : 0,
+        avgHr: c.avg_hr != null ? Math.round(Number(c.avg_hr)) : null,
+        maxHr: c.max_hr != null ? Math.round(Number(c.max_hr)) : null,
+        avgCadence: null,
+        elevGainFt: 0,
+        type: null,
+        splits: [],
+        summaryPolyline: null,
+        startLatLng: null,
+        endLatLng: null,
+      },
+    });
+  }
 
   const d = row.data as {
     name?: string; description?: string | null;
