@@ -339,7 +339,7 @@ export default async function HealthPage() {
           {/* HR anchors — editable, POST to /api/profile/{max,resting}-hr */}
           <div className="hr-anchors-header">HR Anchors</div>
           <HrAnchorsIsland
-            initialMaxHr={{ value: anchorMaxHr, source: fitness?.maxHr.source ?? (maxHr != null ? 'computed' : 'none') }}
+            initialMaxHr={{ value: anchorMaxHr, source: fitness?.maxHr.source ?? (maxHr != null ? 'computed' : 'none'), autoValue: fitness?.maxHr.autoValue ?? null }}
             initialRestingHr={{ value: anchorRestingHr, source: fitness?.restingHr.source ?? (rhr != null ? 'computed' : 'none') }}
           />
           <div className="hr-anchor-provenance">

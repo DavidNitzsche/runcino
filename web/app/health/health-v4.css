@@ -144,6 +144,8 @@
 .health-v4-page .hr-anchor-unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t2); font-weight: 500; }
 .health-v4-page .hr-anchor-source { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--green); margin-top: 8px; }
 .health-v4-page .hr-anchor-hint { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t1); line-height: 1.5; margin-top: 8px; }
+.health-v4-page .hr-anchor-newpeak { display: inline-block; margin-top: 8px; padding: 6px 12px; border: 1px solid #E85D26; border-radius: 999px; background: rgba(232,93,38,.08); color: #E85D26; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; }
+.health-v4-page .hr-anchor-newpeak:hover { background: rgba(232,93,38,.16); }
 .health-v4-page .hr-anchor-edit-form { margin-top: 10px; }
 .health-v4-page .hr-anchor-edit-inputs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .health-v4-page .hr-anchor-input { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 600; width: 84px; padding: 8px 12px; border: 1.5px solid rgba(13,15,18,.16); border-radius: 8px; }

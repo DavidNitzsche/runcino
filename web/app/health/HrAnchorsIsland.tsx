@@ -22,6 +22,9 @@ type Anchor = 'max-hr' | 'resting-hr';
 interface AnchorState {
   value: number | null;
   source: string;
+  /** Auto (Apple Health / computed) value even when an override wins — for
+   *  the "Apple Health now sees N — use it" prompt. */
+  autoValue?: number | null;
 }
 
 export function HrAnchorsIsland({
@@ -99,7 +102,7 @@ function AnchorEditor({
       if (!res.ok) {
         setErr(j?.error || 'Save failed');
       } else {
-        onSaved({ value: j.value ?? null, source: j.source ?? 'manual' });
+        onSaved({ value: j.value ?? null, source: j.source ?? 'manual', autoValue: j.autoValue ?? null });
         setEditing(false);
         setInput('');
       }
@@ -118,8 +121,15 @@ function AnchorEditor({
 
   const sourceWord =
     state.source === 'manual' ? 'Manual override'
-      : state.source === 'computed' ? 'Computed from activity'
-        : 'No data yet';
+      : state.source === 'auto' ? 'Apple Health · auto'
+        : state.source === 'computed' ? 'Computed from activity'
+          : 'No data yet';
+
+  // New-peak prompt: a manual override is set, but Apple Health has since
+  // observed a HIGHER value — offer to switch back to auto.
+  const showNewPeak =
+    state.source === 'manual' && state.value != null &&
+    state.autoValue != null && state.autoValue > state.value;
 
   return (
     <div className="hr-anchor">
@@ -143,7 +153,13 @@ function AnchorEditor({
             {state.value != null && <span className="hr-anchor-unit">bpm</span>}
           </div>
           <div className="hr-anchor-source">{sourceWord}</div>
-          <div className="hr-anchor-hint">{hint}</div>
+          {showNewPeak ? (
+            <button type="button" className="hr-anchor-newpeak" onClick={() => save(null)} disabled={busy}>
+              Apple Health now sees {state.autoValue} bpm — use it
+            </button>
+          ) : (
+            <div className="hr-anchor-hint">{hint}</div>
+          )}
         </>
       ) : (
         <form onSubmit={onSubmit} className="hr-anchor-edit-form">
