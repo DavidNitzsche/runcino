@@ -61,6 +61,9 @@ struct OverviewResponse: Decodable {
     let readinessInputs: [OReadinessInput]?
     /// Signals not yet feeding the score (sleep, mileage-vs-plan, etc.).
     let readinessMissing: [String]?
+    /// The runner's HR zones (Karvonen %HRR or %max fallback) for the zone
+    /// scale + classifying a run's average HR. Null when max HR unknown.
+    let hrZones: OHrZones?
     /// Next weeks' long-run distances (Plan "Coming up").
     let planFutureLongRuns: [OFutureLong]?
     /// A-race fitness projection (Race detail). nil when no A-race goal.
@@ -232,6 +235,24 @@ enum WorkoutDayAPI {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
         return try JSONDecoder().decode(PlanWorkoutResponse.self, from: data).workout
     }
+}
+
+/// The runner's HR zones (from /api/overview hrZones). Karvonen %HRR when
+/// resting HR is known, %max fallback otherwise.
+struct OHrZones: Decodable {
+    let framework: String   // "HRR" | "%max"
+    let hrr: Double?
+    let maxHr: Double?
+    let restingHr: Double?
+    let zones: [OHrZone]
+}
+struct OHrZone: Decodable, Identifiable {
+    let tier: String        // "z1".."z5"
+    let name: String
+    let lowBpm: Int
+    let highBpm: Int
+    let pctLabel: String
+    var id: String { tier }
 }
 
 /// One signal in the readiness score breakdown (from readinessInputs).

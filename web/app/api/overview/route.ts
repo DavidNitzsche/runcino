@@ -47,6 +47,7 @@ import { vdotSnapshot } from '../../../lib/vdot';
 import type { ResolvedFitness } from '../../../lib/fitness-types';
 import { resolveFitness } from '../../../lib/fitness-resolver';
 import { computeZ2CoverageFinding } from '../../../lib/z2-coverage';
+import { buildHrZonesBundle, type HrZonesBundle } from '../../../lib/hr-zones';
 import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '../../../lib/workout-descriptions';
 import { generateBriefing } from '../../../lib/coach-briefing';
 import { getWeekStats, getCompletedMileageByDate } from '../../../lib/completed-runs';
@@ -150,6 +151,10 @@ interface OverviewApiOk {
   /** Signals we WOULD use but don't have yet (e.g. sleep, mileage-vs-plan),
    *  listed so the detail view is honest about gaps. */
   readinessMissing: string[];
+  /** The runner's HR zones (Karvonen %HRR when resting HR known, %max
+   *  fallback) — drives the zone scale on Health + the readiness sheet.
+   *  Null when max HR is unknown. */
+  hrZones: HrZonesBundle | null;
   /** A-race fitness projection for the Race detail (from raceFitnessA).
    *  null when no A-race goal. */
   raceProjection: {
@@ -540,6 +545,9 @@ export async function GET(req: Request): Promise<Response> {
     let readinessRecommendation: string | null = null;
     let readinessInputs: Array<{ name: string; delta: number; note: string }> = [];
     let readinessMissing: string[] = [];
+    // The runner's Karvonen HR zones (Research/03 §4 + §5) — drives the zone
+    // scale on Health + the readiness sheet. Null when max HR is unknown.
+    let hrZones: HrZonesBundle | null = null;
     try {
       if (userId) {
         // Parity with the web /overview ring: pass the SAME max HR + resting HR
@@ -547,11 +555,13 @@ export async function GET(req: Request): Promise<Response> {
         // efforts by heart rate, which previously inflated the iPhone score
         // (90/green) vs the web (50/red) for the identical day.
         const fit = await resolveFitness(userId, today).catch(() => null);
+        const restingForZones = fit?.restingHr.value ?? state.recovery?.rhrBpm ?? null;
+        hrZones = buildHrZonesBundle(fit?.maxHr.value ?? state.recovery?.maxHrBpm ?? null, restingForZones);
         const z2 = fit
           ? await computeZ2CoverageFinding(userId, today, fit.maxHr.value, fit.restingHr.value, fit.vdot.value).catch(() => null)
           : null;
         const r = await computeReadinessScore(
-          userId, today, fit?.maxHr.value ?? null, fit?.restingHr.value ?? state.recovery?.rhrBpm ?? null, z2,
+          userId, today, fit?.maxHr.value ?? null, restingForZones, z2,
         );
         readinessScore = r.score;
         readinessState = r.score != null ? r.state : null;
@@ -620,6 +630,7 @@ export async function GET(req: Request): Promise<Response> {
       readinessRecommendation,
       readinessInputs,
       readinessMissing,
+      hrZones,
       raceProjection: raceFitnessA?.answer ? {
         projectedDisplay: raceFitnessA.answer.predictedDisplay,
         vdot: Math.round(raceFitnessA.answer.vdot),

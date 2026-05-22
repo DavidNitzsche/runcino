@@ -402,6 +402,14 @@ struct HealthView: View {
             dyn("Vert Ratio", hk.vertRatioPct, "%", dec: 1, type: "vertical_ratio"),
             dyn("Run Power", hk.runPowerW, "W", type: "run_power"),
         ]
+        let body: [Tile] = [
+            vital("Weight", hk.weightKg, "kg", dec: 1, sub: "latest", type: "body_mass"),
+            vital("Body Fat", hk.bodyFatPct, "%", dec: 1, sub: "latest", type: "body_fat_pct"),
+            vital("Lean Mass", hk.leanMassKg, "kg", dec: 1, sub: "latest", type: "lean_mass"),
+            vital("HR Recovery", hk.hrRecoveryBpm, "bpm", sub: "1-min drop", type: "hr_recovery"),
+            vital("Blood O₂", hk.spo2Pct, "%", dec: 0, sub: "latest", type: "spo2"),
+            vital("Active Energy", hk.activeEnergyKcal, "kcal", sub: "today", type: "active_energy"),
+        ]
         let acwr = overview.acwrValue
         let load: [Tile] = [
             Tile(label: "Load · ACWR", value: acwr.map { String(format: "%.2f", $0) } ?? "—", unit: nil, delta: acwr != nil ? ((acwr ?? 0) > 1.3 ? "watching" : "ok") : "No data", tone: (acwr ?? 0) > 1.3 ? .watch : .good, live: acwr != nil),
@@ -431,7 +439,11 @@ struct HealthView: View {
             // Connect lives in Profile; only show it here when NOT connected.
             if !localHealth { connectControl }
 
+            if let z = overview.hrZones, !z.zones.isEmpty {
+                HrZoneScale(zones: z.zones, framework: z.framework)
+            }
             section("Recovery & Vitals", vitals)
+            section("Body Composition", body)
             section("Running Dynamics · 30-day avg", dynamics)
             section("Training Load", load)
         }
@@ -1407,6 +1419,59 @@ struct WhyThisSheet: View {
 
 // MARK: - Metric detail (sheet from a Health tile)
 
+/// Karvonen HR zone scale — the 5 zones with the runner's real bpm ranges,
+/// so "145 = easy aerobic" is legible at a glance. Optionally marks where a
+/// run's average HR landed. Reads /api/overview hrZones (HRR or %max).
+struct HrZoneScale: View {
+    let zones: [OHrZone]
+    var markerBpm: Int? = nil
+    var framework: String = "HRR"
+
+    private func tone(_ tier: String) -> Color {
+        switch tier {
+        case "z1": return Faff.C.recovery.opacity(0.45)
+        case "z2": return Faff.C.recovery
+        case "z3": return Faff.C.milestone.opacity(0.8)
+        case "z4": return Faff.C.milestone
+        default:   return Faff.C.warn
+        }
+    }
+    private func contains(_ z: OHrZone) -> Bool {
+        guard let m = markerBpm else { return false }
+        return m >= z.lowBpm && m <= z.highBpm
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("YOUR HR ZONES").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                Text(framework == "HRR" ? "Karvonen · %HRR" : "% max")
+                    .font(Faff.F.inter(9.5, .medium)).foregroundStyle(Faff.C.textFaint)
+            }
+            ForEach(zones) { z in
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 3).fill(tone(z.tier)).frame(width: 4, height: 26)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(z.name).font(Faff.F.inter(12, contains(z) ? .bold : .medium)).foregroundStyle(Faff.C.ink)
+                        Text(z.pctLabel).font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textFaint)
+                    }
+                    Spacer()
+                    Text("\(z.lowBpm)–\(z.highBpm)")
+                        .font(Faff.F.oswald(14, contains(z) ? .semibold : .regular))
+                        .foregroundStyle(contains(z) ? tone(z.tier) : Faff.C.textMuted)
+                    Text("bpm").font(Faff.F.inter(9.5)).foregroundStyle(Faff.C.textFaint)
+                    if contains(z) {
+                        Text("· you").font(Faff.F.inter(9.5, .semibold)).foregroundStyle(tone(z.tier))
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
+    }
+}
+
 /// Readiness detail — the transparent breakdown behind the score. Opened
 /// from the Today readiness card and the Health "Body State" hero. Shows the
 /// signals that moved the score off baseline, the vitals feeding it, what's
@@ -1470,6 +1535,11 @@ struct ReadinessDetailSheet: View {
 
                     // The recovery vitals the engine reads.
                     vitalsRow
+
+                    // The runner's HR zones — so "hard" vs "easy" is legible.
+                    if let z = overview.hrZones, !z.zones.isEmpty {
+                        HrZoneScale(zones: z.zones, framework: z.framework)
+                    }
 
                     // Honest about gaps — signals we'd use but don't have yet.
                     if !missing.isEmpty {
