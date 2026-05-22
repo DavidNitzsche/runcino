@@ -147,7 +147,8 @@ private struct LiveRace: View {
             projectedFinish: engine.projectedFinishSec.map { PaceFormat.hm($0) } ?? "—",
             goalDeltaSec: engine.projectedDeltaSec,
             distanceToGo: engine.distanceToGoMi.map { String(format: "%.1f", $0) } ?? "—",
-            nextFuel: nextFuel)
+            nextFuel: nextFuel,
+            phaseFraction: engine.phaseProgress)
     }
 }
 

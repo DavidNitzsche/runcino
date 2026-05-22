@@ -207,6 +207,10 @@ struct Seg: Identifiable { let id = UUID(); let weight: CGFloat; let state: SegS
 
 struct SegmentStrip: View {
     let segments: [Seg]
+    /// How full the `.current` segment is drawn (0…1) — so the bar PROGRESSES as
+    /// you move through the phase instead of sitting solid. `done` = full,
+    /// `upcoming` = empty track. Defaults to 1 (solid) for non-progress uses.
+    var currentFraction: Double = 1
     var body: some View {
         GeometryReader { g in
             let gap: CGFloat = 2
@@ -214,7 +218,18 @@ struct SegmentStrip: View {
             let avail = g.size.width - gap * CGFloat(max(0, segments.count - 1))
             HStack(spacing: gap) {
                 ForEach(segments) { s in
-                    Capsule().fill(color(s.state)).frame(width: avail * s.weight / total)
+                    let w = avail * s.weight / total
+                    if s.state == .current {
+                        // Track + a proportional fill that grows with progress.
+                        Capsule().fill(WP.line)
+                            .frame(width: w)
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(WP.orange)
+                                    .frame(width: w * CGFloat(min(max(currentFraction, 0), 1)))
+                            }
+                    } else {
+                        Capsule().fill(color(s.state)).frame(width: w)
+                    }
                 }
             }
         }
@@ -227,6 +242,15 @@ struct SegmentStrip: View {
         case .upcoming: return WP.line
         }
     }
+}
+
+/// Pace delta vs the target. Small misses read in seconds ("+8S"); big ones
+/// roll up to minutes:seconds so a walk-test doesn't show an absurd "+1016S".
+func paceDeltaLabel(_ sec: Int) -> String {
+    let a = abs(sec)
+    let sign = sec >= 0 ? "+" : "-"
+    if a < 60 { return "\(sign)\(a)s" }
+    return "\(sign)\(a / 60):" + String(format: "%02d", a % 60)
 }
 
 // MARK: - WORK INTERVAL face
@@ -245,12 +269,12 @@ struct WorkIntervalFace: View {
     let repTimeLeft: String   // "0:24"  (time left in this rep)
 
     private var paceColor: Color { WP.pace(forDeltaSeconds: deltaSeconds) }
-    private var deltaText: String { (deltaSeconds >= 0 ? "+" : "") + "\(deltaSeconds)s" }
+    private var deltaText: String { paceDeltaLabel(deltaSeconds) }
 
     var body: some View {
         VStack(spacing: 0) {
             FaceHeader(label: rep, color: WP.amber)
-            SegmentStrip(segments: segments).padding(.top, 8)
+            SegmentStrip(segments: segments, currentFraction: repFraction).padding(.top, 8)
 
             VStack(spacing: -10) {               // middle zone: hero (dominant) + ref. Negative spacing pulls
                 Hero(value: currentPace, color: paceColor)   // the ref UP into Bebas's tall line-box dead space
@@ -283,9 +307,10 @@ struct RaceFace: View {
     let goalDeltaSec: Int?     // proj − goal; − = ahead of goal. nil until enough banked.
     let distanceToGo: String  // "15.8"  (whole-race miles remaining)
     let nextFuel: String      // "Gel 3 · 1.6mi"
+    var phaseFraction: Double = 1   // progress through the current course phase (fills the strip)
 
     private var paceColor: Color { WP.pace(forDeltaSeconds: deltaSeconds) }
-    private var deltaText: String { (deltaSeconds >= 0 ? "+" : "") + "\(deltaSeconds)s" }
+    private var deltaText: String { paceDeltaLabel(deltaSeconds) }
 
     // Predicted finish vs goal: the race headline. − = ahead (green), + = behind (red).
     private var goalText: String {
@@ -302,7 +327,7 @@ struct RaceFace: View {
     var body: some View {
         VStack(spacing: 0) {
             FaceHeader(label: phase, color: WP.orange)
-            SegmentStrip(segments: segments).padding(.top, 8)
+            SegmentStrip(segments: segments, currentFraction: phaseFraction).padding(.top, 8)
 
             // Hero zone — current pace is by far the biggest thing, filling the
             // width, with the terrain-aware target + delta right under it.
