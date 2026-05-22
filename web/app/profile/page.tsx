@@ -23,6 +23,7 @@ import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { resolveEffectiveMaxHr } from '@/lib/compute-max-hr';
 import { resolveFitness } from '@/lib/fitness-resolver';
+import { listRacesDB } from '@/lib/race-store';
 import { validateMaxHr } from '@/lib/validate-max-hr';
 import { validateRaceFeasibility } from '@/lib/validate-race-feasibility';
 import { buildAdaptiveVdotVerdict } from '@/lib/adaptive-vdot-verdict';
@@ -285,7 +286,15 @@ export default async function ProfilePage() {
   );
   const k = kpiRows[0] ?? null;
   const lifetimeMi = k && parseInt(k.lifetime_mi ?? '0', 10) > 0 ? parseInt(k.lifetime_mi!, 10) : null;
-  const racesCount = k && parseInt(k.races ?? '0', 10) > 0 ? parseInt(k.races!, 10) : null;
+  // Races run = entries in the runner's race list (the source the /races
+  // page + AFC chip use), not just Strava activities tagged 'race' (which
+  // are usually untagged → the old count read 0 despite a full race list).
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const savedRacesRun = await listRacesDB(auth.id)
+    .then((rs) => rs.filter((r) => r.meta.date <= todayStr).length)
+    .catch(() => 0);
+  const stravaRaceCount = k && parseInt(k.races ?? '0', 10) > 0 ? parseInt(k.races!, 10) : 0;
+  const racesCount = Math.max(savedRacesRun, stravaRaceCount) > 0 ? Math.max(savedRacesRun, stravaRaceCount) : null;
   const daysRun = k && parseInt(k.days_run ?? '0', 10) > 0 ? parseInt(k.days_run!, 10) : null;
   const elevFt = k && parseInt(k.elev_ft ?? '0', 10) > 0 ? parseInt(k.elev_ft!, 10) : null;
   const peakYear = k?.peak_year ?? null;
@@ -298,7 +307,7 @@ export default async function ProfilePage() {
 
   const KPIS = [
     { label: 'Lifetime mi',  value: lifetimeMi !== null ? String(lifetimeMi) : '—',                  unit: lifetimeMi !== null ? 'mi' : undefined, sub: lifetimeMi !== null ? 'All time' : 'No data' },
-    { label: 'Races',        value: racesCount !== null ? String(racesCount) : '—',                  sub: racesCount !== null ? 'From Strava history' : 'No data' },
+    { label: 'Races',        value: racesCount !== null ? String(racesCount) : '—',                  sub: racesCount !== null ? 'Races run' : 'No data' },
     { label: 'Days run',     value: daysRun !== null    ? String(daysRun)    : '—',                  sub: daysRun !== null ? `${daysRun} unique days` : 'No data' },
     { label: 'Peak year',    value: peakYearMi !== null ? String(peakYearMi) : '—',                  unit: peakYearMi !== null ? 'mi' : undefined, sub: peakYear ? `${peakYear} · biggest year` : 'No data' },
     { label: 'Lifetime elev',value: elevFt !== null     ? fmtElev(elevFt)    : '—',                  unit: elevFt !== null ? 'ft' : undefined, sub: elevFt !== null ? `${(elevFt / 29032).toFixed(2)}× Everest` : 'No data' },
