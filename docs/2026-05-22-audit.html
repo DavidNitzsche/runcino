@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Faff · Cross-Surface Audit — 2026-05-22</title>
+<style>
+  :root {
+    --bg:#EEECEA; --card:#fff; --ink:#0D0F12; --muted:rgba(13,15,18,.62);
+    --faint:rgba(13,15,18,.42); --race:#E85D26; --green:#1f6a21; --amber:#B3450A; --warn:#B22222;
+    --line:rgba(13,15,18,.10);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; line-height:1.55; }
+  .wrap { max-width:920px; margin:0 auto; padding:48px 24px 96px; }
+  h1 { font-size:34px; letter-spacing:-.02em; margin:0 0 4px; }
+  h2 { font-size:21px; margin:42px 0 12px; letter-spacing:-.01em; }
+  h3 { font-size:15px; margin:18px 0 6px; }
+  .eyebrow { font-size:11px; font-weight:700; letter-spacing:1.6px; text-transform:uppercase; color:var(--race); }
+  .lede { font-size:16px; color:var(--muted); margin:8px 0 0; }
+  .card { background:var(--card); border-radius:16px; padding:20px 22px; margin:14px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.05); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint); }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px;
+    background:rgba(13,15,18,.05); padding:1px 5px; border-radius:5px; }
+  .tag { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.4px; padding:2px 8px;
+    border-radius:999px; text-transform:uppercase; white-space:nowrap; }
+  .t-fixed { background:rgba(31,106,33,.14); color:var(--green); }
+  .t-build { background:rgba(232,93,38,.12); color:var(--race); }
+  .t-flag  { background:rgba(178,34,34,.12); color:var(--warn); }
+  .t-ok    { background:rgba(13,15,18,.06); color:var(--faint); }
+  ul { margin:6px 0 0; padding-left:20px; } li { margin:5px 0; }
+  .foot { color:var(--faint); font-size:12px; margin-top:40px; }
+  .sev { font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Faff · Autonomous session</div>
+  <h1>Cross-Surface Audit — web · iPhone · watch</h1>
+  <p class="lede">2026-05-22 · Directive: "do a full audit of web, iPhone, watch. Make sure they're talking on
+  EVERYTHING, that things sync that should, colors / marking done, stats, runs — and that every health metric is
+  added correctly and used properly. No more readiness surprises."</p>
+
+  <div class="card">
+    <div class="eyebrow">The one-line story</div>
+    <p style="margin:8px 0 0;font-size:15.5px;">The plumbing is sound — runs sync and de-dupe across all three
+    paths, and every Apple Health metric the phone reads makes it into the database. The real risk was one root
+    cause wearing several hats: <strong>"today" was computed three different ways and none used the device's
+    timezone</strong>, which is exactly how a readiness score reads the wrong day. That's now fixed on the
+    readiness/today surfaces, plus an honest "No data" state so the watch/phone can never invent a green verdict.
+    A handful of lower-risk items are documented below for your return rather than changed unattended.</p>
+  </div>
+
+  <div class="card" style="border-left:4px solid var(--green);">
+    <div class="eyebrow">Shipped + live</div>
+    <p style="margin:8px 0 0;font-size:14px;"><strong>TestFlight build 42</strong> is live to Internal Testers
+    (route-write fix, device-timezone reporting, watch direct-post, green-DONE / orange-cleanup, citation strip).
+    The audit fixes below in <span class="tag t-fixed">FIXED · LIVE</span> are deployed to web now;
+    <span class="tag t-build">NEXT BUILD</span> items are committed and ride the next TestFlight push (your
+    call on when).</p>
+  </div>
+
+  <h2>What I fixed this session</h2>
+  <div class="card">
+    <table>
+      <tr><th>Area</th><th>Issue</th><th>Fix</th><th>Status</th></tr>
+      <tr>
+        <td>Readiness / "today"</td>
+        <td>"Today" derived 3 ways — <code>gatherCoachState</code> hardcoded LA, watch/health routes guessed
+        from free-text location — none used the new <code>users.timezone</code>. Wrong day → wrong "yesterday"
+        → wrong readiness.</td>
+        <td>Threaded the device tz through <code>gatherCoachState(opts.tz)</code> + <code>/api/overview</code>,
+        <code>/api/watch/readiness</code>, <code>/api/watch/today</code>, <code>/api/health/readiness</code>,
+        web overview &amp; health pages. Device tz wins; location guess is the fallback.</td>
+        <td><span class="tag t-fixed">FIXED · LIVE</span></td>
+      </tr>
+      <tr>
+        <td>Readiness inputs</td>
+        <td>When max HR is unknown, "hard by HR" detection silently turns off — an untagged hard run reads as
+        fresh and inflates the score (the recurring "HRmax never reaches the score" trap).</td>
+        <td><code>readiness-score.ts</code> now lists <em>max HR</em> as a missing input instead of degrading
+        silently. Also bounded the HRV/RHR/sleep window by the user-tz "today" rather than Postgres UTC
+        <code>CURRENT_DATE</code>.</td>
+        <td><span class="tag t-fixed">FIXED · LIVE</span></td>
+      </tr>
+      <tr>
+        <td>Readiness display (iPhone)</td>
+        <td>When the score was suppressed/no-data, the Today card substituted an <em>ACWR-derived</em> green
+        "On track" the engine never produced — a genuine readiness surprise.</td>
+        <td>Suppressed score now renders a neutral "No data" badge + neutral ring (no invented verdict).</td>
+        <td><span class="tag t-build">NEXT BUILD</span></td>
+      </tr>
+      <tr>
+        <td>Color (iPhone)</td>
+        <td>Date-strip "today" cell painted brand orange — same orange-as-today pattern you flagged on the
+        Plan page.</td>
+        <td>Today now uses neutral ink text + a subtle ink outline. Orange stays warnings-only.</td>
+        <td><span class="tag t-build">NEXT BUILD</span></td>
+      </tr>
+      <tr>
+        <td>Web plan calendar</td>
+        <td>"Today" cell computed from UTC → highlighted tomorrow in the evening.</td>
+        <td>Browser-local day. (Shipped earlier today.)</td>
+        <td><span class="tag t-fixed">FIXED · LIVE</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>Sync &amp; parity — verified healthy</h2>
+  <div class="card">
+    <ul>
+      <li><span class="tag t-ok">OK</span> <strong>All three run paths converge.</strong> Watch→phone bridge,
+      watch direct-post, and Apple-Health import all reach <code>upsertCanonicalRun</code> keyed on the
+      start-minute, with durable retry queues and idempotent upserts. No silent-drop path found; no auth gaps
+      (every endpoint checks Bearer/cookie + active status).</li>
+      <li><span class="tag t-ok">OK</span> <strong>"Done" logic agrees</strong> across web and iPhone (≥60% of
+      planned distance) — verified in <code>completed-runs.ts</code>, <code>overview/page.tsx</code>,
+      <code>WorkoutModalIsland.tsx</code>, and iPhone <code>OverviewModels/TodayView/Screens</code>.</li>
+      <li><span class="tag t-ok">OK</span> <strong>Web colors already correct</strong> — the overview shows a
+      green COMPLETED pill, ink-colored stats (no orange pace/ran), and the coach card never rendered the
+      research citation. The orange-cleanup was an iPhone-only need.</li>
+    </ul>
+  </div>
+
+  <h2>Flagged for your return (not changed unattended)</h2>
+  <div class="card">
+    <table>
+      <tr><th>Sev</th><th>Finding</th><th>Where</th><th>Recommended fix</th></tr>
+      <tr>
+        <td><span class="sev" style="color:var(--warn)">HIGH</span></td>
+        <td>Run date vs route date can disagree across timezones. The phone's <code>isoDay()</code> uses the
+        <em>device</em> tz for <code>route_date</code>; the backend dates the run from the instant in
+        <code>users.timezone</code>. If those ever differ (travel, stale tz) a watch-only run shows with no map.</td>
+        <td><code>HealthKitManager.swift:548,690</code>; <code>run-dedup.ts</code>; <code>by-date/route.ts</code></td>
+        <td>Make the route join by start-instant proximity (reuse <code>findNearbyRunId</code>) instead of a
+        date-string match, or normalize <code>route_date</code> server-side. Native + web.</td>
+      </tr>
+      <tr>
+        <td><span class="sev" style="color:var(--warn)">HIGH</span></td>
+        <td>Week-mileage / "done" gate can double-count a watch run. <code>getCompletedMileageByDate</code>
+        sums <code>strava_activities</code> by tz-day and MAX-merges <code>workout_completions</code> by the
+        workoutId slug-date; if those dates differ the merge can't cancel them.</td>
+        <td><code>web/lib/completed-runs.ts:50-88</code></td>
+        <td>Key both halves off the same canonical run id (already exists) rather than two different dates.</td>
+      </tr>
+      <tr>
+        <td><span class="sev" style="color:var(--amber)">MED</span></td>
+        <td><code>/api/health</code> GET serves entirely hardcoded stubs (every value null) and is read by
+        nothing — the Health page queries <code>health_samples</code> directly. Dead + misleading surface.</td>
+        <td><code>web/app/api/health/route.ts</code></td>
+        <td>Delete the route, or wire it to <code>health_samples</code> if any future client needs it.</td>
+      </tr>
+      <tr>
+        <td><span class="sev" style="color:var(--amber)">MED</span></td>
+        <td>VO₂max lands in <code>health_samples</code> + displays, but the cold-start VDOT fallback still
+        reads the legacy single-tenant <code>profile.vo2max_apple</code> column (no-op for real users). So
+        VO₂max is collected + shown but not <em>used</em> for fitness on multi-tenant accounts.</td>
+        <td><code>health-samples.ts:334</code>; <code>lib/vo2max-apple.ts</code></td>
+        <td>Point the resolver at <code>health_samples</code> for a real <code>user_id</code>. Only affects
+        brand-new users with no run history (established users derive VDOT from performances).</td>
+      </tr>
+      <tr>
+        <td><span class="sev" style="color:var(--faint)">LOW</span></td>
+        <td>Five metrics are display-only (no coach/readiness consumer): <code>lean_mass</code>,
+        <code>spo2</code>, <code>active_energy</code>, <code>hr_recovery</code>, <code>body_fat_pct</code>.
+        Fine if intentional; flagged per "no collected-but-unused."</td>
+        <td><code>coach-state.ts:279</code>, <code>readiness-score.ts:308</code></td>
+        <td>Decide whether any should feed readiness/fitness; otherwise leave as informational.</td>
+      </tr>
+      <tr>
+        <td><span class="sev" style="color:var(--faint)">LOW</span></td>
+        <td>iPhone run recap omits <strong>max HR</strong> (web shows it). Cadence + vertical_ratio are appended
+        twice in the ingest batch (harmless — UPSERT de-dupes). Distance rounds to 1-dp on web, integer-when-whole
+        on iPhone. The other <code>userTimezone(location)</code> sites (races, log, checkin, training, projection,
+        z2, vdot-verdict) still guess from location — should also prefer <code>users.timezone</code>.</td>
+        <td><code>RunRecapView.swift:139</code>; <code>HealthKitManager.swift:269/318</code>; ~9 web routes</td>
+        <td>Add a max-HR pill; drop the duplicate dynamics append; finish the tz sweep (mechanical).</td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>Health metrics — full chain status</h2>
+  <div class="card">
+    <p style="margin:0 0 8px;font-size:13.5px;">Every metric the phone reads → ingests → stores correctly.
+    Units verified (HRV ms, temp °C, energy kcal, body-fat fraction→%). Breaks are consumption-side only.</p>
+    <table>
+      <tr><th>Metric</th><th>Read→Ingest→Store</th><th>Used by coach/readiness</th><th>Displayed</th></tr>
+      <tr><td>Resting HR</td><td>✅</td><td>✅ readiness</td><td>✅ both</td></tr>
+      <tr><td>HRV</td><td>✅</td><td>✅ readiness</td><td>✅ both</td></tr>
+      <tr><td>Sleep</td><td>✅</td><td>✅ readiness</td><td>✅ both</td></tr>
+      <tr><td>Max HR</td><td>✅ (ratchet)</td><td>✅ HR zones / readiness</td><td>web yes · iPhone no tile</td></tr>
+      <tr><td>VO₂max</td><td>✅</td><td>⚠️ not wired to VDOT (multi-tenant)</td><td>✅ both</td></tr>
+      <tr><td>Resp. rate · wrist temp · HR recovery · active energy · weight · body-fat · lean mass · SpO₂</td>
+        <td>✅</td><td>weight→coach; rest display-only</td><td>✅ both</td></tr>
+      <tr><td>Running dynamics (cadence, stride, vert osc, GCT, vert ratio, power)</td><td>✅</td>
+        <td>recap context</td><td>✅ both</td></tr>
+    </table>
+  </div>
+
+  <h2>Readiness chain — confidence after this pass</h2>
+  <div class="card">
+    <ul>
+      <li>One source of truth: <code>computeReadinessScore</code> — every surface calls it, no divergent
+      re-implementations (the iPhone ACWR fallback that did diverge is removed).</li>
+      <li>Inputs that go missing are now <em>listed</em> (max HR, HRV/RHR baselines), not silently dropped.</li>
+      <li>Day windows for activities and health samples are computed in the user's timezone.</li>
+      <li>Suppressed/insufficient data renders an honest "No data" everywhere — never an invented green.</li>
+    </ul>
+  </div>
+
+  <p class="foot">Commits this session: green-DONE / orange-cleanup / citation strip (83c98a4), build-42 ship,
+  timezone-correct readiness/today + no-data states (d971bc4). Web changes are live; native changes are committed
+  and ride the next TestFlight build on your go-ahead. HIGH-severity flagged items above are the ones worth doing
+  next — both are timezone-edge run/route/mileage keying, contained but touch native + web together.</p>
+</div>
+</body>
+</html>
