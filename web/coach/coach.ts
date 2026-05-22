@@ -2534,9 +2534,9 @@ class CoachImpl implements Coach {
         if (longestMi < targetLong) {
           return `Two more weekly long runs above ${targetLong}mi unlocks the build phase. Last 28 days peaked at ${longestMi.toFixed(0)}mi.`;
         }
-        return `Long run is in range. One threshold session per week closes the gap — aim for ${Math.round(weeklyMi * 0.08)}mi at T-pace.`;
+        return `Long run is in range. One threshold session per week closes the gap — aim for ${Math.round(weeklyMi * 0.08)}mi at threshold pace.`;
       }
-      return `Add one VO2 session (3-5min reps at 95-100% vVO2max) per week. ${weeksNeeded} weeks of that work closes the ${Math.round(sPerMiToGain)}s/mi gap.`;
+      return `Add one speed session a week — short 3–5 min hard reps near 5K pace. ${weeksNeeded} weeks of that closes the ${Math.round(sPerMiToGain)}s/mi gap.`;
     })();
 
     return {

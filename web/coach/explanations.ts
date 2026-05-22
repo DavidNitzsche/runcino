@@ -178,7 +178,7 @@ export function composeVoiceLead(ctx: VoiceLeadCtx): string {
     case 'tempo_continuous':
       return [
         `Tempo today — ${dist || '4–8 miles'} continuous${pace ? ` at ${pace}` : ' at threshold pace'}.`,
-        `Threshold work has the highest correlation with marathon performance of any single training variable, even higher than VO2max.`,
+        `Threshold work moves marathon performance more than any other single workout — even more than top-end speed.`,
         `Don't push beyond the prescribed pace; the value is in time at threshold, not how fast you went. Hold the band.`,
       ].join(' ');
 
@@ -198,7 +198,7 @@ export function composeVoiceLead(ctx: VoiceLeadCtx): string {
 
     case 'vo2':
       return [
-        `VO2 work today — short hard reps${pace ? ` around ${pace}` : ' at 5K to 3K pace'}, with full recovery between.`,
+        `Top-end speed today — short hard reps${pace ? ` around ${pace}` : ' at 5K to 3K pace'}, with full recovery between.`,
         `This raises the engine's ceiling, which makes everything below it — including marathon pace — feel relatively easier.`,
         `For marathon training, secondary importance. The reps aren't long; the recovery between is the secret to actually hitting the prescribed pace.`,
       ].join(' ');

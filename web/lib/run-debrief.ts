@@ -167,7 +167,7 @@ export function generateRunDebrief(input: DebriefInput): string {
   // the recap agrees with readiness + plan-building.
   const restingHrForZones = recovery?.restingHrBpm ?? null;
   const hrZB = buildHrZonesBundle(maxHr ?? null, restingHrForZones);
-  const hrPctLabel = hrZB?.framework === 'HRR' ? 'HRR' : 'max';
+  const hrPctLabel = hrZB?.framework === 'HRR' ? 'effort' : 'of max';
   const hrPctOf = (bpm: number): number | null => {
     if (!maxHr || maxHr <= 0) return null;
     if (hrZB?.framework === 'HRR' && hrZB.hrr && restingHrForZones != null) {

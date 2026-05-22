@@ -191,7 +191,9 @@ export function loadAliveCoachData(input: LoadAliveCoachInput): AliveCoachData {
     id: 'readiness',
     label: 'READINESS',
     value: r.level.toUpperCase(),
-    hint: r.acwr != null ? `ACWR ${r.acwr.toFixed(2)}` : undefined,
+    hint: r.acwr != null
+      ? (r.acwr > 1.5 ? 'load high' : r.acwr >= 1.3 ? 'load building' : r.acwr < 0.8 ? 'easing off' : 'load steady')
+      : undefined,
     variant: r.level === 'green' ? 'green' : r.level === 'yellow' ? 'amber' : 'warn',
   });
 
