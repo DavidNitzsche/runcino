@@ -58,6 +58,9 @@ final class WorkoutTracker: NSObject, ObservableObject {
     private var cadSum = 0
     private var cadCount = 0
     var avgCadence: Int? { cadCount > 0 ? Int((Double(cadSum) / Double(cadCount)).rounded()) : nil }
+    /// EWMA-smoothed pace (s/mi) so the displayed number settles instead of
+    /// bouncing frame-to-frame off raw speed samples.
+    private var smoothedPaceSec: Double = 0
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
 
@@ -97,6 +100,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // a race reading "0 to go / fuel done" before it begins).
         distanceMi = 0; paceSPerMi = 0; heartRate = 0; cadence = 0; activeEnergyKcal = 0
         maxHr = 0; hrSum = 0; hrCount = 0; cadSum = 0; cadCount = 0
+        smoothedPaceSec = 0
         mockPaused = false
         #if targetEnvironment(simulator)
         startSimulatorMock(); return
@@ -207,19 +211,22 @@ final class WorkoutTracker: NSObject, ObservableObject {
         }
         if let dist { distanceMi = dist }
         if let energy { activeEnergyKcal = energy }
-        // Pace from HealthKit running speed (more reliable than raw GPS speed,
-        // and works on a treadmill). GPS speed in applyLocations is the fallback.
-        // Cadence comes from CMPedometer (see start()), not HealthKit steps.
+        // Pace from HealthKit running speed ONLY (single source — the raw GPS
+        // speed path used to also write paceSPerMi, and the two fought each
+        // other every sample, which is what made the pace jitter). Clamp out
+        // sensor spikes and EWMA-smooth so it settles. Cadence is CMPedometer.
         if let speedMps, speedMps > 0.2 {
-            paceSPerMi = Int((1609.344 / speedMps).rounded())
+            let raw = 1609.344 / speedMps                 // s/mi
+            let clamped = min(max(raw, 150), 2400)        // 2:30…40:00 /mi sanity band
+            smoothedPaceSec = smoothedPaceSec == 0 ? clamped : smoothedPaceSec * 0.7 + clamped * 0.3
+            paceSPerMi = Int(smoothedPaceSec.rounded())
         }
     }
 
     fileprivate func applyLocations(_ locs: [CLLocation]) {
+        // Route only — pace comes from HealthKit runningSpeed in apply(), NOT
+        // from raw GPS speed here (having both write paceSPerMi made it jitter).
         routeBuilder?.insertRouteData(locs) { _, _ in }
-        if let last = locs.last, last.speed > 0 {
-            paceSPerMi = Int((1609.344 / last.speed).rounded())
-        }
     }
 
     // MARK: - Simulator mock

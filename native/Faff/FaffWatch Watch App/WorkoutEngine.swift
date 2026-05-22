@@ -50,6 +50,11 @@ final class WorkoutEngine: ObservableObject {
     @Published private(set) var isPaused = false
     /// 3 · 2 · 1 pre-roll value, shown by CountdownView while .countingDown.
     @Published private(set) var countdownValue = 0
+    /// True once every prescribed phase is done but the session is STILL
+    /// recording — "overtime". The plan is complete (logged as such), yet we
+    /// keep the clock + HKWorkoutSession running so the user can run farther or
+    /// jog home and end on their own terms. Set instead of finishing.
+    @Published private(set) var planComplete = false
     /// A transient transition flip; nil most of the time.
     @Published var transition: TransitionCue?
 
@@ -260,6 +265,7 @@ final class WorkoutEngine: ObservableObject {
         bankedSec = 0
         results = []
         didFireAlmostDone = false
+        planComplete = false
         workoutStart = .now
         phaseStart = .now
         phaseStartMi = coveredMi
@@ -285,13 +291,16 @@ final class WorkoutEngine: ObservableObject {
     /// User tapped "End interval" — bank the current phase as ended
     /// early and advance.
     func endCurrentPhase() {
-        guard state == .running else { return }
+        guard state == .running, !planComplete else { return }
         advance(completedCurrent: false)
     }
 
-    /// User abandoned the whole workout from the active screen.
+    /// User ended the run from the active screen. In overtime the plan is
+    /// already done, so this is a normal "completed" finish; mid-plan it's an
+    /// abandon.
     func abandon() {
         guard state == .running else { return }
+        if planComplete { finish(status: "completed"); return }
         recordCurrentPhase(completed: false)
         finish(status: "abandoned")
     }
@@ -332,6 +341,7 @@ final class WorkoutEngine: ObservableObject {
         results = []
         didFireAlmostDone = false
         firedGels = []
+        planComplete = false
         isPaused = false
         pauseStart = nil
         countdownValue = 0
@@ -374,7 +384,17 @@ final class WorkoutEngine: ObservableObject {
     }
 
     private func tick() {
-        guard state == .running, !isPaused, let phase = currentPhase else { return }
+        guard state == .running, !isPaused else { return }
+
+        // Overtime: plan is done, but keep the clock + live metrics running.
+        // No phase logic — the user runs free until they End.
+        if planComplete {
+            phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
+            totalElapsedSec = bankedSec + phaseElapsedSec
+            return
+        }
+
+        guard let phase = currentPhase else { return }
 
         phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
         totalElapsedSec = bankedSec + phaseElapsedSec
@@ -437,7 +457,18 @@ final class WorkoutEngine: ObservableObject {
         bankedSec += Int(Date.now.timeIntervalSince(phaseStart))
 
         if currentIndex + 1 >= workout.phases.count {
-            finish(status: completedCurrent ? "completed" : "partial")
+            // Plan done — do NOT stop. Enter overtime: the workout is complete,
+            // but keep the clock + session recording so the user can keep
+            // running and End when ready (see endCurrentPhase/abandon + tick).
+            planComplete = true
+            phaseStart = .now
+            phaseElapsedSec = 0
+            didFireAlmostDone = false
+            driftEval = nil
+            paceZone = .onTarget
+            paceDeltaSPerMi = 0
+            Haptics.play(.end)
+            flash(.go(title: "Plan done ✓", sub: "Keep going · End when ready"), for: 3)
             return
         }
 

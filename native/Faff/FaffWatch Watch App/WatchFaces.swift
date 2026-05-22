@@ -253,7 +253,35 @@ func paceDeltaLabel(_ sec: Int) -> String {
     return "\(sign)\(a / 60):" + String(format: "%02d", a % 60)
 }
 
-// MARK: - WORK INTERVAL face
+// MARK: - Big stacked metric (one huge number per line · in-run faces)
+
+/// A single big metric row: a huge Bebas value, a small unit, and an optional
+/// sub-line (used by the work face for the target/delta under pace). Left-
+/// aligned so the numbers stack like a glanceable dashboard while running.
+struct BigMetric: View {
+    let value: String
+    var unit: String? = nil
+    var sub: String? = nil
+    var color: Color = WP.ink
+    var size: CGFloat = 50
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value).font(WF.bebas(size)).monospacedDigit().foregroundStyle(color)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                if let unit { Text(unit).font(WF.interSemi(14)).foregroundStyle(WP.muted) }
+            }
+            if let sub {
+                Text(sub).font(WF.interBold(12)).tracking(0.4).foregroundStyle(color)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 8)
+    }
+}
+
+// MARK: - WORK INTERVAL face (huge stacked numbers · one per line)
 
 struct WorkIntervalFace: View {
     // Model — wire these to HKLiveWorkoutBuilder + the pushed workout payload.
@@ -266,7 +294,7 @@ struct WorkIntervalFace: View {
     let heartRate: String     // "168"  (bpm)
     let cadence: String       // "182"  (spm)
     let repFraction: Double   // 0.0...1.0
-    let repTimeLeft: String   // "0:24"  (time left in this rep)
+    let repTimeLeft: String   // "0:24"  (time/distance left in this rep)
 
     private var paceColor: Color { WP.pace(forDeltaSeconds: deltaSeconds) }
     private var deltaText: String { paceDeltaLabel(deltaSeconds) }
@@ -274,21 +302,22 @@ struct WorkIntervalFace: View {
     var body: some View {
         VStack(spacing: 0) {
             FaceHeader(label: rep, color: WP.amber)
-            SegmentStrip(segments: segments, currentFraction: repFraction).padding(.top, 8)
+            SegmentStrip(segments: segments, currentFraction: repFraction).padding(.top, 6)
 
-            VStack(spacing: -10) {               // middle zone: hero (dominant) + ref. Negative spacing pulls
-                Hero(value: currentPace, color: paceColor)   // the ref UP into Bebas's tall line-box dead space
-                RefLine(target: targetPace, delta: deltaText, deltaColor: paceColor)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Three huge stacked rows — pace (with target/delta), HR, cadence.
+            Spacer(minLength: 4)
+            BigMetric(value: currentPace, unit: "/MI",
+                      sub: "TGT \(targetPace) · \(deltaText)", color: paceColor, size: 52)
+            Spacer(minLength: 0)
+            BigMetric(value: heartRate, unit: "BPM", size: 48)
+            Spacer(minLength: 0)
+            BigMetric(value: cadence, unit: "SPM", size: 48)
+            Spacer(minLength: 4)
 
-            StatsRow(
-                left:  Stat(value: heartRate, unit: "bpm"),   // HEART RATE
-                right: Stat(value: cadence,   unit: "spm")    // CADENCE
-            )
-            Text(repTimeLeft).font(WF.bebas(22)).monospacedDigit().foregroundStyle(WP.ink)
+            // Interval-specific: time / distance left in THIS rep.
+            (Text(repTimeLeft).font(WF.bebas(28)).monospacedDigit().foregroundStyle(WP.ink)
+             + Text("  LEFT").font(WF.interBold(11)).foregroundStyle(WP.muted))
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 8)
         }
         .executionFace(bottom: 8)
     }

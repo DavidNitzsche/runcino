@@ -62,7 +62,9 @@ struct ActiveWorkoutView: View {
 
     @ViewBuilder
     private var faceRouter: some View {
-        if let phase = engine.currentPhase {
+        if engine.planComplete {
+            LiveOvertime(engine: engine, tracker: tracker)
+        } else if let phase = engine.currentPhase {
             if engine.isRace {
                 LiveRace(engine: engine, tracker: tracker, phase: phase)
             } else {
@@ -223,6 +225,53 @@ private struct LiveInRunStats: View {
             distance: String(format: "%.1f", mi),
             avgPace: avgSec > 0 ? PaceFormat.mmss(avgSec) : "—:—",
             calories: tracker.activeEnergyKcal > 0 ? "\(tracker.activeEnergyKcal)" : "—")
+    }
+}
+
+// MARK: - OVERTIME (plan done · still recording · run free)
+
+private struct LiveOvertime: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    var body: some View {
+        let hasPace = tracker.paceSPerMi > 0
+        OvertimeFace(
+            elapsed: engine.totalElapsedSec >= 3600
+                ? PaceFormat.hms(engine.totalElapsedSec)
+                : PaceFormat.clock(engine.totalElapsedSec),
+            distance: String(format: "%.2f", tracker.distanceMi),
+            pace: hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—",
+            heartRate: tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—")
+    }
+}
+
+/// Shown once the prescribed plan is done but recording continues. The plan is
+/// complete (logged), so this is a free read — distance, time, pace — until the
+/// user ends from Controls.
+struct OvertimeFace: View {
+    let elapsed: String
+    let distance: String
+    let pace: String
+    let heartRate: String
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Eyebrow(text: "Done · keep going", color: WP.green)
+                Spacer(minLength: 78)
+            }
+            .padding(.leading, 8).padding(.top, 20)
+            Spacer(minLength: 4)
+            BigMetric(value: distance, unit: "MI", size: 52)
+            Spacer(minLength: 0)
+            BigMetric(value: elapsed, color: WP.ink, size: 48)
+            Spacer(minLength: 0)
+            BigMetric(value: pace, unit: "/MI", color: WP.green, size: 48)
+            Spacer(minLength: 4)
+            (Text(heartRate).font(WF.bebas(28)).monospacedDigit().foregroundStyle(WP.ink)
+             + Text("  BPM").font(WF.interBold(11)).foregroundStyle(WP.muted))
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .executionFace(bottom: 8)
     }
 }
 
