@@ -513,14 +513,14 @@ export default async function TrainingPage() {
           <div className="paces-header">
             <div className="paces-title-group">
               <div className="paces-title">Your Paces</div>
-              <div className="paces-sub">{VDOT ? <><strong>VDOT {VDOT}</strong> · Daniels training zones</> : 'No data — log a recent race to anchor your training paces'}</div>
+              <div className="paces-sub">{VDOT ? <><strong>Fitness score {VDOT}</strong> · your training paces</> : 'No data yet — log a recent race to set your training paces'}</div>
             </div>
           </div>
           {PACES.length === 0 ? (
             <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
-              We compute easy / marathon / threshold / interval / repetition paces from your
-              VDOT, which we anchor off a recent race result. Once a race finish is logged,
-              this card fills in.
+              We work out your easy, marathon, threshold, interval and repetition paces from
+              your fitness score, which comes from a recent race result. Once you log a race
+              finish, this card fills in.
             </div>
           ) : (
             <div className="paces-grid">

@@ -124,7 +124,7 @@ export function easyWithStrides(distanceMi: number, state: CoachState): RunPresc
     type: 'general_aerobic', label: 'Easy + strides',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('general_aerobic', state), hrZone: 2,
-    description: `${r1(distanceMi)} mi easy + 6 × 100m strides at the end · keeps neuromuscular sharpness without aerobic cost`,
+    description: `${r1(distanceMi)} mi easy + 6 × 100m strides at the end · keeps your legs quick without adding hard miles`,
     isQuality: false, isLong: false, appendStrides: true,
   };
 }
@@ -134,7 +134,7 @@ export function mediumLong(distanceMi: number, state: CoachState): RunPrescripti
     type: 'medium_long', label: 'Medium-long',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('medium_long', state), hrZone: 2,
-    description: `${r1(distanceMi)} mi at endurance pace · the second weekly run >90 min that distinguishes serious marathoners (Pfitzinger)`,
+    description: `${r1(distanceMi)} mi at an easy, steady pace · a second longer run in the week that builds the endurance a marathon needs`,
     isQuality: false, isLong: false, appendStrides: false,
   };
 }
@@ -157,7 +157,7 @@ export function longProgression(distanceMi: number, state: CoachState): RunPresc
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: goal ? { lowS: goal, highS: goal + 30 } : null,
     hrZone: 3,
-    description: `${r1(distanceMi)} mi total · easy first ${r1(distanceMi - lastN)} mi · final ${lastN} mi ramp from MP+30s into MP (Pfitzinger progression)`,
+    description: `${r1(distanceMi)} mi total · easy for the first ${r1(distanceMi - lastN)} mi · then ramp the final ${lastN} mi down into goal race pace`,
     isQuality: true, isLong: true, appendStrides: false,
   };
 }
@@ -165,11 +165,11 @@ export function longProgression(distanceMi: number, state: CoachState): RunPresc
 export function longMpBlock(distanceMi: number, state: CoachState, mpBlockMi: number): RunPrescription {
   const goal = goalPaceSPerMi(state);
   return {
-    type: 'long_mp_block', label: 'Long run · MP block',
+    type: 'long_mp_block', label: 'Long run · race-pace block',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: goal ? { lowS: goal - 5, highS: goal + 5 } : null,
     hrZone: 3,
-    description: `${r1(distanceMi)} mi total with ${mpBlockMi} mi at goal MP in the middle · the single most race-specific session in marathon training`,
+    description: `${r1(distanceMi)} mi total with ${mpBlockMi} mi at goal race pace in the middle · the most race-like session in marathon training`,
     isQuality: true, isLong: true, appendStrides: false,
   };
 }
@@ -179,7 +179,7 @@ export function thresholdContinuous(distanceMi: number, state: CoachState): RunP
     type: 'threshold', label: 'Threshold tempo',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: paceFor('threshold', state), hrZone: 4,
-    description: `2 mi WU · ${r1(distanceMi - 3)} mi at threshold (~half marathon pace) · 1 mi CD`,
+    description: `2 mi easy warm-up · ${r1(distanceMi - 3)} mi at a comfortably hard pace (about half-marathon effort) · 1 mi easy cool-down`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
@@ -189,7 +189,7 @@ export function thresholdIntervals(state: CoachState): RunPrescription {
     type: 'threshold_intervals', label: 'Cruise intervals',
     distanceMi: 7, durationMin: null,
     paceTargetSPerMi: paceFor('threshold', state), hrZone: 4,
-    description: `2 mi WU · 4 × 1 mi at threshold pace with 60-90s jog recovery · 1 mi CD (Daniels staple)`,
+    description: `2 mi easy warm-up · 4 × 1 mi at threshold pace, jog 60–90s between · 1 mi easy cool-down`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
@@ -199,17 +199,17 @@ export function subThreshold(state: CoachState): RunPrescription {
     type: 'sub_threshold', label: 'Sub-threshold',
     distanceMi: 8, durationMin: null,
     paceTargetSPerMi: paceFor('sub_threshold', state), hrZone: 3,
-    description: `2 mi WU · 5 × 1 mi at sub-threshold (just below LT2) with 60s jog recovery · 1 mi CD (Norwegian-singles)`,
+    description: `2 mi easy warm-up · 5 × 1 mi at a steady, controlled effort (just below threshold), jog 60s between · 1 mi easy cool-down`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
 
 export function vo2(state: CoachState): RunPrescription {
   return {
-    type: 'vo2', label: 'VO₂ max intervals',
+    type: 'vo2', label: 'Speed intervals',
     distanceMi: 7, durationMin: null,
     paceTargetSPerMi: paceFor('vo2', state), hrZone: 5,
-    description: `2 mi WU · 5 × 1000m at 5K pace · jog 400m recovery · 1 mi CD`,
+    description: `2 mi easy warm-up · 5 × 1000m at 5K pace, jog 400m between · 1 mi easy cool-down`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }
@@ -217,11 +217,11 @@ export function vo2(state: CoachState): RunPrescription {
 export function marathonSpecific(state: CoachState): RunPrescription {
   const goal = goalPaceSPerMi(state);
   return {
-    type: 'marathon_specific', label: 'MP combo',
+    type: 'marathon_specific', label: 'Race-pace combo',
     distanceMi: 12, durationMin: null,
     paceTargetSPerMi: goal ? { lowS: goal - 10, highS: goal + 5 } : null,
     hrZone: 4,
-    description: `2 mi WU · 15 min MP / 4 × (90s 10K pace + 90s easy) / 15 min MP · 1 mi CD · combo workout teaches recovering AT marathon pace`,
+    description: `2 mi easy warm-up · 15 min at race pace / 4 × (90s at 10K pace + 90s easy) / 15 min at race pace · 1 mi easy cool-down · teaches you to recover while still holding race pace`,
     isQuality: true, isLong: false, appendStrides: false,
   };
 }

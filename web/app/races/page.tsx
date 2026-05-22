@@ -390,7 +390,7 @@ export default async function RacesPage() {
           </div>
 
           <div className="vdot-anchor-card">
-            <div className="vdot-anchor-label">Your VDOT</div>
+            <div className="vdot-anchor-label">Your fitness score</div>
             <div className="vdot-anchor-row">
               <span
                 className="vdot-anchor-num"
@@ -481,7 +481,7 @@ export default async function RacesPage() {
                       <div className="path-stat">
                         <div className="path-stat-label">Current Fitness</div>
                         <div className="path-stat-value">{maintainFinishS > 0 ? fmtTime(maintainFinishS) : '—'}</div>
-                        <div className="path-stat-sub">Projected at VDOT {raceProjection.currentVdot.toFixed(1)}</div>
+                        <div className="path-stat-sub">At your current fitness score of {raceProjection.currentVdot.toFixed(1)}</div>
                       </div>
                       <div className="path-stat">
                         <div className="path-stat-label">Gap to Goal</div>
@@ -647,7 +647,7 @@ export default async function RacesPage() {
 
           {recent.length === 0 ? (
             <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
-              No past races logged. Add a recent race finish to seed your VDOT anchor.
+              No past races logged. Add a recent race finish to set your fitness score.
             </div>
           ) : (
             <div className="races-recent-list">

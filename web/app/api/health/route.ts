@@ -952,10 +952,10 @@ function stubFormReport(stress: HealthApiTrainingStress): HealthApiFormReport {
   else if (stress.formTsb >= -30 && stress.formTsb <= 5) tsbBand = 'optimal';
 
   const bandLabel =
-    tsbBand === 'fresh' ? '▲ FRESH'
-    : tsbBand === 'optimal' ? '● OPTIMAL TRAINING'
-    : tsbBand === 'overreached' ? '▼ OVERREACHED'
-    : '▼ DIG HOLE';
+    tsbBand === 'fresh' ? '▲ FRESH & READY'
+    : tsbBand === 'optimal' ? '● RIGHT ON TRACK'
+    : tsbBand === 'overreached' ? '▼ RUNNING TIRED'
+    : '▼ VERY FATIGUED';
 
   return {
     ctl: stress.fitnessCtl,
