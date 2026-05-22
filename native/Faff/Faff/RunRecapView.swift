@@ -138,7 +138,7 @@ struct RunRecapContent: View {
                 }
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(r.distanceMi), unit: "mi", label: "Distance")
-                    StatPill(value: r.paceDisplay, unit: "/mi", label: "Avg pace", accent: true)
+                    StatPill(value: r.paceDisplay, unit: "/mi", label: "Avg pace")
                     StatPill(value: r.durationDisplay, unit: nil, label: "Time")
                     if let hr = r.avgHr { StatPill(value: "\(Int(hr))", unit: "bpm", label: "Avg HR") }
                 }

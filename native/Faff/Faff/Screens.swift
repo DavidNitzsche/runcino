@@ -253,14 +253,16 @@ struct PlanView: View {
         let isSkipped = d.isSkipped
         let isShort = d.isShort && !isSkipped
         let isMissed = isPast && !isRest && !isDone && !isSkipped && !isShort
-        let nameColor = isToday ? Faff.C.amberInk : Faff.C.ink
+        // Title is always ink. Orange/amber is reserved for warnings, not for
+        // marking "today" — the status dot + check carry that.
+        let nameColor = Faff.C.ink
         return Button {
             if !isRest { dayDetail = d }
         } label: {
             HStack(spacing: 11) {
                 statusDot(isToday: isToday, isRest: isRest, isDone: isDone, isSkipped: isSkipped, isShort: isShort, isMissed: isMissed).frame(width: 9, height: 9)
                 Text(shortDow(d.date)).font(Faff.F.inter(12.5, .semibold))
-                    .foregroundStyle(isToday ? Faff.C.milestone : Faff.C.textMuted).frame(width: 36, alignment: .leading)
+                    .foregroundStyle(isToday ? Faff.C.ink : Faff.C.textMuted).frame(width: 36, alignment: .leading)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(isRest ? "Rest" : (d.label ?? "Run")).font(Faff.F.inter(14, .semibold)).foregroundStyle(nameColor)
                     Text(rowSub(d, isRest: isRest, isToday: isToday, isDone: isDone, isSkipped: isSkipped, isShort: isShort, isMissed: isMissed)).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textDim)
@@ -292,14 +294,15 @@ struct PlanView: View {
         else if isShort { Circle().fill(Faff.C.milestone) }               // logged but short
         else if isSkipped { Image(systemName: "slash.circle").font(.system(size: 9, weight: .bold)).foregroundStyle(Faff.C.milestone) }  // skipped
         else if isRest { Circle().stroke(Faff.C.textFaint, lineWidth: 1.5) }
-        else if isToday { Circle().fill(Faff.C.milestone) }
+        else if isToday { Circle().fill(Faff.C.ink) }
         else if isMissed { Circle().stroke(Faff.C.warn.opacity(0.85), lineWidth: 1.5) }   // missed
         else { Circle().fill(Faff.C.textFaint.opacity(0.6)) }            // upcoming
     }
     private func rowSub(_ d: PlanRangeDay, isRest: Bool, isToday: Bool, isDone: Bool, isSkipped: Bool, isShort: Bool, isMissed: Bool) -> String {
         if isRest { return "recovery" }
         let mi = "\(OverviewFormat.distance(d.distanceMi)) mi"
-        if isToday { return "\(mi) · today" }
+        // Outcome wins over "today": a run completed earlier today reads DONE,
+        // not "today". "today" only shows when nothing's logged yet.
         if isShort { return "\(mi) · short (\(OverviewFormat.distance(d.completedMi))) " }
         if isDone {
             if let actual = d.completedMi { return "\(mi) · done (\(OverviewFormat.distance(actual)))" }
@@ -307,6 +310,7 @@ struct PlanView: View {
         }
         if isSkipped { return "\(mi) · skipped" }
         if isMissed { return "\(mi) · missed" }
+        if isToday { return "\(mi) · today" }
         return mi
     }
     private func shortDow(_ iso: String?) -> String {

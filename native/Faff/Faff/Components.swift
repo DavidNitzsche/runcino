@@ -138,12 +138,13 @@ struct StickyTopBar: View {
 // MARK: - Badge (tone-based, on-wash text via amberInk)
 
 struct Badge: View {
-    enum Tone { case green, amber, orange, grey, warn }
+    enum Tone { case green, greenSolid, amber, orange, grey, warn }
     let text: String
     var tone: Tone = .grey
     private var fg: Color {
         switch tone {
         case .green: return Faff.C.recovery
+        case .greenSolid: return .white
         case .amber: return Faff.C.amberInk
         case .orange: return .white
         case .grey: return Faff.C.textDim
@@ -153,6 +154,7 @@ struct Badge: View {
     private var bg: Color {
         switch tone {
         case .green: return Faff.C.greenWash
+        case .greenSolid: return Faff.C.recovery
         case .amber: return Faff.C.amberWash
         case .orange: return Faff.C.race
         case .grey: return Faff.C.pillBg
@@ -174,12 +176,13 @@ struct StatPill: View {
     let value: String
     var unit: String? = nil
     let label: String
-    var accent: Bool = false        // orange value (pace)
+    var accent: Bool = false        // legacy orange value
+    var valueColor: Color? = nil    // explicit value color (e.g. success green); wins over accent
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value).font(Faff.F.display(27))
-                    .foregroundStyle(accent ? Faff.C.race : Faff.C.ink)
+                    .foregroundStyle(valueColor ?? (accent ? Faff.C.race : Faff.C.ink))
                     .lineLimit(1).minimumScaleFactor(0.5)
                 if let unit { Text(unit).font(Faff.F.inter(11, .medium)).foregroundStyle(Faff.C.textMuted) }
             }

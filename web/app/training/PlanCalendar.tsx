@@ -79,7 +79,9 @@ export function PlanCalendar() {
   const [response, setResponse] = useState<PlanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutPopupData | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  // Browser-local calendar day (not UTC) so the "today" cell is right in the
+  // evening — toISOString() is UTC and would highlight tomorrow after ~4-5pm PT.
+  const today = new Date().toLocaleDateString('en-CA');
 
   useEffect(() => {
     let cancelled = false;

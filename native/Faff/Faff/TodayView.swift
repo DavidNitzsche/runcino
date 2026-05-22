@@ -493,9 +493,6 @@ private struct PendingAdaptationsCard: View {
                             .fixedSize(horizontal: false, vertical: true).lineSpacing(2)
                         HStack(spacing: 6) {
                             Text(dayList(g.days)).font(Faff.F.inter(11, .semibold)).foregroundStyle(Faff.C.race)
-                            if let c = g.citation, !c.isEmpty {
-                                Text("· \(c)").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim).lineLimit(1)
-                            }
                         }
                         HStack(spacing: 10) {
                             Button { Task { await act(g, "accept") } } label: {
@@ -560,9 +557,6 @@ private struct CoachAdaptationsCard: View {
                             .fixedSize(horizontal: false, vertical: true).lineSpacing(2)
                         HStack(spacing: 6) {
                             Text(dayList(g.days)).font(Faff.F.inter(11, .semibold)).foregroundStyle(Faff.C.race)
-                            if let c = g.citation, !c.isEmpty {
-                                Text("· \(c)").font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim).lineLimit(1)
-                            }
                         }
                     }
                 }
@@ -786,18 +780,23 @@ private struct PastDayHero: View {
 
     var body: some View {
         let logged = run != nil
-        let eyebrowState = outcome == .onPlan ? "DONE" : (outcome == .short ? "SHORT" : "NOT LOGGED")
+        // The badge carries the state loudly (a filled green DONE for a
+        // completed run); the eyebrow stays a quiet date label and only
+        // repeats the state for the non-celebratory cases.
+        let eyebrowState = outcome == .onPlan ? "" : (outcome == .short ? "SHORT" : "NOT LOGGED")
         let (badgeText, badgeTone): (String, Badge.Tone) = {
             switch outcome {
-            case .onPlan: return ("On plan", .green)
+            case .onPlan: return ("Done", .greenSolid)
             case .short:  return ("Short", .amber)
             case .missed: return ("Not logged", .grey)
             }
         }()
+        let eyebrowText = isRest ? "\(eyebrow) · REST"
+            : (eyebrowState.isEmpty ? eyebrow : "\(eyebrow) · \(eyebrowState)")
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 8) {
                 HStack(spacing: 6) {
-                    Text("\(eyebrow) · \(isRest ? "REST" : eyebrowState)")
+                    Text(eyebrowText)
                         .font(Faff.F.inter(10, .semibold)).tracking(1.6).foregroundStyle(Faff.C.textDim)
                     if hasStrength { StrengthMark(size: 15) }
                 }
@@ -812,7 +811,7 @@ private struct PastDayHero: View {
                     StatPill(value: OverviewFormat.distance(plannedMi), unit: "mi", label: "Planned")
                     StatPill(value: logged ? OverviewFormat.distance(run?.distanceMi) : "-",
                              unit: logged ? "mi" : nil, label: "Ran",
-                             accent: outcome == .onPlan)
+                             valueColor: outcome == .onPlan ? Faff.C.recovery : nil)
                 }
                 if let r = run {
                     HStack(spacing: Faff.S.inlineGap) {
