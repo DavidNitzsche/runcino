@@ -18,6 +18,7 @@
 import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CheckInMiniIsland } from './CheckInMiniIsland';
+import { HrAnchorsIsland } from './HrAnchorsIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
@@ -25,6 +26,7 @@ import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { computeReadinessScore } from '@/lib/readiness-score';
 import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 import { resolveFitness } from '@/lib/fitness-resolver';
+import { buildHrZonesBundle, type ZoneTier } from '@/lib/hr-zones';
 import './health-v4.css';
 
 export default async function HealthPage() {
@@ -106,6 +108,32 @@ export default async function HealthPage() {
   const runPower   = dynVal('run_power', 0, 'W');
   const hasDyn = dynRows.length > 0;
 
+  // ── Body composition + extra vitals (health_samples), 7-day avgs ──
+  // Weight / body-fat / lean mass change slowly, so a 7-day window is a
+  // stable read; HR-recovery / SpO2 / active-energy are daily readings.
+  const bodyRows = await query<BioRow>(
+    `SELECT sample_type, AVG(value)::float8 AS avg
+       FROM health_samples
+      WHERE user_id = $1
+        AND sample_date >= (CURRENT_DATE - INTERVAL '7 days')
+        AND sample_type IN ('body_mass', 'body_fat_pct', 'lean_mass',
+                            'hr_recovery', 'spo2', 'active_energy')
+      GROUP BY sample_type`,
+    [auth.id],
+  ).catch(() => [] as BioRow[]);
+  const body = new Map(bodyRows.map((r) => [r.sample_type, Number(r.avg)]));
+  const bodyVal = (k: string, dec: number, unit: string) => {
+    const v = body.get(k);
+    return v != null ? { value: v.toFixed(dec), unit } : { value: '—', unit: '' };
+  };
+  const bodyMass    = bodyVal('body_mass', 1, 'kg');
+  const bodyFat     = bodyVal('body_fat_pct', 1, '%');
+  const leanMass    = bodyVal('lean_mass', 1, 'kg');
+  const hrRecovery  = bodyVal('hr_recovery', 0, 'bpm');
+  const spo2        = bodyVal('spo2', 0, '%');
+  const activeEnergy = bodyVal('active_energy', 0, 'kcal');
+  const hasBody = bodyRows.length > 0;
+
   const sleepRow = sleep != null
     ? { value: `${sleep.toFixed(1)} h`, tone: (sleep >= 7 ? 'green' : 'amber') as 'green' | 'amber', width: clamp((sleep / 8) * 100) }
     : { value: 'No data', tone: 'dim' as const, width: 0 };
@@ -129,6 +157,28 @@ export default async function HealthPage() {
     : null;
   const readyScore = readiness?.score ?? null;
   const readyState = readiness?.state ?? null;
+
+  // ── HR zones — Karvonen scale anchored on the runner's real anchors.
+  // resolveFitness already merges manual + computed max/resting HR; the
+  // health_samples max_hr above is a separate (wearable-derived) read and
+  // is only a fallback when fitness has no anchor.
+  const anchorMaxHr = fitness?.maxHr.value ?? (maxHr != null ? Math.round(maxHr) : null);
+  const anchorRestingHr = fitness?.restingHr.value ?? (rhr != null ? Math.round(rhr) : null);
+  const hrBundle = buildHrZonesBundle(anchorMaxHr, anchorRestingHr);
+  const zoneColors: Record<ZoneTier, string> = {
+    z1: 'rgba(13,15,18,.35)', // Recovery — grey
+    z2: '#2CA82F',            // Easy — green
+    z3: '#D4900A',            // Steady — amber
+    z4: '#E85D26',            // Threshold — orange
+    z5: '#F43F5E',            // VO2max — red
+  };
+  const maxHrSourceLabel = fitness?.maxHr.sourceLabel
+    ?? (fitness?.maxHr.source === 'manual' ? 'Manual override'
+      : fitness?.maxHr.source === 'computed' ? 'Computed from activity'
+        : maxHr != null ? 'Apple Health (7-day max)' : 'No data');
+  const restingHrSourceLabel = fitness?.restingHr.source === 'manual' ? 'Manual override'
+    : fitness?.restingHr.source === 'computed' ? 'Computed from activity'
+      : rhr != null ? 'Apple Health (7-day avg)' : 'No data';
   const stateColor = readyState === 'green' ? '#2CA82F' : readyState === 'yellow' ? '#D4900A' : readyState === 'red' ? '#F43F5E' : 'rgba(13,15,18,.32)';
   const stateWord = readyState === 'green' ? 'Recovered' : readyState === 'yellow' ? 'Hold steady' : readyState === 'red' ? 'Back off' : 'Waiting on data';
   // Build the four-section brief from the readiness inputs + vitals.
@@ -236,6 +286,68 @@ export default async function HealthPage() {
           </div>
         </div>
 
+        {/* ── HR ZONES + ANCHORS ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">HR Zones</div>
+              <div className="card-sub">
+                {hrBundle
+                  ? <>Karvonen scale · <strong>{hrBundle.framework === 'HRR' ? '%HRR (resting + reserve)' : '% of max HR'}</strong>{hrBundle.hrr != null ? ` · reserve ${hrBundle.hrr} bpm` : ''}</>
+                  : 'Set Max HR (and Resting HR for Karvonen) below to compute your zones'}
+              </div>
+            </div>
+            <div className="card-meta" style={{ color: hrBundle ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
+              {hrBundle
+                ? <><strong>{hrBundle.maxHr}</strong> max{hrBundle.restingHr != null ? <> · <strong>{hrBundle.restingHr}</strong> rest</> : ''}</>
+                : 'No anchors'}
+            </div>
+          </div>
+
+          {hrBundle ? (
+            <div className="hr-zones">
+              {hrBundle.zones.map((z) => {
+                // Band width is proportional to the bpm span of the zone,
+                // so wider physiological zones read as wider bands.
+                const span = z.highBpm - z.lowBpm;
+                const total = hrBundle.zones[4].highBpm - hrBundle.zones[0].lowBpm;
+                const widthPct = total > 0 ? (span / total) * 100 : 20;
+                return (
+                  <div className="hr-zone-row" key={z.tier}>
+                    <div className="hr-zone-name">{z.name}</div>
+                    <div className="hr-zone-band-wrap">
+                      <div
+                        className="hr-zone-band"
+                        style={{ width: `${widthPct}%`, background: zoneColors[z.tier] }}
+                      >
+                        <span className="hr-zone-band-bpm">{z.lowBpm}–{z.highBpm}</span>
+                      </div>
+                    </div>
+                    <div className="hr-zone-pct">{z.pctLabel}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: '8px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)' }}>
+              Once a Max HR is set, your five training zones (Recovery → VO₂max) are
+              computed here. Add a Resting HR too and they switch to the more accurate
+              Karvonen (%HRR) framework.
+            </div>
+          )}
+
+          {/* HR anchors — editable, POST to /api/profile/{max,resting}-hr */}
+          <div className="hr-anchors-header">HR Anchors</div>
+          <HrAnchorsIsland
+            initialMaxHr={{ value: anchorMaxHr, source: fitness?.maxHr.source ?? (maxHr != null ? 'computed' : 'none') }}
+            initialRestingHr={{ value: anchorRestingHr, source: fitness?.restingHr.source ?? (rhr != null ? 'computed' : 'none') }}
+          />
+          <div className="hr-anchor-provenance">
+            Resolved Max HR source: <strong>{maxHrSourceLabel}</strong> · Resting HR source: <strong>{restingHrSourceLabel}</strong>.
+            Edits save instantly and re-anchor every zone above.
+          </div>
+        </div>
+
         {/* ── INSIGHTS ── */}
         <div className="card">
           <div className="card-header">
@@ -290,7 +402,7 @@ export default async function HealthPage() {
         <div className="card">
           <div className="card-header">
             <div className="card-title-group">
-              <div className="card-title">Recovery Vitals</div>
+              <div className="card-title">Recovery &amp; Vitals</div>
               <div className="card-sub">Daily readings from Apple Health · 7-day average</div>
             </div>
           </div>
@@ -301,9 +413,31 @@ export default async function HealthPage() {
             <VitalTile label="VO₂max"      value={vo2 != null ? vo2.toFixed(1) : '—'} unit=""                                  range={['—','—']} markerPct={0} avgPct={0} status={vo2 != null ? 'latest' : 'No data'} />
             <VitalTile label="Respiration" value={resp != null ? resp.toFixed(1) : '—'} unit={resp != null ? 'br/m' : ''}      range={['—','—']} markerPct={0} avgPct={0} status={resp != null ? '7-day avg' : 'No data'} />
             <VitalTile label="Wrist Temp"  value={wristTemp != null ? wristTemp.toFixed(1) : '—'} unit={wristTemp != null ? '°C' : ''} range={['—','—']} markerPct={0} avgPct={0} status={wristTemp != null ? 'sleeping' : 'No data'} />
-            <VitalTile label="Max HR"      value={maxHr != null ? String(Math.round(maxHr)) : '—'} unit={maxHr != null ? 'bpm' : ''} range={['—','—']} markerPct={0} avgPct={0} status={maxHr != null ? '7-day max' : 'No data'} />
-            <VitalTile label="Body Mass"   value="—" unit=""    range={['—','—']} markerPct={0} avgPct={0} status="No data" />
           </div>
+        </div>
+
+        {/* ── BODY COMPOSITION ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title-group">
+              <div className="card-title">Body Composition</div>
+              <div className="card-sub">Mass, composition &amp; cardio markers from Apple Health · 7-day average</div>
+            </div>
+            <div className="card-meta" style={{ color: hasBody ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>{hasBody ? '7-day avg' : 'No data'}</div>
+          </div>
+          <div className="vitals-grid">
+            <VitalTile label="Weight"        value={bodyMass.value}     unit={bodyMass.unit}     range={['—','—']} markerPct={0} avgPct={0} status={bodyMass.value !== '—' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Body Fat"      value={bodyFat.value}      unit={bodyFat.unit}      range={['—','—']} markerPct={0} avgPct={0} status={bodyFat.value !== '—' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Lean Mass"     value={leanMass.value}     unit={leanMass.unit}     range={['—','—']} markerPct={0} avgPct={0} status={leanMass.value !== '—' ? '7-day avg' : 'No data'} />
+            <VitalTile label="HR Recovery"   value={hrRecovery.value}   unit={hrRecovery.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hrRecovery.value !== '—' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Blood O₂"      value={spo2.value}         unit={spo2.unit}         range={['—','—']} markerPct={0} avgPct={0} status={spo2.value !== '—' ? '7-day avg' : 'No data'} />
+            <VitalTile label="Active Energy" value={activeEnergy.value} unit={activeEnergy.unit} range={['—','—']} markerPct={0} avgPct={0} status={activeEnergy.value !== '—' ? '7-day avg' : 'No data'} />
+          </div>
+          {!hasBody && (
+            <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              Body composition and cardio markers sync from a connected scale and your Apple Watch once Apple Health is linked.
+            </div>
+          )}
         </div>
 
         {/* ── RUNNING DYNAMICS (cumulative) ── */}

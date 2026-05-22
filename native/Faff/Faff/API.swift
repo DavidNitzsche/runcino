@@ -291,6 +291,26 @@ final class FaffAPI {
         return r.updated ?? 0
     }
 
+    /// Set (or clear, with nil) the manual max-HR override. Auto-from-Apple
+    /// resumes when cleared. Bearer auth.
+    @discardableResult
+    func setMaxHrOverride(_ bpm: Int?) async throws -> Int? {
+        struct Body: Encodable { let maxHr: Int? }
+        struct Result: Decodable { let value: Int? }
+        let r: Result = try await request(method: "POST", path: "/api/profile/max-hr",
+                                          body: Body(maxHr: bpm), authenticated: true)
+        return r.value
+    }
+    /// Set (or clear, with nil) the manual resting-HR override. Bearer auth.
+    @discardableResult
+    func setRestingHrOverride(_ bpm: Int?) async throws -> Int? {
+        struct Body: Encodable { let restingHr: Int? }
+        struct Result: Decodable { let value: Int? }
+        let r: Result = try await request(method: "POST", path: "/api/profile/resting-hr",
+                                          body: Body(restingHr: bpm), authenticated: true)
+        return r.value
+    }
+
     // MARK: Generic helpers
 
     private func request<Body: Encodable, T: Decodable>(

@@ -77,7 +77,7 @@ struct RootTabView: View {
         case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { showDetail = true }, onReload: { Task { await load() } })
         case .plan:   PlanView(overview: o)
         case .coach:  CoachView(overview: o)
-        case .health: HealthView(overview: o)
+        case .health: HealthView(overview: o, onReload: { Task { await load() } })
         case .races:  RacesView(overview: o)
         }
     }
@@ -365,6 +365,8 @@ struct HealthView: View {
     @ObservedObject private var hk = HealthKitManager.shared
     @State private var metric: MetricDetailSheet.Metric?
     @State private var showReadiness = false
+    @State private var showAnchorEdit = false
+    var onReload: () -> Void = {}
 
     private struct Tile: Identifiable { let id = UUID(); let label, value: String; let unit, delta: String?; let tone: MetricTile.DeltaTone; let live: Bool; var sampleType: String? = nil }
 
@@ -400,7 +402,9 @@ struct HealthView: View {
             dyn("Vert Osc", hk.vertOscCm, "cm", dec: 1, type: "vertical_oscillation"),
             dyn("Grnd Contact", hk.groundContactMs, "ms", type: "ground_contact_time"),
             dyn("Vert Ratio", hk.vertRatioPct, "%", dec: 1, type: "vertical_ratio"),
-            dyn("Run Power", hk.runPowerW, "W", type: "run_power"),
+            Tile(label: "Run Power", value: num(hk.runPowerW), unit: hk.runPowerW != nil ? "W" : nil,
+                 delta: (hk.runPowerW != nil && (hk.weightKg ?? 0) > 0) ? String(format: "%.1f W/kg", hk.runPowerW! / hk.weightKg!) : (hk.runPowerW != nil ? "30d avg" : "No data"),
+                 tone: .flat, live: hk.runPowerW != nil, sampleType: "run_power"),
         ]
         let body: [Tile] = [
             vital("Weight", hk.weightKg, "kg", dec: 1, sub: "latest", type: "body_mass"),
@@ -439,8 +443,9 @@ struct HealthView: View {
             // Connect lives in Profile; only show it here when NOT connected.
             if !localHealth { connectControl }
 
-            if let z = overview.hrZones, !z.zones.isEmpty {
-                HrZoneScale(zones: z.zones, framework: z.framework)
+            if let z = overview.hrZones {
+                hrAnchorsCard(z)
+                if !z.zones.isEmpty { HrZoneScale(zones: z.zones, framework: z.framework) }
             }
             section("Recovery & Vitals", vitals)
             section("Body Composition", body)
@@ -449,6 +454,13 @@ struct HealthView: View {
         }
         .sheet(item: $metric) { MetricDetailSheet(metric: $0, overview: overview) }
         .sheet(isPresented: $showReadiness) { ReadinessDetailSheet(overview: overview) }
+        .sheet(isPresented: $showAnchorEdit) {
+            HrAnchorEditSheet(
+                maxHr: overview.hrZones?.maxHr.map { Int($0) },
+                restingHr: overview.hrZones?.restingHr.map { Int($0) },
+                onSaved: { onReload() }
+            )
+        }
         // Always read whatever HealthKit has authorized so the tiles fill
         // in once access is granted (in Profile) — not gated on a flag.
         .task { await hk.refreshDisplayMetrics() }
@@ -469,6 +481,38 @@ struct HealthView: View {
                            onTap: { metric = MetricDetailSheet.Metric(title: t.label, value: t.value, unit: t.unit, live: t.live, sampleType: t.sampleType, caption: t.live ? t.delta : nil) })
             }
         }
+    }
+
+    /// HR anchors — the two numbers every zone keys off. Shows max + resting
+    /// HR with their framework and an edit affordance (auto from Apple Health,
+    /// overridable).
+    private func hrAnchorsCard(_ z: OHrZones) -> some View {
+        Button { showAnchorEdit = true } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("HR ANCHORS").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                    Spacer()
+                    Text("Edit").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.race)
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
+                }
+                HStack(spacing: 14) {
+                    anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? "—", "bpm")
+                    anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? "—", "bpm")
+                    anchorCell("MODEL", z.framework == "HRR" ? "Karvonen" : "% max", z.framework == "HRR" ? "%HRR" : "")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .faffCard()
+        }.buttonStyle(.plain)
+    }
+    private func anchorCell(_ label: String, _ value: String, _ unit: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label).font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(value).font(Faff.F.display(24)).foregroundStyle(Faff.C.ink)
+                if !unit.isEmpty { Text(unit).font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint) }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var badgeText: String {
@@ -1418,6 +1462,64 @@ struct WhyThisSheet: View {
 }
 
 // MARK: - Metric detail (sheet from a Health tile)
+
+/// Edit the HR anchors. Auto-populated from Apple Health; a manual override
+/// wins until cleared. POSTs to /api/profile/{max-hr,resting-hr}.
+struct HrAnchorEditSheet: View {
+    let maxHr: Int?
+    let restingHr: Int?
+    var onSaved: () -> Void = {}
+    @Environment(\.dismiss) private var dismiss
+    @State private var maxText: String = ""
+    @State private var restText: String = ""
+    @State private var saving = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                SheetGrabHandle()
+                HStack(alignment: .top) {
+                    Text("HR ANCHORS").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                    Spacer()
+                    SheetCloseButton { dismiss() }
+                }
+                CoachVerdict("How this works",
+                    "These come from Apple Health automatically (max HR from your hardest efforts, resting HR from your watch). Override either if you've measured it directly — clear the field to go back to automatic. Every HR zone keys off these two numbers.",
+                    color: Faff.C.textDim)
+                VStack(alignment: .leading, spacing: 14) {
+                    anchorField("Max HR", placeholder: maxHr.map { "\($0)" } ?? "auto", text: $maxText, unit: "bpm")
+                    anchorField("Resting HR", placeholder: restingHr.map { "\($0)" } ?? "auto", text: $restText, unit: "bpm")
+                }.faffCard()
+                PrimaryButton(title: saving ? "Saving…" : "Save", icon: nil) { Task { await save() } }
+                    .disabled(saving)
+            }
+            .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
+        }
+        .background(Faff.C.bg.ignoresSafeArea())
+    }
+
+    private func anchorField(_ label: String, placeholder: String, text: Binding<String>, unit: String) -> some View {
+        HStack {
+            Text(label).font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
+            Spacer()
+            TextField(placeholder, text: text)
+                .keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                .font(Faff.F.oswald(18, .semibold)).frame(width: 80)
+            Text(unit).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textFaint)
+        }
+    }
+
+    private func save() async {
+        saving = true; defer { saving = false }
+        // Empty field → clear override (back to auto). A number → override.
+        let maxVal = maxText.trimmingCharacters(in: .whitespaces)
+        let restVal = restText.trimmingCharacters(in: .whitespaces)
+        if !maxVal.isEmpty, let v = Int(maxVal) { _ = try? await FaffAPI.shared.setMaxHrOverride(v) }
+        if !restVal.isEmpty, let v = Int(restVal) { _ = try? await FaffAPI.shared.setRestingHrOverride(v) }
+        onSaved()
+        dismiss()
+    }
+}
 
 /// Karvonen HR zone scale — the 5 zones with the runner's real bpm ranges,
 /// so "145 = easy aerobic" is legible at a glance. Optionally marks where a
