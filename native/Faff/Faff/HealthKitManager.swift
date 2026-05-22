@@ -590,6 +590,36 @@ extension HealthKitManager {
             }
             store.execute(q)
         }
+        // Run SUMMARIES (distance/time/HR) for every running workout — posted
+        // to the de-duped import so a run shows up even when it has no GPS
+        // route and even if the watch->phone completion never fired. The
+        // backend keys on start time, so this can't duplicate a run that also
+        // arrived via the watch completion or Strava.
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        var summaries: [[String: Any]] = []
+        for w in workouts {
+            let meters = w.statistics(for: HKQuantityType(.distanceWalkingRunning))?
+                .sumQuantity()?.doubleValue(for: .meter())
+                ?? w.totalDistance?.doubleValue(for: .meter()) ?? 0
+            let miles = meters / 1609.344
+            if miles > 0 && w.duration > 0 {
+                var s: [String: Any] = [
+                    "startISO": ISO8601DateFormatter().string(from: w.startDate),
+                    "distanceMi": (miles * 100).rounded() / 100,
+                    "durationSec": Int(w.duration.rounded()),
+                ]
+                let hr = w.statistics(for: HKQuantityType(.heartRate))
+                if let avg = hr?.averageQuantity()?.doubleValue(for: bpm) { s["avgHr"] = Int(avg.rounded()) }
+                if let mx = hr?.maximumQuantity()?.doubleValue(for: bpm) { s["maxHr"] = Int(mx.rounded()) }
+                summaries.append(s)
+            }
+        }
+        if !summaries.isEmpty,
+           let data = try? JSONSerialization.data(withJSONObject: ["workouts": summaries]) {
+            _ = try? await FaffAPI.shared.importHealthWorkouts(data)
+        }
+
+        // GPS route + per-mile splits for the recap map (only runs that have one).
         for w in workouts {
             guard let locs = await routeLocations(for: w, store: store), locs.count >= 2 else { continue }
             guard let payload = Self.buildRoutePayload(workout: w, locations: locs),

@@ -252,6 +252,19 @@ final class FaffAPI {
         )
     }
 
+    /// Import running workouts read from Apple Health (distance/time/HR) so a
+    /// run shows up even if the watch->phone completion bridge never fired.
+    /// The backend de-dupes by start time, so this is safe to re-send.
+    func importHealthWorkouts(_ jsonBody: Data) async throws {
+        let _: EmptyResponse = try await perform(
+            method: "POST",
+            path: "/api/health/workouts",
+            body: jsonBody,
+            authenticated: true,
+            as: EmptyResponse.self
+        )
+    }
+
     // MARK: HealthKit ingest
 
     /// Batch-upload HealthKit samples to POST /api/health/ingest. Bearer
