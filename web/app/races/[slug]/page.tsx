@@ -661,7 +661,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                 </div>
                 <div className="path-stat">
                   <div className="path-stat-label">Strategy</div>
-                  <div className="path-stat-value green">{race.plan?.goal?.strategy ?? 'Even Effort'}</div>
+                  <div className="path-stat-value green">{(race.plan?.goal?.strategy ?? 'Even effort').replaceAll('_', ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())}</div>
                   <div className="path-stat-sub">±{race.plan?.tolerance?.pace_s_per_mi ?? 10} s/mi tolerance</div>
                 </div>
               </div>
@@ -869,15 +869,13 @@ export default async function RacePlanPage({ params }: PageProps) {
           <div className="brief-empty">
             <div className="brief-empty-dot"></div>
             <div className="brief-empty-body">
-              <div className="brief-empty-title">No data yet · honest empty state</div>
+              <div className="brief-empty-title">Ready {fmtShortMonthDay(briefGenIso)}</div>
               <div className="brief-empty-text">
-                The race-day brief — <strong>shakeout sequencing, kit layout, wake-up time, pre-race fueling, and
-                weather-adjusted pace tweaks</strong> — generates exactly 7 days out from gun time. The coach
-                needs the actual weather window and your taper-week readiness metrics before writing it. Don&apos;t
-                try to plan it now; trust the system.
+                Your race-day brief — shakeout, kit, wake-up timing, fueling, and weather-adjusted pace targets —
+                lands 7 days out, once we have the real weather window and your taper-week readiness.
               </div>
               <div className="brief-empty-when">
-                Awaiting {fmtFullDate(briefGenIso)} · {briefGenDaysAway} days from today
+                {fmtFullDate(briefGenIso)} · {briefGenDaysAway} days away
               </div>
             </div>
           </div>

@@ -645,8 +645,7 @@ export default async function RacesPage() {
             <div className="card-title-group">
               <div className="card-title">Personal Records</div>
               <div className="card-sub">
-                Race PRs are authoritative · Strava bests are training-effort context
-                (do not enter aggregate VDOT)
+                Your bests by distance — race results are the real thing; training efforts are noted as context.
               </div>
             </div>
           </div>

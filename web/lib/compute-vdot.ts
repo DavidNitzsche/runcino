@@ -324,9 +324,8 @@ export function aggregateVdotFromInputs(inputs: AggregateInputs): AggregateVdot 
     value: Math.round(value * 10) / 10,
     sourceCount: contributions.length,
     sources: contributions,
-    windowLabel: goalTier
-      ? `cycle-aware, ${goalTier.toLowerCase()} goal-tier`
-      : 'cycle-aware (no goal race set)',
+    // Plain-language; no raw tier tokens (was "cycle-aware, hm_ish goal-tier").
+    windowLabel: 'this training cycle',
     goalTier,
     cycleStartIso: cycleStart.toISOString().slice(0, 10),
   };

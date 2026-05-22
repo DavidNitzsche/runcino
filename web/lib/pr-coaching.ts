@@ -34,10 +34,10 @@ export type PRRole =
 /** Canonical coaching line per role.  Keys are stable; renderers
  *  import this map rather than hard-coding strings. */
 export const PR_COACHING_LINES: Record<PRRole, string> = {
-  'goal-distance':  'Most recent goal-distance effort. Anchors current VDOT.',
-  'pre-cycle':      'Pre-cycle PR. Older evidence, still informing baseline.',
-  'adjacent-tier':  'Adjacent-tier evidence, decaying as it ages.',
-  'strava-effort':  'Training effort. Race this distance to lock it in.',
+  'goal-distance':  'Your sharpest recent effort at this distance.',
+  'pre-cycle':      'An older PR — still part of your story.',
+  'adjacent-tier':  'A strong effort at another distance.',
+  'strava-effort':  'A training best — race it to make it official.',
 };
 
 /** Threshold (days) above which a race PR is considered "pre-cycle". */
