@@ -72,6 +72,9 @@ struct ContentView: View {
         // Keep the watch's workout current on every launch + foreground —
         // automatic, no "send to watch" step (runs on .task and scenePhase .active).
         await WatchSync.shared.syncTodayToWatch()
+        // Retry uploading any watch-recorded runs that haven't reached the
+        // server yet (now that the token is fresh). Safe + idempotent.
+        await WatchSync.shared.flushPendingCompletions()
     }
 }
 

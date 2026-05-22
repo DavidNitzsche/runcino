@@ -50,6 +50,51 @@ final class WatchSync: NSObject, ObservableObject {
 
     private override init() { super.init() }
 
+    // MARK: Durable completion queue
+    //
+    // The watch hands a finished workout to the phone via transferUserInfo.
+    // Uploading it to the backend can fail (no network in the background, a
+    // token refresh, a transient 5xx). The OLD code POSTed once and dropped
+    // the run on any error — that's how a recorded run vanished. Now every
+    // received completion is PERSISTED and retried until the server accepts
+    // it: on receive, on session activation, and on app foreground.
+
+    private let pendingKey = "faff.watch.pendingCompletions.v1"
+
+    private var pendingCompletions: [Data] {
+        get { (UserDefaults.standard.array(forKey: pendingKey) as? [Data]) ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: pendingKey) }
+    }
+
+    private func enqueue(_ data: Data) {
+        var q = pendingCompletions
+        q.append(data)
+        if q.count > 50 { q.removeFirst(q.count - 50) } // bound growth
+        pendingCompletions = q
+    }
+
+    /// Upload every queued completion; drop the ones the server accepts,
+    /// keep the rest for the next attempt. Idempotent on the backend
+    /// (re-POSTing the same workoutId overwrites), so retries are safe.
+    func flushPendingCompletions() async {
+        let q = pendingCompletions
+        guard !q.isEmpty else { return }
+        var remaining: [Data] = []
+        var uploaded = 0
+        for data in q {
+            do { try await FaffAPI.shared.postWatchCompletion(data); uploaded += 1 }
+            catch { remaining.append(data) }
+        }
+        pendingCompletions = remaining
+        if uploaded > 0 {
+            lastSyncStatus = remaining.isEmpty
+                ? "Workout synced ✓"
+                : "Synced \(uploaded) · \(remaining.count) pending"
+        } else if !remaining.isEmpty {
+            lastSyncStatus = "\(remaining.count) workout(s) pending — will retry"
+        }
+    }
+
     // MARK: Lifecycle
 
     func activate() {
@@ -125,6 +170,9 @@ extension WatchSync: WCSessionDelegate {
                 try? session.updateApplicationContext(pending)
                 self.pendingContext = nil
             }
+            // Session is live → push up anything the watch sent while we were
+            // not running / offline.
+            if state == .activated { await self.flushPendingCompletions() }
         }
     }
 
@@ -148,16 +196,15 @@ extension WatchSync: WCSessionDelegate {
     }
 
     /// The watch finished a workout and sent its completion payload.
+    /// Persist it FIRST (so it survives an upload failure / app kill), then
+    /// flush — any failure stays queued and retries on the next activate /
+    /// foreground.
     nonisolated func session(_ session: WCSession,
                              didReceiveUserInfo userInfo: [String: Any]) {
         guard let data = userInfo["completion"] as? Data else { return }
         Task { @MainActor in
-            do {
-                try await FaffAPI.shared.postWatchCompletion(data)
-                self.lastSyncStatus = "Workout completion uploaded ✓"
-            } catch {
-                self.lastSyncStatus = "Completion upload failed: \(error.localizedDescription)"
-            }
+            self.enqueue(data)
+            await self.flushPendingCompletions()
         }
     }
 }
