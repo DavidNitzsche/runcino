@@ -25,6 +25,7 @@
  */
 
 import { query } from './db';
+import { upsertCanonicalRun } from './run-dedup';
 
 // ── Input shapes · what the route accepts ────────────────────────
 
@@ -260,16 +261,6 @@ export async function storeCompletion(
   }
 }
 
-/** Stable, deterministic negative BIGINT from a string. Strava activity ids
- *  are positive, so a negative id can never collide with a real Strava row.
- *  Keyed on userId:workoutId so it's unique per user + idempotent on re-POST. */
-function syntheticRunId(userId: string, workoutId: string): number {
-  const s = `${userId}:${workoutId}`;
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return -(Math.abs(h) + 1); // negative → outside Strava's positive id space
-}
-
 /** Minimal shape needed to surface a completion as a run, satisfied by both
  *  WatchCompletionInput (live POST) and a workout_completions DB row (backfill). */
 interface WatchRunFields {
@@ -282,18 +273,15 @@ interface WatchRunFields {
   maxHr?: number | null;
 }
 
-/** Write (or refresh) a strava_activities row representing a watch-recorded
- *  run, so the canonical runs table the whole app reads includes it. Only
- *  for real runs (completed/partial with a positive distance). */
+/** Surface a watch completion as a first-class run via the shared canonical
+ *  writer — keyed on START TIME, so the same run from the watch, the watch
+ *  direct-post, or Apple Health all converge to ONE row (and skip a Strava
+ *  copy of the same session). Only real runs (completed/partial, distance>0). */
 async function upsertWatchRunActivity(userId: string, c: WatchRunFields): Promise<void> {
   if (c.status !== 'completed' && c.status !== 'partial') return;
   const distanceMi = c.totalDistanceMi ?? 0;
   if (!(distanceMi > 0)) return; // no distance → not a meaningful run card
 
-  const datePrefix = /^(\d{4}-\d{2}-\d{2})/.exec(c.workoutId)?.[1];
-  const date = datePrefix ?? new Date(c.startedAt).toISOString().slice(0, 10);
-  const durationS = Math.round(c.totalDurationSec);
-  const paceSPerMi = distanceMi > 0 && durationS > 0 ? Math.round(durationS / distanceMi) : null;
   // Type hint from the workoutId slug (e.g. "2026-05-20-threshold") so a
   // recorded quality session isn't mislabeled easy; default easy otherwise.
   const slug = /^\d{4}-\d{2}-\d{2}-(.+)$/.exec(c.workoutId)?.[1]?.toLowerCase() ?? '';
@@ -302,26 +290,16 @@ async function upsertWatchRunActivity(userId: string, c: WatchRunFields): Promis
     : /race/.test(slug) ? 'race'
     : 'easy';
 
-  const data = {
-    date,
-    startLocal: new Date(c.startedAt).toISOString(),
+  await upsertCanonicalRun(userId, {
+    startISO: new Date(c.startedAt).toISOString(),
+    distanceMi,
+    durationSec: c.totalDurationSec,
+    avgHr: c.avgHr ?? null,
+    maxHr: c.maxHr ?? null,
     name: 'Watch run',
-    distanceMi: Math.round(distanceMi * 100) / 100,
-    movingTimeS: durationS,
-    paceSPerMi,
-    avgHr: c.avgHr != null ? Math.round(c.avgHr) : null,
-    maxHr: c.maxHr != null ? Math.round(c.maxHr) : null,
-    workoutType: 0,
     type,
     source: 'watch',
-  };
-
-  await query(
-    `INSERT INTO strava_activities (id, user_uuid, data)
-       VALUES ($1, $2, $3)
-     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data`,
-    [syntheticRunId(userId, c.workoutId), userId, JSON.stringify(data)],
-  );
+  });
 }
 
 /**
