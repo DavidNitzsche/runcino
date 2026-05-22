@@ -167,6 +167,13 @@ export default async function OverviewPage() {
   const weekDaysWithWork = currentWeek.days.filter((d) => !d.isRest);
   const sessionsDone = weekDaysWithWork.filter((d) => isComplete(d.date, d.distanceMi)).length;
   const sessionsTotal = weekDaysWithWork.length;
+  // Actual miles logged this week THROUGH TODAY, summed from the SAME
+  // per-date map that drives the DONE marks — so the Mileage bar reconciles
+  // with the week strip. (thisWeekSoFar stops at yesterday for the coach
+  // briefing; the progress bar must include today's run and use one source.)
+  const weekActualMi = Math.round(
+    currentWeek.days.reduce((s, d) => s + (completedMileage.get(d.date) ?? 0), 0) * 10,
+  ) / 10;
 
   // Resolve fitness ONCE — paces and duration come from the same
   // source the modal + race plan use. Kills the legacy
@@ -558,9 +565,9 @@ export default async function OverviewPage() {
             <div className="trend-rows">
               <TrendRow
                 label="Mileage"
-                value={`${thisWeekSoFar.totalMi} / ${currentWeek.plannedMi} mi`}
-                tone={thisWeekSoFar.totalMi >= currentWeek.plannedMi * 0.7 ? 'green' : 'amber'}
-                width={Math.min(100, Math.round((thisWeekSoFar.totalMi / Math.max(1, currentWeek.plannedMi)) * 100))}
+                value={`${weekActualMi} / ${currentWeek.plannedMi} mi`}
+                tone={weekActualMi >= currentWeek.plannedMi * 0.7 ? 'green' : 'amber'}
+                width={Math.min(100, Math.round((weekActualMi / Math.max(1, currentWeek.plannedMi)) * 100))}
               />
               {(readiness?.inputs ?? []).map((inp) => (
                 <TrendRow
