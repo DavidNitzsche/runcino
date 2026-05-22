@@ -345,7 +345,7 @@ struct CoachView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if let acwr = overview.acwrValue {
                     SignalRow("Watching", tone: .amber,
-                              String(format: "Acute load is %.0f%% of your 8-week base (ACWR %.2f). Hold easy until it settles under 1.3.", acwr * 100, acwr))
+                              String(format: "Your last week is %.0f%% of your 8-week average — that's ramping fast. Hold easy until it settles.", acwr * 100))
                 }
                 let bankedMi = (overview.completedByDate ?? [:]).values.reduce(0, +)
                 if bankedMi > 0 {
@@ -415,10 +415,12 @@ struct HealthView: View {
             vital("Active Energy", hk.activeEnergyKcal, "kcal", sub: "today", type: "active_energy"),
         ]
         let acwr = overview.acwrValue
+        let loadWord = acwr == nil ? "—"
+            : (acwr! > 1.3 ? "Building" : acwr! < 0.8 ? "Easing" : "Steady")
         let load: [Tile] = [
-            Tile(label: "Load · ACWR", value: acwr.map { String(format: "%.2f", $0) } ?? "—", unit: nil, delta: acwr != nil ? ((acwr ?? 0) > 1.3 ? "watching" : "ok") : "No data", tone: (acwr ?? 0) > 1.3 ? .watch : .good, live: acwr != nil),
+            Tile(label: "Training load", value: loadWord, unit: nil, delta: acwr != nil ? "last 7 vs 28 days" : "No data", tone: (acwr ?? 0) > 1.3 ? .watch : .good, live: acwr != nil),
             Tile(label: "Volume", value: OverviewFormat.distance(overview.state?.volume?.last7Mi), unit: "mi", delta: "last 7d", tone: .flat, live: true),
-            Tile(label: "Form · TSB", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
+            Tile(label: "Freshness", value: "—", unit: nil, delta: "No data", tone: .flat, live: false),
         ]
 
         return FaffScreen(eyebrow: localHealth ? "Apple Health · connected" : "Apple Health", title: "Body State") {
@@ -498,7 +500,7 @@ struct HealthView: View {
                 HStack(spacing: 14) {
                     anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? "—", "bpm")
                     anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? "—", "bpm")
-                    anchorCell("MODEL", z.framework == "HRR" ? "Karvonen" : "% max", z.framework == "HRR" ? "%HRR" : "")
+                    anchorCell("ZONES", z.framework == "HRR" ? "Personalized" : "Standard", z.framework == "HRR" ? "uses resting HR" : "")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -528,7 +530,7 @@ struct HealthView: View {
         if localHealth {
             return "Reading vitals from Apple Health on this device. They sync into your readiness score as days accumulate."
         }
-        return "Connect Apple Health for HRV, resting heart rate, sleep and VO₂max. Until then, readiness reads from training load only."
+        return "Connect Apple Health for heart-rate variability, resting heart rate, sleep and VO₂max. Until then, readiness reads from training load only."
     }
 
     @ViewBuilder private var connectControl: some View {
@@ -1187,7 +1189,7 @@ struct RaceDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("PROJECTED").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
                     Text(pr.predictedDisplay ?? "—").font(Faff.F.display(26)).foregroundStyle(.white)
-                    Text("at VDOT \(String(format: "%.1f", cv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
+                    Text("at fitness score \(String(format: "%.1f", cv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
                 }
                 Spacer(minLength: 4)
                 Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(.white.opacity(0.55))
@@ -1196,7 +1198,7 @@ struct RaceDetailView: View {
                     Text("GOAL").font(Faff.F.inter(9, .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.8))
                     Text(goalT ?? "—").font(Faff.F.display(26)).foregroundStyle(.white)
                     if let gv = pr.goalVdot {
-                        Text("needs VDOT \(String(format: "%.1f", gv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
+                        Text("needs fitness score \(String(format: "%.1f", gv))").font(Faff.F.inter(10)).foregroundStyle(.white.opacity(0.8))
                     }
                 }
             }
@@ -1222,7 +1224,7 @@ struct RaceDetailView: View {
         if onPace, let p = pSec, let g = gSec, g >= p { return "On pace — beats goal by \(mmss(g - p))" }
         if let gap = pr.vdotGap {
             let pace = pr.paceTGapS.map { " · ~\(Int(abs($0)))s/mi" } ?? ""
-            return "\(String(format: "%.1f", abs(gap))) VDOT to find\(pace)"
+            return "\(String(format: "%.1f", abs(gap))) fitness points to find\(pace)"
         }
         return "Building toward goal"
     }
@@ -1297,7 +1299,7 @@ struct ProfileView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("TRAINING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             HStack(spacing: Faff.S.inlineGap) {
-                StatPill(value: vdot.map { String(Int($0)) } ?? "—", unit: vdot != nil ? "VDOT" : nil, label: "Fitness")
+                StatPill(value: vdot.map { String(Int($0)) } ?? "—", unit: vdot != nil ? "score" : nil, label: "Fitness")
                 StatPill(value: OverviewFormat.distance(v?.last7Mi), unit: "mi", label: "Last 7d")
                 StatPill(value: OverviewFormat.distance(v?.weeklyAvg8w), unit: "mi", label: "8wk avg")
             }
@@ -1450,7 +1452,7 @@ struct WhyThisSheet: View {
                 CoachVerdict("Focus", dw.guidance, color: Faff.C.milestone)
                 if let acwr = overview.acwrValue, acwr > 1.3 {
                     CoachVerdict("Watching",
-                                 String(format: "Acute load (ACWR %.2f) is still elevated post-race, which is why today stays easy.", acwr),
+                                 "Your recent training load is still elevated after the race, which is why today stays easy.",
                                  color: Faff.C.amberInk)
                 }
                 PrimaryButton(title: "Open today's coach read", icon: "questionmark.circle") { dismiss(); onOpenCoach() }
@@ -1548,7 +1550,7 @@ struct HrZoneScale: View {
             HStack {
                 Text("YOUR HR ZONES").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
                 Spacer()
-                Text(framework == "HRR" ? "Karvonen · %HRR" : "% max")
+                Text(framework == "HRR" ? "Personalized to you" : "Standard zones")
                     .font(Faff.F.inter(9.5, .medium)).foregroundStyle(Faff.C.textFaint)
             }
             ForEach(zones) { z in
@@ -1952,11 +1954,11 @@ struct MetricGuide {
             break
         }
         switch title {
-        case "Load · ACWR":
+        case "Training load":
             return MetricGuide(
-                what: "Acute:Chronic Workload Ratio compares your last 7 days of training to your rolling 28-day average.",
-                good: "Roughly 0.8–1.3 is the sweet spot. Above ~1.5 means you're ramping fast — a higher injury-risk zone.",
-                improve: "Build mileage gradually and follow a hard week with an easier one to keep the ratio in range.")
+                what: "Compares how much you've run in the last 7 days against your rolling 28-day average.",
+                good: "\"Steady\" is when the two are close. If your last week jumps well above your recent average, you're ramping fast — a higher injury-risk zone.",
+                improve: "Build mileage gradually and follow a hard week with an easier one.")
         case "Volume":
             return MetricGuide(
                 what: "Total running distance over the last 7 days.",

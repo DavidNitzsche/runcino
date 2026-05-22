@@ -444,11 +444,11 @@ struct TodayView: View {
         // Real score → the informative, data-driven summary (recommendation +
         // biggest driver); tap the card for the full breakdown.
         if overview.readinessHasDetail { return overview.readinessSummary }
-        guard let a = acwr else { return "No recovery data yet. Connect Apple Health for HRV, resting HR and sleep." }
+        guard let a = acwr else { return "No recovery data yet. Connect Apple Health for heart-rate variability, resting heart rate and sleep." }
         let load = a > 1.3
-            ? String(format: "Load is climbing (ACWR %.2f). Keep easy days easy.", a)
-            : String(format: "Training load is balanced (ACWR %.2f).", a)
-        return load + (o_hasHealth ? "" : " Connect Apple Health for HRV & sleep.")
+            ? "Your training load is climbing — keep easy days easy."
+            : "Your training load is balanced."
+        return load + (o_hasHealth ? "" : " Connect Apple Health for heart-rate variability & sleep.")
     }
     private var o_hasHealth: Bool { overview.hasHealthData }
 }
