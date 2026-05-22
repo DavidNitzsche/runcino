@@ -256,6 +256,18 @@ final class HealthKitManager: ObservableObject {
         for (day, v) in oscByDay    { out.append(HealthSample(type: "vertical_oscillation", value: (v * 10).rounded() / 10, dateISO: day, source: "apple_health")) }
         for (day, v) in gctByDay    { out.append(HealthSample(type: "ground_contact_time", value: v.rounded(), dateISO: day, source: "apple_health")) }
         for (day, v) in powerByDay  { out.append(HealthSample(type: "run_power", value: v.rounded(), dateISO: day, source: "apple_health")) }
+        // Derived form — HealthKit has no direct cadence/vertical-ratio quantity,
+        // so compute them from the day's averages:
+        //   cadence (spm)      = speed (m/s) ÷ stride (m) × 60
+        //   vertical ratio (%) = osc (cm)    ÷ stride (m)         (cm ÷ m collapses to %)
+        // Server drops out-of-range values (cadence 100–230, vert ratio 3–20).
+        for (day, sp) in speedByDay {
+            guard let st = strideByDay[day], st > 0 else { continue }
+            out.append(HealthSample(type: "cadence", value: (sp / st * 60).rounded(), dateISO: day, source: "apple_health"))
+            if let osc = oscByDay[day] {
+                out.append(HealthSample(type: "vertical_ratio", value: (osc / st * 10).rounded() / 10, dateISO: day, source: "apple_health"))
+            }
+        }
         // Body composition (smart-scale) — slow-moving; one daily average.
         let kg = HKUnit.gramUnit(with: .kilo)
         for (date, stat) in await dailyStats(HKQuantityType(.bodyMass), options: .discreteAverage, days: daysBack) {
