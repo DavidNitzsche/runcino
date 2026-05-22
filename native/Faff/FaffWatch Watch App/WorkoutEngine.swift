@@ -515,9 +515,11 @@ final class WorkoutEngine: ObservableObject {
 
     private func finish(status: String) {
         stopTimer()
+        // Build the completion BEFORE flipping state, so anything observing the
+        // .finished transition (the root model's auto-send) can read it.
+        completion = buildCompletion(status: status)
         state = .finished
         Haptics.play(.end)
-        completion = buildCompletion(status: status)
         // Persist the HKWorkout + GPS route to Health (async, best-effort).
         if let tracker {
             Task { await tracker.end() }

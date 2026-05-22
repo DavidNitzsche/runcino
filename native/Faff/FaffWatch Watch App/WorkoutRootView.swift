@@ -29,6 +29,10 @@ final class WatchRootModel: ObservableObject {
     /// root only observes `model`, so a state flip after the engine is
     /// assigned (e.g. the countdown completing) would never re-render.
     private var stateForward: AnyCancellable?
+    /// Guard so the finished workout's completion is sent to the iPhone exactly
+    /// once, the moment the run ends — NOT gated on the user tapping "Done" on
+    /// the summary (a wrist-drop there used to mean the run never synced).
+    private var didSendCompletion = false
 
     func start(_ workout: WatchWorkout) {
         Task {
@@ -37,9 +41,19 @@ final class WatchRootModel: ObservableObject {
             await tracker.requestAuthorization()
             let engine = WorkoutEngine(workout: workout)
             engine.tracker = tracker
+            didSendCompletion = false
             stateForward = engine.$state
                 .removeDuplicates()
-                .sink { [weak self] _ in self?.objectWillChange.send() }
+                .sink { [weak self] newState in
+                    guard let self else { return }
+                    self.objectWillChange.send()
+                    // Auto-send the completion as soon as the run finishes.
+                    if newState == .finished, !self.didSendCompletion,
+                       let completion = engine.completion {
+                        self.didSendCompletion = true
+                        PhoneSync.shared.sendCompletion(completion)
+                    }
+                }
             self.engine = engine
             engine.beginCountdown()
         }
@@ -47,6 +61,7 @@ final class WatchRootModel: ObservableObject {
 
     func reset() {
         stateForward?.cancel(); stateForward = nil
+        didSendCompletion = false
         engine?.reset()
         engine = nil
     }
@@ -85,10 +100,9 @@ struct WorkoutRootView: View {
         if let engine = model.engine {
             switch engine.state {
             case .finished:
+                // Completion is auto-sent on the .finished transition (see
+                // WatchRootModel) — Done just dismisses + resets.
                 SummaryView(workout: engine.workout, completion: engine.completion) {
-                    if let completion = engine.completion {
-                        phone.sendCompletion(completion)
-                    }
                     model.reset()
                 }
             case .countingDown:
