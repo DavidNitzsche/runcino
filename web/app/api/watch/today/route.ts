@@ -44,7 +44,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const tz = userTimezone(user.location);
+  // Prefer the device-reported IANA timezone; fall back to the location guess.
+  const tz = user.timezone || userTimezone(user.location);
   const today = todayISO(tz);
 
   // Find today's workout in the REAL plan artifact, the same source
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
   let readinessScore: number | null = null;
   let readinessLabel: string | null = null;
   try {
-    const state = await gatherCoachState({ userId: user.id });
+    const state = await gatherCoachState({ userId: user.id, tz });
     // Real max HR + Z2 so the watch pill matches the phone/web score exactly
     // (passing null max HR previously inflated the watch's reading).
     const maxHr = state.recovery?.maxHrBpm ?? null;

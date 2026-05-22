@@ -94,9 +94,10 @@ export default async function OverviewPage() {
   // whatever's in the DB regardless.
   await syncStravaIfStale(user.id);
 
-  // Compute "today" in the user's timezone (inferred from location, default LA)
+  // Compute "today" in the user's timezone: the device-reported IANA tz
+  // (users.timezone) wins, falling back to the location guess (default LA)
   // so the page matches their wall clock, not UTC.
-  const tz = userTimezone(user.location);
+  const tz = user.timezone || userTimezone(user.location);
   const today = todayISO(tz);
   // The runner's REAL coach-generated plan (same artifact /api/overview
   // serves). No synthetic fallback, if there's no plan yet, say so.
@@ -294,7 +295,7 @@ export default async function OverviewPage() {
   // localHour drives the time-of-day greeting ("Good morning" vs
   // "Good evening") so the coach voice matches the runner's wall
   // clock. Computed from the user's IANA timezone via Intl.
-  const tzForHour = userTimezone(user.location);
+  const tzForHour = user.timezone || userTimezone(user.location);
   const localHour = Number(new Intl.DateTimeFormat('en-US', {
     timeZone: tzForHour, hour: 'numeric', hour12: false,
   }).format(new Date()));

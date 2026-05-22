@@ -182,17 +182,19 @@ struct TodayView: View {
                 } label: {
                     VStack(spacing: 5) {
                         Text(dow(day.dow)).font(Faff.F.inter(9.5, .bold)).tracking(0.5)
-                            .foregroundStyle(onFill ? .white : (isToday ? Faff.C.race : Faff.C.textDim))
+                            .foregroundStyle(onFill ? .white : (isToday ? Faff.C.ink : Faff.C.textDim))
                         Text(dom(day.dateISO)).font(Faff.F.display(20))
-                            .foregroundStyle(onFill ? .white : (isToday ? Faff.C.race : Faff.C.textMuted))
+                            .foregroundStyle(onFill ? .white : (isToday ? Faff.C.ink : Faff.C.textMuted))
                         statusDot(o, day, onFill: onFill).frame(height: 7)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 7)
                     .background(fill, in: RoundedRectangle(cornerRadius: Faff.R.tile, style: .continuous))
                     .overlay(
+                        // Today (unselected, not yet done) gets a neutral ink
+                        // outline — orange is reserved for warnings, not "today".
                         RoundedRectangle(cornerRadius: Faff.R.tile)
-                            .stroke(Faff.C.race.opacity(0.55), lineWidth: (isToday && !isSel && !isDone) ? 1.5 : 0)
+                            .stroke(Faff.C.ink.opacity(0.35), lineWidth: (isToday && !isSel && !isDone) ? 1.5 : 0)
                     )
                     .contentShape(Rectangle())
                 }
@@ -413,8 +415,11 @@ struct TodayView: View {
             case "yellow": return ("Watch load", .amber)
             case "red": return ("Back off", .warn)
             default:
-                guard let a = acwr else { return ("No data", .grey) }
-                return a > 1.3 ? ("Watch load", .amber) : ("On track", .green)
+                // Score suppressed / not enough data. Show an honest "No data"
+                // state — do NOT substitute an ACWR-derived verdict, which
+                // would invent a green "On track" the readiness engine never
+                // produced (the source of a past readiness-display surprise).
+                return ("No data", .grey)
             }
         }()
         return Button { showReadiness = true } label: {
@@ -446,7 +451,7 @@ struct TodayView: View {
         case "green": return Faff.C.recovery
         case "yellow": return Faff.C.milestone
         case "red": return Faff.C.warn
-        default: return Faff.C.recovery
+        default: return Faff.C.textFaint   // no-data: neutral, not a green "all good"
         }
     }
     private func readinessCopy(_ acwr: Double?) -> String {

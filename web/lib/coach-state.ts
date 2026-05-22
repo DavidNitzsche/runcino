@@ -21,7 +21,7 @@ import { query } from './db';
 import { listRacesDB } from './race-store';
 import { getCachedActivities } from './strava-cache';
 import { isProbablyRace, currentWeekDays, weeklyMiles, effortBalance } from './strava-stats';
-import { todayISO as todayLAISO, todayDate } from './dates';
+import { todayISO as todayLAISO, todayDate, resolveTz } from './dates';
 import { gatherCheckinAggregate, type CheckinAggregate } from './checkin-aggregate';
 import { getUserPrefs, type PrefsRow } from './prefs-store';
 import { listRecentSkips, type SkippedWorkout } from './skip-store';
@@ -256,6 +256,10 @@ function buildWindowDays(distanceMi: number): number {
  *  pace decisions match what /profile shows. */
 export interface GatherCoachStateOpts {
   userId?: string;
+  /** The user's IANA timezone (users.timezone). Drives "today" so the
+   *  coach reads the right calendar day wherever the runner is. Falls back
+   *  to the app-default FAFF_TZ when absent. */
+  tz?: string | null;
 }
 
 /** Recovery biometrics from HealthKit ingest (health_samples), averaged
@@ -301,8 +305,9 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
   // "Today" in LA, server runs in UTC and would otherwise flip a day
   // early in the evening. todayDate() is anchored at noon UTC of the
   // LA calendar date so isoDateOffset's setDate/getDate math is safe.
-  const today = todayDate();
-  const todayISO = todayLAISO();
+  const tz = resolveTz(opts.tz);
+  const today = todayDate(tz);
+  const todayISO = todayLAISO(tz);
 
   const [savedRaces, { activities }, checkinAgg, prefsRow, recentSkipsRaw, healthBio] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)

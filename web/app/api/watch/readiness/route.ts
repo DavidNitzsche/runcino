@@ -37,11 +37,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const tz = userTimezone(user.location);
+  // Prefer the device-reported IANA timezone (users.timezone); fall back to
+  // the free-text location guess only when the app hasn't reported one yet.
+  const tz = user.timezone || userTimezone(user.location);
   const today = todayISO(tz);
 
   try {
-    const state = await gatherCoachState({ userId: user.id });
+    const state = await gatherCoachState({ userId: user.id, tz });
     // Parity with /api/overview + the web/iPhone readiness: pass the runner's
     // real max HR (so HR-based "hard effort" detection works) and the Z2
     // finding, passing null here reintroduced the inflated-score divergence.

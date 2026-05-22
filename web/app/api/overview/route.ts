@@ -181,11 +181,12 @@ export async function GET(req: Request): Promise<Response> {
     // Bearer-aware: getCurrentUser(req) honors the native app's
     // Authorization: Bearer token (requireActiveUser is cookie-only, so the
     // iPhone was being treated as anonymous → empty completion/readiness).
-    const userId: string | undefined = (await getCurrentUser(req))?.id;
+    const authUser = await getCurrentUser(req);
+    const userId: string | undefined = authUser?.id;
     // Surface any watch-recorded runs that synced before the run-surfacing
     // logic existed, so they show up as real runs (idempotent, non-fatal).
     if (userId) await backfillWatchRunsAsActivities(userId);
-    const state = await gatherCoachState({ userId });
+    const state = await gatherCoachState({ userId, tz: authUser?.timezone });
     const today = state.now.slice(0, 10);
 
     // The Coach methods that need a goal time pull from the saved

@@ -216,6 +216,11 @@ export async function computeReadinessScore(
   // (lib/hr-zones.ts) so readiness, plan-building and the run debrief
   // can't drift apart. Research/03 §4 (Z4 80–90%) + §5 (Karvonen).
   const hardFloor = hardEffortFloorBpm(userMaxHr, restingHr);
+  // Without a max HR we can't detect "hard by HR" — only an explicit
+  // workout-type tag counts, so an untagged hard run reads as fresh and can
+  // inflate the score. Surface that as a missing input rather than silently
+  // degrading (this is the recurring "HRmax never reached the score" trap).
+  if (!userMaxHr) missing.push('max HR (set it in Profile so hard runs are detected by heart rate)');
 
   // Sleep + HRV + resting-HR inputs are wired below from health_samples.
 
@@ -306,9 +311,10 @@ export async function computeReadinessScore(
          FROM health_samples
         WHERE user_id = $1
           AND sample_type IN ('hrv', 'resting_hr', 'sleep_hours')
-          AND sample_date >= (CURRENT_DATE - INTERVAL '35 days')
+          AND sample_date >= ($2::date - INTERVAL '35 days')
+          AND sample_date <= $2::date
         ORDER BY sample_date DESC`,
-      [userId],
+      [userId, todayIso],
     );
     const series = (t: string) => hsRows.filter((r) => r.sample_type === t).map((r) => Number(r.value)).filter((n) => isFinite(n));
     const mean = (arr: number[]) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0);

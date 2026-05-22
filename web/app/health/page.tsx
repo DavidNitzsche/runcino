@@ -49,7 +49,7 @@ export default async function HealthPage() {
   const auth = await requireActiveUser();
   await syncStravaIfStale(auth.id);
 
-  const today = todayISO(userTimezone(auth.location));
+  const today = todayISO(auth.timezone || userTimezone(auth.location));
   const todayLabel = new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();
 
   // Today's check-in (from /api/checkin POST). Used by the "What's
