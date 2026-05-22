@@ -591,52 +591,34 @@ export default async function RacesPage() {
             </div>
           </div>
 
-          <div className="races-timeline">
+          <div className="races-recent-list">
             {upcoming.length === 0 ? (
               <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
                 No upcoming races on the calendar.
               </div>
             ) : (
-              <div className="races-timeline-track-area">
-                <div className="races-timeline-track-line"></div>
-                {/* "TODAY" marker at the left edge */}
-                <div className="races-timeline-now">
-                  <div className="races-timeline-now-dot" />
-                  <div className="races-timeline-now-info">
-                    <div className="races-timeline-now-label">Today</div>
-                  </div>
-                </div>
-                {upcoming.map((race, i) => {
-                  const maxDays = Math.max(...upcoming.map((r) => r.daysAway), 1);
-                  const pos = (race.daysAway / maxDays) * 100;
-                  const above = i % 2 === 0;
-                  const isLast = i === upcoming.length - 1 && pos > 90;
-                  const priorityClass =
-                    race.priority === 'A' ? 'a' :
-                    race.priority === 'B' ? 'b' : 'c';
-                  const stationCls = [
-                    'races-timeline-station',
-                    above ? 'placement-above' : 'placement-below',
-                    `priority-${priorityClass}`,
-                    isLast ? 'is-last' : '',
-                  ].filter(Boolean).join(' ');
-                  const Wrapper = race.slug
-                    ? ({ children }: { children: React.ReactNode }) => <a href={`/races/${race.slug}`} className={stationCls} style={{ left: `${pos}%`, textDecoration: 'none', color: 'inherit' }}>{children}</a>
-                    : ({ children }: { children: React.ReactNode }) => <div className={stationCls} style={{ left: `${pos}%` }}>{children}</div>;
-                  return (
-                    <Wrapper key={`${race.name}-${race.date}`}>
-                      <div className={`races-timeline-tag ${priorityClass}`}>{race.priority}</div>
-                      <div className="races-timeline-station-info">
-                        <div className="races-timeline-date">{race.date}</div>
-                        <div className="races-timeline-name">{race.name}</div>
-                        <div className="races-timeline-pace">{race.distanceLabel}</div>
-                        <div className="races-timeline-goal">{race.goal !== '—' ? race.goal : ''}</div>
-                        <div className="races-timeline-away">{race.daysAway}d away</div>
-                      </div>
-                    </Wrapper>
-                  );
-                })}
-              </div>
+              upcoming.map((race) => {
+                const href = race.slug ? `/races/${race.slug}` : undefined;
+                const Inner = (
+                  <>
+                    <div className="races-recent-date">{race.date}</div>
+                    <span className={`races-recent-priority p-${race.priority.toLowerCase()}`}>{race.priority}</span>
+                    <div className="races-recent-info">
+                      <div className="races-recent-name">{race.name}</div>
+                      <div className="races-recent-meta">{race.distanceLabel}{race.goal !== '—' ? ` · goal ${race.goal}` : ''}</div>
+                    </div>
+                    <div className="races-recent-time">{race.daysAway}d away</div>
+                    <div className="races-recent-pace" />
+                    {href && <span className="races-recent-chev" aria-hidden>›</span>}
+                  </>
+                );
+                const cls = `races-recent-row ${href ? 'is-clickable' : ''}`;
+                return href ? (
+                  <a key={`${race.name}-${race.date}`} href={href} className={cls} style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>{Inner}</a>
+                ) : (
+                  <div key={`${race.name}-${race.date}`} className={cls}>{Inner}</div>
+                );
+              })
             )}
           </div>
         </div>
