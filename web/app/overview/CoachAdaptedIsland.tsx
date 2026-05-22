@@ -3,20 +3,18 @@
 /**
  * "Coach updated your plan" — a dismissible card pinned at the top of
  * /overview that surfaces recent plan adaptations (grouped by reason, with
- * the day(s) touched + the research citation) so a change never happens
+ * the day(s) touched) so a change never happens
  * silently. Client island: the parent page is a server component.
  *
- * Seen-tracking is local (localStorage): the card shows only when the latest
- * adaptation is newer than what this browser last dismissed.
+ * Dismissal is persisted server-side: tapping ✕ flips the applied changes to
+ * 'seen' so the card never re-surfaces on any device (web or iPhone).
  */
 
 import { useEffect, useState, type CSSProperties } from 'react';
 
-interface Mutation { id: string; reason: string; citation: string | null; ts: string; workoutDateISO: string; status?: 'applied' | 'proposed' | 'declined' }
-interface Group { reason: string; citation: string | null; days: string[]; ts: string }
-interface PendingGroup extends Group { ids: string[] }
-
-const SEEN_KEY = 'faff.coach.adaptSeenTs';
+interface Mutation { id: string; reason: string; citation: string | null; ts: string; workoutDateISO: string; status?: 'applied' | 'proposed' | 'declined' | 'seen' }
+interface Group { reason: string; days: string[]; ts: string; ids: string[] }
+type PendingGroup = Group;
 
 function dayList(days: string[]): string {
   const names = days
@@ -31,7 +29,6 @@ function dayList(days: string[]): string {
 export function CoachAdaptedIsland() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [pending, setPending] = useState<PendingGroup[]>([]);
-  const [latestTs, setLatestTs] = useState<string>('');
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -46,7 +43,7 @@ export function CoachAdaptedIsland() {
         const proposed = muts.filter((m) => m.status === 'proposed');
         const byPending = new Map<string, PendingGroup>();
         for (const m of proposed) {
-          const g = byPending.get(m.reason) ?? { reason: m.reason, citation: m.citation, days: [], ts: m.ts, ids: [] };
+          const g = byPending.get(m.reason) ?? { reason: m.reason, days: [], ts: m.ts, ids: [] };
           g.ids.push(m.id);
           if (!g.days.includes(m.workoutDateISO)) g.days.push(m.workoutDateISO);
           if (m.ts > g.ts) g.ts = m.ts;
@@ -54,22 +51,19 @@ export function CoachAdaptedIsland() {
         }
         setPending([...byPending.values()].sort((a, b) => (a.ts < b.ts ? 1 : -1)));
 
-        // APPLIED → informational "Coach updated your plan" card (dismissible).
+        // APPLIED → informational "Coach updated your plan" card. Dismissing it
+        // marks these 'seen' server-side, so 'seen' rows never reach here again.
         const applied = muts.filter((m) => (m.status ?? 'applied') === 'applied');
         if (!applied.length) { setGroups([]); return; }
         const byReason = new Map<string, Group>();
-        let latest = applied[0].ts;
         for (const m of applied) {
-          if (m.ts > latest) latest = m.ts;
-          const g = byReason.get(m.reason) ?? { reason: m.reason, citation: m.citation, days: [], ts: m.ts };
+          const g = byReason.get(m.reason) ?? { reason: m.reason, days: [], ts: m.ts, ids: [] };
+          g.ids.push(m.id);
           if (!g.days.includes(m.workoutDateISO)) g.days.push(m.workoutDateISO);
           if (m.ts > g.ts) g.ts = m.ts;
           byReason.set(m.reason, g);
         }
-        const seen = typeof window !== 'undefined' ? window.localStorage.getItem(SEEN_KEY) : null;
-        if (seen === latest) { setGroups([]); return; }
         setGroups([...byReason.values()].sort((a, b) => (a.ts < b.ts ? 1 : -1)));
-        setLatestTs(latest);
       })
       .catch(() => {});
   };
@@ -88,10 +82,18 @@ export function CoachAdaptedIsland() {
     } catch { /* ignore */ } finally { setBusy(null); }
   };
 
-  const dismiss = () => {
-    try { window.localStorage.setItem(SEEN_KEY, latestTs); } catch { /* ignore */ }
+  const dismiss = async () => {
+    const ids = groups.flatMap((g) => g.ids);
     setGroups([]);
     if (pending.length === 0) setDismissed(true);
+    if (ids.length === 0) return;
+    try {
+      await fetch('/api/plan/adaptations/act', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, action: 'dismiss' }),
+      });
+    } catch { /* ignore — UI already cleared; server retry on next dismiss */ }
   };
 
   if ((dismissed || groups.length === 0) && pending.length === 0) return null;
@@ -120,7 +122,6 @@ export function CoachAdaptedIsland() {
           <div style={{ fontSize: 13.5, color: '#0D0F12', lineHeight: 1.45 }}>{g.reason}</div>
           <div style={{ fontSize: 11, marginTop: 2, marginBottom: 12 }}>
             <span style={{ color: '#E85D26', fontWeight: 600 }}>{dayList(g.days)}</span>
-            {g.citation ? <span style={{ color: 'rgba(13,15,18,.45)' }}> · {g.citation}</span> : null}
           </div>
           <div style={{ display: 'flex', gap: 8, opacity: busy === g.reason ? 0.5 : 1, pointerEvents: busy ? 'none' : 'auto' }}>
             <button onClick={() => act(g, 'accept')} style={btn('accept')}>Approve</button>
@@ -148,7 +149,6 @@ export function CoachAdaptedIsland() {
               <div style={{ fontSize: 13.5, color: '#0D0F12', lineHeight: 1.45 }}>{g.reason}</div>
               <div style={{ fontSize: 11, marginTop: 2 }}>
                 <span style={{ color: '#E85D26', fontWeight: 600 }}>{dayList(g.days)}</span>
-                {g.citation ? <span style={{ color: 'rgba(13,15,18,.45)' }}> · {g.citation}</span> : null}
               </div>
             </div>
           ))}

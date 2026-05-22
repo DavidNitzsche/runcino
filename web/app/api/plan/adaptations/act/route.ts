@@ -29,8 +29,8 @@ export async function POST(req: Request) {
     if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string') || ids.length === 0) {
       return Response.json({ ok: false, error: 'ids: non-empty string[] required' }, { status: 400 });
     }
-    if (action !== 'accept' && action !== 'decline') {
-      return Response.json({ ok: false, error: "action must be 'accept' or 'decline'" }, { status: 400 });
+    if (action !== 'accept' && action !== 'decline' && action !== 'dismiss') {
+      return Response.json({ ok: false, error: "action must be 'accept', 'decline', or 'dismiss'" }, { status: 400 });
     }
 
     const userId = await resolvePlanUserId();

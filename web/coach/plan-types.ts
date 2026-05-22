@@ -64,7 +64,10 @@ export interface SignalSnapshot {
   vdotDelta?: number;
 }
 
-export type MutationStatus = 'applied' | 'proposed' | 'declined';
+// 'seen' = an applied change the runner has dismissed from the "Coach
+// updated your plan" card. Persisted server-side so a dismissal on one
+// device (e.g. iPhone) carries to the web and never re-surfaces.
+export type MutationStatus = 'applied' | 'proposed' | 'declined' | 'seen';
 
 export interface PlanMutation {
   id: string;

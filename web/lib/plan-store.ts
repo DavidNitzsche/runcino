@@ -314,9 +314,26 @@ export async function insertMutation(workoutId: string, mutation: PlanMutation):
  *  Decline → mark declined, leaving the workout at its original values.
  *  Scoped to the plan user so a client can only act on their own plan. */
 export async function actOnMutations(
-  ids: string[], action: 'accept' | 'decline', userId: string,
+  ids: string[], action: 'accept' | 'decline' | 'dismiss', userId: string,
 ): Promise<{ updated: number }> {
   if (ids.length === 0) return { updated: 0 };
+
+  // 'dismiss' acts on ALREADY-applied changes (clearing the "Coach updated
+  // your plan" card) — flip them to 'seen' so they don't re-surface on any
+  // device. accept/decline act on 'proposed' changes awaiting sign-off.
+  if (action === 'dismiss') {
+    const res = await query<{ id: string }>(
+      `UPDATE plan_mutations pm
+          SET status = 'seen'
+         FROM plan_workouts pw, training_plans tp
+        WHERE pm.workout_id = pw.id AND pw.plan_id = tp.id
+          AND pm.id = ANY($1) AND pm.status = 'applied' AND tp.user_id = $2
+      RETURNING pm.id`,
+      [ids, userId],
+    );
+    return { updated: res.length };
+  }
+
   const rows = await query<PlanMutationRow & { plan_user: string }>(
     `SELECT pm.id, pm.workout_id, pm.changed_fields, pm.status, tp.user_id AS plan_user
        FROM plan_mutations pm
