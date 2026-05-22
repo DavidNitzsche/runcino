@@ -62,6 +62,9 @@ const READINESS_INPUT_LABELS: Record<string, string> = {
   freshness: 'Freshness',
   'load-7d': '7-day load',
   'hr-pace-drift': 'HR / pace drift',
+  hrv: 'HRV',
+  'resting-hr': 'Resting HR',
+  sleep: 'Sleep',
 };
 
 interface IntensityCfg { pos: number; label: string; color: string; copy: string; }

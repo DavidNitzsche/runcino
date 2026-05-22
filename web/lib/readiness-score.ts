@@ -218,8 +218,7 @@ export async function computeReadinessScore(
   // can't drift apart. Research/03 §4 (Z4 80–90%) + §5 (Karvonen).
   const hardFloor = hardEffortFloorBpm(userMaxHr, restingHr);
 
-  // ── Sleep input · not integrated yet (no Apple Health / Oura webhook). ──
-  missing.push('sleep');
+  // Sleep + HRV + resting-HR inputs are wired below from health_samples.
 
   // ── Yesterday's load ──
   const yesterdayActivity = rows.find((r) => r.date === yesterdayIso);
@@ -297,6 +296,60 @@ export async function computeReadinessScore(
     }
   } catch {
     missing.push('hr-pace-drift');
+  }
+
+  // ── HealthKit recovery vitals · HRV, resting HR, last-night sleep ──
+  //    All cited to Research/03 §9–§10 (HRV/RHR baselines) and Research/00b
+  //    §Sleep. Baselines = trailing mean over the window (excluding the
+  //    latest reading). Skipped (logged as missing) when too few samples.
+  try {
+    const hsRows = await query<{ sample_type: string; value: string; sample_date: string }>(
+      `SELECT sample_type, value::text AS value, sample_date::text AS sample_date
+         FROM health_samples
+        WHERE user_id = $1
+          AND sample_type IN ('hrv', 'resting_hr', 'sleep_hours')
+          AND sample_date >= (CURRENT_DATE - INTERVAL '35 days')
+        ORDER BY sample_date DESC`,
+      [userId],
+    );
+    const series = (t: string) => hsRows.filter((r) => r.sample_type === t).map((r) => Number(r.value)).filter((n) => isFinite(n));
+
+    // HRV — latest vs trailing baseline. Research/03 §10: ~20% below
+    // baseline = poor recovery; >1 SD below = reduce intensity.
+    const hrv = series('hrv');
+    if (hrv.length >= 4) {
+      const latest = hrv[0];
+      const base = hrv.slice(1).reduce((s, n) => s + n, 0) / (hrv.length - 1);
+      const dropPct = base > 0 ? (base - latest) / base : 0;
+      if (dropPct >= 0.20) { score -= 12; inputs.push({ name: 'hrv', delta: -12, note: `HRV ${Math.round(latest)}ms is ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline — poor recovery` }); }
+      else if (dropPct >= 0.10) { score -= 6; inputs.push({ name: 'hrv', delta: -6, note: `HRV ${Math.round(latest)}ms dipping below your ${Math.round(base)}ms baseline` }); }
+      else if (dropPct <= -0.10) { score += 5; inputs.push({ name: 'hrv', delta: +5, note: `HRV ${Math.round(latest)}ms above your ${Math.round(base)}ms baseline — well recovered` }); }
+    } else { missing.push('hrv (need a few days of baseline)'); }
+
+    // Resting HR — latest vs baseline. Research/03 §9: +7 bpm over baseline
+    // → easy day; ±3–4 bpm is normal noise.
+    const rhr = series('resting_hr');
+    if (rhr.length >= 4) {
+      const latest = rhr[0];
+      const base = rhr.slice(1).reduce((s, n) => s + n, 0) / (rhr.length - 1);
+      const delta = latest - base;
+      if (delta >= 7) { score -= 10; inputs.push({ name: 'resting-hr', delta: -10, note: `Resting HR ${Math.round(latest)} is +${Math.round(delta)} over your ${Math.round(base)} baseline — back off` }); }
+      else if (delta >= 4) { score -= 5; inputs.push({ name: 'resting-hr', delta: -5, note: `Resting HR ${Math.round(latest)} slightly elevated vs ${Math.round(base)} baseline` }); }
+      else if (delta <= -3) { score += 3; inputs.push({ name: 'resting-hr', delta: +3, note: `Resting HR ${Math.round(latest)} below your ${Math.round(base)} baseline — recovered` }); }
+    } else { missing.push('resting-hr (need a few days of baseline)'); }
+
+    // Sleep — last night. Research/00b §Sleep: <6h significant decrement;
+    // §8.1 general floor 7h.
+    const sleep = series('sleep_hours');
+    if (sleep.length >= 1) {
+      const last = sleep[0];
+      if (last < 6) { score -= 10; inputs.push({ name: 'sleep', delta: -10, note: `${last.toFixed(1)}h last night — under 6h is a real decrement` }); }
+      else if (last < 7) { score -= 5; inputs.push({ name: 'sleep', delta: -5, note: `${last.toFixed(1)}h last night — below the 7h floor` }); }
+      else if (last >= 8.5) { score += 5; inputs.push({ name: 'sleep', delta: +5, note: `${last.toFixed(1)}h last night — fully banked` }); }
+      else { score += 3; inputs.push({ name: 'sleep', delta: +3, note: `${last.toFixed(1)}h last night — adequate` }); }
+    } else { missing.push('sleep'); }
+  } catch {
+    missing.push('hrv'); missing.push('resting-hr'); missing.push('sleep');
   }
 
   score = clamp(score, 0, 100);
