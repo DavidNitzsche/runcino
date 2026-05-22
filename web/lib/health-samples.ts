@@ -57,7 +57,14 @@ export type HealthSampleType =
   | 'vertical_oscillation'
   | 'ground_contact_time'
   | 'vertical_ratio'
-  | 'run_power';
+  | 'run_power'
+  // Body composition (smart-scale, slow-moving) + recovery/energy
+  | 'body_mass'        // kg
+  | 'body_fat_pct'     // %
+  | 'lean_mass'        // kg
+  | 'hr_recovery'      // bpm drop 1 min post-exertion
+  | 'active_energy'    // kcal/day
+  | 'spo2';            // % blood-oxygen saturation
 
 export const SAMPLE_TYPES: readonly HealthSampleType[] = [
   'resting_hr',
@@ -74,6 +81,12 @@ export const SAMPLE_TYPES: readonly HealthSampleType[] = [
   'ground_contact_time',
   'vertical_ratio',
   'run_power',
+  'body_mass',
+  'body_fat_pct',
+  'lean_mass',
+  'hr_recovery',
+  'active_energy',
+  'spo2',
 ] as const;
 
 interface ValidationRange {
@@ -100,6 +113,13 @@ const RANGES: Record<HealthSampleType, ValidationRange> = {
   ground_contact_time:   { min: 120, max: 400 },  // ms
   vertical_ratio:        { min: 3,   max: 20 },   // %
   run_power:             { min: 50,  max: 600 },  // W
+  // Body composition + recovery/energy.
+  body_mass:     { min: 30,  max: 250 },   // kg
+  body_fat_pct:  { min: 3,   max: 60 },    // %
+  lean_mass:     { min: 20,  max: 150 },   // kg
+  hr_recovery:   { min: 5,   max: 80 },    // bpm drop in 1 min
+  active_energy: { min: 0,   max: 8000 },  // kcal/day
+  spo2:          { min: 70,  max: 100 },   // %
 };
 
 // ── Input shape · what /api/health/ingest accepts ────────────────

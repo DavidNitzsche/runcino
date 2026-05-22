@@ -49,6 +49,13 @@ final class HealthKitManager: ObservableObject {
     @Published var groundContactMs: Double?
     @Published var vertRatioPct: Double?
     @Published var runPowerW: Double?
+    // Body composition (smart-scale) + recovery/energy.
+    @Published var weightKg: Double?
+    @Published var bodyFatPct: Double?
+    @Published var leanMassKg: Double?
+    @Published var hrRecoveryBpm: Double?
+    @Published var activeEnergyKcal: Double?
+    @Published var spo2Pct: Double?
 
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
@@ -68,6 +75,13 @@ final class HealthKitManager: ObservableObject {
         HKQuantityType(.runningStrideLength),
         HKQuantityType(.runningVerticalOscillation),
         HKQuantityType(.runningGroundContactTime),
+        // Body composition (smart-scale) + recovery/energy.
+        HKQuantityType(.bodyMass),
+        HKQuantityType(.bodyFatPercentage),
+        HKQuantityType(.leanBodyMass),
+        HKQuantityType(.heartRateRecoveryOneMinute),
+        HKQuantityType(.activeEnergyBurned),
+        HKQuantityType(.oxygenSaturation),
         HKCategoryType(.sleepAnalysis),
         HKObjectType.workoutType(),
     ]
@@ -242,6 +256,47 @@ final class HealthKitManager: ObservableObject {
         for (day, v) in oscByDay    { out.append(HealthSample(type: "vertical_oscillation", value: (v * 10).rounded() / 10, dateISO: day, source: "apple_health")) }
         for (day, v) in gctByDay    { out.append(HealthSample(type: "ground_contact_time", value: v.rounded(), dateISO: day, source: "apple_health")) }
         for (day, v) in powerByDay  { out.append(HealthSample(type: "run_power", value: v.rounded(), dateISO: day, source: "apple_health")) }
+        // Body composition (smart-scale) — slow-moving; one daily average.
+        let kg = HKUnit.gramUnit(with: .kilo)
+        for (date, stat) in await dailyStats(HKQuantityType(.bodyMass), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(HealthSample(type: "body_mass", value: (q.doubleValue(for: kg) * 10).rounded() / 10,
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        for (date, stat) in await dailyStats(HKQuantityType(.bodyFatPercentage), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(HealthSample(type: "body_fat_pct", value: (q.doubleValue(for: .percent()) * 1000).rounded() / 10,
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        for (date, stat) in await dailyStats(HKQuantityType(.leanBodyMass), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(HealthSample(type: "lean_mass", value: (q.doubleValue(for: kg) * 10).rounded() / 10,
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        // HR recovery (1 min post-exertion drop) — daily max (best of the day).
+        for (date, stat) in await dailyStats(HKQuantityType(.heartRateRecoveryOneMinute), options: .discreteMax, days: daysBack) {
+            if let q = stat.maximumQuantity() {
+                out.append(HealthSample(type: "hr_recovery", value: q.doubleValue(for: bpm).rounded(),
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        // Active energy — daily cumulative total (kcal).
+        for (date, stat) in await dailyStats(HKQuantityType(.activeEnergyBurned), options: .cumulativeSum, days: daysBack) {
+            if let q = stat.sumQuantity() {
+                out.append(HealthSample(type: "active_energy", value: q.doubleValue(for: .kilocalorie()).rounded(),
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
+        // Blood oxygen (SpO₂) — daily average, fraction → %.
+        for (date, stat) in await dailyStats(HKQuantityType(.oxygenSaturation), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(HealthSample(type: "spo2", value: (q.doubleValue(for: .percent()) * 1000).rounded() / 10,
+                                        dateISO: Self.isoDay(date), source: "apple_health"))
+            }
+        }
         // Derived per day: cadence = speed·60 ÷ stride; vertical ratio = osc ÷ stride.
         for (day, stride) in strideByDay where stride > 0 {
             if let spd = speedByDay[day] {
@@ -361,6 +416,18 @@ final class HealthKitManager: ObservableObject {
         if let (_, v) = await mostRecentQuantity(HKQuantityType(.appleSleepingWristTemperature), unit: .degreeCelsius()) { wristTempC = (v * 10).rounded() / 10 }
         let sleep = await sleepHoursByDay(days: 2)
         if let latest = sleep.keys.sorted().last, let h = sleep[latest], h > 0 { sleepHours = (h * 10).rounded() / 10 }
+
+        // Body composition (smart-scale) + recovery/energy — latest readings.
+        let kg = HKUnit.gramUnit(with: .kilo)
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.bodyMass), unit: kg) { weightKg = (v * 10).rounded() / 10 }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.bodyFatPercentage), unit: .percent()) { bodyFatPct = (v * 1000).rounded() / 10 }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.leanBodyMass), unit: kg) { leanMassKg = (v * 10).rounded() / 10 }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.heartRateRecoveryOneMinute), unit: bpm) { hrRecoveryBpm = v.rounded() }
+        if let (_, v) = await mostRecentQuantity(HKQuantityType(.oxygenSaturation), unit: .percent()) { spo2Pct = (v * 1000).rounded() / 10 }
+        // Active energy — today's cumulative total.
+        let dayStart = Calendar.current.startOfDay(for: Date())
+        let todayPred = HKQuery.predicateForSamples(withStart: dayStart, end: Date(), options: .strictStartDate)
+        if let kcal = await sum(HKQuantityType(.activeEnergyBurned), unit: .kilocalorie(), predicate: todayPred) { activeEnergyKcal = kcal.rounded() }
 
         // Running dynamics — CUMULATIVE: a 30-day average across every run,
         // not the last run. The per-run breakdown lives on the run recap.
