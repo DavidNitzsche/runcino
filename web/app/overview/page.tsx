@@ -41,6 +41,7 @@ import { PostRaceCard } from './PostRaceCard';
 import { computeStravaGap } from '@/lib/strava-gap';
 import { StravaGapCard } from './StravaGapCard';
 import { computeReadinessScore } from '@/lib/readiness-score';
+import { buildWhyThisWorkout } from '@/lib/why-this-workout';
 import { buildSubstitutionMenu } from '@/lib/workout-substitutions';
 import { computeRaceTrajectory } from '@/lib/race-trajectory';
 import { listRacesDB } from '@/lib/race-store';
@@ -233,6 +234,19 @@ export default async function OverviewPage() {
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
   const titleBucket = lenBucket(titleLabel);
 
+  // Plain-language workout explanation — shown inline (always present, no
+  // expander): where you are in the plan + what the run is for.
+  const why = !isRest && todayDay
+    ? buildWhyThisWorkout(
+        todayDay.type,
+        todayDay.label ?? '',
+        todayDay.distanceMi,
+        phaseLabel,
+        phaseWeekIdx,
+        fitness.vdot.value,
+      )
+    : null;
+
   // V7 item 3 · Pull race trajectory if the runner has an A-race set.
   // C8's substitution menu uses trajectory.state === 'behind' to flag
   // the quality-protective option as RECOMMENDED.  Computed once here
@@ -400,7 +414,24 @@ export default async function OverviewPage() {
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">~{durMin}</span><span className="stat-unit">min</span></div><div className="stat-label">Duration</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
-                <div className="hero-buttons" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 20 }}>
+                {/* One clean, always-present explanation — what this run is
+                    for, in plain language. No expander, no stacked blocks. */}
+                {why && (
+                  <div style={{ marginTop: 22, maxWidth: 560 }}>
+                    <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase', color: 'var(--accent, #E85D26)' }}>
+                      {why.whereInPlan}
+                    </div>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15.5, lineHeight: 1.6, color: 'var(--t1)', margin: '8px 0 0' }}>
+                      {why.thePoint}
+                    </p>
+                    {todayPace && (todayDay?.type === 'long' || (todayDay && !(['quality', 'race'] as string[]).includes(todayDay.type))) && (
+                      <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, lineHeight: 1.55, color: 'var(--t2)', margin: '8px 0 0' }}>
+                        Aim for <strong style={{ color: 'var(--t1)' }}>{todayPace}/mi</strong> — and let it drift slower if your legs are heavy or it&rsquo;s hot. On easy days the slow end of the range is the right call.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="hero-buttons" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 24 }}>
                   <HeroActions today={today} todayDay={todayDay as WorkoutDay | null} />
                   {substitutionMenu && <SubstitutionMenu menu={substitutionMenu} />}
                 </div>
