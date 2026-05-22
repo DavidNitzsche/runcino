@@ -120,6 +120,9 @@ export interface CoachState {
      *  real HR ceiling for Karvonen zones instead of a hardcoded default.
      *  Optional so older fixtures/callers omit it (treated as unknown). */
     maxHrBpm?: number | null;
+    /** Latest body weight (kg) from Apple Health — for W/kg + fueling
+     *  context. Optional/null when no smart-scale data. */
+    weightKg?: number | null;
     /** Strength sessions logged in the current calendar week. Sourced
      *  from Amp (eventually) or HealthKit workouts categorized as
      *  strength training. Null until that pipeline lands. */
@@ -262,9 +265,10 @@ async function gatherHealthBiometrics(userId: string | undefined): Promise<{
   hrv7dAvgMs: number | null;
   rhrBpm: number | null;
   sleep7dAvgHrs: number | null;
+  weightKg: number | null;
   available: boolean;
 }> {
-  const empty = { hrv7dAvgMs: null, rhrBpm: null, sleep7dAvgHrs: null, available: false };
+  const empty = { hrv7dAvgMs: null, rhrBpm: null, sleep7dAvgHrs: null, weightKg: null, available: false };
   if (!userId) return empty;
   try {
     const rows = await query<{ sample_type: string; avg: number }>(
@@ -272,7 +276,7 @@ async function gatherHealthBiometrics(userId: string | undefined): Promise<{
          FROM health_samples
         WHERE user_id = $1
           AND sample_date >= (CURRENT_DATE - INTERVAL '7 days')
-          AND sample_type IN ('hrv', 'resting_hr', 'sleep_hours')
+          AND sample_type IN ('hrv', 'resting_hr', 'sleep_hours', 'body_mass')
         GROUP BY sample_type`,
       [userId],
     );
@@ -280,10 +284,12 @@ async function gatherHealthBiometrics(userId: string | undefined): Promise<{
     const hrv = by.get('hrv');
     const rhr = by.get('resting_hr');
     const sleep = by.get('sleep_hours');
+    const weight = by.get('body_mass');
     return {
       hrv7dAvgMs: hrv != null ? Math.round(hrv) : null,
       rhrBpm: rhr != null ? Math.round(rhr) : null,
       sleep7dAvgHrs: sleep != null ? Math.round(sleep * 10) / 10 : null,
+      weightKg: weight != null ? Math.round(weight * 10) / 10 : null,
       available: rows.length > 0,
     };
   } catch {
@@ -574,6 +580,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
       rhrBpm: healthBio.rhrBpm,
       sleep7dAvgHrs: healthBio.sleep7dAvgHrs,
       maxHrBpm,
+      weightKg: healthBio.weightKg,
       strengthDaysThisWeek: null,
     },
     flags: {
