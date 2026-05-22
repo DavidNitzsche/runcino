@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Faff · Plain Language &amp; UX Polish — 2026-05-22</title>
+<style>
+  :root {
+    --bg:#EEECEA; --card:#fff; --ink:#0D0F12; --muted:rgba(13,15,18,.62);
+    --faint:rgba(13,15,18,.42); --race:#E85D26; --green:#1f6a21; --amber:#B3450A; --warn:#B22222;
+    --line:rgba(13,15,18,.10);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; line-height:1.55; }
+  .wrap { max-width:880px; margin:0 auto; padding:48px 24px 96px; }
+  h1 { font-size:34px; letter-spacing:-.02em; margin:0 0 4px; }
+  h2 { font-size:21px; margin:40px 0 12px; letter-spacing:-.01em; }
+  .eyebrow { font-size:11px; font-weight:700; letter-spacing:1.6px; text-transform:uppercase; color:var(--race); }
+  .lede { font-size:16px; color:var(--muted); margin:8px 0 0; }
+  .card { background:var(--card); border-radius:16px; padding:20px 22px; margin:14px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.05); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint); }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+    background:rgba(13,15,18,.05); padding:1px 5px; border-radius:5px; }
+  .tag { display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.4px; padding:2px 8px;
+    border-radius:999px; text-transform:uppercase; }
+  .t-done { background:rgba(31,106,33,.14); color:var(--green); }
+  .t-next { background:rgba(13,15,18,.06); color:var(--faint); }
+  .kv { color:var(--race); font-weight:700; }
+  ul { margin:6px 0 0; padding-left:20px; } li { margin:5px 0; }
+  .foot { color:var(--faint); font-size:12px; margin-top:40px; }
+  .ba { font-size:13.5px; } .ba .b { color:var(--warn); } .ba .a { color:var(--green); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Faff · Autonomous session</div>
+  <h1>Plain Language &amp; UX Polish</h1>
+  <p class="lede">2026-05-22 · Governing directive: "make this so me and any normal person knows wtf any of
+  this means. NORMAL LANGUAGE everywhere," "don't cite sources anywhere," and "be present — way less text."
+  This pass swept jargon and citations off every screen, made the coach say something worth reading, and
+  cut the noise.</p>
+
+  <div class="card">
+    <div class="eyebrow">The one-line story</div>
+    <p style="margin:8px 0 0;font-size:15.5px;">The engine was right; the <em>words</em> were wrong. Screens
+    leaked VDOT, HRR, VO₂max, CTL/ATL/TSB, ACWR, "Research/… §…", and walls of explanatory text. Now every
+    rendered string is normal English, the coach lines cite real numbers instead of restating the obvious,
+    and the Today view is title + stats + buttons. <strong>16 commits, all live.</strong></p>
+  </div>
+
+  <h2>Plain language &amp; citations</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Citations gone from every rendered surface</strong> — onboarding, edit-profile, the NextPush
+      card, the "Coach updated" card, plan workout descriptions, the training adaptations feed, stale-fitness
+      and post-marathon notes. (The <code>citation</code> data field is kept; it's just never rendered.)</li>
+      <li><strong>Jargon → everyday words</strong>: <code>VDOT</code> → "fitness score" (number kept),
+      <code>HRR/Karvonen/Daniels</code> dropped from HR-zone copy, run recap shows "% effort" not "% HRR",
+      <code>ACWR 1.05</code> → "load steady/building/high", form chip "OVERREACHED" → "Running tired",
+      workout descriptions lose WU/CD/MP/LT2/Pfitzinger/Norwegian.</li>
+      <li><strong>"Why this run"</strong> rebuilt as 3 plain lines (what · where in plan · the point), then —
+      per the latest note — <strong>removed entirely</strong> from the Today view.</li>
+    </ul>
+  </div>
+
+  <h2>Coach voice — insight, not narration</h2>
+  <div class="card">
+    <p style="margin:0 0 10px;color:var(--muted);font-size:13.5px;">You said it was BORING — it just restated
+    what you can already see. Every clause now cites a real number and gives a forward call.</p>
+    <p class="ba"><span class="b">Before:</span> "Your body is absorbing this block really well — fitness is
+    stacking up right on schedule."</p>
+    <p class="ba"><span class="a">After:</span> "Mileage is up 14% over the last month and you've kept 82% of it
+    easy — that's exactly how fitness compounds without breaking you. Don't touch the formula."</p>
+    <p style="margin:10px 0 0;color:var(--muted);font-size:13px;">Stale long-run / quality lines now name
+    <em>your</em> configured days, not a hardcoded "Saturday/Tuesday." All numbers come from existing data.</p>
+  </div>
+
+  <h2>Behavior fixes</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Weekly-mileage insight</strong> — "41 of 41 mi this week" no longer shows mid-week. The window
+      is a rolling last-7-days, so the on-plan / short call now waits until the week is essentially done.</li>
+      <li><strong>Check-in confirmed state</strong> — logging flips the card to a solid green card with a
+      checkmark + your values + Edit, on web overview, web health, <em>and</em> iPhone.</li>
+      <li><strong>"Coach updated" dismissal persists server-side</strong> (a new <code>seen</code> status) — clear
+      it on iPhone and it stays cleared on the web. It was localStorage-only.</li>
+    </ul>
+  </div>
+
+  <h2>Layout &amp; interaction</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Recent races are clickable</strong> into their recap; <strong>Upcoming Races</strong> is a clean
+      vertical list instead of the hard-to-scan timeline.</li>
+      <li><strong>Course-profile elevation</strong> is filled with each phase's difficulty color as a soft
+      gradient (clipped to the curve), replacing the flat grey fill + separate band.</li>
+      <li><strong>Today view stripped down</strong> — removed the why-expander, the pace-guidance paragraph, the
+      pre-workout briefing, and the Z2 stimulus block. Title, stats, buttons. Present.</li>
+    </ul>
+  </div>
+
+  <h2>Still open — deliberately deferred</h2>
+  <div class="card">
+    <table>
+      <tr><th>Item</th><th>Status</th></tr>
+      <tr><td>App-wide pastel → canonical color pass. Color <em>semantics</em> are still an app-wide discussion;
+      did the concrete course-profile coloring, holding the rest to avoid a half-decision.</td><td><span class="tag t-next">Deferred (by policy)</span></td></tr>
+      <tr><td>Web health cards: per-card trend charts + tap-to-detail like iPhone. Substantial feature on top of
+      the already-redesigned health page.</td><td><span class="tag t-next">Next (feature)</span></td></tr>
+      <tr><td>Watch §G readiness glance — owned by the watch agent (backend already shipped).</td><td><span class="tag t-next">Watch agent</span></td></tr>
+    </table>
+  </div>
+
+  <p class="foot">Generated autonomously · web deploys continuously via Railway · iOS shipped as one consolidated
+  TestFlight build · every rendered string verified <code>tsc</code>-clean before commit.</p>
+</div>
+</body>
+</html>
