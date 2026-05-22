@@ -188,7 +188,11 @@ export async function GET(req: NextRequest) {
   const recovery = {
     hrvMs: dayMap.get('hrv') ?? null,
     hrvBaselineMs: baseMap.get('hrv') ?? null,
-    restingHrBpm: dayMap.get('resting_hr') ?? null,
+    // Fall back to the 30-day baseline when there's no resting-HR sample on
+    // the run's exact date. Without this the recap loses resting HR and the
+    // debrief silently drops to generic %max zones (a lower easy ceiling),
+    // contradicting the personalized %HRR zones shown on the HR-zones card.
+    restingHrBpm: dayMap.get('resting_hr') ?? baseMap.get('resting_hr') ?? null,
     restingHrBaselineBpm: baseMap.get('resting_hr') ?? null,
     sleepHours: dayMap.get('sleep_hours') ?? null,
     respiratoryRate: dayMap.get('respiratory_rate') ?? null,

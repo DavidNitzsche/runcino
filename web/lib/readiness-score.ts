@@ -282,10 +282,11 @@ export async function computeReadinessScore(
     inputs.push({ name: 'load-7d', delta: -10, note: `${hardLast7} hard sessions in last 7 days (high load)` });
   }
 
-  // ── Mileage % of prescribed this week · not wired yet
-  //    (synthetic-plan prescribed-mileage lookup would need a server
-  //    helper that knows the current week). Note as missing for now. ──
-  missing.push('mileage-vs-prescribed');
+  // Note: weekly mileage-vs-prescribed is intentionally NOT a readiness
+  // input (the score is about recovery/freshness, not plan adherence —
+  // mileage progress lives in its own card). We deliberately don't list it
+  // as a "missing" input, since that read as a confusing "unavailable" note
+  // sitting right next to the mileage bar.
 
   // ── Signal 2 HR-pace drift ──
   try {
