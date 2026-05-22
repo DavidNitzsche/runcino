@@ -531,7 +531,20 @@ export default async function RacePlanPage({ params }: PageProps) {
               <strong>{fmtFullDate(race.meta.date)}.</strong>{' '}
               {race.plan?.goal?.claude_rationale
                 ? race.plan.goal.claude_rationale
-                : <>The full 14-week plan points here. Once a recent race finish is logged we&apos;ll show your current fitness, the gap to {race.meta.goalDisplay}, and the feasibility read.</>}
+                : readiness && readiness.goalVdot != null && readiness.vdotGap != null
+                  ? (() => {
+                      const weeks = Math.max(1, Math.round(daysAway / 7));
+                      const perWk = readiness.vdotGap / weeks;
+                      const feas = readiness.vdotGap <= 0
+                        ? `you're already there on current fitness — the work now is sharpening and staying healthy.`
+                        : perWk <= 0.25
+                          ? `that's a realistic lift at this timeline if you hit the key sessions.`
+                          : perWk <= 0.45
+                            ? `ambitious but doable — it needs consistent threshold work and no missed blocks.`
+                            : `a real stretch — it would need everything to click; a slightly softer goal may serve you better.`;
+                      return <>You&apos;re at VDOT <strong>{readiness.currentVdot.toFixed(1)}</strong>, which projects <strong>{readiness.predictedFinishDisplay}</strong> here. Your {race.meta.goalDisplay} goal needs VDOT <strong>{readiness.goalVdot.toFixed(1)}</strong> — a {readiness.vdotGap.toFixed(1)}-point lift over {weeks} weeks ({feas}) The plan&apos;s threshold + race-pace blocks are built to close that gap; hit them and the projection moves with you.</>;
+                    })()
+                  : <>The full 14-week plan points here. Log a recent race or a few quality runs and the coach will show your current fitness, the gap to {race.meta.goalDisplay}, and the path to close it.</>}
             </p>
           </div>
 
