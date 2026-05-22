@@ -36,6 +36,7 @@ import { resolvePlanUserId } from '@/lib/plan-user';
 import { buildWatchWorkout } from '@/lib/watch-workout';
 import { gatherCoachState } from '@/lib/coach-state';
 import { computeReadinessScore, readinessLabelFor } from '@/lib/readiness-score';
+import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser(req);
@@ -104,9 +105,12 @@ export async function GET(req: NextRequest) {
   let readinessLabel: string | null = null;
   try {
     const state = await gatherCoachState({ userId: user.id });
-    const finding = await computeReadinessScore(
-      user.id, today, null, state.recovery?.rhrBpm ?? null,
-    );
+    // Real max HR + Z2 so the watch pill matches the phone/web score exactly
+    // (passing null max HR previously inflated the watch's reading).
+    const maxHr = state.recovery?.maxHrBpm ?? null;
+    const rhr = state.recovery?.rhrBpm ?? null;
+    const z2 = await computeZ2CoverageFinding(user.id, today, maxHr, rhr, state.aggregateVdotValue ?? null).catch(() => null);
+    const finding = await computeReadinessScore(user.id, today, maxHr, rhr, z2);
     if (finding.score != null) {
       readinessScore = finding.score;
       readinessLabel = readinessLabelFor(finding.state);

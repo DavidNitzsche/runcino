@@ -28,6 +28,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { gatherCoachState } from '@/lib/coach-state';
 import { computeReadinessScore, readinessLabelFor } from '@/lib/readiness-score';
+import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 
 export async function GET(req: NextRequest) {
@@ -41,9 +42,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const state = await gatherCoachState({ userId: user.id });
-    const finding = await computeReadinessScore(
-      user.id, today, null, state.recovery?.rhrBpm ?? null,
-    );
+    // Parity with /api/overview + the web/iPhone readiness: pass the runner's
+    // real max HR (so HR-based "hard effort" detection works) and the Z2
+    // finding — passing null here reintroduced the inflated-score divergence.
+    const maxHr = state.recovery?.maxHrBpm ?? null;
+    const rhr = state.recovery?.rhrBpm ?? null;
+    const z2 = await computeZ2CoverageFinding(user.id, today, maxHr, rhr, state.aggregateVdotValue ?? null).catch(() => null);
+    const finding = await computeReadinessScore(user.id, today, maxHr, rhr, z2);
 
     const next = state.races?.nextA ?? state.races?.nextAny ?? null;
 
