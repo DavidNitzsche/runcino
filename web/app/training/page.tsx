@@ -30,6 +30,9 @@ import { resolvePlanUserId } from '@/lib/plan-user';
 import { WorkoutModalProvider, type WorkoutDay } from '@/app/overview/WorkoutModalIsland';
 import { TrainingCell } from './TrainingCellIsland';
 import { listRacesDB } from '@/lib/race-store';
+import { resolveFitness, fmtPaceBand } from '@/lib/fitness-resolver';
+import { getActivePlan, listMutations } from '@/lib/plan-store';
+import { formatShortDate } from '@/app/races/data';
 import './training-v4.css';
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -203,15 +206,37 @@ export default async function TrainingPage() {
     isRace: w.phase === 'RACE_WEEK',
   }));
 
-  // Plan Adapted feed — real entries will come from plan_mutations
-  // once the engine wires through. For now: empty unless populated.
-  const ADAPTED_ITEMS: ReadonlyArray<{ dir: 'up' | 'down'; date: string; change: React.ReactNode; why: string }> = [];
+  // Plan Adapted feed — last 7 days of REAL coach adjustments from the
+  // same plan_mutations log the /overview "Coach updated your plan" card
+  // reads. Grouped by reason; direction inferred from the change.
+  const activePlan = await getActivePlan(await resolvePlanUserId()).catch(() => null);
+  let ADAPTED_ITEMS: Array<{ dir: 'up' | 'down'; date: string; change: React.ReactNode; why: string }> = [];
+  if (activePlan) {
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const muts = await listMutations(activePlan.id, since).catch(() => []);
+    const applied = muts.filter((m) => (m.status ?? 'applied') === 'applied');
+    const seen = new Set<string>();
+    ADAPTED_ITEMS = applied
+      .filter((m) => { if (seen.has(m.reason)) return false; seen.add(m.reason); return true; })
+      .map((m) => ({
+        dir: /\b(above plan|bump|drift|increase|step up|advance|\+|raise)\b/i.test(m.reason) ? 'up' as const : 'down' as const,
+        date: formatShortDate(m.workoutDateISO),
+        change: m.reason,
+        why: m.citation ?? '',
+      }));
+  }
 
-  // VDOT-derived pace zones — only populated once the runner logs a
-  // recent race finish (we anchor VDOT off race results). Until then,
-  // we don't fake training paces.
-  const VDOT: number | null = null;
-  const PACES: Array<{ zone: string; pace: string; when: string; cls?: string }> = [];
+  // VDOT-derived training paces — from the SAME resolveFitness the rest of
+  // the app uses (anchored on the aggregate VDOT). No longer hardcoded null.
+  const fitness = await resolveFitness(user.id, today).catch(() => null);
+  const VDOT: number | null = fitness ? Math.round(fitness.vdot.value) : null;
+  const PACES: Array<{ zone: string; pace: string; when: string; cls?: string }> = fitness ? [
+    { zone: 'E', pace: fmtPaceBand(fitness.paces.E), when: 'Easy / recovery', cls: 'easy' },
+    { zone: 'M', pace: fmtPaceBand(fitness.paces.M), when: 'Marathon pace' },
+    { zone: 'T', pace: fmtPaceBand(fitness.paces.T), when: 'Threshold / tempo', cls: 'threshold' },
+    { zone: 'I', pace: fmtPaceBand(fitness.paces.I), when: 'VO₂max intervals', cls: 'interval' },
+    { zone: 'R', pace: fmtPaceBand(fitness.paces.R), when: 'Reps / speed' },
+  ] : [];
 
   return (
     <WorkoutModalProvider today={today}>
