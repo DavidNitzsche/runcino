@@ -30,14 +30,14 @@ export function SubstitutionMenu({ menu }: Props) {
           gap: 6,
           padding: '14px 32px',
           background: 'transparent',
-          border: '1.5px solid rgba(13,15,18,.2)',
+          border: '1.5px solid rgba(8,8,8,.2)',
           borderRadius: 10,
           fontFamily: 'Oswald, sans-serif',
           fontSize: 13,
           letterSpacing: 1.5,
           textTransform: 'uppercase',
           fontWeight: 600,
-          color: '#0D0F12',
+          color: '#080808',
           cursor: 'pointer',
         }}
       >
@@ -49,13 +49,13 @@ export function SubstitutionMenu({ menu }: Props) {
           style={{
             marginTop: 14,
             padding: '16px 18px',
-            background: 'rgba(13,15,18,.025)',
-            border: '1px solid rgba(13,15,18,.10)',
+            background: 'rgba(8,8,8,.025)',
+            border: '1px solid rgba(8,8,8,.10)',
             borderRadius: 10,
             fontFamily: 'Inter, sans-serif',
             fontSize: 12.5,
             lineHeight: 1.55,
-            color: 'rgba(13,15,18,.82)',
+            color: 'rgba(8,8,8,.82)',
             maxWidth: 640,
           }}
         >
@@ -66,7 +66,7 @@ export function SubstitutionMenu({ menu }: Props) {
               letterSpacing: 1.4,
               textTransform: 'uppercase',
               fontWeight: 700,
-              color: 'rgba(13,15,18,.55)',
+              color: 'rgba(8,8,8,.55)',
               marginBottom: 12,
             }}
           >
@@ -78,7 +78,7 @@ export function SubstitutionMenu({ menu }: Props) {
                 fontWeight: 500,
                 letterSpacing: 0,
                 textTransform: 'none',
-                color: 'rgba(13,15,18,.62)',
+                color: 'rgba(8,8,8,.62)',
                 marginLeft: 8,
               }}>
                 {' — '}
@@ -100,10 +100,10 @@ export function SubstitutionMenu({ menu }: Props) {
                 style={{
                   padding: '10px 12px',
                   marginBottom: i === menu.substitutions.length - 1 ? 0 : 10,
-                  background: isRecommended ? 'rgba(232,93,38,.06)' : 'rgba(255,255,255,.5)',
+                  background: isRecommended ? 'rgba(232,128,33,.06)' : 'rgba(255,255,255,.5)',
                   border: isRecommended
-                    ? '1.5px solid rgba(232,93,38,.40)'
-                    : '1px solid rgba(13,15,18,.08)',
+                    ? '1.5px solid rgba(232,128,33,.40)'
+                    : '1px solid rgba(8,8,8,.08)',
                   borderRadius: 8,
                 }}
               >
@@ -113,7 +113,7 @@ export function SubstitutionMenu({ menu }: Props) {
                   justifyContent: 'space-between',
                   marginBottom: 4,
                 }}>
-                  <div style={{ fontWeight: 700, color: '#0D0F12' }}>
+                  <div style={{ fontWeight: 700, color: '#080808' }}>
                     {s.label}
                   </div>
                   {isRecommended && (
@@ -123,7 +123,7 @@ export function SubstitutionMenu({ menu }: Props) {
                       letterSpacing: 1.2,
                       fontWeight: 700,
                       color: '#B3450A',
-                      background: 'rgba(232,93,38,.12)',
+                      background: 'rgba(232,128,33,.12)',
                       padding: '2px 7px',
                       borderRadius: 4,
                     }}>
@@ -131,14 +131,14 @@ export function SubstitutionMenu({ menu }: Props) {
                     </span>
                   )}
                 </div>
-                <div style={{ marginBottom: 6, color: 'rgba(13,15,18,.82)' }}>
+                <div style={{ marginBottom: 6, color: 'rgba(8,8,8,.82)' }}>
                   {s.prescription}
                 </div>
-                <div style={{ fontSize: 11.5, color: 'rgba(13,15,18,.62)' }}>
+                <div style={{ fontSize: 11.5, color: 'rgba(8,8,8,.62)' }}>
                   <span style={{ color: '#1f6a21', fontWeight: 600 }}>Preserves:</span>{' '}
                   {s.preserves}
                 </div>
-                <div style={{ fontSize: 11.5, color: 'rgba(13,15,18,.62)', marginTop: 2 }}>
+                <div style={{ fontSize: 11.5, color: 'rgba(8,8,8,.62)', marginTop: 2 }}>
                   <span style={{ color: '#B3450A', fontWeight: 600 }}>Sacrifices:</span>{' '}
                   {s.sacrifices}
                 </div>
@@ -150,9 +150,9 @@ export function SubstitutionMenu({ menu }: Props) {
             style={{
               marginTop: 12,
               paddingTop: 10,
-              borderTop: '1px solid rgba(13,15,18,.06)',
+              borderTop: '1px solid rgba(8,8,8,.06)',
               fontSize: 11,
-              color: 'rgba(13,15,18,.55)',
+              color: 'rgba(8,8,8,.55)',
               fontStyle: 'italic',
             }}
           >

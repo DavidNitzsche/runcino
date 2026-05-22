@@ -79,8 +79,8 @@ export function Z2Sparkline({ data }: Props) {
       style={{
         marginTop: 12,
         padding: '10px 12px',
-        background: 'rgba(13,15,18,.025)',
-        border: '1px solid rgba(13,15,18,.08)',
+        background: 'rgba(8,8,8,.025)',
+        border: '1px solid rgba(8,8,8,.08)',
         borderRadius: 8,
         fontFamily: 'Inter, sans-serif',
       }}
@@ -91,7 +91,7 @@ export function Z2Sparkline({ data }: Props) {
           fontSize: 9.5,
           letterSpacing: 1.3,
           textTransform: 'uppercase',
-          color: 'rgba(13,15,18,.55)',
+          color: 'rgba(8,8,8,.55)',
           fontWeight: 700,
           marginBottom: 6,
           display: 'flex',
@@ -109,10 +109,10 @@ export function Z2Sparkline({ data }: Props) {
       <svg width={W} height={H} role="img" aria-label="Z2 pace trend over 8 weeks">
         {/* Subtle baseline gridline at mid-y */}
         <line x1={padX} x2={W - padX} y1={H / 2} y2={H / 2}
-          stroke="rgba(13,15,18,.08)" strokeDasharray="2 3" />
+          stroke="rgba(8,8,8,.08)" strokeDasharray="2 3" />
         {/* Trend line */}
         {lineD && (
-          <path d={lineD} fill="none" stroke="rgba(13,15,18,.62)" strokeWidth="1.4"
+          <path d={lineD} fill="none" stroke="rgba(8,8,8,.62)" strokeWidth="1.4"
             strokeLinecap="round" strokeLinejoin="round" />
         )}
         {/* Dots, most-recent highlighted */}
@@ -125,7 +125,7 @@ export function Z2Sparkline({ data }: Props) {
               key={i}
               cx={xs[i]} cy={y}
               r={isLast ? 3.2 : 2}
-              fill={isLast ? '#E85D26' : 'rgba(13,15,18,.55)'}
+              fill={isLast ? '#E85D26' : 'rgba(8,8,8,.55)'}
             />
           );
         })}
@@ -134,7 +134,7 @@ export function Z2Sparkline({ data }: Props) {
       <div
         style={{
           fontSize: 10.5,
-          color: 'rgba(13,15,18,.55)',
+          color: 'rgba(8,8,8,.55)',
           marginTop: 4,
           display: 'flex',
           justifyContent: 'space-between',
@@ -148,18 +148,18 @@ export function Z2Sparkline({ data }: Props) {
         </span>
       </div>
 
-      <div style={{ fontSize: 11, color: 'rgba(13,15,18,.55)', marginTop: 6, lineHeight: 1.4 }}>
+      <div style={{ fontSize: 11, color: 'rgba(8,8,8,.55)', marginTop: 6, lineHeight: 1.4 }}>
         Pace your Z2 splits average at fixed HR. Faster at fixed HR = aerobic gain.
-        {' '}<span style={{ color: 'rgba(13,15,18,.42)' }}>Inverted: faster pace renders higher.</span>
+        {' '}<span style={{ color: 'rgba(8,8,8,.42)' }}>Inverted: faster pace renders higher.</span>
       </div>
 
       {data.crossRef && (
         <div style={{
           marginTop: 8,
           paddingTop: 8,
-          borderTop: '1px solid rgba(13,15,18,.06)',
+          borderTop: '1px solid rgba(8,8,8,.06)',
           fontSize: 11,
-          color: 'rgba(13,15,18,.62)',
+          color: 'rgba(8,8,8,.62)',
           lineHeight: 1.45,
         }}>
           {data.recalibrationHedge ? (

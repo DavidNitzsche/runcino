@@ -212,13 +212,13 @@ export const TYPE = {
 
 export const COLOR = {
   /** Page background. */
-  bg: 'var(--bg, #EEECEA)',
+  bg: 'var(--bg, #E6E8EF)',
   /** Card surface. */
   surface: 'var(--surface, #FFFFFF)',
   /** Hero-right tinted surface (right column of the hero card). */
   surfaceTint: 'rgba(13,15,18,.02)',
   /** Primary ink. */
-  ink: 'var(--ink, #0D0F12)',
+  ink: 'var(--ink, #080808)',
   /** Body-text muted. */
   textMuted: 'rgba(13,15,18,.55)',
   /** Label / eyebrow text — even more muted. */
@@ -237,15 +237,15 @@ export const COLOR = {
   trackBgRange: 'rgba(13,15,18,.10)',
 
   // Semantic
-  recovery: 'var(--recovery, #2CA82F)',
-  recoveryWash: 'rgba(44,168,47,.06)',
-  recoveryBadgeWash: 'rgba(44,168,47,.12)',
-  milestone: 'var(--milestone, #D4900A)',
+  recovery: 'var(--recovery, #3EBD41)',
+  recoveryWash: 'rgba(62,189,65,.06)',
+  recoveryBadgeWash: 'rgba(62,189,65,.12)',
+  milestone: 'var(--milestone, #F3AD38)',
   milestoneWash: 'rgba(212,144,10,.12)',
   todayWash: 'rgba(232,93,38,.04)',
-  warn: 'var(--warn, #F43F5E)',
+  warn: 'var(--warn, #FC4D64)',
   warnWash: 'rgba(244,63,94,.12)',
-  race: 'var(--race, #E85D26)',
+  race: 'var(--race, #E88021)',
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────

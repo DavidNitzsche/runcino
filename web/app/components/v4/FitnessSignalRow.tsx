@@ -34,10 +34,10 @@ export interface FitnessSignalRowProps {
 
 function colorFor(tone: SignalTone): string {
   switch (tone) {
-    case 'green': return 'var(--recovery, #2CA82F)';
-    case 'amber': return 'var(--milestone, #D4900A)';
-    case 'warn':  return 'var(--warn, #F43F5E)';
-    case 'dim':   return 'rgba(13,15,18,.25)';
+    case 'green': return 'var(--recovery, #3EBD41)';
+    case 'amber': return 'var(--milestone, #F3AD38)';
+    case 'warn':  return 'var(--warn, #FC4D64)';
+    case 'dim':   return 'rgba(8,8,8,.25)';
   }
 }
 
@@ -75,7 +75,7 @@ function Row({ signal }: { signal: FitnessSignal }) {
             fontSize: '12px',
             fontWeight: 500,
             letterSpacing: '1px',
-            color: 'rgba(13,15,18,.35)',
+            color: 'rgba(8,8,8,.35)',
             textTransform: 'uppercase',
           }}
         >
@@ -96,7 +96,7 @@ function Row({ signal }: { signal: FitnessSignal }) {
         style={{
           width: '100%',
           height: '10px',
-          background: 'rgba(13,15,18,.07)',
+          background: 'rgba(8,8,8,.07)',
           borderRadius: '5px',
           position: 'relative',
           overflow: 'hidden',

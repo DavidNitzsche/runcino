@@ -31,14 +31,14 @@ export function WhyTooltip({ why }: Props) {
           gap: 5,
           padding: '5px 11px',
           background: 'transparent',
-          border: '1px solid rgba(13,15,18,.18)',
+          border: '1px solid rgba(8,8,8,.18)',
           borderRadius: 999,
           fontFamily: 'Oswald, sans-serif',
           fontSize: 9.5,
           letterSpacing: 1.3,
           textTransform: 'uppercase',
           fontWeight: 700,
-          color: 'rgba(13,15,18,.62)',
+          color: 'rgba(8,8,8,.62)',
           cursor: 'pointer',
           lineHeight: 1,
         }}
@@ -51,8 +51,8 @@ export function WhyTooltip({ why }: Props) {
           style={{
             marginTop: 12,
             padding: '16px 18px',
-            background: 'rgba(13,15,18,.03)',
-            border: '1px solid rgba(13,15,18,.08)',
+            background: 'rgba(8,8,8,.03)',
+            border: '1px solid rgba(8,8,8,.08)',
             borderRadius: 10,
             maxWidth: 460,
             letterSpacing: 'normal',
@@ -65,7 +65,7 @@ export function WhyTooltip({ why }: Props) {
               fontWeight: 700,
               fontSize: 16,
               letterSpacing: 0.2,
-              color: 'rgba(13,15,18,.92)',
+              color: 'rgba(8,8,8,.92)',
               lineHeight: 1.2,
             }}
           >
@@ -78,21 +78,21 @@ export function WhyTooltip({ why }: Props) {
               marginTop: 6,
               fontSize: 12.5,
               lineHeight: 1.5,
-              color: 'rgba(13,15,18,.62)',
+              color: 'rgba(8,8,8,.62)',
             }}
           >
             {why.whereInPlan}
           </div>
 
           {/* Divider */}
-          <div style={{ height: 1, background: 'rgba(13,15,18,.08)', margin: '12px 0' }} />
+          <div style={{ height: 1, background: 'rgba(8,8,8,.08)', margin: '12px 0' }} />
 
           {/* Line 3 — the point */}
           <div
             style={{
               fontSize: 13.5,
               lineHeight: 1.55,
-              color: 'rgba(13,15,18,.85)',
+              color: 'rgba(8,8,8,.85)',
             }}
           >
             {why.thePoint}

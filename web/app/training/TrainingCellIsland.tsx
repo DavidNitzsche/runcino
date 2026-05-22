@@ -42,7 +42,7 @@ export function TrainingCell({ day, className, children }: Props) {
           }
           a.cal-cell-btn:hover { filter: brightness(0.97); }
           a.cal-cell-btn:focus-visible {
-            outline: 2px solid var(--amber, #D4900A);
+            outline: 2px solid var(--amber, #F3AD38);
             outline-offset: -2px;
           }
         `}</style>
@@ -70,7 +70,7 @@ export function TrainingCell({ day, className, children }: Props) {
         }
         button.cal-cell-btn:hover { filter: brightness(0.97); }
         button.cal-cell-btn:focus-visible {
-          outline: 2px solid var(--amber, #D4900A);
+          outline: 2px solid var(--amber, #F3AD38);
           outline-offset: -2px;
         }
       `}</style>

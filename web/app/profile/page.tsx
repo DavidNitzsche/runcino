@@ -128,7 +128,7 @@ async function loadProfile(userId: string): Promise<{ user: UserPrefsRow; shoes:
       retired: !!r.retired,
       preferred: r.preferred ?? true,
       notes: r.notes ?? null,
-      color: r.color ?? '#2CA82F',
+      color: r.color ?? '#3EBD41',
       raw_color: r.color,
     }));
   } catch {
@@ -436,30 +436,30 @@ export default async function ProfilePage() {
           <div style={{
             display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 20,
             alignItems: 'center', padding: '18px 40px 28px',
-            borderTop: '1px solid rgba(13,15,18,.08)', marginTop: 4,
+            borderTop: '1px solid rgba(8,8,8,.08)', marginTop: 4,
           }}>
             <div style={{
               width: 44, height: 44, borderRadius: 10,
               background: currentAccent,
-              border: '1px solid rgba(13,15,18,.08)',
+              border: '1px solid rgba(8,8,8,.08)',
               boxShadow: '0 4px 12px rgba(0,0,0,.08)',
             }} aria-hidden="true" />
             <div>
               <div style={{
                 fontFamily: 'Inter, sans-serif', fontSize: 11, letterSpacing: '1.5px',
-                color: 'rgba(13,15,18,.55)', textTransform: 'uppercase', fontWeight: 600,
+                color: 'rgba(8,8,8,.55)', textTransform: 'uppercase', fontWeight: 600,
               }}>Brand accent</div>
               <div style={{
-                fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#0D0F12',
+                fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#080808',
                 fontWeight: 600, marginTop: 4,
               }}>
                 {user.accent_color
-                  ? <>Custom · <span style={{ fontFamily: 'monospace', color: 'rgba(13,15,18,.55)', fontWeight: 500 }}>{currentAccent}</span></>
-                  : <>Default · <span style={{ fontFamily: 'monospace', color: 'rgba(13,15,18,.55)', fontWeight: 500 }}>{currentAccent}</span></>}
+                  ? <>Custom · <span style={{ fontFamily: 'monospace', color: 'rgba(8,8,8,.55)', fontWeight: 500 }}>{currentAccent}</span></>
+                  : <>Default · <span style={{ fontFamily: 'monospace', color: 'rgba(8,8,8,.55)', fontWeight: 500 }}>{currentAccent}</span></>}
               </div>
               <div style={{
                 fontFamily: 'Inter, sans-serif', fontSize: 12,
-                color: 'rgba(13,15,18,.45)', marginTop: 2,
+                color: 'rgba(8,8,8,.45)', marginTop: 2,
               }}>Applied across buttons, pins, the wordmark gradient · stored on your account.</div>
             </div>
             <ProfileModalsIsland mode="edit-accent" initialAccent={user.accent_color} />
@@ -471,7 +471,7 @@ export default async function ProfilePage() {
           <div className="card-header">
             <div className="card-title-group">
               <div className="card-title">Heart Rate Zones</div>
-              <div className="card-sub" style={{ color: 'rgba(13,15,18,.55)' }}>
+              <div className="card-sub" style={{ color: 'rgba(8,8,8,.55)' }}>
                 {maxHr
                   ? (useHRR
                       ? `Personalized to your heart — resting ${restingHr}, max ${maxHr}. Using your resting rate makes these zones more accurate than max alone.`
@@ -479,7 +479,7 @@ export default async function ProfilePage() {
                   : 'No data yet — add your max heart rate and a recent race to fill this in.'}
               </div>
             </div>
-            <div className="card-meta" style={{ color: maxHr ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
+            <div className="card-meta" style={{ color: maxHr ? '#080808' : 'rgba(8,8,8,.45)' }}>
               Max HR · {maxHr ? <strong>{maxHr}</strong> : '—'}
             </div>
           </div>

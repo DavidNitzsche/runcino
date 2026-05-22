@@ -49,7 +49,7 @@ export function CheckInMiniIsland({ today }: { today: string }) {
       </div>
     );
     return (
-      <div className="health-checkin-mini" style={{ background: 'var(--recovery, #2CA82F)', color: '#fff' }}>
+      <div className="health-checkin-mini" style={{ background: 'var(--recovery, #3EBD41)', color: '#fff' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 999, background: 'rgba(255,255,255,.22)', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>
           <span style={{ fontFamily: 'Oswald, sans-serif', fontWeight: 700, fontSize: 12, letterSpacing: 0.4, textTransform: 'uppercase' }}>Checked in for today</span>

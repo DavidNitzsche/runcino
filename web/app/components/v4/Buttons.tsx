@@ -38,7 +38,7 @@ export function PrimaryButton({ children, style, ...rest }: BaseProps) {
       type="button"
       style={{
         ...baseBtn,
-        background: 'var(--ink, #0D0F12)',
+        background: 'var(--ink, #080808)',
         color: '#FFFFFF',
         ...style,
       }}
@@ -56,8 +56,8 @@ export function GhostButton({ children, style, ...rest }: BaseProps) {
       style={{
         ...baseBtn,
         background: 'transparent',
-        border: '1.5px solid rgba(13,15,18,.2)',
-        color: 'var(--ink, #0D0F12)',
+        border: '1.5px solid rgba(8,8,8,.2)',
+        color: 'var(--ink, #080808)',
         ...style,
       }}
       {...rest}

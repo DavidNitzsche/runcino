@@ -18,35 +18,35 @@ enum Faff {
 
     // ── Color (light v4) ──────────────────────────────────────────
     enum C {
-        static let bg        = Color(hex: 0xEEECEA)   // warm ground
+        static let bg        = Color(hex: 0xE6E8EF)   // warm ground
         static let surface   = Color.white            // cards
-        static let ink       = Color(hex: 0x0D0F12)   // primary text
+        static let ink       = Color(hex: 0x080808)   // primary text
         static let textMuted = Color.ink55            // values in cards
         static let textDim   = Color.ink35            // labels / eyebrows
         static let textFaint = Color.ink20            // rest-day em-dash
         static let divider   = Color.ink08
         static let pillBg    = Color.ink04
-        static let track     = Color(hex: 0x0D0F12).opacity(0.07)
+        static let track     = Color(hex: 0x080808).opacity(0.07)
 
         // Semantic — color only when it carries meaning.
-        static let recovery  = Color(hex: 0x2CA82F)   // green · on plan
-        static let milestone = Color(hex: 0xD4900A)   // amber · today
-        static let race      = Color(hex: 0xE85D26)   // orange · brand (sparingly)
-        static let warn      = Color(hex: 0xF43F5E)   // red · errors only
+        static let recovery  = Color(hex: 0x3EBD41)   // green · on plan
+        static let milestone = Color(hex: 0xF3AD38)   // amber · today
+        static let race      = Color(hex: 0xE88021)   // orange · brand (sparingly)
+        static let warn      = Color(hex: 0xFC4D64)   // red · errors only
 
-        static let greenWash  = Color(hex: 0x2CA82F).opacity(0.12)
-        static let amberWash  = Color(hex: 0xD4900A).opacity(0.14)
-        static let orangeWash = Color(hex: 0xE85D26).opacity(0.12)
+        static let greenWash  = Color(hex: 0x3EBD41).opacity(0.12)
+        static let amberWash  = Color(hex: 0xF3AD38).opacity(0.14)
+        static let orangeWash = Color(hex: 0xE88021).opacity(0.12)
 
         // ➕ v4 handoff additions.
         /// Darkened amber for TEXT/icons on `amberWash` (milestone #D4900A
         /// fails contrast as on-wash text). Readiness number, "Watch Load".
         static let amberInk   = Color(hex: 0xB3450A)
         /// Data-viz only — descent/elevation grade (Race detail). Not chrome.
-        static let dataBlue   = Color(hex: 0x2563EB)
-        static let dataBlueWash = Color(hex: 0x2563EB).opacity(0.12)
+        static let dataBlue   = Color(hex: 0x008FEC)
+        static let dataBlueWash = Color(hex: 0x008FEC).opacity(0.12)
         /// Hairline border on stat pills / ghost buttons.
-        static let pillLine   = Color(hex: 0x0D0F12).opacity(0.10)
+        static let pillLine   = Color(hex: 0x080808).opacity(0.10)
     }
 
     // ── Type ladder ───────────────────────────────────────────────
@@ -133,12 +133,12 @@ extension Color {
             blue:  Double(hex & 0xFF) / 255
         )
     }
-    static let ink   = Color(hex: 0x0D0F12)
-    static let ink55 = Color(hex: 0x0D0F12).opacity(0.55)
-    static let ink35 = Color(hex: 0x0D0F12).opacity(0.35)
-    static let ink20 = Color(hex: 0x0D0F12).opacity(0.20)
-    static let ink08 = Color(hex: 0x0D0F12).opacity(0.08)
-    static let ink04 = Color(hex: 0x0D0F12).opacity(0.04)
+    static let ink   = Color(hex: 0x080808)
+    static let ink55 = Color(hex: 0x080808).opacity(0.55)
+    static let ink35 = Color(hex: 0x080808).opacity(0.35)
+    static let ink20 = Color(hex: 0x080808).opacity(0.20)
+    static let ink08 = Color(hex: 0x080808).opacity(0.08)
+    static let ink04 = Color(hex: 0x080808).opacity(0.04)
 
     /// The faff.run wordmark gradient (amber → orange → burnt).
     static let faffMark = LinearGradient(

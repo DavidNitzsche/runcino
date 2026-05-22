@@ -165,7 +165,7 @@ export function CoachReadsCard({
             If something looks wrong, the answer is here.
           </div>
         </div>
-        <div className="card-meta" style={{ color: 'rgba(13,15,18,.55)' }}>
+        <div className="card-meta" style={{ color: 'rgba(8,8,8,.55)' }}>
           Resolved {fmtDate(fitness.today)}
         </div>
       </div>
@@ -313,15 +313,15 @@ export function CoachReadsCard({
             <div style={{
               marginTop: 12,
               padding: '10px 12px',
-              background: 'rgba(13,15,18,.03)',
-              border: '1px dashed rgba(13,15,18,.20)',
+              background: 'rgba(8,8,8,.03)',
+              border: '1px dashed rgba(8,8,8,.20)',
               borderRadius: 8,
               fontFamily: 'Inter, sans-serif',
               fontSize: 12.5,
               lineHeight: 1.5,
-              color: 'rgba(13,15,18,.75)',
+              color: 'rgba(8,8,8,.75)',
             }}>
-              <strong style={{ color: '#0D0F12' }}>Adaptive signals suspended.</strong>{' '}
+              <strong style={{ color: '#080808' }}>Adaptive signals suspended.</strong>{' '}
               {INJURY_SUSPENDED}{' '}
               Missed workouts during recovery shouldn't read as fitness regression.
             </div>
@@ -343,7 +343,7 @@ export function CoachReadsCard({
 
       {/* ── ONE-TIME MIGRATION BANNER ── */}
       {needsMigrationAck && (
-        <div className="coach-reads-section" style={{ borderTop: '1px solid rgba(13,15,18,.06)' }}>
+        <div className="coach-reads-section" style={{ borderTop: '1px solid rgba(8,8,8,.06)' }}>
           <PaceMigrationBanner beforeAfter={beforeAfterPaces} />
         </div>
       )}
@@ -432,7 +432,7 @@ export function CoachReadsCard({
       <style>{`
         .coach-reads-section {
           padding: 16px 40px;
-          border-top: 1px solid rgba(13,15,18,.06);
+          border-top: 1px solid rgba(8,8,8,.06);
         }
         .coach-reads-section:first-of-type {
           border-top: none;
@@ -440,23 +440,23 @@ export function CoachReadsCard({
         .coach-reads-label {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px;
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           text-transform: uppercase;
           margin-bottom: 10px;
         }
         .coach-reads-headline {
           font-family: 'Inter', sans-serif; font-size: 15px;
-          color: #0D0F12;
+          color: #080808;
           display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px;
         }
         .coach-reads-bignum {
           font-family: 'Bebas Neue', sans-serif;
-          font-size: 32px; line-height: 1; color: #0D0F12;
+          font-size: 32px; line-height: 1; color: #080808;
           letter-spacing: 0;
         }
         .coach-reads-unit {
           font-family: 'Inter', sans-serif; font-size: 12px;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
         }
         .coach-reads-tag {
           font-family: 'Oswald', sans-serif; font-weight: 600;
@@ -465,23 +465,23 @@ export function CoachReadsCard({
           text-transform: uppercase;
         }
         .coach-reads-tag-source {
-          background: rgba(13,15,18,.06);
-          color: rgba(13,15,18,.65);
+          background: rgba(8,8,8,.06);
+          color: rgba(8,8,8,.65);
         }
         .coach-reads-accent {
           color: #E85D26; font-weight: 600;
         }
         .coach-reads-detail {
           font-family: 'Inter', sans-serif; font-size: 13px;
-          color: #0D0F12; margin-top: 4px;
+          color: #080808; margin-top: 4px;
         }
         .coach-reads-meta {
           font-family: 'Inter', sans-serif; font-size: 12px;
-          color: rgba(13,15,18,.55); margin-top: 6px;
+          color: rgba(8,8,8,.55); margin-top: 6px;
         }
         .coach-reads-empty {
           font-family: 'Inter', sans-serif; font-size: 13px;
-          color: rgba(13,15,18,.55); font-style: italic;
+          color: rgba(8,8,8,.55); font-style: italic;
         }
         .coach-reads-contributors {
           margin-top: 12px;
@@ -489,10 +489,10 @@ export function CoachReadsCard({
         }
         .coach-reads-contributor {
           font-family: 'Inter', sans-serif; font-size: 12px;
-          color: rgba(13,15,18,.65);
+          color: rgba(8,8,8,.65);
           padding: 8px 10px;
-          background: rgba(13,15,18,.025);
-          border: 1px solid rgba(13,15,18,.05);
+          background: rgba(8,8,8,.025);
+          border: 1px solid rgba(8,8,8,.05);
           border-radius: 8px;
         }
         .coach-reads-contributor-line {
@@ -505,18 +505,18 @@ export function CoachReadsCard({
           margin-left: auto;
           font-family: 'Bebas Neue', sans-serif;
           font-size: 14px; letter-spacing: 0.5px;
-          color: rgba(13,15,18,.75);
+          color: rgba(8,8,8,.75);
         }
         .coach-reads-flag {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 9px; letter-spacing: 1.0px;
           padding: 2px 6px; border-radius: 4px;
           text-transform: uppercase;
-          background: rgba(13,15,18,.06);
-          color: rgba(13,15,18,.55);
+          background: rgba(8,8,8,.06);
+          color: rgba(8,8,8,.55);
         }
         .coach-reads-flag-curated {
-          background: rgba(44,168,47,.10);
+          background: rgba(62,189,65,.10);
           color: #1f6a21;
         }
         .coach-reads-flag-strava {
@@ -524,7 +524,7 @@ export function CoachReadsCard({
           color: #b3450a;
         }
         .coach-reads-flag-goal {
-          background: rgba(232,93,38,.10);
+          background: rgba(232,128,33,.10);
           color: var(--accent, #E85D26);
         }
         .coach-reads-flag-exempt {
@@ -532,29 +532,29 @@ export function CoachReadsCard({
           color: #5028b4;
         }
         .coach-reads-flag-decayed {
-          background: rgba(13,15,18,.04);
-          color: rgba(13,15,18,.50);
+          background: rgba(8,8,8,.04);
+          color: rgba(8,8,8,.50);
         }
         .coach-reads-explainer {
           margin-top: 10px;
           padding: 12px 14px;
-          background: rgba(13,15,18,.03);
+          background: rgba(8,8,8,.03);
           border-left: 3px solid var(--accent, #E85D26);
           border-radius: 6px;
           font-family: 'Inter', sans-serif; font-size: 13px;
-          line-height: 1.55; color: rgba(13,15,18,.85);
+          line-height: 1.55; color: rgba(8,8,8,.85);
         }
-        .coach-reads-explainer strong { color: #0D0F12; font-weight: 600; }
+        .coach-reads-explainer strong { color: #080808; font-weight: 600; }
         .coach-reads-cycle-note {
           margin-top: 10px; padding: 10px 12px;
           background: rgba(80,40,180,.04);
           border-radius: 6px;
           font-family: 'Inter', sans-serif; font-size: 11px;
-          line-height: 1.5; color: rgba(13,15,18,.65);
+          line-height: 1.5; color: rgba(8,8,8,.65);
         }
-        .coach-reads-cycle-note strong { color: rgba(13,15,18,.85); font-weight: 600; }
+        .coach-reads-cycle-note strong { color: rgba(8,8,8,.85); font-weight: 600; }
         .coach-reads-tag-goal {
-          background: rgba(232,93,38,.10);
+          background: rgba(232,128,33,.10);
           color: var(--accent, #E85D26);
         }
         .coach-reads-pace-grid {
@@ -568,32 +568,32 @@ export function CoachReadsCard({
           .coach-reads-section { padding-left: 20px; padding-right: 20px; }
         }
         .coach-reads-pace-cell {
-          background: rgba(13,15,18,.04);
-          border: 1px solid rgba(13,15,18,.08);
+          background: rgba(8,8,8,.04);
+          border: 1px solid rgba(8,8,8,.08);
           border-radius: 10px;
           padding: 12px 14px;
         }
         .coach-reads-pace-zone {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 10px; letter-spacing: 1.5px;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           text-transform: uppercase;
         }
         .coach-reads-pace-band {
           font-family: 'Bebas Neue', sans-serif;
           font-size: 22px; line-height: 1;
-          color: #0D0F12; margin-top: 6px;
+          color: #080808; margin-top: 6px;
           letter-spacing: 0;
         }
         .coach-reads-pace-meta {
           font-family: 'Inter', sans-serif; font-size: 11px;
-          color: rgba(13,15,18,.55); margin-top: 4px;
+          color: rgba(8,8,8,.55); margin-top: 4px;
         }
         .coach-reads-pace-footnote {
           font-family: 'Inter', sans-serif; font-size: 11px;
-          line-height: 1.5; color: rgba(13,15,18,.50);
+          line-height: 1.5; color: rgba(8,8,8,.50);
           margin-top: 14px; padding-top: 12px;
-          border-top: 1px solid rgba(13,15,18,.06);
+          border-top: 1px solid rgba(8,8,8,.06);
           font-style: italic;
         }
         .coach-reads-feasibility {
@@ -602,35 +602,35 @@ export function CoachReadsCard({
           border: 1px solid;
         }
         .coach-reads-feasibility-stretch {
-          background: rgba(212,144,10,.08);
-          border-color: rgba(212,144,10,.32);
+          background: rgba(243,173,56,.08);
+          border-color: rgba(243,173,56,.32);
         }
         .coach-reads-feasibility-aggressive {
-          background: rgba(232,93,38,.06);
-          border-color: rgba(232,93,38,.25);
+          background: rgba(232,128,33,.06);
+          border-color: rgba(232,128,33,.25);
         }
         .coach-reads-feasibility-conservative {
-          background: rgba(44,168,47,.06);
-          border-color: rgba(44,168,47,.25);
+          background: rgba(62,189,65,.06);
+          border-color: rgba(62,189,65,.25);
         }
         .coach-reads-feasibility-tag {
           font-family: 'Oswald', sans-serif; font-weight: 700;
           font-size: 10px; letter-spacing: 1.5px;
-          color: rgba(13,15,18,.65); margin-bottom: 6px;
+          color: rgba(8,8,8,.65); margin-bottom: 6px;
         }
         .coach-reads-feasibility-reason {
           font-family: 'Inter', sans-serif; font-size: 12px;
-          line-height: 1.5; color: rgba(13,15,18,.85);
+          line-height: 1.5; color: rgba(8,8,8,.85);
         }
         .coach-reads-feasibility-falsifier {
           font-family: 'Inter', sans-serif; font-size: 11px;
-          line-height: 1.5; color: rgba(13,15,18,.55);
+          line-height: 1.5; color: rgba(8,8,8,.55);
           margin-top: 6px; padding-top: 6px;
-          border-top: 1px solid rgba(13,15,18,.06);
+          border-top: 1px solid rgba(8,8,8,.06);
           font-style: italic;
         }
         .coach-reads-feasibility-falsifier strong {
-          color: rgba(13,15,18,.75); font-style: normal; font-weight: 600;
+          color: rgba(8,8,8,.75); font-style: normal; font-weight: 600;
         }
       `}</style>
     </div>

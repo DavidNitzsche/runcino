@@ -251,14 +251,14 @@ export function ConnectorsCard() {
         .faff-conn-section-label {
           font-family: 'Inter', sans-serif;
           font-size: 11px; letter-spacing: 1.5px;
-          color: rgba(13,15,18,.40); text-transform: uppercase;
+          color: rgba(8,8,8,.40); text-transform: uppercase;
           font-weight: 600; margin-top: 14px;
         }
         .faff-conn-section-label:first-of-type { margin-top: 0; }
 
         .faff-conn-row {
-          background: rgba(13,15,18,.03);
-          border: 1px solid rgba(13,15,18,.08);
+          background: rgba(8,8,8,.03);
+          border: 1px solid rgba(8,8,8,.08);
           border-radius: 12px;
           padding: 18px 20px;
           display: grid;
@@ -267,8 +267,8 @@ export function ConnectorsCard() {
           align-items: center;
         }
         .faff-conn-row.connected {
-          background: rgba(44,168,47,.05);
-          border-color: rgba(44,168,47,.20);
+          background: rgba(62,189,65,.05);
+          border-color: rgba(62,189,65,.20);
         }
         .faff-conn-icon {
           width: 44px; height: 44px; border-radius: 11px;
@@ -277,44 +277,44 @@ export function ConnectorsCard() {
           color: #fff; letter-spacing: 0.5px;
         }
         .faff-conn-icon.strava { background: #FC4C02; }
-        .faff-conn-icon.manual { background: #0D0F12; color: #D4900A;
+        .faff-conn-icon.manual { background: #080808; color: #F3AD38;
           font-family: 'Inter', sans-serif; font-weight: 700; font-size: 17px; }
-        .faff-conn-icon.gpx    { background: #0D0F12; color: #2563EB;
+        .faff-conn-icon.gpx    { background: #080808; color: #008FEC;
           font-family: 'Inter', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: .5px; }
         .faff-conn-name {
           font-family: 'Inter', sans-serif; font-weight: 700;
-          font-size: 14px; color: #0D0F12;
+          font-size: 14px; color: #080808;
         }
         .faff-conn-meta {
           font-family: 'Inter', sans-serif; font-size: 12px;
-          color: rgba(13,15,18,.55); margin-top: 3px; line-height: 1.5;
+          color: rgba(8,8,8,.55); margin-top: 3px; line-height: 1.5;
         }
-        .faff-conn-meta strong { color: rgba(13,15,18,.75); font-weight: 600; }
+        .faff-conn-meta strong { color: rgba(8,8,8,.75); font-weight: 600; }
         .faff-dot {
           display: inline-block; width: 7px; height: 7px;
           border-radius: 50%; margin-right: 6px; vertical-align: middle;
         }
-        .faff-dot.green { background: #2CA82F; }
-        .faff-dot.amber { background: #D4900A; }
+        .faff-dot.green { background: #3EBD41; }
+        .faff-dot.amber { background: #F3AD38; }
         .faff-conn-actions { display: flex; gap: 8px; align-items: center; }
         .faff-conn-btn {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
           padding: 9px 14px; border-radius: 8px; cursor: pointer;
-          border: 1px solid rgba(13,15,18,.16);
-          background: transparent; color: rgba(13,15,18,.55);
+          border: 1px solid rgba(8,8,8,.16);
+          background: transparent; color: rgba(8,8,8,.55);
           text-decoration: none; white-space: nowrap;
         }
-        .faff-conn-btn:hover { background: rgba(13,15,18,.04); color: #0D0F12; }
+        .faff-conn-btn:hover { background: rgba(8,8,8,.04); color: #080808; }
         .faff-conn-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .faff-conn-btn.primary {
           background: #FC4C02; color: #fff; border-color: #FC4C02;
         }
         .faff-conn-btn.primary:hover { background: #E04400; color: #fff; }
         .faff-conn-btn.danger {
-          color: #F43F5E; border-color: rgba(244,63,94,.25);
+          color: #FC4D64; border-color: rgba(252,77,100,.25);
         }
-        .faff-conn-btn.danger:hover { background: rgba(244,63,94,.06); color: #F43F5E; }
+        .faff-conn-btn.danger:hover { background: rgba(252,77,100,.06); color: #FC4D64; }
 
         .faff-conn-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -324,21 +324,21 @@ export function ConnectorsCard() {
         .faff-writeback-toggle {
           display: flex; align-items: flex-start; gap: 12px;
           padding: 14px 18px;
-          background: rgba(13,15,18,.02);
-          border: 1px solid rgba(13,15,18,.06);
+          background: rgba(8,8,8,.02);
+          border: 1px solid rgba(8,8,8,.06);
           border-radius: 10px;
           cursor: pointer;
           font-family: 'Inter', sans-serif; font-size: 13px;
-          color: rgba(13,15,18,.85);
+          color: rgba(8,8,8,.85);
         }
         .faff-writeback-toggle input { margin-top: 3px; width: 16px; height: 16px; cursor: pointer; accent-color: #FC4C02; }
-        .faff-writeback-toggle strong { display: block; font-weight: 600; color: #0D0F12; margin-bottom: 3px; font-size: 13px; }
-        .faff-writeback-sub { display: block; font-size: 12px; color: rgba(13,15,18,.55); line-height: 1.5; font-weight: 400; }
-        .faff-writeback-sub em { font-style: italic; color: rgba(13,15,18,.75); }
+        .faff-writeback-toggle strong { display: block; font-weight: 600; color: #080808; margin-bottom: 3px; font-size: 13px; }
+        .faff-writeback-sub { display: block; font-size: 12px; color: rgba(8,8,8,.55); line-height: 1.5; font-weight: 400; }
+        .faff-writeback-sub em { font-style: italic; color: rgba(8,8,8,.75); }
         .faff-conn-loading {
           padding: 16px 20px; text-align: center;
           font-family: 'Inter', sans-serif; font-size: 12px;
-          color: rgba(13,15,18,.40);
+          color: rgba(8,8,8,.40);
         }
       `}</style>
     </Card>
@@ -349,18 +349,18 @@ function FuturePill({ provider, status, statusLabel }: { provider: string; statu
   const info = PROVIDER_INFO[provider];
   return (
     <span className="faff-future">
-      <span className="faff-future-dot" style={{ background: info?.color || '#0D0F12' }} />
+      <span className="faff-future-dot" style={{ background: info?.color || '#080808' }} />
       {info?.name || provider}
       <span className={`faff-future-tag ${status}`}>{statusLabel}</span>
       <style jsx>{`
         .faff-future {
           display: inline-flex; align-items: center; gap: 8px;
           padding: 8px 12px;
-          background: rgba(13,15,18,.03);
-          border: 1px solid rgba(13,15,18,.08);
+          background: rgba(8,8,8,.03);
+          border: 1px solid rgba(8,8,8,.08);
           border-radius: 9px;
           font-family: 'Inter', sans-serif;
-          font-size: 12px; color: rgba(13,15,18,.55); font-weight: 500;
+          font-size: 12px; color: rgba(8,8,8,.55); font-weight: 500;
         }
         .faff-future-dot {
           width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
@@ -370,8 +370,8 @@ function FuturePill({ provider, status, statusLabel }: { provider: string; statu
           letter-spacing: 1.2px; text-transform: uppercase;
           font-weight: 600; margin-left: 4px;
         }
-        .faff-future-tag.soon    { color: #D4900A; }
-        .faff-future-tag.planned { color: rgba(13,15,18,.40); }
+        .faff-future-tag.soon    { color: #F3AD38; }
+        .faff-future-tag.planned { color: rgba(8,8,8,.40); }
       `}</style>
     </span>
   );

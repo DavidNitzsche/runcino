@@ -31,9 +31,9 @@ const FULL_CIRC  = TRACK_DASH + TRACK_GAP; // 816.81
 
 function colorFor(level: ReadinessLevel): string {
   switch (level) {
-    case 'green':  return '#2CA82F';
-    case 'yellow': return '#D4900A';
-    case 'red':    return '#F43F5E';
+    case 'green':  return '#3EBD41';
+    case 'yellow': return '#F3AD38';
+    case 'red':    return '#FC4D64';
   }
 }
 
@@ -59,7 +59,7 @@ export function ReadinessRing({ score, level, caption }: ReadinessRingProps) {
             cy={150}
             r={130}
             fill="none"
-            stroke="rgba(13,15,18,.08)"
+            stroke="rgba(8,8,8,.08)"
             strokeWidth={16}
             strokeDasharray={`${TRACK_DASH} ${TRACK_GAP}`}
             strokeLinecap="round"
@@ -85,7 +85,7 @@ export function ReadinessRing({ score, level, caption }: ReadinessRingProps) {
             y={166}
             fontFamily="'Bebas Neue', sans-serif"
             fontSize={96}
-            fill="#0D0F12"
+            fill="#080808"
             textAnchor="middle"
           >
             {display}
@@ -96,7 +96,7 @@ export function ReadinessRing({ score, level, caption }: ReadinessRingProps) {
             fontFamily="'Inter', sans-serif"
             fontSize={13}
             fontWeight={600}
-            fill="rgba(13,15,18,.32)"
+            fill="rgba(8,8,8,.32)"
             textAnchor="middle"
             letterSpacing={1}
           >

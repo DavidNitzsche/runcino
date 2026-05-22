@@ -58,7 +58,7 @@ export function CoachStrip({ label, briefing }: CoachStripProps) {
             fontFamily: 'Inter, sans-serif',
             fontSize: '12px',
             letterSpacing: '2.5px',
-            color: 'rgba(13,15,18,.35)',
+            color: 'rgba(8,8,8,.35)',
             textTransform: 'uppercase',
             marginBottom: '14px',
           }}
@@ -68,7 +68,7 @@ export function CoachStrip({ label, briefing }: CoachStripProps) {
               width: '7px',
               height: '7px',
               borderRadius: '50%',
-              background: 'var(--recovery, #2CA82F)',
+              background: 'var(--recovery, #3EBD41)',
               flexShrink: 0,
             }}
           />
@@ -79,7 +79,7 @@ export function CoachStrip({ label, briefing }: CoachStripProps) {
             fontFamily: 'Inter, sans-serif',
             fontSize: '22px',
             lineHeight: 1.5,
-            color: 'var(--ink, #0D0F12)',
+            color: 'var(--ink, #080808)',
             fontWeight: 400,
           }}
           dangerouslySetInnerHTML={{ __html: parseBold(briefing) }}
@@ -184,7 +184,7 @@ function CheckInCard() {
           fontSize: '11px',
           fontWeight: 500,
           letterSpacing: '2px',
-          color: 'rgba(13,15,18,.35)',
+          color: 'rgba(8,8,8,.35)',
           textTransform: 'uppercase',
           marginBottom: '14px',
           alignSelf: 'flex-start',
@@ -235,7 +235,7 @@ function CheckInCard() {
           fontSize: '12px',
           fontWeight: 600,
           color: '#fff',
-          background: logged ? 'var(--recovery, #2CA82F)' : 'var(--ink, #0D0F12)',
+          background: logged ? 'var(--recovery, #3EBD41)' : 'var(--ink, #080808)',
           border: 'none',
           borderRadius: '8px',
           padding: '10px 20px',
@@ -251,7 +251,7 @@ function CheckInCard() {
       </button>
 
       {error && (
-        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn, #F43F5E)' }}>{error}</div>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn, #FC4D64)' }}>{error}</div>
       )}
     </div>
   );
@@ -271,8 +271,8 @@ function SliderRow({
   onChange: (v: number) => void;
 }) {
   // Background gradient per tone — matches the .checkin-range CSS classes.
-  const toneColor = tone === 'energy' ? '#2CA82F' : tone === 'soreness' ? '#E85D26' : '#D4900A';
-  const trackBg = `linear-gradient(to right, rgba(13,15,18,.10) 0%, ${toneColor} 100%)`;
+  const toneColor = tone === 'energy' ? '#3EBD41' : tone === 'soreness' ? '#E85D26' : '#F3AD38';
+  const trackBg = `linear-gradient(to right, rgba(8,8,8,.10) 0%, ${toneColor} 100%)`;
 
   return (
     <div
@@ -290,7 +290,7 @@ function SliderRow({
           fontWeight: 500,
           letterSpacing: '1.5px',
           textTransform: 'uppercase',
-          color: 'rgba(13,15,18,.35)',
+          color: 'rgba(8,8,8,.35)',
           textAlign: 'right',
         }}
       >
@@ -323,7 +323,7 @@ function SliderRow({
           fontFamily: 'Bebas Neue, sans-serif',
           fontSize: '20px',
           lineHeight: 1,
-          color: 'rgba(13,15,18,.55)',
+          color: 'rgba(8,8,8,.55)',
           textAlign: 'right',
         }}
       >

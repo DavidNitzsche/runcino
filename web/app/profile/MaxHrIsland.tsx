@@ -221,7 +221,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
         .max-hr-label {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           text-transform: uppercase;
         }
         .max-hr-edit-btn, .max-hr-confirm-btn {
@@ -229,10 +229,10 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
           font-size: 10.5px; letter-spacing: 1.5px;
           padding: 6px 12px; border-radius: 6px; cursor: pointer;
           background: transparent; color: var(--t1);
-          border: 1px solid rgba(13,15,18,.16);
+          border: 1px solid rgba(8,8,8,.16);
           text-transform: uppercase;
         }
-        .max-hr-edit-btn:hover { background: rgba(13,15,18,.04); }
+        .max-hr-edit-btn:hover { background: rgba(8,8,8,.04); }
         .max-hr-confirm-btn {
           margin-top: 10px;
           background: var(--green); color: #fff; border-color: var(--green);
@@ -246,17 +246,17 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
           font-size: 38px; line-height: 1;
           color: var(--t0); letter-spacing: -0.5px;
         }
-        .max-hr-val.muted { color: rgba(13,15,18,.32); font-size: 22px; }
+        .max-hr-val.muted { color: rgba(8,8,8,.32); font-size: 22px; }
         .max-hr-unit {
           font-family: 'Inter', sans-serif;
           font-size: 12px; font-weight: 500;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           letter-spacing: 0.5px;
         }
         .max-hr-source {
           margin-top: 6px;
           font-family: 'Inter', sans-serif;
-          font-size: 12px; color: rgba(13,15,18,.55);
+          font-size: 12px; color: rgba(8,8,8,.55);
           line-height: 1.5;
         }
         .max-hr-source strong { color: var(--t0); font-weight: 600; }
@@ -268,7 +268,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
           font-family: 'Inter', sans-serif;
           font-size: 16px; font-weight: 600;
           width: 90px; padding: 8px 12px;
-          border: 1.5px solid rgba(13,15,18,.16);
+          border: 1.5px solid rgba(8,8,8,.16);
           border-radius: 8px;
         }
         .max-hr-input:focus {
@@ -282,7 +282,7 @@ export function MaxHrIsland({ initial }: { initial?: MaxHrInitialState } = {}) {
         }
         .max-hr-save-btn { background: var(--t0); color: #fff; border-color: var(--t0); }
         .max-hr-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .max-hr-cancel-btn { background: transparent; color: rgba(13,15,18,.55); border-color: rgba(13,15,18,.16); }
+        .max-hr-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
         .max-hr-clear-btn { background: transparent; color: #B00020; border-color: rgba(176,0,32,.25); }
         .max-hr-err { color: #B00020; font-size: 12px; }
       `}</style>

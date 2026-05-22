@@ -45,8 +45,8 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
 
   const isUp = direction === 'up';
   const accent = isUp ? '#1f6a21' : '#b3450a';
-  const bg = isUp ? 'rgba(44,168,47,.06)' : 'rgba(232,93,38,.06)';
-  const border = isUp ? 'rgba(44,168,47,.30)' : 'rgba(232,93,38,.30)';
+  const bg = isUp ? 'rgba(62,189,65,.06)' : 'rgba(232,128,33,.06)';
+  const border = isUp ? 'rgba(62,189,65,.30)' : 'rgba(232,128,33,.30)';
   const eyebrow = isUp ? '↑ VDOT MOVED UP · REVIEW' : '↓ VDOT MOVED DOWN · REVIEW';
   const absShift = Math.abs(shiftPoints);
 
@@ -107,14 +107,14 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
         {eyebrow}
       </div>
 
-      <div style={{ marginBottom: 8, color: 'rgba(13,15,18,.85)' }}>
-        Your VDOT moved from <strong style={{ color: '#0D0F12' }}>{oldVdot.toFixed(1)}</strong>{' '}
-        to <strong style={{ color: '#0D0F12' }}>{newVdot.toFixed(1)}</strong>{' '}
+      <div style={{ marginBottom: 8, color: 'rgba(8,8,8,.85)' }}>
+        Your VDOT moved from <strong style={{ color: '#080808' }}>{oldVdot.toFixed(1)}</strong>{' '}
+        to <strong style={{ color: '#080808' }}>{newVdot.toFixed(1)}</strong>{' '}
         ({isUp ? '+' : ''}{shiftPoints.toFixed(1)} pts) since you last reviewed
         {lastReviewedAt && <> ({fmtDateAgo(lastReviewedAt)})</>}.
       </div>
 
-      <div style={{ marginBottom: 12, color: 'rgba(13,15,18,.70)', fontSize: 12.5 }}>
+      <div style={{ marginBottom: 12, color: 'rgba(8,8,8,.70)', fontSize: 12.5 }}>
         {isUp
           ? `A ${absShift.toFixed(1)}-point bump usually means a fresh race result landed faster than your aggregate. Worth checking what changed — every aggregate contributor is visible below.`
           : `A ${absShift.toFixed(1)}-point drop usually means a recent race underperformed your aggregate. Worth checking the context — sickness, heat, hilly course, race effort — before accepting the new value.`}
@@ -129,8 +129,8 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
             fontFamily: 'Oswald, sans-serif', fontWeight: 600,
             fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase',
             padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
-            background: '#0D0F12', color: '#fff',
-            border: '1px solid #0D0F12',
+            background: '#080808', color: '#fff',
+            border: '1px solid #080808',
             opacity: busy !== null ? 0.5 : 1,
           }}
         >
@@ -144,8 +144,8 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
             fontFamily: 'Oswald, sans-serif', fontWeight: 600,
             fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase',
             padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
-            background: 'transparent', color: 'rgba(13,15,18,.78)',
-            border: '1px solid rgba(13,15,18,.32)',
+            background: 'transparent', color: 'rgba(8,8,8,.78)',
+            border: '1px solid rgba(8,8,8,.32)',
             opacity: busy !== null ? 0.5 : 1,
           }}
         >
@@ -159,8 +159,8 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
             fontFamily: 'Oswald, sans-serif', fontWeight: 600,
             fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase',
             padding: '7px 12px', borderRadius: 6, cursor: 'pointer',
-            background: 'transparent', color: 'rgba(13,15,18,.55)',
-            border: '1px solid rgba(13,15,18,.18)',
+            background: 'transparent', color: 'rgba(8,8,8,.55)',
+            border: '1px solid rgba(8,8,8,.18)',
             opacity: busy !== null ? 0.5 : 1,
           }}
         >
@@ -173,13 +173,13 @@ export function VdotShiftBanner({ oldVdot, newVdot, shiftPoints, direction, last
         style={{
           marginTop: 10,
           paddingTop: 10,
-          borderTop: '1px solid rgba(13,15,18,.10)',
+          borderTop: '1px solid rgba(8,8,8,.10)',
           fontStyle: 'italic',
           fontSize: 11,
-          color: 'rgba(13,15,18,.55)',
+          color: 'rgba(8,8,8,.55)',
         }}
       >
-        <strong style={{ fontStyle: 'normal', color: 'rgba(13,15,18,.70)' }}>What would change our mind: </strong>
+        <strong style={{ fontStyle: 'normal', color: 'rgba(8,8,8,.70)' }}>What would change our mind: </strong>
         If you re-run the same race in similar conditions and the result falls between the old and new VDOT,
         that'd suggest both values are honest and the new one reflects real fitness movement worth applying.
       </div>

@@ -64,8 +64,8 @@ export function RaceProjectionChart({ projection }: Props) {
       style={{
         marginTop: 14,
         padding: '12px 14px',
-        background: 'rgba(13,15,18,.025)',
-        border: '1px solid rgba(13,15,18,.08)',
+        background: 'rgba(8,8,8,.025)',
+        border: '1px solid rgba(8,8,8,.08)',
         borderRadius: 10,
         fontFamily: 'Inter, sans-serif',
       }}
@@ -76,7 +76,7 @@ export function RaceProjectionChart({ projection }: Props) {
           fontSize: 10,
           letterSpacing: 1.4,
           textTransform: 'uppercase',
-          color: 'rgba(13,15,18,.55)',
+          color: 'rgba(8,8,8,.55)',
           fontWeight: 700,
           marginBottom: 8,
         }}
@@ -89,14 +89,14 @@ export function RaceProjectionChart({ projection }: Props) {
         <line
           x1={padX} x2={W - padX}
           y1={goalY} y2={goalY}
-          stroke="rgba(13,15,18,.35)"
+          stroke="rgba(8,8,8,.35)"
           strokeWidth="1"
           strokeDasharray="4 4"
         />
         <text x={W - padX + 2} y={goalY + 3}
           fontFamily="Inter, sans-serif"
           fontSize="10"
-          fill="rgba(13,15,18,.62)">goal</text>
+          fill="rgba(8,8,8,.62)">goal</text>
 
         {/* Maintain line */}
         <path d={maintainPath} fill="none" stroke="#E85D26" strokeWidth="1.6"
@@ -123,7 +123,7 @@ export function RaceProjectionChart({ projection }: Props) {
           gap: 14,
           marginTop: 6,
           fontSize: 11,
-          color: 'rgba(13,15,18,.65)',
+          color: 'rgba(8,8,8,.65)',
           flexWrap: 'wrap',
         }}
       >
@@ -138,7 +138,7 @@ export function RaceProjectionChart({ projection }: Props) {
           </span>
         )}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 10, borderTop: '2px dashed rgba(13,15,18,.35)' }} />
+          <span style={{ width: 10, borderTop: '2px dashed rgba(8,8,8,.35)' }} />
           Goal · {fmtTime(projection.goalFinishS)}
         </span>
       </div>
@@ -147,7 +147,7 @@ export function RaceProjectionChart({ projection }: Props) {
           style={{
             marginTop: 8,
             fontSize: 11,
-            color: 'rgba(13,15,18,.55)',
+            color: 'rgba(8,8,8,.55)',
             fontStyle: 'italic',
           }}
         >

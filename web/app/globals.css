@@ -7,32 +7,32 @@
 
 @theme inline {
   /* ── Core neutrals — light theme ─────────────────────────────────── */
-  --color-bg:        #EEECEA;   /* warm sand page background */
+  --color-bg:        #E6E8EF;   /* warm sand page background */
   --color-surface:   #FFFFFF;   /* card surface */
-  --color-surface-2: #F5F3F0;   /* elevated surface / hover */
-  --color-surface-3: rgba(13,15,18,.05); /* input backgrounds, nested cells */
-  --color-ink:       #0D0F12;   /* primary text */
-  --color-mute:      rgba(13,15,18,.40); /* secondary / muted text */
-  --color-line:      rgba(13,15,18,.10); /* borders */
-  --color-line-2:    rgba(13,15,18,.16); /* heavier strokes */
+  --color-surface-2: #F6F7F8;   /* elevated surface / hover */
+  --color-surface-3: rgba(8,8,8,.05); /* input backgrounds, nested cells */
+  --color-ink:       #080808;   /* primary text */
+  --color-mute:      rgba(8,8,8,.40); /* secondary / muted text */
+  --color-line:      rgba(8,8,8,.10); /* borders */
+  --color-line-2:    rgba(8,8,8,.16); /* heavier strokes */
 
   /* ── Semantic accents — each has one job ──────────────────────────── */
-  --color-race:      #E85D26;   /* brand, CTA, primary action, today */
-  --color-active:    #2563EB;   /* links, info, secondary action */
-  --color-recovery:  #2CA82F;   /* success, on-plan, recovery */
-  --color-warn:      #F43F5E;   /* alerts, errors, risk */
-  --color-milestone: #D4900A;   /* PRs, achievements */
+  --color-race:      #E88021;   /* brand, CTA, primary action, today */
+  --color-active:    #008FEC;   /* links, info, secondary action */
+  --color-recovery:  #3EBD41;   /* success, on-plan, recovery */
+  --color-warn:      #FC4D64;   /* alerts, errors, risk */
+  --color-milestone: #F3AD38;   /* PRs, achievements */
 
   /* ── Race gradient ────────────────────────────────────────────────── */
   --color-race-light: #F07340;
   --color-race-deep:  #C44A18;
 
   /* ── Course phase palette — elevation/legend only ─────────────────── */
-  --color-phase-0: #4ade80;
-  --color-phase-1: #fbbf24;
-  --color-phase-2: #f87171;
-  --color-phase-3: #38bdf8;
-  --color-phase-4: #a78bfa;
+  --color-phase-0: #3EBD41;
+  --color-phase-1: #F3AD38;
+  --color-phase-2: #D03F3F;
+  --color-phase-3: #27B4E0;
+  --color-phase-4: #6227E0;
 
   /* ── Legacy token aliases (component compatibility) ───────────────── */
   --color-l0: var(--color-bg);
@@ -43,9 +43,9 @@
   --color-l5: var(--color-line-2);
 
   --color-t0: var(--color-ink);
-  --color-t1: rgba(13,15,18,.60);
-  --color-t2: rgba(13,15,18,.40);
-  --color-t3: rgba(13,15,18,.25);
+  --color-t1: rgba(8,8,8,.60);
+  --color-t2: rgba(8,8,8,.40);
+  --color-t3: rgba(8,8,8,.25);
 
   --color-attention: var(--color-race);
   --color-corporate: var(--color-active);
@@ -63,37 +63,37 @@
 /* ── CSS custom properties for inline-style use ─────────────────────────── */
 :root {
   /* ── Light theme neutrals ─────────────────────────────────────────── */
-  --bg:        #EEECEA;
+  --bg:        #E6E8EF;
   --surface:   #FFFFFF;
-  --surface-2: #F5F3F0;
-  --surface-3: rgba(13,15,18,.05);
-  --ink:       #0D0F12;
-  --mute:      rgba(13,15,18,.40);
-  --line:      rgba(13,15,18,.10);
-  --line-2:    rgba(13,15,18,.16);
+  --surface-2: #F6F7F8;
+  --surface-3: rgba(8,8,8,.05);
+  --ink:       #080808;
+  --mute:      rgba(8,8,8,.40);
+  --line:      rgba(8,8,8,.10);
+  --line-2:    rgba(8,8,8,.16);
 
-  --race:      #E85D26;
-  --active:    #2563EB;
-  --recovery:  #2CA82F;
-  --warn:      #F43F5E;
-  --milestone: #D4900A;
+  --race:      #E88021;
+  --active:    #008FEC;
+  --recovery:  #3EBD41;
+  --warn:      #FC4D64;
+  --milestone: #F3AD38;
 
-  --race-wash:      rgba(232,93,38,.10);
-  --active-wash:    rgba(37,99,235,.10);
-  --recovery-wash:  rgba(44,168,47,.10);
-  --warn-wash:      rgba(244,63,94,.10);
-  --milestone-wash: rgba(212,144,10,.10);
+  --race-wash:      rgba(232,128,33,.10);
+  --active-wash:    rgba(0,143,236,.10);
+  --recovery-wash:  rgba(62,189,65,.10);
+  --warn-wash:      rgba(252,77,100,.10);
+  --milestone-wash: rgba(243,173,56,.10);
 
   --race-grad-light: #F07340;
   --race-grad:       #E85D26;
   --race-grad-deep:  #C44A18;
 
   /* Phase palette */
-  --phase-0: #4ade80;
-  --phase-1: #fbbf24;
-  --phase-2: #f87171;
-  --phase-3: #38bdf8;
-  --phase-4: #a78bfa;
+  --phase-0: #3EBD41;
+  --phase-1: #F3AD38;
+  --phase-2: #D03F3F;
+  --phase-3: #27B4E0;
+  --phase-4: #6227E0;
 
   /* Legacy aliases */
   --color-l0: var(--bg);
@@ -103,33 +103,33 @@
   --color-l4: var(--line);
   --color-l5: var(--line-2);
   --color-t0: var(--ink);
-  --color-t1: rgba(13,15,18,.60);
-  --color-t2: rgba(13,15,18,.40);
-  --color-t3: rgba(13,15,18,.25);
+  --color-t1: rgba(8,8,8,.60);
+  --color-t2: rgba(8,8,8,.40);
+  --color-t3: rgba(8,8,8,.25);
   --color-attention: var(--race);
   --color-corporate: var(--active);
   --color-warning:   var(--warn);
   --color-success:   var(--recovery);
   --color-xp:        var(--race);
-  --color-text-dark: #0D0F12;
+  --color-text-dark: #080808;
 
   --gradient-hero: linear-gradient(135deg, var(--race-grad-light) 0%, var(--race-grad) 55%, var(--race-grad-deep) 100%);
 
   /* ── Short-form tokens — light theme ─────────────────────────────── */
-  --l0:#EEECEA; --l1:#FFFFFF; --l2:#F5F3F0; --l3:rgba(13,15,18,.05); --l4:rgba(13,15,18,.10); --l5:rgba(13,15,18,.16);
-  --t0:#0D0F12;
-  --t1:rgba(13,15,18,.60);
-  --t2:rgba(13,15,18,.40);
-  --t3:rgba(13,15,18,.25);
-  --t4:rgba(13,15,18,.14);
-  --corp:#2563EB;
-  --good:#2CA82F;
-  --att:#D4900A;
-  --coach:#0891B2;
-  --milestone:#D4900A;
-  --aqua:#0D9488;
+  --l0:#E6E8EF; --l1:#FFFFFF; --l2:#F6F7F8; --l3:rgba(8,8,8,.05); --l4:rgba(8,8,8,.10); --l5:rgba(8,8,8,.16);
+  --t0:#080808;
+  --t1:rgba(8,8,8,.60);
+  --t2:rgba(8,8,8,.40);
+  --t3:rgba(8,8,8,.25);
+  --t4:rgba(8,8,8,.14);
+  --corp:#008FEC;
+  --good:#3EBD41;
+  --att:#F3AD38;
+  --coach:#27B4E0;
+  --milestone:#F3AD38;
+  --aqua:#27E087;
   --pink:#CD317C;
-  --xp:#7C3AED;
+  --xp:#9013FE;
 
   /* Card shadow (replaces dark borders) */
   --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
@@ -266,7 +266,7 @@
 .greet-id {
   display:flex; flex-direction:column; justify-content:center;
   padding:10px 22px 10px 0;
-  border-right:1px solid rgba(13,15,18,.10);
+  border-right:1px solid rgba(8,8,8,.10);
   min-width:fit-content;
 }
 .greet-id .hi {
@@ -433,7 +433,7 @@
   font-weight:500;
   text-transform:uppercase;
   padding-top:8px;
-  border-top:1px solid rgba(13,15,18,.08);
+  border-top:1px solid rgba(8,8,8,.08);
   margin-top:auto;
   display:flex; justify-content:space-between;
 }
@@ -455,7 +455,7 @@
   position:fixed; inset:0; z-index:2000;
   display:flex; align-items:center; justify-content:center;
   padding:24px;
-  background:rgba(13,15,18,.48);
+  background:rgba(8,8,8,.48);
   backdrop-filter:blur(6px);
   -webkit-backdrop-filter:blur(6px);
 }
@@ -549,8 +549,8 @@
 }
 .btn-flat:hover { filter:brightness(1.1); }
 .btn-primary   { background:var(--t0);   color:#fff;      border-color:var(--t0); }
-.btn-secondary { background:transparent; color:var(--t1); border-color:rgba(13,15,18,.20); }
-.btn-secondary:hover { border-color:rgba(13,15,18,.35); background:rgba(13,15,18,.04); }
+.btn-secondary { background:transparent; color:var(--t1); border-color:rgba(8,8,8,.20); }
+.btn-secondary:hover { border-color:rgba(8,8,8,.35); background:rgba(8,8,8,.04); }
 .btn-danger    { background:var(--warn);  color:#fff; }
 .btn-danger:hover { filter:brightness(1.08); }
 .btn-coach     { background:var(--coach); color:var(--l0); }

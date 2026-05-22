@@ -13,7 +13,7 @@ import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(() => import('@/app/log/RouteMap'), {
   ssr: false,
-  loading: () => <div style={{ height: 280, borderRadius: 12, background: 'rgba(13,15,18,.04)' }} />,
+  loading: () => <div style={{ height: 280, borderRadius: 12, background: 'rgba(8,8,8,.04)' }} />,
 });
 
 interface Props {

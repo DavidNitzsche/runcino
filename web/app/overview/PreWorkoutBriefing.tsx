@@ -78,13 +78,13 @@ export function PreWorkoutBriefingCard({ briefing, todayPaceLabel, workoutType }
         maxWidth: 540,
         padding: '14px 16px',
         background: '#FFFFFF',
-        border: '1px solid rgba(13,15,18,.10)',
+        border: '1px solid rgba(8,8,8,.10)',
         borderRadius: 10,
         fontFamily: 'Inter, sans-serif',
         fontSize: 13,
         lineHeight: 1.55,
-        color: 'rgba(13,15,18,.78)',
-        boxShadow: '0 1px 2px rgba(13,15,18,.02)',
+        color: 'rgba(8,8,8,.78)',
+        boxShadow: '0 1px 2px rgba(8,8,8,.02)',
       }}
     >
       <div
@@ -93,7 +93,7 @@ export function PreWorkoutBriefingCard({ briefing, todayPaceLabel, workoutType }
           fontSize: 10,
           letterSpacing: 1.5,
           textTransform: 'uppercase',
-          color: 'rgba(13,15,18,.55)',
+          color: 'rgba(8,8,8,.55)',
           fontWeight: 700,
           marginBottom: 8,
         }}
@@ -104,7 +104,7 @@ export function PreWorkoutBriefingCard({ briefing, todayPaceLabel, workoutType }
       {/* Weather */}
       {briefing.weather && (
         <div style={{ marginBottom: 8 }}>
-          <strong style={{ color: '#0D0F12' }}>{briefing.weather.label}:</strong>{' '}
+          <strong style={{ color: '#080808' }}>{briefing.weather.label}:</strong>{' '}
           {briefing.weather.shortForecast.toLowerCase()}, {briefing.weather.temperatureF}°F
           {briefing.weather.windMph >= 8 && <>, wind {briefing.weather.windMph} mph</>}
           {tempCommentary(briefing.weather.temperatureF, workoutType)}
@@ -114,16 +114,16 @@ export function PreWorkoutBriefingCard({ briefing, todayPaceLabel, workoutType }
       {/* Shoe */}
       {briefing.shoe && (
         <div style={{ marginBottom: 8 }}>
-          <strong style={{ color: '#0D0F12' }}>Shoes:</strong>{' '}
+          <strong style={{ color: '#080808' }}>Shoes:</strong>{' '}
           {briefing.shoe.brand} {briefing.shoe.model}
-          {briefing.shoe.color && <span style={{ color: 'rgba(13,15,18,.55)' }}> · {briefing.shoe.color}</span>}
+          {briefing.shoe.color && <span style={{ color: 'rgba(8,8,8,.55)' }}> · {briefing.shoe.color}</span>}
           {briefing.shoe.wearPct != null && briefing.shoe.wearPct >= 80 && (
             <span style={{ color: '#b3450a' }}>
               {' '}· {briefing.shoe.wearPct}% of cap ({briefing.shoe.mileage}/{briefing.shoe.mileageCap} mi) — start eyeing a replacement
             </span>
           )}
           {briefing.shoe.wearPct != null && briefing.shoe.wearPct < 80 && briefing.shoe.mileageCap && (
-            <span style={{ color: 'rgba(13,15,18,.55)' }}>
+            <span style={{ color: 'rgba(8,8,8,.55)' }}>
               {' '}· {briefing.shoe.mileage}/{briefing.shoe.mileageCap} mi
             </span>
           )}
@@ -133,11 +133,11 @@ export function PreWorkoutBriefingCard({ briefing, todayPaceLabel, workoutType }
       {/* Last similar */}
       {briefing.lastSimilar && (
         <div>
-          <strong style={{ color: '#0D0F12' }}>Last similar:</strong>{' '}
+          <strong style={{ color: '#080808' }}>Last similar:</strong>{' '}
           {briefing.lastSimilar.ageLabel} — {briefing.lastSimilar.distanceMi} mi @ {fmtPace(briefing.lastSimilar.paceSPerMi)}
           {briefing.lastSimilar.avgHr != null && <>, HR {briefing.lastSimilar.avgHr}</>}
           {todayPaceLabel && (
-            <span style={{ color: 'rgba(13,15,18,.55)' }}> · today targets {todayPaceLabel}/mi</span>
+            <span style={{ color: 'rgba(8,8,8,.55)' }}> · today targets {todayPaceLabel}/mi</span>
           )}
         </div>
       )}

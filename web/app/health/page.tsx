@@ -182,11 +182,11 @@ export default async function HealthPage() {
   const anchorRestingHr = fitness?.restingHr.value ?? (rhr != null ? Math.round(rhr) : null);
   const hrBundle = buildHrZonesBundle(anchorMaxHr, anchorRestingHr);
   const zoneColors: Record<ZoneTier, string> = {
-    z1: 'rgba(13,15,18,.35)', // Recovery — grey
-    z2: '#2CA82F',            // Easy — green
-    z3: '#D4900A',            // Steady — amber
+    z1: 'rgba(8,8,8,.35)', // Recovery — grey
+    z2: '#3EBD41',            // Easy — green
+    z3: '#F3AD38',            // Steady — amber
     z4: '#E85D26',            // Threshold — orange
-    z5: '#F43F5E',            // VO2max — red
+    z5: '#FC4D64',            // VO2max — red
   };
   const maxHrSourceLabel = fitness?.maxHr.sourceLabel
     ?? (fitness?.maxHr.source === 'manual' ? 'Manual override'
@@ -195,7 +195,7 @@ export default async function HealthPage() {
   const restingHrSourceLabel = fitness?.restingHr.source === 'manual' ? 'Manual override'
     : fitness?.restingHr.source === 'computed' ? 'Computed from activity'
       : rhr != null ? 'Apple Health (7-day avg)' : 'No data';
-  const stateColor = readyState === 'green' ? '#2CA82F' : readyState === 'yellow' ? '#D4900A' : readyState === 'red' ? '#F43F5E' : 'rgba(13,15,18,.32)';
+  const stateColor = readyState === 'green' ? '#3EBD41' : readyState === 'yellow' ? '#F3AD38' : readyState === 'red' ? '#FC4D64' : 'rgba(8,8,8,.32)';
   const stateWord = readyState === 'green' ? 'Recovered' : readyState === 'yellow' ? 'Hold steady' : readyState === 'red' ? 'Back off' : 'Waiting on data';
   // Build the four-section brief from the readiness inputs + vitals.
   const posInputs = (readiness?.inputs ?? []).filter((i) => i.delta > 0).map((i) => i.note);
@@ -306,7 +306,7 @@ export default async function HealthPage() {
             <div className="health-hero-ring-section">
               <div className="health-hero-ring">
                 <svg viewBox="0 0 300 300" preserveAspectRatio="xMidYMid meet">
-                  <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
+                  <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(8,8,8,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
                   {readyScore != null && (
                     <circle
                       cx="150" cy="150" r="130" fill="none" stroke={stateColor} strokeWidth="16"
@@ -314,7 +314,7 @@ export default async function HealthPage() {
                       transform="rotate(-90 150 150)"
                     />
                   )}
-                  <text x="150" y="166" fontFamily="Bebas Neue" fontSize="64" fill={readyScore != null ? '#0D0F12' : 'rgba(13,15,18,.32)'} textAnchor="middle">{readyScore ?? '—'}</text>
+                  <text x="150" y="166" fontFamily="Bebas Neue" fontSize="64" fill={readyScore != null ? '#080808' : 'rgba(8,8,8,.32)'} textAnchor="middle">{readyScore ?? '—'}</text>
                   <text x="150" y="200" fontFamily="Inter" fontSize="11" fontWeight="600" fill={stateColor} textAnchor="middle" letterSpacing="1">{(readyState ?? 'no data').toUpperCase()}</text>
                 </svg>
               </div>
@@ -342,7 +342,7 @@ export default async function HealthPage() {
                   : 'Add your max heart rate below to see your personal zones.'}
               </div>
             </div>
-            <div className="card-meta" style={{ color: hrBundle ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
+            <div className="card-meta" style={{ color: hrBundle ? '#080808' : 'rgba(8,8,8,.45)' }}>
               {hrBundle
                 ? <><strong>{hrBundle.maxHr}</strong> max{hrBundle.restingHr != null ? <> · <strong>{hrBundle.restingHr}</strong> rest</> : ''}</>
                 : 'No anchors'}
@@ -374,7 +374,7 @@ export default async function HealthPage() {
               })}
             </div>
           ) : (
-            <div style={{ padding: '8px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)' }}>
+            <div style={{ padding: '8px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.55)' }}>
               Add your max heart rate below and your five effort zones — from very easy to all-out —
               show up here, tuned to you.
             </div>
@@ -412,7 +412,7 @@ export default async function HealthPage() {
                 );
               })
             ) : (
-              <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
+              <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.55)', textAlign: 'center' }}>
                 Nothing’s jumping out from your last couple of weeks — keep logging runs and we’ll
                 point out anything worth knowing (easy pace creeping up, mileage spiking, your long
                 run climbing).
@@ -428,7 +428,7 @@ export default async function HealthPage() {
               <div className="card-title">Fitness &amp; Freshness</div>
               <div className="card-sub">How much fitness you&apos;re building vs. how tired you are right now.</div>
             </div>
-            <div className="card-meta" style={{ color: trainingLoad?.hasData ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
+            <div className="card-meta" style={{ color: trainingLoad?.hasData ? '#080808' : 'rgba(8,8,8,.45)' }}>
               {trainingLoad?.hasData ? trainingLoad.verdictLabel : 'No data'}
             </div>
           </div>
@@ -436,14 +436,14 @@ export default async function HealthPage() {
           <div className="form-stats">
             <div className="form-stat">
               <div className="form-stat-label">Fitness</div>
-              <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}>
+              <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(8,8,8,.32)' }}>
                 {trainingLoad?.hasData ? trainingLoad.fitnessCtl : '—'}
               </div>
               <div className="form-stat-sub">{trainingLoad?.hasData ? 'your aerobic base' : 'No data'}</div>
             </div>
             <div className="form-stat">
               <div className="form-stat-label">Fatigue</div>
-              <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}>
+              <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(8,8,8,.32)' }}>
                 {trainingLoad?.hasData ? trainingLoad.fatigueAtl : '—'}
               </div>
               <div className="form-stat-sub">{trainingLoad?.hasData ? 'how hard this week was' : 'No data'}</div>
@@ -452,7 +452,7 @@ export default async function HealthPage() {
               <div className="form-stat-label">Form</div>
               <div
                 className={`form-stat-val${trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? ' green' : trainingLoad.formTsb < -20 ? ' orange' : '') : ''}`}
-                style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}
+                style={trainingLoad?.hasData ? undefined : { color: 'rgba(8,8,8,.32)' }}
               >
                 {trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? `+${trainingLoad.formTsb}` : trainingLoad.formTsb) : '—'}
               </div>
@@ -461,7 +461,7 @@ export default async function HealthPage() {
           </div>
 
           {trainingLoad?.hasData ? (
-            <div style={{ padding: '4px 40px 12px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.7)' }}>
+            <div style={{ padding: '4px 40px 12px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.7)' }}>
               {trainingLoad.formTsb > 5
                 ? 'You’re fresh right now — fitness is ahead of fatigue. A good window to push hard or race.'
                 : trainingLoad.formTsb >= -20
@@ -469,7 +469,7 @@ export default async function HealthPage() {
                   : 'You’re carrying a lot of fatigue right now — a heavy stretch. Keep easy days truly easy so you absorb the work instead of digging a hole.'}
             </div>
           ) : (
-            <div style={{ padding: '40px 40px 48px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
+            <div style={{ padding: '40px 40px 48px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.55)', textAlign: 'center' }}>
               Training load curves need ~30 days of activity history before they read meaningfully.
               Keep logging runs — Strava is connected — and the chart will fill in here.
             </div>
@@ -501,7 +501,7 @@ export default async function HealthPage() {
               <div className="card-title">Body Composition</div>
               <div className="card-sub">Mass, composition &amp; cardio markers from Apple Health · 7-day average</div>
             </div>
-            <div className="card-meta" style={{ color: hasBody ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>{hasBody ? '7-day avg' : 'No data'}</div>
+            <div className="card-meta" style={{ color: hasBody ? '#080808' : 'rgba(8,8,8,.45)' }}>{hasBody ? '7-day avg' : 'No data'}</div>
           </div>
           <div className="vitals-grid">
             <VitalTile label="Weight"        value={bodyMass.value}     unit={bodyMass.unit}     range={['—','—']} markerPct={0} avgPct={0} status={bodyMass.value !== '—' ? '7-day avg' : 'No data'} />
@@ -512,7 +512,7 @@ export default async function HealthPage() {
             <VitalTile label="Active Energy" value={activeEnergy.value} unit={activeEnergy.unit} range={['—','—']} markerPct={0} avgPct={0} status={activeEnergy.value !== '—' ? '7-day avg' : 'No data'} />
           </div>
           {!hasBody && (
-            <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+            <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
               Body composition and cardio markers sync from a connected scale and your Apple Watch once Apple Health is linked.
             </div>
           )}
@@ -525,7 +525,7 @@ export default async function HealthPage() {
               <div className="card-title">Running Dynamics</div>
               <div className="card-sub">Form metrics from Apple Health · 30-day average across runs</div>
             </div>
-            <div className="card-meta" style={{ color: 'rgba(13,15,18,.45)' }}>{hasDyn ? '30-day avg' : 'No data'}</div>
+            <div className="card-meta" style={{ color: 'rgba(8,8,8,.45)' }}>{hasDyn ? '30-day avg' : 'No data'}</div>
           </div>
           <div className="vitals-grid">
             <VitalTile label="Cadence"      value={cadence.value}   unit={cadence.unit}   range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && cadence.value !== '—' ? '30-day avg' : 'No data'} />
@@ -536,7 +536,7 @@ export default async function HealthPage() {
             <VitalTile label="Run Power"    value={runPower.value}  unit={runPower.unit}  range={['—','—']} markerPct={0} avgPct={0} status={hasDyn && runPower.value !== '—' ? '30-day avg' : 'No data'} />
           </div>
           {!hasDyn && (
-            <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+            <div style={{ padding: '0 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
               Running dynamics sync from your Apple Watch runs once Apple Health is connected. Per-run form appears on each run recap.
             </div>
           )}

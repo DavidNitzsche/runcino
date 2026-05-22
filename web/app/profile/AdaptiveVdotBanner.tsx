@@ -62,8 +62,8 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
 
   const isUp = verdict.kind === 'vdot-bump-suggested';
   const accent = isUp ? '#1f6a21' : '#b3450a';
-  const bg = isUp ? 'rgba(44,168,47,.06)' : 'rgba(232,93,38,.06)';
-  const border = isUp ? 'rgba(44,168,47,.30)' : 'rgba(232,93,38,.30)';
+  const bg = isUp ? 'rgba(62,189,65,.06)' : 'rgba(232,128,33,.06)';
+  const border = isUp ? 'rgba(62,189,65,.30)' : 'rgba(232,128,33,.30)';
   const eyebrow = isUp ? '↑ FITNESS DRIFT · PROPOSED BUMP' : '⚠ INVESTIGATE · WORKOUTS TRENDING SLOW';
 
   async function onApply() {
@@ -139,12 +139,12 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
           fontFamily: 'Inter, sans-serif',
           fontSize: 13,
           lineHeight: 1.55,
-          color: 'rgba(13,15,18,.85)',
+          color: 'rgba(8,8,8,.85)',
         }}
       >
         {verdict.reason}
         {verdict.crossRef && (
-          <span style={{ color: 'rgba(13,15,18,.65)' }}>
+          <span style={{ color: 'rgba(8,8,8,.65)' }}>
             {' — '}
             <a
               href={verdict.crossRef.href}
@@ -160,29 +160,29 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
       {verdict.evidence.length > 0 && (
         <div
           style={{
-            background: 'rgba(13,15,18,.03)',
-            border: '1px solid rgba(13,15,18,.06)',
+            background: 'rgba(8,8,8,.03)',
+            border: '1px solid rgba(8,8,8,.06)',
             borderRadius: 8,
             padding: '8px 10px',
             fontFamily: 'Inter, sans-serif',
             fontSize: 12,
             lineHeight: 1.5,
-            color: 'rgba(13,15,18,.75)',
+            color: 'rgba(8,8,8,.75)',
           }}
         >
-          <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 9, letterSpacing: 1.2, color: 'rgba(13,15,18,.55)', textTransform: 'uppercase', marginBottom: 4, fontWeight: 700 }}>
+          <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 9, letterSpacing: 1.2, color: 'rgba(8,8,8,.55)', textTransform: 'uppercase', marginBottom: 4, fontWeight: 700 }}>
             Evidence
           </div>
           {verdict.evidence.slice(0, 5).map((e, i) => (
             <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: 'rgba(13,15,18,.55)', minWidth: 80 }}>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: 'rgba(8,8,8,.55)', minWidth: 80 }}>
                 {e.date}
               </span>
               <span style={{ flex: 1 }}>{e.workoutLabel}</span>
               <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
                 {fmtPace(e.actualPaceS)}
                 {' '}vs{' '}
-                <span style={{ color: 'rgba(13,15,18,.55)' }}>{fmtPace(e.prescribedPaceS)}</span>
+                <span style={{ color: 'rgba(8,8,8,.55)' }}>{fmtPace(e.prescribedPaceS)}</span>
                 {e.actualAvgHr != null && <> · {e.actualAvgHr} bpm</>}
                 {e.temperatureF != null && <> · {e.temperatureF}°F</>}
               </span>
@@ -196,11 +196,11 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
           fontFamily: 'Inter, sans-serif',
           fontSize: 11,
           lineHeight: 1.5,
-          color: 'rgba(13,15,18,.60)',
+          color: 'rgba(8,8,8,.60)',
           fontStyle: 'italic',
         }}
       >
-        <strong style={{ color: 'rgba(13,15,18,.75)', fontStyle: 'normal' }}>{FALSIFIER_PREFIX}</strong>{' '}
+        <strong style={{ color: 'rgba(8,8,8,.75)', fontStyle: 'normal' }}>{FALSIFIER_PREFIX}</strong>{' '}
         {verdict.falsifier}
       </div>
 
@@ -235,8 +235,8 @@ export function AdaptiveVdotBanner({ verdict }: { verdict: AdaptiveVdotVerdictFo
           disabled={busy != null}
           style={{
             background: 'transparent',
-            color: 'rgba(13,15,18,.65)',
-            border: '1px solid rgba(13,15,18,.20)',
+            color: 'rgba(8,8,8,.65)',
+            border: '1px solid rgba(8,8,8,.20)',
             borderRadius: 8,
             padding: '8px 14px',
             fontSize: 13,

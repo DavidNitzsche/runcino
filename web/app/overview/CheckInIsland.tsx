@@ -55,7 +55,7 @@ export function CheckInIsland({ today }: { today: string }) {
     return (
       // The whole card turns green — no inner box. Overrides .coach-right's
       // white background / right-alignment so it reads as one solid card.
-      <div className="coach-right" style={{ background: 'var(--recovery, #2CA82F)', color: '#fff', alignItems: 'stretch', justifyContent: 'flex-start', gap: 16 }}>
+      <div className="coach-right" style={{ background: 'var(--recovery, #3EBD41)', color: '#fff', alignItems: 'stretch', justifyContent: 'flex-start', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <span
             aria-hidden

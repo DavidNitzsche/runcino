@@ -85,7 +85,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
     );
     shoes = rows.map((r) => ({
       id: r.id, name: `${r.brand} ${r.model}`,
-      purposes: r.run_types || [], color: r.color || '#2CA82F', retired: !!r.retired,
+      purposes: r.run_types || [], color: r.color || '#3EBD41', retired: !!r.retired,
     }));
   } catch {}
 
@@ -344,7 +344,7 @@ export default async function LogPage() {
               const isCurrent = i === todayMonthIdx;
               const cls = `month-bar ${isPeak ? 'peak' : 'cool'} ${isCurrent ? 'current' : ''}`;
               return (
-                <div key={i} className={cls} style={mi > 0 ? { height: `${height}%` } : { height: '8%', background: 'rgba(13,15,18,.05)' }}>
+                <div key={i} className={cls} style={mi > 0 ? { height: `${height}%` } : { height: '8%', background: 'rgba(8,8,8,.05)' }}>
                   {mi > 0 && (
                     <span className="month-bar-val">
                       {mi}{isPeak ? ' ↑' : ''}
@@ -371,10 +371,10 @@ export default async function LogPage() {
             </div>
             <div className="card-meta">
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(44,168,47,.20)' }}></span> 1–4 mi
-                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(44,168,47,.45)', marginLeft: 8 }}></span> 4–8
-                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(44,168,47,.70)', marginLeft: 8 }}></span> 8–14
-                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(232,93,38,.75)', marginLeft: 8 }}></span> 14+
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(62,189,65,.20)' }}></span> 1–4 mi
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(62,189,65,.45)', marginLeft: 8 }}></span> 4–8
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(62,189,65,.70)', marginLeft: 8 }}></span> 8–14
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(232,128,33,.75)', marginLeft: 8 }}></span> 14+
               </span>
             </div>
           </div>
@@ -421,7 +421,7 @@ export default async function LogPage() {
           </div>
           <div>
             {data.recentRuns.length === 0 ? (
-              <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
                 No runs logged yet. Connect Strava or log manually to start your feed.
               </div>
             ) : (

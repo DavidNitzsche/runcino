@@ -98,7 +98,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                 fontSize: '11px',
                 fontWeight: 500,
                 letterSpacing: '2px',
-                color: 'rgba(13,15,18,.35)',
+                color: 'rgba(8,8,8,.35)',
                 textTransform: 'uppercase',
               }}
             >
@@ -109,7 +109,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                 fontFamily: 'Inter, sans-serif',
                 fontWeight: 700,
                 fontSize: '15px',
-                color: 'var(--ink, #0D0F12)',
+                color: 'var(--ink, #080808)',
               }}
             >
               {title}
@@ -123,7 +123,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                   <strong>{loggedMi.toFixed(1)}</strong> / {plannedMi.toFixed(1)} mi
                 </>
               ) : (
-                <span style={{ color: 'rgba(13,15,18,.35)' }}>—</span>
+                <span style={{ color: 'rgba(8,8,8,.35)' }}>—</span>
               )}
             </Stat>
             <Dot />
@@ -133,7 +133,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                   {loggedWorkouts} / {totalWorkouts} workouts
                 </>
               ) : (
-                <span style={{ color: 'rgba(13,15,18,.35)' }}>—</span>
+                <span style={{ color: 'rgba(8,8,8,.35)' }}>—</span>
               )}
             </Stat>
             {deltaLabel && (
@@ -152,7 +152,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
                 fontSize: '12px',
                 fontWeight: 600,
                 letterSpacing: '1px',
-                color: 'var(--recovery, #2CA82F)',
+                color: 'var(--recovery, #3EBD41)',
                 textTransform: 'uppercase',
                 cursor: 'pointer',
                 flexShrink: 0,
@@ -168,7 +168,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
           style={{
             width: '100%',
             height: '5px',
-            background: 'rgba(13,15,18,.08)',
+            background: 'rgba(8,8,8,.08)',
             borderRadius: '3px',
             overflow: 'hidden',
           }}
@@ -177,7 +177,7 @@ export function WeekStripCard(props: WeekStripCardProps) {
             style={{
               height: '100%',
               width: `${Math.max(0, Math.min(100, progressPct))}%`,
-              background: 'var(--recovery, #2CA82F)',
+              background: 'var(--recovery, #3EBD41)',
               borderRadius: '3px',
             }}
           />
@@ -195,11 +195,11 @@ export function WeekStripCard(props: WeekStripCardProps) {
 
 function Stat({ children, tone }: { children: ReactNode; tone?: 'green' | 'amber' | 'warn' | 'dim' }) {
   const color =
-    tone === 'green' ? 'var(--recovery, #2CA82F)' :
-    tone === 'amber' ? 'var(--milestone, #D4900A)' :
-    tone === 'warn'  ? 'var(--warn, #F43F5E)' :
-    tone === 'dim'   ? 'rgba(13,15,18,.35)' :
-    'rgba(13,15,18,.55)';
+    tone === 'green' ? 'var(--recovery, #3EBD41)' :
+    tone === 'amber' ? 'var(--milestone, #F3AD38)' :
+    tone === 'warn'  ? 'var(--warn, #FC4D64)' :
+    tone === 'dim'   ? 'rgba(8,8,8,.35)' :
+    'rgba(8,8,8,.55)';
   return (
     <span
       style={{
@@ -215,7 +215,7 @@ function Stat({ children, tone }: { children: ReactNode; tone?: 'green' | 'amber
 }
 
 function Dot() {
-  return <span style={{ fontSize: '13px', color: 'rgba(13,15,18,.35)' }}>·</span>;
+  return <span style={{ fontSize: '13px', color: 'rgba(8,8,8,.35)' }}>·</span>;
 }
 
 function DayColumn({
@@ -237,8 +237,8 @@ function DayColumn({
         display: 'flex',
         flexDirection: 'column',
         gap: '6px',
-        background: isToday ? 'rgba(232,93,38,.04)' : 'transparent',
-        borderTop: isToday ? '2px solid var(--milestone, #D4900A)' : 'none',
+        background: isToday ? 'rgba(232,128,33,.04)' : 'transparent',
+        borderTop: isToday ? '2px solid var(--milestone, #F3AD38)' : 'none',
         position: 'relative',
       }}
     >
@@ -252,7 +252,7 @@ function DayColumn({
             width: '18px',
             height: '18px',
             borderRadius: '50%',
-            background: 'var(--ink, #0D0F12)',
+            background: 'var(--ink, #080808)',
             color: '#FACC15',
             display: 'inline-flex',
             alignItems: 'center',
@@ -272,7 +272,7 @@ function DayColumn({
           fontFamily: 'Inter, sans-serif',
           fontSize: '12px',
           letterSpacing: '1.5px',
-          color: 'rgba(13,15,18,.35)',
+          color: 'rgba(8,8,8,.35)',
           textTransform: 'uppercase',
         }}
       >
@@ -283,7 +283,7 @@ function DayColumn({
           fontFamily: 'Bebas Neue, sans-serif',
           fontSize: '28px',
           lineHeight: 1,
-          color: isToday ? 'var(--milestone, #D4900A)' : 'var(--ink, #0D0F12)',
+          color: isToday ? 'var(--milestone, #F3AD38)' : 'var(--ink, #080808)',
         }}
       >
         {day.dateNum}
@@ -295,7 +295,7 @@ function DayColumn({
           fontSize: '13px',
           letterSpacing: '0.5px',
           color:
-            day.status === 'rest' ? 'rgba(13,15,18,.35)' : 'var(--ink, #0D0F12)',
+            day.status === 'rest' ? 'rgba(8,8,8,.35)' : 'var(--ink, #080808)',
           textTransform: 'uppercase',
           marginTop: '4px',
         }}
@@ -307,7 +307,7 @@ function DayColumn({
           style={{
             fontFamily: 'Inter, sans-serif',
             fontSize: '12px',
-            color: 'rgba(13,15,18,.55)',
+            color: 'rgba(8,8,8,.55)',
           }}
         >
           {day.distance}
@@ -317,7 +317,7 @@ function DayColumn({
           style={{
             fontFamily: 'Inter, sans-serif',
             fontSize: '14px',
-            color: 'rgba(13,15,18,.2)',
+            color: 'rgba(8,8,8,.2)',
             marginTop: '4px',
           }}
         >
@@ -330,7 +330,7 @@ function DayColumn({
             fontFamily: 'Inter, sans-serif',
             fontSize: '12px',
             letterSpacing: '1px',
-            color: 'var(--recovery, #2CA82F)',
+            color: 'var(--recovery, #3EBD41)',
             textTransform: 'uppercase',
             marginTop: '4px',
           }}
@@ -346,8 +346,8 @@ function DayColumn({
             fontWeight: 600,
             fontSize: '12px',
             letterSpacing: '1px',
-            color: 'var(--milestone, #D4900A)',
-            background: 'rgba(212,144,10,.12)',
+            color: 'var(--milestone, #F3AD38)',
+            background: 'rgba(243,173,56,.12)',
             padding: '3px 9px',
             borderRadius: '20px',
             textTransform: 'uppercase',

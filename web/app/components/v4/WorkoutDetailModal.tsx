@@ -58,7 +58,7 @@ export function WorkoutDetailModal(props: WorkoutDetailModalProps) {
             fontFamily: 'Inter, sans-serif',
             fontSize: '11px',
             letterSpacing: '2.5px',
-            color: 'rgba(13,15,18,.35)',
+            color: 'rgba(8,8,8,.35)',
             textTransform: 'uppercase',
             marginBottom: '10px',
           }}
@@ -71,7 +71,7 @@ export function WorkoutDetailModal(props: WorkoutDetailModalProps) {
             fontFamily: 'Bebas Neue, sans-serif',
             fontSize: '88px',
             lineHeight: 0.86,
-            color: 'var(--ink, #0D0F12)',
+            color: 'var(--ink, #080808)',
             marginLeft: '-3px',
             marginBottom: '4px',
           }}
@@ -102,7 +102,7 @@ export function WorkoutDetailModal(props: WorkoutDetailModalProps) {
               fontWeight: 500,
               letterSpacing: '1.5px',
               textTransform: 'uppercase',
-              color: 'rgba(13,15,18,.35)',
+              color: 'rgba(8,8,8,.35)',
               marginBottom: '10px',
             }}
           >
@@ -117,7 +117,7 @@ export function WorkoutDetailModal(props: WorkoutDetailModalProps) {
               fontFamily: 'Inter, sans-serif',
               fontSize: '13px',
               fontStyle: 'italic',
-              color: 'rgba(13,15,18,.35)',
+              color: 'rgba(8,8,8,.35)',
               lineHeight: 1.6,
               marginBottom: '32px',
             }}
@@ -133,7 +133,7 @@ export function WorkoutDetailModal(props: WorkoutDetailModalProps) {
               onClick={onMarkComplete}
               style={{
                 flex: 1,
-                background: 'var(--recovery, #2CA82F)',
+                background: 'var(--recovery, #3EBD41)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '10px',
@@ -155,8 +155,8 @@ export function WorkoutDetailModal(props: WorkoutDetailModalProps) {
               onClick={onSkip}
               style={{
                 background: 'transparent',
-                border: '1.5px solid rgba(13,15,18,.2)',
-                color: 'var(--ink, #0D0F12)',
+                border: '1.5px solid rgba(8,8,8,.2)',
+                color: 'var(--ink, #080808)',
                 borderRadius: '10px',
                 padding: '15px 24px',
                 fontFamily: 'Inter, sans-serif',
@@ -181,22 +181,22 @@ function ModalStat({ value, unit, label }: { value: string; unit: string; label:
     <div
       style={{
         flex: 1,
-        background: 'rgba(13,15,18,.04)',
-        border: '1px solid rgba(13,15,18,.08)',
+        background: 'rgba(8,8,8,.04)',
+        border: '1px solid rgba(8,8,8,.08)',
         borderRadius: '10px',
         padding: '12px 14px',
       }}
     >
-      <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '28px', lineHeight: 1, color: 'var(--ink, #0D0F12)' }}>
+      <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '28px', lineHeight: 1, color: 'var(--ink, #080808)' }}>
         {value}
-        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(13,15,18,.55)', marginLeft: '2px' }}>{unit}</span>
+        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(8,8,8,.55)', marginLeft: '2px' }}>{unit}</span>
       </div>
       <div
         style={{
           fontFamily: 'Inter, sans-serif',
           fontSize: '11px',
           letterSpacing: '1.5px',
-          color: 'rgba(13,15,18,.35)',
+          color: 'rgba(8,8,8,.35)',
           textTransform: 'uppercase',
           marginTop: '3px',
         }}

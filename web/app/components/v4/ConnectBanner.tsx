@@ -85,11 +85,11 @@ export function ConnectBanner({ show = true }: Props) {
         }
         .faff-connect-banner-title {
           font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px;
-          color: #0D0F12;
+          color: #080808;
         }
         .faff-connect-banner-sub {
           font-family: 'Inter', sans-serif; font-size: 13px;
-          color: rgba(13,15,18,.55); margin-top: 2px; line-height: 1.5;
+          color: rgba(8,8,8,.55); margin-top: 2px; line-height: 1.5;
         }
         .faff-connect-banner-actions { display: flex; gap: 8px; }
         .faff-btn-strava {
@@ -103,10 +103,10 @@ export function ConnectBanner({ show = true }: Props) {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
           padding: 10px 16px; border-radius: 8px; cursor: pointer;
-          border: 1px solid rgba(13,15,18,.25);
-          background: transparent; color: rgba(13,15,18,.55); white-space: nowrap;
+          border: 1px solid rgba(8,8,8,.25);
+          background: transparent; color: rgba(8,8,8,.55); white-space: nowrap;
         }
-        .faff-btn-quiet:hover { background: rgba(13,15,18,.04); color: #0D0F12; }
+        .faff-btn-quiet:hover { background: rgba(8,8,8,.04); color: #080808; }
       `}</style>
     </div>
   );

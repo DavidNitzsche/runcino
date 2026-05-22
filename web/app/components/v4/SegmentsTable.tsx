@@ -39,7 +39,7 @@ export function SegmentsTable({ rows, style }: SegmentsTableProps) {
   return (
     <div
       style={{
-        border: '1px solid rgba(13,15,18,.08)',
+        border: '1px solid rgba(8,8,8,.08)',
         borderRadius: '12px',
         overflow: 'hidden',
         marginTop: '24px',
@@ -64,7 +64,7 @@ function Row({ row }: { row: SegmentRow }) {
         padding: '14px 20px',
         fontFamily: 'Inter, sans-serif',
         fontSize: '13px',
-        background: isMain ? 'rgba(44,168,47,.06)' : 'transparent',
+        background: isMain ? 'rgba(62,189,65,.06)' : 'transparent',
       }}
     >
       <Cell type="label" main={isMain}>{row.label}</Cell>
@@ -92,7 +92,7 @@ function Cell({
           fontWeight: 600,
           fontSize: '13px',
           letterSpacing: '1px',
-          color: main ? 'var(--recovery, #2CA82F)' : 'rgba(13,15,18,.55)',
+          color: main ? 'var(--recovery, #3EBD41)' : 'rgba(8,8,8,.55)',
           textTransform: 'uppercase',
         }}
       >
@@ -101,13 +101,13 @@ function Cell({
     );
   }
   if (type === 'dim') {
-    return <span style={{ color: 'rgba(13,15,18,.35)' }}>{children}</span>;
+    return <span style={{ color: 'rgba(8,8,8,.35)' }}>{children}</span>;
   }
   if (type === 'pace') {
     return (
       <span
         style={{
-          color: main ? 'var(--recovery, #2CA82F)' : 'rgba(13,15,18,.55)',
+          color: main ? 'var(--recovery, #3EBD41)' : 'rgba(8,8,8,.55)',
           fontWeight: main ? 600 : 400,
         }}
       >
@@ -115,5 +115,5 @@ function Cell({
       </span>
     );
   }
-  return <span style={{ color: 'rgba(13,15,18,.55)' }}>{children}</span>;
+  return <span style={{ color: 'rgba(8,8,8,.55)' }}>{children}</span>;
 }

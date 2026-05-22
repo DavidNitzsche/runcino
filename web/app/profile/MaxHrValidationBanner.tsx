@@ -124,23 +124,23 @@ export function MaxHrValidationBanner({ verdict }: Props) {
           display: flex; gap: 12px;
           padding: 14px 16px;
           margin: 12px 40px 0;
-          background: rgba(212,144,10,.08);
-          border: 1px solid rgba(212,144,10,.32);
+          background: rgba(243,173,56,.08);
+          border: 1px solid rgba(243,173,56,.32);
           border-radius: 10px;
         }
         .mhr-banner-icon {
           font-size: 18px; line-height: 1.2;
-          color: #D4900A; flex-shrink: 0;
+          color: #F3AD38; flex-shrink: 0;
         }
         .mhr-banner-body { flex: 1; min-width: 0; }
         .mhr-banner-title {
           font-family: 'Inter', sans-serif; font-weight: 700;
-          font-size: 13px; color: #0D0F12;
+          font-size: 13px; color: #080808;
           margin-bottom: 4px;
         }
         .mhr-banner-reason {
           font-family: 'Inter', sans-serif; font-size: 13px;
-          line-height: 1.5; color: rgba(13,15,18,.75);
+          line-height: 1.5; color: rgba(8,8,8,.75);
         }
         .mhr-banner-actions {
           display: flex; flex-wrap: wrap; gap: 8px;
@@ -152,11 +152,11 @@ export function MaxHrValidationBanner({ verdict }: Props) {
           padding: 7px 12px; border-radius: 6px; cursor: pointer;
           border: 1px solid;
         }
-        .mhr-apply { background: #0D0F12; color: #fff; border-color: #0D0F12; }
+        .mhr-apply { background: #080808; color: #fff; border-color: #080808; }
         .mhr-apply:disabled { opacity: 0.5; cursor: not-allowed; }
         .mhr-keep {
-          background: transparent; color: rgba(13,15,18,.55);
-          border-color: rgba(13,15,18,.18);
+          background: transparent; color: rgba(8,8,8,.55);
+          border-color: rgba(8,8,8,.18);
         }
         .mhr-keep:disabled { opacity: 0.5; cursor: not-allowed; }
         .mhr-err {
@@ -164,13 +164,13 @@ export function MaxHrValidationBanner({ verdict }: Props) {
         }
         .mhr-banner-falsifier {
           font-family: 'Inter', sans-serif; font-size: 11px;
-          line-height: 1.5; color: rgba(13,15,18,.55);
+          line-height: 1.5; color: rgba(8,8,8,.55);
           margin-top: 8px; padding-top: 8px;
-          border-top: 1px solid rgba(13,15,18,.06);
+          border-top: 1px solid rgba(8,8,8,.06);
           font-style: italic;
         }
         .mhr-banner-falsifier strong {
-          color: rgba(13,15,18,.75);
+          color: rgba(8,8,8,.75);
           font-style: normal;
           font-weight: 600;
         }

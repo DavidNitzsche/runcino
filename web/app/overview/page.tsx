@@ -388,15 +388,15 @@ export default async function OverviewPage() {
               </p>
             ) : todayComplete ? (
               <>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '7px 13px', borderRadius: 999, background: 'rgba(44,168,47,.12)', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 700, letterSpacing: '.04em', color: '#1f7a22' }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2CA82F' }} />
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '7px 13px', borderRadius: 999, background: 'rgba(62,189,65,.12)', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 700, letterSpacing: '.04em', color: '#1f7a22' }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3EBD41' }} />
                   COMPLETED · {todayActualMi.toFixed(1)} MI LOGGED
                 </div>
                 <InlineRecap day={todayDay as WorkoutDay} />
               </>
             ) : todaySkipped ? (
               <>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '7px 13px', borderRadius: 999, background: 'rgba(13,15,18,.06)', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 700, letterSpacing: '.04em', color: 'rgba(13,15,18,.55)' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '7px 13px', borderRadius: 999, background: 'rgba(8,8,8,.06)', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 700, letterSpacing: '.04em', color: 'rgba(8,8,8,.55)' }}>
                   SKIPPED TODAY
                 </div>
                 <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, lineHeight: 1.6, color: 'var(--t1)', marginTop: 16, maxWidth: 540 }}>
@@ -412,7 +412,7 @@ export default async function OverviewPage() {
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayDay?.distanceMi}</span><span className="stat-unit">mi</span></div><div className="stat-label">Distance</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{todayPace}</span><span className="stat-unit">/mi</span></div><div className="stat-label">Pace</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">~{durMin}</span><span className="stat-unit">min</span></div><div className="stat-label">Duration</div></div>
-                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</span></div><div className="stat-label">Heart Rate</div></div>
+                  <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
                 {/* One clean, always-present explanation — what this run is
                     for, in plain language. No expander, no stacked blocks. */}
@@ -478,7 +478,7 @@ export default async function OverviewPage() {
                         <svg width="300" height="300" viewBox="0 0 300 300">
                           {/* Track */}
                           <circle cx="150" cy="150" r={radius} fill="none"
-                            stroke="rgba(13,15,18,.08)" strokeWidth="16"
+                            stroke="rgba(8,8,8,.08)" strokeWidth="16"
                             strokeDasharray={`${circumference * 0.75} ${circumference}`}
                             strokeLinecap="round" transform="rotate(135 150 150)" />
                           {/* Fill */}
@@ -487,7 +487,7 @@ export default async function OverviewPage() {
                             strokeDasharray={`${filled} ${empty + filled}`}
                             strokeLinecap="round" transform="rotate(135 150 150)" />
                           <text x="150" y="158" fontFamily="'Bebas Neue', sans-serif" fontSize="78" fill={color} textAnchor="middle">{readiness.score}</text>
-                          <text x="150" y="190" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(13,15,18,.55)" textAnchor="middle" letterSpacing="1">/ 100</text>
+                          <text x="150" y="190" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(8,8,8,.55)" textAnchor="middle" letterSpacing="1">/ 100</text>
                         </svg>
                       );
                     })()}
@@ -497,7 +497,7 @@ export default async function OverviewPage() {
                       fontFamily: 'Inter, sans-serif',
                       fontSize: 12.5,
                       lineHeight: 1.5,
-                      color: 'rgba(13,15,18,.78)',
+                      color: 'rgba(8,8,8,.78)',
                       textAlign: 'center',
                       padding: '0 20px',
                       marginTop: 6,
@@ -510,7 +510,7 @@ export default async function OverviewPage() {
                   >
                     {readiness.recommendation}
                     {readiness.crossRef && (
-                      <span style={{ fontSize: 13, color: 'rgba(13,15,18,.65)' }}>
+                      <span style={{ fontSize: 13, color: 'rgba(8,8,8,.65)' }}>
                         {' — '}
                         <a
                           href={readiness.crossRef.href}
@@ -522,7 +522,7 @@ export default async function OverviewPage() {
                       </span>
                     )}
                     {readiness.missingInputs.length > 0 && (
-                      <div style={{ fontSize: 11, color: 'rgba(13,15,18,.55)', marginTop: 4, fontStyle: 'italic' }}>
+                      <div style={{ fontSize: 11, color: 'rgba(8,8,8,.55)', marginTop: 4, fontStyle: 'italic' }}>
                         {readiness.missingInputs.length === 1
                           ? `${readiness.missingInputs[0]} unavailable — score uses other inputs.`
                           : `${readiness.missingInputs.length} inputs unavailable — score uses what's available.`}
@@ -534,18 +534,18 @@ export default async function OverviewPage() {
                 <>
                   <div className="readiness-header">
                     <span className="readiness-label-text">Readiness</span>
-                    <span className="badge-ready" style={{ background: 'rgba(13,15,18,.05)', color: 'rgba(13,15,18,.45)' }}>
+                    <span className="badge-ready" style={{ background: 'rgba(8,8,8,.05)', color: 'rgba(8,8,8,.45)' }}>
                       {readiness?.suppressReason === 'injured' ? 'Suspended' : 'No data'}
                     </span>
                   </div>
                   <div className="readiness-ring-wrap">
                     <svg width="300" height="300" viewBox="0 0 300 300">
-                      <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(13,15,18,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
-                      <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(13,15,18,.32)" textAnchor="middle">—</text>
-                      <text x="150" y="200" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(13,15,18,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
+                      <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(8,8,8,.08)" strokeWidth="16" strokeDasharray="816.81 0" strokeLinecap="round" transform="rotate(135 150 150)" />
+                      <text x="150" y="166" fontFamily="'Bebas Neue', sans-serif" fontSize="64" fill="rgba(8,8,8,.32)" textAnchor="middle">—</text>
+                      <text x="150" y="200" fontFamily="'Inter', sans-serif" fontSize="11" fontWeight="600" fill="rgba(8,8,8,.32)" textAnchor="middle" letterSpacing="1">NO DATA</text>
                     </svg>
                   </div>
-                  <div className="readiness-building" style={{ color: 'rgba(13,15,18,.45)' }}>
+                  <div className="readiness-building" style={{ color: 'rgba(8,8,8,.45)' }}>
                     {readiness?.suppressReason === 'injured' ? 'Suspended while injured' : 'Waiting on data'}
                   </div>
                 </>

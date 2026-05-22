@@ -2,10 +2,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg: #EEECEA; --card: #FFFFFF;
-  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
-  --divider: rgba(13,15,18,.08);
-  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --bg: #E6E8EF; --card: #FFFFFF;
+  --t0: #080808; --t1: rgba(8,8,8,.55); --t2: rgba(8,8,8,.35); --t3: rgba(8,8,8,.20);
+  --divider: rgba(8,8,8,.08);
+  --green: #3EBD41; --orange: #E88021; --amber: #F3AD38; --blue: #008FEC; --warn: #FC4D64;
   --strava: #FC4C02;
   --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
 }
@@ -30,8 +30,8 @@
 .profile-v4-page .identity-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 8px; font-weight: 500; }
 .profile-v4-page .identity-name { font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 0.9; letter-spacing: -1px; color: var(--t0); }
 .profile-v4-page .identity-bio { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--t1); margin-top: 10px; letter-spacing: 0.5px; }
-.profile-v4-page .identity-edit { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t0); background: transparent; border: 1.5px solid rgba(13,15,18,.2); padding: 10px 20px; border-radius: 10px; cursor: pointer; align-self: start; white-space: nowrap; }
-.profile-v4-page .identity-edit:hover { background: rgba(13,15,18,.04); }
+.profile-v4-page .identity-edit { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t0); background: transparent; border: 1.5px solid rgba(8,8,8,.2); padding: 10px 20px; border-radius: 10px; cursor: pointer; align-self: start; white-space: nowrap; }
+.profile-v4-page .identity-edit:hover { background: rgba(8,8,8,.04); }
 
 /* KPIs strip below the identity hero */
 .profile-v4-page .kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
@@ -51,12 +51,12 @@
 .profile-v4-page .card-sub strong { color: var(--t1); font-weight: 600; }
 .profile-v4-page .card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
 .profile-v4-page .card-meta strong { color: var(--t0); font-weight: 700; }
-.profile-v4-page .card-action { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t1); background: transparent; border: 1px solid rgba(13,15,18,.16); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
-.profile-v4-page .card-action:hover { background: rgba(13,15,18,.04); color: var(--t0); }
+.profile-v4-page .card-action { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t1); background: transparent; border: 1px solid rgba(8,8,8,.16); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+.profile-v4-page .card-action:hover { background: rgba(8,8,8,.04); color: var(--t0); }
 
 /* Prefs / engine inputs grid */
 .profile-v4-page .prefs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 0 40px 28px; }
-.profile-v4-page .pref-cell { background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08); border-radius: 10px; padding: 18px 20px; }
+.profile-v4-page .pref-cell { background: rgba(8,8,8,.04); border: 1px solid rgba(8,8,8,.08); border-radius: 10px; padding: 18px 20px; }
 .profile-v4-page .pref-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
 .profile-v4-page .pref-value { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); margin-top: 8px; }
 .profile-v4-page .pref-value.text { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700; }
@@ -64,15 +64,15 @@
 
 /* Goals list */
 .profile-v4-page .goal-row { display: grid; grid-template-columns: 100px 1fr 130px 70px auto; align-items: center; gap: 20px; padding: 16px 40px; border-top: 1px solid var(--divider); cursor: pointer; transition: background 120ms ease; }
-.profile-v4-page .goal-row:hover { background: rgba(13,15,18,.025); }
+.profile-v4-page .goal-row:hover { background: rgba(8,8,8,.025); }
 .profile-v4-page .goal-row:hover .goal-row-edit { opacity: 1; }
-.profile-v4-page .goal-type { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; color: var(--t1); text-transform: uppercase; background: rgba(13,15,18,.05); padding: 6px 10px; border-radius: 6px; text-align: center; }
-.profile-v4-page .goal-type.speed { color: var(--orange); background: rgba(232,93,38,.08); }
-.profile-v4-page .goal-type.volume { color: var(--green); background: rgba(44,168,47,.08); }
-.profile-v4-page .goal-type.habit { color: var(--amber); background: rgba(212,144,10,.10); }
+.profile-v4-page .goal-type { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; color: var(--t1); text-transform: uppercase; background: rgba(8,8,8,.05); padding: 6px 10px; border-radius: 6px; text-align: center; }
+.profile-v4-page .goal-type.speed { color: var(--orange); background: rgba(232,128,33,.08); }
+.profile-v4-page .goal-type.volume { color: var(--green); background: rgba(62,189,65,.08); }
+.profile-v4-page .goal-type.habit { color: var(--amber); background: rgba(243,173,56,.10); }
 .profile-v4-page .goal-target { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--t0); font-weight: 600; }
 .profile-v4-page .goal-current { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 3px; }
-.profile-v4-page .goal-progress-bar { height: 6px; background: rgba(13,15,18,.07); border-radius: 3px; overflow: hidden; }
+.profile-v4-page .goal-progress-bar { height: 6px; background: rgba(8,8,8,.07); border-radius: 3px; overflow: hidden; }
 .profile-v4-page .goal-progress-fill { height: 100%; border-radius: 3px; }
 .profile-v4-page .goal-progress-fill.green { background: var(--green); }
 .profile-v4-page .goal-progress-fill.amber { background: var(--amber); }
@@ -84,7 +84,7 @@
 
 /* HR zones grid */
 .profile-v4-page .hr-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 0 40px 28px; }
-.profile-v4-page .hr-cell { background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08); border-radius: 10px; padding: 18px 20px; }
+.profile-v4-page .hr-cell { background: rgba(8,8,8,.04); border: 1px solid rgba(8,8,8,.08); border-radius: 10px; padding: 18px 20px; }
 .profile-v4-page .hr-zone { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
 .profile-v4-page .hr-zone.z1 { color: var(--green); }
 .profile-v4-page .hr-zone.z2 { color: var(--green); }
@@ -98,12 +98,12 @@
 
 /* Shoes grid */
 .profile-v4-page .shoes-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 40px 28px; }
-.profile-v4-page .shoe-row { background: rgba(13,15,18,.03); border: 1px solid rgba(13,15,18,.08); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; }
-.profile-v4-page .shoe-row:hover { background: rgba(13,15,18,.05); border-color: rgba(13,15,18,.16); }
+.profile-v4-page .shoe-row { background: rgba(8,8,8,.03); border: 1px solid rgba(8,8,8,.08); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 16px; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; }
+.profile-v4-page .shoe-row:hover { background: rgba(8,8,8,.05); border-color: rgba(8,8,8,.16); }
 .profile-v4-page .shoe-row:hover .shoe-row-edit { opacity: 1; }
 .profile-v4-page .shoe-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
 .profile-v4-page .shoe-role { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; margin-top: 4px; }
-.profile-v4-page .shoe-mileage-bar { width: 100%; height: 6px; background: rgba(13,15,18,.07); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+.profile-v4-page .shoe-mileage-bar { width: 100%; height: 6px; background: rgba(8,8,8,.07); border-radius: 3px; overflow: hidden; margin-top: 10px; }
 .profile-v4-page .shoe-mileage-fill { height: 100%; background: var(--green); border-radius: 3px; }
 .profile-v4-page .shoe-mileage-fill.amber { background: var(--amber); }
 .profile-v4-page .shoe-mileage-fill.warn { background: var(--warn); }
@@ -119,12 +119,12 @@
 /* ──────────────────────────────────
    MODAL FRAMEWORK
    ────────────────────────────────── */
-.profile-v4-page .modal-overlay { position: fixed; inset: 0; background: rgba(13,15,18,.55); display: none; align-items: flex-start; justify-content: center; z-index: 1000; padding: 60px 24px; overflow-y: auto; backdrop-filter: blur(4px); }
+.profile-v4-page .modal-overlay { position: fixed; inset: 0; background: rgba(8,8,8,.55); display: none; align-items: flex-start; justify-content: center; z-index: 1000; padding: 60px 24px; overflow-y: auto; backdrop-filter: blur(4px); }
 .profile-v4-page .modal-overlay.open { display: flex; }
 .profile-v4-page .modal-card { background: var(--card); border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.25); width: 100%; max-width: 540px; padding: 36px 40px 32px; position: relative; }
 .profile-v4-page .modal-card.wide { max-width: 680px; }
-.profile-v4-page .modal-close { position: absolute; top: 18px; right: 18px; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(13,15,18,.06); color: var(--t1); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.profile-v4-page .modal-close:hover { background: rgba(13,15,18,.12); color: var(--t0); }
+.profile-v4-page .modal-close { position: absolute; top: 18px; right: 18px; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(8,8,8,.06); color: var(--t1); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.profile-v4-page .modal-close:hover { background: rgba(8,8,8,.12); color: var(--t0); }
 .profile-v4-page .modal-eyebrow { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
 .profile-v4-page .modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 38px; letter-spacing: -.5px; line-height: 1; color: var(--t0); margin-top: 6px; }
 .profile-v4-page .modal-section { margin-top: 24px; }
@@ -134,54 +134,54 @@
 .profile-v4-page .modal-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 .profile-v4-page .modal-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .profile-v4-page .modal-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
-.profile-v4-page .modal-input, .profile-v4-page .modal-select { width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; padding: 11px 14px; background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.10); border-radius: 8px; color: var(--t0); outline: none; }
+.profile-v4-page .modal-input, .profile-v4-page .modal-select { width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; padding: 11px 14px; background: rgba(8,8,8,.04); border: 1px solid rgba(8,8,8,.10); border-radius: 8px; color: var(--t0); outline: none; }
 .profile-v4-page .modal-input:focus, .profile-v4-page .modal-select:focus { border-color: var(--t1); background: var(--card); }
-.profile-v4-page .modal-input.readonly { background: rgba(13,15,18,.02); color: var(--t2); cursor: not-allowed; }
-.profile-v4-page .modal-textarea { width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; padding: 11px 14px; background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.10); border-radius: 8px; min-height: 60px; resize: vertical; outline: none; }
+.profile-v4-page .modal-input.readonly { background: rgba(8,8,8,.02); color: var(--t2); cursor: not-allowed; }
+.profile-v4-page .modal-textarea { width: 100%; font-family: 'Inter', sans-serif; font-size: 14px; padding: 11px 14px; background: rgba(8,8,8,.04); border: 1px solid rgba(8,8,8,.10); border-radius: 8px; min-height: 60px; resize: vertical; outline: none; }
 .profile-v4-page .modal-help { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 4px; line-height: 1.5; }
 .profile-v4-page .modal-help strong { color: var(--t1); font-weight: 600; }
 .profile-v4-page .modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--divider); }
 .profile-v4-page .modal-btn { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; padding: 11px 22px; border-radius: 9px; cursor: pointer; border: none; }
 .profile-v4-page .modal-btn.primary { background: var(--t0); color: #fff; }
-.profile-v4-page .modal-btn.primary:hover { background: rgba(13,15,18,.85); }
-.profile-v4-page .modal-btn.secondary { background: transparent; color: var(--t1); border: 1px solid rgba(13,15,18,.16); }
-.profile-v4-page .modal-btn.secondary:hover { background: rgba(13,15,18,.05); color: var(--t0); }
-.profile-v4-page .modal-btn.danger { background: transparent; color: var(--warn); border: 1px solid rgba(244,63,94,.30); }
-.profile-v4-page .modal-btn.danger:hover { background: rgba(244,63,94,.06); }
+.profile-v4-page .modal-btn.primary:hover { background: rgba(8,8,8,.85); }
+.profile-v4-page .modal-btn.secondary { background: transparent; color: var(--t1); border: 1px solid rgba(8,8,8,.16); }
+.profile-v4-page .modal-btn.secondary:hover { background: rgba(8,8,8,.05); color: var(--t0); }
+.profile-v4-page .modal-btn.danger { background: transparent; color: var(--warn); border: 1px solid rgba(252,77,100,.30); }
+.profile-v4-page .modal-btn.danger:hover { background: rgba(252,77,100,.06); }
 .profile-v4-page .modal-btn.ghost { background: transparent; color: var(--t2); border: none; padding: 8px 12px; }
 .profile-v4-page .modal-btn.ghost:hover { color: var(--t0); }
 
 /* Day-of-week pill picker (used for long-run, rest, quality days) */
 .profile-v4-page .day-pills { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.profile-v4-page .day-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; text-align: center; padding: 11px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
-.profile-v4-page .day-pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
+.profile-v4-page .day-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; text-align: center; padding: 11px 0; background: rgba(8,8,8,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.profile-v4-page .day-pill:hover { background: rgba(8,8,8,.08); color: var(--t0); }
 .profile-v4-page .day-pill.selected { background: var(--t0); color: #fff; border-color: var(--t0); }
 .profile-v4-page .day-pill.disabled { opacity: .35; pointer-events: none; }
 
 /* Level radio cards */
 .profile-v4-page .level-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.profile-v4-page .level-card { padding: 14px 16px; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 10px; cursor: pointer; }
-.profile-v4-page .level-card:hover { background: rgba(13,15,18,.07); }
+.profile-v4-page .level-card { padding: 14px 16px; background: rgba(8,8,8,.04); border: 1.5px solid transparent; border-radius: 10px; cursor: pointer; }
+.profile-v4-page .level-card:hover { background: rgba(8,8,8,.07); }
 .profile-v4-page .level-card.selected { background: var(--card); border-color: var(--t0); }
 .profile-v4-page .level-card-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
 .profile-v4-page .level-card-meta { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 4px; line-height: 1.5; }
 
 /* Goal-type toggle (Speed / Volume / Habit) */
 .profile-v4-page .goal-type-pills { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.profile-v4-page .goal-type-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; text-align: center; padding: 12px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
-.profile-v4-page .goal-type-pill:hover { background: rgba(13,15,18,.08); }
-.profile-v4-page .goal-type-pill.selected.speed { background: rgba(232,93,38,.10); color: var(--orange); border-color: var(--orange); }
-.profile-v4-page .goal-type-pill.selected.volume { background: rgba(44,168,47,.10);  color: var(--green);  border-color: var(--green); }
-.profile-v4-page .goal-type-pill.selected.habit { background: rgba(212,144,10,.12); color: var(--amber);  border-color: var(--amber); }
+.profile-v4-page .goal-type-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1px; text-align: center; padding: 12px 0; background: rgba(8,8,8,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.profile-v4-page .goal-type-pill:hover { background: rgba(8,8,8,.08); }
+.profile-v4-page .goal-type-pill.selected.speed { background: rgba(232,128,33,.10); color: var(--orange); border-color: var(--orange); }
+.profile-v4-page .goal-type-pill.selected.volume { background: rgba(62,189,65,.10);  color: var(--green);  border-color: var(--green); }
+.profile-v4-page .goal-type-pill.selected.habit { background: rgba(243,173,56,.12); color: var(--amber);  border-color: var(--amber); }
 
 /* Avatar source toggle (initials / strava / upload) */
-.profile-v4-page .avatar-source-row { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; padding: 16px 18px; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 12px; cursor: pointer; margin-bottom: 8px; }
+.profile-v4-page .avatar-source-row { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; padding: 16px 18px; background: rgba(8,8,8,.04); border: 1.5px solid transparent; border-radius: 12px; cursor: pointer; margin-bottom: 8px; }
 .profile-v4-page .avatar-source-row.selected { background: var(--card); border-color: var(--t0); }
 .profile-v4-page .avatar-source-row.disabled { opacity: .45; pointer-events: none; }
 .profile-v4-page .avatar-source-preview { width: 52px; height: 52px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #fff; overflow: hidden; }
 .profile-v4-page .avatar-source-preview img { width: 100%; height: 100%; object-fit: cover; }
 .profile-v4-page .avatar-source-preview.strava { background: var(--strava); color: #fff; }
-.profile-v4-page .avatar-source-preview.placeholder { background: rgba(13,15,18,.08); color: var(--t2); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; }
+.profile-v4-page .avatar-source-preview.placeholder { background: rgba(8,8,8,.08); color: var(--t2); font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; }
 .profile-v4-page .avatar-source-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
 .profile-v4-page .avatar-source-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
 .profile-v4-page .avatar-upload-input { display: none; }
@@ -207,8 +207,8 @@
 
 /* Connected / active row — prominent, has actions */
 .profile-v4-page .conn-row {
-  background: rgba(13,15,18,.03);
-  border: 1px solid rgba(13,15,18,.08);
+  background: rgba(8,8,8,.03);
+  border: 1px solid rgba(8,8,8,.08);
   border-radius: 12px;
   padding: 18px 20px;
   display: grid;
@@ -216,7 +216,7 @@
   gap: 16px;
   align-items: center;
 }
-.profile-v4-page .conn-row.connected { background: rgba(44,168,47,.05); border-color: rgba(44,168,47,.20); }
+.profile-v4-page .conn-row.connected { background: rgba(62,189,65,.05); border-color: rgba(62,189,65,.20); }
 .profile-v4-page .conn-icon {
   width: 44px; height: 44px;
   border-radius: 11px;
@@ -245,24 +245,24 @@
   padding: 9px 14px;
   border-radius: 8px;
   cursor: pointer;
-  border: 1px solid rgba(13,15,18,.16);
+  border: 1px solid rgba(8,8,8,.16);
   background: transparent;
   color: var(--t1);
   text-decoration: none;
   white-space: nowrap;
 }
-.profile-v4-page .conn-btn:hover { background: rgba(13,15,18,.04); color: var(--t0); }
+.profile-v4-page .conn-btn:hover { background: rgba(8,8,8,.04); color: var(--t0); }
 .profile-v4-page .conn-btn.connect { background: var(--t0); color: #fff; border-color: var(--t0); }
-.profile-v4-page .conn-btn.connect:hover { background: rgba(13,15,18,.85); }
-.profile-v4-page .conn-btn.disconnect { color: var(--warn); border-color: rgba(244,63,94,.25); }
-.profile-v4-page .conn-btn.disconnect:hover { background: rgba(244,63,94,.06); color: var(--warn); }
+.profile-v4-page .conn-btn.connect:hover { background: rgba(8,8,8,.85); }
+.profile-v4-page .conn-btn.disconnect { color: var(--warn); border-color: rgba(252,77,100,.25); }
+.profile-v4-page .conn-btn.disconnect:hover { background: rgba(252,77,100,.06); color: var(--warn); }
 
 /* Compact future-connectors pill row */
 .profile-v4-page .conn-future-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .profile-v4-page .conn-future {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 12px;
-  background: rgba(13,15,18,.03);
+  background: rgba(8,8,8,.03);
   border: 1px solid var(--divider);
   border-radius: 9px;
   font-family: 'Inter', sans-serif;
@@ -282,7 +282,7 @@
 .profile-v4-page .conn-future-dot.googlefit { background: #4285F4; }
 .profile-v4-page .conn-future-dot.finalsurge { background: #0088CC; }
 .profile-v4-page .conn-future-dot.trainingpeaks { background: #E32D2D; }
-.profile-v4-page .conn-future-dot.whoop { background: #0D0F12; }
+.profile-v4-page .conn-future-dot.whoop { background: #080808; }
 .profile-v4-page .conn-future-dot.oura { background: #1A1A1A; }
 .profile-v4-page .conn-future-tag {
   font-family: 'Inter', sans-serif;
@@ -297,15 +297,15 @@
 
 /* Sex pill picker — segmented control (matches day-pills pattern) */
 .profile-v4-page .sex-pills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.profile-v4-page .sex-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 1.5px; text-align: center; padding: 12px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
-.profile-v4-page .sex-pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
+.profile-v4-page .sex-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 1.5px; text-align: center; padding: 12px 0; background: rgba(8,8,8,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.profile-v4-page .sex-pill:hover { background: rgba(8,8,8,.08); color: var(--t0); }
 .profile-v4-page .sex-pill.selected { background: var(--t0); color: #fff; border-color: var(--t0); }
 
 /* Shoe-purpose multi-select pill picker — same vocab as run types in /log */
 .profile-v4-page .shoe-purpose-pills { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.profile-v4-page .shoe-purpose-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.2px; text-align: center; padding: 11px 0; background: rgba(13,15,18,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
-.profile-v4-page .shoe-purpose-pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
-.profile-v4-page .shoe-purpose-pill.selected { background: rgba(13,15,18,.92); color: #fff; border-color: var(--t0); }
+.profile-v4-page .shoe-purpose-pill { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.2px; text-align: center; padding: 11px 0; background: rgba(8,8,8,.04); border: 1.5px solid transparent; border-radius: 8px; cursor: pointer; color: var(--t1); text-transform: uppercase; }
+.profile-v4-page .shoe-purpose-pill:hover { background: rgba(8,8,8,.08); color: var(--t0); }
+.profile-v4-page .shoe-purpose-pill.selected { background: rgba(8,8,8,.92); color: #fff; border-color: var(--t0); }
 
 /* ══════════════════════════
    RESPONSIVE

@@ -166,11 +166,11 @@ export function PaceMigrationBanner({ beforeAfter }: { beforeAfter?: BeforeAfter
                 ['R', beforeAfter.legacyR, beforeAfter.newR],
               ] as Array<['E' | 'T' | 'I' | 'R', number?, number?]>).map(([zone, prev, curr]) => {
                 const d = fmtDelta(prev, curr);
-                const color = d.tone === 'faster' ? '#1f6a21' : d.tone === 'slower' ? '#b3450a' : 'rgba(13,15,18,.50)';
+                const color = d.tone === 'faster' ? '#1f6a21' : d.tone === 'slower' ? '#b3450a' : 'rgba(8,8,8,.50)';
                 return (
                   <tr key={zone}>
                     <td style={{ padding: '2px 0', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>{zone}</td>
-                    <td style={{ padding: '2px 6px', color: 'rgba(13,15,18,.55)' }}>{fmtPace(prev)}/mi</td>
+                    <td style={{ padding: '2px 6px', color: 'rgba(8,8,8,.55)' }}>{fmtPace(prev)}/mi</td>
                     <td style={{ padding: '2px 6px' }}>{fmtPace(curr)}/mi</td>
                     <td style={{ padding: '2px 0', color }}>{d.label}</td>
                   </tr>

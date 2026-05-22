@@ -31,7 +31,7 @@ function trajectoryColor(state: 'ahead' | 'on-track' | 'behind' | 'collecting-ev
     case 'ahead':                return '#1f6a21';
     case 'on-track':             return '#0D6E8F';
     case 'behind':               return '#B3450A';
-    case 'collecting-evidence':  return 'rgba(13,15,18,.55)';
+    case 'collecting-evidence':  return 'rgba(8,8,8,.55)';
   }
 }
 
@@ -398,7 +398,7 @@ export default async function RacesPage() {
             <div className="vdot-anchor-row">
               <span
                 className="vdot-anchor-num"
-                style={{ color: vdotAgg ? '#0D0F12' : 'rgba(13,15,18,.32)' }}
+                style={{ color: vdotAgg ? '#080808' : 'rgba(8,8,8,.32)' }}
               >
                 {vdotAgg ? vdotAgg.value.toFixed(1) : '—'}
               </span>
@@ -406,11 +406,11 @@ export default async function RacesPage() {
             <div className="vdot-anchor-fresh">
               <span
                 className="vdot-anchor-fresh-dot"
-                style={{ background: vdotAgg ? '#2CA82F' : 'rgba(13,15,18,.25)' }}
+                style={{ background: vdotAgg ? '#3EBD41' : 'rgba(8,8,8,.25)' }}
               />
               <span
                 className="vdot-anchor-fresh-text"
-                style={{ color: 'rgba(13,15,18,.55)' }}
+                style={{ color: 'rgba(8,8,8,.55)' }}
               >
                 {vdotAgg
                   ? `Aggregate · ${vdotAgg.sourceCount} ${vdotAgg.sourceCount === 1 ? 'effort' : 'efforts'} (${vdotAgg.windowLabel})`
@@ -435,7 +435,7 @@ export default async function RacesPage() {
               letterSpacing: 1.6,
               textTransform: 'uppercase',
               padding: '10px 16px',
-              background: '#0D0F12',
+              background: '#080808',
               color: '#fff',
               borderRadius: 8,
               textDecoration: 'none',
@@ -500,12 +500,12 @@ export default async function RacesPage() {
                   <>
                     <div className="path-stat">
                       <div className="path-stat-label">Current Fitness</div>
-                      <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</div>
                       <div className="path-stat-sub">No data</div>
                     </div>
                     <div className="path-stat">
                       <div className="path-stat-label">Gap to Goal</div>
-                      <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                      <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</div>
                       <div className="path-stat-sub">No data</div>
                     </div>
                   </>
@@ -530,16 +530,16 @@ export default async function RacesPage() {
                       fontSize: 10,
                       lineHeight: 1.4,
                       marginTop: 6,
-                      color: 'rgba(13,15,18,.55)',
+                      color: 'rgba(8,8,8,.55)',
                     }}>
-                      <strong style={{ color: 'rgba(13,15,18,.75)', fontStyle: 'normal' }}>{FALSIFIER_PREFIX}</strong>{' '}
+                      <strong style={{ color: 'rgba(8,8,8,.75)', fontStyle: 'normal' }}>{FALSIFIER_PREFIX}</strong>{' '}
                       {trajectory.falsifier}
                     </div>
                   </div>
                 ) : (
                   <div className="path-stat">
                     <div className="path-stat-label">Trajectory</div>
-                    <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                    <div className="path-stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>—</div>
                     <div className="path-stat-sub">No data</div>
                   </div>
                 )}
@@ -593,7 +593,7 @@ export default async function RacesPage() {
 
           <div className="races-recent-list">
             {upcoming.length === 0 ? (
-              <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+              <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
                 No upcoming races on the calendar.
               </div>
             ) : (
@@ -632,7 +632,7 @@ export default async function RacesPage() {
           </div>
 
           {recent.length === 0 ? (
-            <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+            <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
               No past races logged. Add a recent race finish to set your fitness score.
             </div>
           ) : (
@@ -676,7 +676,7 @@ export default async function RacesPage() {
           </div>
 
           {PRs.length === 0 ? (
-            <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+            <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
               No PRs yet — log past races to populate.
             </div>
           ) : (
@@ -703,7 +703,7 @@ export default async function RacesPage() {
                         fontSize: 9,
                         letterSpacing: 1.2,
                         color: '#1f6a21',
-                        background: 'rgba(44,168,47,.10)',
+                        background: 'rgba(62,189,65,.10)',
                         padding: '2px 6px',
                         borderRadius: 4,
                         display: 'inline-block',
@@ -741,7 +741,7 @@ export default async function RacesPage() {
                         fontFamily: 'Inter, sans-serif',
                         fontSize: 11,
                         lineHeight: 1.45,
-                        color: 'rgba(13,15,18,.55)',
+                        color: 'rgba(8,8,8,.55)',
                         fontStyle: 'italic',
                       }}
                     >

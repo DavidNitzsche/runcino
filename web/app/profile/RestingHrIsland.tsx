@@ -128,7 +128,7 @@ export function RestingHrIsland() {
       <style jsx>{`
         .resting-hr-block {
           padding: 20px 40px 24px;
-          border-top: 1px solid rgba(13,15,18,.06);
+          border-top: 1px solid rgba(8,8,8,.06);
         }
         .rhr-top {
           display: flex; justify-content: space-between; align-items: center;
@@ -137,34 +137,34 @@ export function RestingHrIsland() {
         .rhr-label {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           text-transform: uppercase;
         }
         .rhr-edit-btn {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 10.5px; letter-spacing: 1.5px;
           padding: 6px 12px; border-radius: 6px; cursor: pointer;
-          background: transparent; color: #0D0F12;
-          border: 1px solid rgba(13,15,18,.18);
+          background: transparent; color: #080808;
+          border: 1px solid rgba(8,8,8,.18);
           text-transform: uppercase;
         }
-        .rhr-edit-btn:hover { background: rgba(13,15,18,.04); }
+        .rhr-edit-btn:hover { background: rgba(8,8,8,.04); }
         .rhr-row {
           display: flex; align-items: baseline; gap: 8px;
           font-family: 'Bebas Neue', sans-serif;
         }
         .rhr-val {
-          font-size: 40px; line-height: 1; color: #0D0F12;
+          font-size: 40px; line-height: 1; color: #080808;
           letter-spacing: 0;
         }
-        .rhr-val.muted { color: rgba(13,15,18,.32); }
+        .rhr-val.muted { color: rgba(8,8,8,.32); }
         .rhr-unit {
           font-family: 'Inter', sans-serif; font-size: 13px;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
         }
         .rhr-source {
           font-family: 'Inter', sans-serif; font-size: 13px;
-          color: rgba(13,15,18,.55); margin-top: 6px;
+          color: rgba(8,8,8,.55); margin-top: 6px;
         }
         .rhr-edit {
           display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -173,7 +173,7 @@ export function RestingHrIsland() {
           font-family: 'Bebas Neue', sans-serif; font-size: 28px;
           width: 100px; padding: 4px 0;
           border: none; border-bottom: 2px solid #E85D26;
-          background: transparent; color: #0D0F12;
+          background: transparent; color: #080808;
         }
         .rhr-input:focus { outline: none; }
         .rhr-save-btn, .rhr-cancel-btn, .rhr-clear-btn {
@@ -183,9 +183,9 @@ export function RestingHrIsland() {
           border: 1px solid;
           text-transform: uppercase;
         }
-        .rhr-save-btn { background: #0D0F12; color: #fff; border-color: #0D0F12; }
-        .rhr-cancel-btn { background: transparent; color: rgba(13,15,18,.55); border-color: rgba(13,15,18,.16); }
-        .rhr-clear-btn { background: transparent; color: rgba(13,15,18,.55); border-color: rgba(13,15,18,.16); }
+        .rhr-save-btn { background: #080808; color: #fff; border-color: #080808; }
+        .rhr-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
+        .rhr-clear-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
         .rhr-err {
           font-family: 'Inter', sans-serif; font-size: 12px; color: #B00020;
           flex-basis: 100%;

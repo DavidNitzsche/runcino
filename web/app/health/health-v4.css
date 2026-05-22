@@ -3,10 +3,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #EEECEA; --card: #FFFFFF;
-  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
-  --divider: rgba(13,15,18,.08);
-  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --bg: #E6E8EF; --card: #FFFFFF;
+  --t0: #080808; --t1: rgba(8,8,8,.55); --t2: rgba(8,8,8,.35); --t3: rgba(8,8,8,.20);
+  --divider: rgba(8,8,8,.08);
+  --green: #3EBD41; --orange: #E88021; --amber: #F3AD38; --blue: #008FEC; --warn: #FC4D64;
   --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
 }
 
@@ -58,7 +58,7 @@
 /* ── FORM CURVE HERO (training load chart) ───────── */
 .health-v4-page .form-curve-card { padding-bottom: 24px; }
 .health-v4-page .form-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 0 40px 20px; }
-.health-v4-page .form-stat { padding: 18px 22px; background: rgba(13,15,18,.025); border-radius: 12px; }
+.health-v4-page .form-stat { padding: 18px 22px; background: rgba(8,8,8,.025); border-radius: 12px; }
 .health-v4-page .form-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
 .health-v4-page .form-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 48px; line-height: 1; color: var(--t0); margin-top: 8px; letter-spacing: -1px; }
 .health-v4-page .form-stat-val.green { color: var(--green); }
@@ -80,7 +80,7 @@
 .health-v4-page .health-hero-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
 .health-v4-page .health-hero-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(96px, 16vw, 200px); line-height: 0.86; letter-spacing: -3px; color: var(--t0); margin-left: -6px; text-transform: uppercase; }
 .health-v4-page .health-hero-stats { display: flex; gap: 10px; margin-top: 28px; }
-.health-v4-page .health-hero-stat { padding: 14px 18px; background: rgba(13,15,18,.025); border-radius: 12px; flex: 1; }
+.health-v4-page .health-hero-stat { padding: 14px 18px; background: rgba(8,8,8,.025); border-radius: 12px; flex: 1; }
 .health-v4-page .health-hero-stat-row { display: flex; align-items: baseline; gap: 4px; }
 .health-v4-page .health-hero-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); letter-spacing: -0.5px; }
 .health-v4-page .health-hero-stat-unit { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); font-weight: 500; }
@@ -100,10 +100,10 @@
 /* Right column — readiness ring + 5 trend bars. Ring + state live in a
    flex-grow middle section so the ring expands when the left brief is
    tall; the trend bars stay anchored to the bottom regardless. */
-.health-v4-page .health-hero-right { background: rgba(13,15,18,.02); padding: 40px; display: flex; flex-direction: column; }
+.health-v4-page .health-hero-right { background: rgba(8,8,8,.02); padding: 40px; display: flex; flex-direction: column; }
 .health-v4-page .health-hero-right-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .health-v4-page .health-hero-right-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
-.health-v4-page .health-hero-right-badge { background: rgba(44,168,47,.12); color: var(--green); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
+.health-v4-page .health-hero-right-badge { background: rgba(62,189,65,.12); color: var(--green); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.5px; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
 .health-v4-page .health-hero-ring-section { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 240px; padding: 16px 0 24px; gap: 14px; }
 .health-v4-page .health-hero-ring { display: flex; justify-content: center; width: 100%; }
 .health-v4-page .health-hero-ring svg { width: 100%; max-width: 340px; height: auto; }
@@ -116,17 +116,17 @@
 .health-v4-page .health-trend-row-value.green { color: var(--green); }
 .health-v4-page .health-trend-row-value.amber { color: var(--amber); }
 .health-v4-page .health-trend-row-value.dim { color: var(--t2); }
-.health-v4-page .health-trend-bar-track { width: 100%; height: 8px; background: rgba(13,15,18,.07); border-radius: 4px; position: relative; overflow: hidden; }
+.health-v4-page .health-trend-bar-track { width: 100%; height: 8px; background: rgba(8,8,8,.07); border-radius: 4px; position: relative; overflow: hidden; }
 .health-v4-page .health-trend-bar-fill { height: 100%; border-radius: 4px; position: absolute; left: 0; top: 0; }
 .health-v4-page .health-trend-bar-fill.green { background: var(--green); }
 .health-v4-page .health-trend-bar-fill.amber { background: var(--amber); }
-.health-v4-page .health-trend-bar-fill.dim { background: rgba(13,15,18,.25); }
+.health-v4-page .health-trend-bar-fill.dim { background: rgba(8,8,8,.25); }
 
 /* ── HR Zones — Karvonen scale, 5 labeled horizontal bands ──────── */
 .health-v4-page .hr-zones { padding: 4px 40px 8px; display: flex; flex-direction: column; gap: 10px; }
 .health-v4-page .hr-zone-row { display: grid; grid-template-columns: 132px 1fr 132px; align-items: center; gap: 16px; }
 .health-v4-page .hr-zone-name { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: var(--t0); }
-.health-v4-page .hr-zone-band-wrap { background: rgba(13,15,18,.04); border-radius: 8px; height: 34px; display: flex; align-items: center; overflow: hidden; }
+.health-v4-page .hr-zone-band-wrap { background: rgba(8,8,8,.04); border-radius: 8px; height: 34px; display: flex; align-items: center; overflow: hidden; }
 .health-v4-page .hr-zone-band { height: 100%; min-width: 90px; border-radius: 8px; display: flex; align-items: center; padding: 0 14px; }
 .health-v4-page .hr-zone-band-bpm { font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 0.5px; color: #fff; line-height: 1; }
 .health-v4-page .hr-zone-pct { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.5px; color: var(--t1); text-align: right; }
@@ -134,26 +134,26 @@
 /* ── HR Anchors (editable max/resting) — sits inside the HR Zones card ── */
 .health-v4-page .hr-anchors-header { padding: 24px 40px 4px; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; border-top: 1px solid var(--divider); margin-top: 20px; }
 .health-v4-page .hr-anchors { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 40px 4px; }
-.health-v4-page .hr-anchor { padding: 18px 22px; background: rgba(13,15,18,.025); border-radius: 12px; }
+.health-v4-page .hr-anchor { padding: 18px 22px; background: rgba(8,8,8,.025); border-radius: 12px; }
 .health-v4-page .hr-anchor-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .health-v4-page .hr-anchor-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
-.health-v4-page .hr-anchor-edit { font-family: 'Inter', sans-serif; font-size: 10.5px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 6px 12px; border-radius: 6px; cursor: pointer; background: transparent; color: var(--t1); border: 1px solid rgba(13,15,18,.16); }
-.health-v4-page .hr-anchor-edit:hover { background: rgba(13,15,18,.04); }
+.health-v4-page .hr-anchor-edit { font-family: 'Inter', sans-serif; font-size: 10.5px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 6px 12px; border-radius: 6px; cursor: pointer; background: transparent; color: var(--t1); border: 1px solid rgba(8,8,8,.16); }
+.health-v4-page .hr-anchor-edit:hover { background: rgba(8,8,8,.04); }
 .health-v4-page .hr-anchor-row { display: flex; align-items: baseline; gap: 6px; margin-top: 10px; }
 .health-v4-page .hr-anchor-val { font-family: 'Bebas Neue', sans-serif; font-size: 38px; line-height: 1; color: var(--t0); letter-spacing: -0.5px; }
 .health-v4-page .hr-anchor-unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t2); font-weight: 500; }
 .health-v4-page .hr-anchor-source { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--green); margin-top: 8px; }
 .health-v4-page .hr-anchor-hint { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t1); line-height: 1.5; margin-top: 8px; }
-.health-v4-page .hr-anchor-newpeak { display: inline-block; margin-top: 8px; padding: 6px 12px; border: 1px solid #E85D26; border-radius: 999px; background: rgba(232,93,38,.08); color: #E85D26; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; }
-.health-v4-page .hr-anchor-newpeak:hover { background: rgba(232,93,38,.16); }
+.health-v4-page .hr-anchor-newpeak { display: inline-block; margin-top: 8px; padding: 6px 12px; border: 1px solid #E88021; border-radius: 999px; background: rgba(232,128,33,.08); color: #E88021; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; }
+.health-v4-page .hr-anchor-newpeak:hover { background: rgba(232,128,33,.16); }
 .health-v4-page .hr-anchor-edit-form { margin-top: 10px; }
 .health-v4-page .hr-anchor-edit-inputs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.health-v4-page .hr-anchor-input { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 600; width: 84px; padding: 8px 12px; border: 1.5px solid rgba(13,15,18,.16); border-radius: 8px; }
+.health-v4-page .hr-anchor-input { font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 600; width: 84px; padding: 8px 12px; border: 1.5px solid rgba(8,8,8,.16); border-radius: 8px; }
 .health-v4-page .hr-anchor-input:focus { outline: none; border-color: var(--orange); }
 .health-v4-page .hr-anchor-save, .health-v4-page .hr-anchor-cancel, .health-v4-page .hr-anchor-clear { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 9px 14px; border-radius: 8px; cursor: pointer; border: 1px solid; }
 .health-v4-page .hr-anchor-save { background: var(--t0); color: #fff; border-color: var(--t0); }
 .health-v4-page .hr-anchor-save:disabled { opacity: 0.5; cursor: not-allowed; }
-.health-v4-page .hr-anchor-cancel { background: transparent; color: var(--t1); border-color: rgba(13,15,18,.16); }
+.health-v4-page .hr-anchor-cancel { background: transparent; color: var(--t1); border-color: rgba(8,8,8,.16); }
 .health-v4-page .hr-anchor-clear { background: transparent; color: #B00020; border-color: rgba(176,0,32,.25); }
 .health-v4-page .hr-anchor-err { display: block; font-family: 'Inter', sans-serif; font-size: 12px; color: #B00020; margin-top: 8px; }
 .health-v4-page .hr-anchor-provenance { padding: 12px 40px 28px; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t1); line-height: 1.5; }
@@ -162,12 +162,12 @@
 /* ── Vitals grid (sparkline tiles) ───────────────── */
 .health-v4-page .vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 40px 32px; }
 .health-v4-page .vitals-grid.five { grid-template-columns: repeat(5, 1fr); }
-.health-v4-page .vital-tile { padding: 18px 20px; background: rgba(13,15,18,.025); border-radius: 12px; }
-.health-v4-page .vital-tile.sample { border: 1px dashed rgba(212,144,10,.35); background: rgba(212,144,10,.04); }
+.health-v4-page .vital-tile { padding: 18px 20px; background: rgba(8,8,8,.025); border-radius: 12px; }
+.health-v4-page .vital-tile.sample { border: 1px dashed rgba(243,173,56,.35); background: rgba(243,173,56,.04); }
 .health-v4-page .vital-tile-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .health-v4-page .vital-tile-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; }
 .health-v4-page .vital-tile-badge { font-family: 'Inter', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
-.health-v4-page .vital-tile-badge.sample { background: rgba(212,144,10,.14); color: var(--amber); }
+.health-v4-page .vital-tile-badge.sample { background: rgba(243,173,56,.14); color: var(--amber); }
 .health-v4-page .vital-tile-value { font-family: 'Bebas Neue', sans-serif; font-size: 38px; line-height: 1; color: var(--t0); margin-top: 12px; letter-spacing: -0.5px; }
 .health-v4-page .vital-tile.sample .vital-tile-value { color: var(--t1); }
 .health-v4-page .vital-tile-unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t2); font-weight: 500; margin-left: 4px; }
@@ -178,9 +178,9 @@
 .health-v4-page .vital-tile-range { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
 .health-v4-page .vital-tile-range-end { font-family: 'Inter', sans-serif; font-size: 10px; color: var(--t2); font-weight: 500; flex-shrink: 0; min-width: 22px; }
 .health-v4-page .vital-tile-range-end.right { text-align: right; }
-.health-v4-page .vital-tile-range-bar { flex: 1; height: 4px; background: rgba(13,15,18,.10); border-radius: 2px; position: relative; }
-.health-v4-page .vital-tile-range-avg { position: absolute; top: -3px; bottom: -3px; width: 1.5px; background: rgba(13,15,18,.35); transform: translateX(-50%); }
-.health-v4-page .vital-tile-range-marker { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--green); transform: translate(-50%, -50%); border: 2px solid white; box-shadow: 0 0 0 1px rgba(13,15,18,.20); }
+.health-v4-page .vital-tile-range-bar { flex: 1; height: 4px; background: rgba(8,8,8,.10); border-radius: 2px; position: relative; }
+.health-v4-page .vital-tile-range-avg { position: absolute; top: -3px; bottom: -3px; width: 1.5px; background: rgba(8,8,8,.35); transform: translateX(-50%); }
+.health-v4-page .vital-tile-range-marker { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--green); transform: translate(-50%, -50%); border: 2px solid white; box-shadow: 0 0 0 1px rgba(8,8,8,.20); }
 .health-v4-page .vital-tile-range-marker.amber { background: var(--amber); }
 .health-v4-page .vital-tile-range-marker.dim { background: var(--t2); }
 .health-v4-page .vital-tile-status { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 10px; }
@@ -193,13 +193,13 @@
 .health-v4-page .checkin-slider-row { display: grid; grid-template-columns: 90px 1fr 32px; align-items: center; gap: 16px; }
 .health-v4-page .checkin-slider-label { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t2); }
 .health-v4-page .checkin-range { -webkit-appearance: none; appearance: none; flex: 1; height: 8px; border-radius: 4px; outline: none; cursor: pointer; border: none; display: block; }
-.health-v4-page .checkin-range.energy { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #2CA82F 100%); }
-.health-v4-page .checkin-range.soreness { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #E85D26 100%); }
-.health-v4-page .checkin-range.stress { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #D4900A 100%); }
+.health-v4-page .checkin-range.energy { background: linear-gradient(to right, rgba(8,8,8,.10) 0%, #3EBD41 100%); }
+.health-v4-page .checkin-range.soreness { background: linear-gradient(to right, rgba(8,8,8,.10) 0%, #E88021 100%); }
+.health-v4-page .checkin-range.stress { background: linear-gradient(to right, rgba(8,8,8,.10) 0%, #F3AD38 100%); }
 .health-v4-page .checkin-range::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; }
 .health-v4-page .checkin-range::-moz-range-track { height: 8px; border-radius: 4px; }
-.health-v4-page .checkin-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid rgba(13,15,18,.22); box-shadow: 0 1px 6px rgba(0,0,0,.16); cursor: grab; margin-top: -6px; }
-.health-v4-page .checkin-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid rgba(13,15,18,.22); box-shadow: 0 1px 6px rgba(0,0,0,.16); cursor: grab; }
+.health-v4-page .checkin-range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid rgba(8,8,8,.22); box-shadow: 0 1px 6px rgba(0,0,0,.16); cursor: grab; margin-top: -6px; }
+.health-v4-page .checkin-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid rgba(8,8,8,.22); box-shadow: 0 1px 6px rgba(0,0,0,.16); cursor: grab; }
 .health-v4-page .checkin-slider-val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; line-height: 1; color: var(--t1); text-align: right; }
 .health-v4-page .checkin-btn { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; color: #fff; background: var(--t0); border: none; border-radius: 8px; padding: 12px 24px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; white-space: nowrap; align-self: flex-start; margin-top: 6px; }
 
@@ -209,12 +209,12 @@
 .health-v4-page .timeline-day-date { font-family: 'Oswald', sans-serif; font-size: 10px; font-weight: 600; color: var(--t2); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px; }
 .health-v4-page .timeline-day.today .timeline-day-date { color: var(--amber); }
 .health-v4-page .timeline-day-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; }
-.health-v4-page .timeline-bar { height: 14px; border-radius: 3px; background: rgba(13,15,18,.06); position: relative; overflow: hidden; }
+.health-v4-page .timeline-bar { height: 14px; border-radius: 3px; background: rgba(8,8,8,.06); position: relative; overflow: hidden; }
 .health-v4-page .timeline-bar-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 3px; }
 .health-v4-page .timeline-bar-fill.energy { background: var(--green); }
 .health-v4-page .timeline-bar-fill.soreness { background: var(--orange); }
 .health-v4-page .timeline-bar-fill.stress { background: var(--amber); }
-.health-v4-page .timeline-day.missing .timeline-bar { background: rgba(13,15,18,.04); }
+.health-v4-page .timeline-day.missing .timeline-bar { background: rgba(8,8,8,.04); }
 .health-v4-page .checkin-legend { display: flex; gap: 24px; padding: 0 40px 24px; }
 .health-v4-page .checkin-legend-item { display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t1); font-weight: 600; letter-spacing: 0.5px; }
 .health-v4-page .checkin-legend-dot { width: 10px; height: 10px; border-radius: 3px; }
@@ -224,7 +224,7 @@
 
 /* ── Post-race recovery (compact) ────────────────── */
 .health-v4-page .recovery-pills { display: flex; gap: 10px; padding: 0 40px 28px; flex-wrap: wrap; }
-.health-v4-page .recovery-pill { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; background: rgba(212,144,10,.10); }
+.health-v4-page .recovery-pill { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; background: rgba(243,173,56,.10); }
 .health-v4-page .recovery-pill-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px; color: var(--amber); }
 .health-v4-page .recovery-pill-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); }
 
@@ -233,16 +233,16 @@
 .health-v4-page .insight-row { display: flex; gap: 16px; padding: 16px 0; border-top: 1px solid var(--divider); }
 .health-v4-page .insight-row:first-child { border-top: none; padding-top: 4px; }
 .health-v4-page .insight-icon { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; }
-.health-v4-page .insight-icon.green { background: rgba(44,168,47,.12); color: var(--green); }
-.health-v4-page .insight-icon.amber { background: rgba(212,144,10,.12); color: var(--amber); }
-.health-v4-page .insight-icon.blue { background: rgba(37,99,235,.12); color: var(--blue); }
+.health-v4-page .insight-icon.green { background: rgba(62,189,65,.12); color: var(--green); }
+.health-v4-page .insight-icon.amber { background: rgba(243,173,56,.12); color: var(--amber); }
+.health-v4-page .insight-icon.blue { background: rgba(0,143,236,.12); color: var(--blue); }
 .health-v4-page .insight-body { flex: 1; }
 .health-v4-page .insight-title { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 700; color: var(--t0); line-height: 1.4; }
 .health-v4-page .insight-detail { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); line-height: 1.5; margin-top: 4px; }
 
 /* ── Data sources footer ─────────────────────────── */
 .health-v4-page .sources-strip { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 40px 32px; }
-.health-v4-page .source-pill { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(13,15,18,.025); border-radius: 10px; }
+.health-v4-page .source-pill { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(8,8,8,.025); border-radius: 10px; }
 .health-v4-page .source-pill-dot { width: 8px; height: 8px; border-radius: 50%; }
 .health-v4-page .source-pill-dot.green { background: var(--green); }
 .health-v4-page .source-pill-dot.amber { background: var(--amber); }

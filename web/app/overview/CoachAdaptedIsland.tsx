@@ -100,9 +100,9 @@ export function CoachAdaptedIsland() {
 
   const btn = (kind: 'accept' | 'decline'): CSSProperties => ({
     flex: 1, padding: '8px 0', borderRadius: 10, fontSize: 12.5, fontWeight: 600,
-    cursor: 'pointer', border: kind === 'accept' ? 'none' : '1px solid rgba(13,15,18,.15)',
+    cursor: 'pointer', border: kind === 'accept' ? 'none' : '1px solid rgba(8,8,8,.15)',
     background: kind === 'accept' ? '#E85D26' : '#fff',
-    color: kind === 'accept' ? '#fff' : 'rgba(13,15,18,.7)',
+    color: kind === 'accept' ? '#fff' : 'rgba(8,8,8,.7)',
   });
 
   return (
@@ -111,15 +111,15 @@ export function CoachAdaptedIsland() {
         <div key={`p-${g.reason}`} style={{
           background: '#fff', borderRadius: 16, padding: '16px 18px', marginBottom: 16,
           boxShadow: '0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.05)',
-          border: '1px solid rgba(232,93,38,.25)',
+          border: '1px solid rgba(232,128,33,.25)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
             <span style={{ color: '#E85D26', fontWeight: 700 }}>✦</span>
-            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(13,15,18,.45)' }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(8,8,8,.45)' }}>
               Coach suggests a change
             </span>
           </div>
-          <div style={{ fontSize: 13.5, color: '#0D0F12', lineHeight: 1.45 }}>{g.reason}</div>
+          <div style={{ fontSize: 13.5, color: '#080808', lineHeight: 1.45 }}>{g.reason}</div>
           <div style={{ fontSize: 11, marginTop: 2, marginBottom: 12 }}>
             <span style={{ color: '#E85D26', fontWeight: 600 }}>{dayList(g.days)}</span>
           </div>
@@ -136,17 +136,17 @@ export function CoachAdaptedIsland() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
             <span style={{ color: '#E85D26', fontWeight: 700 }}>✦</span>
-            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(13,15,18,.45)' }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(8,8,8,.45)' }}>
               Coach updated your plan
             </span>
             <button onClick={dismiss} aria-label="Dismiss" style={{
               marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer',
-              color: 'rgba(13,15,18,.45)', fontSize: 15, lineHeight: 1, padding: 2,
+              color: 'rgba(8,8,8,.45)', fontSize: 15, lineHeight: 1, padding: 2,
             }}>✕</button>
           </div>
           {groups.map((g) => (
             <div key={g.reason} style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 13.5, color: '#0D0F12', lineHeight: 1.45 }}>{g.reason}</div>
+              <div style={{ fontSize: 13.5, color: '#080808', lineHeight: 1.45 }}>{g.reason}</div>
               <div style={{ fontSize: 11, marginTop: 2 }}>
                 <span style={{ color: '#E85D26', fontWeight: 600 }}>{dayList(g.days)}</span>
               </div>

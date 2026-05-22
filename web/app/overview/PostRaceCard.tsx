@@ -34,7 +34,7 @@ function stageColor(stage: PostRaceFinding['stage']): { accent: string; bg: stri
     case 'easy':
       return { accent: '#0D6E8F', bg: 'rgba(13,110,143,.05)', border: 'rgba(13,110,143,.28)' };
     default:
-      return { accent: '#0D0F12', bg: 'rgba(13,15,18,.04)', border: 'rgba(13,15,18,.18)' };
+      return { accent: '#080808', bg: 'rgba(8,8,8,.04)', border: 'rgba(8,8,8,.18)' };
   }
 }
 
@@ -56,7 +56,7 @@ export function PostRaceCard({ finding }: Props) {
         fontFamily: 'Inter, sans-serif',
         fontSize: 13,
         lineHeight: 1.55,
-        color: 'rgba(13,15,18,.85)',
+        color: 'rgba(8,8,8,.85)',
         maxWidth: 640,
       }}
     >
@@ -78,9 +78,9 @@ export function PostRaceCard({ finding }: Props) {
         <span>{isRaceDay ? 'Race day' : 'Post-race recovery'}</span>
         {!isRaceDay && stageBounds && (
           <>
-            <span style={{ color: 'rgba(13,15,18,.45)' }}>·</span>
+            <span style={{ color: 'rgba(8,8,8,.45)' }}>·</span>
             <span>Day {daysSinceRace} · {stageLabel(stage)}</span>
-            <span style={{ color: 'rgba(13,15,18,.45)', fontWeight: 500 }}>
+            <span style={{ color: 'rgba(8,8,8,.45)', fontWeight: 500 }}>
               · stage ends day {stage === 'rest' ? stageBounds.restEndDay : stage === 'light' ? stageBounds.lightEndDay : stageBounds.easyEndDay}
             </span>
           </>
@@ -89,9 +89,9 @@ export function PostRaceCard({ finding }: Props) {
 
       {/* Race headline */}
       <div style={{ marginBottom: 10 }}>
-        <strong style={{ color: '#0D0F12' }}>{fmtDateAgo(daysSinceRace)}: {race.name}</strong>
+        <strong style={{ color: '#080808' }}>{fmtDateAgo(daysSinceRace)}: {race.name}</strong>
         {race.finishS && (
-          <span style={{ color: 'rgba(13,15,18,.62)' }}>
+          <span style={{ color: 'rgba(8,8,8,.62)' }}>
             {' '}· {race.distanceMi >= 22 ? 'Marathon' : race.distanceMi >= 11 ? 'Half marathon' : `${race.distanceMi.toFixed(1)} mi`}
             {' '}· finished {fmtTime(race.finishS)}
           </span>
@@ -109,13 +109,13 @@ export function PostRaceCard({ finding }: Props) {
           style={{
             marginTop: 10,
             padding: '8px 10px',
-            background: 'rgba(13,15,18,.04)',
+            background: 'rgba(8,8,8,.04)',
             borderRadius: 6,
             fontSize: 12,
-            color: 'rgba(13,15,18,.72)',
+            color: 'rgba(8,8,8,.72)',
           }}
         >
-          <strong style={{ color: '#0D0F12' }}>What's next: </strong>
+          <strong style={{ color: '#080808' }}>What's next: </strong>
           {whatsNext}
         </div>
       )}

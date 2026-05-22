@@ -33,8 +33,8 @@ export function StatPill({ value, unit, label, style }: StatPillProps) {
   return (
     <div
       style={{
-        background: 'rgba(13,15,18,.04)',
-        border: '1px solid rgba(13,15,18,.08)',
+        background: 'rgba(8,8,8,.04)',
+        border: '1px solid rgba(8,8,8,.08)',
         borderRadius: '10px',
         padding: '14px 20px',
         display: 'flex',
@@ -50,7 +50,7 @@ export function StatPill({ value, unit, label, style }: StatPillProps) {
             fontFamily: 'Bebas Neue, sans-serif',
             fontSize: '32px',
             lineHeight: 1,
-            color: 'var(--ink, #0D0F12)',
+            color: 'var(--ink, #080808)',
           }}
         >
           {display}
@@ -60,7 +60,7 @@ export function StatPill({ value, unit, label, style }: StatPillProps) {
             style={{
               fontFamily: 'Inter, sans-serif',
               fontSize: '13px',
-              color: 'rgba(13,15,18,.55)',
+              color: 'rgba(8,8,8,.55)',
               marginLeft: '1px',
             }}
           >
@@ -73,7 +73,7 @@ export function StatPill({ value, unit, label, style }: StatPillProps) {
           fontFamily: 'Inter, sans-serif',
           fontSize: '12px',
           letterSpacing: '1.5px',
-          color: 'rgba(13,15,18,.35)',
+          color: 'rgba(8,8,8,.35)',
           textTransform: 'uppercase',
         }}
       >

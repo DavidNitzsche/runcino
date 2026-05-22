@@ -66,13 +66,13 @@ function stateColor(state: GapState): { accent: string; bg: string; border: stri
     case 'e4-3to4':
       return { accent: '#0D6E8F', bg: 'rgba(13,110,143,.04)', border: 'rgba(13,110,143,.25)' };
     case 'e4-5to7':
-      return { accent: '#B3450A', bg: 'rgba(232,93,38,.05)', border: 'rgba(232,93,38,.28)' };
+      return { accent: '#B3450A', bg: 'rgba(232,128,33,.05)', border: 'rgba(232,128,33,.28)' };
     case 'e1-8to14':
-      return { accent: '#B3450A', bg: 'rgba(232,93,38,.06)', border: 'rgba(232,93,38,.32)' };
+      return { accent: '#B3450A', bg: 'rgba(232,128,33,.06)', border: 'rgba(232,128,33,.32)' };
     case 'e1-15plus':
       return { accent: '#B00020', bg: 'rgba(176,0,32,.05)', border: 'rgba(176,0,32,.28)' };
     default:
-      return { accent: '#0D0F12', bg: 'transparent', border: 'rgba(13,15,18,.10)' };
+      return { accent: '#080808', bg: 'transparent', border: 'rgba(8,8,8,.10)' };
   }
 }
 
@@ -121,7 +121,7 @@ export function StravaGapCard({ state, daysSinceLastRun, lastRunDate }: Props) {
         fontFamily: 'Inter, sans-serif',
         fontSize: 13,
         lineHeight: 1.55,
-        color: 'rgba(13,15,18,.85)',
+        color: 'rgba(8,8,8,.85)',
         maxWidth: 640,
       }}
     >
@@ -138,17 +138,17 @@ export function StravaGapCard({ state, daysSinceLastRun, lastRunDate }: Props) {
       >
         Activity gap
         {lastRunDate && (
-          <span style={{ color: 'rgba(13,15,18,.45)', fontWeight: 500, marginLeft: 8 }}>
+          <span style={{ color: 'rgba(8,8,8,.45)', fontWeight: 500, marginLeft: 8 }}>
             · last run {lastRunDate}
           </span>
         )}
       </div>
 
-      <div style={{ marginBottom: 8, color: '#0D0F12', fontWeight: 600, fontSize: 14 }}>
+      <div style={{ marginBottom: 8, color: '#080808', fontWeight: 600, fontSize: 14 }}>
         {header}
       </div>
 
-      <div style={{ marginBottom: 12, color: 'rgba(13,15,18,.72)' }}>
+      <div style={{ marginBottom: 12, color: 'rgba(8,8,8,.72)' }}>
         {detail}
       </div>
 
@@ -161,7 +161,7 @@ export function StravaGapCard({ state, daysSinceLastRun, lastRunDate }: Props) {
             fontFamily: 'Oswald, sans-serif', fontWeight: 600,
             fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase',
             padding: '8px 13px', borderRadius: 6, cursor: 'pointer',
-            background: '#0D0F12', color: '#fff', border: '1px solid #0D0F12',
+            background: '#080808', color: '#fff', border: '1px solid #080808',
             opacity: busy !== null ? 0.5 : 1,
           }}
         >
@@ -190,8 +190,8 @@ export function StravaGapCard({ state, daysSinceLastRun, lastRunDate }: Props) {
             fontFamily: 'Oswald, sans-serif', fontWeight: 600,
             fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase',
             padding: '8px 13px', borderRadius: 6, cursor: 'pointer',
-            background: 'transparent', color: 'rgba(13,15,18,.55)',
-            border: '1px solid rgba(13,15,18,.18)',
+            background: 'transparent', color: 'rgba(8,8,8,.55)',
+            border: '1px solid rgba(8,8,8,.18)',
             opacity: busy !== null ? 0.5 : 1,
           }}
         >

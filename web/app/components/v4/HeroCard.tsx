@@ -147,7 +147,7 @@ export function HeroCard(props: HeroCardProps) {
               fontFamily: 'Inter, sans-serif',
               fontSize: '12px',
               letterSpacing: '2.5px',
-              color: 'rgba(13,15,18,.35)',
+              color: 'rgba(8,8,8,.35)',
               textTransform: 'uppercase',
             }}
           >
@@ -160,14 +160,14 @@ export function HeroCard(props: HeroCardProps) {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '7px',
-                color: 'var(--ink, #0D0F12)',
+                color: 'var(--ink, #080808)',
                 fontFamily: 'Inter, sans-serif',
                 fontSize: '11px',
                 fontWeight: 600,
                 letterSpacing: '1.5px',
                 textTransform: 'uppercase',
                 padding: '2px 12px 2px 2px',
-                background: 'rgba(13,15,18,.05)',
+                background: 'rgba(8,8,8,.05)',
                 borderRadius: '20px',
               }}
             >
@@ -176,7 +176,7 @@ export function HeroCard(props: HeroCardProps) {
                   width: '20px',
                   height: '20px',
                   borderRadius: '50%',
-                  background: 'var(--ink, #0D0F12)',
+                  background: 'var(--ink, #080808)',
                   color: '#FACC15',
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -201,7 +201,7 @@ export function HeroCard(props: HeroCardProps) {
             fontSize: '300px',
             lineHeight: 0.86,
             letterSpacing: '-4px',
-            color: 'var(--ink, #0D0F12)',
+            color: 'var(--ink, #080808)',
             flex: '0 0 auto',
             marginLeft: '-6px',
             opacity: skipped ? 0.25 : 1,
@@ -255,7 +255,7 @@ export function HeroCard(props: HeroCardProps) {
             onClick={toggleSkip}
             style={
               skipped
-                ? { borderColor: 'var(--milestone, #D4900A)', color: 'var(--milestone, #D4900A)' }
+                ? { borderColor: 'var(--milestone, #F3AD38)', color: 'var(--milestone, #F3AD38)' }
                 : undefined
             }
           >
@@ -267,7 +267,7 @@ export function HeroCard(props: HeroCardProps) {
       {/* RIGHT COLUMN */}
       <div
         style={{
-          background: 'rgba(13,15,18,.02)',
+          background: 'rgba(8,8,8,.02)',
           padding: '40px',
           display: 'flex',
           flexDirection: 'column',
@@ -289,7 +289,7 @@ export function HeroCard(props: HeroCardProps) {
                 fontSize: '12px',
                 fontWeight: 500,
                 letterSpacing: '1.5px',
-                color: 'rgba(13,15,18,.35)',
+                color: 'rgba(8,8,8,.35)',
                 textTransform: 'uppercase',
               }}
             >
@@ -311,7 +311,7 @@ export function HeroCard(props: HeroCardProps) {
               fontWeight: 500,
               letterSpacing: '1.5px',
               textTransform: 'uppercase',
-              color: 'rgba(13,15,18,.35)',
+              color: 'rgba(8,8,8,.35)',
               marginBottom: '14px',
             }}
           >
@@ -326,13 +326,13 @@ export function HeroCard(props: HeroCardProps) {
 
 function ReadyBadge({ level, children }: { level: ReadinessLevel; children: ReactNode }) {
   const color =
-    level === 'green'  ? 'var(--recovery, #2CA82F)' :
-    level === 'yellow' ? 'var(--milestone, #D4900A)' :
-                         'var(--warn, #F43F5E)';
+    level === 'green'  ? 'var(--recovery, #3EBD41)' :
+    level === 'yellow' ? 'var(--milestone, #F3AD38)' :
+                         'var(--warn, #FC4D64)';
   const wash =
-    level === 'green'  ? 'rgba(44,168,47,.12)' :
-    level === 'yellow' ? 'rgba(212,144,10,.12)' :
-                         'rgba(244,63,94,.12)';
+    level === 'green'  ? 'rgba(62,189,65,.12)' :
+    level === 'yellow' ? 'rgba(243,173,56,.12)' :
+                         'rgba(252,77,100,.12)';
   return (
     <span
       style={{

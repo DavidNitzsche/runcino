@@ -2,10 +2,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg: #EEECEA; --card: #FFFFFF;
-  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
-  --divider: rgba(13,15,18,.08);
-  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --bg: #E6E8EF; --card: #FFFFFF;
+  --t0: #080808; --t1: rgba(8,8,8,.55); --t2: rgba(8,8,8,.35); --t3: rgba(8,8,8,.20);
+  --divider: rgba(8,8,8,.08);
+  --green: #3EBD41; --orange: #E88021; --amber: #F3AD38; --blue: #008FEC; --warn: #FC4D64;
   --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
 }
 
@@ -37,7 +37,7 @@
 .log-v4-page .strava-text { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 15px; color: var(--t0); }
 .log-v4-page .strava-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); }
 .log-v4-page .strava-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
-.log-v4-page .strava-stat { background: rgba(13,15,18,.04); border-radius: 8px; padding: 10px 12px; }
+.log-v4-page .strava-stat { background: rgba(8,8,8,.04); border-radius: 8px; padding: 10px 12px; }
 .log-v4-page .strava-stat-label { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1.5px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
 .log-v4-page .strava-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; line-height: 1; color: var(--t0); margin-top: 4px; }
 
@@ -48,7 +48,7 @@
 .log-v4-page .hero-title-line { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
 .log-v4-page .hero-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; letter-spacing: 0.3px; }
 .log-v4-page .hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 28px; }
-.log-v4-page .hero-stat { background: rgba(13,15,18,.03); border: 1px solid var(--divider); border-radius: 12px; padding: 22px 22px; }
+.log-v4-page .hero-stat { background: rgba(8,8,8,.03); border: 1px solid var(--divider); border-radius: 12px; padding: 22px 22px; }
 .log-v4-page .hero-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 1.8px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
 .log-v4-page .hero-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 0.86; color: var(--t0); margin-top: 10px; letter-spacing: -1px; }
 .log-v4-page .hero-stat-val .unit { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); letter-spacing: 1px; margin-left: 4px; text-transform: uppercase; font-weight: 600; }
@@ -68,8 +68,8 @@
 /* Monthly bars */
 .log-v4-page .monthly-bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; align-items: end; height: 140px; padding: 0 40px; }
 .log-v4-page .month-bar { position: relative; border-radius: 4px 4px 0 0; min-height: 8px; }
-.log-v4-page .month-bar.cool { background: rgba(44,168,47,.50); }
-.log-v4-page .month-bar.peak { background: rgba(232,93,38,.60); }
+.log-v4-page .month-bar.cool { background: rgba(62,189,65,.50); }
+.log-v4-page .month-bar.peak { background: rgba(232,128,33,.60); }
 .log-v4-page .month-bar.current { outline: 2px solid var(--amber); outline-offset: 1px; }
 .log-v4-page .month-bar-val { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-family: 'Bebas Neue', sans-serif; font-size: 13px; color: var(--t0); display: none; white-space: nowrap; }
 .log-v4-page .month-bar.peak .month-bar-val, .log-v4-page .month-bar.current .month-bar-val { display: block; }
@@ -92,17 +92,17 @@
   grid-template-rows: var(--heat-cell);
   gap: var(--heat-gap);
 }
-.log-v4-page .heat-cell { width: var(--heat-cell); height: var(--heat-cell); border-radius: 3px; background: rgba(13,15,18,.04); position: relative; }
-.log-v4-page .heat-cell.l1 { background: rgba(44,168,47,.22); }
-.log-v4-page .heat-cell.l2 { background: rgba(44,168,47,.48); }
-.log-v4-page .heat-cell.l3 { background: rgba(44,168,47,.72); }
-.log-v4-page .heat-cell.l4 { background: rgba(232,93,38,.78); }
+.log-v4-page .heat-cell { width: var(--heat-cell); height: var(--heat-cell); border-radius: 3px; background: rgba(8,8,8,.04); position: relative; }
+.log-v4-page .heat-cell.l1 { background: rgba(62,189,65,.22); }
+.log-v4-page .heat-cell.l2 { background: rgba(62,189,65,.48); }
+.log-v4-page .heat-cell.l3 { background: rgba(62,189,65,.72); }
+.log-v4-page .heat-cell.l4 { background: rgba(232,128,33,.78); }
 /* Today: thin amber outline only — does NOT imply a run was logged.
    If a run was logged today, the row above also applies its color tier;
    the outline is overlaid via inset border-radius/box-shadow trick. */
 .log-v4-page .heat-cell.is-today { box-shadow: inset 0 0 0 1.5px var(--amber); }
 /* Day past today's date — not yet happened, render as very faint placeholder */
-.log-v4-page .heat-cell.future { background: rgba(13,15,18,.02); }
+.log-v4-page .heat-cell.future { background: rgba(8,8,8,.02); }
 .log-v4-page .heat-cell[title]:hover { transform: scale(1.15); transition: transform .12s; }
 
 /* Recent runs */
@@ -120,7 +120,7 @@
   cursor: pointer;
   transition: background .15s;
 }
-.log-v4-page .run-row:hover { background: rgba(13,15,18,.025); }
+.log-v4-page .run-row:hover { background: rgba(8,8,8,.025); }
 /* Breathing room between the type tag and the run name. */
 .log-v4-page .run-row > :nth-child(3) { margin-left: 12px; }
 .log-v4-page .run-shoe-wrap { /* container that holds the custom picker — same width as the grid track */ }
@@ -138,7 +138,7 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--t1);
-  background-color: rgba(13,15,18,.035);
+  background-color: rgba(8,8,8,.035);
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 8px 12px;
@@ -146,11 +146,11 @@
   width: 100%;
   transition: border-color .15s, background-color .15s, color .15s;
 }
-.log-v4-page .shoe-picker-trigger:hover { border-color: var(--t3); background-color: rgba(13,15,18,.06); color: var(--t0); }
-.log-v4-page .shoe-picker.open .shoe-picker-trigger { border-color: var(--t1); background-color: rgba(13,15,18,.06); color: var(--t0); }
+.log-v4-page .shoe-picker-trigger:hover { border-color: var(--t3); background-color: rgba(8,8,8,.06); color: var(--t0); }
+.log-v4-page .shoe-picker.open .shoe-picker-trigger { border-color: var(--t1); background-color: rgba(8,8,8,.06); color: var(--t0); }
 .log-v4-page .shoe-picker-dot {
   width: 8px; height: 8px; border-radius: 50%;
-  background: rgba(13,15,18,.18);
+  background: rgba(8,8,8,.18);
   flex-shrink: 0;
 }
 .log-v4-page .shoe-picker-label {
@@ -173,9 +173,9 @@
   min-width: 280px;
   max-width: 360px;
   background: var(--card);
-  border: 1px solid rgba(13,15,18,.10);
+  border: 1px solid rgba(8,8,8,.10);
   border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(13,15,18,.14), 0 2px 6px rgba(13,15,18,.06);
+  box-shadow: 0 12px 32px rgba(8,8,8,.14), 0 2px 6px rgba(8,8,8,.06);
   padding: 6px;
   display: none;
   z-index: 100;
@@ -191,7 +191,7 @@
   cursor: pointer;
   transition: background .12s;
 }
-.log-v4-page .shoe-picker-option:hover { background: rgba(13,15,18,.04); }
+.log-v4-page .shoe-picker-option:hover { background: rgba(8,8,8,.04); }
 .log-v4-page .shoe-picker-option-dot {
   width: 10px; height: 10px; border-radius: 50%;
   justify-self: center;
@@ -214,7 +214,7 @@
   color: var(--t1);
   letter-spacing: 0.5px;
 }
-.log-v4-page .shoe-picker-option.selected { background: rgba(13,15,18,.05); }
+.log-v4-page .shoe-picker-option.selected { background: rgba(8,8,8,.05); }
 .log-v4-page .shoe-picker-option.selected .shoe-picker-option-name { color: var(--t0); }
 .log-v4-page .shoe-picker-option.is-none .shoe-picker-option-dot {
   background: transparent;
@@ -235,12 +235,12 @@
   border-radius: 8px;
   transition: background .12s;
 }
-.log-v4-page .shoe-picker-manage:hover { background: rgba(13,15,18,.04); color: var(--t0); }
+.log-v4-page .shoe-picker-manage:hover { background: rgba(8,8,8,.04); color: var(--t0); }
 
 /* Run detail modal */
 .log-v4-page .run-modal-overlay {
   position: fixed; inset: 0;
-  background: rgba(13,15,18,.45);
+  background: rgba(8,8,8,.45);
   display: none;
   align-items: center; justify-content: center;
   z-index: 200;
@@ -259,16 +259,16 @@
 .log-v4-page .run-modal-close {
   position: absolute; top: 20px; right: 20px;
   width: 32px; height: 32px; border-radius: 50%;
-  background: rgba(13,15,18,.06);
+  background: rgba(8,8,8,.06);
   border: none; cursor: pointer;
   font-family: 'Inter', sans-serif; font-size: 16px; color: var(--t1);
 }
-.log-v4-page .run-modal-close:hover { background: rgba(13,15,18,.10); }
+.log-v4-page .run-modal-close:hover { background: rgba(8,8,8,.10); }
 .log-v4-page .run-modal-eyebrow { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--t2); }
 .log-v4-page .run-modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 1; color: var(--t0); letter-spacing: -0.5px; margin-top: 8px; }
 .log-v4-page .run-modal-sub { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t2); margin-top: 6px; }
 .log-v4-page .run-modal-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 24px; }
-.log-v4-page .run-modal-stat { padding: 14px 16px; background: rgba(13,15,18,.03); border-radius: 12px; }
+.log-v4-page .run-modal-stat { padding: 14px 16px; background: rgba(8,8,8,.03); border-radius: 12px; }
 .log-v4-page .run-modal-stat-label { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--t2); font-weight: 600; }
 .log-v4-page .run-modal-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--t0); margin-top: 6px; }
 .log-v4-page .run-modal-stat-unit { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-left: 3px; }
@@ -276,7 +276,7 @@
 .log-v4-page .run-modal-map {
   height: 200px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(44,168,47,.10), rgba(37,99,235,.10));
+  background: linear-gradient(135deg, rgba(62,189,65,.10), rgba(0,143,236,.10));
   border: 1px dashed var(--divider);
   display: flex; align-items: center; justify-content: center;
   font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 1px; text-transform: uppercase;

@@ -121,7 +121,7 @@ export function FuelEditIsland({
               border: none;
               border-bottom: 2px solid #E85D26;
               background: transparent;
-              color: #0D0F12;
+              color: #080808;
               letter-spacing: 0;
             }
             .fuel-input:focus { outline: none; }
@@ -132,9 +132,9 @@ export function FuelEditIsland({
               border: 1px solid;
               flex-shrink: 0;
             }
-            .fuel-save-btn { background: #0D0F12; color: #fff; border-color: #0D0F12; }
+            .fuel-save-btn { background: #080808; color: #fff; border-color: #080808; }
             .fuel-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-            .fuel-cancel-btn { background: transparent; color: rgba(13,15,18,.55); border-color: rgba(13,15,18,.16); }
+            .fuel-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
             .fuel-err {
               font-family: 'Inter', sans-serif; font-size: 11px; color: #B00020;
               margin-top: 6px;
@@ -160,16 +160,16 @@ export function FuelEditIsland({
                 all: unset;
                 box-sizing: border-box;
                 cursor: pointer;
-                background: rgba(13,15,18,.04);
-                border: 1px solid rgba(13,15,18,.08);
+                background: rgba(8,8,8,.04);
+                border: 1px solid rgba(8,8,8,.08);
                 border-radius: 10px;
                 padding: 16px 20px;
                 display: block;
                 transition: background 120ms ease, border-color 120ms ease;
               }
               button.fuel-cell-btn:hover {
-                background: rgba(232,93,38,.06);
-                border-color: rgba(232,93,38,.30);
+                background: rgba(232,128,33,.06);
+                border-color: rgba(232,128,33,.30);
               }
             `}</style>
           </button>
@@ -188,7 +188,7 @@ export function FuelEditIsland({
             <div className="fuel-cell-label">Rate</div>
             <div className="fuel-cell-value">
               {carbRateGPerHr.toFixed(0)}
-              <span style={{ fontSize: 18, color: 'rgba(13,15,18,.35)' }}>g/hr</span>
+              <span style={{ fontSize: 18, color: 'rgba(8,8,8,.35)' }}>g/hr</span>
             </div>
             <div className="fuel-cell-sub">target {carbTargetGPerHr} g/hr · coach-set</div>
           </div>

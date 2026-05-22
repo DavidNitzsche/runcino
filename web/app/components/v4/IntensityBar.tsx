@@ -37,7 +37,7 @@ export function IntensityBar({ effortPct, zoneName, note, compact = false, isRes
             fontFamily: 'Inter, sans-serif',
             fontSize: compact ? '14px' : '15px',
             fontWeight: 600,
-            color: 'rgba(13,15,18,.55)',
+            color: 'rgba(8,8,8,.55)',
             letterSpacing: '0.3px',
           }}
         >
@@ -49,7 +49,7 @@ export function IntensityBar({ effortPct, zoneName, note, compact = false, isRes
               fontFamily: 'Inter, sans-serif',
               fontSize: '13px',
               fontStyle: 'italic',
-              color: 'rgba(13,15,18,.35)',
+              color: 'rgba(8,8,8,.35)',
               lineHeight: 1.55,
               marginTop: '14px',
             }}
@@ -76,7 +76,7 @@ export function IntensityBar({ effortPct, zoneName, note, compact = false, isRes
             width: '100%',
             height: `${barHeight}px`,
             borderRadius: `${radius}px`,
-            background: 'linear-gradient(to right, #2CA82F 0%, #F3AD38 60%, #E85D26 100%)',
+            background: 'linear-gradient(to right, #3EBD41 0%, #F3AD38 60%, #E85D26 100%)',
           }}
         />
         {/* Tick */}
@@ -87,7 +87,7 @@ export function IntensityBar({ effortPct, zoneName, note, compact = false, isRes
             bottom: `${tickTop}px`,
             left: `${clamped}%`,
             width: compact ? '2px' : '3px',
-            background: 'var(--ink, #0D0F12)',
+            background: 'var(--ink, #080808)',
             borderRadius: compact ? '1px' : '2px',
             transform: 'translateX(-50%)',
           }}
@@ -111,7 +111,7 @@ export function IntensityBar({ effortPct, zoneName, note, compact = false, isRes
           fontFamily: 'Inter, sans-serif',
           fontSize: compact ? '14px' : '15px',
           fontWeight: 600,
-          color: 'var(--recovery, #2CA82F)',
+          color: 'var(--recovery, #3EBD41)',
           letterSpacing: '0.3px',
         }}
       >
@@ -124,7 +124,7 @@ export function IntensityBar({ effortPct, zoneName, note, compact = false, isRes
             fontFamily: 'Inter, sans-serif',
             fontSize: '13px',
             fontStyle: 'italic',
-            color: 'rgba(13,15,18,.35)',
+            color: 'rgba(8,8,8,.35)',
             lineHeight: 1.55,
             marginTop: '14px',
           }}

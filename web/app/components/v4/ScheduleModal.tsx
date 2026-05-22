@@ -57,7 +57,7 @@ export function ScheduleModal({ open, onClose, raceMeta, phases }: ScheduleModal
             fontFamily: 'Inter, sans-serif',
             fontSize: '11px',
             letterSpacing: '2.5px',
-            color: 'rgba(13,15,18,.35)',
+            color: 'rgba(8,8,8,.35)',
             textTransform: 'uppercase',
             marginBottom: '10px',
           }}
@@ -70,7 +70,7 @@ export function ScheduleModal({ open, onClose, raceMeta, phases }: ScheduleModal
             fontFamily: 'Bebas Neue, sans-serif',
             fontSize: '52px',
             lineHeight: 1,
-            color: 'var(--ink, #0D0F12)',
+            color: 'var(--ink, #080808)',
             marginTop: '8px',
             marginBottom: '28px',
           }}
@@ -87,9 +87,9 @@ export function ScheduleModal({ open, onClose, raceMeta, phases }: ScheduleModal
                 fontWeight: 600,
                 letterSpacing: '2.5px',
                 textTransform: 'uppercase',
-                color: 'rgba(13,15,18,.35)',
+                color: 'rgba(8,8,8,.35)',
                 padding: '8px 0 6px',
-                borderBottom: '1px solid rgba(13,15,18,.07)',
+                borderBottom: '1px solid rgba(8,8,8,.07)',
                 marginBottom: '4px',
                 marginTop: pIdx === 0 ? 0 : '24px',
               }}
@@ -108,7 +108,7 @@ export function ScheduleModal({ open, onClose, raceMeta, phases }: ScheduleModal
             style={{
               fontFamily: 'Inter, sans-serif',
               fontSize: '14px',
-              color: 'rgba(13,15,18,.35)',
+              color: 'rgba(8,8,8,.35)',
               padding: '40px 0',
               textAlign: 'center',
             }}
@@ -123,8 +123,8 @@ export function ScheduleModal({ open, onClose, raceMeta, phases }: ScheduleModal
 
 function WeekRow({ week }: { week: ScheduleWeek }) {
   const isCurrent = week.status === 'current';
-  const bg = isCurrent ? 'rgba(44,168,47,.06)' : 'transparent';
-  const border = isCurrent ? '1px solid rgba(44,168,47,.14)' : '1px solid transparent';
+  const bg = isCurrent ? 'rgba(62,189,65,.06)' : 'transparent';
+  const border = isCurrent ? '1px solid rgba(62,189,65,.14)' : '1px solid transparent';
 
   return (
     <div
@@ -139,17 +139,17 @@ function WeekRow({ week }: { week: ScheduleWeek }) {
         border,
       }}
     >
-      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '13px', color: 'var(--ink, #0D0F12)' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '13px', color: 'var(--ink, #080808)' }}>
         Week {week.weekNum}
       </span>
-      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(13,15,18,.35)' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(8,8,8,.35)' }}>
         {week.dateLabel}
       </span>
-      <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '22px', color: 'var(--ink, #0D0F12)', lineHeight: 1 }}>
+      <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '22px', color: 'var(--ink, #080808)', lineHeight: 1 }}>
         {Math.round(week.miles)}
-        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', color: 'rgba(13,15,18,.35)', marginLeft: 3 }}>mi</span>
+        <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '11px', color: 'rgba(8,8,8,.35)', marginLeft: 3 }}>mi</span>
       </span>
-      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(13,15,18,.55)' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'rgba(8,8,8,.55)' }}>
         {week.description}
       </span>
       <StatusCell status={week.status} />
@@ -158,15 +158,15 @@ function WeekRow({ week }: { week: ScheduleWeek }) {
 }
 
 function StatusCell({ status }: { status: ScheduleWeekStatus }) {
-  let color = 'rgba(13,15,18,.35)';
+  let color = 'rgba(8,8,8,.35)';
   let weight = 400;
   let label: ReactNode = 'Upcoming';
   if (status === 'done') {
-    color = 'var(--recovery, #2CA82F)';
+    color = 'var(--recovery, #3EBD41)';
     weight = 600;
     label = '✓ Done';
   } else if (status === 'current') {
-    color = 'var(--milestone, #D4900A)';
+    color = 'var(--milestone, #F3AD38)';
     weight = 600;
     label = 'In Progress';
   }

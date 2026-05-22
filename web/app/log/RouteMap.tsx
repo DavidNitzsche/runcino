@@ -117,7 +117,7 @@ export default function RouteMap({ polyline, coords: coordsProp, startLatLng, en
       const start = startLatLng ?? coords[0];
       const end = endLatLng ?? coords[coords.length - 1];
       L.circleMarker(start as [number, number], {
-        radius: 6, weight: 2, color: '#fff', fillColor: '#2CA82F', fillOpacity: 1,
+        radius: 6, weight: 2, color: '#fff', fillColor: '#3EBD41', fillOpacity: 1,
       }).addTo(map);
       L.circleMarker(end as [number, number], {
         radius: 6, weight: 2, color: '#fff', fillColor: '#FC4C02', fillOpacity: 1,
@@ -145,7 +145,7 @@ export default function RouteMap({ polyline, coords: coordsProp, startLatLng, en
         width: '100%',
         borderRadius: '10px',
         overflow: 'hidden',
-        border: '1px solid rgba(13,15,18,.08)',
+        border: '1px solid rgba(8,8,8,.08)',
       }}
     />
   );

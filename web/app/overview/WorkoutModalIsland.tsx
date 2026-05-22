@@ -22,7 +22,7 @@ import dynamic from 'next/dynamic';
 import { describeWorkout } from '@/lib/workout-descriptions';
 import { generateRunDebrief, parsePaceBounds } from '@/lib/run-debrief';
 
-const RouteMap = dynamic(() => import('@/app/log/RouteMap'), { ssr: false, loading: () => <div style={{ height: 260, borderRadius: 10, background: 'rgba(13,15,18,.04)' }} /> });
+const RouteMap = dynamic(() => import('@/app/log/RouteMap'), { ssr: false, loading: () => <div style={{ height: 260, borderRadius: 10, background: 'rgba(8,8,8,.04)' }} /> });
 
 export interface WorkoutDay {
   dow: string;
@@ -271,7 +271,7 @@ export function WeekStripCells({
           margin-top: 6px;
           font-family: 'Inter', sans-serif;
           font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
-          text-transform: uppercase; color: rgba(13,15,18,.40);
+          text-transform: uppercase; color: rgba(8,8,8,.40);
         }
         .day-status-missed {
           margin-top: 6px;
@@ -632,7 +632,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                     ))}
                   </div>
                   {!anyData && (
-                    <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(13,15,18,.45)' }}>
+                    <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(8,8,8,.45)' }}>
                       Syncs from your Apple Watch via Apple Health — connect it in Profile and run-by-run form lands here.
                     </div>
                   )}
@@ -781,7 +781,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
       <style jsx>{`
         .wm-overlay {
           position: fixed; inset: 0;
-          background: rgba(13,15,18,.55);
+          background: rgba(8,8,8,.55);
           display: flex; align-items: center; justify-content: center;
           z-index: 200;
           padding: 24px;
@@ -802,13 +802,13 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           position: absolute; top: 14px; right: 16px;
           width: 32px; height: 32px;
           background: transparent; border: none; cursor: pointer;
-          font-size: 28px; line-height: 1; color: rgba(13,15,18,.45);
+          font-size: 28px; line-height: 1; color: rgba(8,8,8,.45);
         }
-        .wm-close:hover { color: #0D0F12; }
+        .wm-close:hover { color: #080808; }
         .wm-eyebrow {
           font-family: 'Inter', sans-serif;
           font-size: 12px; letter-spacing: 2.5px;
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           text-transform: uppercase; margin-bottom: 8px;
         }
         /* Title block — workout name + zone subtitle.
@@ -826,10 +826,10 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: clamp(56px, 7.5vw, 88px);
           line-height: 0.88;
           letter-spacing: -1.5px;
-          color: #0D0F12;
+          color: #080808;
           margin: 0;
           /* Subtle gradient on the bottom — faff brand accent without overdoing it */
-          background: linear-gradient(135deg, #0D0F12 0%, #0D0F12 70%, #E85D26 100%);
+          background: linear-gradient(135deg, #080808 0%, #080808 70%, #E85D26 100%);
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
@@ -840,7 +840,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: 11px;
           letter-spacing: 2px;
           text-transform: uppercase;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           margin-top: 6px;
         }
         .wm-stats {
@@ -848,42 +848,42 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           gap: 10px; margin-bottom: 24px;
         }
         .wm-stat {
-          background: rgba(13,15,18,.03);
+          background: rgba(8,8,8,.03);
           border-radius: 10px;
           padding: 14px 14px 12px;
         }
         .wm-stat-val {
           font-family: 'Bebas Neue', sans-serif;
-          font-size: 28px; line-height: 1; color: #0D0F12;
+          font-size: 28px; line-height: 1; color: #080808;
         }
         .wm-stat-val small {
           font-family: 'Inter', sans-serif;
           font-size: 11px; font-weight: 500;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           margin-left: 3px;
         }
         .wm-stat-label {
           font-family: 'Inter', sans-serif;
           font-size: 11px; letter-spacing: 1px;
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           text-transform: uppercase; margin-top: 6px;
         }
         .wm-section-label {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px;
-          color: #2CA82F; text-transform: uppercase;
+          color: #3EBD41; text-transform: uppercase;
           margin: 0 0 10px;
         }
         .wm-sub-label {
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 10px; letter-spacing: 1.5px;
-          color: rgba(13,15,18,.55); text-transform: uppercase;
+          color: rgba(8,8,8,.55); text-transform: uppercase;
           margin: 0 0 6px;
         }
         .wm-copy {
           font-family: 'Inter', sans-serif;
           font-size: 13px; line-height: 1.55;
-          color: rgba(13,15,18,.75);
+          color: rgba(8,8,8,.75);
           margin: 0 0 16px;
         }
         /* Zone chip at the top of the recipe */
@@ -896,13 +896,13 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           margin-left: 8px;
         }
         .wm-pill.race    { background: #E85D26; }
-        .wm-pill.long    { background: #2CA82F; }
+        .wm-pill.long    { background: #3EBD41; }
         .wm-pill.workout { background: #C97000; }
 
         /* What you ran — surfaced ABOVE the plan when a matching activity exists */
         .wm-actual {
-          background: rgba(44,168,47,.05);
-          border: 1px solid rgba(44,168,47,.20);
+          background: rgba(62,189,65,.05);
+          border: 1px solid rgba(62,189,65,.20);
           border-radius: 12px;
           padding: 18px 20px 16px;
           margin-bottom: 24px;
@@ -917,7 +917,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: 10px;
           letter-spacing: 1.5px;
           text-transform: uppercase;
-          color: #2CA82F;
+          color: #3EBD41;
         }
         .wm-actual-status {
           font-family: 'Oswald', sans-serif; font-weight: 700;
@@ -925,22 +925,22 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           padding: 3px 9px; border-radius: 999px;
           text-transform: uppercase;
         }
-        .wm-actual-status.green { background: rgba(44,168,47,.15); color: #2CA82F; }
-        .wm-actual-status.amber { background: rgba(212,144,10,.15); color: #C97000; }
+        .wm-actual-status.green { background: rgba(62,189,65,.15); color: #3EBD41; }
+        .wm-actual-status.amber { background: rgba(243,173,56,.15); color: #C97000; }
         .wm-actual-name {
           font-family: 'Inter', sans-serif;
           font-weight: 600; font-size: 14px;
-          color: #0D0F12;
+          color: #080808;
           margin-bottom: 14px;
         }
         .wm-stats-actual { margin-bottom: 8px; }
         .wm-actual-meta {
           display: flex; gap: 12px; flex-wrap: wrap;
           font-family: 'Inter', sans-serif;
-          font-size: 12px; color: rgba(13,15,18,.55);
+          font-size: 12px; color: rgba(8,8,8,.55);
           padding-top: 6px;
         }
-        .wm-actual-meta strong { color: #0D0F12; font-weight: 600; }
+        .wm-actual-meta strong { color: #080808; font-weight: 600; }
         .wm-strava-link {
           display: inline-block;
           margin-top: 10px;
@@ -955,13 +955,13 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         /* Missed-day note */
         .wm-missed {
           padding: 14px 18px;
-          background: rgba(212,144,10,.06);
-          border: 1px solid rgba(212,144,10,.18);
+          background: rgba(243,173,56,.06);
+          border: 1px solid rgba(243,173,56,.18);
           border-radius: 10px;
           margin-bottom: 24px;
           font-family: 'Inter', sans-serif;
           font-size: 13px;
-          color: rgba(13,15,18,.65);
+          color: rgba(8,8,8,.65);
         }
 
         /* "The plan:" header — appears above the planned stats block
@@ -972,7 +972,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: 10px;
           letter-spacing: 1.5px;
           text-transform: uppercase;
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           margin-bottom: 8px;
         }
 
@@ -1010,30 +1010,30 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-weight: 700;
           font-size: 22px;
           line-height: 1;
-          color: #0D0F12;
+          color: #080808;
         }
         .wm-recipe-body { min-width: 0; }
         .wm-recipe-line {
           font-family: 'Inter', sans-serif;
           font-size: 14.5px;
-          color: rgba(13,15,18,.85);
+          color: rgba(8,8,8,.85);
           line-height: 1.5;
         }
-        .wm-recipe-line strong { color: #0D0F12; font-weight: 600; }
+        .wm-recipe-line strong { color: #080808; font-weight: 600; }
         .wm-recipe-line .wm-step-name {
           font-family: 'Oswald', sans-serif;
           font-weight: 700;
           font-size: 15px;
           letter-spacing: 0.5px;
           text-transform: uppercase;
-          color: #0D0F12;
+          color: #080808;
         }
         .wm-zone-suffix {
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           font-weight: 400;
         }
         .wm-hr-target {
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           font-size: 12px;
         }
         .wm-hr-target strong {
@@ -1066,7 +1066,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         .wm-loop-item {
           font-family: 'Inter', sans-serif;
           font-size: 14px;
-          color: rgba(13,15,18,.75);
+          color: rgba(8,8,8,.75);
           line-height: 1.5;
           position: relative;
         }
@@ -1074,11 +1074,11 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           content: '·';
           position: absolute;
           left: -14px; top: -2px;
-          color: rgba(13,15,18,.25);
+          color: rgba(8,8,8,.25);
           font-weight: 700;
           font-size: 20px;
         }
-        .wm-loop-item strong { color: #0D0F12; font-weight: 600; }
+        .wm-loop-item strong { color: #080808; font-weight: 600; }
         .wm-actions {
           display: flex; justify-content: flex-end;
           gap: 8px; margin-top: 8px;
@@ -1087,10 +1087,10 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-family: 'Oswald', sans-serif; font-weight: 600;
           font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
           padding: 10px 18px; border-radius: 8px; cursor: pointer;
-          background: transparent; color: rgba(13,15,18,.55);
-          border: 1px solid rgba(13,15,18,.16);
+          background: transparent; color: rgba(8,8,8,.55);
+          border: 1px solid rgba(8,8,8,.16);
         }
-        .wm-btn-ghost:hover { background: rgba(13,15,18,.04); color: #0D0F12; }
+        .wm-btn-ghost:hover { background: rgba(8,8,8,.04); color: #080808; }
 
         /* ════ DEBRIEF MODE styles (completed-run modal) ════ */
         .wm-stats-debrief {
@@ -1099,12 +1099,12 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
         .wm-debrief-meta {
           display: flex; flex-wrap: wrap; gap: 14px;
           padding-bottom: 18px;
-          border-bottom: 1px solid rgba(13,15,18,.06);
+          border-bottom: 1px solid rgba(8,8,8,.06);
           margin-bottom: 22px;
           font-family: 'Inter', sans-serif;
-          font-size: 12px; color: rgba(13,15,18,.55);
+          font-size: 12px; color: rgba(8,8,8,.55);
         }
-        .wm-debrief-meta strong { color: #0D0F12; font-weight: 600; }
+        .wm-debrief-meta strong { color: #080808; font-weight: 600; }
 
         .wm-form { margin-bottom: 22px; }
         .wm-form-grid {
@@ -1114,24 +1114,24 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           margin-top: 8px;
         }
         .wm-form-cell {
-          background: rgba(13,15,18,.03);
-          border: 1px solid rgba(13,15,18,.06);
+          background: rgba(8,8,8,.03);
+          border: 1px solid rgba(8,8,8,.06);
           border-radius: 8px;
           padding: 10px 12px;
         }
         .wm-form-val {
           font-family: 'Bebas Neue', sans-serif;
-          font-size: 24px; line-height: 1; color: #0D0F12;
+          font-size: 24px; line-height: 1; color: #080808;
         }
         .wm-form-val small {
           font-family: 'Inter', sans-serif;
-          font-size: 10px; font-weight: 600; color: rgba(13,15,18,.40);
+          font-size: 10px; font-weight: 600; color: rgba(8,8,8,.40);
           margin-left: 2px;
         }
         .wm-form-lbl {
           font-family: 'Inter', sans-serif;
           font-size: 8.5px; font-weight: 700; letter-spacing: .08em;
-          text-transform: uppercase; color: rgba(13,15,18,.40);
+          text-transform: uppercase; color: rgba(8,8,8,.40);
           margin-top: 4px;
         }
 
@@ -1171,7 +1171,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           justify-content: space-between;
           gap: 24px;
           padding-top: 18px;
-          border-top: 1px solid rgba(13,15,18,.06);
+          border-top: 1px solid rgba(8,8,8,.06);
           margin-top: 8px;
         }
         .wm-debrief-footer-notes { flex: 1; min-width: 0; }
@@ -1182,14 +1182,14 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           font-size: 10px;
           letter-spacing: 1.5px;
           text-transform: uppercase;
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           margin-bottom: 4px;
         }
         .wm-debrief-footer-copy {
           font-family: 'Inter', sans-serif;
           font-size: 13px;
           line-height: 1.5;
-          color: rgba(13,15,18,.75);
+          color: rgba(8,8,8,.75);
           display: block;
         }
         .wm-debrief-footer-meta {
@@ -1197,7 +1197,7 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           margin-top: 8px;
           font-family: 'Inter', sans-serif;
           font-size: 11px;
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           font-style: italic;
         }
         @media (max-width: 700px) {
@@ -1206,8 +1206,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
 
         /* Mile splits */
         .wm-splits {
-          background: rgba(13,15,18,.025);
-          border: 1px solid rgba(13,15,18,.06);
+          background: rgba(8,8,8,.025);
+          border: 1px solid rgba(8,8,8,.06);
           border-radius: 10px;
           overflow: hidden;
         }
@@ -1216,10 +1216,10 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           grid-template-columns: 32px 1fr 50px 50px;
           gap: 8px;
           padding: 8px 14px;
-          background: rgba(13,15,18,.04);
+          background: rgba(8,8,8,.04);
           font-family: 'Inter', sans-serif;
           font-size: 10px; letter-spacing: 1.2px;
-          color: rgba(13,15,18,.45);
+          color: rgba(8,8,8,.45);
           text-transform: uppercase; font-weight: 600;
         }
         .wm-splits-head .right { text-align: right; }
@@ -1231,44 +1231,44 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           padding: 8px 14px;
           font-family: 'Inter', sans-serif;
           font-size: 13px;
-          color: rgba(13,15,18,.85);
+          color: rgba(8,8,8,.85);
         }
-        .wm-split-row + .wm-split-row { border-top: 1px solid rgba(13,15,18,.05); }
-        .wm-split-row.fast { background: rgba(44,168,47,.06); }
-        .wm-split-row.slow { background: rgba(212,144,10,.05); }
+        .wm-split-row + .wm-split-row { border-top: 1px solid rgba(8,8,8,.05); }
+        .wm-split-row.fast { background: rgba(62,189,65,.06); }
+        .wm-split-row.slow { background: rgba(243,173,56,.05); }
         .wm-split-num {
           font-family: 'Oswald', sans-serif; font-weight: 600;
-          font-size: 12px; color: rgba(13,15,18,.55);
+          font-size: 12px; color: rgba(8,8,8,.55);
           letter-spacing: 0.5px;
           text-align: center;
         }
         .wm-split-pace {
           font-family: 'JetBrains Mono', monospace;
-          font-weight: 600; color: #0D0F12;
+          font-weight: 600; color: #080808;
           font-size: 13px;
         }
         .wm-split-pace small {
           font-family: 'Inter', sans-serif;
-          font-size: 10px; color: rgba(13,15,18,.45); font-weight: 500;
+          font-size: 10px; color: rgba(8,8,8,.45); font-weight: 500;
           margin-left: 2px;
         }
         .wm-split-hr {
           font-family: 'JetBrains Mono', monospace;
-          font-size: 12px; color: rgba(13,15,18,.55);
+          font-size: 12px; color: rgba(8,8,8,.55);
           text-align: right;
         }
         .wm-split-elev {
           font-family: 'JetBrains Mono', monospace;
-          font-size: 11px; color: rgba(13,15,18,.45);
+          font-size: 11px; color: rgba(8,8,8,.45);
           text-align: right;
         }
         .wm-split-legend {
           display: flex; gap: 14px;
           padding: 8px 12px;
-          background: rgba(13,15,18,.015);
-          border-top: 1px solid rgba(13,15,18,.05);
+          background: rgba(8,8,8,.015);
+          border-top: 1px solid rgba(8,8,8,.05);
           font-family: 'Inter', sans-serif;
-          font-size: 10.5px; color: rgba(13,15,18,.45);
+          font-size: 10.5px; color: rgba(8,8,8,.45);
           letter-spacing: 0.5px;
           text-transform: uppercase; font-weight: 600;
         }
@@ -1279,16 +1279,16 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           margin-right: 5px;
           vertical-align: middle;
         }
-        .wm-split-legend .dot.fast { background: #2CA82F; }
-        .wm-split-legend .dot.slow { background: #D4900A; }
+        .wm-split-legend .dot.fast { background: #3EBD41; }
+        .wm-split-legend .dot.slow { background: #F3AD38; }
         .wm-no-splits, .wm-no-map {
           padding: 14px 16px;
-          background: rgba(13,15,18,.025);
-          border: 1px solid rgba(13,15,18,.06);
+          background: rgba(8,8,8,.025);
+          border: 1px solid rgba(8,8,8,.06);
           border-radius: 10px;
           font-family: 'Inter', sans-serif;
           font-size: 12px;
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           line-height: 1.5;
         }
         .wm-no-map {
@@ -1299,8 +1299,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
 
         /* vs Plan table */
         .wm-vs-plan {
-          background: rgba(13,15,18,.025);
-          border: 1px solid rgba(13,15,18,.06);
+          background: rgba(8,8,8,.025);
+          border: 1px solid rgba(8,8,8,.06);
           border-radius: 10px;
           padding: 14px 16px;
         }
@@ -1312,8 +1312,8 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           text-transform: uppercase;
           margin-bottom: 12px;
         }
-        .wm-vs-status.green { background: rgba(44,168,47,.15); color: #2CA82F; }
-        .wm-vs-status.amber { background: rgba(212,144,10,.15); color: #C97000; }
+        .wm-vs-status.green { background: rgba(62,189,65,.15); color: #3EBD41; }
+        .wm-vs-status.amber { background: rgba(243,173,56,.15); color: #C97000; }
         .wm-vs-row {
           display: grid;
           grid-template-columns: minmax(95px, auto) 1fr;
@@ -1321,19 +1321,19 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
           padding: 6px 0;
           font-family: 'Inter', sans-serif;
           font-size: 13px;
-          border-top: 1px solid rgba(13,15,18,.05);
+          border-top: 1px solid rgba(8,8,8,.05);
         }
         .wm-vs-row:first-of-type { border-top: none; }
         .wm-vs-key {
-          color: rgba(13,15,18,.55);
+          color: rgba(8,8,8,.55);
           font-weight: 500;
         }
         .wm-vs-val {
-          color: #0D0F12;
+          color: #080808;
           font-weight: 600;
           text-align: right;
         }
-        .wm-vs-muted { color: rgba(13,15,18,.45); font-style: normal; font-weight: 500; margin-left: 4px; }
+        .wm-vs-muted { color: rgba(8,8,8,.45); font-style: normal; font-weight: 500; margin-left: 4px; }
       `}</style>
     </div>
   );
@@ -1375,10 +1375,10 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
   }, [day.date]);
 
   if (actual === undefined) {
-    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.45)' }}>Loading your run…</div>;
+    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.45)' }}>Loading your run…</div>;
   }
   if (!actual) {
-    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.45)' }}>Run is still syncing from Strava — check back in a minute.</div>;
+    return <div style={{ marginTop: 18, fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.45)' }}>Run is still syncing from Strava — check back in a minute.</div>;
   }
 
   const desc = describeWorkout(day.label, day.type, fitness as Parameters<typeof describeWorkout>[2]);
@@ -1423,45 +1423,45 @@ export function InlineRecap({ day }: { day: WorkoutDay }) {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
         {stats.map((s) => (
-          <div key={s.l} style={{ padding: '12px 14px', background: 'rgba(13,15,18,.03)', border: '1px solid rgba(13,15,18,.06)', borderRadius: 10 }}>
-            <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 28, lineHeight: 1, color: '#0D0F12' }}>
-              {s.v}{s.u && <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, fontWeight: 600, color: 'rgba(13,15,18,.40)', marginLeft: 2 }}>{s.u}</small>}
+          <div key={s.l} style={{ padding: '12px 14px', background: 'rgba(8,8,8,.03)', border: '1px solid rgba(8,8,8,.06)', borderRadius: 10 }}>
+            <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 28, lineHeight: 1, color: '#080808' }}>
+              {s.v}{s.u && <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, fontWeight: 600, color: 'rgba(8,8,8,.40)', marginLeft: 2 }}>{s.u}</small>}
             </div>
-            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginTop: 5 }}>{s.l}</div>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(8,8,8,.40)', marginTop: 5 }}>{s.l}</div>
           </div>
         ))}
       </div>
 
       {/* Weather at the start */}
       {weather && (
-        <div style={{ marginTop: 12, fontFamily: 'Inter, sans-serif', fontSize: 12.5, color: 'rgba(13,15,18,.55)' }}>
-          <strong style={{ color: '#0D0F12' }}>{weather.tempF}°F</strong> · {weather.humidityPct}% humidity · {weather.windMph} mph wind · {weather.label}
+        <div style={{ marginTop: 12, fontFamily: 'Inter, sans-serif', fontSize: 12.5, color: 'rgba(8,8,8,.55)' }}>
+          <strong style={{ color: '#080808' }}>{weather.tempF}°F</strong> · {weather.humidityPct}% humidity · {weather.windMph} mph wind · {weather.label}
           {weather.isHot && <span style={{ color: '#C97000' }}> · warm</span>}
         </div>
       )}
 
       {/* Coach take */}
-      <div style={{ marginTop: 16, padding: '14px 16px', background: 'rgba(13,15,18,.04)', borderLeft: '3px solid #E85D26', borderRadius: '0 8px 8px 0' }}>
-        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginBottom: 6 }}>Coach take</div>
-        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, lineHeight: 1.55, color: 'rgba(13,15,18,.82)', margin: 0 }}>{debrief}</p>
-        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(13,15,18,.40)', marginTop: 8 }}>{maxHrLabel}</div>
+      <div style={{ marginTop: 16, padding: '14px 16px', background: 'rgba(8,8,8,.04)', borderLeft: '3px solid #E85D26', borderRadius: '0 8px 8px 0' }}>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(8,8,8,.40)', marginBottom: 6 }}>Coach take</div>
+        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, lineHeight: 1.55, color: 'rgba(8,8,8,.82)', margin: 0 }}>{debrief}</p>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(8,8,8,.40)', marginTop: 8 }}>{maxHrLabel}</div>
       </div>
 
       {/* Running form (always shown — placeholders until Apple Health syncs) */}
       <div style={{ marginTop: 16 }}>
-        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginBottom: 8 }}>Running form · Apple Health</div>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(8,8,8,.40)', marginBottom: 8 }}>Running form · Apple Health</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
           {[{ l: 'Cadence', v: cad != null ? String(Math.round(cad)) : '—', u: cad != null ? 'spm' : '' }, ...form].map((c) => (
-            <div key={c.l} style={{ padding: '10px 12px', background: 'rgba(13,15,18,.03)', border: '1px solid rgba(13,15,18,.06)', borderRadius: 8 }}>
-              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, lineHeight: 1, color: c.v === '—' ? 'rgba(13,15,18,.32)' : '#0D0F12' }}>
-                {c.v}{c.u && <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 600, color: 'rgba(13,15,18,.40)', marginLeft: 2 }}>{c.u}</small>}
+            <div key={c.l} style={{ padding: '10px 12px', background: 'rgba(8,8,8,.03)', border: '1px solid rgba(8,8,8,.06)', borderRadius: 8 }}>
+              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, lineHeight: 1, color: c.v === '—' ? 'rgba(8,8,8,.32)' : '#080808' }}>
+                {c.v}{c.u && <small style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 600, color: 'rgba(8,8,8,.40)', marginLeft: 2 }}>{c.u}</small>}
               </div>
-              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 8.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'rgba(13,15,18,.40)', marginTop: 4 }}>{c.l}</div>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 8.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'rgba(8,8,8,.40)', marginTop: 4 }}>{c.l}</div>
             </div>
           ))}
         </div>
         {(!hasForm || !hasRecovery) && (
-          <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(13,15,18,.45)' }}>
+          <div style={{ marginTop: 8, fontFamily: 'Inter, sans-serif', fontSize: 11.5, color: 'rgba(8,8,8,.45)' }}>
             {hasForm ? '' : 'Form metrics '}{!hasForm && !hasRecovery ? 'and recovery vitals ' : ''}{hasRecovery ? '' : (hasForm ? 'Recovery vitals ' : '')}sync from your Apple Watch via Apple Health — connect it in Profile and they fill in here per run.
           </div>
         )}

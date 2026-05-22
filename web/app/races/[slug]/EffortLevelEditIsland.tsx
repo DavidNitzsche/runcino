@@ -76,16 +76,16 @@ export function EffortLevelEditIsland({
           alignItems: 'center',
           gap: 8,
           padding: '6px 10px',
-          background: 'rgba(13,15,18,.04)',
-          border: '1px solid rgba(13,15,18,.08)',
+          background: 'rgba(8,8,8,.04)',
+          border: '1px solid rgba(8,8,8,.08)',
           borderRadius: 8,
           fontFamily: 'Inter, sans-serif',
           fontSize: 12,
-          color: 'rgba(13,15,18,.70)',
+          color: 'rgba(8,8,8,.70)',
         }}
       >
-        <span style={{ fontWeight: 600, color: '#0D0F12' }}>{currentLabel}</span>
-        <span style={{ color: 'rgba(13,15,18,.50)' }}>· weight {currentWeight}</span>
+        <span style={{ fontWeight: 600, color: '#080808' }}>{currentLabel}</span>
+        <span style={{ color: 'rgba(8,8,8,.50)' }}>· weight {currentWeight}</span>
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -109,8 +109,8 @@ export function EffortLevelEditIsland({
   return (
     <div
       style={{
-        background: 'rgba(13,15,18,.03)',
-        border: '1px solid rgba(13,15,18,.10)',
+        background: 'rgba(8,8,8,.03)',
+        border: '1px solid rgba(8,8,8,.10)',
         borderRadius: 10,
         padding: 12,
         marginTop: 8,
@@ -123,7 +123,7 @@ export function EffortLevelEditIsland({
           fontWeight: 700,
           fontSize: 10,
           letterSpacing: 1.3,
-          color: 'rgba(13,15,18,.55)',
+          color: 'rgba(8,8,8,.55)',
           textTransform: 'uppercase',
           marginBottom: 8,
         }}
@@ -142,24 +142,24 @@ export function EffortLevelEditIsland({
               alignItems: 'baseline',
               gap: 10,
               padding: '8px 10px',
-              background: value === opt.value ? 'rgba(232,93,38,.08)' : 'rgba(13,15,18,.02)',
+              background: value === opt.value ? 'rgba(232,128,33,.08)' : 'rgba(8,8,8,.02)',
               border: value === opt.value
-                ? '1px solid rgba(232,93,38,.40)'
-                : '1px solid rgba(13,15,18,.08)',
+                ? '1px solid rgba(232,128,33,.40)'
+                : '1px solid rgba(8,8,8,.08)',
               borderRadius: 8,
               cursor: saving ? 'wait' : 'pointer',
               textAlign: 'left',
               fontFamily: 'Inter, sans-serif',
             }}
           >
-            <span style={{ fontWeight: 600, fontSize: 13, color: '#0D0F12' }}>{opt.label}</span>
-            <span style={{ fontSize: 11, color: 'rgba(13,15,18,.60)', flex: 1 }}>{opt.sub}</span>
+            <span style={{ fontWeight: 600, fontSize: 13, color: '#080808' }}>{opt.label}</span>
+            <span style={{ fontSize: 11, color: 'rgba(8,8,8,.60)', flex: 1 }}>{opt.sub}</span>
             <span
               style={{
                 fontFamily: 'Bebas Neue, sans-serif',
                 fontSize: 13,
                 letterSpacing: 0.5,
-                color: 'rgba(13,15,18,.65)',
+                color: 'rgba(8,8,8,.65)',
               }}
             >
               {opt.weight}
@@ -178,7 +178,7 @@ export function EffortLevelEditIsland({
           style={{
             border: 'none',
             background: 'transparent',
-            color: 'rgba(13,15,18,.55)',
+            color: 'rgba(8,8,8,.55)',
             cursor: saving ? 'wait' : 'pointer',
             fontFamily: 'Inter, sans-serif',
             fontSize: 12,

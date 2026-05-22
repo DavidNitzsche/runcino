@@ -365,7 +365,7 @@ export default async function TrainingPage() {
                     fontSize: 11,
                     fontWeight: 600,
                     color: blockBankMi >= 0 ? '#1f6a21' : '#B3450A',
-                    background: blockBankMi >= 0 ? 'rgba(31,106,33,.08)' : 'rgba(232,93,38,.08)',
+                    background: blockBankMi >= 0 ? 'rgba(31,106,33,.08)' : 'rgba(232,128,33,.08)',
                   }}
                   title="Actual miles run since the block started, vs the prescribed mileage for the same elapsed time."
                 >
@@ -488,7 +488,7 @@ export default async function TrainingPage() {
           </div>
           <div className="adapted-items">
             {ADAPTED_ITEMS.length === 0 ? (
-              <div style={{ padding: '24px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
+              <div style={{ padding: '24px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)', textAlign: 'center' }}>
                 No adjustments yet. As you log check-ins and runs, the coach engine will surface
                 plan changes here with the reasoning behind each one.
               </div>
@@ -517,7 +517,7 @@ export default async function TrainingPage() {
             </div>
           </div>
           {PACES.length === 0 ? (
-            <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
+            <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
               We work out your easy, marathon, threshold, interval and repetition paces from
               your fitness score, which comes from a recent race result. Once you log a race
               finish, this card fills in.

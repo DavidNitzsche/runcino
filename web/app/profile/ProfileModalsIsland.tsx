@@ -66,13 +66,13 @@ const DEFAULT_ACCENT = '#E85D26';
 
 const ACCENT_SWATCHES: { label: string; hex: string }[] = [
   { label: 'Orange', hex: '#E85D26' },
-  { label: 'Blue',   hex: '#2563EB' },
-  { label: 'Green',  hex: '#2CA82F' },
+  { label: 'Blue',   hex: '#008FEC' },
+  { label: 'Green',  hex: '#3EBD41' },
   { label: 'Purple', hex: '#7C3AED' },
-  { label: 'Red',    hex: '#F43F5E' },
+  { label: 'Red',    hex: '#FC4D64' },
   { label: 'Teal',   hex: '#0EA5A4' },
   { label: 'Pink',   hex: '#EC4899' },
-  { label: 'Amber',  hex: '#D4900A' },
+  { label: 'Amber',  hex: '#F3AD38' },
 ];
 
 const RUN_TYPES: { value: RunType; label: string }[] = [
@@ -164,7 +164,7 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(13,15,18,.55)',
+        position: 'fixed', inset: 0, background: 'rgba(8,8,8,.55)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         zIndex: 1000, padding: '60px 24px', overflowY: 'auto', backdropFilter: 'blur(4px)',
       }}
@@ -185,11 +185,11 @@ function ModalHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
     <>
       <div style={{
         fontFamily: 'Inter, sans-serif', fontSize: 11, letterSpacing: '2px',
-        textTransform: 'uppercase', color: 'rgba(13,15,18,.35)', fontWeight: 600,
+        textTransform: 'uppercase', color: 'rgba(8,8,8,.35)', fontWeight: 600,
       }}>{eyebrow}</div>
       <div style={{
         fontFamily: '"Bebas Neue", sans-serif', fontSize: 38, letterSpacing: '-0.5px',
-        lineHeight: 1, color: '#0D0F12', marginTop: 6,
+        lineHeight: 1, color: '#080808', marginTop: 6,
       }}>{title.toUpperCase()}</div>
     </>
   );
@@ -200,12 +200,12 @@ function Field({ label, children, hint }: { label: string; children: React.React
     <div style={{ marginTop: 18 }}>
       <div style={{
         fontFamily: 'Inter, sans-serif', fontSize: 11, letterSpacing: '1.5px',
-        color: 'rgba(13,15,18,.55)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 6,
+        color: 'rgba(8,8,8,.55)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 6,
       }}>{label}</div>
       {children}
       {hint && (
         <div style={{
-          fontFamily: 'Inter, sans-serif', fontSize: 12, color: 'rgba(13,15,18,.45)', marginTop: 4,
+          fontFamily: 'Inter, sans-serif', fontSize: 12, color: 'rgba(8,8,8,.45)', marginTop: 4,
         }}>{hint}</div>
       )}
     </div>
@@ -214,8 +214,8 @@ function Field({ label, children, hint }: { label: string; children: React.React
 
 const INPUT_STYLE: React.CSSProperties = {
   width: '100%', padding: '10px 12px', borderRadius: 8,
-  border: '1px solid rgba(13,15,18,.16)', fontFamily: 'Inter, sans-serif',
-  fontSize: 14, color: '#0D0F12', outline: 'none',
+  border: '1px solid rgba(8,8,8,.16)', fontFamily: 'Inter, sans-serif',
+  fontSize: 14, color: '#080808', outline: 'none',
 };
 
 function PrimaryButton({ children, onClick, disabled, color }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; color?: string }) {
@@ -228,7 +228,7 @@ function PrimaryButton({ children, onClick, disabled, color }: { children: React
         fontFamily: 'Oswald, sans-serif', fontWeight: 600, fontSize: 12,
         letterSpacing: '1.5px', textTransform: 'uppercase',
         padding: '11px 22px', borderRadius: 9, cursor: disabled ? 'wait' : 'pointer',
-        background: color ?? '#0D0F12', color: '#fff', border: 'none',
+        background: color ?? '#080808', color: '#fff', border: 'none',
         opacity: disabled ? 0.6 : 1,
       }}
     >{children}</button>
@@ -246,8 +246,8 @@ function SecondaryButton({ children, onClick, disabled, danger }: { children: Re
         letterSpacing: '1.5px', textTransform: 'uppercase',
         padding: '11px 22px', borderRadius: 9, cursor: disabled ? 'wait' : 'pointer',
         background: 'transparent',
-        color: danger ? '#F43F5E' : '#0D0F12',
-        border: `1px solid ${danger ? 'rgba(244,63,94,.35)' : 'rgba(13,15,18,.16)'}`,
+        color: danger ? '#FC4D64' : '#080808',
+        border: `1px solid ${danger ? 'rgba(252,77,100,.35)' : 'rgba(8,8,8,.16)'}`,
         opacity: disabled ? 0.6 : 1,
       }}
     >{children}</button>
@@ -258,8 +258,8 @@ function ErrorBanner({ message }: { message: string }) {
   return (
     <div style={{
       marginTop: 14, padding: '10px 14px', borderRadius: 8,
-      background: 'rgba(244,63,94,.08)', border: '1px solid rgba(244,63,94,.3)',
-      fontFamily: 'Inter, sans-serif', fontSize: 13, color: '#F43F5E',
+      background: 'rgba(252,77,100,.08)', border: '1px solid rgba(252,77,100,.3)',
+      fontFamily: 'Inter, sans-serif', fontSize: 13, color: '#FC4D64',
     }}>{message}</div>
   );
 }
@@ -384,9 +384,9 @@ function ShoeForm({ shoe, onClose }: { shoe: Shoe | null; onClose: () => void })
                 style={{
                   padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
                   fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 500,
-                  border: active ? '1px solid #0D0F12' : '1px solid rgba(13,15,18,.16)',
-                  background: active ? '#0D0F12' : 'transparent',
-                  color: active ? '#fff' : '#0D0F12',
+                  border: active ? '1px solid #080808' : '1px solid rgba(8,8,8,.16)',
+                  background: active ? '#080808' : 'transparent',
+                  color: active ? '#fff' : '#080808',
                 }}
               >{t.label}</button>
             );
@@ -402,9 +402,9 @@ function ShoeForm({ shoe, onClose }: { shoe: Shoe | null; onClose: () => void })
             style={{
               padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
               fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 500,
-              border: preferred ? '1px solid #0D0F12' : '1px solid rgba(13,15,18,.16)',
-              background: preferred ? '#0D0F12' : 'transparent',
-              color: preferred ? '#fff' : '#0D0F12',
+              border: preferred ? '1px solid #080808' : '1px solid rgba(8,8,8,.16)',
+              background: preferred ? '#080808' : 'transparent',
+              color: preferred ? '#fff' : '#080808',
             }}
           >In rotation</button>
           <button
@@ -413,9 +413,9 @@ function ShoeForm({ shoe, onClose }: { shoe: Shoe | null; onClose: () => void })
             style={{
               padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
               fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 500,
-              border: !preferred ? '1px solid #0D0F12' : '1px solid rgba(13,15,18,.16)',
-              background: !preferred ? '#0D0F12' : 'transparent',
-              color: !preferred ? '#fff' : '#0D0F12',
+              border: !preferred ? '1px solid #080808' : '1px solid rgba(8,8,8,.16)',
+              background: !preferred ? '#080808' : 'transparent',
+              color: !preferred ? '#fff' : '#080808',
             }}
           >Backup</button>
         </div>
@@ -425,7 +425,7 @@ function ShoeForm({ shoe, onClose }: { shoe: Shoe | null; onClose: () => void })
 
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(13,15,18,.08)', gap: 8,
+        marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(8,8,8,.08)', gap: 8,
       }}>
         <div>
           {isEdit && <SecondaryButton onClick={retire} disabled={busy} danger>Retire shoe</SecondaryButton>}
@@ -495,16 +495,16 @@ function AccentForm({ current, onClose }: { current: string | null; onClose: () 
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                   padding: '12px 6px', borderRadius: 10, cursor: 'pointer',
-                  background: active ? 'rgba(13,15,18,.04)' : 'transparent',
+                  background: active ? 'rgba(8,8,8,.04)' : 'transparent',
                   border: active ? `2px solid ${s.hex}` : '2px solid transparent',
                   fontFamily: 'Inter, sans-serif', fontSize: 11, fontWeight: 600,
-                  color: active ? '#0D0F12' : 'rgba(13,15,18,.55)',
+                  color: active ? '#080808' : 'rgba(8,8,8,.55)',
                   letterSpacing: '1px', textTransform: 'uppercase',
                 }}
               >
                 <span style={{
                   width: 32, height: 32, borderRadius: 16, background: s.hex,
-                  border: '1px solid rgba(13,15,18,.08)',
+                  border: '1px solid rgba(8,8,8,.08)',
                 }} aria-hidden="true" />
                 {s.label}
               </button>
@@ -517,7 +517,7 @@ function AccentForm({ current, onClose }: { current: string | null; onClose: () 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <span aria-hidden="true" style={{
             width: 36, height: 36, borderRadius: 8, background: picked,
-            border: '1px solid rgba(13,15,18,.16)', flexShrink: 0,
+            border: '1px solid rgba(8,8,8,.16)', flexShrink: 0,
           }} />
           <input
             style={{ ...INPUT_STYLE, fontFamily: 'monospace' }}
@@ -531,11 +531,11 @@ function AccentForm({ current, onClose }: { current: string | null; onClose: () 
 
       <div style={{
         marginTop: 18, padding: 16, borderRadius: 10,
-        background: 'rgba(13,15,18,.04)', border: '1px solid rgba(13,15,18,.08)',
+        background: 'rgba(8,8,8,.04)', border: '1px solid rgba(8,8,8,.08)',
       }}>
         <div style={{
           fontFamily: 'Inter, sans-serif', fontSize: 11, letterSpacing: '1.5px',
-          textTransform: 'uppercase', color: 'rgba(13,15,18,.55)', fontWeight: 600,
+          textTransform: 'uppercase', color: 'rgba(8,8,8,.55)', fontWeight: 600,
         }}>Preview</div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10 }}>
           <span style={{
@@ -555,7 +555,7 @@ function AccentForm({ current, onClose }: { current: string | null; onClose: () 
 
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(13,15,18,.08)', gap: 8,
+        marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(8,8,8,.08)', gap: 8,
       }}>
         <SecondaryButton onClick={() => save(null)} disabled={busy}>Reset to default</SecondaryButton>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -576,14 +576,14 @@ function PlaceholderForm({ mode, onClose }: { mode: 'edit-profile' | 'edit-prefs
     <>
       <ModalHeader eyebrow={EYEBROWS[mode]} title={LABELS[mode]} />
       <p style={{
-        fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)',
+        fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(8,8,8,.55)',
         lineHeight: 1.55, marginTop: 24,
       }}>
         The full edit form lands in the next commit. For now, the structural
         port of /profile is live — what you see in the cards above reflects
         what your account holds.
       </p>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(13,15,18,.08)' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 28, paddingTop: 20, borderTop: '1px solid rgba(8,8,8,.08)' }}>
         <PrimaryButton onClick={onClose}>Close</PrimaryButton>
       </div>
     </>

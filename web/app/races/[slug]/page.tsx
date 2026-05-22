@@ -486,7 +486,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                 fontFamily: 'Inter, sans-serif',
                 fontSize: 13,
                 lineHeight: 1.55,
-                color: 'rgba(13,15,18,.85)',
+                color: 'rgba(8,8,8,.85)',
               }}
             >
               Your <strong>chip time</strong> of <strong>{divergence.chipDisplay}</strong> is what
@@ -503,7 +503,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                 fontFamily: 'Inter, sans-serif',
                 fontSize: 11,
                 lineHeight: 1.5,
-                color: 'rgba(13,15,18,.55)',
+                color: 'rgba(8,8,8,.55)',
               }}
             >
               The gap is usually start-corral walking before the chip mat (gun-to-mat lag) or
@@ -564,13 +564,13 @@ export default async function RacePlanPage({ params }: PageProps) {
             {readiness && (
               <div
                 style={{
-                  borderTop: '1px solid rgba(13,15,18,.08)',
+                  borderTop: '1px solid rgba(8,8,8,.08)',
                   marginTop: 12,
                   paddingTop: 12,
                   fontFamily: 'Inter, sans-serif',
                   fontSize: 12,
                   lineHeight: 1.6,
-                  color: 'rgba(13,15,18,.85)',
+                  color: 'rgba(8,8,8,.85)',
                 }}
               >
                 <div
@@ -579,7 +579,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                     fontWeight: 700,
                     fontSize: 9,
                     letterSpacing: 1.2,
-                    color: 'rgba(13,15,18,.55)',
+                    color: 'rgba(8,8,8,.55)',
                     textTransform: 'uppercase',
                     marginBottom: 6,
                   }}
@@ -608,8 +608,8 @@ export default async function RacePlanPage({ params }: PageProps) {
                       padding: '6px 8px',
                       borderRadius: 6,
                       background: readiness.onPace
-                        ? 'rgba(44,168,47,.08)'
-                        : 'rgba(232,93,38,.06)',
+                        ? 'rgba(62,189,65,.08)'
+                        : 'rgba(232,128,33,.06)',
                       color: readiness.onPace ? '#1f6a21' : 'var(--accent, #E85D26)',
                     }}
                   >
@@ -705,18 +705,18 @@ export default async function RacePlanPage({ params }: PageProps) {
                   {/* Phase boundary verticals */}
                   {phases.slice(0, -1).map((p, i) => {
                     const x = (p.end_mi / Math.max(0.01, profile.totalMi)) * 1180;
-                    return <line key={`v-${i}`} x1={x} y1={20} x2={x} y2={240} stroke="rgba(13,15,18,.08)" strokeWidth="1" strokeDasharray="3 3" />;
+                    return <line key={`v-${i}`} x1={x} y1={20} x2={x} y2={240} stroke="rgba(8,8,8,.08)" strokeWidth="1" strokeDasharray="3 3" />;
                   })}
                   {/* Mile ticks */}
                   {profile.ticks.map((mi) => {
                     const x = (mi / Math.max(0.01, profile.totalMi)) * 1180;
-                    return <line key={`tick-${mi}`} x1={x} y1={240} x2={x} y2={245} stroke="rgba(13,15,18,.06)" strokeWidth="1" />;
+                    return <line key={`tick-${mi}`} x1={x} y1={240} x2={x} y2={245} stroke="rgba(8,8,8,.06)" strokeWidth="1" />;
                   })}
                   {/* Y-axis elevation gridlines + labels */}
                   {profile.yLabels.map((label, i) => (
                     <g key={`yl-${i}`}>
-                      <line x1={40} y1={label.y} x2={1180} y2={label.y} stroke="rgba(13,15,18,.05)" strokeWidth="1" />
-                      <text x={6} y={label.y + 3} fontFamily="Inter, sans-serif" fontSize="10" fill="rgba(13,15,18,.40)" fontWeight="500">{label.ft} ft</text>
+                      <line x1={40} y1={label.y} x2={1180} y2={label.y} stroke="rgba(8,8,8,.05)" strokeWidth="1" />
+                      <text x={6} y={label.y + 3} fontFamily="Inter, sans-serif" fontSize="10" fill="rgba(8,8,8,.40)" fontWeight="500">{label.ft} ft</text>
                     </g>
                   ))}
                   {/* Elevation area — filled per phase with that phase's
@@ -729,7 +729,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                       <defs>
                         <clipPath id="elev-area-clip"><path d={profile.areaD} /></clipPath>
                         {(['amber', 'blue', 'green', 'orange'] as const).map((c) => {
-                          const hex = c === 'amber' ? '#D4900A' : c === 'blue' ? '#2563EB' : c === 'green' ? '#2CA82F' : '#E85D26';
+                          const hex = c === 'amber' ? '#F3AD38' : c === 'blue' ? '#008FEC' : c === 'green' ? '#3EBD41' : '#E85D26';
                           return (
                             <linearGradient key={`grad-${c}`} id={`elev-grad-${c}`} x1="0" y1="20" x2="0" y2="240" gradientUnits="userSpaceOnUse">
                               <stop offset="0" stopColor={hex} stopOpacity="0.06" />
@@ -753,9 +753,9 @@ export default async function RacePlanPage({ params }: PageProps) {
                       </g>
                     </>
                   ) : (
-                    profile.areaD && <path d={profile.areaD} fill="rgba(13,15,18,.05)" />
+                    profile.areaD && <path d={profile.areaD} fill="rgba(8,8,8,.05)" />
                   )}
-                  {profile.pathD && <path d={profile.pathD} fill="none" stroke="#0D0F12" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+                  {profile.pathD && <path d={profile.pathD} fill="none" stroke="#080808" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
                 </svg>
               </div>
 
@@ -882,7 +882,7 @@ export default async function RacePlanPage({ params }: PageProps) {
             )}
 
             {fueling.notes && (
-              <p style={{ padding: '14px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, lineHeight: 1.55, color: 'rgba(13,15,18,.55)', fontStyle: 'italic' }}>
+              <p style={{ padding: '14px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, lineHeight: 1.55, color: 'rgba(8,8,8,.55)', fontStyle: 'italic' }}>
                 {fueling.notes}
               </p>
             )}

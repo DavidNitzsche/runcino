@@ -193,7 +193,7 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             {!plan && (
               <div className="rd-section">
                 <div className="rd-section-label">Planned workout</div>
-                <div className="rd-plan-detail" style={{ color: 'rgba(13,15,18,.55)' }}>
+                <div className="rd-plan-detail" style={{ color: 'rgba(8,8,8,.55)' }}>
                   No planned workout for this date (off-plan run).
                 </div>
               </div>
@@ -216,7 +216,7 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
         <style jsx>{`
           .rd-overlay {
             position: fixed; inset: 0;
-            background: rgba(13,15,18,.55);
+            background: rgba(8,8,8,.55);
             display: flex; align-items: center; justify-content: center;
             z-index: 200;
             padding: 24px;
@@ -238,16 +238,16 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             width: 32px; height: 32px;
             background: transparent; border: none; cursor: pointer;
             font-size: 28px; line-height: 1;
-            color: rgba(13,15,18,.45);
+            color: rgba(8,8,8,.45);
           }
-          .rd-close:hover { color: #0D0F12; }
+          .rd-close:hover { color: #080808; }
           .rd-error { color: #B00020; font-family: 'Inter', sans-serif; padding: 20px; text-align: center; }
-          .rd-loading { padding: 40px; text-align: center; color: rgba(13,15,18,.55); font-family: 'Inter', sans-serif; font-size: 13px; }
+          .rd-loading { padding: 40px; text-align: center; color: rgba(8,8,8,.55); font-family: 'Inter', sans-serif; font-size: 13px; }
 
           .rd-eyebrow {
             font-family: 'Inter', sans-serif;
             font-size: 12px; letter-spacing: 2.5px;
-            color: rgba(13,15,18,.45);
+            color: rgba(8,8,8,.45);
             text-transform: uppercase;
             margin-bottom: 8px;
             display: flex; align-items: center; gap: 10px;
@@ -259,13 +259,13 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             color: #fff;
           }
           .rd-pill.race    { background: #E85D26; }
-          .rd-pill.long    { background: #2CA82F; }
+          .rd-pill.long    { background: #3EBD41; }
           .rd-pill.workout { background: #C97000; }
 
           .rd-title {
             font-family: 'Bebas Neue', sans-serif;
             font-size: 44px; line-height: 0.95;
-            letter-spacing: -1px; color: #0D0F12;
+            letter-spacing: -1px; color: #080808;
             margin: 0 0 24px;
           }
 
@@ -276,26 +276,26 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             margin-bottom: 14px;
           }
           .rd-stat {
-            background: rgba(13,15,18,.03);
+            background: rgba(8,8,8,.03);
             border-radius: 10px;
             padding: 14px 12px 12px;
           }
           .rd-stat-val {
             font-family: 'Bebas Neue', sans-serif;
             font-size: 26px; line-height: 1;
-            color: #0D0F12;
+            color: #080808;
             letter-spacing: -0.5px;
           }
           .rd-stat-val small {
             font-family: 'Inter', sans-serif;
             font-size: 11px; font-weight: 500;
-            color: rgba(13,15,18,.55);
+            color: rgba(8,8,8,.55);
             margin-left: 3px;
           }
           .rd-stat-label {
             font-family: 'Inter', sans-serif;
             font-size: 10.5px; letter-spacing: 1.2px;
-            color: rgba(13,15,18,.45);
+            color: rgba(8,8,8,.45);
             text-transform: uppercase;
             margin-top: 6px;
             font-weight: 600;
@@ -307,19 +307,19 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             gap: 14px;
             font-family: 'Inter', sans-serif;
             font-size: 12.5px;
-            color: rgba(13,15,18,.55);
+            color: rgba(8,8,8,.55);
             padding: 10px 4px 0;
-            border-bottom: 1px solid rgba(13,15,18,.05);
+            border-bottom: 1px solid rgba(8,8,8,.05);
             padding-bottom: 18px;
             margin-bottom: 22px;
           }
-          .rd-meta-row strong { color: #0D0F12; font-weight: 600; }
+          .rd-meta-row strong { color: #080808; font-weight: 600; }
 
           .rd-section { margin-bottom: 22px; }
           .rd-section-label {
             font-family: 'Oswald', sans-serif;
             font-weight: 600; font-size: 10px;
-            letter-spacing: 1.5px; color: rgba(13,15,18,.55);
+            letter-spacing: 1.5px; color: rgba(8,8,8,.55);
             text-transform: uppercase; margin-bottom: 8px;
           }
           .rd-plan-row {
@@ -329,7 +329,7 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
           .rd-plan-name {
             font-family: 'Oswald', sans-serif; font-weight: 700;
             font-size: 15px; letter-spacing: 0.5px; text-transform: uppercase;
-            color: #0D0F12;
+            color: #080808;
           }
           .rd-plan-status {
             font-family: 'Oswald', sans-serif; font-weight: 700;
@@ -337,18 +337,18 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             padding: 4px 10px; border-radius: 999px;
             text-transform: uppercase;
           }
-          .rd-plan-status.green { background: rgba(44,168,47,.10); color: #2CA82F; }
-          .rd-plan-status.amber { background: rgba(212,144,10,.10); color: #C97000; }
+          .rd-plan-status.green { background: rgba(62,189,65,.10); color: #3EBD41; }
+          .rd-plan-status.amber { background: rgba(243,173,56,.10); color: #C97000; }
           .rd-plan-detail {
             font-family: 'Inter', sans-serif; font-size: 13.5px;
-            color: rgba(13,15,18,.75); line-height: 1.5;
+            color: rgba(8,8,8,.75); line-height: 1.5;
             margin-top: 4px;
           }
-          .rd-plan-detail strong { color: #0D0F12; font-weight: 600; }
+          .rd-plan-detail strong { color: #080808; font-weight: 600; }
 
           .rd-desc {
             font-family: 'Inter', sans-serif; font-size: 13px;
-            color: rgba(13,15,18,.75); line-height: 1.55;
+            color: rgba(8,8,8,.75); line-height: 1.55;
             margin: 0; white-space: pre-wrap;
           }
 
@@ -356,17 +356,17 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             display: flex; justify-content: flex-end;
             gap: 8px; margin-top: 8px;
             padding-top: 18px;
-            border-top: 1px solid rgba(13,15,18,.05);
+            border-top: 1px solid rgba(8,8,8,.05);
           }
           .rd-btn {
             font-family: 'Oswald', sans-serif; font-weight: 600;
             font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
             padding: 10px 18px; border-radius: 8px; cursor: pointer;
             text-decoration: none;
-            background: transparent; color: rgba(13,15,18,.55);
-            border: 1px solid rgba(13,15,18,.16);
+            background: transparent; color: rgba(8,8,8,.55);
+            border: 1px solid rgba(8,8,8,.16);
           }
-          .rd-btn-ghost:hover { background: rgba(13,15,18,.04); color: #0D0F12; }
+          .rd-btn-ghost:hover { background: rgba(8,8,8,.04); color: #080808; }
 
           @media (max-width: 600px) {
             .rd-stats { grid-template-columns: 1fr 1fr; }

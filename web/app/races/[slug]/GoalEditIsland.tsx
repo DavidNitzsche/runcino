@@ -108,7 +108,7 @@ export function GoalEditIsland({ slug, goalDisplay, goalFinishS, raceDistanceMi 
             border: none;
             border-bottom: 2px solid #E85D26;
             background: transparent;
-            color: #0D0F12;
+            color: #080808;
             margin-top: 6px;
             letter-spacing: 0;
           }
@@ -122,9 +122,9 @@ export function GoalEditIsland({ slug, goalDisplay, goalFinishS, raceDistanceMi 
             padding: 7px 12px; border-radius: 6px; cursor: pointer;
             border: 1px solid;
           }
-          .goal-save-btn { background: #0D0F12; color: #fff; border-color: #0D0F12; }
+          .goal-save-btn { background: #080808; color: #fff; border-color: #080808; }
           .goal-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-          .goal-cancel-btn { background: transparent; color: rgba(13,15,18,.55); border-color: rgba(13,15,18,.16); }
+          .goal-cancel-btn { background: transparent; color: rgba(8,8,8,.55); border-color: rgba(8,8,8,.16); }
           .goal-err {
             font-family: 'Inter', sans-serif; font-size: 11px; color: #B00020;
             margin-top: 6px;
@@ -148,16 +148,16 @@ export function GoalEditIsland({ slug, goalDisplay, goalFinishS, raceDistanceMi 
           all: unset;
           display: block;
           cursor: pointer;
-          background: rgba(13,15,18,.04);
-          border: 1px solid rgba(13,15,18,.08);
+          background: rgba(8,8,8,.04);
+          border: 1px solid rgba(8,8,8,.08);
           border-radius: 10px;
           padding: 18px 22px;
           transition: background 120ms ease, border-color 120ms ease;
           width: 100%;
         }
         button.path-stat-btn:hover {
-          background: rgba(232,93,38,.06);
-          border-color: rgba(232,93,38,.30);
+          background: rgba(232,128,33,.06);
+          border-color: rgba(232,128,33,.30);
         }
       `}</style>
     </button>

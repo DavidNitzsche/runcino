@@ -42,7 +42,7 @@ export function Z2CoverageCard({ finding }: Props) {
         fontFamily: 'Inter, sans-serif',
         fontSize: 13,
         lineHeight: 1.55,
-        color: 'rgba(13,15,18,.85)',
+        color: 'rgba(8,8,8,.85)',
       }}
     >
       <div
@@ -61,22 +61,22 @@ export function Z2CoverageCard({ finding }: Props) {
 
       {/* Evidence */}
       <div style={{ marginBottom: 10 }}>
-        <strong style={{ color: '#0D0F12' }}>Last 7 days:</strong>{' '}
+        <strong style={{ color: '#080808' }}>Last 7 days:</strong>{' '}
         {finding.last7d.runsInZ2}/{finding.last7d.easyRunCount} easy runs landed in Z2 band
-        {' '}(HR ≤{ceiling}). <strong style={{ color: '#0D0F12' }}>Last 28 days:</strong>{' '}
+        {' '}(HR ≤{ceiling}). <strong style={{ color: '#080808' }}>Last 28 days:</strong>{' '}
         {finding.last28d.z2SharePct}% of easy mileage in Z2 ({finding.last28d.z2Miles} of {Math.round(finding.last28d.easyMiles)} mi).
       </div>
 
       {/* Diagnosis — direct, no hedging */}
       <div style={{ marginBottom: 10 }}>
-        <strong style={{ color: '#0D0F12' }}>Your easy runs are too hard.</strong>{' '}
+        <strong style={{ color: '#080808' }}>Your easy runs are too hard.</strong>{' '}
         Easy effort builds aerobic capacity without accumulating fatigue —
         when easy runs drift into Z3 the aerobic-base adaptation weakens AND you carry more fatigue into quality days.
       </div>
 
       {/* Recommendation — specific, actionable */}
       <div style={{ marginBottom: finding.thresholdUnderReach ? 10 : 12 }}>
-        <strong style={{ color: '#0D0F12' }}>Easy days are HR-governed, not pace-governed.</strong>{' '}
+        <strong style={{ color: '#080808' }}>Easy days are HR-governed, not pace-governed.</strong>{' '}
         Hold HR ≤{ceiling}. Walk uphills if needed. Let pace be whatever it needs to be — {ePaceHint}
       </div>
 
@@ -86,13 +86,13 @@ export function Z2CoverageCard({ finding }: Props) {
           style={{
             marginTop: 10,
             padding: '10px 12px',
-            background: 'rgba(13,15,18,.04)',
+            background: 'rgba(8,8,8,.04)',
             borderRadius: 6,
             fontSize: 12.5,
-            color: 'rgba(13,15,18,.78)',
+            color: 'rgba(8,8,8,.78)',
           }}
         >
-          <strong style={{ color: '#0D0F12' }}>Connected observation:</strong>{' '}
+          <strong style={{ color: '#080808' }}>Connected observation:</strong>{' '}
           Your most recent threshold workout ({fmtDate(finding.thresholdUnderReach.date)}{finding.thresholdUnderReach.name ? `, ${finding.thresholdUnderReach.name}` : ''}, HR {finding.thresholdUnderReach.avgHr}) hit the pace band but stayed below Z4 ({finding.thresholdUnderReach.z4FloorBpm}+).
           {' '}This is often downstream of easy days carrying too much load — the body can't reach threshold intensity when not fresh.
           {' '}<strong>Slower easy days = harder hard days, the way they're supposed to be.</strong>
@@ -104,13 +104,13 @@ export function Z2CoverageCard({ finding }: Props) {
         style={{
           marginTop: 12,
           paddingTop: 10,
-          borderTop: '1px solid rgba(13,15,18,.10)',
+          borderTop: '1px solid rgba(8,8,8,.10)',
           fontStyle: 'italic',
           fontSize: 11.5,
-          color: 'rgba(13,15,18,.62)',
+          color: 'rgba(8,8,8,.62)',
         }}
       >
-        <strong style={{ fontStyle: 'normal', color: 'rgba(13,15,18,.78)' }}>What would change our mind: </strong>
+        <strong style={{ fontStyle: 'normal', color: 'rgba(8,8,8,.78)' }}>What would change our mind: </strong>
         3+ consecutive weeks where ≥60% of easy mileage lands in Z2.
       </div>
     </div>
