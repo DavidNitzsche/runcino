@@ -99,6 +99,9 @@ export async function generateWeeklyInsights(
   const prior = rows.filter((r) => r.day < weekStart);
 
   const insights: WeeklyInsight[] = [];
+  // Positive/neutral plain-language reads, surfaced only when nothing's
+  // wrong — so the card always says something useful instead of going empty.
+  const goodNotes: WeeklyInsight[] = [];
   const { thisWeekPlannedMi, easyPaceLowSec, easyPaceHighSec, phase } = planContext;
 
   // ── 1. Easy pace vs PLANNED easy band ──────────────────────
@@ -142,9 +145,13 @@ export async function generateWeeklyInsights(
           `If next week's median lands back in band this resolves itself.`,
         tone: 'amber',
       });
+    } else {
+      // Right in the band — a real positive worth saying plainly.
+      goodNotes.push({
+        text: `Your easy runs are landing right where they should (${easyPaces.length} runs around ${fmtPace(median(easyPaces))}). That's the discipline that builds your engine.`,
+        tone: 'green',
+      });
     }
-    // "Right in the band" — intentionally silent. We don't surface
-    // good news as an insight; the runner already knows.
   }
 
   // ── 2. Mileage vs PLANNED weekly mileage ───────────────────
@@ -173,6 +180,11 @@ export async function generateWeeklyInsights(
           `One short week is fine; two in a row means the plan needs to bend.`,
         tone: 'amber',
       });
+    } else {
+      goodNotes.push({
+        text: `Mileage is right on plan — ${totalThis.toFixed(0)} of ${thisWeekPlannedMi.toFixed(0)} mi this week. Steady is exactly what works.`,
+        tone: 'green',
+      });
     }
   }
 
@@ -200,5 +212,8 @@ export async function generateWeeklyInsights(
     }
   }
 
+  // If nothing needs flagging, surface the positives so the card always
+  // tells the runner something real instead of an empty state.
+  if (insights.length === 0) insights.push(...goodNotes);
   return insights.slice(0, 3);
 }

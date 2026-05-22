@@ -35,6 +35,16 @@ import { resolvePlanUserId } from '@/lib/plan-user';
 import { findCurrentWeek } from '@/lib/synthetic-plan';
 import './health-v4.css';
 
+// Plain-language names + "what it feels like" for each HR zone, so a normal
+// person never sees "VO₂max" or "%HRR". Keyed by zone tier (z1..z5).
+const ZONE_PLAIN: Record<string, { name: string; feel: string }> = {
+  z1: { name: 'Recovery', feel: 'Very easy — warm-up pace' },
+  z2: { name: 'Easy',     feel: 'Easy — you can hold a conversation' },
+  z3: { name: 'Steady',   feel: 'Moderate — comfortably working' },
+  z4: { name: 'Hard',     feel: 'Hard — only a few words at a time' },
+  z5: { name: 'Max',      feel: 'Very hard — all-out' },
+};
+
 export default async function HealthPage() {
   const auth = await requireActiveUser();
   await syncStravaIfStale(auth.id);
@@ -328,8 +338,8 @@ export default async function HealthPage() {
               <div className="card-title">HR Zones</div>
               <div className="card-sub">
                 {hrBundle
-                  ? <>Karvonen scale · <strong>{hrBundle.framework === 'HRR' ? '%HRR (resting + reserve)' : '% of max HR'}</strong>{hrBundle.hrr != null ? ` · reserve ${hrBundle.hrr} bpm` : ''}</>
-                  : 'Set Max HR (and Resting HR for Karvonen) below to compute your zones'}
+                  ? <>What each effort should feel like — set from your own max and resting heart rate.</>
+                  : 'Add your max heart rate below to see your personal zones.'}
               </div>
             </div>
             <div className="card-meta" style={{ color: hrBundle ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
@@ -349,25 +359,24 @@ export default async function HealthPage() {
                 const widthPct = total > 0 ? (span / total) * 100 : 20;
                 return (
                   <div className="hr-zone-row" key={z.tier}>
-                    <div className="hr-zone-name">{z.name}</div>
+                    <div className="hr-zone-name">{ZONE_PLAIN[z.tier]?.name ?? z.name}</div>
                     <div className="hr-zone-band-wrap">
                       <div
                         className="hr-zone-band"
                         style={{ width: `${widthPct}%`, background: zoneColors[z.tier] }}
                       >
-                        <span className="hr-zone-band-bpm">{z.lowBpm}–{z.highBpm}</span>
+                        <span className="hr-zone-band-bpm">{z.lowBpm}–{z.highBpm} bpm</span>
                       </div>
                     </div>
-                    <div className="hr-zone-pct">{z.pctLabel}</div>
+                    <div className="hr-zone-pct">{ZONE_PLAIN[z.tier]?.feel ?? ''}</div>
                   </div>
                 );
               })}
             </div>
           ) : (
             <div style={{ padding: '8px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)' }}>
-              Once a Max HR is set, your five training zones (Recovery → VO₂max) are
-              computed here. Add a Resting HR too and they switch to the more accurate
-              Karvonen (%HRR) framework.
+              Add your max heart rate below and your five effort zones — from very easy to all-out —
+              show up here, tuned to you.
             </div>
           )}
 
@@ -388,7 +397,7 @@ export default async function HealthPage() {
           <div className="card-header">
             <div className="card-title-group">
               <div className="card-title">Insights</div>
-              <div className="card-sub">Pattern reads from the last 14 days</div>
+              <div className="card-sub">What we&apos;re noticing in your last 2 weeks</div>
             </div>
           </div>
           <div className="insights-list">
@@ -404,8 +413,9 @@ export default async function HealthPage() {
               })
             ) : (
               <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
-                No insights yet. Connect a wearable + log a few days of check-ins, and patterns
-                from the last 14 days will surface here automatically.
+                Nothing’s jumping out from your last couple of weeks — keep logging runs and we’ll
+                point out anything worth knowing (easy pace creeping up, mileage spiking, your long
+                run climbing).
               </div>
             )}
           </div>
@@ -415,8 +425,8 @@ export default async function HealthPage() {
         <div className="card form-curve-card">
           <div className="card-header">
             <div className="card-title-group">
-              <div className="card-title">Training Load</div>
-              <div className="card-sub">Fitness / fatigue / form curves derived from training data</div>
+              <div className="card-title">Fitness &amp; Freshness</div>
+              <div className="card-sub">How much fitness you&apos;re building vs. how tired you are right now.</div>
             </div>
             <div className="card-meta" style={{ color: trainingLoad?.hasData ? '#0D0F12' : 'rgba(13,15,18,.45)' }}>
               {trainingLoad?.hasData ? trainingLoad.verdictLabel : 'No data'}
@@ -429,14 +439,14 @@ export default async function HealthPage() {
               <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}>
                 {trainingLoad?.hasData ? trainingLoad.fitnessCtl : '—'}
               </div>
-              <div className="form-stat-sub">{trainingLoad?.hasData ? 'CTL · 8-week load' : 'No data'}</div>
+              <div className="form-stat-sub">{trainingLoad?.hasData ? 'your aerobic base' : 'No data'}</div>
             </div>
             <div className="form-stat">
               <div className="form-stat-label">Fatigue</div>
               <div className="form-stat-val" style={trainingLoad?.hasData ? undefined : { color: 'rgba(13,15,18,.32)' }}>
                 {trainingLoad?.hasData ? trainingLoad.fatigueAtl : '—'}
               </div>
-              <div className="form-stat-sub">{trainingLoad?.hasData ? 'ATL · 7-day load' : 'No data'}</div>
+              <div className="form-stat-sub">{trainingLoad?.hasData ? 'how hard this week was' : 'No data'}</div>
             </div>
             <div className="form-stat">
               <div className="form-stat-label">Form</div>
@@ -446,15 +456,17 @@ export default async function HealthPage() {
               >
                 {trainingLoad?.hasData ? (trainingLoad.formTsb > 0 ? `+${trainingLoad.formTsb}` : trainingLoad.formTsb) : '—'}
               </div>
-              <div className="form-stat-sub">{trainingLoad?.hasData ? `TSB · ${trainingLoad.formChip}` : 'No data'}</div>
+              <div className="form-stat-sub">{trainingLoad?.hasData ? 'how fresh you feel' : 'No data'}</div>
             </div>
           </div>
 
           {trainingLoad?.hasData ? (
-            <div style={{ padding: '4px 40px 12px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.55)' }}>
-              {trainingLoad.peakWindowLabel}. Form (TSB) = Fitness − Fatigue: positive means fresh,
-              negative means you&apos;re carrying load. A per-day curve lands once Strava activity HR
-              streams feed daily training stress.
+            <div style={{ padding: '4px 40px 12px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(13,15,18,.7)' }}>
+              {trainingLoad.formTsb > 5
+                ? 'You’re fresh right now — fitness is ahead of fatigue. A good window to push hard or race.'
+                : trainingLoad.formTsb >= -20
+                  ? 'You’re building and carrying a little tiredness — exactly what a normal training week feels like. You’ll feel fresher as you ease off toward race day.'
+                  : 'You’re carrying a lot of fatigue right now — a heavy stretch. Keep easy days truly easy so you absorb the work instead of digging a hole.'}
             </div>
           ) : (
             <div style={{ padding: '40px 40px 48px', fontFamily: 'Inter, sans-serif', fontSize: 14, color: 'rgba(13,15,18,.55)', textAlign: 'center' }}>
