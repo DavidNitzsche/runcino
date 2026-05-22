@@ -15,6 +15,7 @@
 
 import { gatherCoachState } from '../../../lib/coach-state';
 import { getCurrentUser } from '../../../lib/auth';
+import { backfillWatchRunsAsActivities } from '../../../lib/watch-completion';
 import { coach } from '../../../coach/coach';
 import type {
   CoachDecision,
@@ -181,6 +182,9 @@ export async function GET(req: Request): Promise<Response> {
     // Authorization: Bearer token (requireActiveUser is cookie-only, so the
     // iPhone was being treated as anonymous → empty completion/readiness).
     const userId: string | undefined = (await getCurrentUser(req))?.id;
+    // Surface any watch-recorded runs that synced before the run-surfacing
+    // logic existed, so they show up as real runs (idempotent, non-fatal).
+    if (userId) await backfillWatchRunsAsActivities(userId);
     const state = await gatherCoachState({ userId });
     const today = state.now.slice(0, 10);
 

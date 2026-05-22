@@ -270,10 +270,22 @@ function syntheticRunId(userId: string, workoutId: string): number {
   return -(Math.abs(h) + 1); // negative → outside Strava's positive id space
 }
 
+/** Minimal shape needed to surface a completion as a run — satisfied by both
+ *  WatchCompletionInput (live POST) and a workout_completions DB row (backfill). */
+interface WatchRunFields {
+  workoutId: string;
+  status: string;
+  startedAt: string;
+  totalDistanceMi?: number | null;
+  totalDurationSec: number;
+  avgHr?: number | null;
+  maxHr?: number | null;
+}
+
 /** Write (or refresh) a strava_activities row representing a watch-recorded
  *  run, so the canonical runs table the whole app reads includes it. Only
  *  for real runs (completed/partial with a positive distance). */
-async function upsertWatchRunActivity(userId: string, c: WatchCompletionInput): Promise<void> {
+async function upsertWatchRunActivity(userId: string, c: WatchRunFields): Promise<void> {
   if (c.status !== 'completed' && c.status !== 'partial') return;
   const distanceMi = c.totalDistanceMi ?? 0;
   if (!(distanceMi > 0)) return; // no distance → not a meaningful run card
@@ -310,4 +322,41 @@ async function upsertWatchRunActivity(userId: string, c: WatchCompletionInput): 
      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data`,
     [syntheticRunId(userId, c.workoutId), userId, JSON.stringify(data)],
   );
+}
+
+/**
+ * Backfill: surface any already-stored watch completions as run rows. Runs
+ * are idempotent upserts, so this is safe to call on a normal page/API load —
+ * it catches completions that synced BEFORE the surfacing logic existed (or
+ * before it deployed). Scoped to the recent window to stay cheap.
+ */
+export async function backfillWatchRunsAsActivities(userId: string, sinceDays = 60): Promise<void> {
+  try {
+    const sinceIso = new Date(Date.now() - sinceDays * 86_400_000).toISOString().slice(0, 10);
+    const rows = await query<{
+      workout_id: string; status: string; started_at: string;
+      total_distance_mi: string | null; total_duration_sec: string | number;
+      avg_hr: string | number | null; max_hr: string | number | null;
+    }>(
+      `SELECT workout_id, status, started_at::text AS started_at,
+              total_distance_mi, total_duration_sec, avg_hr, max_hr
+         FROM workout_completions
+        WHERE user_id = $1
+          AND status IN ('completed','partial')
+          AND total_distance_mi IS NOT NULL AND total_distance_mi > 0
+          AND completed_at >= $2`,
+      [userId, sinceIso + 'T00:00:00Z'],
+    );
+    for (const r of rows) {
+      await upsertWatchRunActivity(userId, {
+        workoutId: r.workout_id,
+        status: r.status,
+        startedAt: r.started_at,
+        totalDistanceMi: r.total_distance_mi != null ? Number(r.total_distance_mi) : null,
+        totalDurationSec: Number(r.total_duration_sec) || 0,
+        avgHr: r.avg_hr != null ? Number(r.avg_hr) : null,
+        maxHr: r.max_hr != null ? Number(r.max_hr) : null,
+      });
+    }
+  } catch { /* best-effort — never block the caller */ }
 }
