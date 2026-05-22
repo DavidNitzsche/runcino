@@ -17,6 +17,7 @@ struct TodayView: View {
     var onReload: () -> Void = {}
 
     @State private var selected: String?   // nil = today
+    @State private var showReadiness = false
     @State private var recapDate: RecapDate?  // non-nil → show run recap sheet
     @State private var reschedule: RescheduleTarget?
     @State private var showSkipConfirm = false
@@ -62,6 +63,7 @@ struct TodayView: View {
         }
         .background(Faff.C.bg)
         .task(id: selDate) { await loadSelRun() }
+        .sheet(isPresented: $showReadiness) { ReadinessDetailSheet(overview: overview) }
         .sheet(item: $recapDate) { d in RunRecapView(date: d.id) }
         .sheet(item: $reschedule) { t in
             RescheduleSheet(action: t.action, fromDateISO: overview.today ?? "",
@@ -406,22 +408,29 @@ struct TodayView: View {
                 return a > 1.3 ? ("Watch load", .amber) : ("On track", .green)
             }
         }()
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("READINESS").font(Faff.F.inter(10, .semibold)).tracking(0.9)
-                    .foregroundStyle(Faff.C.textDim)
-                Spacer()
-                Badge(text: badgeText, tone: badgeTone)
+        return Button { showReadiness = true } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("READINESS").font(Faff.F.inter(10, .semibold)).tracking(0.9)
+                        .foregroundStyle(Faff.C.textDim)
+                    Spacer()
+                    Badge(text: badgeText, tone: badgeTone)
+                    if o.readinessHasDetail {
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
+                    }
+                }
+                HStack(spacing: 14) {
+                    ReadinessRing(score: o.readinessScore, tone: ringTone, size: 54)
+                    Text(readinessCopy(acwr))
+                        .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
+                }
             }
-            HStack(spacing: 14) {
-                ReadinessRing(score: o.readinessScore, tone: ringTone, size: 54)
-                Text(readinessCopy(acwr))
-                    .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .faffCard()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .faffCard()
+        .buttonStyle(.plain)
+        .disabled(!o.readinessHasDetail)
     }
     static func tone(for state: String?) -> Color {
         switch state {
@@ -432,10 +441,9 @@ struct TodayView: View {
         }
     }
     private func readinessCopy(_ acwr: Double?) -> String {
-        // Prefer the coach's recommendation verbatim (same string the web
-        // shows) when a health-derived score exists; fall back to the
-        // load-based line only when there's no health readiness yet.
-        if let rec = overview.readinessRecommendation, !rec.isEmpty { return rec }
+        // Real score → the informative, data-driven summary (recommendation +
+        // biggest driver); tap the card for the full breakdown.
+        if overview.readinessHasDetail { return overview.readinessSummary }
         guard let a = acwr else { return "No recovery data yet. Connect Apple Health for HRV, resting HR and sleep." }
         let load = a > 1.3
             ? String(format: "Load is climbing (ACWR %.2f). Keep easy days easy.", a)

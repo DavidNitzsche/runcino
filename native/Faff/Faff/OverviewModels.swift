@@ -56,6 +56,11 @@ struct OverviewResponse: Decodable {
     let readinessScore: Int?
     let readinessState: String?   // "green" | "yellow" | "red"
     let readinessRecommendation: String?  // verbatim coach copy (web parity)
+    /// Transparent score breakdown — each signal that moved the score off
+    /// baseline, with its delta + note. Drives the readiness detail sheet.
+    let readinessInputs: [OReadinessInput]?
+    /// Signals not yet feeding the score (sleep, mileage-vs-plan, etc.).
+    let readinessMissing: [String]?
     /// Next weeks' long-run distances (Plan "Coming up").
     let planFutureLongRuns: [OFutureLong]?
     /// A-race fitness projection (Race detail). nil when no A-race goal.
@@ -227,6 +232,15 @@ enum WorkoutDayAPI {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
         return try JSONDecoder().decode(PlanWorkoutResponse.self, from: data).workout
     }
+}
+
+/// One signal in the readiness score breakdown (from readinessInputs).
+/// delta is the points it added/removed from the baseline (75).
+struct OReadinessInput: Decodable, Identifiable {
+    let name: String
+    let delta: Int
+    let note: String
+    var id: String { name + note }
 }
 
 /// One grouped coach adaptation (from /api/overview coachAdaptations).
@@ -890,6 +904,36 @@ extension OverviewResponse {
     var acwrValue: Double? {
         guard let l7 = state?.volume?.last7Mi, let avg = state?.volume?.weeklyAvg8w, avg > 0 else { return nil }
         return l7 / avg
+    }
+
+    // MARK: Readiness presentation
+
+    /// True when there's a real score with a breakdown to drill into.
+    var readinessHasDetail: Bool { readinessScore != nil }
+
+    /// One-word body-state word for the current state.
+    var readinessWord: String {
+        switch readinessState { case "green": return "Primed"; case "yellow": return "Hold easy"; case "red": return "Back off"; default: return "No data" }
+    }
+
+    /// Informative one-liner for the Today/Health cards: the coach's
+    /// recommendation (actionable) plus the single biggest driver, so the
+    /// card says something real instead of boilerplate. Full breakdown is
+    /// in the detail sheet.
+    var readinessSummary: String {
+        guard readinessScore != nil else {
+            return "No readiness score yet — it posts once your recent runs and vitals have synced."
+        }
+        let rec = (readinessRecommendation ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let inputs = readinessInputs ?? []
+        // Pick the largest-magnitude driver to name explicitly.
+        let driver = inputs.max(by: { abs($0.delta) < abs($1.delta) })
+        var line = rec.isEmpty ? "\(readinessWord)." : rec
+        if let d = driver {
+            let verb = d.delta >= 0 ? "Lifted by" : "Held back by"
+            line += " \(verb) \(d.note)."
+        }
+        return line
     }
     /// Coach copy composed from the PLAN workout + accurate briefing
     /// clauses (greeting/body-state) + race. The backend briefing's

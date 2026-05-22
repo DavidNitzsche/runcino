@@ -364,6 +364,7 @@ struct HealthView: View {
     let overview: OverviewResponse
     @ObservedObject private var hk = HealthKitManager.shared
     @State private var metric: MetricDetailSheet.Metric?
+    @State private var showReadiness = false
 
     private struct Tile: Identifiable { let id = UUID(); let label, value: String; let unit, delta: String?; let tone: MetricTile.DeltaTone; let live: Bool; var sampleType: String? = nil }
 
@@ -409,15 +410,23 @@ struct HealthView: View {
         ]
 
         return FaffScreen(eyebrow: localHealth ? "Apple Health · connected" : "Apple Health", title: "Body State") {
-            // Hero ring
-            HStack(spacing: 14) {
-                ReadinessRing(score: overview.readinessScore, tone: TodayView.tone(for: overview.readinessState), size: 70)
-                VStack(alignment: .leading, spacing: 7) {
-                    Badge(text: badgeText, tone: badgeTone)
-                    Text(heroCopy).font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }.faffCard()
+            // Hero ring — tappable → full readiness breakdown.
+            Button { showReadiness = true } label: {
+                HStack(spacing: 14) {
+                    ReadinessRing(score: overview.readinessScore, tone: TodayView.tone(for: overview.readinessState), size: 70)
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 6) {
+                            Badge(text: badgeText, tone: badgeTone)
+                            Spacer()
+                            if overview.readinessHasDetail {
+                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
+                            }
+                        }
+                        Text(heroCopy).font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
+                    }
+                }.faffCard()
+            }.buttonStyle(.plain).disabled(!overview.readinessHasDetail)
 
             // Connect lives in Profile; only show it here when NOT connected.
             if !localHealth { connectControl }
@@ -427,6 +436,7 @@ struct HealthView: View {
             section("Training Load", load)
         }
         .sheet(item: $metric) { MetricDetailSheet(metric: $0, overview: overview) }
+        .sheet(isPresented: $showReadiness) { ReadinessDetailSheet(overview: overview) }
         // Always read whatever HealthKit has authorized so the tiles fill
         // in once access is granted (in Profile) — not gated on a flag.
         .task { await hk.refreshDisplayMetrics() }
@@ -456,9 +466,9 @@ struct HealthView: View {
         switch overview.readinessState { case "green": return .green; case "yellow": return .amber; case "red": return .warn; default: return localHealth ? .green : .grey }
     }
     private var heroCopy: String {
-        if overview.hasHealthData {
-            return "Vitals from Apple Health (7-day average). Acute load is what's holding the score — stay aerobic until it settles."
-        }
+        // Real score → the informative, data-driven summary (recommendation +
+        // biggest driver). Tap the card for the full breakdown.
+        if overview.readinessHasDetail { return overview.readinessSummary }
         if localHealth {
             return "Reading vitals from Apple Health on this device. They sync into your readiness score as days accumulate."
         }
@@ -1396,6 +1406,128 @@ struct WhyThisSheet: View {
 }
 
 // MARK: - Metric detail (sheet from a Health tile)
+
+/// Readiness detail — the transparent breakdown behind the score. Opened
+/// from the Today readiness card and the Health "Body State" hero. Shows the
+/// signals that moved the score off baseline, the vitals feeding it, what's
+/// not yet wired in, and a plain-language explainer of the scale.
+struct ReadinessDetailSheet: View {
+    let overview: OverviewResponse
+    @Environment(\.dismiss) private var dismiss
+
+    private var score: Int? { overview.readinessScore }
+    private var tone: Color { TodayView.tone(for: overview.readinessState) }
+    private var inputs: [OReadinessInput] { overview.readinessInputs ?? [] }
+    private var missing: [String] { overview.readinessMissing ?? [] }
+    private var badgeTone: Badge.Tone {
+        switch overview.readinessState { case "green": return .green; case "yellow": return .amber; case "red": return .warn; default: return .grey }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Faff.S.rowGap) {
+                SheetGrabHandle()
+                HStack(alignment: .top) {
+                    Text("READINESS").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
+                    Spacer()
+                    SheetCloseButton { dismiss() }
+                }
+
+                // Hero — ring + state + the coach's recommendation verbatim.
+                HStack(spacing: 16) {
+                    ReadinessRing(score: score, tone: tone, size: 76)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Badge(text: overview.readinessWord, tone: badgeTone)
+                        if let rec = overview.readinessRecommendation, !rec.isEmpty {
+                            Text(rec).font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }.faffCard()
+
+                if score != nil {
+                    // The signals that moved the score off its baseline.
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("WHAT'S FEEDING IT").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                        if inputs.isEmpty {
+                            Text("Sitting right at the baseline of 75 — nothing is pulling it up or down today.")
+                                .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                        } else {
+                            ForEach(inputs) { i in
+                                HStack(alignment: .top, spacing: 12) {
+                                    Text(deltaText(i.delta))
+                                        .font(Faff.F.oswald(15, .semibold))
+                                        .foregroundStyle(i.delta >= 0 ? Faff.C.recovery : Faff.C.warn)
+                                        .frame(width: 40, alignment: .leading)
+                                    Text(i.note.prefix(1).uppercased() + i.note.dropFirst())
+                                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).faffCard()
+
+                    // The recovery vitals the engine reads.
+                    vitalsRow
+
+                    // Honest about gaps — signals we'd use but don't have yet.
+                    if !missing.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("NOT YET IN THE SCORE").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                            ForEach(missing, id: \.self) { m in
+                                Text("• \(friendlyMissing(m))").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading).faffCard()
+                    }
+
+                    CoachVerdict("How readiness works",
+                        "Every day starts at a baseline of 75. Recent training load, how fresh you are, and how your easy pace tracks against heart rate nudge it up or down. 80+ is green — hit the plan. 60–79 is yellow — watch your effort. Under 60 is red — back off. It's a read on your body, not a command; you make the call.",
+                        color: Faff.C.textDim)
+                } else {
+                    CoachVerdict("No score yet",
+                        "Readiness posts once a few recent runs and your Apple Health vitals (HRV, resting HR, sleep) have synced. Keep logging and it'll fill in.",
+                        color: Faff.C.textDim)
+                }
+
+                PrimaryButton(title: "Close", icon: nil) { dismiss() }
+            }
+            .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
+        }
+        .background(Faff.C.bg.ignoresSafeArea())
+    }
+
+    private func deltaText(_ d: Int) -> String { d >= 0 ? "+\(d)" : "\(d)" }
+
+    private func friendlyMissing(_ key: String) -> String {
+        if key.hasPrefix("sleep") { return "Sleep quality (syncing from Apple Health)" }
+        if key.hasPrefix("mileage") { return "This week's mileage vs. what's prescribed" }
+        if key.hasPrefix("hr-pace-drift") { return "Heart-rate vs. pace drift (needs more easy-run volume)" }
+        return key
+    }
+
+    @ViewBuilder private var vitalsRow: some View {
+        let r = overview.state?.recovery
+        let cells: [(String, String, String)] = [
+            ("HRV", r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "—", "ms · 7d"),
+            ("RESTING HR", r?.rhrBpm.map { "\(Int($0))" } ?? "—", "bpm"),
+            ("SLEEP", r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "—", "h · 7d"),
+        ]
+        VStack(alignment: .leading, spacing: 10) {
+            Text("VITALS FEEDING IT").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            HStack(spacing: 10) {
+                ForEach(cells, id: \.0) { c in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(c.0).font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                        Text(c.1).font(Faff.F.display(26)).foregroundStyle(Faff.C.ink)
+                        Text(c.2).font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).faffCard()
+    }
+}
 
 struct MetricDetailSheet: View {
     struct Metric: Identifiable {
