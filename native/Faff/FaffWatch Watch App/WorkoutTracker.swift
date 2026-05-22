@@ -113,7 +113,13 @@ final class WorkoutTracker: NSObject, ObservableObject {
             locationManager.delegate = self
             locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
             locationManager.distanceFilter = 5
-            locationManager.allowsBackgroundLocationUpdates = true
+            // NOTE: do NOT set `allowsBackgroundLocationUpdates = true` here. On
+            // watchOS the active HKWorkoutSession (workout-processing) already
+            // keeps the app running, so CoreLocation keeps delivering route
+            // fixes during the run. Setting that flag requires the "location"
+            // background mode and otherwise throws an *uncatchable* NSException
+            // at runtime — which crashed the app on every Start. (It is an
+            // iOS-without-a-workout-session pattern, not needed on watchOS.)
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()
 
