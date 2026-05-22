@@ -25,6 +25,7 @@ import { todayISO as todayLAISO, todayDate } from './dates';
 import { gatherCheckinAggregate, type CheckinAggregate } from './checkin-aggregate';
 import { getUserPrefs, type PrefsRow } from './prefs-store';
 import { listRecentSkips, type SkippedWorkout } from './skip-store';
+import { resolveEffectiveMaxHr } from './compute-max-hr';
 import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
 import type { SavedRace } from './storage-types';
 
@@ -114,6 +115,11 @@ export interface CoachState {
     hrv7dAvgMs: number | null;
     rhrBpm: number | null;
     sleep7dAvgHrs: number | null;
+    /** Effective max HR (users.max_hr override → computed activity peak).
+     *  Lands here so the plan engine + post-run verdicts use the runner's
+     *  real HR ceiling for Karvonen zones instead of a hardcoded default.
+     *  Optional so older fixtures/callers omit it (treated as unknown). */
+    maxHrBpm?: number | null;
     /** Strength sessions logged in the current calendar week. Sourced
      *  from Amp (eventually) or HealthKit workouts categorized as
      *  strength training. Null until that pipeline lands. */
@@ -322,6 +328,13 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
   // Null `state.checkin` means "no rows in the last 7 days" — the
   // engine treats it as a missing signal, not zeroed-out.
   const checkin: CheckinAggregate | null = checkinAgg.rowsCount > 0 ? checkinAgg : null;
+
+  // Effective max HR (override → computed peak). Guarded: needs a real
+  // user id (the query keys on users.id / user_uuid UUID columns).
+  let maxHrBpm: number | null = null;
+  if (opts.userId) {
+    try { maxHrBpm = (await resolveEffectiveMaxHr(opts.userId)).value; } catch { /* leave null */ }
+  }
 
   // ── Race calendar ─────────────────────────────────────────
   const futureSaved = savedRaces
@@ -560,6 +573,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
       hrv7dAvgMs: healthBio.hrv7dAvgMs,
       rhrBpm: healthBio.rhrBpm,
       sleep7dAvgHrs: healthBio.sleep7dAvgHrs,
+      maxHrBpm,
       strengthDaysThisWeek: null,
     },
     flags: {

@@ -53,6 +53,7 @@
 import { query } from './db';
 import { pacesFromVdot } from './vdot';
 import { getWorkoutTemperatureF } from './workout-weather';
+import { buildHrZonesBundle } from './hr-zones';
 
 export interface SignalObservation {
   date: string;
@@ -193,9 +194,15 @@ export function evaluateActivities(
   activities: Array<{ data: ActivityData; context: ActivityContext }>,
   currentVdot: number,
   maxHr: number | null,
+  restingHr: number | null = null,
 ): AdaptiveSignals['threshold'] {
   const tPaces = pacesFromVdot(currentVdot);
   const tCenterS = tPaces ? Math.round((tPaces.T.lowS + tPaces.T.highS) / 2) : null;
+
+  // Karvonen Threshold band (Z4) when resting HR is known — more accurate
+  // than %max for trained runners (Research/03 §4 + §5). Falls back to the
+  // %max Z4_FLOOR/CEILING constants below when resting HR is absent.
+  const z4Band = buildHrZonesBundle(maxHr, restingHr)?.zones.find((z) => z.tier === 'z4') ?? null;
 
   const observations: SignalObservation[] = [];
 
@@ -219,8 +226,13 @@ export function evaluateActivities(
     let hrInRange: boolean | null = null;
     const hrPresent = avgHr > 0;
     if (maxHr && maxHr > 0 && hrPresent) {
-      const hrPct = avgHr / maxHr;
-      hrInRange = hrPct >= Z4_FLOOR_PCT && hrPct <= Z4_CEILING_PCT;
+      if (z4Band) {
+        // Karvonen %HRR Threshold band when resting HR is known.
+        hrInRange = avgHr >= z4Band.lowBpm && avgHr <= z4Band.highBpm;
+      } else {
+        const hrPct = avgHr / maxHr;
+        hrInRange = hrPct >= Z4_FLOOR_PCT && hrPct <= Z4_CEILING_PCT;
+      }
     }
 
     const prescribedPaceS = isPlannedT && d.plannedPaceS ? d.plannedPaceS : tCenterS;
@@ -346,6 +358,7 @@ export async function computeThresholdSignal(
   today: Date,
   currentVdot: number,
   maxHr: number | null,
+  restingHr: number | null = null,
 ): Promise<AdaptiveSignals['threshold']> {
   const todayIso = today.toISOString().slice(0, 10);
   const cutoffIso = new Date(today.getTime() - LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
@@ -376,7 +389,7 @@ export async function computeThresholdSignal(
     })),
   );
 
-  return evaluateActivities(enriched, currentVdot, maxHr);
+  return evaluateActivities(enriched, currentVdot, maxHr, restingHr);
 }
 
 /** Signal 2 implementation lives in lib/adaptive-vdot-signal2.ts —
@@ -408,8 +421,9 @@ export async function computeAdaptiveSignals(
   today: Date,
   currentVdot: number,
   maxHr: number | null,
+  restingHr: number | null = null,
 ): Promise<AdaptiveSignals> {
-  const threshold = await computeThresholdSignal(userId, today, currentVdot, maxHr);
+  const threshold = await computeThresholdSignal(userId, today, currentVdot, maxHr, restingHr);
   return {
     threshold,
     hrPaceDrift: computeHrPaceDriftSignal(),

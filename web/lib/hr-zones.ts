@@ -88,6 +88,45 @@ export function buildHrZonesBundle(
   };
 }
 
+/**
+ * The "hard effort" HR floor — the bottom of the Threshold zone (Z4).
+ *
+ * A run averaging at/above this is a genuinely hard session for recovery
+ * purposes. Uses Karvonen %HRR (resting + 0.80 × reserve) when resting HR
+ * is known — more accurate for trained runners with low resting HR — and
+ * falls back to 0.80 × maxHr otherwise.
+ *
+ * Cited: Research/03 §4 (Z4 Threshold = 80–90% / "comfortably hard") and
+ * §5 (Karvonen HRR). This is THE single definition of "hard by HR" — every
+ * consumer (readiness, plan-building 24h-recovery, run debrief) routes
+ * through here so they can't drift apart again. Returns null when maxHr is
+ * unknown (caller falls back to its own default).
+ */
+export function hardEffortFloorBpm(
+  maxHr: number | null,
+  restingHr: number | null,
+): number | null {
+  const bundle = buildHrZonesBundle(maxHr, restingHr);
+  if (!bundle) return null;
+  return bundle.zones.find((z) => z.tier === 'z4')?.lowBpm ?? null;
+}
+
+/** Classify an average HR into its Karvonen (or %max fallback) zone tier.
+ *  Returns null when maxHr is unknown. */
+export function classifyHrZone(
+  avgHr: number,
+  maxHr: number | null,
+  restingHr: number | null,
+): ZoneTier | null {
+  const bundle = buildHrZonesBundle(maxHr, restingHr);
+  if (!bundle) return null;
+  // Walk high→low; first zone whose floor we're at/above wins.
+  for (let i = bundle.zones.length - 1; i >= 0; i--) {
+    if (avgHr >= bundle.zones[i].lowBpm) return bundle.zones[i].tier;
+  }
+  return bundle.zones[0].tier;
+}
+
 /** Convenience: zone bands in the FitnessHrZones shape (used by
  *  fitness-resolver). Same math, different output shape. */
 export interface FitnessHrZonesShape {

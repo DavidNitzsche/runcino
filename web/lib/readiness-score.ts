@@ -59,6 +59,7 @@ import { computeSignal2 } from './adaptive-vdot-signal2';
 import { computeStravaGap } from './strava-gap';
 import { formatCrossReference, type CrossReference } from './coach-voice';
 import type { Z2CoverageFinding } from './z2-coverage';
+import { hardEffortFloorBpm } from './hr-zones';
 
 export interface ReadinessFinding {
   /** 0-100 composite score, OR null when surface should be silent. */
@@ -211,6 +212,12 @@ export async function computeReadinessScore(
   const missing: string[] = [];
   let score = 75;
 
+  // "Hard by HR" = average HR at/above the Threshold-zone floor (Z4),
+  // Karvonen %HRR when resting HR is known. Single shared definition
+  // (lib/hr-zones.ts) so readiness, plan-building and the run debrief
+  // can't drift apart. Research/03 §4 (Z4 80–90%) + §5 (Karvonen).
+  const hardFloor = hardEffortFloorBpm(userMaxHr, restingHr);
+
   // ── Sleep input · not integrated yet (no Apple Health / Oura webhook). ──
   missing.push('sleep');
 
@@ -219,15 +226,16 @@ export async function computeReadinessScore(
   if (yesterdayActivity) {
     const distance = Number(yesterdayActivity.distance) || 0;
     const isHardByType = yesterdayActivity.workout_type === 3;
-    const isHardByHr = userMaxHr && yesterdayActivity.avg_hr
-      ? yesterdayActivity.avg_hr >= userMaxHr * 0.80
+    const isHardByHr = hardFloor && yesterdayActivity.avg_hr
+      ? yesterdayActivity.avg_hr >= hardFloor
       : false;
     const isLong = distance >= 9;
     const isHard = isHardByType || isHardByHr;
 
     if (isHard) {
       score -= 15;
-      inputs.push({ name: 'yesterday', delta: -15, note: 'hard session (workout-type 3 OR avg HR ≥80% max)' });
+      const why = isHardByHr ? `avg HR ${yesterdayActivity.avg_hr} ≥ threshold floor ${hardFloor}` : 'tagged a hard workout';
+      inputs.push({ name: 'yesterday', delta: -15, note: `hard session yesterday (${why})` });
     } else if (isLong) {
       score -= 10;
       inputs.push({ name: 'yesterday', delta: -10, note: `long run (${distance.toFixed(1)} mi ≥ 9 mi)` });
@@ -243,7 +251,7 @@ export async function computeReadinessScore(
   // ── Freshness · days since last hard ──
   const hardSessions = rows.filter((r) => {
     if (r.workout_type === 3) return true;
-    if (userMaxHr && r.avg_hr && r.avg_hr >= userMaxHr * 0.85) return true;
+    if (hardFloor && r.avg_hr && r.avg_hr >= hardFloor) return true;
     return false;
   });
   const last3StartIso = new Date(Date.parse(todayIso + 'T00:00:00Z') - 3 * 86_400_000)

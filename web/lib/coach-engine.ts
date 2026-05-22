@@ -37,6 +37,7 @@ import {
   prescribeStrength, strengthWeekContext, type StrengthPrescription,
 } from './coach-strength';
 import { selectActiveTemplate, templateWorkoutType } from './coach-plan';
+import { hardEffortFloorBpm } from './hr-zones';
 
 export type WorkoutType = RunWorkoutType;
 
@@ -815,10 +816,12 @@ function applyConstraints(p: RunPrescription, state: CoachState, phase: Phase, d
   }
 
   // 2. 24h recovery: yesterday hard → today must be easy.
-  // Threshold from coach/doctrine/hr_zones.ts HRMAX_ZONES_5 — 80% HRmax
-  // is the bottom of the threshold zone. Default 152 bpm ≈ 80% × 190.
+  // "Hard" = avg HR at/above the Threshold-zone floor (Z4). Karvonen %HRR
+  // when the runner's max + resting HR are known (Research/03 §4 + §5);
+  // falls back to the 152 bpm default only when max HR is unknown.
   const y = state.recovery.yesterday;
-  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= HARD_EFFORT_HR_DEFAULT_BPM;
+  const hardFloor = hardEffortFloorBpm(state.recovery.maxHrBpm ?? null, state.recovery.rhrBpm) ?? HARD_EFFORT_HR_DEFAULT_BPM;
+  const yesterdayHard = y && y.distMi > 0 && y.avgHr != null && y.avgHr >= hardFloor;
   if (p.isQuality && yesterdayHard) {
     return generalAerobic(baseEasyMi(state, phase), state);
   }

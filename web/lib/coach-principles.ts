@@ -233,12 +233,13 @@ export const SLEEP_HOURS_FLOOR = SLEEP.value.generalHoursLow;
 export const SLEEP_HOURS_HIGH_LOAD = SLEEP.value.highLoadHoursLow;
 export const HRV_DROP_FLAG_PCT = 0.12;  // 12 % drop from baseline = recovery day
 
-/* ── 14b. Hard-effort HR threshold (Research 03 §4) ──────────────
-   Default cutoff for "yesterday was hard." 152 bpm ≈ 80% of HRmax
-   190 — the bottom of HRMAX_ZONES_5 threshold zone in
-   coach/doctrine/hr_zones.ts. Reasonable default for typical
-   recreational runners; should become user-specific (0.80 × user
-   HRmax) once HRmax lands in CoachState. */
+/* ── 14b. Hard-effort HR threshold (Research 03 §4 + §5) ─────────
+   Cutoff for "yesterday was hard" = bottom of the Threshold zone (Z4).
+   Now user-specific: lib/hr-zones.ts hardEffortFloorBpm() computes it
+   via Karvonen %HRR when the runner's max + resting HR are known
+   (state.recovery.maxHrBpm landed via gatherCoachState). This constant
+   is the FALLBACK only — 152 bpm ≈ 80% of HRmax 190, for runners whose
+   max HR isn't known yet. */
 export const HARD_EFFORT_HR_DEFAULT_BPM = 152;
 
 /* ── 15. Pace targets relative to goal pace ─────────────────────

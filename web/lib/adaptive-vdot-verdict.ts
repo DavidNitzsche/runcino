@@ -245,7 +245,7 @@ export async function buildAdaptiveVdotVerdict(
 ): Promise<AdaptiveVdotVerdict> {
   const restingHr = await fetchRestingHr(userId);
   const [signals, signal2, signal3, signal4, manualOverride] = await Promise.all([
-    computeAdaptiveSignals(userId, today, currentVdot, maxHr),
+    computeAdaptiveSignals(userId, today, currentVdot, maxHr, restingHr),
     computeSignal2(userId, today, maxHr, restingHr),
     computeSignal3(userId, today, currentVdot, maxHr, restingHr),
     computeSignal4(userId, today),

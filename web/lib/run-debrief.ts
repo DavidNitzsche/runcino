@@ -10,6 +10,8 @@
  * the runner actually executed.
  */
 
+import { buildHrZonesBundle, classifyHrZone } from './hr-zones';
+
 export interface DebriefSplit {
   mile: number;
   paceSPerMi: number;
@@ -158,6 +160,23 @@ export function generateRunDebrief(input: DebriefInput): string {
     splits = [], maxHr, recovery, weather,
   } = input;
   const rec = recoveryRead(recovery);
+
+  // HR zones via the shared Karvonen builder (Research/03 §4 + §5): %HRR
+  // when resting HR is known (more accurate for trained runners), %max
+  // fallback otherwise. Used for both the % label and the target bands so
+  // the recap agrees with readiness + plan-building.
+  const restingHrForZones = recovery?.restingHrBpm ?? null;
+  const hrZB = buildHrZonesBundle(maxHr ?? null, restingHrForZones);
+  const hrPctLabel = hrZB?.framework === 'HRR' ? 'HRR' : 'max';
+  const hrPctOf = (bpm: number): number | null => {
+    if (!maxHr || maxHr <= 0) return null;
+    if (hrZB?.framework === 'HRR' && hrZB.hrr && restingHrForZones != null) {
+      return Math.round(((bpm - restingHrForZones) / hrZB.hrr) * 100);
+    }
+    return Math.round((bpm / maxHr) * 100);
+  };
+  const zoneBand = (tier: 'z1' | 'z2' | 'z3' | 'z4' | 'z5') => hrZB?.zones.find((z) => z.tier === tier) ?? null;
+
   const heat = weather?.isHot
     ? `it was ${weather.tempF}°F${weather.humidityPct >= 65 ? ` / ${weather.humidityPct}% humidity` : ''}`
     : null;
@@ -217,9 +236,10 @@ export function generateRunDebrief(input: DebriefInput): string {
     let hrPctSuffix = '';
     if (actualAvgHr && actualAvgHr > 0) {
       if (maxHr && maxHr > 0) {
-        const pct = Math.round((actualAvgHr / maxHr) * 100);
-        hrPctSuffix = ` (${pct}% max)`;
-        hrStatus = pct < 70 ? 'aerobic' : pct < 80 ? 'moderate' : 'elevated';
+        const pct = hrPctOf(actualAvgHr);
+        hrPctSuffix = pct != null ? ` (${pct}% ${hrPctLabel})` : '';
+        const tier = classifyHrZone(actualAvgHr, maxHr, restingHrForZones);
+        hrStatus = (tier === 'z1' || tier === 'z2') ? 'aerobic' : tier === 'z3' ? 'moderate' : 'elevated';
       } else {
         // Qualitative bands without max HR
         hrStatus = actualAvgHr < 145 ? 'aerobic' : actualAvgHr < 160 ? 'moderate' : 'elevated';
@@ -323,20 +343,19 @@ export function generateRunDebrief(input: DebriefInput): string {
   // the duplicate `HR averaged X (Y% max · Zn)` sentence and replace
   // it with the target-HR reference — that's the missing info.
   if (actualAvgHr && actualAvgHr > 0) {
-    const pct = maxHr && maxHr > 0 ? Math.round((actualAvgHr / maxHr) * 100) : null;
+    const pct = hrPctOf(actualAvgHr);
     if (pct !== null && maxHr) {
-      // Personalized: %max zones
-      const zone =
-        pct < 60 ? 'Z1' :
-        pct < 70 ? 'Z2' :
-        pct < 80 ? 'Z3' :
-        pct < 90 ? 'Z4' : 'Z5';
+      // Karvonen (%HRR) zones when resting HR is known, %max fallback.
+      const zone = classifyHrZone(actualAvgHr, maxHr, restingHrForZones)?.toUpperCase() ?? 'Z?';
+      const pl = hrPctLabel;
 
-      // Target zone for this workout type
-      const easyTargetLow = Math.round(maxHr * 0.60);
-      const easyTargetHigh = Math.round(maxHr * 0.70);
-      const longTargetLow = Math.round(maxHr * 0.65);
-      const longTargetHigh = Math.round(maxHr * 0.75);
+      // Target bands from the shared zone builder: Easy = Z2, long = Z2→low
+      // Z3, threshold = Z4. Fallback to %max if zones unavailable.
+      const z2 = zoneBand('z2'); const z3 = zoneBand('z3'); const z4 = zoneBand('z4');
+      const easyTargetLow = z2?.lowBpm ?? Math.round(maxHr * 0.60);
+      const easyTargetHigh = z2?.highBpm ?? Math.round(maxHr * 0.70);
+      const longTargetLow = z2?.lowBpm ?? Math.round(maxHr * 0.65);
+      const longTargetHigh = z3?.lowBpm ?? Math.round(maxHr * 0.75);
 
       if (isContinuous) {
         const isEasy = planType === 'easy' || planType === 'recovery';
@@ -345,8 +364,6 @@ export function generateRunDebrief(input: DebriefInput): string {
         const tgtZone = isEasy ? 'Z1–Z2' : 'Z2 (low Z3 ok)';
 
         if (paceSentenceHadHr) {
-          // Pace sentence already said the HR + %max + qualitative read.
-          // Just provide the target reference.
           if (zone === 'Z1' || zone === 'Z2') {
             sentences.push(`Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm) — landed it.`);
           } else {
@@ -355,25 +372,24 @@ export function generateRunDebrief(input: DebriefInput): string {
             sentences.push(`Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm. You ran ${deltaStr} bpm over the easy ceiling.`);
           }
         } else {
-          // Pace sentence didn't include HR — give the full HR read.
           if (zone === 'Z1' || zone === 'Z2') {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — clean aerobic effort. Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm).`);
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — clean aerobic effort. Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm).`);
           } else if (zone === 'Z3') {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — moderate, above the easy zone. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — moderate, above the easy zone. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
           } else {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — high for an easy day. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — high for an easy day. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
           }
         }
       } else if (planType === 'quality') {
-        const tLow = Math.round(maxHr * 0.85);
-        const tHigh = Math.round(maxHr * 0.92);
+        const tLow = z4?.lowBpm ?? Math.round(maxHr * 0.85);
+        const tHigh = z4?.highBpm ?? Math.round(maxHr * 0.92);
         if (zone === 'Z4' || zone === 'Z5') {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — the work showed up. Target Z4 (${tLow}–${tHigh} bpm).`);
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — the work showed up. Target Z4 (${tLow}–${tHigh} bpm).`);
         } else {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}) — lower than expected for threshold. Target Z4: ${tLow}–${tHigh} bpm.`);
+          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}) — lower than expected for threshold. Target Z4: ${tLow}–${tHigh} bpm.`);
         }
       } else if (planType === 'race') {
-        sentences.push(`HR averaged ${actualAvgHr} (${pct}% max · ${zone}).`);
+        sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}).`);
       }
     } else {
       // Fallback: qualitative bands
