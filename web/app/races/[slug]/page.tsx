@@ -656,8 +656,17 @@ export default async function RacePlanPage({ params }: PageProps) {
                 />
                 <div className="path-stat">
                   <div className="path-stat-label">Predicted</div>
-                  <div className="path-stat-value orange">—</div>
-                  <div className="path-stat-sub">No data — set your VDOT</div>
+                  {readiness ? (
+                    <>
+                      <div className="path-stat-value orange">{readiness.predictedFinishDisplay}</div>
+                      <div className="path-stat-sub">At current VDOT {readiness.currentVdot.toFixed(1)}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="path-stat-value orange">—</div>
+                      <div className="path-stat-sub">No data — set your VDOT</div>
+                    </>
+                  )}
                 </div>
                 <div className="path-stat">
                   <div className="path-stat-label">Strategy</div>

@@ -95,11 +95,26 @@ export default async function TrainingPage() {
   const userRaces = await listRacesDB(user.id).catch(() => []);
   const raceSlugByDate = new Map<string, string>();
   for (const r of userRaces) raceSlugByDate.set(r.meta.date, r.slug);
+
+  // Next milestone = the user's actual goal race, not a hardcoded one.
+  // Prefer the nearest upcoming priority-'A' race; fall back to the
+  // nearest upcoming race of any priority; null when none is set.
+  const upcomingRaces = userRaces
+    .filter((r) => r.meta.date >= today)
+    .sort((a, b) => a.meta.date.localeCompare(b.meta.date));
+  const goalRace =
+    upcomingRaces.find((r) => r.meta.priority === 'A') ?? upcomingRaces[0] ?? null;
+  const goalRaceName = goalRace?.meta.name ?? 'No goal race set';
+  // "Aug 16, 2026" — fmtShortDate gives "Aug 16"; append the ISO year.
+  const goalRaceDateLabel = goalRace ? `${fmtShortDate(goalRace.meta.date)}, ${goalRace.meta.date.slice(0, 4)}` : null;
+  const goalRaceDistanceMi = goalRace?.meta.distanceMi ?? null;
+
   const phaseKey = currentWeek.phase;
   const phaseWeeks = weeks.filter((w) => w.phase === phaseKey);
   const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
   const phaseWeekTotal = phaseWeeks.length;
-  const raceDate = weeks[13]?.days[6]?.date ?? '2026-08-16';
+  const lastPlanDay = weeks[weeks.length - 1]?.days[6]?.date ?? planEnd;
+  const raceDate = goalRace?.meta.date ?? lastPlanDay;
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
 
   // Coach brief — the SAME generateBriefing the Today/overview surfaces
@@ -119,7 +134,7 @@ export default async function TrainingPage() {
     firstName: user.name?.trim().split(' ')[0] || '',
     today,
     daysToRace,
-    raceLabel: 'AFC Half',
+    raceLabel: goalRaceName,
     currentWeek,
     previousWeek,
     lastWeekStats,
@@ -141,7 +156,7 @@ export default async function TrainingPage() {
 
   const totalMiPlan = Math.round(weeks.reduce((s, w) => s + w.plannedMi, 0));
   const peakWeekMi = Math.max(...weeks.map((w) => w.plannedMi));
-  const planProgressPct = Math.max(0, Math.min(100, Math.round(((currentWeek.weekNum - 1 + 1) / 14) * 100)));
+  const planProgressPct = Math.max(0, Math.min(100, Math.round(((currentWeek.weekNum - 1 + 1) / weeks.length) * 100)));
 
   // Miles-in-the-bank · running cumulative-actual minus cumulative-
   // prescribed since the training block started. Positive = ahead of
@@ -251,14 +266,14 @@ export default async function TrainingPage() {
           <div className="coach-left">
             <div className="coach-label">
               <span className="dot-green"></span>
-              COACH · THE ARC · BUILDING TOWARD AFC
+              {goalRace ? `COACH · THE ARC · BUILDING TOWARD ${goalRace.meta.name.toUpperCase()}` : 'COACH · THE ARC · NO GOAL RACE SET'}
             </div>
             <p className="coach-briefing">{coachBriefing}</p>
           </div>
           <div className="cycle-next">
             <div className="cycle-next-label">Next milestone</div>
-            <div className="cycle-next-race">Americas Finest City Half</div>
-            <div className="cycle-next-race-meta">Aug 16, 2026 · 13.1 mi</div>
+            <div className="cycle-next-race">{goalRaceName}</div>
+            <div className="cycle-next-race-meta">{goalRace ? `${goalRaceDateLabel} · ${goalRaceDistanceMi} mi` : 'No upcoming race'}</div>
             <div className="cycle-next-days-row">
               <span className="cycle-next-days">{daysToRace}</span>
               <span className="cycle-next-days-unit">days<br />to race</span>
@@ -268,7 +283,7 @@ export default async function TrainingPage() {
                 <div className="cycle-next-progress-fill" style={{ width: `${planProgressPct}%` }} />
               </div>
               <div className="cycle-next-progress-meta">
-                <span><strong>Week {currentWeek.weekNum}</strong> of 14</span>
+                <span><strong>Week {currentWeek.weekNum}</strong> of {weeks.length}</span>
                 <span>{planProgressPct}%</span>
               </div>
             </div>
@@ -317,7 +332,7 @@ export default async function TrainingPage() {
           </div>
           <div className="hero-right">
             <div>
-              <div className="timeline-label">Plan Arc · 14 Weeks Total</div>
+              <div className="timeline-label">Plan Arc · {weeks.length} Weeks Total</div>
               <div className="timeline-list">
                 {PHASE_TIMELINE.map((p) => (
                   <div key={p.key} className={`timeline-row ${p.isCurrent ? 'current' : p.isPast ? 'past' : 'future'}`}>
@@ -338,7 +353,7 @@ export default async function TrainingPage() {
           <div className="schedule-header">
             <div className="schedule-title-group">
               <div className="schedule-title">Full Schedule</div>
-              <div className="schedule-sub"><strong>14 weeks</strong> · Americas Finest City Half · Aug 16, 2026</div>
+              <div className="schedule-sub"><strong>{weeks.length} weeks</strong>{goalRace ? ` · ${goalRaceName} · ${goalRaceDateLabel}` : ' · No goal race set'}</div>
             </div>
             <div className="schedule-meta">
               Total <strong>{totalMiPlan}</strong> mi · Peak week <strong>{peakWeekMi}</strong> mi

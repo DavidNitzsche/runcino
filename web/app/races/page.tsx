@@ -468,16 +468,44 @@ export default async function RacesPage() {
               </p>
 
               <div className="path-stats">
-                <div className="path-stat">
-                  <div className="path-stat-label">Current Fitness</div>
-                  <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
-                  <div className="path-stat-sub">No data</div>
-                </div>
-                <div className="path-stat">
-                  <div className="path-stat-label">Gap to Goal</div>
-                  <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
-                  <div className="path-stat-sub">No data</div>
-                </div>
+                {raceProjection ? (() => {
+                  // Projected finish at current VDOT (maintain line is flat;
+                  // every point shares the same maintainFinishS).
+                  const maintainFinishS = raceProjection.points[0]?.maintainFinishS ?? 0;
+                  // Gap to goal: positive = current projection is slower than
+                  // the goal (work to do); ≤0 = already at/under goal.
+                  const gapS = maintainFinishS - raceProjection.goalFinishS;
+                  const onTrack = gapS <= 0;
+                  return (
+                    <>
+                      <div className="path-stat">
+                        <div className="path-stat-label">Current Fitness</div>
+                        <div className="path-stat-value">{maintainFinishS > 0 ? fmtTime(maintainFinishS) : '—'}</div>
+                        <div className="path-stat-sub">Projected at VDOT {raceProjection.currentVdot.toFixed(1)}</div>
+                      </div>
+                      <div className="path-stat">
+                        <div className="path-stat-label">Gap to Goal</div>
+                        <div className="path-stat-value" style={{ color: onTrack ? '#1f6a21' : undefined }}>
+                          {onTrack ? `−${fmtTime(Math.abs(gapS))}` : `+${fmtTime(gapS)}`}
+                        </div>
+                        <div className="path-stat-sub">{onTrack ? 'Ahead of goal' : 'Behind goal'}</div>
+                      </div>
+                    </>
+                  );
+                })() : (
+                  <>
+                    <div className="path-stat">
+                      <div className="path-stat-label">Current Fitness</div>
+                      <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                      <div className="path-stat-sub">No data</div>
+                    </div>
+                    <div className="path-stat">
+                      <div className="path-stat-label">Gap to Goal</div>
+                      <div className="path-stat-value" style={{ color: 'rgba(13,15,18,.32)' }}>—</div>
+                      <div className="path-stat-sub">No data</div>
+                    </div>
+                  </>
+                )}
                 {/* V3 · Trajectory directional indicator from L7 signals.
                     Replaces the "Feasibility · No data" stub when L7
                     evidence is available. Falls back to silent — the

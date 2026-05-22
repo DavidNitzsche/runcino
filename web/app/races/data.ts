@@ -148,8 +148,10 @@ export interface LatestRecap {
   placeSub: string | null;
   /** Conditions tile, or null if no weather captured. */
   conditions: { value: string; unit: string; sub: string } | null;
-  /** AvgHR tile, or null if not captured. */
-  avgHr: { value: number; pctMax: number; zone: string } | null;
+  /** AvgHR tile, or null if not captured. `pctMax` is null when the
+   *  runner's max HR is unknown — render a qualitative `zone` read
+   *  instead of a fabricated percentage. */
+  avgHr: { value: number; pctMax: number | null; zone: string } | null;
   /** Verdict pin label ("PR" / "FINISHED" / "DNF" / null). */
   pinLabel: string | null;
   pinVariant: 'green' | 'amber' | 'warn' | 'race' | 'muted';
@@ -255,7 +257,7 @@ export async function loadRacesData(
 
   const profile = getProfileSnapshot(today, api.profileName ?? null);
   const aRaceHero = getARaceHero(nextA, nextB, predictions, api.state, today);
-  const latestRecap = getLatestRecap(past);
+  const latestRecap = getLatestRecap(past, api.state);
   const season = getSeasonTimeline(all, today);
 
   return {
@@ -402,7 +404,7 @@ function getUpNextInset(
 // Latest recap — most recent past race with actualResult
 // ─────────────────────────────────────────────────────────────────────
 
-function getLatestRecap(past: SavedRace[]): LatestRecap | null {
+function getLatestRecap(past: SavedRace[], state: CoachState): LatestRecap | null {
   // Prefer the most recent past race that has an actualResult; fall
   // back to the most recent past race even without one so the recap
   // card always renders something for a runner who's just raced.
@@ -442,15 +444,23 @@ function getLatestRecap(past: SavedRace[]): LatestRecap | null {
   const place: string | null = null;
   const placeSub: string | null = null;
 
+  // Resolve the runner's real max HR from coach-state (users.max_hr
+  // override → Apple-ingest peak → computed activity peak). Null when
+  // unknown — we then fall back to a qualitative read rather than
+  // fabricating a %-of-max against a hardcoded ceiling.
+  const maxHr = state.recovery.maxHrBpm ?? null;
   const avgHr = result?.avgHr != null
-    ? {
-        value: Math.round(result.avgHr),
-        // TODO: wire to profile.maxHr — pulled from coach-state heartrate doctrine.
-        // 187 is the value used elsewhere in this codebase (Training page); keep
-        // consistent until the profile model surfaces a real number.
-        pctMax: Math.round((result.avgHr / 187) * 100),
-        zone: hrZoneLabel(result.avgHr, 187),
-      }
+    ? maxHr != null && maxHr > 0
+      ? {
+          value: Math.round(result.avgHr),
+          pctMax: Math.round((result.avgHr / maxHr) * 100),
+          zone: hrZoneLabel(result.avgHr, maxHr),
+        }
+      : {
+          value: Math.round(result.avgHr),
+          pctMax: null,
+          zone: 'AVG HR',
+        }
     : null;
 
   // Conditions — no weather field on ActualResult yet. TODO: wire to
