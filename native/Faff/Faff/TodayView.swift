@@ -243,7 +243,9 @@ struct TodayView: View {
         } else if isRest {
             Circle().stroke(Faff.C.textFaint, lineWidth: 1.5).frame(width: 5, height: 5)
         } else if isToday {
-            Circle().fill(Faff.C.milestone).frame(width: 5, height: 5)
+            // Today (not yet done): neutral ink dot, not orange. Orange is
+            // reserved for warnings; the outlined cell border carries today.
+            Circle().fill(Faff.C.ink).frame(width: 5, height: 5)
         } else if isPast {
             // Missed, planned, not logged, not skipped. A hollow warn ring so
             // it's clearly distinct from a deliberate skip and from "to come".

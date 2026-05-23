@@ -225,10 +225,14 @@ export function WeekStripCells({
         // completed run never showed ✓ on its own day, the runner
         // had to wait until tomorrow for confirmation. Now: today
         // shows DONE the moment actual ≥ 60% planned.
-        const isDone = d.date <= today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
-        const isSkipped = !isDone && !d.isRest && skipSet.has(d.date);
-        // A past planned day with no run and no explicit skip = missed.
-        const isMissed = !isDone && !isSkipped && !d.isRest && d.distanceMi > 0 && d.date < today;
+        // "Done" = actual met the ≥60% completion bar. "Short" = something was
+        // logged but came up short — distinct from "done" (use amber, not the
+        // green DONE the modal already says BELOW PLAN about). Anything past
+        // today with no run and no explicit skip = missed.
+        const isDone    = d.date <= today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
+        const isShort   = !isDone   && d.date <= today && !d.isRest && d.distanceMi > 0 && actual > 0;
+        const isSkipped = !isDone   && !isShort && !d.isRest && skipSet.has(d.date);
+        const isMissed  = !isDone   && !isShort && !isSkipped && !d.isRest && d.distanceMi > 0 && d.date < today;
         const dateNum = parseInt(d.date.slice(-2), 10);
         return (
           <button
@@ -245,10 +249,11 @@ export function WeekStripCells({
               <>
                 <div className="day-workout-name">{d.label}</div>
                 <div className="day-distance">{d.distanceMi}<small>mi</small></div>
-                {isDone && <div className="day-status-done">DONE</div>}
+                {isDone    && <div className="day-status-done">DONE</div>}
+                {isShort   && <div className="day-status-short">SHORT · {actual.toFixed(1)}/{d.distanceMi} MI</div>}
                 {isSkipped && <div className="day-status-skipped">SKIPPED</div>}
-                {isMissed && <div className="day-status-missed">MISSED</div>}
-                {d.hasStrength && !isDone && !isSkipped && !isMissed && <span className="day-strength" title="Strength training">S</span>}
+                {isMissed  && <div className="day-status-missed">MISSED</div>}
+                {d.hasStrength && !isDone && !isShort && !isSkipped && !isMissed && <span className="day-strength" title="Strength training">S</span>}
               </>
             )}
           </button>

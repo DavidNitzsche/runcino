@@ -896,6 +896,51 @@
   margin-top: 0;
 }
 
+/* SHORT — run was logged but came up under 60% of the planned distance.
+   Amber (off-plan / heads up), not green (which would falsely imply done). */
+.overview-v4-page .day-status-short {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--amber);
+  text-transform: uppercase;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.day-col:has(.day-status-short) .day-distance,
+.overview-v4-page .day-col:has(.day-status-short) .day-rest {
+  margin-top: 0;
+}
+/* SKIPPED — neutral grey (not a warning; the runner chose). */
+.overview-v4-page .day-status-skipped {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: rgba(13,15,18,.45);
+  text-transform: uppercase;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.day-col:has(.day-status-skipped) .day-distance,
+.overview-v4-page .day-col:has(.day-status-skipped) .day-rest {
+  margin-top: 0;
+}
+/* MISSED — past planned day with no run logged. Soft warn red. */
+.overview-v4-page .day-status-missed {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: rgba(252,77,100,.85);
+  text-transform: uppercase;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.day-col:has(.day-status-missed) .day-distance,
+.overview-v4-page .day-col:has(.day-status-missed) .day-rest {
+  margin-top: 0;
+}
+
 .overview-v4-page .day-status-today {
   display: inline-block;
   font-family: 'Oswald', sans-serif;
