@@ -904,12 +904,18 @@ struct FuelingChip: View {
 /// where space is tight.
 struct FuelingBreakdown: View {
     let fueling: OFueling
-    /// Target pace in seconds-per-mile, used to convert each leg's
-    /// minutes into a distance read. nil → distance hidden.
+    /// Target pace in seconds-per-mile — fallback when the payload doesn't
+    /// ship `fueling.atMiles[]` (older clients), so we can still compute
+    /// per-gel mile positions locally as pace × time. nil → display falls
+    /// back to time-only.
     let paceSPerMi: Double?
     /// Workout duration, lets the last leg show its actual length instead
     /// of "Run to finish". nil → final leg is open-ended.
     let totalDurationMin: Int?
+    /// Prescribed total distance (mi), so the trailing FINISH row anchors
+    /// exactly on the planned finish ("FINISH at 11.6 mi") instead of a
+    /// derived value. nil → fall back to pace × duration.
+    var finishMi: Double? = nil
 
     var body: some View {
         let rehearsal = fueling.isRehearsal
@@ -960,22 +966,45 @@ struct FuelingBreakdown: View {
     private var rows: [Row] {
         var out: [Row] = []
         var prevMin = 0
+        var prevMi: Double? = nil
         for (i, t) in fueling.atMins.enumerated() {
             let segMin = max(0, t - prevMin)
-            let atCumMi = milesFor(t)             // total miles run to this gel
-            let fromPrevMi = i == 0 ? nil : milesFor(segMin)  // segment since last gel
+            // Canonical mile from the planner when present (single source of
+            // truth — watch fires on the same numbers); local fallback
+            // (pace × time) for older payloads that don't ship atMiles.
+            let atCumMi = canonicalMile(at: i) ?? milesFor(t)
+            let fromPrevMi: Double? = {
+                if i == 0 { return nil }
+                if let cur = atCumMi, let pv = prevMi { return cur - pv }
+                return milesFor(segMin)
+            }()
             out.append(.gel(index: i + 1, atCumMi: atCumMi, atCumMin: t, fromPrevMi: fromPrevMi))
             prevMin = t
+            prevMi = atCumMi
         }
         if let total = totalDurationMin, total > prevMin + 2 {
             let remMin = total - prevMin
-            out.append(.finish(atCumMi: milesFor(total),
-                               remainingMi: milesFor(remMin),
-                               remainingMin: remMin))
+            // Finish-mile prefers the workout's prescribed distance over a
+            // re-projection from time, so the timeline ends exactly at the
+            // planned finish ("FINISH at 11.6 mi"), not a derived value.
+            let cumMi = finishMi ?? milesFor(total)
+            let remMi: Double? = {
+                if let cum = cumMi, let pv = prevMi { return cum - pv }
+                return milesFor(remMin)
+            }()
+            out.append(.finish(atCumMi: cumMi, remainingMi: remMi, remainingMin: remMin))
         } else if totalDurationMin == nil {
             out.append(.finish(atCumMi: nil, remainingMi: nil, remainingMin: nil))
         }
         return out
+    }
+
+    /// Canonical mile for gel index `i` from the planner-emitted atMiles.
+    /// Nil when the payload doesn't ship atMiles (older clients) — caller
+    /// falls back to the local pace × minutes computation.
+    private func canonicalMile(at i: Int) -> Double? {
+        guard fueling.atMiles.indices.contains(i) else { return nil }
+        return fueling.atMiles[i]
     }
 
     private func milesFor(_ minutes: Int) -> Double? {

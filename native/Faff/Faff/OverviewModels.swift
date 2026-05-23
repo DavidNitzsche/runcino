@@ -139,12 +139,36 @@ struct OFueling: Decodable {
     let needed: Bool
     let gels: Int
     let atMins: [Int]
+    /// Canonical mile positions for each gel — same numbers the watch
+    /// fires on (web/lib/training-fueling.ts computes them inside the
+    /// planner from distance + duration). Older payloads may omit this;
+    /// the UI falls back to computing miles locally from pace × atMins
+    /// in that case. Default to [] so a missing field decodes cleanly.
+    let atMiles: [Double]
     let gPerHr: Int
     let totalCarbsG: Int
     let isRehearsal: Bool
     let heatAdjusted: Bool
     let shortLine: String
     let why: String
+
+    private enum CodingKeys: String, CodingKey {
+        case needed, gels, atMins, atMiles, gPerHr, totalCarbsG
+        case isRehearsal, heatAdjusted, shortLine, why
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        needed       = try c.decode(Bool.self, forKey: .needed)
+        gels         = try c.decode(Int.self, forKey: .gels)
+        atMins       = try c.decode([Int].self, forKey: .atMins)
+        atMiles      = try c.decodeIfPresent([Double].self, forKey: .atMiles) ?? []
+        gPerHr       = try c.decode(Int.self, forKey: .gPerHr)
+        totalCarbsG  = try c.decode(Int.self, forKey: .totalCarbsG)
+        isRehearsal  = try c.decode(Bool.self, forKey: .isRehearsal)
+        heatAdjusted = try c.decode(Bool.self, forKey: .heatAdjusted)
+        shortLine    = try c.decode(String.self, forKey: .shortLine)
+        why          = try c.decode(String.self, forKey: .why)
+    }
 }
 
 /// CoachDecision<T> envelope, we only read `answer`.

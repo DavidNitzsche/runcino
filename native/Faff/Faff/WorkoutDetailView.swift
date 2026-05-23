@@ -73,7 +73,8 @@ struct WorkoutDetailView: View {
                     FuelingBreakdown(
                         fueling: f,
                         paceSPerMi: dw?.paceSPerMi,
-                        totalDurationMin: dw?.durationMin
+                        totalDurationMin: dw?.durationMin,
+                        finishMi: dw?.distanceMi
                     )
                 }
 

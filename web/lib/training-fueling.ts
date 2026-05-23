@@ -72,8 +72,16 @@ export interface FuelingPlan {
   needed: boolean;
   /** Number of gels to take during the run. */
   gels: number;
-  /** Minute marks (from run start) for each gel — what the watch fires on. */
+  /** Minute marks (from run start) for each gel — display only on cards
+   *  that show approximate timing. The watch fires on `atMiles[]` when
+   *  available (mile is the honest physiological trigger; time is just a
+   *  projection of mile × planned pace). */
   atMins: number[];
+  /** Mile marks (from run start) for each gel — the canonical position
+   *  list. Computed as atMins × (distanceMi / durationEstMin), so the same
+   *  numbers land on every surface (iOS card, watch trigger). Empty when
+   *  distanceMi wasn't provided. */
+  atMiles: number[];
   /** Target carb intake rate (g/hr). */
   gPerHr: number;
   /** Total carbs across all gels (g). */
@@ -94,6 +102,7 @@ const NONE: Readonly<FuelingPlan> = Object.freeze({
   needed: false,
   gels: 0,
   atMins: [],
+  atMiles: [],
   gPerHr: 0,
   totalCarbsG: 0,
   isRehearsal: false,
@@ -253,10 +262,19 @@ export function planTrainingFueling(input: FuelingInput): FuelingPlan {
     shortLine = shortLine.replace(/\.$/, '. Hot day, dialed back.');
   }
 
+  // Canonical mile positions for each gel. The whole point of putting
+  // this in the planner: the *same* numbers go to the iOS card AND the
+  // watch trigger, so they can't drift. Only computed when distance is
+  // known; otherwise atMiles is empty and surfaces fall back to time.
+  const atMiles: number[] = (input.distanceMi != null && input.distanceMi > 0 && dur > 0)
+    ? atMins.map((m) => Math.round((m * (input.distanceMi as number) / dur) * 100) / 100)
+    : [];
+
   return {
     needed: true,
     gels,
     atMins,
+    atMiles,
     gPerHr: target,
     totalCarbsG,
     isRehearsal,
