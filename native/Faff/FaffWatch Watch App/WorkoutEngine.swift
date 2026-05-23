@@ -451,12 +451,16 @@ final class WorkoutEngine: ObservableObject {
         // flip when elapsed crosses each gel mark from the prescribed plan
         // (lib/training-fueling.ts on the backend). Idempotent per index, so
         // a slow tick doesn't double-fire.
-        // Time-anchored fueling — fires by elapsed minutes. Skipped when
-        // workout.gelsMi is present (the distance-anchored path below is more
-        // honest: glycogen depletion correlates with distance/effort, not
-        // clock time, so a runner off-pace shouldn't be prompted early/late).
-        let hasDistanceGels = (workout.gelsMi?.isEmpty == false)
-        if let fueling = workout.fueling, fueling.needed, !hasDistanceGels {
+        // Time-anchored fueling — the canonical path for TRAINING runs.
+        // Doctrine: gels every ~30 min based on glycogen depletion at
+        // endurance pace (Research/18 §1). Calories burned ≈ rate × time,
+        // so a slow runner at 30 min elapsed and a fast runner at 30 min
+        // elapsed are in roughly the same depletion state — they should
+        // fuel at the same elapsed time, not the same mile. Mile-anchoring
+        // would DELAY the cue for a slow runner, increasing bonk risk.
+        // Race day uses workout.gelsMi (literal aid-station positions) —
+        // see the distance-anchored block below; the two paths coexist.
+        if let fueling = workout.fueling, fueling.needed, !isRace {
             let mins = totalElapsedSec / 60
             for (i, mark) in fueling.atMins.enumerated() {
                 if mins >= mark && !firedFuelIndices.contains(i) {
@@ -520,18 +524,16 @@ final class WorkoutEngine: ObservableObject {
             flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 2.5)
         }
 
-        // Distance-anchored gel cue — fire once as the runner reaches each
-        // marker. Used by race day AND by any TRAINING workout the backend
-        // ships with distance-anchored gel marks (e.g. a long-run rehearsal
-        // with gels at mile 5/10/15). Time-anchored gel marks live in
-        // workout.fueling.atMins[] and fire in their own block above.
-        if let gels = workout.gelsMi, !gels.isEmpty {
-            let total = gels.count
+        // Distance-anchored gel cue — RACE DAY ONLY. workout.gelsMi[]
+        // carries literal aid-station mile markers from the course plan
+        // (not a derived "every 30 min" approximation), so firing by GPS
+        // distance matches what the race actually serves. Training runs
+        // use the time-anchored path above instead — see doctrine note.
+        if isRace, let gels = workout.gelsMi, !gels.isEmpty {
             for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
                 firedGels.insert(i)
                 Haptics.almostDone()
-                let title = isRace ? "Gel \(i + 1)" : "Fuel · \(i + 1) of \(total)"
-                flash(.fuel(title: title, sub: "+ water"), for: 3)
+                flash(.fuel(title: "Gel \(i + 1)", sub: "+ water"), for: 3)
             }
         }
 

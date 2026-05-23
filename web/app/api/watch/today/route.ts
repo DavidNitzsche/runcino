@@ -148,18 +148,14 @@ export async function GET(req: NextRequest) {
     if (!fueling.needed) fueling = null;
   } catch { /* leave null → no fuel hint sent */ }
 
-  // Distance-anchored gel marks for the watch. Canonical positions live
-  // on `fueling.atMiles[]` (computed inside planTrainingFueling), so iOS
-  // and watch read the SAME numbers and can't drift. We alias them onto
-  // `workout.gelsMi` here because the watch engine's existing distance-
-  // anchored path keys off `workout.gelsMi`.
-  const gelsMi = fueling?.atMiles && fueling.atMiles.length > 0
-    ? fueling.atMiles
-    : undefined;
+  // Training-run fuel cues fire by TIME (fueling.atMins) — that's the
+  // physiological doctrine ("every ~30 min" of running) and what the watch
+  // engine keys off for non-race workouts. Race-day gelsMi (literal aid-
+  // station positions) flows through `...workout` when the underlying
+  // workout includes it; we don't synthesise it from training fueling.
 
   return NextResponse.json({
     ...workout,
-    gelsMi,
     readinessScore,
     readinessLabel,
     fueling,

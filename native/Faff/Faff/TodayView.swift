@@ -1015,7 +1015,12 @@ struct FuelingBreakdown: View {
     @ViewBuilder
     private func rowView(_ row: Row, accent: Color) -> some View {
         switch row {
-        case .gel(let idx, let mi, let cum, let fromPrev):
+        case .gel(let idx, let mi, let cum, _):
+            // Headline reads TIME because the watch fires by elapsed time
+            // (doctrine: "every ~30 min"). Mile is a sub-line approximation
+            // ("around 2.5 mi") so the runner can orient — at planned pace
+            // they'll be near that mile when the cue fires, but the actual
+            // trigger is the clock.
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Circle().fill(accent).frame(width: 8, height: 8)
                     .padding(.leading, 6).offset(y: -2)
@@ -1024,29 +1029,14 @@ struct FuelingBreakdown: View {
                         Text("GEL \(idx)")
                             .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
                             .foregroundStyle(accent)
-                        if let mi {
-                            Text("at \(formatMi(mi)) mi")
-                                .font(Faff.F.inter(13, .semibold))
-                                .foregroundStyle(Faff.C.ink)
-                        } else {
-                            Text("at ~\(formatMin(cum)) in")
-                                .font(Faff.F.inter(13, .semibold))
-                                .foregroundStyle(Faff.C.ink)
-                        }
+                        Text("at ~\(formatMin(cum)) in")
+                            .font(Faff.F.inter(13, .semibold))
+                            .foregroundStyle(Faff.C.ink)
                     }
-                    HStack(spacing: 6) {
-                        if mi != nil {
-                            Text("~\(formatMin(cum)) in")
-                                .font(Faff.F.inter(11))
-                                .foregroundStyle(Faff.C.textMuted)
-                        }
-                        if let fromPrev {
-                            Text("·").font(Faff.F.inter(11))
-                                .foregroundStyle(Faff.C.textFaint)
-                            Text("after \(formatMi(fromPrev)) mi")
-                                .font(Faff.F.inter(11))
-                                .foregroundStyle(Faff.C.textMuted)
-                        }
+                    if let mi {
+                        Text("around \(formatMi(mi)) mi")
+                            .font(Faff.F.inter(11))
+                            .foregroundStyle(Faff.C.textMuted)
                     }
                 }
                 Spacer(minLength: 6)
@@ -1054,25 +1044,31 @@ struct FuelingBreakdown: View {
             .padding(.vertical, 8).padding(.horizontal, 8)
             .background(accent.opacity(0.07),
                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        case .finish(let cumMi, let remMi, let remMin):
+        case .finish(let cumMi, _, let remMin):
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Circle().fill(Faff.C.textDim.opacity(0.4))
                     .frame(width: 8, height: 8)
                     .padding(.leading, 6).offset(y: -2)
                 VStack(alignment: .leading, spacing: 1) {
-                    if let cumMi {
-                        Text("FINISH at \(formatMi(cumMi)) mi")
+                    if let remMin, let total = totalDurationMin {
+                        Text("FINISH at ~\(formatMin(total))")
                             .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
                             .foregroundStyle(Faff.C.textDim)
+                        // Distance is the firm number (prescribed by the plan),
+                        // so it reads without an "around" hedge.
+                        if let cumMi {
+                            Text("\(formatMi(cumMi)) mi · \(remMin) min more")
+                                .font(Faff.F.inter(11))
+                                .foregroundStyle(Faff.C.textMuted)
+                        } else {
+                            Text("\(remMin) min more")
+                                .font(Faff.F.inter(11))
+                                .foregroundStyle(Faff.C.textMuted)
+                        }
                     } else {
                         Text("RUN TO FINISH")
                             .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
                             .foregroundStyle(Faff.C.textDim)
-                    }
-                    if let remMi, let remMin {
-                        Text("after \(formatMi(remMi)) mi · ~\(formatMin(remMin))")
-                            .font(Faff.F.inter(11))
-                            .foregroundStyle(Faff.C.textMuted)
                     }
                 }
                 Spacer(minLength: 6)
