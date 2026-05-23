@@ -446,11 +446,14 @@ final class WorkoutEngine: ObservableObject {
                 if mins >= mark && !firedFuelIndices.contains(i) {
                     firedFuelIndices.insert(i)
                     let n = i + 1
-                    let label = fueling.gels > 0 ? "Fuel · \(n) of \(fueling.gels)" : "Fuel now"
-                    // Use the existing race-fuel haptic + transition cue
-                    // pattern so the watch face flip + buzz are consistent.
+                    // Big text = the count (the actionable info — "this is
+                    // gel 2 of 3"); sub = the universal reminder ("+ water").
+                    // Mirrors the race-fuel branch below so both code paths
+                    // produce the same on-screen FuelFace shape. (Persists
+                    // until swiped down — see flash() and dismissTransition.)
+                    let title = fueling.gels > 0 ? "Fuel · \(n) of \(fueling.gels)" : "Fuel now"
                     Haptics.play(.transitionCooldown)
-                    flash(.fuel(title: "Fuel now", sub: label), for: 5)
+                    flash(.fuel(title: title, sub: "+ water"), for: 5)
                 }
             }
         }
