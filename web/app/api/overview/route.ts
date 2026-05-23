@@ -51,7 +51,7 @@ import { computeZ2CoverageFinding } from '../../../lib/z2-coverage';
 import { buildHrZonesBundle, type HrZonesBundle } from '../../../lib/hr-zones';
 import { describeWorkout, describeKeyFromPlan, type WorkoutDescription } from '../../../lib/workout-descriptions';
 import { generateBriefing } from '../../../lib/coach-briefing';
-import { getWeekStats, getCompletedMileageByDate } from '../../../lib/completed-runs';
+import { getWeekStats, getCompletedMileageByDate, getLongestRunByDate } from '../../../lib/completed-runs';
 import { realPlanToWeeks, daysBetween } from '../../../lib/synthetic-plan';
 import { listUserConnectors } from '../../../lib/connectors';
 import { computeReadinessScore } from '../../../lib/readiness-score';
