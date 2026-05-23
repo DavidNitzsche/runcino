@@ -599,9 +599,9 @@ struct SessionMapFace: View {
 
 // MARK: - Transition flips (full-screen, brief · deck §C3 / §F2)
 
-/// Routes engine transitions to the right takeover face. Fuel + Go use the new
-/// locked takeovers; heads-up and phase-change use the WatchFaces TransitionFace
-/// until they have their own locked variants.
+/// Routes engine transitions to the right takeover face. Fuel + Go + split
+/// use the new locked takeovers; heads-up and phase-change use the WatchFaces
+/// TransitionFace until they have their own locked variants.
 private struct TransitionFlip: View {
     let cue: WorkoutEngine.TransitionCue
     var body: some View {
@@ -612,6 +612,10 @@ private struct TransitionFlip: View {
             // The new GoFace is glyph + GO + sub. Engine's title carries the
             // rep number ("Go · Int 4") and the sub carries the target.
             GoFace(sub: "\(t)\(s.map { " · \($0)" } ?? "")")
+        case .split(let n, let paceSec):
+            // MILE N · m:ss takeover — the just-banked mile pace, flashed
+            // briefly so the runner sees the split without leaving the face.
+            MileSplitFace(mile: "MILE \(n)", pace: PaceFormat.mmss(paceSec))
         case .headsUp(let t, let s):
             TransitionFace(icon: "clock", title: t, titleColor: WP.amber, sub: s)
         case .phase(let t, let s):

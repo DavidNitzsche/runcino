@@ -485,6 +485,11 @@ struct LobbyFace: View {
     let distance: String    // "5.8" / "26.2"
     let pace: String        // "6:31" / "8:46"
     let time: String        // "52" (workout, minutes) / "3:50" (race, hms)
+    /// Optional pace range ("8:29-8:59") to show as a small muted subtitle
+    /// directly under the pace number — for easy/long runs where you have
+    /// a band, not a single target. Nil hides the row entirely (races,
+    /// fixed-target workouts).
+    var paceRange: String? = nil
     /// Show a clock glyph next to the time number. Default on — needed when
     /// `time` is a bare minute count ("61") so the row reads as duration.
     /// Pass false for races where `time` is already h:mm ("3:50") and the
@@ -509,6 +514,16 @@ struct LobbyFace: View {
                     BigValue(text: distance, role: .dist,    size: h * 0.19)
                     Spacer(minLength: 0)
                     BigValue(text: pace,     role: .live,    size: h * 0.19)
+                    // Pace range subtitle — only renders for runs with a
+                    // tolerance band. Sits in the natural gap between pace
+                    // and time rows so the 3-big-number cadence isn't broken.
+                    if let paceRange {
+                        Text(paceRange)
+                            .font(.custom("HelveticaNeue-Bold", size: h * 0.050))
+                            .tracking(0.8)
+                            .foregroundStyle(Faff.mute)
+                            .padding(.top, h * 0.005)
+                    }
                     Spacer(minLength: 0)
                     // Time row — number + small clock icon. The bare integer
                     // "61" is ambiguous on its own (could be HR, calories,

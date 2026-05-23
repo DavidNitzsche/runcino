@@ -29,6 +29,7 @@ struct IdleView: View {
                 distance:      distanceText,
                 pace:          paceText,
                 time:          timeText,
+                paceRange:     paceRangeText,
                 showTimeIcon:  !workout.isRace,   // races already h:mm — no glyph needed
                 onStart:       onStart
             )
@@ -67,6 +68,23 @@ struct IdleView: View {
             return PaceFormat.hm(goal)
         }
         return "\(workout.totalEstimatedMinutes)"
+    }
+
+    /// Pace range subtitle ("8:29-8:59") for easy/long runs where the
+    /// prescribed pace is a BAND, not a single target. Computed from the
+    /// first work phase's `targetPaceSPerMi ± tolerancePaceSPerMi`. Returns
+    /// nil when no tolerance is set (race phases, sub_threshold work, etc.)
+    /// so the lobby falls back to the single midpoint reading.
+    private var paceRangeText: String? {
+        guard
+            let work = workout.phases.first(where: { $0.type == .work }),
+            let target = work.targetPaceSPerMi,
+            let tol = work.tolerancePaceSPerMi,
+            tol > 0
+        else { return nil }
+        let lo = target - tol
+        let hi = target + tol
+        return "\(PaceFormat.mmss(lo))-\(PaceFormat.mmss(hi))"
     }
 
     /// "T" → "Threshold", "E" → "Easy", etc. Older payloads occasionally name

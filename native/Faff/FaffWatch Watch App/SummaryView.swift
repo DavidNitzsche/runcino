@@ -2,11 +2,15 @@
 //  SummaryView.swift
 //  FaffWatch
 //
-//  End-of-workout readout on the dark v4 canon (watch-app.html §E): a
-//  green check ring, "Complete", a 3-column stat grid (reps, avg pace,
-//  miles, avg HR, cadence, time), then "Saved · syncing". The completion
-//  payload is the exact body the iPhone bridge POSTs to
-//  /api/watch/workouts/complete.
+//  End-of-workout readout under the locked grammar — three big number rows
+//  + Done button, same shape as the in-run faces.
+//
+//    workout: avg pace (green) · miles (blue) · total time (white)
+//    race:    finish time (white) · goal delta (green/over) · miles (blue)
+//
+//  The completion payload is the exact body the iPhone bridge POSTs to
+//  /api/watch/workouts/complete (auto-sent the moment the run ends, not
+//  gated on the Done tap — see WatchRootModel).
 //
 
 import SwiftUI
@@ -16,110 +20,117 @@ struct SummaryView: View {
     let completion: WatchCompletion?
     let onDone: () -> Void
 
-    private var workReps: (done: Int, total: Int) {
-        let total = workout.phases.filter { $0.type == .work }.count
-        let done = completion?.phases.filter { $0.type == "work" && $0.completed }.count ?? 0
-        return (done, total)
+    var body: some View {
+        ResponsiveFace {
+            if workout.isRace {
+                raceSummary
+            } else {
+                workoutSummary
+            }
+        }
     }
-    private var avgPace: String {
-        guard let c = completion, let mi = c.totalDistanceMi, mi > 0.05 else { return "—" }
+
+    // MARK: - Workout summary (avg pace · miles · elapsed)
+
+    @ViewBuilder
+    private var workoutSummary: some View {
+        CompleteFace(
+            label:    labelText,
+            pace:     avgPaceText,
+            distance: milesText,
+            elapsed:  elapsedText,
+            onDone:   onDone
+        )
+    }
+
+    private var labelText: String {
+        // Workout type label (e.g. "Threshold", "Easy run") — pulled from
+        // the workout name, capped to a short tag size. Falls back to
+        // status when the name is empty (rare).
+        if !workout.name.isEmpty { return workout.name }
+        return (completion?.status ?? "Complete").capitalized
+    }
+    private var avgPaceText: String {
+        guard let c = completion, let mi = c.totalDistanceMi, mi > 0.05 else { return "—:—" }
         return PaceFormat.mmss(Int(Double(c.totalDurationSec) / mi))
     }
+    private var milesText: String {
+        completion?.totalDistanceMi.map { String(format: "%.1f", $0) } ?? "—"
+    }
+    private var elapsedText: String {
+        let s = completion?.totalDurationSec ?? 0
+        return s >= 3600 ? PaceFormat.hms(s) : PaceFormat.clock(s)
+    }
 
-    // Race finish (watch-app.html §F): finish time vs goal + split shape.
-    private var goalDelta: (String, Color)? {
-        guard workout.isRace, let goal = workout.goalSec, let c = completion else { return nil }
+    // MARK: - Race summary (finish time · goal delta · miles)
+
+    @ViewBuilder
+    private var raceSummary: some View {
+        RaceFinishCard(
+            label:     workout.name.isEmpty ? "Finish" : workout.name,
+            finish:    raceFinishText,
+            delta:     raceDeltaText,
+            deltaRole: raceDeltaRole,
+            distance:  milesText,
+            onDone:    onDone
+        )
+    }
+
+    private var raceFinishText: String {
+        let s = completion?.totalDurationSec ?? 0
+        return s >= 3600 ? PaceFormat.hms(s) : PaceFormat.clock(s)
+    }
+    /// Signed delta-to-goal as "-0:48" (under, green) / "+0:24" (over, red).
+    /// Renders "—" until enough banked to compare.
+    private var raceDeltaText: String {
+        guard let goal = workout.goalSec, let c = completion else { return "—" }
         let d = c.totalDurationSec - goal
-        if d <= 0 { return ("\(PaceFormat.clock(-d)) under goal", WatchTheme.C.green) }
-        return ("\(PaceFormat.clock(d)) over goal", WatchTheme.C.warn)
+        let a = abs(d)
+        let mag = a >= 60 ? "\(a / 60):" + String(format: "%02d", a % 60) : "\(a)s"
+        return d <= 0 ? "-\(mag)" : "+\(mag)"
     }
-
-    var body: some View {
-        // Authored for the Ultra canvas, scaled to fit any watch (no scroll needed).
-        ResponsiveFace {
-            VStack(spacing: 0) {
-                Spacer(minLength: 30)   // keep the title clear of the OS clock row
-                Text(titleText.uppercased())
-                    .font(WatchTheme.display(30)).foregroundStyle(WatchTheme.C.ink)
-
-                if workout.isRace {
-                    raceFinish
-                } else {
-                    workoutGrid
-                }
-
-                Text("Saved · syncing").font(WatchTheme.body(9.5, .semibold)).tracking(0.4)
-                    .foregroundStyle(WatchTheme.C.t2).textCase(.uppercase).padding(.top, 12)
-
-                Button(action: onDone) {
-                    Text("DONE").font(WatchTheme.sub(13, .semibold)).tracking(1.5)
-                        .frame(maxWidth: .infinity).padding(.vertical, 10)
-                        .foregroundStyle(WatchTheme.C.ink)
-                        .overlay(Capsule().stroke(WatchTheme.C.track, lineWidth: 1.5))
-                }
-                .buttonStyle(.plain).padding(.top, 12)
-                Spacer(minLength: 8)
-            }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var titleText: String {
-        if workout.isRace { return "Finish" }
-        return completion?.status == "completed" || completion == nil ? "Complete" : completion!.status
-    }
-
-    @ViewBuilder private var raceFinish: some View {
-        Text(PaceFormat.hms(completion?.totalDurationSec ?? 0))
-            .font(WatchTheme.display(56)).tracking(-1).foregroundStyle(WatchTheme.C.green)
-            .lineLimit(1).minimumScaleFactor(0.5).padding(.top, 8)
-        if let (text, color) = goalDelta {
-            Text(text).font(WatchTheme.body(13, .semibold)).foregroundStyle(color).padding(.top, 4)
-        }
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 12) {
-            cell(completion?.totalDistanceMi.map { String(format: "%.1f", $0) } ?? "—", "Miles")
-            cell(avgPace, "Avg pace")
-            cell(completion?.avgHr.map { "\($0)" } ?? "—", "Avg HR")
-        }.padding(.top, 13)
-    }
-
-    @ViewBuilder private var workoutGrid: some View {
-        let r = workReps
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 12) {
-            cell("\(r.done)/\(r.total)", "Reps")
-            cell(avgPace, "Avg pace")
-            cell(completion?.totalDistanceMi.map { String(format: "%.1f", $0) } ?? "—", "Miles")
-            cell(completion?.avgHr.map { "\($0)" } ?? "—", "Avg HR")
-            cell(completion?.avgCadence.map { "\($0)" } ?? "—", "Cadence")
-            cell(PaceFormat.clock(completion?.totalDurationSec ?? 0), "Time")
-        }
-        .padding(.top, 13)
-    }
-
-    private func cell(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(WatchTheme.display(22)).foregroundStyle(WatchTheme.C.ink)
-                .lineLimit(1).minimumScaleFactor(0.5)
-            Text(label.uppercased()).font(WatchTheme.body(7.5, .semibold)).tracking(0.4)
-                .foregroundStyle(WatchTheme.C.t2).lineLimit(1)
-        }.frame(maxWidth: .infinity)
+    private var raceDeltaRole: Role {
+        guard let goal = workout.goalSec, let c = completion else { return .neutral }
+        return c.totalDurationSec <= goal ? .live : .over
     }
 }
 
-#Preview {
-    SummaryView(
-        workout: .sample,
-        completion: WatchCompletion(
-            workoutId: "sample-threshold",
-            startedAt: "2026-05-19T06:00:00Z",
-            completedAt: "2026-05-19T06:52:00Z",
-            status: "completed",
-            totalDistanceMi: 6.4,
-            totalDurationSec: 3134,
-            avgHr: 171,
-            maxHr: 182,
-            phases: []
-        )
-    ) { }
+/// Race-day finish card — finish time (white) · goal delta (live/over) ·
+/// distance (blue). Sibling to CompleteFace; same shape, race-specific rows.
+private struct RaceFinishCard: View {
+    let label: String
+    let finish: String
+    let delta: String
+    let deltaRole: Role
+    let distance: String
+    var onDone: () -> Void = {}
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            ZStack {
+                LinearGradient(colors: [Color(hex: 0x0C2A14), .black],
+                               startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: h * 0.012) {
+                        FaceLabel(text: label, color: Faff.live, size: h * 0.07)
+                        BigValue(text: finish,   role: .neutral, size: h * 0.18)
+                        BigValue(text: delta,    role: deltaRole, size: h * 0.18)
+                        BigValue(text: distance, role: .dist,    size: h * 0.18)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    Button(action: onDone) {
+                        Text("Done")
+                            .font(.custom("HelveticaNeue-Bold", size: h * 0.12))
+                            .foregroundStyle(Color(hex: 0x06210C))
+                            .frame(maxWidth: .infinity).padding(.vertical, h * 0.022)
+                            .background(Capsule().fill(Faff.live))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)
+            }
+        }
+    }
 }

@@ -125,6 +125,38 @@ struct WatchFixtureView: View {
             ])
         case "justrun", "just-run":
             JustRunFace(onStart: {})
+        case "lobby-easy":
+            // Easy long run with a pace RANGE — exercises the new
+            // paceRange subtitle under the midpoint.
+            LobbyFace(name: "LONG RUN", distance: "11.6", pace: "8:44",
+                      time: "101", paceRange: "8:29-8:59", onStart: {})
+        case "lobby-race":
+            LobbyFace(name: "BIG SUR", distance: "26.2", pace: "8:46",
+                      time: "3:50", paceRange: nil, showTimeIcon: false, onStart: {})
+        case "countdown":
+            // Render a 3 — the engine drives the real countdown; this is
+            // just a layout fixture.
+            CountdownView(engine: WorkoutEngine.fixture(
+                workout: .sample, currentIndex: 0,
+                phaseElapsedSec: 0, totalElapsedSec: 0))
+        case "summary-workout":
+            SummaryView(
+                workout: .sample,
+                completion: WatchCompletion(
+                    workoutId: "sample", startedAt: "", completedAt: "",
+                    status: "completed", totalDistanceMi: 6.4,
+                    totalDurationSec: 3134, avgHr: 171, maxHr: 182,
+                    avgCadence: 181, phases: []),
+                onDone: {})
+        case "summary-race":
+            SummaryView(
+                workout: .sampleRace,
+                completion: WatchCompletion(
+                    workoutId: "race", startedAt: "", completedAt: "",
+                    status: "completed", totalDistanceMi: 26.2,
+                    totalDurationSec: 13752, avgHr: 168, maxHr: 184,
+                    avgCadence: 178, phases: []),
+                onDone: {})
         case "hr":
             HRFace(pace: "9:15", hr: "142", hrRole: .live, distance: "4.1")
         case "strides":

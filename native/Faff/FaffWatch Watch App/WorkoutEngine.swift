@@ -35,6 +35,7 @@ final class WorkoutEngine: ObservableObject {
         case go(title: String, sub: String?)       // green, entering a work rep
         case phase(title: String, sub: String?)    // orange, race phase change
         case fuel(title: String, sub: String?)     // orange, gel cue
+        case split(mileNo: Int, paceSec: Int)      // MILE N · m:ss flash, every auto-lap
     }
 
     // MARK: Published surface (views bind to these)
@@ -99,6 +100,14 @@ final class WorkoutEngine: ObservableObject {
     private var didFireAlmostDone = false
     /// Gel markers already cued (race mode), so each fires once.
     private var firedGels: Set<Int> = []
+    /// Last mile boundary the runner has crossed (0 at start, 1 after first
+    /// mile, etc). Increments by 1 on each integer-mile crossing, used to
+    /// fire the MILE N · m:ss takeover. Crossings are distance-driven (not
+    /// HK auto-lap events) so this works on the sim mock too.
+    private var lastMileIndex: Int = 0
+    /// Elapsed seconds at the moment of the last mile crossing — diffed
+    /// against current `totalElapsedSec` to compute the banked split.
+    private var lastMileElapsedSec: Int = 0
 
     /// Per-phase execution record, accumulated as the workout runs.
     /// `completed` flips to false when the user ends a phase early.
@@ -277,6 +286,8 @@ final class WorkoutEngine: ObservableObject {
         firedFuelIndices.removeAll()
         firedGels.removeAll()
         hrOverCeiling = false
+        lastMileIndex = 0
+        lastMileElapsedSec = 0
         planComplete = false
         workoutStart = .now
         phaseStart = .now
@@ -489,6 +500,24 @@ final class WorkoutEngine: ObservableObject {
             Haptics.almostDone()
             let sub = phase.repUnit == .distance ? nil : "\(phaseRemainingSec)s left"
             flash(.headsUp(title: "Almost there", sub: sub), for: 2.6)
+        }
+
+        // MILE SPLIT takeover — at every integer-mile crossing, fire a brief
+        // "MILE N · m:ss" overlay with the banked split (time spent on the
+        // mile we just finished). Distance-crossing based (not HK auto-lap
+        // events) so it works on the sim mock and any future tracker too.
+        // Paused minutes naturally don't count because totalElapsedSec is
+        // paused-corrected.
+        let mileIndex = Int(coveredMi)
+        if mileIndex > lastMileIndex {
+            // If GPS jumps multiple integers in one tick (rare, e.g. a sim
+            // teleport), we only flash the most-recent mile rather than
+            // queuing several — the runner can't process N flashes anyway.
+            let lapSec = max(1, totalElapsedSec - lastMileElapsedSec)
+            lastMileElapsedSec = totalElapsedSec
+            lastMileIndex = mileIndex
+            Haptics.play(.transitionWork)
+            flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 2.5)
         }
 
         // Distance-anchored gel cue — fire once as the runner reaches each
