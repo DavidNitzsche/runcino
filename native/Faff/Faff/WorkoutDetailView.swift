@@ -65,19 +65,16 @@ struct WorkoutDetailView: View {
                     }.faffCard()
                 }
 
-                // Gel plan inline with the structure — shows WHEN to take
-                // each gel and WHY this run warrants fueling. Same chip the
-                // Today hero uses, plus a short why-line for context.
+                // Full gel timeline — alternating RUN / GEL rows so the
+                // runner sees exactly when each gel hits, with miles at
+                // target pace between gels. The one-line FuelingChip on
+                // the today hero stays for at-a-glance; here we go deep.
                 if let f = dw?.fueling, f.needed {
-                    VStack(alignment: .leading, spacing: 8) {
-                        FuelingChip(fueling: f)
-                        if !f.why.isEmpty {
-                            Text(f.why)
-                                .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.horizontal, 4)
-                        }
-                    }
+                    FuelingBreakdown(
+                        fueling: f,
+                        paceSPerMi: dw?.paceSPerMi,
+                        totalDurationMin: dw?.durationMin
+                    )
                 }
 
                 if let why = dw?.detail?.why, !why.isEmpty {

@@ -894,3 +894,146 @@ struct FuelingChip: View {
         )
     }
 }
+
+// MARK: - Fueling breakdown (alternating RUN / GEL timeline)
+
+/// Full gel timeline — alternating RUN / GEL rows so the runner can see
+/// exactly when each gel hits, how long they're running between gels,
+/// and how much distance each leg covers at target pace. Lives in the
+/// workout-detail sheet; the one-line FuelingChip stays on the hero
+/// where space is tight.
+struct FuelingBreakdown: View {
+    let fueling: OFueling
+    /// Target pace in seconds-per-mile, used to convert each leg's
+    /// minutes into a distance read. nil → distance hidden.
+    let paceSPerMi: Double?
+    /// Workout duration, lets the last leg show its actual length instead
+    /// of "Run to finish". nil → final leg is open-ended.
+    let totalDurationMin: Int?
+
+    var body: some View {
+        let rehearsal = fueling.isRehearsal
+        let header = rehearsal ? "RACE REHEARSAL" : "FUEL TIMELINE"
+        let accent = rehearsal ? Faff.C.recovery : Faff.C.race
+        let stats: String = {
+            var parts = ["\(fueling.gels) gels", "\(fueling.gPerHr) g/hr"]
+            if fueling.totalCarbsG > 0 { parts.append("\(fueling.totalCarbsG) g total") }
+            return parts.joined(separator: " · ")
+        }()
+        return VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(header)
+                    .font(Faff.F.oswald(11, .semibold)).tracking(1.4)
+                    .foregroundStyle(rehearsal ? Faff.C.recovery : Faff.C.textDim)
+                Text(stats)
+                    .font(Faff.F.inter(12.5, .semibold))
+                    .foregroundStyle(Faff.C.textMuted)
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                    rowView(r, accent: accent)
+                }
+            }
+            if !fueling.why.isEmpty {
+                Text(fueling.why)
+                    .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
+    }
+
+    /// Render rows: a RUN leg (with miles/min/cumulative start time),
+    /// then GEL N badge, repeating. A trailing leg covers the final
+    /// stretch to the finish (or open-ended if duration is unknown).
+    private enum Row {
+        case run(durationMin: Int, miles: Double?, startCumMin: Int)
+        case gel(index: Int, atCumMin: Int)
+        case runOpen   // unknown total duration → "to finish"
+    }
+
+    private var rows: [Row] {
+        var out: [Row] = []
+        var prev = 0
+        for (i, t) in fueling.atMins.enumerated() {
+            let dur = max(0, t - prev)
+            out.append(.run(durationMin: dur, miles: milesFor(dur), startCumMin: prev))
+            out.append(.gel(index: i + 1, atCumMin: t))
+            prev = t
+        }
+        if let total = totalDurationMin, total > prev + 2 {
+            let dur = total - prev
+            out.append(.run(durationMin: dur, miles: milesFor(dur), startCumMin: prev))
+        } else if totalDurationMin == nil {
+            out.append(.runOpen)
+        }
+        return out
+    }
+
+    private func milesFor(_ minutes: Int) -> Double? {
+        guard let pace = paceSPerMi, pace > 0, minutes > 0 else { return nil }
+        return Double(minutes) * 60.0 / pace
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: Row, accent: Color) -> some View {
+        switch row {
+        case .run(let dur, let mi, let cum):
+            HStack(spacing: 10) {
+                Text("RUN").font(Faff.F.oswald(11, .semibold)).tracking(1)
+                    .foregroundStyle(Faff.C.textDim)
+                    .frame(width: 36, alignment: .leading)
+                if let mi {
+                    Text("\(formatMi(mi)) mi")
+                        .font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
+                    Text("· ~\(formatMin(dur))")
+                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
+                } else {
+                    Text("~\(formatMin(dur))")
+                        .font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
+                }
+                Spacer(minLength: 6)
+                if cum > 0 {
+                    Text("from ~\(formatMin(cum))")
+                        .font(Faff.F.inter(11)).foregroundStyle(Faff.C.textFaint)
+                }
+            }
+            .padding(.vertical, 8)
+        case .gel(let idx, let cum):
+            HStack(spacing: 10) {
+                Circle().fill(accent).frame(width: 8, height: 8)
+                    .padding(.leading, 14)
+                Text("GEL \(idx)")
+                    .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
+                    .foregroundStyle(accent)
+                Spacer(minLength: 6)
+                Text("at ~\(formatMin(cum)) in")
+                    .font(Faff.F.inter(11, .medium)).foregroundStyle(Faff.C.textMuted)
+            }
+            .padding(.vertical, 7).padding(.horizontal, 8)
+            .background(accent.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        case .runOpen:
+            HStack(spacing: 10) {
+                Text("RUN").font(Faff.F.oswald(11, .semibold)).tracking(1)
+                    .foregroundStyle(Faff.C.textDim)
+                    .frame(width: 36, alignment: .leading)
+                Text("to finish")
+                    .font(Faff.F.inter(13, .medium)).foregroundStyle(Faff.C.ink)
+                Spacer(minLength: 6)
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func formatMi(_ mi: Double) -> String {
+        mi < 10 ? String(format: "%.1f", mi) : String(format: "%.0f", mi)
+    }
+    private func formatMin(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        let h = m / 60, mm = m % 60
+        return mm == 0 ? "\(h)h" : "\(h):\(String(format: "%02d", mm))"
+    }
+}
