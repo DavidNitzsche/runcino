@@ -378,6 +378,12 @@ struct TodayView: View {
                     StatPill(value: dw.paceDisplay, unit: dw.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: dw.isQuality)
                     StatPill(value: faffApproxDuration(dw.durationMin).value, unit: faffApproxDuration(dw.durationMin).unit, label: "Time")
                 }
+                // Pre-run fuel chip on future-day preview too (parity with the
+                // today hero) — Sunday's long run shouldn't go silent on its
+                // gel plan just because it's not today.
+                if let f = dw.fueling, f.needed {
+                    FuelingChip(fueling: f).padding(.top, 12)
+                }
                 GhostButton(title: "Open workout") { onOpenWorkout(d.dateISO) }.padding(.top, 12)
             }
         }
@@ -857,7 +863,10 @@ private struct PastDayHero: View {
 /// One-line gel/carb plan for runs that warrant fueling. Mirrors the web
 /// overview chip — rehearsal long runs use a green tint + RACE REHEARSAL
 /// eyebrow so they read distinct from a routine fuel line.
-private struct FuelingChip: View {
+/// Made internal so WorkoutDetailView (today's + future-day sheet) and
+/// the Plan list can render the same chip — fuel surfaces wherever a run
+/// is shown, not only on the today hero.
+struct FuelingChip: View {
     let fueling: OFueling
     var body: some View {
         let rehearsal = fueling.isRehearsal

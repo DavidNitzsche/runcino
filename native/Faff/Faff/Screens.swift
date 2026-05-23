@@ -13,6 +13,15 @@ import Charts
 
 // MARK: - Root tab shell
 
+/// Workout-detail sheet target. `dateISO == nil` → today's workout
+/// (no need to look up a row in planWeekWorkouts). Identifiable so we
+/// can drive `.sheet(item:)`, which always reads the current value at
+/// present time (the older `isPresented:` flow captured a stale nil).
+struct DetailTarget: Identifiable {
+    let id = UUID()
+    let dateISO: String?
+}
+
 struct RootTabView: View {
     let onLogout: () -> Void
 
@@ -20,10 +29,13 @@ struct RootTabView: View {
     @State private var loadError: String?
     @State private var tab: FaffTab = RootTabView.initialTab
     @State private var showProfile = false
-    @State private var showDetail = false
-    /// Which day the workout-detail sheet should render. nil → today
-    /// (default); set to a date when the user taps a future-day preview.
-    @State private var detailDate: String? = nil
+    /// Workout-detail sheet target. `dateISO == nil` → today's workout.
+    /// Modeled as a single Identifiable item (not isPresented+detailDate)
+    /// so the sheet builder always reads the *current* date — the older
+    /// `.sheet(isPresented:)` closure was capturing detailDate before
+    /// SwiftUI applied the new value and the sheet rendered today's REST
+    /// instead of the future-day's LONG.
+    @State private var detailTarget: DetailTarget? = nil
     @State private var showWhy = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -54,8 +66,8 @@ struct RootTabView: View {
                     FaffTabBar(active: tab) { tab = $0 }
                 }
                 .sheet(isPresented: $showProfile) { ProfileView(overview: o, onLogout: onLogout) }
-                .sheet(isPresented: $showDetail) {
-                    WorkoutDetailView(overview: o, targetDate: detailDate, onReload: { Task { await load() } })
+                .sheet(item: $detailTarget) { t in
+                    WorkoutDetailView(overview: o, targetDate: t.dateISO, onReload: { Task { await load() } })
                 }
                 .sheet(isPresented: $showWhy) { WhyThisSheet(overview: o) { showWhy = false; tab = .coach } }
             } else if let loadError {
@@ -79,7 +91,7 @@ struct RootTabView: View {
 
     @ViewBuilder private func screen(_ o: OverviewResponse) -> some View {
         switch tab {
-        case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { date in detailDate = date; showDetail = true }, onReload: { Task { await load() } })
+        case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { date in detailTarget = DetailTarget(dateISO: date) }, onReload: { Task { await load() } })
         case .plan:   PlanView(overview: o)
         case .coach:  CoachView(overview: o)
         case .health: HealthView(overview: o, onReload: { Task { await load() } })

@@ -65,6 +65,21 @@ struct WorkoutDetailView: View {
                     }.faffCard()
                 }
 
+                // Gel plan inline with the structure — shows WHEN to take
+                // each gel and WHY this run warrants fueling. Same chip the
+                // Today hero uses, plus a short why-line for context.
+                if let f = dw?.fueling, f.needed {
+                    VStack(alignment: .leading, spacing: 8) {
+                        FuelingChip(fueling: f)
+                        if !f.why.isEmpty {
+                            Text(f.why)
+                                .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 4)
+                        }
+                    }
+                }
+
                 if let why = dw?.detail?.why, !why.isEmpty {
                     CoachVerdict("Why this run", why, color: Faff.C.recovery)
                 }

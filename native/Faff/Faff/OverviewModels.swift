@@ -829,6 +829,10 @@ struct DerivedWorkout {
     /// Server-computed structured workout (band + steps + effort + why).
     /// nil for the old-engine fallback / rest days.
     let detail: ODescription?
+    /// Per-day fueling (gels + cadence). Propagated from OPlanDay so the
+    /// pre-run hero and detail can render the chip without rummaging
+    /// through `overview.todayFueling` (which is only ever today's).
+    let fueling: OFueling?
 
     init(plan: OPlanDay?, fallback: OWorkout?) {
         if let p = plan, let t = p.type {
@@ -840,6 +844,7 @@ struct DerivedWorkout {
             notes = p.notes
             zone = DerivedWorkout.zone(for: t)
             detail = p.description
+            fueling = p.fueling
             // Prefer the backend's resolved describeWorkout label/zone.
             label = p.label
                 ?? DerivedWorkout.label(type: t, notes: p.notes, isQuality: p.isQuality ?? false)
@@ -853,12 +858,13 @@ struct DerivedWorkout {
             notes = w.coachToday?.today?.description ?? w.voiceLead
             zone = w.hrZone
             detail = nil
+            fueling = nil
             label = w.label ?? "Today's run"
             durationMin = OverviewFormat.durationMin(distanceMi: w.distanceMi, paceSPerMi: w.paceTargetSPerMi, explicit: nil)
         } else {
             type = "rest"; isQuality = false; isRest = true
             distanceMi = nil; paceSPerMi = nil; durationMin = nil; notes = nil; zone = nil
-            label = "Rest"; detail = nil
+            label = "Rest"; detail = nil; fueling = nil
         }
     }
 
