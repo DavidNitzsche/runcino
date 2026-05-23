@@ -2,11 +2,17 @@
 //  IdleView.swift
 //  FaffWatch
 //
-//  Home / pre-run on the dark v4 canon (watch-app.html §A / §F). Center-
-//  aligned launchpad: brand mark, a one-word readiness pill, today's
-//  session name as the hero, the pace line, est time + distance, and a
-//  thumb-sized green Start. Race day swaps in the goal/strategy + course
-//  strip (§F). No scroll — Start is always one tap away.
+//  Pre-run launchpad — what you're about to do, then START.
+//  Rendered through the new LobbyFace (Faces.swift) so it shares the locked
+//  Helvetica/Faff grammar with the in-run faces. Same three-row layout
+//  whether today is easy / threshold / long / race: the VALUES communicate
+//  the workout type, the structure stays consistent.
+//
+//    · top tag      → workout name ("EASY", "5×7", "BIG SUR")
+//    · row 1        → distance  (blue · canonical)
+//    · row 2        → pace      (green · live)
+//    · row 3        → time      (white · est minutes OR race goal time)
+//    · bottom       → green START capsule
 //
 
 import SwiftUI
@@ -16,110 +22,54 @@ struct IdleView: View {
     let onStart: () -> Void
 
     var body: some View {
-        // Authored for the Ultra canvas; ResponsiveFace scales it to any watch.
+        // Authored against the Ultra canvas; ResponsiveFace scales it to any watch.
         ResponsiveFace {
-            VStack(spacing: 0) {
-                // w-top: brand mark left (the OS clock provides the time, right).
-                HStack {
-                    Text("FAFF").font(WatchTheme.display(15)).italic()
-                        .tracking(1.5).foregroundStyle(WatchTheme.C.orange)
-                    Spacer()
-                }
-                .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
-                Spacer(minLength: 2)
-                if workout.isRace { raceBody } else { workoutBody }
-                Spacer(minLength: 6)
-                startButton
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 10).padding(.bottom, 12)   // small bottom inset: START anchors near the edge, clearing the page dots
+            LobbyFace(
+                name:     tagText,
+                distance: distanceText,
+                pace:     paceText,
+                time:     timeText,
+                onStart:  onStart
+            )
         }
     }
 
-    // Workout day (watch-app.html §A): readiness pill, name hero, pace.
-    @ViewBuilder private var workoutBody: some View {
-        VStack(spacing: 5) {
-            if let score = workout.readinessScore {
-                HStack(spacing: 5) {
-                    Circle().fill(readinessColor).frame(width: 6, height: 6)
-                    Text("\(score) · \(workout.readinessLabel ?? "Ready")".uppercased())
-                        .font(WatchTheme.body(10, .bold)).tracking(0.5)
-                        .foregroundStyle(readinessColor)
-                }
-                .padding(.vertical, 4).padding(.horizontal, 9)
-                .background(readinessColor.opacity(0.15), in: Capsule())
-            }
-            Text(workout.name)
-                .font(WatchTheme.display(52)).tracking(-1).foregroundStyle(WatchTheme.C.ink)
-                .lineLimit(2).minimumScaleFactor(0.4).multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 2).padding(.bottom, -2)   // Bebas sits ~4px high in its line-box; nudge the glyph down to optically center it between pill and pace (net height unchanged)
-            Text(paceLine)
-                .font(WatchTheme.sub(15, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
-                .textCase(.uppercase).lineLimit(1).minimumScaleFactor(0.6)
-            Text(estLine)
-                .font(WatchTheme.body(13, .semibold)).tracking(0.4).foregroundStyle(WatchTheme.C.t3)
+    /// "EASY" / "5×7" / "BIG SUR" — short identity tag. Falls back to the
+    /// raw workout name; we expand single-letter zone codes ("T" → "THRESHOLD")
+    /// only when the *name* itself is one letter.
+    private var tagText: String {
+        let n = workout.name.uppercased()
+        // If the name is one of the bare zone codes (older payloads), expand it.
+        if n.count == 1, ["E", "M", "T", "I", "R"].contains(n) {
+            return Self.expandZone(n).uppercased()
         }
-        .frame(maxWidth: .infinity)
+        return n
     }
 
-    // Pre-race (watch-app.html §F): goal hero, strategy, distance · gels, strip.
-    @ViewBuilder private var raceBody: some View {
-        VStack(spacing: 5) {
-            HStack(spacing: 5) {
-                Text(workout.name.uppercased())
-                    .font(WatchTheme.body(12.5, .bold)).tracking(1.1).foregroundStyle(WatchTheme.C.orange).lineLimit(1)
-            }
-            Text(workout.goalSec.map { PaceFormat.hm($0) } ?? workout.name)
-                .font(WatchTheme.display(64)).tracking(-1.5).foregroundStyle(WatchTheme.C.ink)
-                .lineLimit(1).minimumScaleFactor(0.5)
-            if let strategy = workout.strategyLabel {
-                Text(strategy)
-                    .font(WatchTheme.sub(15, .semibold)).tracking(0.5).foregroundStyle(WatchTheme.C.orange)
-                    .lineLimit(1).minimumScaleFactor(0.6)
-            }
-            Text(raceMetaLine)
-                .font(WatchTheme.body(13, .semibold)).tracking(0.4).foregroundStyle(WatchTheme.C.t3)
-            courseStrip.padding(.top, 4)
+    /// Distance: race miles take 1 decimal ("26.2"), workout miles same ("5.8").
+    private var distanceText: String {
+        workout.distanceMi.map { String(format: "%.1f", $0) } ?? "—"
+    }
+
+    /// Pace: the first work phase's target — the pace you're chasing today.
+    /// For a race that's the opening course phase; for a workout it's the rep
+    /// target. For a no-target run (recovery / shakeout), we surface "—:—".
+    private var paceText: String {
+        let workPace = workout.phases.first(where: { $0.type == .work })?.targetPaceSPerMi
+        return workPace.map { PaceFormat.mmss($0) } ?? "—:—"
+    }
+
+    /// Time: race goal as h:mm ("3:50"); workout as estimated minutes ("52").
+    /// Both fit the same row; the distinction is implicit in the workout type.
+    private var timeText: String {
+        if workout.isRace, let goal = workout.goalSec {
+            return PaceFormat.hm(goal)
         }
-        .frame(maxWidth: .infinity)
+        return "\(workout.totalEstimatedMinutes)"
     }
 
-    private var startButton: some View {
-        Button(action: onStart) {
-            HStack(spacing: 7) {
-                Image(systemName: "play.fill").font(.system(size: 12, weight: .bold))
-                Text("START").font(WatchTheme.sub(15, .semibold)).tracking(2)
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 13)
-            .foregroundStyle(Color(red: 0.016, green: 0.075, blue: 0.051))
-            .background(WatchTheme.C.green, in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var readinessColor: Color {
-        switch workout.readinessScore ?? 0 {
-        case 80...: return WatchTheme.C.green
-        case 60..<80: return WatchTheme.C.amber
-        default: return WatchTheme.C.warn
-        }
-    }
-
-    /// "@ Threshold · 6:31/mi · 90s rec" — derived from the phases.
-    /// Decode the single-letter pace zone codes (E/M/T/I/R) into the words
-    /// the runner actually says, so the watch face isn't speaking Daniels.
-    private var paceLine: String {
-        let work = workout.phases.first { $0.type == .work }
-        let rec = workout.phases.first { $0.type == .recovery }
-        let label = workout.paceLabel.map { Self.expandZone($0) } ?? "pace"
-        var s = "@ \(label)"
-        if let p = work?.targetPaceSPerMi { s += " · \(PaceFormat.mmss(p))/mi" }
-        if let r = rec?.durationSec { s += " · \(r)s rec" }
-        return s
-    }
-
-    /// "T" → "Threshold", "E" → "Easy", etc. Pass anything else through.
+    /// "T" → "Threshold", "E" → "Easy", etc. Older payloads occasionally name
+    /// a workout with the bare zone code; the lobby reads better with the word.
     private static func expandZone(_ code: String) -> String {
         switch code.uppercased() {
         case "E": return "Easy"
@@ -129,35 +79,6 @@ struct IdleView: View {
         case "R": return "Strides"
         default:  return code
         }
-    }
-
-    private var estLine: String {
-        var s = "est \(workout.totalEstimatedMinutes) min"
-        if let d = workout.distanceMi { s += " · \(String(format: "%.1f", d)) mi" }
-        return s
-    }
-
-    private var raceMetaLine: String {
-        var s = ""
-        if let d = workout.distanceMi { s += String(format: "%.1f mi", d) }
-        if let gels = workout.gelsMi { s += s.isEmpty ? "\(gels.count) gels" : " · \(gels.count) gels" }
-        return s
-    }
-
-    /// The course as a thin strip — one cell per phase, sized by duration.
-    private var courseStrip: some View {
-        let total = max(workout.phases.reduce(0) { $0 + $1.durationSec }, 1)
-        return GeometryReader { geo in
-            HStack(spacing: 2) {
-                ForEach(workout.phases) { p in
-                    let w = geo.size.width * CGFloat(p.durationSec) / CGFloat(total)
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(p.type == .work ? WatchTheme.C.orange : Color.white.opacity(0.32))
-                        .frame(width: max(w - 2, 2))
-                }
-            }
-        }
-        .frame(height: 5)
     }
 }
 

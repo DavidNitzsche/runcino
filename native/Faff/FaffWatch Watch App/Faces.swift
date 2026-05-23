@@ -419,6 +419,70 @@ struct MileSplitFace: View {
 }
 
 // =====================================================================
+// LOBBY (pre-run launchpad — what you're about to do, then START)
+// =====================================================================
+
+/// LobbyFace — the pre-run screen. Three big number rows sized identically:
+///   · distance  (blue · canon)
+///   · pace      (green · live)
+///   · time      (white · neutral · est minutes OR race goal time)
+/// A small workout-name tag sits up top so you know which session is loaded,
+/// and a Faff.live capsule at the bottom is the START.
+///
+/// Same layout for easy / threshold / long / race. The VALUES tell the story
+/// — a race shows goal time + race pace + race distance, a workout shows
+/// est minutes + work pace + total distance. No layout fork by type.
+struct LobbyFace: View {
+    let name: String        // "5×7" / "EASY" / "BIG SUR"
+    let distance: String    // "5.8" / "26.2"
+    let pace: String        // "6:31" / "8:46"
+    let time: String        // "52" (workout, minutes) / "3:50" (race, hms)
+    var onStart: () -> Void = {}
+
+    var body: some View {
+        Screen {
+            GeometryReader { geo in
+                let h = geo.size.height
+                VStack(alignment: .leading, spacing: 0) {
+                    // Tag — workout name (small, muted, top-left). Sized to
+                    // sit at the OS clock baseline so they share a row.
+                    FaceLabel(text: name, color: Faff.mute, size: h * 0.06)
+                        .padding(.top, h * 0.075)
+                    Spacer(minLength: 0)
+                    // Three data rows, equal-sized. Locked colour grammar:
+                    // distance always blue, pace always green-when-on-target,
+                    // time/duration neutral white. No labels — position +
+                    // colour carry meaning, same as the in-run faces.
+                    BigValue(text: distance, role: .dist,    size: h * 0.19)
+                    Spacer(minLength: 0)
+                    BigValue(text: pace,     role: .live,    size: h * 0.19)
+                    Spacer(minLength: 0)
+                    BigValue(text: time,     role: .neutral, size: h * 0.19)
+                    Spacer(minLength: 0)
+                    // START — the only action on the screen.
+                    Button(action: onStart) {
+                        HStack(spacing: h * 0.035) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: h * 0.065, weight: .bold))
+                            Text("START")
+                                .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
+                                .tracking(2)
+                        }
+                        .foregroundStyle(Color(hex: 0x06210C))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, h * 0.030)
+                        .background(Capsule().fill(Faff.live))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)         // clear bottom bezel curve
+            }
+        }
+    }
+}
+
+// =====================================================================
 // SUMMARY / END FACES
 // =====================================================================
 
