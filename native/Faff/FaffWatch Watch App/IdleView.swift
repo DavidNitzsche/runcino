@@ -25,11 +25,12 @@ struct IdleView: View {
         // Authored against the Ultra canvas; ResponsiveFace scales it to any watch.
         ResponsiveFace {
             LobbyFace(
-                name:     tagText,
-                distance: distanceText,
-                pace:     paceText,
-                time:     timeText,
-                onStart:  onStart
+                name:          tagText,
+                distance:      distanceText,
+                pace:          paceText,
+                time:          timeText,
+                showTimeIcon:  !workout.isRace,   // races already h:mm — no glyph needed
+                onStart:       onStart
             )
         }
     }

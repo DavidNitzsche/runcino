@@ -39,7 +39,10 @@ struct InRunStatsFace: View {
             NumRow(distance, .dist),
             NumRow(elapsed,  .neutral),
             NumRow(avgPace,  paceRole),
-            NumRow(calories, .mute)
+            // Flame icon disambiguates the bare integer from HR / cadence /
+            // any other count. Same icon pattern as HR (♥) / cadence (🏃)
+            // on the in-run faces — glyph = "this is what kind of number."
+            NumRow(calories, .mute, icon: "flame.fill")
         ])
     }
 }

@@ -485,6 +485,11 @@ struct LobbyFace: View {
     let distance: String    // "5.8" / "26.2"
     let pace: String        // "6:31" / "8:46"
     let time: String        // "52" (workout, minutes) / "3:50" (race, hms)
+    /// Show a clock glyph next to the time number. Default on — needed when
+    /// `time` is a bare minute count ("61") so the row reads as duration.
+    /// Pass false for races where `time` is already h:mm ("3:50") and the
+    /// format alone reads as time.
+    var showTimeIcon: Bool = true
     var onStart: () -> Void = {}
 
     var body: some View {
@@ -505,7 +510,24 @@ struct LobbyFace: View {
                     Spacer(minLength: 0)
                     BigValue(text: pace,     role: .live,    size: h * 0.19)
                     Spacer(minLength: 0)
-                    BigValue(text: time,     role: .neutral, size: h * 0.19)
+                    // Time row — number + small clock icon. The bare integer
+                    // "61" is ambiguous on its own (could be HR, calories,
+                    // anything); the clock glyph identifies it as a duration.
+                    // Matches the in-run pattern: HR has ♥, cadence has 🏃.
+                    // Races (where `time` is already h:mm formatted goal) can
+                    // opt out by passing `showTimeIcon: false`.
+                    HStack(alignment: .lastTextBaseline, spacing: h * 0.030) {
+                        Text(time)
+                            .font(.custom("HelveticaNeue-Bold", size: h * 0.19))
+                            .foregroundStyle(Faff.ink)
+                            .padding(.vertical, -h * 0.19 * 0.22)
+                        if showTimeIcon {
+                            Image(systemName: "clock")
+                                .font(.system(size: h * 0.08, weight: .bold))
+                                .foregroundStyle(Faff.mute)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     Spacer(minLength: 0)
                     // START — the only action on the screen.
                     Button(action: onStart) {
