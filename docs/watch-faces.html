@@ -65,10 +65,10 @@
      inside the SVG's display aperture. */
   .watch {
     position: relative;
-    width: 270px;
-    aspect-ratio: 280 / 302;  /* viewBox proportions: case + button clearance */
-    filter: drop-shadow(0 18px 32px rgba(0,0,0,0.55))
-            drop-shadow(0 4px 8px rgba(0,0,0,0.40));
+    width: 260px;
+    aspect-ratio: 320 / 360;  /* SVG viewBox proportions */
+    filter: drop-shadow(0 22px 40px rgba(0,0,0,0.55))
+            drop-shadow(0 4px 10px rgba(0,0,0,0.40));
   }
   .watch > svg.case {
     position: absolute; inset: 0;
@@ -76,16 +76,15 @@
     display: block;
   }
   .watch > .screen {
-    /* Display aperture from the SVG symbol: x=46 y=36 w=188 h=230 in a
-       280×302 viewBox. Position the screen <img> on top so it covers
-       the case fill exactly where the actual display sits. */
+    /* Display aperture from the SVG symbol: x=56 y=36 w=208 h=254 in a
+       320×360 viewBox. */
     position: absolute;
-    left: calc(46 / 280 * 100%);
-    top: calc(36 / 302 * 100%);
-    width: calc(188 / 280 * 100%);
-    height: calc(230 / 302 * 100%);
+    left: calc(56 / 320 * 100%);
+    top: calc(36 / 360 * 100%);
+    width: calc(208 / 320 * 100%);
+    height: calc(254 / 360 * 100%);
     background: #000;
-    border-radius: 11px;
+    border-radius: 14px;
     overflow: hidden;
   }
   .watch > .screen img {
@@ -140,66 +139,78 @@
 <body>
 
 <!-- Apple Watch Ultra mockup symbol — drawn once, referenced via <use>
-     by each watch cell. ViewBox 280 × 302 includes the case (236 × 262)
-     plus button clearance left/right. Display aperture is at
-     x=46 y=36 w=188 h=230 — must match the CSS `.watch > .screen`. -->
+     by each watch cell. Approximates the Xcode simulator's render of the
+     49mm Ultra: very dark titanium case (reads almost black in normal
+     light), tight bezel around a large display, Digital Crown + Side
+     Button + crown-guard fins on the right, Action Button with the
+     bright orange anodized ring on the left.
+     ViewBox 320 × 360 (case is 240 × 274 — aspect 0.876 ≈ actual Ultra
+     44/49 = 0.898 + a touch of side margin for buttons).
+     Display aperture: x=44 y=26 w=232 h=274 — matches CSS .screen. -->
 <svg style="position:absolute; width:0; height:0; overflow:hidden;"
      aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
   <defs>
+    <!-- Titanium case — dark, with a soft top-edge highlight to read as
+         brushed metal under display lighting. -->
     <linearGradient id="caseFill" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0"   stop-color="#4a4d54"/>
-      <stop offset="0.35" stop-color="#33363c"/>
-      <stop offset="0.65" stop-color="#22252b"/>
-      <stop offset="1"   stop-color="#13151a"/>
+      <stop offset="0"    stop-color="#1c1e22"/>
+      <stop offset="0.08" stop-color="#16181c"/>
+      <stop offset="0.5"  stop-color="#0c0d10"/>
+      <stop offset="1"    stop-color="#06070a"/>
     </linearGradient>
-    <linearGradient id="caseRim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0"   stop-color="rgba(255,255,255,0.18)"/>
-      <stop offset="0.5" stop-color="rgba(255,255,255,0)"/>
-      <stop offset="1"   stop-color="rgba(255,255,255,0.06)"/>
+    <linearGradient id="topHighlight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"    stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="0.06" stop-color="rgba(255,255,255,0.05)"/>
+      <stop offset="0.2"  stop-color="rgba(255,255,255,0)"/>
     </linearGradient>
     <linearGradient id="crownFill" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0"   stop-color="#1a1c22"/>
-      <stop offset="0.5" stop-color="#6a6d75"/>
-      <stop offset="1"   stop-color="#1a1c22"/>
+      <stop offset="0"   stop-color="#0c0d10"/>
+      <stop offset="0.5" stop-color="#4a4d54"/>
+      <stop offset="1"   stop-color="#0c0d10"/>
     </linearGradient>
     <linearGradient id="btnFill" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0"   stop-color="#15171b"/>
-      <stop offset="0.5" stop-color="#3e4148"/>
-      <stop offset="1"   stop-color="#15171b"/>
+      <stop offset="0"   stop-color="#06070a"/>
+      <stop offset="0.5" stop-color="#2e3137"/>
+      <stop offset="1"   stop-color="#06070a"/>
+    </linearGradient>
+    <linearGradient id="actionFill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0"   stop-color="#06070a"/>
+      <stop offset="0.5" stop-color="#3a3d44"/>
+      <stop offset="1"   stop-color="#06070a"/>
     </linearGradient>
   </defs>
 
-  <symbol id="ultraCase" viewBox="0 0 280 302">
-    <!-- Crown + side button drawn UNDER the case so the case overlaps them
-         a touch — gives the buttons that "set into the case" look. -->
+  <symbol id="ultraCase" viewBox="0 0 320 360">
+    <!-- ── Buttons drawn UNDER the case so the case rim overlaps them a
+         touch (the "set into the case" look). ── -->
     <!-- Digital Crown (right, upper third) -->
-    <rect x="252" y="86"  width="14" height="32" rx="3" ry="3" fill="url(#crownFill)"/>
-    <!-- Crown ridges (subtle horizontal lines for grip texture) -->
-    <line x1="253" y1="93"  x2="265" y2="93"  stroke="rgba(0,0,0,0.45)" stroke-width="0.8"/>
-    <line x1="253" y1="100" x2="265" y2="100" stroke="rgba(0,0,0,0.45)" stroke-width="0.8"/>
-    <line x1="253" y1="107" x2="265" y2="107" stroke="rgba(0,0,0,0.45)" stroke-width="0.8"/>
-    <!-- Crown guards — titanium fins above & below the crown
-         (the Ultra's signature horseshoe protector) -->
-    <rect x="252" y="68"  width="14" height="14" rx="2" ry="2" fill="url(#caseFill)"/>
-    <rect x="252" y="122" width="14" height="14" rx="2" ry="2" fill="url(#caseFill)"/>
+    <rect x="282" y="105" width="18" height="36" rx="3" ry="3" fill="url(#crownFill)"/>
+    <line x1="284" y1="113" x2="298" y2="113" stroke="rgba(0,0,0,0.55)" stroke-width="1"/>
+    <line x1="284" y1="121" x2="298" y2="121" stroke="rgba(0,0,0,0.55)" stroke-width="1"/>
+    <line x1="284" y1="129" x2="298" y2="129" stroke="rgba(0,0,0,0.55)" stroke-width="1"/>
+    <!-- Crown guards — titanium fins above + below the crown -->
+    <rect x="282" y="84"  width="18" height="18" rx="2" ry="2" fill="url(#caseFill)"/>
+    <rect x="282" y="144" width="18" height="18" rx="2" ry="2" fill="url(#caseFill)"/>
     <!-- Side button (right, lower third) -->
-    <rect x="252" y="150" width="12" height="48" rx="2" ry="2" fill="url(#btnFill)"/>
+    <rect x="282" y="178" width="16" height="56" rx="2" ry="2" fill="url(#btnFill)"/>
 
-    <!-- Action button (LEFT side, middle) -->
-    <rect x="14" y="130" width="14" height="42" rx="3" ry="3" fill="url(#btnFill)"/>
+    <!-- Action button (LEFT, middle) -->
+    <rect x="20" y="155" width="16" height="50" rx="3" ry="3" fill="url(#actionFill)"/>
     <!-- Orange anodized ring — the Ultra's visual giveaway -->
-    <rect x="12" y="128" width="18" height="46" rx="4" ry="4"
-          fill="none" stroke="#d94d24" stroke-width="1.6" opacity="0.95"/>
+    <rect x="18" y="153" width="20" height="54" rx="4" ry="4"
+          fill="none" stroke="#e35d2a" stroke-width="2"/>
 
-    <!-- CASE BODY — drawn AFTER the buttons so it overlaps them slightly -->
-    <rect x="22" y="20" width="236" height="262" rx="22" ry="22" fill="url(#caseFill)"/>
-    <!-- Top edge highlight (suggests chamfered titanium) -->
-    <rect x="22" y="20" width="236" height="262" rx="22" ry="22"
-          fill="none" stroke="url(#caseRim)" stroke-width="1.4"/>
+    <!-- ── Case body, drawn over the button bases ── -->
+    <rect x="40" y="22" width="240" height="282" rx="26" ry="26" fill="url(#caseFill)"/>
+    <!-- Top sapphire-crystal highlight (reads as gloss under indoor light) -->
+    <rect x="40" y="22" width="240" height="282" rx="26" ry="26" fill="url(#topHighlight)"/>
+    <!-- Inner case bevel (the rim around the display) -->
+    <rect x="40" y="22" width="240" height="282" rx="26" ry="26"
+          fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
 
-    <!-- Display aperture — black ring around the screen for a tiny
-         "recessed glass" effect. The .screen <img> overlays this exactly. -->
-    <rect x="44" y="34" width="192" height="234" rx="13" ry="13" fill="#000"/>
+    <!-- Display aperture — large, takes up most of the front face.
+         The .screen <img> overlays this rectangle exactly. -->
+    <rect x="56" y="36" width="208" height="254" rx="16" ry="16" fill="#000"/>
   </symbol>
 </svg>
 
@@ -223,12 +234,12 @@
 <h2>1 · Pre-run · the lobby</h2>
 <div class="row">
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-01-lobby.png" alt="Lobby"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-01-lobby.png" alt="Lobby"></div></div>
     <div class="label">Lobby</div>
     <div class="cap">Today's workout. Distance · pace (with range subtitle if the plan ships a band) · est time. Big green START.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-02-justrun.png" alt="JUST RUN"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-02-justrun.png" alt="JUST RUN"></div></div>
     <div class="label">JUST RUN</div>
     <div class="cap">Escape-hatch page, one swipe right from the lobby. Tap START for an unstructured run regardless of today's plan.</div>
   </div>
@@ -237,7 +248,7 @@
 <h2>2 · Start · the countdown</h2>
 <div class="row">
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-03-countdown.png" alt="Countdown"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-03-countdown.png" alt="Countdown"></div></div>
     <div class="label">Countdown 3 → 2 → 1</div>
     <div class="cap">Pre-roll between START and the first running second. Tick haptic per beat. GPS warms up under the hood.</div>
   </div>
@@ -246,22 +257,22 @@
 <h2>3 · In-run · main face (EasyFace)</h2>
 <div class="row">
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-04-easy-pre-gps.png" alt="Pre-GPS"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-04-easy-pre-gps.png" alt="Pre-GPS"></div></div>
     <div class="label">Pre-GPS lock</div>
     <div class="cap">First few seconds. Pace row muted grey (no green lie about being on-target before there's data). HR + distance fill in from the wrist sensor immediately.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-05-easy-mid-hr.png" alt="Live run · HR"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-05-easy-mid-hr.png" alt="Live run · HR"></div></div>
     <div class="label">Live · HR guardrail</div>
     <div class="cap">Pace green (inside the 8:29-8:59 band) · HR with ♥ · distance blue. Middle row rotates HR ⇄ cadence every 60s.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-06-easy-mid-cad.png" alt="Live run · cadence"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-06-easy-mid-cad.png" alt="Live run · cadence"></div></div>
     <div class="label">Live · cadence guardrail</div>
     <div class="cap">Same face, 60 s later. The middle row has rotated to cadence (figure.run glyph). Pace and distance unchanged.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-07-easy-hr-alert.png" alt="HR alert"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-07-easy-hr-alert.png" alt="HR alert"></div></div>
     <div class="label">HR alert override</div>
     <div class="cap">When HR crosses the workout's easy ceiling, the row snaps to red ♥ and HOLDS until you drop back in zone. Rotation pauses.</div>
   </div>
@@ -270,17 +281,17 @@
 <h2>4 · Takeovers · overlays on the main face</h2>
 <div class="row">
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-08-milesplit.png" alt="Mile-split flash"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-08-milesplit.png" alt="Mile-split flash"></div></div>
     <div class="label">Mile split · 2.5 s</div>
     <div class="cap">Auto-fires at every integer mile. Light haptic + "MILE N · m:ss" banked split. Dismisses on its own.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-09-fuel-1.png" alt="Fuel 1 of 3"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-09-fuel-1.png" alt="Fuel 1 of 3"></div></div>
     <div class="label">Fuel cue · persistent</div>
     <div class="cap">Big haptic + GEL takeover at every fueling-plan minute mark. Stays on screen until you swipe it down (chevron hint at the bottom).</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-10-fuel-3.png" alt="Fuel 3 of 3"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-10-fuel-3.png" alt="Fuel 3 of 3"></div></div>
     <div class="label">Fuel cue · last gel</div>
     <div class="cap">Same shape; count progresses to "3 of 3". A new cue overwrites any previous still-on-screen one.</div>
   </div>
@@ -289,7 +300,7 @@
 <h2>5 · Pause · long-press anywhere</h2>
 <div class="row">
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-11-pause.png" alt="Pause"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-11-pause.png" alt="Pause"></div></div>
     <div class="label">Pause veil</div>
     <div class="cap">0.6 s long-press → frozen distance + elapsed, dimmed. Big green RESUME. Engine + tracker pause; paused time doesn't count toward fuel cues.</div>
   </div>
@@ -298,17 +309,17 @@
 <h2>6 · Secondary pages · one swipe in either direction</h2>
 <div class="row">
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-12-stats.png" alt="In-run stats"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-12-stats.png" alt="In-run stats"></div></div>
     <div class="label">Stats</div>
     <div class="cap">Four-row stack: distance blue · elapsed white · avg pace green · calories with 🔥. No labels — colour and glyph carry meaning.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-13-splits.png" alt="Splits"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-13-splits.png" alt="Splits"></div></div>
     <div class="label">Splits</div>
     <div class="cap">Per-mile pace as you bank it. Done splits coloured by drift zone; current row neutral white; upcoming muted dashes.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-14-session.png" alt="Session map"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-14-session.png" alt="Session map"></div></div>
     <div class="label">Session map</div>
     <div class="cap">Where you are in the workout. Dot colour carries state (green done · white now · muted upcoming).</div>
   </div>
@@ -317,12 +328,12 @@
 <h2>7 · End · summary + confirmation</h2>
 <div class="row">
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-15-summary.png" alt="Summary"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-15-summary.png" alt="Summary"></div></div>
     <div class="label">Summary · workout</div>
     <div class="cap">Avg pace green · miles blue · total time white · big Done. Completion auto-sends to the iPhone on entry — Done just dismisses.</div>
   </div>
   <div class="cell">
-    <div class="watch"><svg class="case" viewBox="0 0 280 302" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-16-today.png" alt="Today complete"></div></div>
+    <div class="watch"><svg class="case" viewBox="0 0 320 360" preserveAspectRatio="none"><use href="#ultraCase"/></svg><div class="screen"><img src="watch-faces/wf-16-today.png" alt="Today complete"></div></div>
     <div class="label">Today complete · 1.5 s</div>
     <div class="cap">Brief confirmation after Done. Then the app drops back to the lobby for whatever comes next.</div>
   </div>
