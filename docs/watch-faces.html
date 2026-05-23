@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Faff watch face inventory</title>
+<meta name="viewport" content="width=1100">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --dim: #4b505e;
+    --line: rgba(255,255,255,0.08);
+    --card: #11141a;
+    --card-line: rgba(255,255,255,0.06);
+    --green: #3EBD41;
+    --goal: #F3AD38;
+    --over: #FC4D64;
+    --dist: #27B4E0;
+    --rest: #008FEC;
+  }
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 32px 96px; }
+  header { margin-bottom: 56px; }
+  h1 {
+    font-size: 32px; font-weight: 800; margin: 0 0 8px;
+    letter-spacing: -0.5px;
+  }
+  .sub { color: var(--mute); font-size: 14px; }
+  .meta {
+    color: var(--dim); font-size: 12px;
+    margin-top: 6px; letter-spacing: 0.3px;
+  }
+  h2 {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin: 56px 0 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 28px 22px;
+  }
+  @media (max-width: 900px) { .row { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 540px) { .row { grid-template-columns: 1fr; } }
+  .cell {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px;
+  }
+  /* Apple Watch Ultra mockup.
+     - Titanium case (slate grey, brushed feel via subtle linear-gradient)
+     - Square-ish display with ~16% corner radius
+     - Crown + side button on the right
+     - Action button on the left
+     The screen content is positioned absolutely inside. */
+  .watch {
+    position: relative;
+    width: 220px;
+    aspect-ratio: 205 / 251;     /* Ultra canvas proportions */
+    background: linear-gradient(135deg, #2a2d33 0%, #1a1c20 55%, #0e1014 100%);
+    border-radius: 36px;
+    padding: 14px 12px;
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,0.05),
+      0 12px 40px rgba(0,0,0,0.55),
+      0 2px 6px rgba(0,0,0,0.45);
+  }
+  .watch::before {
+    /* Right-side crown */
+    content: "";
+    position: absolute;
+    right: -6px; top: 30%;
+    width: 7px; height: 28px;
+    background: linear-gradient(90deg, #1a1c20 0%, #3a3d44 60%, #1a1c20 100%);
+    border-radius: 2px 4px 4px 2px;
+  }
+  .watch::after {
+    /* Right-side action button */
+    content: "";
+    position: absolute;
+    right: -5px; top: 52%;
+    width: 6px; height: 38px;
+    background: linear-gradient(90deg, #1a1c20 0%, #2e3137 60%, #1a1c20 100%);
+    border-radius: 2px 3px 3px 2px;
+  }
+  .watch .leftbtn {
+    /* Ultra-specific orange-rimmed action button on the LEFT side */
+    position: absolute;
+    left: -5px; top: 40%;
+    width: 6px; height: 30px;
+    background: linear-gradient(90deg, #1a1c20 0%, #2e3137 60%, #1a1c20 100%);
+    border-radius: 3px 2px 2px 3px;
+  }
+  .watch .screen {
+    width: 100%; height: 100%;
+    background: #000;
+    border-radius: 22px;
+    overflow: hidden;
+    position: relative;
+  }
+  .watch .screen img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .label {
+    text-align: center;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    line-height: 1.2;
+  }
+  .cap {
+    text-align: center;
+    color: var(--mute);
+    font-size: 12px;
+    line-height: 1.5;
+    max-width: 220px;
+    font-weight: 400;
+  }
+  .legend {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    margin: 18px 0 6px;
+    font-size: 12px; color: var(--mute);
+  }
+  .legend .pip {
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .legend .pip::before {
+    content: ""; width: 9px; height: 9px; border-radius: 50%;
+    display: inline-block;
+  }
+  .legend .green::before { background: var(--green); }
+  .legend .goal::before  { background: var(--goal); }
+  .legend .dist::before  { background: var(--dist); }
+  .legend .over::before  { background: var(--over); }
+  .legend .rest::before  { background: var(--rest); }
+  .legend .ink::before   { background: var(--ink); }
+  .legend .mute::before  { background: var(--mute); }
+  footer {
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--dim);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Faff — watch face inventory</h1>
+  <div class="sub">Every screen in run-flow order. Captured on Apple Watch Ultra 3 simulator.</div>
+  <div class="meta">Generated 2026-05-23 · Faff watch app · main @ 99b886d</div>
+  <div class="legend">
+    <span class="pip green">live · on-pace</span>
+    <span class="pip goal">act now · target</span>
+    <span class="pip dist">distance</span>
+    <span class="pip over">alert · over</span>
+    <span class="pip rest">recovery · landmark</span>
+    <span class="pip ink">white · reference</span>
+    <span class="pip mute">muted · placeholder</span>
+  </div>
+</header>
+
+<h2>1 · Pre-run · the lobby</h2>
+<div class="row">
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-01-lobby.png" alt="Lobby"></div></div>
+    <div class="label">Lobby</div>
+    <div class="cap">Today's workout. Distance · pace (with range subtitle if the plan ships a band) · est time. Big green START.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-02-justrun.png" alt="JUST RUN"></div></div>
+    <div class="label">JUST RUN</div>
+    <div class="cap">Escape-hatch page, one swipe right from the lobby. Tap START for an unstructured run regardless of today's plan.</div>
+  </div>
+</div>
+
+<h2>2 · Start · the countdown</h2>
+<div class="row">
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-03-countdown.png" alt="Countdown"></div></div>
+    <div class="label">Countdown 3 → 2 → 1</div>
+    <div class="cap">Pre-roll between START and the first running second. Tick haptic per beat. GPS warms up under the hood.</div>
+  </div>
+</div>
+
+<h2>3 · In-run · main face (EasyFace)</h2>
+<div class="row">
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-04-easy-pre-gps.png" alt="Pre-GPS"></div></div>
+    <div class="label">Pre-GPS lock</div>
+    <div class="cap">First few seconds. Pace row muted grey (no green lie about being on-target before there's data). HR + distance fill in from the wrist sensor immediately.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-05-easy-mid-hr.png" alt="Live run · HR"></div></div>
+    <div class="label">Live · HR guardrail</div>
+    <div class="cap">Pace green (inside the 8:29-8:59 band) · HR with ♥ · distance blue. Middle row rotates HR ⇄ cadence every 60s.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-06-easy-mid-cad.png" alt="Live run · cadence"></div></div>
+    <div class="label">Live · cadence guardrail</div>
+    <div class="cap">Same face, 60 s later. The middle row has rotated to cadence (figure.run glyph). Pace and distance unchanged.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-07-easy-hr-alert.png" alt="HR alert"></div></div>
+    <div class="label">HR alert override</div>
+    <div class="cap">When HR crosses the workout's easy ceiling, the row snaps to red ♥ and HOLDS until you drop back in zone. Rotation pauses.</div>
+  </div>
+</div>
+
+<h2>4 · Takeovers · overlays on the main face</h2>
+<div class="row">
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-08-milesplit.png" alt="Mile-split flash"></div></div>
+    <div class="label">Mile split · 2.5 s</div>
+    <div class="cap">Auto-fires at every integer mile. Light haptic + "MILE N · m:ss" banked split. Dismisses on its own.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-09-fuel-1.png" alt="Fuel 1 of 3"></div></div>
+    <div class="label">Fuel cue · persistent</div>
+    <div class="cap">Big haptic + GEL takeover at every fueling-plan minute mark. Stays on screen until you swipe it down (chevron hint at the bottom).</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-10-fuel-3.png" alt="Fuel 3 of 3"></div></div>
+    <div class="label">Fuel cue · last gel</div>
+    <div class="cap">Same shape; count progresses to "3 of 3". A new cue overwrites any previous still-on-screen one.</div>
+  </div>
+</div>
+
+<h2>5 · Pause · long-press anywhere</h2>
+<div class="row">
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-11-pause.png" alt="Pause"></div></div>
+    <div class="label">Pause veil</div>
+    <div class="cap">0.6 s long-press → frozen distance + elapsed, dimmed. Big green RESUME. Engine + tracker pause; paused time doesn't count toward fuel cues.</div>
+  </div>
+</div>
+
+<h2>6 · Secondary pages · one swipe in either direction</h2>
+<div class="row">
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-12-stats.png" alt="In-run stats"></div></div>
+    <div class="label">Stats</div>
+    <div class="cap">Four-row stack: distance blue · elapsed white · avg pace green · calories with 🔥. No labels — colour and glyph carry meaning.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-13-splits.png" alt="Splits"></div></div>
+    <div class="label">Splits</div>
+    <div class="cap">Per-mile pace as you bank it. Done splits coloured by drift zone; current row neutral white; upcoming muted dashes.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-14-session.png" alt="Session map"></div></div>
+    <div class="label">Session map</div>
+    <div class="cap">Where you are in the workout. Dot colour carries state (green done · white now · muted upcoming).</div>
+  </div>
+</div>
+
+<h2>7 · End · summary + confirmation</h2>
+<div class="row">
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-15-summary.png" alt="Summary"></div></div>
+    <div class="label">Summary · workout</div>
+    <div class="cap">Avg pace green · miles blue · total time white · big Done. Completion auto-sends to the iPhone on entry — Done just dismisses.</div>
+  </div>
+  <div class="cell">
+    <div class="watch"><div class="leftbtn"></div><div class="screen"><img src="watch-faces/wf-16-today.png" alt="Today complete"></div></div>
+    <div class="label">Today complete · 1.5 s</div>
+    <div class="cap">Brief confirmation after Done. Then the app drops back to the lobby for whatever comes next.</div>
+  </div>
+</div>
+
+<footer>
+  Locked grammar: green = live/on-target · white = reference · blue = distance always · amber = act-now (rare, fuel only) · red = alert reserved · purple = past-plan · calm blue = recovery/landmark chrome.<br>
+  Typography: HelveticaNeue-Bold on all faces (tight-number crop). No labels — position, format, and colour carry meaning.<br>
+  Capture: Apple Watch Ultra 3 simulator, watchOS 26.5. Each face is sized to the 205×251 reference canvas; ResponsiveFace scales uniformly to any watch on device.
+</footer>
+
+</div>
+</body>
+</html>

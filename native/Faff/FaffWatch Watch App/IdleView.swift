@@ -61,13 +61,20 @@ struct IdleView: View {
         return workPace.map { PaceFormat.mmss($0) } ?? "—:—"
     }
 
-    /// Time: race goal as h:mm ("3:50"); workout as estimated minutes ("52").
-    /// Both fit the same row; the distinction is implicit in the workout type.
+    /// Time formatting:
+    ///   · race goal: always h:mm ("3:50")
+    ///   · workout < 60 min:  bare minutes ("45")
+    ///   · workout ≥ 60 min:  h:mm  ("1:41")
+    /// The bare-integer form past an hour ("101") reads as "101 of what?";
+    /// h:mm is unambiguous time. Sub-hour stays as bare minutes because
+    /// "0:45" is harder to scan than "45".
     private var timeText: String {
         if workout.isRace, let goal = workout.goalSec {
             return PaceFormat.hm(goal)
         }
-        return "\(workout.totalEstimatedMinutes)"
+        let min = workout.totalEstimatedMinutes
+        if min >= 60 { return PaceFormat.hm(min * 60) }
+        return "\(min)"
     }
 
     /// Pace range subtitle ("8:29-8:59") for easy/long runs where the

@@ -530,9 +530,11 @@ struct LobbyFace: View {
                     // "61" is ambiguous on its own (could be HR, calories,
                     // anything); the clock glyph identifies it as a duration.
                     // Matches the in-run pattern: HR has ♥, cadence has 🏃.
-                    // Races (where `time` is already h:mm formatted goal) can
-                    // opt out by passing `showTimeIcon: false`.
-                    HStack(alignment: .lastTextBaseline, spacing: h * 0.030) {
+                    // Races (h:mm-formatted goal) can opt out by passing
+                    // `showTimeIcon: false`. Icon is vertically centered on
+                    // the digit row — baseline-align made the clock sit on
+                    // the digit's baseline, which read as "dropped low."
+                    HStack(alignment: .center, spacing: h * 0.030) {
                         Text(time)
                             .font(.custom("HelveticaNeue-Bold", size: h * 0.19))
                             .foregroundStyle(Faff.ink)

@@ -127,9 +127,10 @@ struct WatchFixtureView: View {
             JustRunFace(onStart: {})
         case "lobby-easy":
             // Easy long run with a pace RANGE — exercises the new
-            // paceRange subtitle under the midpoint.
+            // paceRange subtitle under the midpoint. Time hits 101 min
+            // → renders as h:mm "1:41" per the >=60-min rule.
             LobbyFace(name: "LONG RUN", distance: "11.6", pace: "8:44",
-                      time: "101", paceRange: "8:29-8:59", onStart: {})
+                      time: "1:41", paceRange: "8:29-8:59", onStart: {})
         case "lobby-race":
             LobbyFace(name: "BIG SUR", distance: "26.2", pace: "8:46",
                       time: "3:50", paceRange: nil, showTimeIcon: false, onStart: {})
