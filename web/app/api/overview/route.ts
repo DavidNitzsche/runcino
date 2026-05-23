@@ -670,12 +670,36 @@ export async function GET(req: Request): Promise<Response> {
       }
     } catch { /* non-fatal; leave null */ }
 
+    // iPhone OWorkout expects `paceTargetSPerMi: Double?`, but the coach
+    // engine emits an object `{lower, upper}` — that mismatch makes the
+    // entire OverviewResponse fail to decode on iPhone with "data couldn't
+    // be read because it isn't in the correct format". Flatten to the
+    // midpoint (rounded) so iPhone decodes; web reads `paceTargetSPerMi`
+    // permissively (typeof === 'number' guard above), so no regression.
+    const flattenedWorkout = (() => {
+      try {
+        if (!workout || !workout.answer) return workout;
+        const a = workout.answer as unknown as { paceTargetSPerMi?: unknown };
+        const p = a.paceTargetSPerMi;
+        if (p && typeof p === 'object' && 'lower' in (p as Record<string, unknown>) && 'upper' in (p as Record<string, unknown>)) {
+          const lo = Number((p as { lower: unknown }).lower);
+          const hi = Number((p as { upper: unknown }).upper);
+          const mid = Number.isFinite(lo) && Number.isFinite(hi) ? Math.round((lo + hi) / 2) : null;
+          return { ...workout, answer: { ...workout.answer, paceTargetSPerMi: mid } };
+        }
+        return workout;
+      } catch { return workout; }
+    })();
+
     const body: OverviewApiOk = {
       ok: true,
       authenticated: userId != null,
       today,
       state,
-      workout,
+      // Cast: serialization flatten — TS type expects {lower,upper}, iPhone
+      // expects a number. The shape divergence only matters at the JSON
+      // boundary; downstream-typed callers don't read this nested field.
+      workout: flattenedWorkout as typeof workout,
       readiness,
       bodySystems,
       trajectory,
