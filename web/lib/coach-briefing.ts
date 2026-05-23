@@ -105,111 +105,144 @@ function intensityCopyFor(type: string): string {
  * ─────────────────────────────────────────────────────────────────── */
 
 export function generateBriefing(input: BriefingInput): string {
-  const { firstName, today, daysToRace, raceLabel, currentWeek, previousWeek, lastWeekStats, thisWeekSoFar, todayDay, localHour } = input;
-  const greetingPrefix = greetingForHour(localHour ?? 8);
-  // Tag every "Good morning" reference so they pick up the time-aware variant.
-  void raceLabel; // (currently unused but reserved for race-day greetings)
-  const dow = dayOfWeekIdx(today);   // 0=Sun
+  const { today, daysToRace, raceLabel, currentWeek, previousWeek, lastWeekStats, thisWeekSoFar, todayDay } = input;
+  void raceLabel; void greetingForHour; void fmtMonthDay; void n; void urgencyFraming; void intensityCopyFor;
+  const dow = dayOfWeekIdx(today);
   const isMonday    = dow === 1;
   const isSunday    = dow === 0;
-  const isFriday    = dow === 5;
   const isSaturday  = dow === 6;
   const isRest      = !todayDay || todayDay.isRest === true || todayDay.distanceMi === 0;
 
-  const greeting = firstName ? `${firstName}` : 'there';
+  // The hero already shows today's workout (EASY · 5.8 mi · 8:46/mi). The
+  // coach line's job is INSIGHT — what only someone reading your week
+  // would say. Two short sentences max, no recitation of today's
+  // prescription, no race countdown (the AFC chip up top owns that).
 
-  // ── MONDAY · reflect on last week + frame this week ─────────────
+  // ── helpers ──
+  const sundayLong = currentWeek.days.find((d) => d.type === 'long' || d.type === 'race');
+  const futureSundayLong = sundayLong && sundayLong.date > today ? sundayLong : null;
+  const bankedMi = Math.round(thisWeekSoFar.totalMi);
+  const plannedToHere = (() => {
+    // Sum of planned miles for days strictly before today.
+    let s = 0;
+    for (const d of currentWeek.days) {
+      if (d.date < today && !d.isRest) s += d.distanceMi || 0;
+    }
+    return Math.round(s * 10) / 10;
+  })();
+  const phaseWord = currentWeek.phase === 'BASE' ? 'base'
+    : currentWeek.phase === 'BUILD' ? 'build'
+    : currentWeek.phase === 'PEAK'  ? 'peak'
+    : currentWeek.phase === 'TAPER' ? 'taper'
+    : 'race week';
+
+  /** "On plan", "+12% ahead", "−18% behind" — only when the comparison is meaningful. */
+  function weekPaceRead(): string | null {
+    if (plannedToHere <= 0 || bankedMi <= 0) return null;
+    const pct = Math.round(((bankedMi - plannedToHere) / plannedToHere) * 100);
+    if (Math.abs(pct) <= 5) return `on plan through ${dowNameFromIdx(dow - 1)} (${bankedMi} of ${plannedToHere} mi banked)`;
+    if (pct > 0)            return `${pct}% ahead of plan through ${dowNameFromIdx(dow - 1)} (${bankedMi} / ${plannedToHere} mi)`;
+    return `${Math.abs(pct)}% short of plan through ${dowNameFromIdx(dow - 1)} (${bankedMi} / ${plannedToHere} mi)`;
+  }
+
+  // ── MONDAY · short read on last week + frame this week's shape ──
   if (isMonday) {
-    let lastWeekSentence = '';
     if (previousWeek && lastWeekStats.totalMi > 0) {
+      const ranMi = Math.round(lastWeekStats.totalMi);
       const plannedMi = previousWeek.plannedMi;
-      const ranMi     = lastWeekStats.totalMi;
-      const sessions  = lastWeekStats.runDays;
-      const plannedSessions = previousWeek.days.filter((d) => !d.isRest).length;
       const deltaPct = plannedMi > 0 ? Math.round(((ranMi - plannedMi) / plannedMi) * 100) : 0;
-      const deltaWord = Math.abs(deltaPct) <= 5 ? 'on plan'
-        : deltaPct > 0 ? `${Math.abs(deltaPct)}% over`
-        : `${Math.abs(deltaPct)}% short`;
-
-      lastWeekSentence = `Last week: ${ranMi} mi across ${n(sessions, 'session')} (${deltaWord} on ${plannedMi} mi planned, ${sessions}/${plannedSessions} done).`;
-
-      if (lastWeekStats.longest) {
-        const L = lastWeekStats.longest;
-        lastWeekSentence += ` Long run was ${L.mi} mi at ${fmtPace(L.paceSPerMi)}.`;
-      }
-    } else if (previousWeek) {
-      lastWeekSentence = `Last week was a rest reset, no logged runs.`;
-    } else {
-      lastWeekSentence = `Fresh start to the cycle.`;
+      const closedWord = Math.abs(deltaPct) <= 5 ? 'closed out on plan'
+        : deltaPct > 0 ? `closed ${Math.abs(deltaPct)}% over plan`
+        : `closed ${Math.abs(deltaPct)}% short`;
+      const longRead = lastWeekStats.longest
+        ? `, longest ${lastWeekStats.longest.mi} mi at ${fmtPace(lastWeekStats.longest.paceSPerMi)}`
+        : '';
+      const cwPlanned = currentWeek.plannedMi;
+      const ramp = cwPlanned > plannedMi + 1
+        ? `Stepping up to ${cwPlanned} mi of ${phaseWord} this week.`
+        : cwPlanned < plannedMi - 1
+        ? `Easing to ${cwPlanned} mi this week — a cutback.`
+        : `Holding ${cwPlanned} mi this week.`;
+      return `Last week ${closedWord} (${ranMi} / ${plannedMi} mi)${longRead}. ${ramp}`;
     }
-
-    // Frame this week
-    const key = pickKeyWorkout(currentWeek);
-    const phaseName = currentWeek.phase === 'BASE' ? 'base'
-      : currentWeek.phase === 'BUILD' ? 'build'
-      : currentWeek.phase === 'PEAK'  ? 'peak'
-      : currentWeek.phase === 'TAPER' ? 'taper'
-      : 'race week';
-    let thisWeekSentence = `This week: ${currentWeek.plannedMi} mi of ${phaseName} work`;
-    if (key) {
-      thisWeekSentence += `, anchored by ${key.label} on ${fmtMonthDay(key.date)}.`;
-    } else {
-      thisWeekSentence += '.';
-    }
-
-    // Today's piece
-    let todaySentence = '';
-    if (isRest) {
-      todaySentence = `Today's a rest, use it.`;
-    } else if (todayDay) {
-      todaySentence = `Today is ${todayDay.label.toLowerCase()} at ${todayDay.distanceMi} mi, ${intensityCopyFor(todayDay.type)}`;
-    }
-
-    return [
-      `${greetingPrefix}, ${greeting}. ${lastWeekSentence}`,
-      thisWeekSentence,
-      todaySentence,
-      urgencyFraming(daysToRace),
-    ].filter(Boolean).join(' ');
+    return `Fresh week opening: ${currentWeek.plannedMi} mi of ${phaseWord}, ${currentWeek.days.filter((d) => !d.isRest).length} sessions.`;
   }
 
-  // ── SUNDAY · long-run day or rest-day frame ─────────────────────
-  if (isSunday && todayDay?.type === 'long') {
-    let openLine = '';
-    if (thisWeekSoFar.totalMi > 0) {
-      openLine = `${thisWeekSoFar.totalMi} mi banked through Saturday across ${n(thisWeekSoFar.runDays, 'session')}. `;
+  // ── SUNDAY long-run · frame what the week earned + how to run it ──
+  if (isSunday && todayDay && (todayDay.type === 'long' || todayDay.type === 'race')) {
+    if (todayDay.type === 'race') {
+      return `Race day. Conserve the first third, settle the middle, commit the last 5k.`;
     }
-    return `${openLine}Long today: ${todayDay.distanceMi} mi. ${intensityCopyFor('long')} ${urgencyFraming(daysToRace)}`;
+    if (bankedMi > 0) {
+      return `${bankedMi} mi banked this week — today's ${todayDay.distanceMi} mi is what it was for. Go conversational; the last quarter can drift if it feels natural.`;
+    }
+    return `Today's long run is the week's anchor. Conversational for the bulk; let pace come to you on the back half.`;
   }
 
-  // ── FRIDAY · "weekend is loaded" framing ────────────────────────
-  if (isFriday && !isRest && todayDay) {
-    const sundayLong = currentWeek.days.find((d) => d.type === 'long' || d.type === 'race');
-    let sundayMention = '';
-    if (sundayLong && sundayLong.date > today) {
-      sundayMention = ` Sunday is ${sundayLong.distanceMi} mi ${sundayLong.type === 'race' ? ', race day' : ', save the legs'}.`;
-    }
-    return `Today is ${todayDay.label.toLowerCase()} at ${todayDay.distanceMi} mi. ${intensityCopyFor(todayDay.type)}${sundayMention} ${urgencyFraming(daysToRace)}`;
-  }
-
-  // ── SATURDAY rest or shake-out framing ──────────────────────────
+  // ── SATURDAY ── shape the weekend ──
   if (isSaturday) {
-    const sundayLong = currentWeek.days.find((d) => d.type === 'long' || d.type === 'race');
-    const sundayLine = sundayLong ? ` Tomorrow: ${sundayLong.distanceMi} mi ${sundayLong.type === 'race' ? 'race' : 'long'}.` : '';
-    if (isRest) {
-      return `Rest day, ${greeting}. Hydrate, sleep on time, light mobility if you feel like it.${sundayLine} ${urgencyFraming(daysToRace)}`;
+    if (futureSundayLong) {
+      const role = todayDay && !isRest ? 'Today is the shake-out' : 'Today is the rest day';
+      return `${role} for tomorrow's ${futureSundayLong.distanceMi} mi — protect the legs, keep effort light.`;
     }
-    return `Today is ${todayDay!.label.toLowerCase()} at ${todayDay!.distanceMi} mi. ${intensityCopyFor(todayDay!.type)}${sundayLine} ${urgencyFraming(daysToRace)}`;
+    if (isRest) {
+      return `Rest day. Hydrate, sleep on time, light mobility if you feel like it.`;
+    }
   }
 
-  // ── Mid-week fallback ───────────────────────────────────────────
+  // ── REST mid-week ──
   if (isRest) {
-    return `Rest day. ${thisWeekSoFar.totalMi > 0 ? `${thisWeekSoFar.totalMi} mi in so far this week.` : ''} ${urgencyFraming(daysToRace)}`.trim();
+    if (bankedMi > 0 && plannedToHere > 0) {
+      const read = weekPaceRead();
+      return read ? `Rest day — you're ${read}. Recovery is part of the work; tomorrow picks back up.` : `Rest day. Recovery is part of the work; tomorrow picks back up.`;
+    }
+    return `Rest day. Recovery is part of the work.`;
   }
 
-  // Has a workout today
-  const openLine = thisWeekSoFar.totalMi > 0
-    ? `${thisWeekSoFar.totalMi} mi this week so far. `
-    : '';
-  return `${openLine}Today is ${todayDay!.label.toLowerCase()} at ${todayDay!.distanceMi} mi. ${intensityCopyFor(todayDay!.type)} ${urgencyFraming(daysToRace)}`;
+  // ── MID-WEEK / FRIDAY run day — INSIGHT, NOT RECITATION ──
+  // Pick the most useful observation: load-vs-plan if interesting, else
+  // point to Sunday's anchor and frame today against it.
+  if (todayDay) {
+    const t = todayDay.type;
+    // Quality day: emphasize execution + recovery downstream.
+    if (t === 'quality') {
+      if (futureSundayLong) {
+        return `Today's the quality session. Execute clean, then back off — Sunday's ${futureSundayLong.distanceMi} mi long run needs fresh legs.`;
+      }
+      return `Today's the quality session. Execute clean, then back off — recovery between hard days is where the gain locks in.`;
+    }
+    // Long mid-week (rare): point to the volume frame.
+    if (t === 'long') {
+      return `Today's the long run. Time on feet is the stimulus; the back half can drift slower if it needs to.`;
+    }
+    // EASY day — insight depends on what's around it.
+    if (t === 'easy' || t === 'recovery') {
+      const read = weekPaceRead();
+      if (futureSundayLong) {
+        // Friday/Sat easy with a Sunday long: this is recovery for the anchor.
+        if (read) {
+          return `${capFirst(read)}. Today's easy is glycogen-saving for Sunday's ${futureSundayLong.distanceMi} mi — keep effort honest.`;
+        }
+        return `Today's easy is glycogen-saving for Sunday's ${futureSundayLong.distanceMi} mi long run. Keep effort honest; pace is a result, not a target.`;
+      }
+      if (read) {
+        return `${capFirst(read)}. Today's easy keeps the engine running without adding load.`;
+      }
+      return `Today's easy is base-building, not training. Keep HR honest and the work happens.`;
+    }
+  }
+
+  // Fallback (no todayDay metadata or unknown type)
+  return `Today's run is on the schedule. Keep effort honest; the plan's built around the pattern, not any single session.`;
+}
+
+/** Used in inline copy: "through Thursday". 0=Sun … 6=Sat. */
+function dowNameFromIdx(idx: number): string {
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const i = ((idx % 7) + 7) % 7;
+  return names[i];
+}
+
+function capFirst(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
 }

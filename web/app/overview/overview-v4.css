@@ -92,16 +92,15 @@
    SECTION 1 — COACH STRIP
 ══════════════════════════ */
 .overview-v4-page .coach-strip {
-  /* LAYOUT LAW: stretch so both sides fill identical height.
-     Coach-right pins its button to the bottom via space-between.
-     Min-height keeps short briefings from collapsing the strip.
-     CONTENT RULE: briefing = 2–4 sentences / ~60 words max.
-     Font stays 22px always — trim copy, never the size. */
+  /* LAYOUT LAW: stretch so both sides fill identical height; coach line
+     TOP aligns with check-in card TOP (was center-floated → felt awkward
+     with the box sitting higher). CONTENT RULE: briefing = ONE compact
+     insight, not recitation. Font 22px always — trim copy, never the size. */
   display: flex;
   align-items: stretch;
   justify-content: space-between;
   padding-bottom: 0;
-  height: 200px;
+  min-height: 168px;
   margin-bottom: 16px;
 }
 
@@ -109,7 +108,8 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;   /* top-align with check-in card */
+  padding-top: 4px;              /* match the card's first-line baseline */
 }
 
 .overview-v4-page .coach-label {
