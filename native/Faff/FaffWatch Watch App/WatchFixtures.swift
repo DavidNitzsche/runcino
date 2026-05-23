@@ -76,6 +76,13 @@ struct WatchFixtureView: View {
         case "easy":
             EasyFace(pace: "8:42", paceRole: .live,
                      hr: "145", hrOver: false, cadence: "172", distance: "2.30")
+        case "easy-no-gps":
+            // Simulate the just-pressed-Start state — no GPS lock yet, pace is
+            // the "—:—" placeholder rendered in mute grey. The em-dash width
+            // fix means the placeholder doesn't blow up the font size; the
+            // three rows still read as a clean stack.
+            EasyFace(pace: "—:—", paceRole: .mute,
+                     hr: "66", hrOver: false, cadence: "—", distance: "0.00")
         case "easy-hr-over":
             EasyFace(pace: "8:42", paceRole: .live,
                      hr: "164", hrOver: true, cadence: "172", distance: "2.30")

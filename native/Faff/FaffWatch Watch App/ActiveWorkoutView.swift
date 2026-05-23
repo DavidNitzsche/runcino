@@ -135,6 +135,13 @@ private func paceText(_ tracker: WorkoutTracker) -> String {
     tracker.paceSPerMi > 0 ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—"
 }
 
+/// Pace row colour: muted grey while waiting for GPS lock (placeholder is
+/// "—:—" — bright green on a placeholder reads as "active on-target," which
+/// is a lie). Once a real pace lands, it flips to the drift-zone colour.
+private func paceRole(engine: WorkoutEngine, tracker: WorkoutTracker) -> Role {
+    tracker.paceSPerMi > 0 ? Role.from(zone: engine.paceZone) : .mute
+}
+
 /// Two-decimal distance string (the canon `dist` row format).
 private func distText(_ mi: Double) -> String { String(format: "%.2f", mi) }
 
@@ -170,7 +177,7 @@ private struct LiveWorkInterval: View {
     var body: some View {
         WorkIntervalFace(
             livePace:      paceText(tracker),
-            paceRole:      Role.from(zone: engine.paceZone),
+            paceRole:      paceRole(engine: engine, tracker: tracker),
             targetPace:    phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
             totalDistance: distText(tracker.distanceMi),
             repCounter:    repCounter,
@@ -201,7 +208,7 @@ private struct LiveRace: View {
     var body: some View {
         LiveRaceFace(
             livePace:       paceText(tracker),
-            paceRole:       Role.from(zone: engine.paceZone),
+            paceRole:       paceRole(engine: engine, tracker: tracker),
             phaseTarget:    phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
             totalDistance:  String(format: "%.1f", tracker.distanceMi),
             goalDelta:      goalDeltaText,
@@ -223,7 +230,7 @@ private struct LiveEasy: View {
     var body: some View {
         EasyFace(
             pace:     paceText(tracker),
-            paceRole: Role.from(zone: engine.paceZone),
+            paceRole: paceRole(engine: engine, tracker: tracker),
             hr:       tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
             hrOver:   engine.hrOverCeiling,
             cadence:  tracker.cadence > 0 ? "\(tracker.cadence)" : "—",

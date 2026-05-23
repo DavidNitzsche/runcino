@@ -129,11 +129,20 @@ struct NumberFace: View {
     private let stripBarF: CGFloat = 0.027
     private let clockClearF: CGFloat = 0.70   // top row must end left of here (system clock lives right of it)
 
-    // rough per-glyph advance (em) for HelveticaNeue-Bold, to clear the clock without measuring
+    // rough per-glyph advance (em) for HelveticaNeue-Bold, to clear the clock
+    // without measuring. CRITICAL: em-dash (—) and en-dash (–) are 1.0em /
+    // 0.5em respectively by typographic definition — that's where the names
+    // come from. Defaulting them to the digit width (0.56em) lets a
+    // placeholder like "—:—" sneak past the width cap, the recipe then sizes
+    // the font to the height-limit (~90pt vs the ~56pt a real pace gets),
+    // and every row in the face inherits the oversized F. (Caught on real
+    // hardware mid-run when GPS hadn't locked yet.)
     static func emWidth(_ s: String) -> CGFloat {
         s.reduce(0) { acc, c in
             switch c {
-            case ":", ".", " ": return acc + 0.30
+            case "—":            return acc + 1.00   // em-dash IS 1 em
+            case "–":            return acc + 0.50   // en-dash IS ½ em
+            case ":", ".", " ", ",": return acc + 0.30
             case "+", "-":       return acc + 0.58
             default:             return acc + 0.56
             }
