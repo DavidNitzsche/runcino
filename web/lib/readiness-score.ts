@@ -128,11 +128,11 @@ function recommendationFor(
   if (!driver) {
     // No real driver yet — be honest instead of restating the color.
     if (missing.length > 0) return `Score from your activity rhythm; ${missing[0]} will sharpen it.`;
-    return 'Recovery vitals on baseline, no recent overload — execute the plan.';
+    return 'Recovery vitals on baseline, no recent overload. Execute the plan.';
   }
   const note = cap(driver.note);
   switch (state) {
-    case 'red':    return `Back off — ${driver.note}. Swap today for easy or recovery.`;
+    case 'red':    return `Back off. ${cap(driver.note)}. Swap today for easy or recovery.`;
     case 'yellow': return `${note}. Easy is fine; hold off on a hard quality day.`;
     case 'green':  return `${note}. Execute the plan.`;
   }

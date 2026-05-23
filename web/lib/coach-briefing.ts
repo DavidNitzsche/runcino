@@ -161,7 +161,7 @@ export function generateBriefing(input: BriefingInput): string {
       const ramp = cwPlanned > plannedMi + 1
         ? `Stepping up to ${cwPlanned} mi of ${phaseWord} this week.`
         : cwPlanned < plannedMi - 1
-        ? `Easing to ${cwPlanned} mi this week — a cutback.`
+        ? `Easing to ${cwPlanned} mi this week, a cutback.`
         : `Holding ${cwPlanned} mi this week.`;
       return `Last week ${closedWord} (${ranMi} / ${plannedMi} mi)${longRead}. ${ramp}`;
     }
@@ -174,7 +174,7 @@ export function generateBriefing(input: BriefingInput): string {
       return `Race day. Conserve the first third, settle the middle, commit the last 5k.`;
     }
     if (bankedMi > 0) {
-      return `${bankedMi} mi banked this week — today's ${todayDay.distanceMi} mi is what it was for. Go conversational; the last quarter can drift if it feels natural.`;
+      return `${bankedMi} mi banked this week. Today's ${todayDay.distanceMi} mi is what it was for. Go conversational; the last quarter can drift if it feels natural.`;
     }
     return `Today's long run is the week's anchor. Conversational for the bulk; let pace come to you on the back half.`;
   }
@@ -183,7 +183,7 @@ export function generateBriefing(input: BriefingInput): string {
   if (isSaturday) {
     if (futureSundayLong) {
       const role = todayDay && !isRest ? 'Today is the shake-out' : 'Today is the rest day';
-      return `${role} for tomorrow's ${futureSundayLong.distanceMi} mi — protect the legs, keep effort light.`;
+      return `${role} for tomorrow's ${futureSundayLong.distanceMi} mi. Protect the legs, keep effort light.`;
     }
     if (isRest) {
       return `Rest day. Hydrate, sleep on time, light mobility if you feel like it.`;
@@ -194,7 +194,7 @@ export function generateBriefing(input: BriefingInput): string {
   if (isRest) {
     if (bankedMi > 0 && plannedToHere > 0) {
       const read = weekPaceRead();
-      return read ? `Rest day — you're ${read}. Recovery is part of the work; tomorrow picks back up.` : `Rest day. Recovery is part of the work; tomorrow picks back up.`;
+      return read ? `Rest day. You're ${read}. Recovery is part of the work; tomorrow picks back up.` : `Rest day. Recovery is part of the work; tomorrow picks back up.`;
     }
     return `Rest day. Recovery is part of the work.`;
   }
@@ -207,9 +207,9 @@ export function generateBriefing(input: BriefingInput): string {
     // Quality day: emphasize execution + recovery downstream.
     if (t === 'quality') {
       if (futureSundayLong) {
-        return `Today's the quality session. Execute clean, then back off — Sunday's ${futureSundayLong.distanceMi} mi long run needs fresh legs.`;
+        return `Today's the quality session. Execute clean, then back off. Sunday's ${futureSundayLong.distanceMi} mi long run needs fresh legs.`;
       }
-      return `Today's the quality session. Execute clean, then back off — recovery between hard days is where the gain locks in.`;
+      return `Today's the quality session. Execute clean, then back off. Recovery between hard days is where the gain locks in.`;
     }
     // Long mid-week (rare): point to the volume frame.
     if (t === 'long') {
@@ -221,7 +221,7 @@ export function generateBriefing(input: BriefingInput): string {
       if (futureSundayLong) {
         // Friday/Sat easy with a Sunday long: this is recovery for the anchor.
         if (read) {
-          return `${capFirst(read)}. Today's easy is glycogen-saving for Sunday's ${futureSundayLong.distanceMi} mi — keep effort honest.`;
+          return `${capFirst(read)}. Today's easy is glycogen-saving for Sunday's ${futureSundayLong.distanceMi} mi. Keep effort honest.`;
         }
         return `Today's easy is glycogen-saving for Sunday's ${futureSundayLong.distanceMi} mi long run. Keep effort honest; pace is a result, not a target.`;
       }

@@ -222,13 +222,13 @@ export function planTrainingFueling(input: FuelingInput): FuelingPlan {
   let why: string;
   if (isRehearsal) {
     shortLine = `Fuel rehearsal: ${productPhrase} at race target (${target} g/hr), ${whens}.`;
-    why = `Race-day rehearsal. ${productPhrase} at the same rate and roughly the same spacing you'll run on race day — so race day isn't a surprise to your gut.`;
+    why = `Race-day rehearsal. ${productPhrase} at the same rate and roughly the same spacing you'll run on race day, so race day isn't a surprise to your gut.`;
   } else if (target <= 45) {
     shortLine = `Fuel: ${productPhrase}, ${whens}.`;
-    why = `Long runs over ~75 min start to drain glycogen. ${productPhrase} (${target} g/hr) keeps the tank topped up so the last miles don't fall off — and builds the habit your gut needs before race day.`;
+    why = `Long runs over ~75 min start to drain glycogen. ${productPhrase} (${target} g/hr) keeps the tank topped up so the last miles don't fall off, and builds the habit your gut needs before race day.`;
   } else {
     shortLine = `Fuel: ${productPhrase} (${target} g/hr), ${whens}.`;
-    why = `${dur >= 150 ? 'Two-plus hours of running' : 'Quality work this long'} needs steady carbs. ${productPhrase} at ~${target} g/hr — ${heat.adjusted ? 'reduced for heat ' : ''}standard endurance fueling rate.`;
+    why = `${dur >= 150 ? 'Two-plus hours of running' : 'Quality work this long'} needs steady carbs. ${productPhrase} at ~${target} g/hr, ${heat.adjusted ? 'reduced for heat. ' : ''}standard endurance fueling rate.`;
   }
   if (heat.adjusted && !isRehearsal) {
     shortLine = shortLine.replace(/\.$/, ` · hot day, dialed back.`);
