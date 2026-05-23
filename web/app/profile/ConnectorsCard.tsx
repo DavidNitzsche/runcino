@@ -219,27 +219,10 @@ export function ConnectorsCard() {
           </div>
         )}
 
-        {/* Compact future-connectors */}
-        <div className="faff-conn-section-label">Coming soon · activity sources</div>
-        <div className="faff-conn-pills">
-          {['apple_health','garmin','coros','polar','suunto','wahoo','google_fit']
-            .filter((p) => !connectedSet.has(p))
-            .map((p) => (
-              <FuturePill key={p} provider={p} status={p === 'apple_health' || p === 'garmin' ? 'soon' : 'planned'} statusLabel={p === 'apple_health' ? 'iOS app' : p === 'garmin' ? 'Soon' : 'Planned'} />
-            ))}
-        </div>
-
-        <div className="faff-conn-section-label">Coach plan platforms · plan-source mode</div>
-        <div className="faff-conn-pills">
-          <FuturePill provider="final_surge" status="planned" statusLabel="Planned" />
-          <FuturePill provider="training_peaks" status="planned" statusLabel="Planned" />
-        </div>
-
-        <div className="faff-conn-section-label">Recovery + sleep signal</div>
-        <div className="faff-conn-pills">
-          <FuturePill provider="whoop" status="planned" statusLabel="Planned" />
-          <FuturePill provider="oura" status="planned" statusLabel="Planned" />
-        </div>
+        {/* Future-connector pill rows removed. Ten inert "Coming soon"
+            chips (Garmin, Coros, Polar, Suunto, Wahoo, Google Fit, Whoop,
+            Oura, Final Surge, Training Peaks) added noise without a real
+            commitment — restore as actual integrations land. */}
 
         {!isLoaded && (
           <div className="faff-conn-loading">Loading connector status…</div>
