@@ -2,21 +2,19 @@
 //  ActiveWorkoutView.swift
 //  FaffWatch
 //
-//  The execution surface — the dark v4 face (watch-app.html). The primary
-//  view never grows: it routes by the current phase type (WORK is the
-//  canon hero). Detail lives one swipe / crown-turn away (watch-app.html
-//  §D): Controls (pause / end / water-lock), Splits, and the Session map.
-//  Transition flips ("Ease off", "Go · Int 4") overlay the whole thing
-//  for a beat at the edges of a rep.
+//  The execution surface — now driving the LOCKED face redesign (Faces.swift +
+//  FaceKit.swift). The primary view routes by phase type to the new faces and
+//  binds them to the live engine + tracker. Detail lives one swipe / crown-turn
+//  away (Controls, Splits, Session map, In-run stats) — those pages still use
+//  the WatchFaces.swift primitives because they're inventory views, not the
+//  in-run face.
 //
-//  The faces themselves live in WatchFaces.swift — the verbatim copy of the
-//  approved reference (WP / WF / Eyebrow / TopBar / Hero / RefLine / Stat /
-//  StatsRow / ProgressRow / SegmentStrip + WorkIntervalFace / RaceFace).
-//  This file only wires the live engine/tracker into those faces and builds
-//  the remaining faces in the same component style.
+//  Long-press anywhere on the workout pages = pause. The existing pause path
+//  (engine.pause / engine.resume) is unchanged; the gesture just routes through
+//  it. Auto-pause from HKWorkoutSession still works via its own delegate.
 //
-//  Live pace/HR/cadence come from the tracker (mocked in the simulator,
-//  HKLiveWorkoutBuilder + GPS on a physical watch).
+//  Live pace/HR/cadence/distance come from WorkoutTracker (mocked in the
+//  simulator, HKLiveWorkoutBuilder + GPS on a physical watch).
 //
 
 import SwiftUI
@@ -32,13 +30,19 @@ struct ActiveWorkoutView: View {
 
     var body: some View {
         ZStack {
-            WP.bg.ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
-            // Paused replaces the paged surface (rather than overlaying it)
-            // so its Resume button isn't fighting the TabView's paging
-            // gesture for the tap.
+            // Paused replaces the paged surface — the locked LivePauseFace owns
+            // the whole screen so the Resume button isn't fighting the TabView's
+            // page gesture for the tap.
             if engine.isPaused {
-                ResponsiveFace { PausedVeil(engine: engine) { page = .face } }
+                ResponsiveFace {
+                    LivePauseFace(
+                        distance: String(format: "%.2f", tracker.distanceMi),
+                        elapsed: PaceFormat.clock(engine.totalElapsedSec),
+                        onResume: { engine.resume(); page = .face }
+                    )
+                }
             } else {
                 TabView(selection: $page) {
                     ResponsiveFace { ControlsPage(engine: engine) { page = .face } }.tag(Page.controls)
@@ -51,10 +55,17 @@ struct ActiveWorkoutView: View {
             }
 
             // Edge-of-rep flips are brief + non-interactive, so they can
-            // safely sit above the pages.
+            // safely sit above the pages. Fuel uses the new FuelFace; Go uses
+            // the new GoFace; the remaining cues (heads-up / phase change)
+            // keep the WatchFaces TransitionFace until they have a locked face.
             if let cue = engine.transition {
                 ResponsiveFace { TransitionFlip(cue: cue) }.transition(.opacity)
             }
+        }
+        // Long-press anywhere → manual pause. 0.6s is firm enough to never
+        // mis-fire from a wrist nudge, fast enough to catch on at a stoplight.
+        .onLongPressGesture(minimumDuration: 0.6) {
+            if !engine.isPaused { engine.pause() }
         }
         .animation(.easeInOut(duration: 0.18), value: engine.transition)
         .animation(.easeInOut(duration: 0.18), value: engine.isPaused)
@@ -70,60 +81,88 @@ struct ActiveWorkoutView: View {
             } else {
                 switch phase.type {
                 case .work:
-                    LiveWorkInterval(engine: engine, tracker: tracker, phase: phase)
-                case .warmup, .cooldown:
-                    LiveSteady(engine: engine, tracker: tracker, phase: phase,
-                               accent: phase.type == .warmup ? WP.green : WP.muted)
+                    // A workout with exactly one .work phase is an easy / long /
+                    // steady run, not a rep session — route to EasyFace (rotating
+                    // HR/cadence guardrail) or SteadyRunFace (no target). Multi-
+                    // work-phase sessions (intervals, threshold blocks) get the
+                    // canonical rep-work face with the strip + counter.
+                    if isSingleWorkSession(engine) {
+                        if phase.targetPaceSPerMi != nil {
+                            LiveEasy(engine: engine, tracker: tracker, phase: phase)
+                        } else {
+                            LiveSteady(engine: engine, tracker: tracker, phase: phase, role: .neutral)
+                        }
+                    } else {
+                        LiveWorkInterval(engine: engine, tracker: tracker, phase: phase)
+                    }
+                case .warmup:
+                    LiveWarmup(engine: engine, tracker: tracker, phase: phase)
+                case .cooldown:
+                    LiveSteady(engine: engine, tracker: tracker, phase: phase, role: .neutral)
                 case .recovery:
-                    LiveRecovery(engine: engine, tracker: tracker, phase: phase)
+                    LiveRecovery(engine: engine, phase: phase)
                 }
             }
         }
     }
 }
 
-// MARK: - Live → reference-face adapters
-//
-// The reference faces (WatchFaces.swift) take plain Strings + [Seg] so the
-// design stays the single source of truth. These thin wrappers compute those
-// values from the live engine/tracker and hand them straight to the faces.
+/// True when the workout has exactly one .work phase — an easy / long / steady
+/// run, not a rep session. Warmup/cooldown around it don't change the verdict
+/// (they're framing, not work).
+private func isSingleWorkSession(_ e: WorkoutEngine) -> Bool {
+    e.workout.phases.filter { $0.type == .work }.count == 1
+}
 
-/// The whole-session strip: one cell per phase, weighted by duration.
-private func sessionSegs(_ e: WorkoutEngine) -> [Seg] {
+// MARK: - Helpers shared by adapters
+
+/// String the tracker's seconds-per-mile into "m:ss" with an em-dash placeholder
+/// until the GPS lock produces a real reading.
+private func paceText(_ tracker: WorkoutTracker) -> String {
+    tracker.paceSPerMi > 0 ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—"
+}
+
+/// Two-decimal distance string (the canon `dist` row format).
+private func distText(_ mi: Double) -> String { String(format: "%.2f", mi) }
+
+/// Strip states ([0=empty, 1=done, 2=now]) for the whole-session bar at the
+/// bottom of the work face. One cell per phase, ordered as the engine walks them.
+private func sessionStripStates(_ e: WorkoutEngine) -> [Int] {
     e.workout.phases.map { p in
-        Seg(weight: CGFloat(max(p.durationSec, 1)),
-            state: p.index < e.currentIndex ? .done
-                 : (p.index == e.currentIndex ? .current : .upcoming))
+        if p.index < e.currentIndex { return 1 }
+        if p.index == e.currentIndex { return 2 }
+        return 0
     }
 }
+
+/// Phase strip for races — one cell per course phase, current = amber (the
+/// `Strip` view paints "now" with `nowColor`).
+private func raceStripStates(_ e: WorkoutEngine) -> [Int] {
+    sessionStripStates(e)
+}
+
+// MARK: - Live → reference-face adapters
 
 private struct LiveWorkInterval: View {
     @ObservedObject var engine: WorkoutEngine
     @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
-    private var workOrdinal: (Int, Int) {
-        let work = engine.workout.phases.filter { $0.type == .work }
-        let n = (work.firstIndex { $0.index == phase.index }).map { $0 + 1 } ?? 1
-        return (n, work.count)
+    private var repCounter: String {
+        phase.repUnit == .distance
+            ? (engine.phaseRemainingMi.map { String(format: "%.2f", $0) } ?? "—")
+            : PaceFormat.clock(engine.phaseRemainingSec)
     }
 
     var body: some View {
-        let (n, m) = workOrdinal
-        let hasPace = tracker.paceSPerMi > 0
         WorkIntervalFace(
-            rep: "Int \(n) / \(m)",
-            elapsed: PaceFormat.clock(engine.totalElapsedSec),
-            segments: sessionSegs(engine),
-            currentPace: hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—",
-            targetPace: phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
-            deltaSeconds: engine.paceDeltaSPerMi,
-            heartRate: tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
-            cadence: tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
-            repFraction: engine.phaseProgress,
-            repTimeLeft: phase.repUnit == .distance
-                ? (engine.phaseRemainingMi.map { String(format: "%.2f mi", $0) } ?? "—")
-                : PaceFormat.clock(engine.phaseRemainingSec))
+            livePace:      paceText(tracker),
+            paceRole:      Role.from(zone: engine.paceZone),
+            targetPace:    phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
+            totalDistance: distText(tracker.distanceMi),
+            repCounter:    repCounter,
+            stripStates:   sessionStripStates(engine)
+        )
     }
 }
 
@@ -132,85 +171,148 @@ private struct LiveRace: View {
     @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
-    private var nextFuel: String {
-        if let g = engine.nextGel { return "Gel \(g.number) · \(String(format: "%.1f", g.toGoMi))mi" }
-        return "fuel done"
+    /// Delta-to-goal as the bottom row: "+1:14" (over goal) / "-0:42" (under).
+    /// Role flips between live (≤ 0 — on/under goal) and over (> 0 — behind).
+    /// Renders "—" until enough banked to project a finish.
+    private var goalDeltaText: String {
+        guard let d = engine.projectedDeltaSec else { return "—" }
+        let a = abs(d)
+        let mag = a >= 60 ? "\(a / 60):" + String(format: "%02d", a % 60) : "\(a)s"
+        return d <= 0 ? "-\(mag)" : "+\(mag)"
+    }
+    private var goalDeltaRole: Role {
+        guard let d = engine.projectedDeltaSec else { return .neutral }
+        return d <= 0 ? .live : .over
     }
 
     var body: some View {
-        let hasPace = tracker.paceSPerMi > 0
-        RaceFace(
-            phase: phase.label,
-            elapsed: PaceFormat.hms(engine.totalElapsedSec),
-            segments: sessionSegs(engine),
-            currentPace: hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—",
-            phaseTarget: phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
-            deltaSeconds: engine.paceDeltaSPerMi,
-            projectedFinish: engine.projectedFinishSec.map { PaceFormat.hm($0) } ?? "—",
-            goalDeltaSec: engine.projectedDeltaSec,
-            distanceToGo: engine.distanceToGoMi.map { String(format: "%.1f", $0) } ?? "—",
-            nextFuel: nextFuel,
-            phaseFraction: engine.phaseProgress)
+        LiveRaceFace(
+            livePace:       paceText(tracker),
+            paceRole:       Role.from(zone: engine.paceZone),
+            phaseTarget:    phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—",
+            totalDistance:  String(format: "%.1f", tracker.distanceMi),
+            goalDelta:      goalDeltaText,
+            goalDeltaRole:  goalDeltaRole,
+            phaseSegments:  raceStripStates(engine)
+        )
     }
 }
 
-// MARK: - RECOVERY (countdown hero + next rep pre-loaded · deck C3)
-
-private struct LiveRecovery: View {
+/// EASY / long / steady run — single-work-phase session with a target pace.
+/// Pace colour reflects the drift zone; HR row flips red when over the workout's
+/// `hrCeilingBpm`. The guardrail rotates HR ⇄ cadence every 60 s when HR is in
+/// zone (handled inside EasyFace).
+private struct LiveEasy: View {
     @ObservedObject var engine: WorkoutEngine
     @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
-    private var restOrdinal: (Int, Int) {
-        let recs = engine.workout.phases.filter { $0.type == .recovery }
-        let n = (recs.firstIndex { $0.index == phase.index }).map { $0 + 1 } ?? 1
-        // Recoveries sit between work reps, so "Rest n / <work count>".
-        let work = engine.workout.phases.filter { $0.type == .work }.count
-        return (n, work)
-    }
-    private var nextRef: String {
-        if let t = engine.nextPhase?.targetPaceSPerMi { return "Next rep · \(PaceFormat.mmss(t))/mi" }
-        if let next = engine.nextPhase { return "Next · \(next.label)" }
-        return ""
-    }
-
     var body: some View {
-        let (n, m) = restOrdinal
-        RecoveryFace(
-            rest: "Rest \(n) / \(m)",
-            elapsed: PaceFormat.clock(engine.totalElapsedSec),
-            countdown: PaceFormat.clock(engine.phaseRemainingSec),
-            nextRef: nextRef,
-            heartRate: tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
-            cadence: tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
-            fraction: engine.phaseProgress)
+        EasyFace(
+            pace:     paceText(tracker),
+            paceRole: Role.from(zone: engine.paceZone),
+            hr:       tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
+            hrOver:   engine.hrOverCeiling,
+            cadence:  tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
+            distance: distText(tracker.distanceMi)
+        )
     }
 }
 
-// MARK: - WARMUP / COOLDOWN (steady, no target · deck B)
+private struct LiveRecovery: View {
+    @ObservedObject var engine: WorkoutEngine
+    let phase: WatchPhase
+
+    private var nextTarget: String {
+        engine.nextPhase?.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+    }
+    /// Next rep's distance ("0.50") or a duration label fallback ("0:30") so the
+    /// runner sees the *next* thing they'll execute against.
+    private var nextDist: String {
+        if let n = engine.nextPhase {
+            if let d = n.distanceMi { return String(format: "%.2f", d) }
+            return PaceFormat.clock(n.durationSec)
+        }
+        return "—"
+    }
+
+    var body: some View {
+        RestFace(
+            restTimeLeft:   PaceFormat.clock(engine.phaseRemainingSec),
+            nextTargetPace: nextTarget,
+            nextDistance:   nextDist
+        )
+    }
+}
+
+private struct LiveWarmup: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    /// Show the distance covered in the warmup so far (matches the locked
+    /// design's "0.4" warmup readout); when there's no GPS yet, fall back to
+    /// elapsed time.
+    private var coveredValue: String {
+        engine.phaseCoveredMi > 0
+            ? String(format: "%.2f", engine.phaseCoveredMi)
+            : PaceFormat.clock(engine.phaseElapsedSec)
+    }
+    private var thenPace: String {
+        engine.nextPhase?.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+    }
+    private var thenDistance: String {
+        if let n = engine.nextPhase {
+            if let d = n.distanceMi { return String(format: "%.2f", d) }
+            return PaceFormat.clock(n.durationSec)
+        }
+        return "—"
+    }
+
+    var body: some View {
+        WarmupFace(
+            coveredValue: coveredValue,
+            thenPace:     thenPace,
+            thenDistance: thenDistance
+        )
+    }
+}
 
 private struct LiveSteady: View {
     @ObservedObject var engine: WorkoutEngine
     @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
-    let accent: Color
+    /// Pace row colour. `.live` while the runner has an easy target to hold,
+    /// `.neutral` for cooldown / unstructured stretches where there's no chase.
+    let role: Role
 
     var body: some View {
-        SteadyFace(
-            label: phase.label,
-            accent: accent,
-            elapsed: PaceFormat.clock(engine.totalElapsedSec),
-            hero: PaceFormat.clock(engine.phaseElapsedSec),
-            refLabel: phase.type == .cooldown ? "Cool" : "Easy",
-            refPace: phase.targetPaceSPerMi.map { PaceFormat.mmss($0) },
-            heartRate: tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
-            cadence: tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
-            fraction: engine.phaseProgress,
-            timeLeft: PaceFormat.clock(engine.phaseRemainingSec))
+        SteadyRunFace(
+            livePace: paceText(tracker),
+            paceRole: role,
+            distance: distText(tracker.distanceMi),
+            elapsed:  PaceFormat.clock(engine.totalElapsedSec)
+        )
     }
 }
 
-// MARK: - SECONDARY STATS (swipe page · elapsed / distance / avg pace / calories)
+/// OVERTIME (plan done · still recording · run free)
+private struct LiveOvertime: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    var body: some View {
+        SteadyRunFace(
+            livePace: paceText(tracker),
+            paceRole: .neutral,
+            distance: distText(tracker.distanceMi),
+            elapsed:  engine.totalElapsedSec >= 3600
+                ? PaceFormat.hms(engine.totalElapsedSec)
+                : PaceFormat.clock(engine.totalElapsedSec)
+        )
+    }
+}
+
+// MARK: - SECONDARY STATS (swipe page — elapsed / distance / avg pace / calories)
 
 private struct LiveInRunStats: View {
     @ObservedObject var engine: WorkoutEngine
@@ -228,128 +330,7 @@ private struct LiveInRunStats: View {
     }
 }
 
-// MARK: - OVERTIME (plan done · still recording · run free)
-
-private struct LiveOvertime: View {
-    @ObservedObject var engine: WorkoutEngine
-    @ObservedObject var tracker: WorkoutTracker
-    var body: some View {
-        let hasPace = tracker.paceSPerMi > 0
-        OvertimeFace(
-            elapsed: engine.totalElapsedSec >= 3600
-                ? PaceFormat.hms(engine.totalElapsedSec)
-                : PaceFormat.clock(engine.totalElapsedSec),
-            distance: String(format: "%.2f", tracker.distanceMi),
-            pace: hasPace ? PaceFormat.mmss(tracker.paceSPerMi) : "—:—",
-            heartRate: tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—")
-    }
-}
-
-/// Shown once the prescribed plan is done but recording continues. The plan is
-/// complete (logged), so this is a free read — distance, time, pace — until the
-/// user ends from Controls.
-struct OvertimeFace: View {
-    let elapsed: String
-    let distance: String
-    let pace: String
-    let heartRate: String
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Eyebrow(text: "Done · keep going", color: WP.green)
-                Spacer(minLength: 78)
-            }
-            .padding(.leading, 8).padding(.top, 20)
-            Spacer(minLength: 4)
-            BigMetric(value: distance, unit: "MI", size: 52)
-            Spacer(minLength: 0)
-            BigMetric(value: elapsed, color: WP.ink, size: 48)
-            Spacer(minLength: 0)
-            BigMetric(value: pace, unit: "/MI", color: WP.green, size: 48)
-            Spacer(minLength: 4)
-            (Text(heartRate).font(WF.bebas(28)).monospacedDigit().foregroundStyle(WP.ink)
-             + Text("  BPM").font(WF.interBold(11)).foregroundStyle(WP.muted))
-                .frame(maxWidth: .infinity, alignment: .center)
-        }
-        .executionFace(bottom: 8)
-    }
-}
-
-// MARK: - Faces built in the reference component style
-//
-// These match the deck (watch-app.html) using the same WP/WF/Hero/Stat/…
-// primitives as WorkIntervalFace/RaceFace, so the whole set is one language.
-
-/// Recovery (deck §C3): green eyebrow + elapsed, the rest countdown as hero,
-/// next rep pre-loaded, HR + cadence, a "jog easy" cue bar.
-struct RecoveryFace: View {
-    let rest: String
-    let elapsed: String
-    let countdown: String
-    let nextRef: String
-    let heartRate: String
-    let cadence: String
-    let fraction: Double
-
-    var body: some View {
-        VStack(spacing: 0) {
-            FaceHeader(label: rest, color: WP.green)
-            VStack(spacing: -8) {
-                Hero(value: countdown, color: WP.green, size: 150)
-                if !nextRef.isEmpty {
-                    Text(nextRef).font(WF.interBold(12)).tracking(0.4).textCase(.uppercase)
-                        .foregroundStyle(WP.muted).lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)   // CSS .w-mid flex:1
-            StatsRow(left: Stat(value: heartRate, unit: "bpm"),
-                     right: Stat(value: cadence, unit: "spm"))
-            Text("JOG EASY").font(WF.interBold(11)).tracking(0.8).foregroundStyle(WP.muted)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 8)
-        }
-        .executionFace(bottom: 8)
-    }
-}
-
-/// Warmup / cooldown (deck §B): accent eyebrow + elapsed, the phase clock as
-/// hero (counts up toward the duration), an easy-pace reference, HR + cadence,
-/// progress bar carrying the time remaining.
-struct SteadyFace: View {
-    let label: String
-    var accent: Color = WP.green
-    let elapsed: String
-    let hero: String
-    let refLabel: String
-    let refPace: String?
-    let heartRate: String
-    let cadence: String
-    let fraction: Double
-    let timeLeft: String
-
-    var body: some View {
-        VStack(spacing: 0) {
-            FaceHeader(label: label, color: accent)
-            VStack(spacing: -10) {
-                Hero(value: hero, color: WP.ink, size: 150)
-                if let refPace {
-                    (Text(refLabel.uppercased() + " · ").foregroundStyle(WP.muted)
-                     + Text(refPace + "/MI").foregroundStyle(WP.ink))
-                        .font(WF.interBold(15))
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)   // CSS .w-mid flex:1
-            StatsRow(left: Stat(value: heartRate, unit: "bpm"),
-                     right: Stat(value: cadence, unit: "spm"))
-            Text(timeLeft).font(WF.bebas(22)).monospacedDigit().foregroundStyle(WP.ink)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 8)
-        }
-        .executionFace(bottom: 8)
-    }
-}
-
-// MARK: - CONTROLS (swipe-in · pause / end / water-lock · deck §D)
+// MARK: - CONTROLS (swipe-in · pause / end · deck §D)
 
 private struct ControlsPage: View {
     @ObservedObject var engine: WorkoutEngine
@@ -369,8 +350,8 @@ private struct ControlsPage: View {
     }
 }
 
-/// The control page (deck §D): full-width stacked bars — big tap targets, not little
-/// circles. Pause/Resume (primary, filled) over End. (Water-lock removed — rarely needed.)
+/// The control page (deck §D): full-width stacked bars — big tap targets, not
+/// little circles. Pause/Resume (primary, filled) over End.
 struct ControlsFace: View {
     var paused: Bool = false
     var onPrimary: () -> Void = {}
@@ -474,9 +455,9 @@ private struct SessionMapPage: View {
         idx < engine.currentIndex ? .done : (idx == engine.currentIndex ? .current : .upcoming)
     }
 
-    /// Collapse the interval block so a 5×7 doesn't list 12 rows: warmup,
-    /// done reps as one line, the current rep/recovery, upcoming reps as one
-    /// line, cooldown. Stays ~5 readable rows regardless of rep count.
+    /// Collapse the interval block so a 5×7 doesn't list 12 rows: warmup, done
+    /// reps as one line, the current rep/recovery, upcoming reps as one line,
+    /// cooldown. Stays ~5 readable rows regardless of rep count.
     private var groupedRows: [SessionMapFace.Row] {
         let phases = engine.workout.phases
         let cur = engine.currentIndex
@@ -550,7 +531,29 @@ struct SessionMapFace: View {
 
 // MARK: - Transition flips (full-screen, brief · deck §C3 / §F2)
 
-/// The shared centered transition layout (icon + title + sub).
+/// Routes engine transitions to the right takeover face. Fuel + Go use the new
+/// locked takeovers; heads-up and phase-change use the WatchFaces TransitionFace
+/// until they have their own locked variants.
+private struct TransitionFlip: View {
+    let cue: WorkoutEngine.TransitionCue
+    var body: some View {
+        switch cue {
+        case .fuel(let t, let s):
+            FuelFace(big: t, sub: s ?? "+ water")
+        case .go(let t, let s):
+            // The new GoFace is glyph + GO + sub. Engine's title carries the
+            // rep number ("Go · Int 4") and the sub carries the target.
+            GoFace(sub: "\(t)\(s.map { " · \($0)" } ?? "")")
+        case .headsUp(let t, let s):
+            TransitionFace(icon: "clock", title: t, titleColor: WP.amber, sub: s)
+        case .phase(let t, let s):
+            TransitionFace(icon: "mountain.2.fill", title: t, titleColor: WP.orange, sub: s)
+        }
+    }
+}
+
+/// The shared centered transition layout (icon + title + sub) for the cues that
+/// don't yet have a locked takeover. Survives from the previous design.
 struct TransitionFace: View {
     let icon: String
     let title: String
@@ -576,46 +579,6 @@ struct TransitionFace: View {
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WP.bg)
-    }
-}
-
-private struct TransitionFlip: View {
-    let cue: WorkoutEngine.TransitionCue
-    var body: some View {
-        switch cue {
-        case .headsUp(let t, let s): TransitionFace(icon: "clock", title: t, titleColor: WP.amber, sub: s)
-        case .go(let t, let s):      TransitionFace(icon: "arrow.right", title: t, titleColor: WP.green, sub: s)
-        case .phase(let t, let s):   TransitionFace(icon: "mountain.2.fill", title: t, titleColor: WP.orange, sub: s)
-        case .fuel(let t, let s):    TransitionFace(icon: "bolt.fill", title: t, titleColor: WP.orange, sub: s)
-        }
-    }
-}
-
-private struct PausedVeil: View {
-    @ObservedObject var engine: WorkoutEngine
-    let onResume: () -> Void
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "pause.circle.fill").font(.system(size: 38)).foregroundStyle(WP.amber)
-            Text("PAUSED").font(WF.bebas(34)).foregroundStyle(WP.ink).tracking(1)
-            Text(PaceFormat.clock(engine.totalElapsedSec))
-                .font(WF.interSemi(13)).monospacedDigit().foregroundStyle(WP.muted)
-            Button {
-                engine.resume(); onResume()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "play.fill").font(.system(size: 16, weight: .bold))
-                    Text("RESUME").font(WF.oswald(16)).tracking(1.5)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 15)
-                .foregroundStyle(Color(red: 0.016, green: 0.075, blue: 0.051))
-                .background(WP.green, in: Capsule())
-            }
-            .buttonStyle(.plain).padding(.top, 6)
-        }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WP.bg.opacity(0.96).ignoresSafeArea())
     }
 }
 
