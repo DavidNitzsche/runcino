@@ -157,6 +157,42 @@ struct WatchFixtureView: View {
                     totalDurationSec: 13752, avgHr: 168, maxHr: 184,
                     avgCadence: 178, phases: []),
                 onDone: {})
+        // ── Tomorrow's long-run fixtures ──────────────────────────────────
+        case "tomorrow-easy-mid":
+            // Easy face mid-run, on pace, GPS locked. Shows the rotating
+            // guardrail in HR position.
+            EasyFace(pace: "8:42", paceRole: .live,
+                     hr: "145", hrOver: false, cadence: "172", distance: "5.30")
+        case "tomorrow-easy-cadence":
+            // Same face, 60s later — rotation has flipped to cadence.
+            EasyFace(pace: "8:46", paceRole: .live,
+                     hr: "147", hrOver: false, cadence: "172", distance: "5.31")
+        case "tomorrow-milesplit":
+            // Mid-run mile-split flash for mile 5.
+            MileSplitFace(mile: "MILE 5", pace: "8:39")
+        case "tomorrow-fuel-1":
+            FuelFace(big: "Fuel · 1 of 3", sub: "+ water")
+        case "tomorrow-fuel-3":
+            FuelFace(big: "Fuel · 3 of 3", sub: "+ water")
+        case "tomorrow-pause":
+            LivePauseFace(distance: "5.30", elapsed: "46:18", onResume: {})
+        case "tomorrow-summary":
+            // Long-run completion — name "LONG RUN", ~11.6 mi, ~1:42:18.
+            SummaryView(
+                workout: WatchWorkout(
+                    workoutId: "long-tomorrow",
+                    name: "LONG RUN",
+                    summary: "Long Run · 8:29-8:59/mi · easy",
+                    totalEstimatedMinutes: 101,
+                    phases: [], completionEndpoint: "",
+                    expiresAt: "2099-01-01T00:00:00Z",
+                    distanceMi: 11.6),
+                completion: WatchCompletion(
+                    workoutId: "long-tomorrow", startedAt: "", completedAt: "",
+                    status: "completed", totalDistanceMi: 11.6,
+                    totalDurationSec: 6138, avgHr: 148, maxHr: 162,
+                    avgCadence: 173, phases: []),
+                onDone: {})
         case "hr":
             HRFace(pace: "9:15", hr: "142", hrRole: .live, distance: "4.1")
         case "strides":
