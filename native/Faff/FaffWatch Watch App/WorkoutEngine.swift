@@ -440,7 +440,12 @@ final class WorkoutEngine: ObservableObject {
         // flip when elapsed crosses each gel mark from the prescribed plan
         // (lib/training-fueling.ts on the backend). Idempotent per index, so
         // a slow tick doesn't double-fire.
-        if let fueling = workout.fueling, fueling.needed {
+        // Time-anchored fueling — fires by elapsed minutes. Skipped when
+        // workout.gelsMi is present (the distance-anchored path below is more
+        // honest: glycogen depletion correlates with distance/effort, not
+        // clock time, so a runner off-pace shouldn't be prompted early/late).
+        let hasDistanceGels = (workout.gelsMi?.isEmpty == false)
+        if let fueling = workout.fueling, fueling.needed, !hasDistanceGels {
             let mins = totalElapsedSec / 60
             for (i, mark) in fueling.atMins.enumerated() {
                 if mins >= mark && !firedFuelIndices.contains(i) {

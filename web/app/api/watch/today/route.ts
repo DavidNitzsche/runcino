@@ -148,5 +148,33 @@ export async function GET(req: NextRequest) {
     if (!fueling.needed) fueling = null;
   } catch { /* leave null → no fuel hint sent */ }
 
-  return NextResponse.json({ ...workout, readinessScore, readinessLabel, fueling });
+  // Distance-anchored gel marks for the watch. The atMins[] numbers are
+  // approximations based on the planned average pace — fine for *display*,
+  // but actually firing the gel cue by elapsed time means a runner slower
+  // than planned would be prompted before they've actually burned through
+  // the calories (and vice versa). Glycogen depletion correlates with
+  // distance/effort, not clock time, so we expose the same anchors as
+  // miles too and the watch fires on `gelsMi[]` whenever it's present.
+  // (Re-uses the existing race-day distance-anchored path on the watch;
+  // the engine prefers gelsMi over atMins to avoid double-cueing.)
+  // Only non-race workouts reach here (race is early-returned above), so
+  // `workout` has no pre-existing gelsMi — we derive it from the planner.
+  let gelsMi: number[] | undefined;
+  if (
+    fueling?.needed &&
+    fueling.atMins.length > 0 &&
+    todayDay.distanceMi != null &&
+    workout.totalEstimatedMinutes > 0
+  ) {
+    const milesPerMin = todayDay.distanceMi / workout.totalEstimatedMinutes;
+    gelsMi = fueling.atMins.map((m) => Math.round(m * milesPerMin * 100) / 100);
+  }
+
+  return NextResponse.json({
+    ...workout,
+    gelsMi,
+    readinessScore,
+    readinessLabel,
+    fueling,
+  });
 }
