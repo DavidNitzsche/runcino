@@ -641,7 +641,28 @@ export default async function OverviewPage() {
           </div>
 
           <WeekStripCells
-            days={currentWeek.days as WorkoutDay[]}
+            days={(currentWeek.days as WorkoutDay[]).map((d) => {
+              // Attach a per-day fueling plan when the run warrants it so
+              // Sunday's long-run modal shows the gel chip, not just today.
+              if (d.isRest || d.distanceMi <= 0) return d;
+              const ftype: WorkoutFuelingType =
+                d.type === 'long' ? 'long'
+                : d.type === 'quality' ? 'quality'
+                : d.type === 'race' ? 'race'
+                : 'easy';
+              const dur = Math.round(d.distanceMi * 9);   // ~9 min/mi fallback
+              const dayDaysToRace = Math.max(0, daysToRace - Math.max(0, daysBetween(today, d.date)));
+              const plan = planTrainingFueling({
+                durationEstMin: dur,
+                distanceMi: d.distanceMi,
+                workoutType: ftype,
+                daysToARace: dayDaysToRace > 0 ? dayDaysToRace : null,
+                raceFuelTargetGPerHr: user.fuelTargetGPerHr,
+                gelCarbsG: user.fuelGelCarbsG,
+                gelLabel: user.fuelBrand,
+              });
+              return plan.needed ? { ...d, fueling: plan } : d;
+            })}
             today={today}
             completedMileage={Object.fromEntries(completedMileage)}
             longestRunByDate={Object.fromEntries(longestRunByDate)}

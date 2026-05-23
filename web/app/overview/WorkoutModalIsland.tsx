@@ -38,6 +38,15 @@ export interface WorkoutDay {
    *  instead of opening the workout modal, the race plan has
    *  more depth than a generic workout card. */
   raceSlug?: string;
+  /** Per-day fueling plan shipped from /api/overview planWeekWorkouts.
+   *  null when the run doesn't warrant fuel (rest, short easy). Drives
+   *  the gel chip on the workout-detail modal (pre-run / future-day) so
+   *  Sunday's long run shows its gel plan, not just today's. */
+  fueling?: {
+    needed: boolean; gels: number; atMins: number[]; gPerHr: number;
+    totalCarbsG: number; isRehearsal: boolean; heatAdjusted: boolean;
+    shortLine: string; why: string;
+  } | null;
 }
 
 interface ModalContextValue {
@@ -225,11 +234,13 @@ export function WeekStripCells({
         const isToday = d.date === today;
         const dayMi    = completedMileage[d.date] ?? 0;        // SUM (display)
         const longest  = longestRunByDate?.[d.date] ?? dayMi;  // MAX (gate)
-        // Done = the LONGEST single run on this day met the workout's 60%
-        // bar. Sum-of-day would let a separate easy run mark a short
-        // quality workout as DONE — wrong. Short = something was logged
-        // but no single run met the bar.
-        const isDone    = d.date <= today && !d.isRest && d.distanceMi > 0 && longest >= d.distanceMi * 0.6;
+        // Done bar varies by workout type. A quality session is hard to
+        // "kinda complete" — a 5-mi easy doesn't substitute for a planned
+        // 7-mi threshold, so the bar is tighter. A long run rewards getting
+        // close. An easy run is forgiving (a 3-mi shake-out of a 5-mi easy
+        // still counts as the day's run).
+        const doneBar = d.type === 'quality' ? 0.80 : d.type === 'long' ? 0.75 : 0.60;
+        const isDone    = d.date <= today && !d.isRest && d.distanceMi > 0 && longest >= d.distanceMi * doneBar;
         const isShort   = !isDone   && d.date <= today && !d.isRest && d.distanceMi > 0 && dayMi > 0;
         const isSkipped = !isDone   && !isShort && !d.isRest && skipSet.has(d.date);
         const isMissed  = !isDone   && !isShort && !isSkipped && !d.isRest && d.distanceMi > 0 && d.date < today;
@@ -712,6 +723,29 @@ function WorkoutModal({ day, today, onClose }: { day: WorkoutDay; today: string;
                 <div className="wm-stat-label">Duration</div>
               </div>
             </div>
+
+            {/* Per-day fueling chip — appears on the modal for any planned run
+                that warrants gels, not just today (so Sunday's long run shows
+                its gel plan when you open the cell). Rehearsal long runs use
+                a green tint + RACE REHEARSAL eyebrow. */}
+            {day.fueling && day.fueling.needed && (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14,
+                padding: '10px 13px', borderRadius: 10,
+                background: day.fueling.isRehearsal ? 'rgba(62,189,65,.10)' : 'rgba(8,8,8,.04)',
+                border: `1px solid ${day.fueling.isRehearsal ? 'rgba(62,189,65,.30)' : 'rgba(8,8,8,.10)'}`,
+              }}>
+                <span style={{
+                  fontFamily: 'Oswald, sans-serif', fontSize: 10, fontWeight: 700,
+                  letterSpacing: 1.4, textTransform: 'uppercase', whiteSpace: 'nowrap',
+                  color: day.fueling.isRehearsal ? '#1f6a21' : 'rgba(8,8,8,.55)',
+                  paddingTop: 1,
+                }}>{day.fueling.isRehearsal ? 'Race rehearsal' : 'Fuel'}</span>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: 'var(--t0, #080808)', lineHeight: 1.45 }}>
+                  {day.fueling.shortLine.replace(/^Fuel(?: rehearsal)?:\s*/, '')}
+                </span>
+              </div>
+            )}
 
             {desc.steps.length > 0 && (
               <ol className="wm-recipe">

@@ -318,12 +318,41 @@ export async function GET(req: Request): Promise<Response> {
             hrZones: null,
           } as unknown as ResolvedFitness)
         : null;
+      // Pre-compute days-to-A-race so the per-day fueling ramp (Costa) lands
+      // correctly on every day of the plan window — Sunday's long run 3 days
+      // from now uses (nextA.daysAway - 3), not the today value.
+      const nextADaysAway = state.races.nextA?.daysAway ?? null;
       planWeekDescribed = planWeekWorkouts.map((w) => {
         if (w.type === 'rest') return w;
         try {
           const label = describeKeyFromPlan(w.type, w.subLabel ?? null);
           const description = describeWorkout(label, w.type, fitness);
-          return { ...w, label, description };
+
+          // Per-day fueling — runs the same engine as today, just for THIS
+          // day's distance + workout type + (this day's) days-to-race. So
+          // Sunday's long run carries its own gel plan in the payload.
+          let dayFueling: ReturnType<typeof planTrainingFueling> | null = null;
+          try {
+            const ftype: WorkoutFuelingType =
+              w.isLong ? 'long' : w.isQuality ? 'quality' : 'easy';
+            const pace = typeof w.paceTargetSPerMi === 'number' ? w.paceTargetSPerMi : 540;
+            const durMin = Math.round((pace * w.distanceMi) / 60);
+            const dayDelta = nextADaysAway != null
+              ? Math.max(0, nextADaysAway - Math.max(0, daysBetween(today, w.dateISO)))
+              : null;
+            const plan = planTrainingFueling({
+              durationEstMin: durMin,
+              distanceMi: w.distanceMi,
+              workoutType: ftype,
+              daysToARace: dayDelta,
+              raceFuelTargetGPerHr: authUser?.fuelTargetGPerHr ?? null,
+              gelCarbsG: authUser?.fuelGelCarbsG ?? null,
+              gelLabel: authUser?.fuelBrand ?? null,
+            });
+            if (plan.needed) dayFueling = plan;
+          } catch { /* leave fueling null for this day */ }
+
+          return { ...w, label, description, fueling: dayFueling };
         } catch { return w; }
       });
     }
