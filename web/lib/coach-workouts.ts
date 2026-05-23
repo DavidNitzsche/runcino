@@ -27,6 +27,12 @@ export type RunWorkoutType =
   | 'sub_threshold'
   | 'vo2'
   | 'marathon_specific'
+  /** HM-specific peak-phase workouts (Pfitz/Daniels HM build doctrine).
+   *  PEAK weeks for a HM A-race route to these instead of the
+   *  marathon-shaped long_mp_block / marathon_specific. */
+  | 'hm_specific_continuous'  // 6-8mi @ HM goal pace, mid-PEAK
+  | 'hm_specific_tune'         // long run with 3-4mi HM-pace block, early PEAK
+  | 'hm_race_rehearsal'        // 3mi @ HM goal pace tune-up, T-10 days
   | 'strides_appended'      // strides appended to an easy run, not their own day
   | 'rest'
   | 'shakeout'
@@ -226,6 +232,54 @@ export function marathonSpecific(state: CoachState): RunPrescription {
   };
 }
 
+/** HM-specific continuous race-pace block (Pfitz HM Plan §5: PEAK weeks
+ *  need 6-8 continuous miles at HMP to rehearse the demand and pace
+ *  discipline). 8-10 mi total: warm-up, sustained HMP block, cool-down. */
+export function hmSpecificContinuous(distanceMi: number, state: CoachState): RunPrescription {
+  const goal = goalPaceSPerMi(state);
+  const blockMi = Math.max(5, Math.min(8, Math.round(distanceMi - 3)));
+  return {
+    type: 'hm_specific_continuous', label: 'Half-marathon pace block',
+    distanceMi: r1(distanceMi), durationMin: null,
+    paceTargetSPerMi: goal ? { lowS: goal - 5, highS: goal + 5 } : null,
+    hrZone: 4,
+    description: `2 mi easy warm-up · ${blockMi} mi continuous at HM goal pace · 1 mi easy cool-down · the most race-like piece in the HM build`,
+    isQuality: true, isLong: false, appendStrides: false,
+  };
+}
+
+/** Long run with an HM-pace block in the middle (Pfitz HM §5: early
+ *  PEAK long runs insert a 3-4mi HMP tune inside the long to bridge
+ *  general aerobic and race-specific work). distanceMi sized by the
+ *  caller; HMP block is 3-5mi depending on long-run size. */
+export function hmSpecificTune(distanceMi: number, state: CoachState): RunPrescription {
+  const goal = goalPaceSPerMi(state);
+  const hmBlockMi = distanceMi >= 14 ? 5 : distanceMi >= 12 ? 4 : 3;
+  return {
+    type: 'hm_specific_tune', label: 'Long run · HMP tune',
+    distanceMi: r1(distanceMi), durationMin: null,
+    paceTargetSPerMi: goal ? { lowS: goal - 5, highS: goal + 5 } : null,
+    hrZone: 3,
+    description: `${r1(distanceMi)} mi total with ${hmBlockMi} mi at HM goal pace in the middle · long-run aerobic load plus race-pace rehearsal in one session`,
+    isQuality: true, isLong: true, appendStrides: false,
+  };
+}
+
+/** HM race-week rehearsal (Pfitz HM §6 race-week protocol: a short
+ *  HMP tune-up 10 days out grooves pace + readies legs without
+ *  draining them). 5mi total, 3mi at HM goal pace. */
+export function hmRaceRehearsal(state: CoachState): RunPrescription {
+  const goal = goalPaceSPerMi(state);
+  return {
+    type: 'hm_race_rehearsal', label: 'Race rehearsal',
+    distanceMi: 5, durationMin: null,
+    paceTargetSPerMi: goal ? { lowS: goal - 5, highS: goal + 5 } : null,
+    hrZone: 4,
+    description: `1 mi easy warm-up · 3 mi at HM goal pace · 1 mi easy cool-down · last race-pace check, leaves you fresh for race day`,
+    isQuality: true, isLong: false, appendStrides: false,
+  };
+}
+
 export function shakeout(): RunPrescription {
   return {
     type: 'shakeout', label: 'Race-eve shakeout',
@@ -308,7 +362,23 @@ function postLongRecoveryDow(prefs: DayPrefs): number {
   return (prefs.longRunDow + 1) % 7;
 }
 
-export function defaultByDow(phase: Phase, dow: number, prefs: DayPrefs): DefaultByDow {
+/** Race distance categorizer for phase templates. HM-distance races
+ *  (≤ 16mi) get the HM-specific doctrine in PEAK; full marathons / ultras
+ *  get marathon-specific work. Used by defaultByDow to branch PEAK
+ *  prescriptions on what the runner is actually training for. */
+function isHmDistance(raceDistanceMi: number | null | undefined): boolean {
+  return raceDistanceMi != null && raceDistanceMi > 0 && raceDistanceMi <= 16;
+}
+
+export function defaultByDow(
+  phase: Phase,
+  dow: number,
+  prefs: DayPrefs,
+  /** A-race distance in miles. Lets PEAK branch HM vs marathon
+   *  doctrine. Undefined → fall back to marathon-specific (legacy
+   *  behavior, never wrong for marathon training but coarse for HM). */
+  raceDistanceMi?: number | null,
+): DefaultByDow {
   const longDow = prefs.longRunDow;
   const recoveryDow = postLongRecoveryDow(prefs);
   const restDow = prefs.restDow;
@@ -334,8 +404,18 @@ export function defaultByDow(phase: Phase, dow: number, prefs: DayPrefs): Defaul
     return { primary: 'general_aerobic' };
   }
   if (phase === 'PEAK') {
-    if (dow === longDow) return { primary: 'long_mp_block' };
-    if (dow === primaryQualityDow) return { primary: 'marathon_specific' };
+    // HM-distance A-race → HM-specific doctrine (Pfitz HM Plan §5):
+    //   long day → long run with HMP block (hm_specific_tune)
+    //   primary quality → continuous HMP block (hm_specific_continuous)
+    // Marathon / ultra → marathon-specific (legacy):
+    //   long day → long_mp_block, primary → marathon_specific
+    if (isHmDistance(raceDistanceMi)) {
+      if (dow === longDow) return { primary: 'hm_specific_tune' };
+      if (dow === primaryQualityDow) return { primary: 'hm_specific_continuous' };
+    } else {
+      if (dow === longDow) return { primary: 'long_mp_block' };
+      if (dow === primaryQualityDow) return { primary: 'marathon_specific' };
+    }
     if (dow === secondaryQualityDow) return { primary: 'medium_long' };
     if (dow === recoveryDow) return { primary: 'recovery' };
     if (dow === restDow) return { primary: 'rest' };

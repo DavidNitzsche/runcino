@@ -1020,6 +1020,35 @@ async function runDataMigrations(client: PoolClient): Promise<void> {
     // (since data_migrations name wasn't recorded).
     console.error('[data-migrations] 2026-05-19 migration failed:', e);
   }
+
+  // ── 2026-05-23 · Sombrero → training-run ──
+  //
+  // David's note (2026-05-23): "Sombrero was 1 week after Big Sur, a
+  // 1-year anniversary celebration run, NOT a race effort." Under C
+  // priority it gets 0.4× weight in the VDOT aggregate, which is too
+  // generous for what was effectively a training run. training-run
+  // priority is 0.2× weight (compute-vdot.ts EFFORT_WEIGHTS), so it
+  // stays in the contributors list with appropriate signal strength
+  // but stops pulling current-fitness down toward a celebration pace.
+  const SOM_MIG = '2026-05-23-sombrero-training-run';
+  const somDone = await client.query<{ name: string }>(
+    `SELECT name FROM data_migrations WHERE name = $1 LIMIT 1`, [SOM_MIG],
+  );
+  if (somDone.rows.length === 0) {
+    try {
+      await client.query(
+        `UPDATE races
+            SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{priority}', '"training-run"'::jsonb)
+          WHERE slug = 'sombrero-half'`,
+      );
+      await client.query(
+        `INSERT INTO data_migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
+        [SOM_MIG],
+      );
+    } catch (e) {
+      console.error('[data-migrations] sombrero re-tag failed:', e);
+    }
+  }
 }
 
 /**

@@ -88,6 +88,21 @@ export function citationsForWorkoutType(type: string): Citation[] {
           'research', '04',
         ),
       ];
+    case 'hm_specific_continuous':
+    case 'hm_specific_tune':
+    case 'hm_race_rehearsal':
+      return [
+        cite(
+          '§5 HM-specific peak workouts',
+          'Pfitz HM plan: 6-8 mi continuous @ HMP in PEAK; 3-5 mi HMP block inside the long run; 3 mi @ HMP race-week rehearsal. Grooves goal pace specifically, not generic threshold.',
+          'research', '04',
+        ),
+        cite(
+          '§3 HMP vs T pace convergence',
+          'For VDOT 50+, HM race pace and Daniels T pace converge within a few seconds per mile. HM-specific work anchors on goal pace, T-pace zone label.',
+          'research', '01',
+        ),
+      ];
     case 'tempo_continuous':
     case 'threshold':
     case 'threshold_intervals':

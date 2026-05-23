@@ -168,6 +168,27 @@ export function composeVoiceLead(ctx: VoiceLeadCtx): string {
         `Schedule these 3–5 weeks before race day, not closer, they're high training stress and you need time to absorb.`,
       ].join(' ');
 
+    case 'hm_specific_continuous':
+      return [
+        `Continuous half-marathon-pace block, ${dist || '8–10 miles'} with the middle 5–8 miles at HM goal pace.`,
+        `The most race-like session of the HM build. Teaches you what goal pace actually feels like for an extended block, and proves the legs and lungs can hold it.`,
+        `Hit the band, don't beat it. The value is in time at pace, not in how fast you went.`,
+      ].join(' ');
+
+    case 'hm_specific_tune':
+      return [
+        `Long run with a half-marathon-pace block in the middle, ${dist || '12–14 miles'} total.`,
+        `Bridges general aerobic work and race-specific work in one session. The first miles bank aerobic load, then a 3–5 mile HM-pace block rehearses race rhythm on legs that are already warm.`,
+        `Don't push past the band on the HMP block. The point is pace discipline, not extra effort.`,
+      ].join(' ');
+
+    case 'hm_race_rehearsal':
+      return [
+        `Race-week tune-up, 5 miles total with 3 miles at HM goal pace.`,
+        `Last race-pace check before race day. Grooves the pace into the neuromuscular system without draining you.`,
+        `If goal pace feels uncomfortable today, do not push, race-day adrenaline + freshness adds back the missing percent. Trust the work, hold the band.`,
+      ].join(' ');
+
     case 'long_fast_finish':
       return [
         `Long run with a fast finish, ${dist || '16–18 miles'} total, last 2–4 miles closer to half-marathon pace.`,

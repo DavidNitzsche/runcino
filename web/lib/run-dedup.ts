@@ -27,6 +27,20 @@ export interface CanonicalRun {
   type?: string;
   /** Provenance tag stored on the row ('apple_health', 'watch', …). */
   source: string;
+  /** Planned workout type from the plan (e.g. 'threshold_intervals',
+   *  'long_steady', 'sub_threshold'). Set by ingest paths that know
+   *  which planned workout the run satisfied — the watch knows because
+   *  WatchConnectivity hands it the WatchWorkout object before the
+   *  session starts. Without this, the adaptive-VDOT evaluator falls
+   *  back to pace-band heuristics — strictly correct but coarser. */
+  plannedWorkoutType?: string;
+  /** Planned target pace (s/mi) for this workout, when known. Lets
+   *  Signal 1 measure faster/slower against the actual prescription
+   *  instead of the generic T-pace center. */
+  plannedPaceS?: number | null;
+  /** Planned workout label ("Threshold · Cruise Intervals") for the
+   *  observation row in the admin signal view. */
+  plannedLabel?: string;
 }
 
 /** The user's IANA timezone (users.timezone), or null. Looked up once per
@@ -115,7 +129,7 @@ export async function upsertCanonicalRun(
   const zone = resolveTz(tz ?? (await userTimezone(userId)));
   const date = dayInTz(run.startISO, zone) || run.startISO.slice(0, 10);
   const durationS = Math.round(run.durationSec);
-  const data = {
+  const data: Record<string, unknown> = {
     date,
     startLocal: run.startISO,
     name: run.name ?? 'Run',
@@ -128,6 +142,13 @@ export async function upsertCanonicalRun(
     type: run.type ?? 'easy',
     source: run.source,
   };
+  // Optional plan-linkage fields — only written when the ingest path
+  // knows them. The adaptive-VDOT evaluator (lib/adaptive-vdot-signals)
+  // reads these to anchor the observation against the actual planned
+  // prescription instead of falling back to generic pace bands.
+  if (run.plannedWorkoutType) data.plannedWorkoutType = run.plannedWorkoutType;
+  if (run.plannedPaceS != null && run.plannedPaceS > 0) data.plannedPaceS = Math.round(run.plannedPaceS);
+  if (run.plannedLabel) data.plannedLabel = run.plannedLabel;
   await query(
     `INSERT INTO strava_activities (id, user_uuid, data)
        VALUES ($1, $2, $3)

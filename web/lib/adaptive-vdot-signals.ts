@@ -122,6 +122,15 @@ export interface ActivityData {
   maxHr?: number;
   workoutType?: number | null;
   startLatLng?: [number, number] | null;
+  /** Coarse workout class set at ingest time by upsertCanonicalRun
+   *  from the watch slug ("2026-05-20-threshold" → "threshold"). Used
+   *  as a fallback for plannedWorkoutType when the dedicated field
+   *  isn't populated (e.g. Strava-only sync, no watch). */
+  type?: string;
+  /** Provenance tag ('watch' | 'apple_health' | 'strava'). The signal
+   *  evaluator uses this to scope source-specific filters (e.g.
+   *  Strava workoutType=1 race exclude only applies to Strava rows). */
+  source?: string;
   // matched-workout fields if available from plan-match
   plannedWorkoutType?: string;
   plannedPaceS?: number;
@@ -213,10 +222,14 @@ export function evaluateActivities(
     const actualPaceS = distMi > 0 ? Math.round(timeS / distMi) : null;
     if (!actualPaceS || !tCenterS) continue;
 
-    // Identify as "threshold-like", either matched as planned T workout
-    // OR the actual pace sits in the broad T band (±25 s/mi of T center)
-    // AND HR sat in Z4 territory.
-    const isPlannedT = d.plannedWorkoutType === 'threshold' || d.plannedWorkoutType === 'sub_threshold' || d.plannedWorkoutType === 'threshold_intervals';
+    // Identify as "threshold-like", either:
+    //   - matched as planned T workout (via plan-match, when wired), OR
+    //   - the coarse `type` field set at watch-ingest from the workout
+    //     slug ("2026-05-20-threshold" → type='threshold'), OR
+    //   - the actual pace sits in the broad T band (±25 s/mi of T center)
+    const T_TYPES = new Set(['threshold', 'sub_threshold', 'threshold_intervals', 'tempo']);
+    const isPlannedT = (d.plannedWorkoutType && T_TYPES.has(d.plannedWorkoutType))
+                    || (d.type && T_TYPES.has(d.type));
     const paceInTBand = Math.abs(actualPaceS - tCenterS) <= 25;
     if (!isPlannedT && !paceInTBand) continue;
 
@@ -264,7 +277,7 @@ export function evaluateActivities(
     observations.push({
       date: d.date || '',
       workoutLabel: d.plannedLabel || d.name || 'Threshold-pace run',
-      workoutType: d.plannedWorkoutType || 'threshold',
+      workoutType: d.plannedWorkoutType || d.type || 'threshold',
       prescribedPaceS,
       actualPaceS,
       actualAvgHr: avgHr || null,
@@ -363,6 +376,15 @@ export async function computeThresholdSignal(
   const todayIso = today.toISOString().slice(0, 10);
   const cutoffIso = new Date(today.getTime() - LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
 
+  // Pull all candidate runs in the window — let the evaluator decide
+  // which qualify. The previous SQL filter `avgHr > 0` was silently
+  // dropping HealthKit-sourced runs without HR (or runs where the watch
+  // didn't sync HR through to the JSON); the evaluator already handles
+  // missing HR via HR_MISSING_FACTOR (0.6× weight), so the hard filter
+  // here was over-rejecting valid observations. The Strava-specific
+  // workoutType filter only applies to Strava-source rows (HealthKit
+  // rows use source='apple_health' or 'watch' and don't carry the
+  // workoutType=1 race enum).
   const rows = await query<ActivityRow>(
     `SELECT id::text AS id, data
        FROM strava_activities
@@ -370,8 +392,10 @@ export async function computeThresholdSignal(
         AND (data->>'date') >= $2
         AND (data->>'distanceMi')::NUMERIC BETWEEN 3 AND 15
         AND (data->>'movingTimeS')::NUMERIC > 0
-        AND (data->>'avgHr')::NUMERIC > 0
-        AND COALESCE((data->>'workoutType')::INTEGER, 0) != 1
+        AND NOT (
+          COALESCE(data->>'source', 'strava') = 'strava'
+          AND COALESCE((data->>'workoutType')::INTEGER, 0) = 1
+        )
       ORDER BY (data->>'date') DESC
       LIMIT 50`,
     [userId, cutoffIso],

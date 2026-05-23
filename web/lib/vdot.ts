@@ -197,6 +197,14 @@ function zoneForWorkout(type: RunWorkoutType): DanielsPace | null {
     case 'sub_threshold':       return 'T';   // 10-15s slower than T applied at description level
     case 'vo2':                 return 'I';
     case 'marathon_specific':   return 'M';
+    // HM-specific peak workouts anchor on HM goal pace ≈ Daniels T
+    // for trained runners (Research/01 §3 — T-pace and HM race pace
+    // converge near VDOT 50+). Using T zone gives the right
+    // physiological label; the actual pace target comes from
+    // goalPaceSPerMi in the workout builder, not the zone band.
+    case 'hm_specific_continuous': return 'T';
+    case 'hm_specific_tune':       return 'T';
+    case 'hm_race_rehearsal':      return 'T';
     case 'strides_appended':    return 'R';
     case 'shakeout':            return 'E';
     case 'race':                return null;  // pace IS race pace; no band

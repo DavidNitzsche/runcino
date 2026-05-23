@@ -95,6 +95,15 @@ export function classifyWorkoutString(rawInput: string): RunWorkoutType | null {
   if (/^race\b/i.test(s) || /\bRACE\b/.test(s)) return 'race';
   if (/shakeout/i.test(lower)) return 'shakeout';
 
+  // HM-specific peak workouts — these MUST match before the generic
+  // long_mp_block / threshold patterns below, otherwise "@hmp" gets
+  // flattened into long_mp_block (marathon-shape) or threshold and
+  // the HM-doctrine prescription is lost.
+  if (/race\s*rehearsal|hm.*rehearsal|rehearsal.*hmp/i.test(s)) return 'hm_race_rehearsal';
+  if (/\d+\s*mi\s*lr\s*w\/.*(middle|last)\s*\d+\s*@\s*hmp/i.test(s)) return 'hm_specific_tune';
+  if (/long.*\d+\s*@\s*hmp|\d+\s*@\s*hmp.*long/i.test(s)) return 'hm_specific_tune';
+  if (/\d+\s*mi\s*continuous\s*@\s*hmp|@\s*hmp\s*continuous/i.test(s)) return 'hm_specific_continuous';
+
   // Long-run variants, order matters; most-specific first.
   // RunWorkoutType doesn't have a separate fast_finish or
   // dress_rehearsal; both classify as long_mp_block (template detail

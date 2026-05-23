@@ -291,6 +291,25 @@ async function upsertWatchRunActivity(userId: string, c: WatchRunFields, tz?: st
     : /race/.test(slug) ? 'race'
     : 'easy';
 
+  // Map the slug to a coach RunWorkoutType so the adaptive-VDOT
+  // evaluator can anchor against the actual planned prescription.
+  // Granular mapping (vs the coarse `type` above): the watch slug
+  // already carries the engine's classification.
+  const plannedWorkoutType: string | undefined =
+      /threshold_intervals|cruise/.test(slug) ? 'threshold_intervals'
+    : /sub.?threshold/.test(slug)             ? 'sub_threshold'
+    : /threshold|tempo/.test(slug)            ? 'threshold'
+    : /interval|vo2/.test(slug)               ? 'vo2'
+    : /long.?mp|mp.?block/.test(slug)         ? 'long_mp_block'
+    : /long.?prog/.test(slug)                 ? 'long_progression'
+    : /long/.test(slug)                       ? 'long_steady'
+    : /recovery/.test(slug)                   ? 'recovery'
+    : /shakeout/.test(slug)                   ? 'shakeout'
+    : /stride/.test(slug)                     ? 'strides_appended'
+    : /race/.test(slug)                       ? 'race'
+    : /easy|general/.test(slug)               ? 'general_aerobic'
+    : undefined;
+
   await upsertCanonicalRun(userId, {
     startISO: new Date(c.startedAt).toISOString(),
     distanceMi,
@@ -300,6 +319,7 @@ async function upsertWatchRunActivity(userId: string, c: WatchRunFields, tz?: st
     name: 'Watch run',
     type,
     source: 'watch',
+    plannedWorkoutType,
   }, tz);
 }
 

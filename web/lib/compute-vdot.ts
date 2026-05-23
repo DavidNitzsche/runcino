@@ -190,23 +190,39 @@ interface GoalRaceInfo { distanceKm: number; tier: RaceTier; name: string; dateI
  *  only when the races table is empty. */
 export async function resolveGoalRace(userId: string | null | undefined, today: Date): Promise<GoalRaceInfo | null> {
   const todayIso = today.toISOString().slice(0, 10);
-  // Nearest upcoming
-  const upcoming = await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
-    `SELECT meta FROM races
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND meta->>'date' >= $2
-      ORDER BY meta->>'date' ASC
-      LIMIT 1`,
-    [userId ?? null, todayIso],
-  );
-  const pick = upcoming[0] ?? (await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
-    // Fallback: most recently saved race
-    `SELECT meta FROM races
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-      ORDER BY meta->>'date' DESC
-      LIMIT 1`,
-    [userId ?? null],
-  ))[0];
+  // User-binding parity (see computeAggregateVdot comment for the
+  // full rationale): undefined userId → see ALL races, matching
+  // listRacesDB's anonymous-demo branch. Authenticated → user's
+  // races + legacy NULL rows.
+  const upcoming = userId
+    ? await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
+        `SELECT meta FROM races
+          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+            AND meta->>'date' >= $2
+          ORDER BY meta->>'date' ASC
+          LIMIT 1`,
+        [userId, todayIso],
+      )
+    : await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
+        `SELECT meta FROM races
+          WHERE meta->>'date' >= $1
+          ORDER BY meta->>'date' ASC
+          LIMIT 1`,
+        [todayIso],
+      );
+  const pick = upcoming[0] ?? (userId
+    ? await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
+        `SELECT meta FROM races
+          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          ORDER BY meta->>'date' DESC
+          LIMIT 1`,
+        [userId],
+      )
+    : await query<{ meta: { name?: string; date?: string; distanceMi?: number; distance_mi?: number } }>(
+        `SELECT meta FROM races
+          ORDER BY meta->>'date' DESC
+          LIMIT 1`,
+      ))[0];
   if (!pick) return null;
   // Support both meta.distanceMi (TS field) and meta.distance_mi (snake_case fallback)
   const distMi = Number(pick.meta?.distanceMi ?? pick.meta?.distance_mi ?? 0);
@@ -421,27 +437,56 @@ export async function computeAggregateVdot(userId?: string | null): Promise<Aggr
   // HM + Sombrero) and multiple marathons (LA + Big Sur) each
   // contribute as independent signals. The cycle-aware weighting
   // handles ordering, fastest doesn't have to be the only one.
-  const rows = await query<RaceRow>(
-    `SELECT
-        slug,
-        meta->>'date' AS date,
-        COALESCE((meta->>'distanceMi')::NUMERIC, (meta->>'distance_mi')::NUMERIC) AS distance_mi,
-        (actual_result->>'finishS')::NUMERIC AS finish_s,
-        actual_result->>'stravaActivityId' AS activity_id,
-        actual_result->>'source' AS result_source,
-        meta->>'name' AS name,
-        meta->>'priority' AS priority
-       FROM races
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND actual_result IS NOT NULL
-        AND (actual_result->>'finishS')::NUMERIC > 0
-        AND (meta->>'date') >= $2
-      ORDER BY (meta->>'date') DESC
-      LIMIT 50`,
-    // Bind null (not the legacy string 'me') so the user_uuid IS NULL
-    // branch reads the legacy demo races. 'me' would fail the uuid cast.
-    [userId ?? null, yearAgoIso],
-  );
+  // User-binding parity with race-store.listRacesDB:
+  //   - userId provided → races where user_uuid matches OR legacy NULL
+  //     (so authenticated users see their races + un-migrated demo rows)
+  //   - userId undefined → ALL races, no filter (anonymous demo path)
+  // The previous version always applied (user_uuid = $1 OR IS NULL),
+  // which for an undefined userId silently filtered to NULL rows only —
+  // dropping any races stored under a real UUID. listRacesDB has no
+  // such filter when userId is undefined, so state.races would render
+  // populated while state.aggregateVdotValue silently went null.
+  // Symptom on the demo path: top-level vdot.value fell back to the
+  // single-best-race picker (Disney HM 48.1) while aggregateVdotValue
+  // was undefined. Now both queries see the same row set.
+  const rows = userId
+    ? await query<RaceRow>(
+        `SELECT
+            slug,
+            meta->>'date' AS date,
+            COALESCE((meta->>'distanceMi')::NUMERIC, (meta->>'distance_mi')::NUMERIC) AS distance_mi,
+            (actual_result->>'finishS')::NUMERIC AS finish_s,
+            actual_result->>'stravaActivityId' AS activity_id,
+            actual_result->>'source' AS result_source,
+            meta->>'name' AS name,
+            meta->>'priority' AS priority
+           FROM races
+          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+            AND actual_result IS NOT NULL
+            AND (actual_result->>'finishS')::NUMERIC > 0
+            AND (meta->>'date') >= $2
+          ORDER BY (meta->>'date') DESC
+          LIMIT 50`,
+        [userId, yearAgoIso],
+      )
+    : await query<RaceRow>(
+        `SELECT
+            slug,
+            meta->>'date' AS date,
+            COALESCE((meta->>'distanceMi')::NUMERIC, (meta->>'distance_mi')::NUMERIC) AS distance_mi,
+            (actual_result->>'finishS')::NUMERIC AS finish_s,
+            actual_result->>'stravaActivityId' AS activity_id,
+            actual_result->>'source' AS result_source,
+            meta->>'name' AS name,
+            meta->>'priority' AS priority
+           FROM races
+          WHERE actual_result IS NOT NULL
+            AND (actual_result->>'finishS')::NUMERIC > 0
+            AND (meta->>'date') >= $1
+          ORDER BY (meta->>'date') DESC
+          LIMIT 50`,
+        [yearAgoIso],
+      );
   if (rows.length === 0) return null;
 
   const bests: RaceBest[] = [];

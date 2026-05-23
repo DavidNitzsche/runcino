@@ -31,7 +31,9 @@ import {
   type RunWorkoutType, type RunPrescription,
   defaultByDow, recovery, generalAerobic, easyWithStrides, mediumLong,
   longSteady, longProgression, longMpBlock, thresholdContinuous,
-  thresholdIntervals, subThreshold, vo2, marathonSpecific, shakeout, rest, race,
+  thresholdIntervals, subThreshold, vo2, marathonSpecific,
+  hmSpecificContinuous, hmSpecificTune, hmRaceRehearsal,
+  shakeout, rest, race,
 } from './coach-workouts';
 import {
   prescribeStrength, strengthWeekContext, type StrengthPrescription,
@@ -519,7 +521,12 @@ function pickRun(state: CoachState, phase: Phase, dow: number): RunPrescription 
   // recognize, we default to the safer phase+dow lookup). The picker
   // reads the runner's configured weekly cadence (state.prefs) so the
   // long-run / quality / rest days land on the user's chosen weekdays.
-  const def = defaultByDow(phase, dow, state.prefs);
+  // Pass A-race distance so PEAK branches HM-doctrine vs marathon-
+  // doctrine (HM races get hm_specific_*, marathons get
+  // long_mp_block / marathon_specific). Undefined → marathon default,
+  // safe for unsuped state where we don't know the race.
+  const raceDistanceMi = state.races.nextA?.distanceMi ?? null;
+  const def = defaultByDow(phase, dow, state.prefs, raceDistanceMi);
   return buildPrescriptionFor(def.primary, state, phase);
 }
 
@@ -645,6 +652,9 @@ function buildPrescriptionFor(type: RunWorkoutType, state: CoachState, phase: Ph
     case 'sub_threshold':      return subThreshold(state);
     case 'vo2':                return vo2(state);
     case 'marathon_specific':  return marathonSpecific(state);
+    case 'hm_specific_continuous': return hmSpecificContinuous(Math.min(10, Math.max(8, longTarget * 0.55)), state);
+    case 'hm_specific_tune':       return hmSpecificTune(longTarget, state);
+    case 'hm_race_rehearsal':      return hmRaceRehearsal(state);
     case 'strides_appended':   return easyWithStrides(baseEasy, state);
     case 'shakeout':           return shakeout();
     case 'race':               return state.races.nextA ? race(state.races.nextA.distanceMi, state.races.nextA.name) : rest('No race scheduled.');
