@@ -19,7 +19,7 @@ import { getCurrentPlan } from '../../../coach/plan-lifecycle';
 import { resolvePlanUserId } from '../../../lib/plan-user';
 import { gatherCoachState } from '../../../lib/coach-state';
 import { getCurrentUser } from '../../../lib/auth';
-import { getCompletedMileageByDate } from '../../../lib/completed-runs';
+import { getCompletedMileageByDate, getLongestRunByDate } from '../../../lib/completed-runs';
 import { listRecentSkips } from '../../../lib/skip-store';
 import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../../../lib/vdot';
 import type { RunWorkoutType } from '../../../lib/coach-workouts';
@@ -191,7 +191,10 @@ export async function GET(req: Request) {
     // Real outcomes across the whole window so the grid can mark every
     // week done/skipped/missed (not just the current week). Completion is
     // keyed to the user's UUID (strava_activities); skips to the plan user.
-    const completed = await getCompletedMileageByDate(userId ?? null, startISO, endISO).catch(() => new Map<string, number>());
+    // completedMi on each day drives DONE/SHORT badging on the iPhone Plan
+    // list — use LONGEST single run (not sum-of-day), so a 2.4-mi short
+    // threshold + a separate easy mustn't false-DONE the threshold.
+    const longest = await getLongestRunByDate(userId ?? null, startISO, endISO).catch(() => new Map<string, number>());
     const skipSet = new Set(
       (await listRecentSkips({ userId: await resolvePlanUserId(), sinceISO: startISO, untilISO: endISO }).catch(() => [])).map((s) => s.dateISO),
     );
@@ -203,7 +206,7 @@ export async function GET(req: Request) {
     while (cursor <= endDate) {
       const dateISO = cursor.toISOString().slice(0, 10);
       const base = workoutByDate.get(dateISO) ?? restDay(dateISO, today);
-      days.push({ ...base, completedMi: completed.get(dateISO) ?? null, skipped: skipSet.has(dateISO) });
+      days.push({ ...base, completedMi: longest.get(dateISO) ?? null, skipped: skipSet.has(dateISO) });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 

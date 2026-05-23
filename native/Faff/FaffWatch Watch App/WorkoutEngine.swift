@@ -62,6 +62,12 @@ final class WorkoutEngine: ObservableObject {
     /// the signed delta in s/mi. Updated from the tracker's GPS pace.
     @Published private(set) var paceZone: PaceZone = .onTarget
     @Published private(set) var paceDeltaSPerMi: Int = 0
+    /// True when live HR has crossed the easy ceiling for this workout
+    /// (`workout.hrCeilingBpm`). The Easy face snaps the guardrail row to a
+    /// red HR and holds it until HR drops back below the ceiling — so the
+    /// "this isn't easy anymore" cue can't be swiped past like a banner.
+    /// Always false on workouts that don't ship a ceiling.
+    @Published private(set) var hrOverCeiling: Bool = false
 
     let workout: WatchWorkout
 
@@ -269,6 +275,8 @@ final class WorkoutEngine: ObservableObject {
         results = []
         didFireAlmostDone = false
         firedFuelIndices.removeAll()
+        firedGels.removeAll()
+        hrOverCeiling = false
         planComplete = false
         workoutStart = .now
         phaseStart = .now
@@ -403,6 +411,17 @@ final class WorkoutEngine: ObservableObject {
         phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
         totalElapsedSec = bankedSec + phaseElapsedSec
 
+        // HR-ceiling alert (easy/Z2/heat). When the plan ships a ceiling and
+        // live HR exceeds it, flip the flag; the Easy face owns the visual
+        // snap-to-red and hold-until-recovered behaviour. Cleared as soon as
+        // HR drops back below the ceiling so the alert is honest, not sticky.
+        if let ceiling = workout.hrCeilingBpm, ceiling > 0 {
+            let hr = tracker?.heartRate ?? 0
+            hrOverCeiling = hr > ceiling
+        } else if hrOverCeiling {
+            hrOverCeiling = false
+        }
+
         // Fuel cues — fire a notification haptic + a full-screen "Fuel now"
         // flip when elapsed crosses each gel mark from the prescribed plan
         // (lib/training-fueling.ts on the backend). Idempotent per index, so
@@ -450,12 +469,18 @@ final class WorkoutEngine: ObservableObject {
             flash(.headsUp(title: "Almost there", sub: sub), for: 2.6)
         }
 
-        // Gel cue (race) — fire once as the runner reaches each marker.
-        if isRace, let gels = workout.gelsMi {
+        // Distance-anchored gel cue — fire once as the runner reaches each
+        // marker. Used by race day AND by any TRAINING workout the backend
+        // ships with distance-anchored gel marks (e.g. a long-run rehearsal
+        // with gels at mile 5/10/15). Time-anchored gel marks live in
+        // workout.fueling.atMins[] and fire in their own block above.
+        if let gels = workout.gelsMi, !gels.isEmpty {
+            let total = gels.count
             for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
                 firedGels.insert(i)
                 Haptics.almostDone()
-                flash(.fuel(title: "Gel \(i + 1)", sub: "+ water"), for: 3)
+                let title = isRace ? "Gel \(i + 1)" : "Fuel · \(i + 1) of \(total)"
+                flash(.fuel(title: title, sub: "+ water"), for: 3)
             }
         }
 

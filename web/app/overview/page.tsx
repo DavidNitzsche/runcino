@@ -26,7 +26,7 @@ import {
   type PlanWeek,
 } from '@/lib/synthetic-plan';
 import { getRealPlanWeeks } from '@/lib/plan-weeks';
-import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
+import { getCompletedMileageByDate, getLongestRunByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { listRecentSkips } from '@/lib/skip-store';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { resolveFitness } from '@/lib/fitness-resolver';
@@ -131,12 +131,14 @@ export default async function OverviewPage() {
   const phaseWeeks = weeks.filter((w) => w.phase === currentWeek.phase);
   const phaseWeekIdx = phaseWeeks.findIndex((w) => w === currentWeek) + 1;
 
-  // Per-date mileage map so a workout is only "done" if the actual
-  // activity covered at least 60% of the planned distance, a 3-mi
-  // shake-out doesn't complete a 10-mi long-run day.
+  // Per-date mileage map (SUM of all runs that day) — drives the WEEKLY
+  // MILEAGE bar. And the per-date LONGEST-single-run map — drives the
+  // workout-completion gate so a 2.4-mi short threshold + a separate
+  // 5-mi easy doesn't false-DONE the threshold.
   const completedMileage = await getCompletedMileageByDate(user.id, currentWeek.startDate, today);
+  const longestRunByDate = await getLongestRunByDate(user.id, currentWeek.startDate, today);
   const isComplete = (dateISO: string, plannedMi: number) =>
-    isWorkoutComplete(dateISO, plannedMi, completedMileage);
+    isWorkoutComplete(dateISO, plannedMi, longestRunByDate);
 
   // Skipped workouts this week (the runner explicitly skipped), so the
   // hero + week strip can mark them, not show them as unaddressed.
@@ -642,6 +644,7 @@ export default async function OverviewPage() {
             days={currentWeek.days as WorkoutDay[]}
             today={today}
             completedMileage={Object.fromEntries(completedMileage)}
+            longestRunByDate={Object.fromEntries(longestRunByDate)}
             skippedDates={skippedDates}
           />
         </div>

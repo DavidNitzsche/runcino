@@ -201,14 +201,18 @@ export function WeekStripCells({
   days,
   today,
   completedMileage,
+  longestRunByDate,
   skippedDates = [],
 }: {
   days: WorkoutDay[];
   today: string;
-  /** Map YYYY-MM-DD → actual miles run that day. A day is "done" only
-   *  when actual is ≥ 60% of planned. Serialized from a Map at the
-   *  server-component boundary. */
+  /** Map YYYY-MM-DD → SUM of miles run that day. Displayed; not the gate. */
   completedMileage: Record<string, number>;
+  /** Map YYYY-MM-DD → LONGEST single run that day. Drives the DONE/SHORT
+   *  gate so a 2.4-mi short threshold + a separate 5-mi easy later in
+   *  the day doesn't false-DONE the threshold. Falls back to
+   *  `completedMileage` if absent (older callers). */
+  longestRunByDate?: Record<string, number>;
   /** Dates the runner explicitly skipped. */
   skippedDates?: string[];
 }) {
@@ -219,18 +223,14 @@ export function WeekStripCells({
     <div className="day-grid">
       {days.map((d) => {
         const isToday = d.date === today;
-        const actual = completedMileage[d.date] ?? 0;
-        // Bug fix: TODAY counts as done too when the run is logged.
-        // Previously `!isToday && d.date < today` excluded today, so a
-        // completed run never showed ✓ on its own day, the runner
-        // had to wait until tomorrow for confirmation. Now: today
-        // shows DONE the moment actual ≥ 60% planned.
-        // "Done" = actual met the ≥60% completion bar. "Short" = something was
-        // logged but came up short — distinct from "done" (use amber, not the
-        // green DONE the modal already says BELOW PLAN about). Anything past
-        // today with no run and no explicit skip = missed.
-        const isDone    = d.date <= today && !d.isRest && d.distanceMi > 0 && actual >= d.distanceMi * 0.6;
-        const isShort   = !isDone   && d.date <= today && !d.isRest && d.distanceMi > 0 && actual > 0;
+        const dayMi    = completedMileage[d.date] ?? 0;        // SUM (display)
+        const longest  = longestRunByDate?.[d.date] ?? dayMi;  // MAX (gate)
+        // Done = the LONGEST single run on this day met the workout's 60%
+        // bar. Sum-of-day would let a separate easy run mark a short
+        // quality workout as DONE — wrong. Short = something was logged
+        // but no single run met the bar.
+        const isDone    = d.date <= today && !d.isRest && d.distanceMi > 0 && longest >= d.distanceMi * 0.6;
+        const isShort   = !isDone   && d.date <= today && !d.isRest && d.distanceMi > 0 && dayMi > 0;
         const isSkipped = !isDone   && !isShort && !d.isRest && skipSet.has(d.date);
         const isMissed  = !isDone   && !isShort && !isSkipped && !d.isRest && d.distanceMi > 0 && d.date < today;
         const dateNum = parseInt(d.date.slice(-2), 10);
@@ -250,7 +250,7 @@ export function WeekStripCells({
                 <div className="day-workout-name">{d.label}</div>
                 <div className="day-distance">{d.distanceMi}<small>mi</small></div>
                 {isDone    && <div className="day-status-done">DONE</div>}
-                {isShort   && <div className="day-status-short">SHORT · {actual.toFixed(1)}/{d.distanceMi} MI</div>}
+                {isShort   && <div className="day-status-short">SHORT · {longest.toFixed(1)}/{d.distanceMi} MI</div>}
                 {isSkipped && <div className="day-status-skipped">SKIPPED</div>}
                 {isMissed  && <div className="day-status-missed">MISSED</div>}
                 {d.hasStrength && !isDone && !isShort && !isSkipped && !isMissed && <span className="day-strength" title="Strength training">S</span>}

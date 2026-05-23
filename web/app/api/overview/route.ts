@@ -118,6 +118,11 @@ interface OverviewApiOk {
    *  planned), instead of assuming any past day is complete. Empty for
    *  anonymous reads. */
   completedByDate: Record<string, number>;
+  /** Per-day LONGEST single run (mi). Drives the workout-completion gate
+   *  on the iPhone so a 2.4-mi short threshold + a separate easy run later
+   *  in the day doesn't false-DONE the threshold. The weekly mileage bar
+   *  still uses `completedByDate` (sum). */
+  longestByDate: Record<string, number>;
   /** Dates the runner deliberately SKIPPED, distinct from "missed/not
    *  logged" so clients can mark them differently. */
   skippedDates: string[];
@@ -466,14 +471,19 @@ export async function GET(req: Request): Promise<Response> {
     // binds null → reads the legacy 'me' activities, so past days that
     // were actually run show as DONE (green) instead of "not logged".
     const completedByDate: Record<string, number> = {};
+    const longestByDate: Record<string, number> = {};
     try {
       if (planWeekWorkouts && planWeekWorkouts.length > 0) {
         const dates = planWeekWorkouts.map((w) => w.dateISO).filter(Boolean).sort();
         const from = dates[0];
         const to = dates[dates.length - 1];
         if (from && to) {
-          const m = await getCompletedMileageByDate(userId ?? null, from, to);
+          const [m, longest] = await Promise.all([
+            getCompletedMileageByDate(userId ?? null, from, to),
+            getLongestRunByDate(userId ?? null, from, to),
+          ]);
           for (const [k, v] of m) completedByDate[k] = v;
+          for (const [k, v] of longest) longestByDate[k] = v;
         }
       }
     } catch { /* leave empty */ }
@@ -655,6 +665,7 @@ export async function GET(req: Request): Promise<Response> {
       profileName: profileRow?.full_name?.trim() || null,
       coachLine,
       completedByDate,
+      longestByDate,
       skippedDates,
       coachAdaptations,
       adaptationsLatestTs,

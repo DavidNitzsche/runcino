@@ -41,11 +41,12 @@ export async function getCompletedDates(userId: string, fromISO: string, toISO: 
 }
 
 /**
- * Stronger completion check: returns a Map from YYYY-MM-DD → total
- * miles actually logged that day. Pages use this to gate "DONE" not
- * just on "any activity exists" but on "an activity that's at least
- * 60% of the planned distance", so a 3-mi shake-out doesn't mark
- * a 10-mi long run complete.
+ * Per-day mileage rollup. Returns SUM (total miles ran that day) so the
+ * weekly mileage bar accumulates correctly even on a two-a-day. For
+ * checking whether the *workout* completed, use `getLongestRunByDate`
+ * below — a 2.4-mi short threshold + a 5-mi easy later in the day must
+ * not falsely mark the threshold workout DONE just because the day
+ * total happens to clear 60% of the planned distance.
  */
 export async function getCompletedMileageByDate(userId: string | null | undefined, fromISO: string, toISO: string): Promise<Map<string, number>> {
   interface Row { day: string; mi: string }
@@ -90,22 +91,72 @@ export async function getCompletedMileageByDate(userId: string | null | undefine
 }
 
 /**
+ * Per-day longest-single-run rollup (mi). Drives the WORKOUT completion
+ * gate: a 2.4-mi short threshold + a 5-mi easy later that day must NOT
+ * mark the threshold "done" just because the day total clears 60% of
+ * planned. We compare PLANNED ↔ LONGEST single run instead of the sum,
+ * so the badge reflects whether THE WORKOUT got done — the weekly
+ * mileage bar still uses sum (above).
+ */
+export async function getLongestRunByDate(userId: string | null | undefined, fromISO: string, toISO: string): Promise<Map<string, number>> {
+  interface Row { day: string; mi: string }
+  const out = new Map<string, number>();
+  const rows = await query<Row>(
+    `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
+            MAX((data->>'distanceMi')::NUMERIC) AS mi
+       FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
+      GROUP BY day`,
+    [userId ?? null, fromISO, toISO],
+  );
+  for (const r of rows) {
+    if (r.day) out.set(r.day, Math.round(Number(r.mi) * 10) / 10);
+  }
+  // Also fold in watch completions per day (max, not sum).
+  if (userId) {
+    const wc = await query<Row>(
+      `SELECT LEFT(workout_id, 10) AS day, MAX(total_distance_mi) AS mi
+         FROM workout_completions
+        WHERE user_id = $1
+          AND status IN ('completed','partial')
+          AND total_distance_mi IS NOT NULL
+          AND workout_id ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+          AND LEFT(workout_id, 10) BETWEEN $2 AND $3
+        GROUP BY LEFT(workout_id, 10)`,
+      [userId, fromISO, toISO],
+    ).catch(() => [] as Row[]);
+    for (const r of wc) {
+      if (!r.day) continue;
+      const mi = Math.round(Number(r.mi) * 10) / 10;
+      out.set(r.day, Math.max(out.get(r.day) ?? 0, mi));
+    }
+  }
+  return out;
+}
+
+/**
  * Did the runner complete the planned workout on `dateISO`?
  *
- * Rule: actual total miles for that date must be ≥ 60% of plannedMi.
- * Rest days (plannedMi=0) are auto-true. Tolerance is loose on
- * purpose, a slightly-short long run is still a long run; we don't
- * want to penalize a runner for ending at 9.4 mi instead of 10.5.
+ * Rule: the LONGEST single run for that date must be ≥ 60% of plannedMi.
+ * A two-a-day where the second run was a short shake-out won't false-DONE
+ * a long run; a short quality session followed by a separate easy won't
+ * false-DONE the quality. Rest days (plannedMi=0) auto-false. Tolerance is
+ * loose on purpose — a 9.4-mi long run is still a long run, we don't want
+ * to penalize a runner for ending at 9.4 instead of 10.5.
+ *
+ * `completedMileageByDate` parameter name is retained for API compat, but
+ * callers should now pass the LONGEST-by-date map (getLongestRunByDate).
  */
 export function isWorkoutComplete(
   dateISO: string,
   plannedMi: number,
-  completedMileageByDate: Map<string, number>,
+  longestByDate: Map<string, number>,
 ): boolean {
   if (plannedMi <= 0) return false;
-  const actual = completedMileageByDate.get(dateISO) ?? 0;
-  if (actual <= 0) return false;
-  return actual >= plannedMi * 0.6;
+  const longest = longestByDate.get(dateISO) ?? 0;
+  if (longest <= 0) return false;
+  return longest >= plannedMi * 0.6;
 }
 
 export interface WeekStats {

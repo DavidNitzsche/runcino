@@ -24,7 +24,7 @@ import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import { getRealPlanWeeks } from '@/lib/plan-weeks';
-import { getCompletedMileageByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
+import { getCompletedMileageByDate, getLongestRunByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { WorkoutModalProvider, type WorkoutDay } from '@/app/overview/WorkoutModalIsland';
@@ -87,8 +87,11 @@ export default async function TrainingPage() {
   const planStart = weeks[0]?.startDate ?? today;
   const planEnd   = weeks[weeks.length - 1]?.endDate ?? today;
   const completedMileage = await getCompletedMileageByDate(user.id, planStart, planEnd);
+  // Completion gate uses LONGEST single run, not sum-of-day — a 2.4-mi
+  // short threshold + a separate easy mustn't false-DONE the threshold.
+  const longestByDate = await getLongestRunByDate(user.id, planStart, planEnd);
   const isComplete = (dateISO: string, plannedMi: number) =>
-    isWorkoutComplete(dateISO, plannedMi, completedMileage);
+    isWorkoutComplete(dateISO, plannedMi, longestByDate);
 
   // Map race dates → slug so race-day cells in the calendar can link
   // to their full race plan instead of opening the generic modal.

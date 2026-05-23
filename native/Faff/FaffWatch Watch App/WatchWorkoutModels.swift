@@ -136,11 +136,15 @@ struct WatchWorkout: Codable {
     // session is active; the runner sees what to take and when without
     // opening the phone. nil → no fuel needed for this workout.
     let fueling: WatchFueling?
+    // HR ceiling for easy / Z2 / heat-flag sessions. When live HR > this, the
+    // easy face's guardrail row flips red and holds until you drop back into
+    // zone — the alert can't be hidden behind a swipe. nil → no ceiling.
+    let hrCeilingBpm: Int?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
-        case isRace, goalSec, strategyLabel, gelsMi, fueling
+        case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -148,7 +152,7 @@ struct WatchWorkout: Codable {
          readinessScore: Int? = nil, readinessLabel: String? = nil,
          distanceMi: Double? = nil, paceLabel: String? = nil,
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
-         fueling: WatchFueling? = nil) {
+         fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -165,6 +169,7 @@ struct WatchWorkout: Codable {
         self.strategyLabel = strategyLabel
         self.gelsMi = gelsMi
         self.fueling = fueling
+        self.hrCeilingBpm = hrCeilingBpm
     }
 
     init(from decoder: Decoder) throws {
@@ -184,6 +189,7 @@ struct WatchWorkout: Codable {
         self.strategyLabel = try c.decodeIfPresent(String.self, forKey: .strategyLabel)
         self.gelsMi = try c.decodeIfPresent([Double].self, forKey: .gelsMi)
         self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
+        self.hrCeilingBpm = try c.decodeIfPresent(Int.self, forKey: .hrCeilingBpm)
         // Re-stamp each phase with its cursor index.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         self.phases = raw.enumerated().map { (i, p) in
