@@ -655,12 +655,12 @@ export default async function RacePlanPage({ params }: PageProps) {
                   {readiness ? (
                     <>
                       <div className="path-stat-value orange">{readiness.predictedFinishDisplay}</div>
-                      <div className="path-stat-sub">At current VDOT {readiness.currentVdot.toFixed(1)}</div>
+                      <div className="path-stat-sub">At current fitness</div>
                     </>
                   ) : (
                     <>
                       <div className="path-stat-value orange">-</div>
-                      <div className="path-stat-sub">No data, set your VDOT</div>
+                      <div className="path-stat-sub">Log a recent race to set your fitness baseline</div>
                     </>
                   )}
                 </div>

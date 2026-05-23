@@ -151,7 +151,7 @@ export function RaceProjectionChart({ projection }: Props) {
             fontStyle: 'italic',
           }}
         >
-          Goal is at or easier than current VDOT, plan line equals maintain line.
+          Goal is already at or easier than your current fitness — the plan line tracks the maintain line.
         </div>
       )}
     </div>

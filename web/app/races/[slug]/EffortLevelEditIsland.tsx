@@ -28,7 +28,7 @@ const OPTIONS: Array<{ value: EffortLevel; label: string; sub: string; weight: s
   { value: 'C',              label: 'C race',          sub: 'Minor race, partial effort',             weight: '0.4×' },
   { value: 'tune-up',        label: 'Tune-up',         sub: 'Pre-A-race sharpener',                   weight: '0.4×' },
   { value: 'training-run',   label: 'Training run',    sub: 'Ran the event, didn’t race it',     weight: '0.2×' },
-  { value: 'hilly-excluded', label: 'Hilly, excluded',sub: 'Course distorts VDOT, remove from agg', weight: '0.0×' },
+  { value: 'hilly-excluded', label: 'Hilly, excluded',sub: 'Course is too hilly to fairly compare — leave out of the fitness score', weight: '0.0×' },
 ];
 
 export function EffortLevelEditIsland({
@@ -128,7 +128,7 @@ export function EffortLevelEditIsland({
           marginBottom: 8,
         }}
       >
-        Effort level · how this race weights in aggregate VDOT
+        Effort level · how much this race counts toward your fitness score
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {OPTIONS.map((opt) => (

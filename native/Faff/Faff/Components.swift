@@ -31,7 +31,8 @@ enum FaffTab: String, CaseIterable {
     }
 }
 
-/// Bottom tab bar, 5 items, active = race orange (components.md §5).
+/// Bottom tab bar, 5 items. Active tab uses ink (orange is reserved for
+/// warnings only per the app-wide color principle — active-tab is wayfinding).
 struct FaffTabBar: View {
     let active: FaffTab
     var onSelect: (FaffTab) -> Void = { _ in }
@@ -43,7 +44,7 @@ struct FaffTabBar: View {
                         Image(systemName: t.icon(active: t == active)).font(.system(size: 18))
                         Text(t.title).font(Faff.F.inter(9.5, .semibold))
                     }
-                    .foregroundStyle(t == active ? Faff.C.race : Faff.C.textDim)
+                    .foregroundStyle(t == active ? Faff.C.ink : Faff.C.textDim)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                 }

@@ -1048,7 +1048,7 @@ function buildEngineBlock(
   const hasEasy = easyShareFrac > 0;
   const easySharePct = hasEasy ? Math.round(easyShareFrac * 100) : null;
 
-  const paceZonesValue = vdot.value != null ? `From VDOT ${vdot.value}` : 'NO DATA YET';
+  const paceZonesValue = vdot.value != null ? `From fitness score ${Math.round(vdot.value)}` : 'NO DATA YET';
   const paceLead = vdot.value != null
     ? 'The Coach prescribes every run inside one of these 5 pace bands.'
     : 'Coach pace zones require a recent race result. Log one to unlock prescribed paces.';
