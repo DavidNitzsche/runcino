@@ -55,6 +55,7 @@ import { getWeekStats, getCompletedMileageByDate } from '../../../lib/completed-
 import { realPlanToWeeks, daysBetween } from '../../../lib/synthetic-plan';
 import { listUserConnectors } from '../../../lib/connectors';
 import { computeReadinessScore } from '../../../lib/readiness-score';
+import { planTrainingFueling, type FuelingPlan, type WorkoutFuelingType } from '../../../lib/training-fueling';
 
 type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
 
@@ -93,6 +94,11 @@ interface OverviewApiOk {
   /** v4 · multi-sentence daily briefing the coach delivers at the top
    *  of /overview. Always present, composed from real signals. */
   briefing: CoachDecision<DailyBriefing>;
+  /** Today's fueling plan — gel + carb schedule. null when not needed
+   *  (rest, short easy run). The Today card renders `shortLine`; the
+   *  workout-detail / why-this surface renders `why`. The watch consumes
+   *  `atMins` to fire a haptic at each gel mark during the run. */
+  todayFueling: FuelingPlan | null;
   /** Plan-artifact workouts for the current Mon→Sun week. Enriched with
    *  a `label` + computed `description` (pace band + structured steps +
    *  effort + why) when fitness resolves, so the iPhone app and any
@@ -601,6 +607,30 @@ export async function GET(req: Request): Promise<Response> {
       return result;
     })();
 
+    // Today's fueling plan — gel + carb schedule. The watch fires haptics
+    // at each gel time; the web Today card + iPhone surface shortLine.
+    // Null when the run doesn't warrant fuel (<60 min, rest day, etc.).
+    let todayFueling: FuelingPlan | null = null;
+    try {
+      if (workout.answer) {
+        const a = workout.answer;
+        const ftype: WorkoutFuelingType =
+          a.isLong ? 'long' : a.isQuality ? 'quality' : 'easy';
+        const pace = typeof a.paceTargetSPerMi === 'number' ? a.paceTargetSPerMi : 540;
+        const durMin = Math.round((pace * a.distanceMi) / 60);
+        const plan = planTrainingFueling({
+          durationEstMin: durMin,
+          distanceMi: a.distanceMi,
+          workoutType: ftype,
+          daysToARace: state.races.nextA?.daysAway ?? null,
+          raceFuelTargetGPerHr: authUser?.fuelTargetGPerHr ?? null,
+          gelCarbsG: authUser?.fuelGelCarbsG ?? null,
+          gelLabel: authUser?.fuelBrand ?? null,
+        });
+        if (plan.needed) todayFueling = plan;
+      }
+    } catch { /* non-fatal; leave null */ }
+
     const body: OverviewApiOk = {
       ok: true,
       authenticated: userId != null,
@@ -645,6 +675,7 @@ export async function GET(req: Request): Promise<Response> {
         confidence: raceFitnessA.answer.confidence,
       } : null,
       planFutureLongRuns,
+      todayFueling,
     };
     return Response.json(body);
   } catch (e) {

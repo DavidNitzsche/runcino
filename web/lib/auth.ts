@@ -59,6 +59,17 @@ export interface AuthUser {
    *  "America/Los_Angeles"). Drives all "today"/date math. null falls
    *  back to the app-default FAFF_TZ in lib/dates.ts. */
   timezone: string | null;
+  /** Display name of the runner's chosen gel product (e.g. "Maurten 100").
+   *  Drives the fueling planner's copy ("2 Maurten 100s") and lets the
+   *  watch prompt name the specific product. null → "gel(s)" generic. */
+  fuelBrand: string | null;
+  /** Carbs per gel of the runner's chosen product (g). Drives the count
+   *  of gels in the plan so it matches the actual product (22 g GU / 25 g
+   *  Maurten 100 / 40 g Maurten 160 / 44 g Beta Fuel 80). null → 22 g default. */
+  fuelGelCarbsG: number | null;
+  /** Race-day carb-intake target (g/hr). The long-run fueling ramp climbs
+   *  toward this so race day isn't a gut shock. null → 75 g/hr default. */
+  fuelTargetGPerHr: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -118,7 +129,7 @@ export async function signupUser(email: string, password: string, name: string):
   const rows = await query<AuthUser>(
     `INSERT INTO users (email, password_hash, name, status, is_admin, approved_at)
      VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, timezone;`,
+     RETURNING id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, timezone, fuel_brand AS "fuelBrand", fuel_gel_carbs_g AS "fuelGelCarbsG", fuel_target_g_per_hr AS "fuelTargetGPerHr";`,
     [normalizedEmail, passwordHash, name.trim(), status, isAdmin, approvedAt],
   );
   const user = rows[0];
@@ -151,7 +162,9 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
   const normalizedEmail = email.trim().toLowerCase();
 
   const rows = await query<AuthUser & { password_hash: string }>(
-    `SELECT id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, timezone, password_hash
+    `SELECT id, email, name, onboarding_complete, location, status, is_admin, max_hr, accent_color, timezone,
+            fuel_brand AS "fuelBrand", fuel_gel_carbs_g AS "fuelGelCarbsG", fuel_target_g_per_hr AS "fuelTargetGPerHr",
+            password_hash
      FROM users WHERE email = $1 LIMIT 1;`,
     [normalizedEmail],
   );
@@ -169,6 +182,7 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
     onboarding_complete: u.onboarding_complete,
     location: u.location, status: u.status, is_admin: u.is_admin,
     max_hr: u.max_hr, accent_color: u.accent_color, timezone: u.timezone,
+    fuelBrand: u.fuelBrand, fuelGelCarbsG: u.fuelGelCarbsG, fuelTargetGPerHr: u.fuelTargetGPerHr,
   };
 }
 
@@ -218,7 +232,7 @@ export async function getCurrentUser(req?: { headers: Headers } | Request): Prom
       const bearer = authHeader.slice('Bearer '.length).trim();
       if (bearer.length >= 16) {
         const rows = await query<AuthUser>(
-          `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color, u.timezone
+          `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color, u.timezone, u.fuel_brand AS "fuelBrand", u.fuel_gel_carbs_g AS "fuelGelCarbsG", u.fuel_target_g_per_hr AS "fuelTargetGPerHr"
              FROM sessions s
              JOIN users u ON u.id = s.user_id
             WHERE s.session_token = $1
@@ -246,7 +260,7 @@ export async function getCurrentUser(req?: { headers: Headers } | Request): Prom
   if (!token) return null;
 
   const rows = await query<AuthUser>(
-    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color, u.timezone
+    `SELECT u.id, u.email, u.name, u.onboarding_complete, u.location, u.status, u.is_admin, u.max_hr, u.accent_color, u.timezone, u.fuel_brand AS "fuelBrand", u.fuel_gel_carbs_g AS "fuelGelCarbsG", u.fuel_target_g_per_hr AS "fuelTargetGPerHr"
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.session_token = $1 AND s.expires_at > NOW() AND s.revoked_at IS NULL

@@ -31,6 +31,7 @@ import { listRecentSkips } from '@/lib/skip-store';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { describeWorkout } from '@/lib/workout-descriptions';
+import { planTrainingFueling, type WorkoutFuelingType } from '@/lib/training-fueling';
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { WorkoutModalProvider, HeroActions, WeekStripCells, InlineRecap, type WorkoutDay } from './WorkoutModalIsland';
@@ -289,6 +290,31 @@ export default async function OverviewPage() {
   const raceDate = weeks[13]?.days[6]?.date ?? '2026-08-16';
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
 
+  // Today's fueling plan — pure read on duration + workout type + race-aware
+  // ramp + user's chosen gel. Renders one line on the Today card (pre-run)
+  // and feeds the watch payload via /api/watch/today so haptics fire at the
+  // right minute. null when the run doesn't warrant fueling.
+  const todayFueling = todayDay && !todayDay.isRest && todayDay.distanceMi > 0
+    ? (() => {
+        const ftype: WorkoutFuelingType =
+          todayDay.type === 'long' ? 'long'
+          : todayDay.type === 'quality' ? 'quality'
+          : todayDay.type === 'race' ? 'race'
+          : 'easy';
+        const dur = durMin ?? Math.round(todayDay.distanceMi * 9);   // ~9 min/mi fallback
+        const plan = planTrainingFueling({
+          durationEstMin: dur,
+          distanceMi: todayDay.distanceMi,
+          workoutType: ftype,
+          daysToARace: daysToRace > 0 ? daysToRace : null,
+          raceFuelTargetGPerHr: user.fuelTargetGPerHr,
+          gelCarbsG: user.fuelGelCarbsG,
+          gelLabel: user.fuelBrand,
+        });
+        return plan.needed ? plan : null;
+      })()
+    : null;
+
   // Build the coach briefing using real last-week + this-week data.
   // Monday reflects on last week; weekend days frame the long run;
   // mid-week days reference current-week mileage banked so far.
@@ -405,6 +431,28 @@ export default async function OverviewPage() {
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value">{approxDuration(durMin).value}</span>{approxDuration(durMin).unit && <span className="stat-unit">{approxDuration(durMin).unit}</span>}</div><div className="stat-label">Duration</div></div>
                   <div className="stat-pill"><div className="stat-value-row"><span className="stat-value" style={{ color: 'rgba(8,8,8,.32)' }}>-</span></div><div className="stat-label">Heart Rate</div></div>
                 </div>
+                {/* Fueling — one-line plan in the runner's chosen product
+                    (e.g. "Fuel: 2 Maurten 100s, ~45 & ~90 min in"). Only
+                    renders when the run actually warrants fuel; the watch
+                    fires haptics at each gel mark during the session. */}
+                {todayFueling && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 10, marginTop: 14,
+                    padding: '8px 13px', borderRadius: 10,
+                    background: todayFueling.isRehearsal ? 'rgba(62,189,65,.10)' : 'rgba(8,8,8,.04)',
+                    border: `1px solid ${todayFueling.isRehearsal ? 'rgba(62,189,65,.30)' : 'rgba(8,8,8,.10)'}`,
+                    fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: 'var(--t0)',
+                  }}>
+                    <span style={{
+                      fontFamily: 'Oswald, sans-serif', fontSize: 10, fontWeight: 700,
+                      letterSpacing: 1.4, textTransform: 'uppercase',
+                      color: todayFueling.isRehearsal ? '#1f6a21' : 'rgba(8,8,8,.55)',
+                    }}>
+                      {todayFueling.isRehearsal ? 'Race rehearsal' : 'Fuel'}
+                    </span>
+                    <span>{todayFueling.shortLine.replace(/^Fuel(?: rehearsal)?:\s*/, '')}</span>
+                  </div>
+                )}
                 {/* One clean, always-present explanation, what this run is
                     for, in plain language. No expander, no stacked blocks. */}
                 {why && (

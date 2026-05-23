@@ -37,6 +37,7 @@ import { buildWatchWorkout } from '@/lib/watch-workout';
 import { gatherCoachState } from '@/lib/coach-state';
 import { computeReadinessScore, readinessLabelFor } from '@/lib/readiness-score';
 import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
+import { planTrainingFueling, type WorkoutFuelingType } from '@/lib/training-fueling';
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser(req);
@@ -121,5 +122,31 @@ export async function GET(req: NextRequest) {
     }
   } catch { /* leave null → pill stays hidden */ }
 
-  return NextResponse.json({ ...workout, readinessScore, readinessLabel });
+  // Fueling — gel + carb plan, anchored to time-into-run so the watch can
+  // fire a haptic at each gel mark. Empty when the run doesn't warrant
+  // fuel (<60 min). Race-aware ramp kicks in when an A-race is set, so
+  // long-run carb targets progressively rehearse race-day fueling.
+  let fueling: ReturnType<typeof planTrainingFueling> | null = null;
+  try {
+    const state = await gatherCoachState({ userId: user.id, tz });
+    // Rest + race are early-returned above; only easy / long / quality /
+    // recovery reach here (TS already narrowed the union). Map to the
+    // fueling planner's vocabulary.
+    const ftype: WorkoutFuelingType =
+      todayDay.type === 'long' ? 'long'
+      : todayDay.type === 'quality' ? 'quality'
+      : 'easy';
+    fueling = planTrainingFueling({
+      durationEstMin: workout.totalEstimatedMinutes,
+      distanceMi: todayDay.distanceMi ?? null,
+      workoutType: ftype,
+      daysToARace: state.races.nextA?.daysAway ?? null,
+      raceFuelTargetGPerHr: user.fuelTargetGPerHr ?? null,
+      gelCarbsG: user.fuelGelCarbsG ?? null,
+      gelLabel: user.fuelBrand ?? null,
+    });
+    if (!fueling.needed) fueling = null;
+  } catch { /* leave null → no fuel hint sent */ }
+
+  return NextResponse.json({ ...workout, readinessScore, readinessLabel, fueling });
 }

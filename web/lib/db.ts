@@ -473,6 +473,24 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT;
     `);
+    // Fueling preference — the runner's chosen gel product. Drives the
+    // training-fueling planner (lib/training-fueling.ts) so plans count
+    // the runner's ACTUAL gels (a 25g Maurten 100 vs a 40g Maurten 160 vs
+    // a 22g GU) and prompts read "2 Maurten 100s" instead of generic
+    // "2 gels". fuel_target_g_per_hr is the race-day carb-intake target;
+    // long-run plans ramp toward it via Costa periodization (Research/18
+    // §13). All NULL-safe: defaults kick in when unset.
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS fuel_brand TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS fuel_gel_carbs_g SMALLINT
+        CHECK (fuel_gel_carbs_g IS NULL OR (fuel_gel_carbs_g BETWEEN 10 AND 80));
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS fuel_target_g_per_hr SMALLINT
+        CHECK (fuel_target_g_per_hr IS NULL OR (fuel_target_g_per_hr BETWEEN 30 AND 120));
+    `);
     // Pace-migration acknowledgment, set when the user confirms the
     // one-time pace-band correction from the legacy race-pace-derived
     // formula to canonical Daniels Table 2. While NULL, /profile's
