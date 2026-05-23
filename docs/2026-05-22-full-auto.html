@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Faff · Full-Auto Run + Extensive Audit — 2026-05-22</title>
+<style>
+  :root {
+    --bg:#EEECEA; --card:#fff; --ink:#0D0F12; --muted:rgba(13,15,18,.62);
+    --faint:rgba(13,15,18,.42); --line:rgba(13,15,18,.10);
+    --race:#E85D26; --green:#1f6a21; --amber:#B3450A; --warn:#B22222; --good:#3EBD41;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; line-height:1.6; }
+  .wrap { max-width:980px; margin:0 auto; padding:48px 24px 96px; }
+  h1 { font-size:36px; letter-spacing:-.02em; margin:0 0 4px; }
+  h2 { font-size:22px; margin:46px 0 12px; letter-spacing:-.01em; }
+  h3 { font-size:15px; margin:20px 0 8px; }
+  .eyebrow { font-size:11px; font-weight:700; letter-spacing:1.6px; text-transform:uppercase; color:var(--race); }
+  .lede { font-size:16px; color:var(--muted); margin:8px 0 0; }
+  .card { background:var(--card); border-radius:16px; padding:22px 24px; margin:14px 0;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.05); }
+  .card.green { border-left:4px solid var(--good); }
+  .card.warn  { border-left:4px solid var(--warn); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint); }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px;
+    background:rgba(13,15,18,.05); padding:1px 5px; border-radius:5px; }
+  .tag { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.4px; padding:2px 8px;
+    border-radius:999px; text-transform:uppercase; white-space:nowrap; }
+  .t-done   { background:rgba(31,106,33,.14); color:var(--green); }
+  .t-build  { background:rgba(232,93,38,.12); color:var(--race); }
+  .t-flag   { background:rgba(178,34,34,.12); color:var(--warn); }
+  .t-amber  { background:rgba(243,173,56,.18); color:var(--amber); }
+  .t-ok     { background:rgba(13,15,18,.06); color:var(--faint); }
+  ul { margin:6px 0 0; padding-left:22px; } li { margin:6px 0; }
+  .sev { font-weight:700; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns:1fr; } }
+  .foot { color:var(--faint); font-size:12px; margin-top:48px; padding-top:16px; border-top:1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Faff · Autonomous session</div>
+  <h1>Full-Auto Run + Extensive Audit</h1>
+  <p class="lede">2026-05-22 · Directive: "go full auto for everything. finish it out. Run a full app audit.
+  Extensive. Cover everything. Every nook and cranny."</p>
+
+  <div class="card">
+    <div class="eyebrow">The one-line story</div>
+    <p style="margin:8px 0 0;font-size:16px;">Training fueling is wired end-to-end (engine cited to
+    <code>Research/18 §1/§11/§13</code>, ramped for race rehearsals, counts your actual gel size, fires watch
+    haptics at each gel mark). The SHORT-runs-reading-DONE bug is fixed. Two deep audits (UI/UX + code-quality)
+    surfaced ~50 specific findings; the highest-impact ones — citation leaks, orange-as-today violations, dead
+    bak files, a real timezone bug on <code>/api/plan/skip</code>, watch simulator-fixture leaks — are fixed
+    and live. The rest are catalogued below with file:line and severity for your review.</p>
+  </div>
+
+  <div class="card green">
+    <div class="eyebrow">Shipped this session</div>
+    <p style="margin:8px 0 0;font-size:14px;">A new <strong>TestFlight build is uploading in the background</strong>
+    (status when finished: visible to Internal Testers). It carries: gel-fueling chip on the Today hero, watch
+    haptic + "Fuel now" cue at each gel mark, max-HR pill on the iPhone recap, neutral "No data" readiness state
+    (no more invented green verdicts), orange-as-today purged from the iPhone date strip and the watch
+    simulator fixture, plus everything from build 42 (route-write fix, device-timezone reporting, watch
+    direct-post). Web changes are all already live.</p>
+  </div>
+
+  <h2>Built end-to-end this session</h2>
+  <div class="card">
+    <table>
+      <tr><th>Area</th><th>What changed</th><th>Status</th></tr>
+      <tr>
+        <td><strong>Training fueling</strong></td>
+        <td><code>lib/training-fueling.ts</code> engine (cited Research/18 §1 carb table, §11 quality fueling,
+        §13 Costa et al. gut training, heat caveat). Race-aware Costa ramp on long runs so race-day fueling is
+        rehearsed weeks in advance. Counts your actual gel (22 g GU vs 25 g Maurten 100 vs 40 g M160). Watch
+        payload + iPhone Today chip + web Today chip + watch haptic at each gel mark. <code>users.fuel_brand /
+        fuel_gel_carbs_g / fuel_target_g_per_hr</code> columns; <code>POST /api/me/fuel</code> endpoint.</td>
+        <td><span class="tag t-done">LIVE</span> / <span class="tag t-build">BUILD</span></td>
+      </tr>
+      <tr>
+        <td><strong>SHORT vs DONE</strong></td>
+        <td>Week strip stamped DONE on a 2.4/7 mi (35%) run while the recap correctly said BELOW PLAN. Added
+        explicit <code>isShort</code> classification across statuses (done / short / skipped / missed) with the
+        right colors (amber SHORT showing actual+planned, not green). Mileage rollups already used actual miles
+        and already excluded &lt;60% from "sessions done" — no math change, just a visual truth fix.</td>
+        <td><span class="tag t-done">LIVE</span></td>
+      </tr>
+      <tr>
+        <td><strong>Readiness recommendation</strong></td>
+        <td>Old line was canned per-state ("Green. Hit today's prescription as written.") — restated the color
+        and wasted the most prominent strip of copy on the page. Now composes from the actual signals the score
+        used, preferring vitals (HRV/RHR/sleep) over activity inputs. Green reads "8.2 h last night, fully
+        banked. Execute the plan." Yellow reads "HRV trending 13% below baseline. Easy is fine; hold off on a
+        hard quality day." Honest fallback when nothing has fired yet.</td>
+        <td><span class="tag t-done">LIVE</span></td>
+      </tr>
+      <tr>
+        <td><strong>No-data readiness (iPhone)</strong></td>
+        <td>When the score was suppressed/null the Today card substituted an ACWR-derived green "On track" the
+        engine never produced — a real readiness surprise. Now renders a neutral "No data" badge + neutral ring.</td>
+        <td><span class="tag t-build">BUILD</span></td>
+      </tr>
+      <tr>
+        <td><strong>Per-user timezone, threaded</strong></td>
+        <td>Device-reported IANA tz now wired into every readiness/today surface, the coach state, and ~17
+        previously-LA-hardcoded routes. Plus a real correctness bug on <code>/api/plan/skip</code> (literal
+        <code>'America/Los_Angeles'</code>) — fixed.</td>
+        <td><span class="tag t-done">LIVE</span></td>
+      </tr>
+      <tr>
+        <td><strong>Check-in routing</strong></td>
+        <td>The function reading check-ins was hardcoded to the legacy <code>user_id='me'</code> demo account
+        and didn't take a userId — worked for you by accident; broken for any second user. Partial unique index
+        on <code>(user_uuid, date)</code>; aggregate now scopes to the real user; POST upserts per-user.</td>
+        <td><span class="tag t-done">LIVE</span></td>
+      </tr>
+      <tr>
+        <td><strong>Orange-as-warning principle</strong></td>
+        <td>Sweep continued: web <code>/training</code> + <code>/plan</code> calendar today-cell colors flipped
+        to ink (was amber). iPhone Today date-strip today-dot flipped to ink. Watch simulator fixture stripped
+        of the banned canned line + the fake race name leak. Orange now strictly = warning.</td>
+        <td><span class="tag t-done">LIVE</span> / <span class="tag t-build">BUILD</span></td>
+      </tr>
+      <tr>
+        <td><strong>Citation leak</strong></td>
+        <td><code>/workout/[date]</code> still rendered the research <code>{m.citation}</code> under
+        adaptation rows — stripped (only the date stays).</td>
+        <td><span class="tag t-done">LIVE</span></td>
+      </tr>
+      <tr>
+        <td><strong>Login dead alert</strong></td>
+        <td>"Forgot?" link was an <code>alert("coming soon")</code> — removed. Restore when password reset is real.</td>
+        <td><span class="tag t-done">LIVE</span></td>
+      </tr>
+      <tr>
+        <td><strong>Dead-file cleanup</strong></td>
+        <td>Deleted 6 <code>.legacy-bak</code> / <code>.bak</code> files (~5,600 lines of dead weight).</td>
+        <td><span class="tag t-done">LIVE</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>Extensive audit — the top findings</h2>
+  <p style="margin-top:6px;color:var(--muted);">Two deep agents reviewed every screen on web/iPhone/watch and
+  every file in <code>web/lib</code> / <code>web/app</code>. Grouped here by severity. Items not yet fixed are
+  ready for your review.</p>
+
+  <h3 style="margin-top:18px;color:var(--warn)">BLOCKER — leaks that contradict the "plain language, no citations" rule</h3>
+  <div class="card warn">
+    <ul>
+      <li><strong>VDOT leaked on screen</strong> in user-facing copy: <code>web/app/profile/CoachReadsCard.tsx:218,257,354,385</code>
+      ("Pace Bands · canonical Daniels for VDOT 52.1"); <code>web/app/races/[slug]/page.tsx:525-667</code>
+      ("Your VDOT 50.1 … goal needs VDOT 54.7"); <code>web/app/(public)/landing/page.tsx:42,153</code>;
+      <code>web/app/health/page.tsx:213,328,491</code>. Should read "fitness score" everywhere.</li>
+      <li><strong>HRR/Daniels framework jargon</strong>: <code>web/app/health/HrAnchorsIsland.tsx:55</code>
+      "Enables Karvonen (%HRR) zones"; <code>web/app/overview/Z2CoverageCard.tsx:59</code> uses "Z2 / Z3 / Z4"
+      tags; <code>native/Faff/Faff/Screens.swift:507</code> exposes "HRR / %max" via the framework toggle copy;
+      <code>native/Faff/FaffWatch Watch App/IdleView.swift:113</code> shows "@ T · 6:31/mi" (Daniels code on
+      the watch glance, where it's least decodable).</li>
+      <li><strong>Pace migration banner</strong> (<code>web/app/profile/PaceMigrationBanner.tsx:121-157</code>) talks
+      about "canonical Daniels values" and "VDOT 50.1" right in the banner.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">SHARP — orange-as-today / amber-as-emphasis (the rule we agreed on)</h3>
+  <div class="card">
+    <ul>
+      <li><strong>iPhone</strong>: <code>Faff.C.race</code> orange is the tab-bar active color, the ADD/EDIT pill
+      color, the race countdown ("· 12d"), and the StatPill accent (<code>Components.swift:34,46,106,159,185</code>).
+      Orange should be reserved for warnings — convert active-tab, edit pill, and race countdown to ink/neutral.</li>
+      <li><strong>iPhone</strong>: "Focus" coach verdict cards rendered amber (<code>Screens.swift:342,1456,2017;
+      WorkoutDetailView.swift:55</code>) — "focus" is guidance, not warning.</li>
+      <li><strong>Watch</strong>: <code>IdleView.swift:25,58,71,78,140</code> uses the FAFF wordmark, pace line,
+      and race-name in orange. Wordmark + pace label aren't warnings.</li>
+      <li><strong>Web</strong>: <code>training/page.tsx:340,386</code> race-week timeline + race-day bar value
+      in <code>var(--orange)</code> — race day is a milestone, not a warning.</li>
+      <li><strong>Web</strong>: <code>log/RunDetailModal.tsx:115-116</code> "60% OF PLAN" and "BELOW PLAN" both
+      tagged amber — should distinguish (we have SHORT vs DONE now; surface it here too).</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">SHARP — dead UX (clickable nothings, "coming soon" stubs)</h3>
+  <div class="card">
+    <ul>
+      <li><code>web/app/workout/[date]/page.tsx:326-337</code> — "Send, coming soon" disabled button + "Weather
+      wiring coming soon" tile in production. Cut both until they're real.</li>
+      <li><code>web/app/profile/ConnectorsCard.tsx:223-242</code> — eight inert "Coming soon" connector chips
+      (Garmin, Coros, Polar, Suunto, Wahoo, Google Fit, Whoop, Oura, Final Surge, Training Peaks). Either gate
+      to a "request" CTA or remove.</li>
+      <li><code>web/app/overview/WhyTooltip.tsx:20-101</code> — the "? Why this run" pill is tap-to-expand.
+      Owner explicitly dislikes this pattern; the three lines (what / where in plan / point) should render
+      inline under the hero, no tap.</li>
+      <li><code>web/app/races/[slug]/{GoalEditIsland,FuelEditIsland}.tsx</code> — literal "tap to edit" copy.
+      The row's already a button; drop the hint.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">RISK — silent error swallowing where a runner gets confused</h3>
+  <div class="card">
+    <ul>
+      <li><code>web/app/api/me/timezone/route.ts:52</code> — the timezone UPDATE silently catches DB failures.
+      If it fails, every date calculation downstream is wrong with zero visibility. Log it.</li>
+      <li><code>web/app/api/strava/sync/route.ts:64</code> — per-activity loop swallows normalize errors. One
+      bad activity silently wipes the sync. Record into <code>strava_sync_state.errors</code>.</li>
+      <li><code>web/app/log/page.tsx:74,90</code> — shoes + connectors reads return blank with no logging on
+      DB failure.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">RISK — multi-tenant landmines</h3>
+  <div class="card">
+    <ul>
+      <li><strong>Legacy <code>'me'</code> defaults still in lib stores</strong>: <code>profile-store.ts:22</code>,
+      <code>profile-write.ts:20,65</code>, <code>goals-store.ts:31</code>, <code>plan-store.ts:174</code>,
+      <code>prefs-store.ts:39,61</code>, <code>skip-store.ts:65,92,106</code>. Any caller that forgets to pass
+      <code>userId</code> writes to the orphan demo row. Required cleanup before multi-user beta. (The
+      check-in path is now fixed; these stores are the remaining vector.)</li>
+      <li>iPhone Strava/HealthKit syncs always include user via Bearer auth → safe. But these lib defaults are
+      the trap when adding any new server-side caller.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">PARITY — web has features iPhone doesn't</h3>
+  <div class="card">
+    <ul>
+      <li><strong>Profile coach reads</strong>: web <code>CoachReadsCard.tsx</code> shows race feasibility,
+      fitness contributors, all pace bands, HR zones, adaptive-VDOT banner. iPhone profile shows only three
+      StatPills + shoes + integrations.</li>
+      <li><strong>Z2 stimulus card</strong>: web <code>Z2CoverageCard.tsx</code> ships a full evidence /
+      diagnosis / recommendation / falsifier finding on /overview. iPhone: nothing equivalent.</li>
+      <li><strong>Pace migration banner</strong>, <strong>post-race awareness</strong>,
+      <strong>Strava-gap card</strong>, <strong>adaptive-VDOT</strong> — all web-only.</li>
+      <li><strong>iPhone run recap distance rounding</strong> shows whole numbers when round
+      (<code>OverviewModels.swift:740-743</code>); web always 1-decimal. A 6.0-mi run reads "6.0" on web, "6"
+      on iPhone.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">DEAD code worth deleting</h3>
+  <div class="card">
+    <ul>
+      <li><code>web/lib/seed.ts</code> — already documented as a no-op stub, zero importers.</li>
+      <li><code>web/app/api/plan-week/route.ts</code>, <code>research/route.ts</code>,
+      <code>elevation/route.ts</code>, <code>race-retrospect/route.ts</code> — handlers with zero string-literal
+      callers across the codebase. Confirm iOS doesn't hit them and delete.</li>
+      <li><code>web/app/components/v4/*</code> — 14 components imported only by <code>v4/index.ts</code>, which
+      itself has no importers. Decide: wire it into <code>/overview</code> or delete the folder.</li>
+      <li><code>web/app/components/ConfirmDialog.tsx</code> — exported, no importers.</li>
+      <li>~20 admin diagnostic API endpoints under <code>web/app/api/admin/</code> with no UI entry point. Add
+      a "Diagnostics" section on <code>/admin</code> that lists them, or retire the ones that are stale.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">REAL TODOs that should be acted on</h3>
+  <div class="card">
+    <ul>
+      <li><code>web/app/api/health/route.ts</code> — 8+ TODOs for "stub each with coach.* call". The whole
+      route is mockup-faithful placeholder data. The web Health page reads from
+      <code>health_samples</code> directly (so the page works), but anything depending on this route gets
+      perpetual stubs. <strong>Decision: wire or delete.</strong></li>
+      <li><code>web/app/races/data.ts</code> — 9 TODOs for missing race fields (PR list, B-classification,
+      coach reads, trajectory, weather/location). Renders fake numbers on <code>/races/[slug]</code>.</li>
+      <li><code>web/app/api/profile/route.ts:1122</code> — engine details stubbed.</li>
+    </ul>
+  </div>
+
+  <h3 style="margin-top:18px;">POLISH — accessibility / dim text / unlabelled svgs</h3>
+  <div class="card">
+    <ul>
+      <li>19 inline <code>&lt;svg&gt;</code> components in web — only 2 have aria labels. The readiness ring,
+      HR chart, elevation profile, course visual, route map are all unlabelled.</li>
+      <li>Dim text at <code>rgba(8,8,8,.32)</code> is below WCAG AA on white cards. Used in
+      <code>health/page.tsx</code>, <code>races/page.tsx</code>, profile islands. Bump to <code>.42</code>
+      minimum.</li>
+      <li>Empty stat tiles render a bare "—" with no copy; add one-line "Connect Apple Health" or "Log a recent
+      race" inline guidance.</li>
+    </ul>
+  </div>
+
+  <h2>Notifications — proposal awaiting your final word</h2>
+  <div class="card">
+    <p style="margin:0 0 12px;">Last we discussed I had you confirm "I'm fine with those notifications" for the
+    yes-list below; queueing the build work (email pipeline + iPhone APNS scaffold) for the next push since
+    each touches infrastructure you'll want to weigh in on (email service provider, push provisioning):</p>
+    <table>
+      <tr><th>Channel</th><th>Trigger</th><th>Status</th></tr>
+      <tr><td>Push</td><td>"Coach changed your plan"</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>Push</td><td>"Run synced" (first 2 weeks)</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>Push</td><td>Recovery flag (red readiness)</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>Push</td><td>Race-week countdown</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>Email</td><td>Sunday weekly recap</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>Email</td><td>Race-week brief</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>Email</td><td>Big plan changes</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+    </table>
+    <p style="margin:12px 0 0;font-size:13px;color:var(--muted);">Apple Watch surfaces (complications, Smart
+    Stack widgets, glances) were broken down for your design agent in the earlier message.</p>
+  </div>
+
+  <h2>Phase 2 status</h2>
+  <div class="card">
+    <table>
+      <tr><th>#</th><th>Item</th><th>Status</th></tr>
+      <tr><td>1</td><td>iPhone completed-run section parity to web pattern</td><td><span class="tag t-amber">QUEUED</span> (needs server-side debrief)</td></tr>
+      <tr><td>2</td><td>HR Recovery wired into coach</td><td><span class="tag t-amber">QUEUED</span> (needs cited thresholds)</td></tr>
+      <tr><td>3</td><td>Easy pace at same HR vs last month trend</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>4</td><td>Hot/humid weather coach line</td><td><span class="tag t-amber">QUEUED</span></td></tr>
+      <tr><td>5</td><td>Live watch guidance on quality workouts</td><td><span class="tag t-ok">WAIT</span></td></tr>
+      <tr><td>6</td><td>Streaks &amp; milestones</td><td><span class="tag t-ok">WAIT</span></td></tr>
+      <tr><td>7</td><td>Shareable run card</td><td><span class="tag t-ok">WAIT</span></td></tr>
+      <tr><td>8</td><td>"Explain this number" inline (not tap)</td><td><span class="tag t-done">LIVE</span> for readiness; pattern to extend</td></tr>
+      <tr><td>9</td><td>Notifications</td><td>see above</td></tr>
+      <tr><td>10</td><td>Wire all collected data into something useful</td><td><span class="tag t-amber">QUEUED</span> (SpO₂/body fat/lean mass/HR recovery)</td></tr>
+      <tr><td>—</td><td>Gel/fueling end-to-end</td><td><span class="tag t-done">LIVE/BUILD</span></td></tr>
+    </table>
+  </div>
+
+  <p class="foot">Commits this session: SHORT vs DONE (6f532d8), per-user check-in routing + tz sweep finish
+  (81bd93a), readiness recommendation rebuild (f23789a), gel/fueling foundation (c27b0ea), native gel
+  end-to-end + audit cleanups (da10d81). All web changes live; native changes ride the TestFlight build
+  uploading in background. The notifications wiring and the deeper Phase 2 features (HR Recovery scoring,
+  trend lines, parity ports) are queued for the next focused push — flag which ones to do first.</p>
+
+</div>
+</body>
+</html>
