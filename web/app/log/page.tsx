@@ -71,7 +71,9 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
     if (rows[0]) {
       syncMeta = { connected: true, lastSyncAt: rows[0].last_sync_at };
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[log/page] connector status read failed', { userId, err });
+  }
 
   // Shoes (legacy schema)
   let shoes: ShoeOption[] = [];
@@ -87,7 +89,9 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
       id: r.id, name: `${r.brand} ${r.model}`,
       purposes: r.run_types || [], color: r.color || '#3EBD41', retired: !!r.retired,
     }));
-  } catch {}
+  } catch (err) {
+    console.warn('[log/page] shoes read failed', { userId, err });
+  }
 
   // Strava activities, pulled into the unified run feed
   let recentRuns: RunRow[] = [];

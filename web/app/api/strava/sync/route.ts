@@ -61,8 +61,11 @@ async function runSync(): Promise<{ updated: string[]; fetchedAt: string | null;
       try {
         detail = await fetchActivityDetail(match.id);
         await setCachedDetail(match.id, detail);
-      } catch {
-        // Fall back to summary if detail fetch fails.
+      } catch (err) {
+        // Detail fetch can fail (rate limit, deleted activity, network) —
+        // fall back to summary so the sync proceeds. Log so an ops scan
+        // can spot a pattern instead of a silent miss.
+        console.warn('[strava/sync] activity detail fetch failed', { id: match.id, err });
       }
     }
 
