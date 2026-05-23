@@ -358,10 +358,13 @@ export async function computeReadinessScore(
       const recent = mean(hrv.slice(0, 3));
       const base = mean(hrv.slice(3));
       const dropPct = base > 0 ? (base - recent) / base : 0;
-      if (dropPct >= 0.20) { score -= 10; inputs.push({ name: 'hrv', delta: -10, note: `HRV averaging ${Math.round(recent)}ms over 3 days, ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline` }); }
-      else if (dropPct >= 0.12) { score -= 5; inputs.push({ name: 'hrv', delta: -5, note: `HRV trending ${Math.round(dropPct * 100)}% below your ${Math.round(base)}ms baseline` }); }
-      else if (dropPct <= -0.10) { score += 5; inputs.push({ name: 'hrv', delta: +5, note: `HRV averaging ${Math.round(recent)}ms, above your ${Math.round(base)}ms baseline, well recovered` }); }
-    } else { missing.push('hrv (need a few days of baseline)'); }
+      // Plain-English notes — no "HRV", no "ms", no "baseline". "Recovery
+      // up/down vs your usual" is what the runner cares about, the unit
+      // and baseline are coach plumbing.
+      if (dropPct >= 0.20) { score -= 10; inputs.push({ name: 'hrv', delta: -10, note: `Recovery down ~${Math.round(dropPct * 100)}% from your usual` }); }
+      else if (dropPct >= 0.12) { score -= 5; inputs.push({ name: 'hrv', delta: -5, note: `Recovery trending ${Math.round(dropPct * 100)}% below your usual` }); }
+      else if (dropPct <= -0.10) { score += 5; inputs.push({ name: 'hrv', delta: +5, note: `Recovery up ~${Math.round(Math.abs(dropPct) * 100)}% from your usual, well recovered` }); }
+    } else { missing.push('recovery trend (need a few days of data)'); }
 
     // Resting HR, same smoothing: mean of the last 3 days vs an older
     // baseline. A single +4–6 morning reading is normal noise; only a
@@ -371,20 +374,22 @@ export async function computeReadinessScore(
       const recent = mean(rhr.slice(0, 3));
       const base = mean(rhr.slice(3));
       const delta = recent - base;
-      if (delta >= 7) { score -= 10; inputs.push({ name: 'resting-hr', delta: -10, note: `Resting HR averaging ${Math.round(recent)} over 3 days, +${Math.round(delta)} over your ${Math.round(base)} baseline` }); }
-      else if (delta >= 5) { score -= 5; inputs.push({ name: 'resting-hr', delta: -5, note: `Resting HR averaging ${Math.round(recent)}, slightly elevated vs ${Math.round(base)} baseline` }); }
-      else if (delta <= -3) { score += 3; inputs.push({ name: 'resting-hr', delta: +3, note: `Resting HR averaging ${Math.round(recent)}, below your ${Math.round(base)} baseline, recovered` }); }
-    } else { missing.push('resting-hr (need a few days of baseline)'); }
+      if (delta >= 7) { score -= 10; inputs.push({ name: 'resting-hr', delta: -10, note: `Resting heart rate clearly elevated, your body is working harder than usual` }); }
+      else if (delta >= 5) { score -= 5; inputs.push({ name: 'resting-hr', delta: -5, note: `Resting heart rate slightly elevated for you` }); }
+      else if (delta <= -3) { score += 3; inputs.push({ name: 'resting-hr', delta: +3, note: `Resting heart rate low for you, well recovered` }); }
+    } else { missing.push('resting heart rate trend (need a few days of data)'); }
 
     // Sleep, last night. Research/00b §Sleep: <6h significant decrement;
     // §8.1 general floor 7h.
     const sleep = series('sleep_hours');
     if (sleep.length >= 1) {
       const last = sleep[0];
-      if (last < 6) { score -= 10; inputs.push({ name: 'sleep', delta: -10, note: `${last.toFixed(1)}h last night, under 6h is a real decrement` }); }
-      else if (last < 7) { score -= 5; inputs.push({ name: 'sleep', delta: -5, note: `${last.toFixed(1)}h last night, below the 7h floor` }); }
+      // "Adequate" sounds dismissive when the runner banked 7-8h of sleep.
+      // 7-8.4h IS solid sleep — call it that. "Fully banked" stays for 8.5+.
+      if (last < 6) { score -= 10; inputs.push({ name: 'sleep', delta: -10, note: `${last.toFixed(1)}h last night, under 6h hits training hard` }); }
+      else if (last < 7) { score -= 5; inputs.push({ name: 'sleep', delta: -5, note: `${last.toFixed(1)}h last night, short of the 7h floor` }); }
       else if (last >= 8.5) { score += 5; inputs.push({ name: 'sleep', delta: +5, note: `${last.toFixed(1)}h last night, fully banked` }); }
-      else { score += 3; inputs.push({ name: 'sleep', delta: +3, note: `${last.toFixed(1)}h last night, adequate` }); }
+      else { score += 3; inputs.push({ name: 'sleep', delta: +3, note: `${last.toFixed(1)}h last night, solid sleep` }); }
     } else { missing.push('sleep'); }
   } catch {
     missing.push('hrv'); missing.push('resting-hr'); missing.push('sleep');

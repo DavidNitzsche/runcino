@@ -241,6 +241,12 @@ struct ODescription: Decodable {
     let effort: String?
     let why: String?
     let steps: [OStep]?
+    /// Coach-voice TODAY'S JOB line — translates this prescription into
+    /// goal-relevant action. Quality days carry a stretch-pace target;
+    /// long/easy/rest emphasize that recovery IS the work. Renders as a
+    /// dedicated card on the workout-detail sheet so every workout has
+    /// an explicit "here's how this advances your goal" line.
+    let todaysJob: String?
 }
 
 /// One recipe step, either `simple` (name/duration/pace/zone) or `loop`

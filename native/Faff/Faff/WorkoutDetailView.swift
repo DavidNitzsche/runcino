@@ -78,6 +78,14 @@ struct WorkoutDetailView: View {
                     )
                 }
 
+                // Coach-voice TODAY'S JOB — translates this prescription
+                // into goal-relevant action. Always renders when present;
+                // every workout type has one (quality includes a stretch
+                // pace; long/easy/rest emphasize what the session is FOR).
+                if let job = dw?.detail?.todaysJob, !job.isEmpty {
+                    CoachVerdict("Today's job", job, color: Faff.C.race)
+                }
+
                 if let why = dw?.detail?.why, !why.isEmpty {
                     CoachVerdict("Why this run", why, color: Faff.C.recovery)
                 }

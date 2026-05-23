@@ -79,6 +79,12 @@ export interface WorkoutDescription {
   steps: WorkoutStep[];
   effort: string;
   why: string;
+  /** Coach-voice TODAY'S JOB line — translates this prescription into
+   *  goal-relevant action for the runner. Quality days include a
+   *  stretch-pace target; long days emphasize accumulation; easy/rest
+   *  emphasize that recovery IS the work that enables tomorrow's session.
+   *  First-person ("tells me you're ready"), no jargon, no em dashes. */
+  todaysJob: string;
 }
 
 // ── Internal template types, what the catalog stores ─────────────
@@ -125,6 +131,28 @@ interface WorkoutTemplate {
   steps: WorkoutStepTemplate[];
   effort: string;
   why: string;
+  /** TODAY'S JOB coach line. Either a fixed string OR a function that
+   *  takes the realized bands so quality days can interpolate a
+   *  runner-specific stretch pace (midpoint between prescribed T and
+   *  race goal pace). First-person coach voice, no jargon. */
+  todaysJob: string | ((bands: FitnessBands) => string);
+}
+
+/** Compute a "stretch pace" for quality days — the pace that, if hit
+ *  with HR holding, signals the runner is ready for tighter
+ *  prescription. Midpoint between prescribed T center and race goal
+ *  pace, clamped to ≤10 s/mi faster than prescribed (anything beyond
+ *  is sandbagging the prescription, not stretching). */
+function stretchPaceSPerMi(bands: FitnessBands): number {
+  const tCenter = Math.round((bands.paces.T.lowS + bands.paces.T.highS) / 2);
+  const raceCenter = Math.round((bands.racePaceBand.lowS + bands.racePaceBand.highS) / 2);
+  const midpoint = Math.round((tCenter + raceCenter) / 2);
+  const floor = tCenter - 10;   // never more than 10 s/mi faster than prescribed
+  return Math.max(midpoint, floor);
+}
+
+function fmtPaceLine(s: number): string {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}/mi`;
 }
 
 // ── Pace string resolution ────────────────────────────────────────
@@ -185,6 +213,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Conversational, you should be able to hold a full sentence the whole way. If breathing makes that hard, slow down.',
     why: 'Easy days are where your aerobic engine builds. Protect them from creeping into "medium-hard."',
+    todaysJob: 'Easy today protects the next quality day. If that one lands clean, it\'s because today stayed easy. Skip the urge to push, you\'re investing in the rep that moves your goal.',
   },
   'Easy + Strides': {
     zone: 'Easy · Zone 2 + Strides',
@@ -204,6 +233,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Easy throughout the run. Strides are quick and smooth, about the speed you could just barely hold for a full mile race. Focus on form and turnover.',
     why: 'Strides keep your legs feeling fast and your turnover sharp without adding fatigue.',
+    todaysJob: 'Easy with sprinkles. The strides keep your nervous system fresh for the next quality day. Don\'t grind, the cost-benefit is in the easy.',
   },
   'Hill Strides': {
     zone: 'Easy · Zone 2 + Hill Strides',
@@ -223,6 +253,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Easy on the flat. Strides are powerful and controlled, drive your knees, stay tall. Don\'t sprint.',
     why: 'Sharpens leg power and tendon stiffness without the volume cost of intervals.',
+    todaysJob: 'Power without volume. The hill sprints sharpen your legs for race-pace work without adding miles. Stay easy on the flat, let the hills do the work.',
   },
 
   // ── Long ──────────────────────────────────────────────────────
@@ -234,6 +265,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Conversational throughout. Time on feet is the stimulus, don\'t chase pace. Last 20 min can drift slightly faster if it feels natural.',
     why: 'Endurance builds through duration, not speed.',
+    todaysJob: 'Mile 11 of your race holds together because of the long runs you do now. Today\'s job is honest aerobic minutes. Don\'t chase pace, time on feet IS the work.',
   },
   'Long Run · HM Finish': {
     zone: 'Long · Zone 2 → Race Pace',
@@ -244,6 +276,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Easy for two-thirds. Then disciplined race pace through the finish, same fatigue you\'ll have on race day.',
     why: 'Practice goal pace on tired legs. Pacing discipline is the work.',
+    todaysJob: 'The fatigue you feel at mile 9 today is exactly what mile 10 feels like on race day. Hit the finish band, not faster. Discipline now buys you the last 5K on race day.',
   },
   'Long Run · Progression': {
     zone: 'Long · Zone 2 → Zone 3',
@@ -256,6 +289,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Steady, controlled increase. You should feel stronger as the run develops, not blown out at the end.',
     why: 'Teaches you to push tempo as fatigue builds, race-day pacing without the race.',
+    todaysJob: 'Build into goal pace as fatigue accumulates. The last third is the rehearsal — that\'s where the goal-pace work actually matters.',
   },
   'Long Run · Taper': {
     zone: 'Long · Zone 2',
@@ -265,6 +299,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Fully easy. This is sharpening, not building.',
     why: 'Preserves the long-run feel without adding fatigue. Volume drops to set up race week.',
+    todaysJob: 'Stay easy. The long-run feel is preserved, the fatigue isn\'t. Race day wants you sharp, not tired.',
   },
 
   // ── Threshold (Zone 4) ────────────────────────────────────────
@@ -286,6 +321,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Comfortably hard, roughly your 10K race pace. You can say 2–3 words at a time, but not a full sentence.',
     why: 'Controlled, sustainable threshold work. Stay steady at the edge of comfortable; don\'t push harder.',
+    todaysJob: (bands) => `Closer to ${fmtPaceLine(stretchPaceSPerMi(bands))} with breathing controlled tells me you're ready for more. Stack three sessions like that and I tighten next week's threshold work. Same effort, faster legs, closer to your race goal.`,
   },
   'Threshold · HM Blocks': {
     zone: 'Threshold · Zone 4',
@@ -306,6 +342,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Goal half-marathon pace, sustainable but pressing. Steady, not surging.',
     why: 'Race-specific endurance. Teaches your body to hold goal pace for extended chunks.',
+    todaysJob: 'Race rehearsal at goal pace. This is exactly what the middle of AFC feels like. Practice the discipline now, execute it on race day.',
   },
   'Threshold · HM Cruise': {
     zone: 'Threshold · Zone 4',
@@ -326,6 +363,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Steady half-marathon pace, feels like work but never out of control.',
     why: 'Solid threshold dose at race pace. Long enough to feel like work, short enough not to overreach.',
+    todaysJob: 'Goal pace in shorter blocks. Less volume, same specificity. The discipline of holding pace under controlled fatigue is what wins races.',
   },
   'Threshold · HM Tempo': {
     zone: 'Threshold · Zone 4',
@@ -338,6 +376,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'The hardest sustained effort of the week. If pace slips, finish controlled, don\'t blow up.',
     why: 'Pure race-day specificity. Practice holding goal pace under fatigue.',
+    todaysJob: 'The hardest sustained session before race week. If pace slips, finish controlled. Never blow up a tempo, the bigger crime is overcooking it.',
   },
   'Threshold Touch': {
     zone: 'Threshold · Zone 4 (taper)',
@@ -357,6 +396,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Comfortably hard. Brief, should feel sharp, not depleted.',
     why: 'Reminds your body what hard feels like during taper without compromising race day.',
+    todaysJob: 'Brief reminder of what hard feels like. Don\'t push, just touch the pace and get out. The race wants you sharp, not depleted.',
   },
   'Threshold · Race Week Tune': {
     zone: 'Threshold · Zone 4 (race week)',
@@ -377,6 +417,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Sharp but easy. Wake the system up.',
     why: 'Race-week primer. Don\'t leave anything on the table, save it for race day.',
+    todaysJob: 'Sharp but easy. Wake the system up without leaving anything in the tank. Race day is for collecting receipts.',
   },
 
   // ── VO₂max / Intervals ────────────────────────────────────────
@@ -398,6 +439,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Hard, faster than 5K pace. Breathing is the limiter, not your legs.',
     why: 'VO₂max work pushes your aerobic ceiling.',
+    todaysJob: 'Hard reps grow your aerobic ceiling. Hit the band, don\'t beat it. The value is AT the band, not below it. Full recoveries so every rep is fresh.',
   },
 
   // ── Race week ─────────────────────────────────────────────────
@@ -410,6 +452,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Easy and relaxed. Get out, get back.',
     why: 'Loosen up, not train. Save the legs for race day.',
+    todaysJob: 'Loosen up, get the legs awake. The training is in the bank. Today\'s job is staying loose, not building.',
   },
   'AFC Half': {
     zone: 'Race · Zone 4–5',
@@ -422,6 +465,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Race effort. Trust the training, your legs know what to do.',
     why: 'Race day. Execute the plan; conserve early, commit late.',
+    todaysJob: 'Execute the plan. Conservative open, lock in the middle, commit the last 5K. The work is done. Today is collecting receipts.',
   },
 
   // ── Rest ──────────────────────────────────────────────────────
@@ -432,6 +476,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     steps: [],
     effort: 'Sleep, hydrate, gentle mobility if you want. Cross-train lightly only if you feel restless.',
     why: 'Rest is when your body absorbs the work and gets stronger. Take it.',
+    todaysJob: 'Adaptation happens here. The work from this week lands while you\'re not moving. Skip the bonus walk or core session, let the body finish what we started.',
   },
 };
 
@@ -468,12 +513,14 @@ function realizeTemplate(tpl: WorkoutTemplate, bands: FitnessBands): WorkoutDesc
   const headline = tpl.headlineOverride
     ? tpl.headlineOverride(bands.paces, racePaceStr)
     : paceForZone(tpl.headlineZoneRef, bands);
+  const todaysJob = typeof tpl.todaysJob === 'function' ? tpl.todaysJob(bands) : tpl.todaysJob;
   return {
     zone: tpl.zone,
     paceTarget: headline,
     steps: tpl.steps.map((s) => realizeStep(s, bands)),
     effort: tpl.effort,
     why: tpl.why,
+    todaysJob,
   };
 }
 

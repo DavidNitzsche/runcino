@@ -516,21 +516,35 @@ struct HealthView: View {
 
     /// HR anchors, the two numbers every zone keys off. Shows max + resting
     /// HR with their framework and an edit affordance (auto from Apple Health,
-    /// overridable).
+    /// overridable). Layout: two big number cells (Max + Resting) on top,
+    /// a single sentence underneath explaining which framework the zones
+    /// use. Earlier 3-column layout broke because "Personalized" wrapped
+    /// to three lines in the cramped third column.
     private func hrAnchorsCard(_ z: OHrZones) -> some View {
         Button { showAnchorEdit = true } label: {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text("HR ANCHORS").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
                     Spacer()
                     Text("Edit").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.race)
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Faff.C.textFaint)
                 }
+                // Two number cells, equal weight, no third column to crowd
+                // the display.
                 HStack(spacing: 14) {
                     anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? "-", "bpm")
                     anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? "-", "bpm")
-                    anchorCell("ZONES", z.framework == "HRR" ? "Personalized" : "Standard", z.framework == "HRR" ? "tuned to your resting HR" : "")
                 }
+                // Framework footer, plain-English sentence so the runner
+                // knows what the zones below are tuned to without needing
+                // to translate "HRR" or "Karvonen".
+                Text(z.framework == "HRR"
+                     ? "Zones are tuned to your resting heart rate, more accurate for trained runners."
+                     : "Zones use the standard percent-of-max method.")
+                    .font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .faffCard()
@@ -540,7 +554,7 @@ struct HealthView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label).font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value).font(Faff.F.display(24)).foregroundStyle(Faff.C.ink)
+                Text(value).font(Faff.F.display(28)).foregroundStyle(Faff.C.ink)
                 if !unit.isEmpty { Text(unit).font(Faff.F.inter(10)).foregroundStyle(Faff.C.textFaint) }
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -1653,13 +1667,19 @@ struct ReadinessDetailSheet: View {
                                 .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
                         } else {
                             ForEach(inputs) { i in
-                                HStack(alignment: .top, spacing: 12) {
+                                // .firstTextBaseline so the +5/+10 numerals
+                                // align to the same line as the body text
+                                // (the previous .top alignment landed the
+                                // Oswald cap-height above the Inter x-height,
+                                // making rows look stair-stepped).
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
                                     Text(deltaText(i.delta))
-                                        .font(Faff.F.oswald(15, .semibold))
+                                        .font(Faff.F.inter(14, .bold))
                                         .foregroundStyle(i.delta >= 0 ? Faff.C.recovery : Faff.C.warn)
-                                        .frame(width: 40, alignment: .leading)
+                                        .frame(width: 36, alignment: .leading)
+                                        .monospacedDigit()
                                     Text(i.note.prefix(1).uppercased() + i.note.dropFirst())
-                                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(2)
+                                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }

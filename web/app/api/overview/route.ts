@@ -56,6 +56,7 @@ import { realPlanToWeeks, daysBetween } from '../../../lib/synthetic-plan';
 import { listUserConnectors } from '../../../lib/connectors';
 import { computeReadinessScore } from '../../../lib/readiness-score';
 import { planTrainingFueling, type FuelingPlan, type WorkoutFuelingType } from '../../../lib/training-fueling';
+import { computeRaceProjection } from '../../../lib/race-projection';
 
 type DescribedPlanWorkout = PlanWorkout & { label: string; description: WorkoutDescription };
 
@@ -168,7 +169,9 @@ interface OverviewApiOk {
    *  Null when max HR is unknown. */
   hrZones: HrZonesBundle | null;
   /** A-race fitness projection for the Race detail (from raceFitnessA).
-   *  null when no A-race goal. */
+   *  null when no A-race goal. Extended with status + verdict + the
+   *  12-week trajectory points so the iPhone race-detail "Path to your
+   *  goal" card can render a real chart and a coach-voice read. */
   raceProjection: {
     projectedDisplay: string;
     vdot: number;
@@ -176,6 +179,31 @@ interface OverviewApiOk {
     predictedPaceSPerMi: number;
     headroomSPerMi: number;   // goal − predicted; + = room to spare
     confidence: string;
+    /** ON_TRACK / BEHIND / AHEAD — derived from the gap between current
+     *  VDOT trajectory and goal VDOT given weeks remaining. Drives the
+     *  Today status pill color + the race-detail card eyebrow. */
+    status: 'on-track' | 'behind' | 'ahead';
+    /** Coach-voice one-paragraph verdict — what the trajectory means,
+     *  what action (if any) closes the gap. First-person, no jargon. */
+    verdict: string;
+    /** Tune-up race recommendation. Present only when status='behind'
+     *  AND weeks-to-race < 12 AND no tune-up race already on the
+     *  calendar in the next 6 weeks. iPhone renders as an actionable
+     *  Pending Adaptation card. */
+    tuneUpRecommendation: { reason: string; copy: string } | null;
+    /** 12-week trajectory points for the chart. weekIdx 0 = today,
+     *  weekIdx = weeksToRace = race week. */
+    points: Array<{
+      weekIdx: number;
+      maintainVdot: number;
+      planVdot: number;
+      maintainFinishS: number;
+      planFinishS: number;
+    }>;
+    /** Weeks remaining until race, clamped to [1, 12]. */
+    weeksToRace: number;
+    /** Goal finish time in seconds, for the chart's goal line. */
+    goalFinishS: number;
   } | null;
   /** Next 4 future weeks' long-run distances from the plan artifact.
    *  Used by the long-run strip to show projected Sunday bars. */
@@ -730,14 +758,7 @@ export async function GET(req: Request): Promise<Response> {
       readinessInputs,
       readinessMissing,
       hrZones,
-      raceProjection: raceFitnessA?.answer ? {
-        projectedDisplay: raceFitnessA.answer.predictedDisplay,
-        vdot: Math.round(raceFitnessA.answer.vdot),
-        goalPaceSPerMi: Math.round(raceFitnessA.answer.goalPaceSPerMi),
-        predictedPaceSPerMi: Math.round(raceFitnessA.answer.predictedPaceSPerMi),
-        headroomSPerMi: Math.round(raceFitnessA.answer.headroomSPerMi),
-        confidence: raceFitnessA.answer.confidence,
-      } : null,
+      raceProjection: buildRaceProjectionPayload(raceFitnessA, nextA, upcoming, todayDate),
       planFutureLongRuns,
       todayFueling,
     };
@@ -772,4 +793,93 @@ function parseGoalHMS(s: string | undefined): number | null {
   if (!s) return null;
   const m = s.trim().match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
   return m ? Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+}
+
+/** Build the race-projection payload that powers the iPhone "Path to
+ *  your goal" card + Today status pill + tune-up nudge.
+ *
+ *  Status thresholds:
+ *    headroomSPerMi > +5  → AHEAD (already running faster than goal pace)
+ *    headroomSPerMi >= -8 → ON_TRACK (within the tolerance window)
+ *    headroomSPerMi <  -8 → BEHIND (current trajectory misses goal)
+ *
+ *  Tune-up nudge fires when BEHIND + weeks-to-race < 12 + no existing
+ *  race already on the calendar in the next 6 weeks (B or C priority
+ *  counts as a tune-up; a future A doesn't). */
+function buildRaceProjectionPayload(
+  raceFitnessA: { answer?: RaceFitnessPrediction | null } | null,
+  nextA: Awaited<ReturnType<typeof listRacesDB>>[number] | null,
+  upcoming: Awaited<ReturnType<typeof listRacesDB>>,
+  todayDate: Date,
+): OverviewApiOk['raceProjection'] {
+  if (!raceFitnessA?.answer || !nextA) return null;
+  const ans = raceFitnessA.answer;
+  const goalFinishS = parseGoalHMS(nextA.meta.goalDisplay);
+  if (goalFinishS == null || goalFinishS <= 0) return null;
+  const distanceMi = nextA.meta.distanceMi ?? 13.109;
+
+  const raceMs = Date.parse(nextA.meta.date + 'T12:00:00Z');
+  const daysToRace = Math.max(1, Math.round((raceMs - todayDate.getTime()) / 86_400_000));
+  const weeksToRace = Math.max(1, Math.min(12, Math.round(daysToRace / 7)));
+
+  const projection = computeRaceProjection(ans.vdot, distanceMi, goalFinishS, weeksToRace);
+
+  const headroom = Math.round(ans.headroomSPerMi);
+  const status: 'on-track' | 'behind' | 'ahead' =
+    headroom > 5 ? 'ahead' : headroom >= -8 ? 'on-track' : 'behind';
+
+  const verdict = buildRaceVerdict(status, ans, nextA, weeksToRace, headroom);
+
+  // Tune-up rec: behind + window-open + no B/C/training-run race in
+  // next 6 weeks. Doesn't count the A-race itself or hilly-excluded.
+  const sixWeekIso = new Date(todayDate.getTime() + 42 * 86_400_000)
+    .toISOString().slice(0, 10);
+  const hasTuneUp = upcoming.some((r) => {
+    const pri = r.meta.priority ?? 'A';
+    if (pri === 'A' || pri === 'hilly-excluded') return false;
+    return r.meta.date <= sixWeekIso;
+  });
+  const tuneUpRecommendation = (status === 'behind' && weeksToRace >= 4 && weeksToRace <= 12 && !hasTuneUp)
+    ? {
+        reason: 'Trajectory below goal with room to act',
+        copy: `${nextA.meta.name} is ${daysToRace} days out and the current trend predicts about ${ans.predictedDisplay}. A B-effort tune-up race in the next 4-6 weeks gives me a real read on where you are and tightens next month's pacing. Any 10K or HM works, doesn't need to be all-out.`,
+      }
+    : null;
+
+  return {
+    projectedDisplay: ans.predictedDisplay,
+    vdot: Math.round(ans.vdot),
+    goalPaceSPerMi: Math.round(ans.goalPaceSPerMi),
+    predictedPaceSPerMi: Math.round(ans.predictedPaceSPerMi),
+    headroomSPerMi: headroom,
+    confidence: ans.confidence,
+    status,
+    verdict,
+    tuneUpRecommendation,
+    points: projection.points,
+    weeksToRace,
+    goalFinishS,
+  };
+}
+
+/** Coach-voice one-paragraph verdict for the trajectory card. First-
+ *  person, no jargon, ends with a concrete action (or "execute the
+ *  plan" for on-track/ahead). */
+function buildRaceVerdict(
+  status: 'on-track' | 'behind' | 'ahead',
+  ans: RaceFitnessPrediction,
+  nextA: Awaited<ReturnType<typeof listRacesDB>>[number],
+  weeksToRace: number,
+  headroom: number,
+): string {
+  const goal = nextA.meta.goalDisplay || 'your goal';
+  if (status === 'on-track') {
+    return `${weeksToRace} weeks out from ${goal} and you're tracking. Threshold work has been landing. Keep the rhythm and we close the gap on time.`;
+  }
+  if (status === 'ahead') {
+    return `${weeksToRace} weeks out and you're already closer to ${goal} than the timeline needed. Don't blow it up trying to gain more. Execute the plan, let the taper sharpen, arrive fresh.`;
+  }
+  // BEHIND
+  const absSec = Math.abs(headroom);
+  return `${weeksToRace} weeks out from ${goal} and the math says we're behind by about ${absSec} sec/mi. Training is consolidating but not accelerating fast enough. A tune-up race in the next 4-6 weeks gives me a clean data point and pulls the prescription tighter, faster.`;
 }
