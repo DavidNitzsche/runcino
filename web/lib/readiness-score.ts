@@ -100,11 +100,41 @@ function stateFor(score: number): ReadinessFinding['state'] {
   return 'red';
 }
 
-function recommendationFor(state: ReadinessFinding['state']): string {
+/** Vital inputs (recovery readings) carry more user value in the recommendation
+ *  than activity inputs ("rest day" / "easy run yesterday"), so we prefer
+ *  surfacing HRV/RHR/sleep when one of them is the driver. */
+const VITAL_INPUT_NAMES = new Set(['hrv', 'resting-hr', 'sleep']);
+
+function cap(s: string): string { return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s; }
+
+/** Build an insight from the actual signals the score used, NOT a restatement
+ *  of the green/yellow/red label (the ring already says that). E.g. instead of
+ *  "Green. Hit today's prescription as written", say what the body is actually
+ *  showing today, "Sleep banked (8.2h). Execute the plan." */
+function recommendationFor(
+  state: ReadinessFinding['state'],
+  inputs: ReadinessFinding['inputs'],
+  missing: string[],
+): string {
+  const wantNegative = state !== 'green';
+  const directional = inputs.filter((i) => (wantNegative ? i.delta < 0 : i.delta > 0));
+  const vitals = directional.filter((i) => VITAL_INPUT_NAMES.has(i.name));
+  // Vitals beat activity drivers when present and pointing the same direction.
+  const pool = vitals.length > 0 ? vitals : directional.length > 0 ? directional : inputs;
+  const driver = [...pool].sort((a, b) =>
+    wantNegative ? a.delta - b.delta : b.delta - a.delta,
+  )[0];
+
+  if (!driver) {
+    // No real driver yet — be honest instead of restating the color.
+    if (missing.length > 0) return `Score from your activity rhythm; ${missing[0]} will sharpen it.`;
+    return 'Recovery vitals on baseline, no recent overload — execute the plan.';
+  }
+  const note = cap(driver.note);
   switch (state) {
-    case 'green':  return 'Green. Hit today\'s prescription as written.';
-    case 'yellow': return 'Yellow. Watch effort. Consider easy substitution if HR runs high early.';
-    case 'red':    return 'Red. Recommend swapping today\'s session for easy or recovery.';
+    case 'red':    return `Back off — ${driver.note}. Swap today for easy or recovery.`;
+    case 'yellow': return `${note}. Easy is fine; hold off on a hard quality day.`;
+    case 'green':  return `${note}. Execute the plan.`;
   }
 }
 
@@ -367,7 +397,7 @@ export async function computeReadinessScore(
   return {
     score,
     state,
-    recommendation: recommendationFor(state),
+    recommendation: recommendationFor(state, inputs, missing),
     inputs,
     missingInputs: missing,
     crossRef,
