@@ -404,21 +404,78 @@ struct TodayView: View {
         .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
     }
 
+    /// Future-day readiness preview. The real score posts that morning
+    /// once sleep + HRV sync, but the runner shouldn't wait helplessly
+    /// — the card uses what we DO know (14-day sleep debt + current
+    /// recovery vitals) to coach what they can do TONIGHT to set up
+    /// that morning's readiness.
     private var previewReadiness: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("READINESS").font(Faff.F.inter(10, .semibold)).tracking(0.9).foregroundStyle(Faff.C.textDim)
                 Spacer()
-                Badge(text: "\(shortWeekday(selDate)) AM", tone: .grey)
+                Badge(text: "\(shortWeekday(selDate)) AM · FORECAST", tone: previewBadgeTone)
             }
             HStack(spacing: 14) {
-                ReadinessRing(score: nil, size: 54)
-                Text("Your readiness score posts \(weekday(selDate)) morning, once sleep & HRV sync.")
-                    .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                ReadinessRing(score: nil, tone: previewRingTone, size: 54)
+                Text(previewReadinessCopy)
+                    .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.ink).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading).faffCard()
+    }
+
+    /// Coach-voice forecast copy. Uses the 14-day sleep deficit when
+    /// present (Whoop-style debt) to call out actionable tonight-job:
+    /// banked → reinforce, on-target → hold steady, deficit → priority
+    /// sleep tonight. Falls back to a generic "8h tonight" nudge when
+    /// no sleep samples have synced yet.
+    private var previewReadinessCopy: String {
+        let day = weekday(selDate)
+        let debt = overview.state?.recovery?.sleepDeficit14d
+        if let d = debt, let status = d.status {
+            switch status {
+            case "depleted":
+                let hrs = d.hoursOver14d.map { String(format: "%.0f", $0) } ?? "several"
+                let short = d.daysShort ?? 0
+                return short > 0
+                    ? "Sleep debt is hitting — \(hrs)h short over two weeks, \(short) nights under 7h. Tonight's job is 8+. \(day) morning's readiness needs the sleep first."
+                    : "Sleep debt is hitting — \(hrs)h short over two weeks. Tonight's job is 8+. \(day) morning's readiness needs the sleep first."
+            case "building-deficit":
+                return "Sleep deficit building. Get 8 hours tonight to keep \(day) morning's readiness from sliding."
+            case "banked":
+                return "Sleep is banked. Hold the rhythm tonight and \(day) morning's readiness will reflect the work."
+            case "on-target":
+                return "Sleep is on track. Stay steady tonight and \(day) morning's readiness lands strong."
+            default: break
+            }
+        }
+        // Fallback when no sleep samples have synced yet.
+        return "Get 8 hours tonight so \(day) morning's readiness has something to work with."
+    }
+
+    /// Ring tone color for the forecast — matches the sleep-debt status
+    /// so the user can see at a glance whether tonight is high-stakes.
+    /// ReadinessRing takes a Color directly (not an enum).
+    private var previewRingTone: Color {
+        switch overview.state?.recovery?.sleepDeficit14d?.status {
+        case "depleted":          return Faff.C.warn
+        case "building-deficit":  return Faff.C.milestone
+        case "banked":            return Faff.C.recovery
+        default:                  return Faff.C.textFaint
+        }
+    }
+
+    /// Badge color: depleted → warn, building → amber, banked → green,
+    /// else neutral grey.
+    private var previewBadgeTone: Badge.Tone {
+        switch overview.state?.recovery?.sleepDeficit14d?.status {
+        case "depleted":          return .warn
+        case "building-deficit":  return .amber
+        case "banked":            return .green
+        default:                  return .grey
+        }
     }
 
     private func eyebrowDate(_ iso: String?) -> String {
