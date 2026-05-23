@@ -86,6 +86,34 @@ struct ORaceProjection: Decodable {
     let predictedPaceSPerMi: Double?
     let headroomSPerMi: Double?
     let confidence: String?
+    /// "on-track" | "behind" | "ahead". Drives the Today status pill
+    /// color + race-detail card eyebrow.
+    let status: String?
+    /// Coach-voice one-paragraph verdict. First-person, ends with a
+    /// concrete action when behind / "execute the plan" otherwise.
+    let verdict: String?
+    /// Optional tune-up recommendation. Non-nil only when status=behind
+    /// AND 4-12 weeks to race AND no tune-up already on the calendar.
+    /// iPhone renders this as a Pending Adaptation card on Today.
+    let tuneUpRecommendation: OTuneUpRec?
+    /// 12-week trajectory points for the chart.
+    let points: [ORaceProjectionPoint]?
+    let weeksToRace: Int?
+    let goalFinishS: Int?
+}
+
+struct OTuneUpRec: Decodable {
+    let reason: String?
+    let copy: String?
+}
+
+struct ORaceProjectionPoint: Decodable, Identifiable {
+    let weekIdx: Int?
+    let maintainVdot: Double?
+    let planVdot: Double?
+    let maintainFinishS: Int?
+    let planFinishS: Int?
+    var id: Int { weekIdx ?? 0 }
 }
 
 struct OFutureLong: Decodable, Identifiable {
@@ -123,6 +151,18 @@ struct ORecovery: Decodable {
     let rhrBpm: Double?
     let sleep7dAvgHrs: Double?
     let daysSinceLastRun: Int?
+    /// 14-day sleep debt (Whoop-style). Cumulative hours short of 8h
+    /// target + count of days under 7h floor + a coach-voice message.
+    /// nil when no sleep samples in the window.
+    let sleepDeficit14d: OSleepDeficit?
+}
+
+struct OSleepDeficit: Decodable {
+    let hoursOver14d: Double?
+    let daysShort: Int?
+    let avg14dHrs: Double?
+    let status: String?     // "banked" | "on-target" | "building-deficit" | "depleted"
+    let message: String?
 }
 struct OVolume: Decodable {
     let last7Mi: Double?

@@ -54,7 +54,21 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
                 PendingAdaptationsCard(overview: overview, onReload: onReload)
                 CoachAdaptationsCard(overview: overview)
+                // Tune-up race nudge — fires when behind on the trajectory
+                // with room to act. Coach-voice copy from the server.
+                if let rec = overview.raceProjection?.tuneUpRecommendation,
+                   let copy = rec.copy, !copy.isEmpty {
+                    TuneUpRecCard(copy: copy)
+                }
                 dateStrip(overview)
+                // Status pill under the date strip — one-line summary of
+                // where the runner sits vs their A-race goal. Tapping it
+                // (TODO) opens the race-detail trajectory card. Color
+                // tracks status: green=ahead, ink=on-track, amber=behind.
+                if let proj = overview.raceProjection, let status = proj.status,
+                   let race = overview.raceCountdown {
+                    RaceStatusPill(raceName: race.name, daysAway: race.days, status: status)
+                }
                 coachLineView
                 heroView
                 // Inline recap, when the selected day has a logged run, surface
@@ -1084,5 +1098,70 @@ struct FuelingBreakdown: View {
         if m < 60 { return "\(m) min" }
         let h = m / 60, mm = m % 60
         return mm == 0 ? "\(h)h" : "\(h):\(String(format: "%02d", mm))"
+    }
+}
+
+// MARK: - Race status pill (Today)
+
+/// One-line race-readiness summary under the date strip. Color tracks
+/// trajectory: green=ahead, ink=on-track, amber=behind. Compact so it
+/// doesn't crowd the date strip + coach line + hero.
+struct RaceStatusPill: View {
+    let raceName: String
+    let daysAway: Int
+    let status: String   // "on-track" | "behind" | "ahead"
+
+    var body: some View {
+        let (label, bg, fg): (String, Color, Color) = {
+            switch status {
+            case "ahead":    return ("AHEAD",    Faff.C.recovery.opacity(0.14), Faff.C.recovery)
+            case "behind":   return ("BEHIND",   Faff.C.warn.opacity(0.14),     Faff.C.warn)
+            default:         return ("ON TRACK", Faff.C.pillBg,                  Faff.C.ink)
+            }
+        }()
+        return HStack(spacing: 8) {
+            Text(label).font(Faff.F.oswald(10, .semibold)).tracking(1.2).foregroundStyle(fg)
+            Text("·").foregroundStyle(Faff.C.textFaint)
+            Text("\(raceName)").font(Faff.F.inter(12, .semibold)).foregroundStyle(Faff.C.ink)
+            Text("· \(daysAway)d").font(Faff.F.inter(11)).foregroundStyle(Faff.C.textMuted)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 11).padding(.vertical, 7)
+        .background(bg, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8).stroke(fg.opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Tune-up race recommendation card
+
+/// Coach-voice card surfaced on Today when the engine recommends a
+/// tune-up race (behind on trajectory + room to act). Single-button
+/// dismissable per session; tapping the card body opens search.
+struct TuneUpRecCard: View {
+    let copy: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "flag.checkered")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Faff.C.race)
+                Text("CONSIDER A TUNE-UP RACE")
+                    .font(Faff.F.oswald(11, .semibold)).tracking(1.2)
+                    .foregroundStyle(Faff.C.race)
+                Spacer()
+            }
+            Text(copy)
+                .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Faff.C.race.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12).stroke(Faff.C.race.opacity(0.30), lineWidth: 1)
+        )
     }
 }

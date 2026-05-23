@@ -115,6 +115,17 @@ export interface CoachState {
     hrv7dAvgMs: number | null;
     rhrBpm: number | null;
     sleep7dAvgHrs: number | null;
+    /** Sleep deficit/debt over the trailing 14 days. Whoop-style:
+     *  sum of max(0, 8 - actual) per day. Helps surface chronic under-
+     *  sleeping that a 7-day avg can hide (e.g. one great night masking
+     *  a string of 6-hour nights). Null when no sleep samples logged. */
+    sleepDeficit14d?: {
+      hoursOver14d: number;     // cumulative deficit in hours
+      daysShort: number;        // days < 7h in the window
+      avg14dHrs: number;        // average sleep over window
+      status: 'banked' | 'on-target' | 'building-deficit' | 'depleted';
+      message: string;          // coach-voice one-liner
+    } | null;
     /** Effective max HR (users.max_hr override → computed activity peak).
      *  Lands here so the plan engine + post-run verdicts use the runner's
      *  real HR ceiling for Karvonen zones instead of a hardcoded default.
@@ -301,6 +312,64 @@ async function gatherHealthBiometrics(userId: string | undefined): Promise<{
   }
 }
 
+/** Compute a Whoop-style 14-day sleep deficit. Targets a personal
+ *  "8h ideal, 7h floor": deficit = sum(max(0, 8 - actual)) over the
+ *  last 14 days; daysShort = count of days that fell below 7h.
+ *  Surfaces a coach-voice message + a status bucket the iPhone can
+ *  use to color the tile (green=banked, ink=on-target, amber=building,
+ *  warn=depleted). Returns null when the user has no sleep samples
+ *  in the window (we never show a "0h deficit" when we just have
+ *  no data — that would be misleading). */
+async function loadSleepDeficit14d(userId: string | undefined): Promise<{
+  hoursOver14d: number;
+  daysShort: number;
+  avg14dHrs: number;
+  status: 'banked' | 'on-target' | 'building-deficit' | 'depleted';
+  message: string;
+} | null> {
+  if (!userId) return null;
+  try {
+    const rows = await query<{ sample_date: string; value: number }>(
+      `SELECT sample_date::text AS sample_date, value::float8 AS value
+         FROM health_samples
+        WHERE user_id = $1
+          AND sample_type = 'sleep_hours'
+          AND sample_date >= (CURRENT_DATE - INTERVAL '14 days')
+        ORDER BY sample_date DESC`,
+      [userId],
+    );
+    if (rows.length === 0) return null;
+    const TARGET = 8.0;
+    const FLOOR = 7.0;
+    const samples = rows.map((r) => Number(r.value));
+    const sum = samples.reduce((s, v) => s + v, 0);
+    const avg = sum / samples.length;
+    const deficit = samples.reduce((s, v) => s + Math.max(0, TARGET - v), 0);
+    const daysShort = samples.filter((v) => v < FLOOR).length;
+    const hoursOver14d = Math.round(deficit * 10) / 10;
+    const avg14dHrs = Math.round(avg * 10) / 10;
+
+    let status: 'banked' | 'on-target' | 'building-deficit' | 'depleted';
+    let message: string;
+    if (avg >= 8 && daysShort === 0) {
+      status = 'banked';
+      message = 'Sleep is banked. Recovery is keeping up with training, the adaptations land where they should.';
+    } else if (avg >= 7.5 && daysShort <= 1) {
+      status = 'on-target';
+      message = 'Sleep is holding. Keep the rhythm steady, consistency is what compounds.';
+    } else if (avg >= 7 && daysShort <= 3) {
+      status = 'building-deficit';
+      message = `Sleep deficit building, ${hoursOver14d}h short across the last two weeks. A couple of short nights stack up faster than you'd think, protect the next 2-3.`;
+    } else {
+      status = 'depleted';
+      message = `Sleep deficit ${hoursOver14d}h over two weeks, with ${daysShort} nights under the 7h floor. Tonight's job is 8+. Recovery is where adaptation lives, and right now we're outrunning it.`;
+    }
+    return { hoursOver14d, daysShort, avg14dHrs, status, message };
+  } catch {
+    return null;
+  }
+}
+
 export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise<CoachState> {
   // "Today" in LA, server runs in UTC and would otherwise flip a day
   // early in the evening. todayDate() is anchored at noon UTC of the
@@ -309,7 +378,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
   const today = todayDate(tz);
   const todayISO = todayLAISO(tz);
 
-  const [savedRaces, { activities }, checkinAgg, prefsRow, recentSkipsRaw, healthBio] = await Promise.all([
+  const [savedRaces, { activities }, checkinAgg, prefsRow, recentSkipsRaw, healthBio, sleepDeficit14d] = await Promise.all([
     // Gracefully degrade when DATABASE_URL is unset (local dev without Postgres)
     // or when the races table is empty. The Coach state still computes from
     // whatever data is available, empty races just means no A/B race surfaces.
@@ -334,6 +403,8 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     ),
     // HealthKit biometrics (7-day averages) for the authenticated user.
     gatherHealthBiometrics(opts.userId),
+    // 14-day sleep deficit (Whoop-style debt). Null when no samples.
+    loadSleepDeficit14d(opts.userId),
   ]);
 
   // Null `state.checkin` means "no rows in the last 7 days", the
@@ -584,6 +655,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
       hrv7dAvgMs: healthBio.hrv7dAvgMs,
       rhrBpm: healthBio.rhrBpm,
       sleep7dAvgHrs: healthBio.sleep7dAvgHrs,
+      sleepDeficit14d,
       maxHrBpm,
       weightKg: healthBio.weightKg,
       strengthDaysThisWeek: null,

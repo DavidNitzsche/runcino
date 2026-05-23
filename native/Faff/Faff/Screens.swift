@@ -478,6 +478,12 @@ struct HealthView: View {
                 hrAnchorsCard(z)
                 if !z.zones.isEmpty { HrZoneScale(zones: z.zones, framework: z.framework) }
             }
+            // Sleep deficit (Whoop-style 14-day debt). Renders inline
+            // below HR anchors when we have sleep samples in the window;
+            // hidden when no data so the page stays honest.
+            if let debt = overview.state?.recovery?.sleepDeficit14d {
+                SleepDeficitCard(debt: debt)
+            }
             section("Recovery & Vitals", vitals)
             section("Body Composition", body)
             section("Running Dynamics · 30-day avg", dynamics)
@@ -644,7 +650,7 @@ struct RacesView: View {
             }
         }
         .task { await load() }
-        .sheet(item: $detail) { RaceDetailView(header: $0, phase: overview.planCurrentPhase) }
+        .sheet(item: $detail) { RaceDetailView(header: $0, phase: overview.planCurrentPhase, projection: $0.isPast ? nil : overview.raceProjection) }
     }
 
     private func load() async {
@@ -804,6 +810,10 @@ struct RaceHeader: Identifiable {
 struct RaceDetailView: View {
     let header: RaceHeader
     let phase: String?
+    /// Path-to-your-goal trajectory, from /api/overview.raceProjection.
+    /// nil for past races (no trajectory) and when no A-race goal exists.
+    /// Drives the PathToGoalCard below the countdown summary.
+    var projection: ORaceProjection? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var course: RaceCourse?
     @State private var loadingCourse = true
@@ -875,6 +885,11 @@ struct RaceDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(18)
                 .background(Color.faffMark).clipShape(RoundedRectangle(cornerRadius: Faff.R.card, style: .continuous))
+
+                // ── Path to your goal (trajectory + verdict) ────────
+                if !header.isPast, let proj = projection, proj.status != nil {
+                    PathToGoalCard(projection: proj, goalDisplay: header.goalDisplay)
+                }
 
                 // ── Course map + elevation profile ──────────────────
                 if let c = course, let coords = c.coords, coords.count > 1 {
@@ -2094,5 +2109,227 @@ struct PlanDayDetailSheet: View {
         case "race": return "Race day, execute the plan; conserve early, commit late."
         default: return "Easy and conversational. If you can't hold a sentence, slow down."
         }
+    }
+}
+
+// MARK: - Path to your goal (race trajectory card)
+
+/// Race-detail trajectory card. Shows where the runner currently sits
+/// vs their goal, the 12-week trajectory chart (maintain line + plan
+/// line + goal line), and a coach-voice verdict. Doctrine: when behind,
+/// the verdict points to a tune-up race as the lever that closes gaps
+/// in the available timeline.
+struct PathToGoalCard: View {
+    let projection: ORaceProjection
+    let goalDisplay: String?
+
+    var body: some View {
+        let status = projection.status ?? "on-track"
+        let (statusLabel, statusColor): (String, Color) = {
+            switch status {
+            case "ahead":    return ("AHEAD",    Faff.C.recovery)
+            case "behind":   return ("BEHIND",   Faff.C.warn)
+            default:         return ("ON TRACK", Faff.C.race)
+            }
+        }()
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Text("PATH TO YOUR GOAL")
+                    .font(Faff.F.oswald(13, .semibold)).tracking(1.5)
+                    .foregroundStyle(Faff.C.ink)
+                Spacer()
+                Text(statusLabel)
+                    .font(Faff.F.oswald(10, .semibold)).tracking(1.2)
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(statusColor.opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+
+            // Headline numbers: current predicted finish vs goal.
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("PREDICTED").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                    Text(projection.projectedDisplay ?? "-")
+                        .font(Faff.F.display(28)).foregroundStyle(Faff.C.ink)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("GOAL").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                    Text(goalDisplay ?? "-")
+                        .font(Faff.F.display(28)).foregroundStyle(Faff.C.ink)
+                }
+            }
+
+            // Trajectory chart — simple line plot of maintain vs plan
+            // vs goal across the weeks remaining. Drawn natively (Swift
+            // Charts requires iOS 16+ and we already have a working
+            // canvas pattern elsewhere; reuse a manual Path here for
+            // visual simplicity).
+            if let pts = projection.points, pts.count >= 2,
+               let goalS = projection.goalFinishS {
+                TrajectoryChart(points: pts, goalFinishS: goalS)
+                    .frame(height: 110)
+            }
+
+            // Coach-voice verdict.
+            if let verdict = projection.verdict, !verdict.isEmpty {
+                Text(verdict)
+                    .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
+    }
+}
+
+/// Tiny line-chart for the trajectory. Three lines: maintain (flat,
+/// grey), plan (curving toward goal, ink), goal (horizontal reference,
+/// race-color dashed). Auto-fits the y-range to the data + goal so
+/// the trend is visible.
+struct TrajectoryChart: View {
+    let points: [ORaceProjectionPoint]
+    let goalFinishS: Int
+
+    var body: some View {
+        GeometryReader { geo in
+            // Compute the y-range from all data so the trend is
+            // visible. Locals captured by the closures below; can't
+            // declare nested funcs inside a ViewBuilder closure.
+            let w = geo.size.width
+            let h = geo.size.height
+            let times = points.compactMap { $0.planFinishS }
+                + points.compactMap { $0.maintainFinishS }
+                + [goalFinishS]
+            let lo = (times.min() ?? goalFinishS) - 30
+            let hi = (times.max() ?? goalFinishS) + 30
+            let yRange = max(1.0, Double(hi - lo))
+            let n = max(1, points.count - 1)
+            let xFor: (Int) -> CGFloat = { i in CGFloat(i) / CGFloat(n) * w }
+            let yFor: (Int) -> CGFloat = { s in CGFloat(1.0 - (Double(s) - Double(lo)) / yRange) * h }
+
+            ZStack {
+                // Goal line (dashed, race color)
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: yFor(goalFinishS)))
+                    p.addLine(to: CGPoint(x: w, y: yFor(goalFinishS)))
+                }
+                .stroke(Faff.C.race.opacity(0.65),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+
+                // Maintain line (flat, grey)
+                Path { p in
+                    for (i, pt) in points.enumerated() {
+                        let yy = yFor(pt.maintainFinishS ?? goalFinishS)
+                        if i == 0 { p.move(to: CGPoint(x: xFor(i), y: yy)) }
+                        else { p.addLine(to: CGPoint(x: xFor(i), y: yy)) }
+                    }
+                }
+                .stroke(Faff.C.textFaint, lineWidth: 1.5)
+
+                // Plan line (curving toward goal, ink)
+                Path { p in
+                    for (i, pt) in points.enumerated() {
+                        let yy = yFor(pt.planFinishS ?? goalFinishS)
+                        if i == 0 { p.move(to: CGPoint(x: xFor(i), y: yy)) }
+                        else { p.addLine(to: CGPoint(x: xFor(i), y: yy)) }
+                    }
+                }
+                .stroke(Faff.C.ink, lineWidth: 2)
+            }
+            // Axis labels at the corners
+            .overlay(alignment: .topLeading) {
+                Text("TODAY").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
+                    .foregroundStyle(Faff.C.textFaint)
+                    .padding(.top, 2)
+            }
+            .overlay(alignment: .topTrailing) {
+                Text("RACE").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
+                    .foregroundStyle(Faff.C.textFaint)
+                    .padding(.top, 2)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Text("MAINTAIN").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
+                    .foregroundStyle(Faff.C.textFaint)
+                    .padding(.bottom, 2)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                Text("GOAL").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
+                    .foregroundStyle(Faff.C.race.opacity(0.85))
+                    .padding(.bottom, 2)
+            }
+        }
+    }
+}
+
+// MARK: - Sleep deficit card (Whoop-style 14-day debt)
+
+/// 14-day sleep-debt card on the Health page. Shows the cumulative
+/// deficit, the count of nights under the 7h floor, and a coach-voice
+/// line on what to do. Color tracks status: green=banked,
+/// ink=on-target, amber=building, warn=depleted.
+struct SleepDeficitCard: View {
+    let debt: OSleepDeficit
+
+    var body: some View {
+        let status = debt.status ?? "on-target"
+        let (label, color): (String, Color) = {
+            switch status {
+            case "banked":            return ("BANKED",   Faff.C.recovery)
+            case "depleted":          return ("DEPLETED", Faff.C.warn)
+            case "building-deficit":  return ("BUILDING DEFICIT", Faff.C.milestone)
+            default:                  return ("ON TARGET", Faff.C.race)
+            }
+        }()
+        let hrs = debt.hoursOver14d ?? 0
+        let avg = debt.avg14dHrs ?? 0
+        let short = debt.daysShort ?? 0
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("SLEEP · 14 DAYS")
+                    .font(Faff.F.oswald(11, .semibold)).tracking(1.4)
+                    .foregroundStyle(Faff.C.textDim)
+                Spacer()
+                Text(label)
+                    .font(Faff.F.oswald(10, .semibold)).tracking(1.2)
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(color.opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            // Three stats: deficit hours, avg, nights short.
+            HStack(alignment: .firstTextBaseline, spacing: 18) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text(String(format: "%.1f", hrs))
+                            .font(Faff.F.display(26)).foregroundStyle(Faff.C.ink)
+                        Text("h").font(Faff.F.inter(11)).foregroundStyle(Faff.C.textFaint)
+                    }
+                    Text("DEBT").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text(String(format: "%.1f", avg))
+                            .font(Faff.F.display(26)).foregroundStyle(Faff.C.ink)
+                        Text("h").font(Faff.F.inter(11)).foregroundStyle(Faff.C.textFaint)
+                    }
+                    Text("NIGHTLY AVG").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(short)")
+                        .font(Faff.F.display(26)).foregroundStyle(short > 0 ? Faff.C.warn : Faff.C.ink)
+                    Text("UNDER 7H").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                }
+                Spacer(minLength: 0)
+            }
+            if let msg = debt.message, !msg.isEmpty {
+                Text(msg)
+                    .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
     }
 }
