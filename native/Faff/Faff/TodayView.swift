@@ -22,7 +22,11 @@ func faffApproxDuration(_ minutes: Int?) -> (value: String, unit: String?) {
 struct TodayView: View {
     let overview: OverviewResponse
     var onWhy: () -> Void = {}
-    var onOpenWorkout: () -> Void = {}
+    /// Open the workout-detail sheet. `dateISO == nil` → today (default,
+    /// for the today hero); a date string → that day's preview (used by
+    /// the future-day preview hero so tapping Sunday's "Open workout"
+    /// shows Sunday's long run, not today's REST).
+    var onOpenWorkout: (String?) -> Void = { _ in }
     var onReload: () -> Void = {}
 
     @State private var selected: String?   // nil = today
@@ -274,7 +278,7 @@ struct TodayView: View {
         let dw = o.todayWorkout
         let phase = o.planCurrentPhase ?? "Today"
         let hasStrength = o.planWeekWorkouts?.first { $0.dateISO == o.today }?.hasStrength == true
-        return Button(action: onOpenWorkout) {
+        return Button(action: { onOpenWorkout(nil) }) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center, spacing: 8) {
                     HStack(spacing: 6) {
@@ -325,7 +329,7 @@ struct TodayView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 8) {
-            PrimaryButton(title: "Open Workout", action: onOpenWorkout)
+            PrimaryButton(title: "Open Workout") { onOpenWorkout(nil) }
             HStack(spacing: 8) {
                 GhostButton(title: "Skip", icon: "forward.end") { showSkipConfirm = true }
                 GhostButton(title: "Substitute", icon: "arrow.left.arrow.right") { reschedule = RescheduleTarget(action: "swap") }
@@ -374,7 +378,7 @@ struct TodayView: View {
                     StatPill(value: dw.paceDisplay, unit: dw.paceDisplay.contains(":") ? "/mi" : nil, label: "Pace", accent: dw.isQuality)
                     StatPill(value: faffApproxDuration(dw.durationMin).value, unit: faffApproxDuration(dw.durationMin).unit, label: "Time")
                 }
-                GhostButton(title: "Open workout") { onOpenWorkout() }.padding(.top, 12)
+                GhostButton(title: "Open workout") { onOpenWorkout(d.dateISO) }.padding(.top, 12)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)

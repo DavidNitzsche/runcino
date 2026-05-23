@@ -13,14 +13,31 @@ import SwiftUI
 
 struct WorkoutDetailView: View {
     var overview: OverviewResponse? = nil
+    /// Which day to render. nil → today's workout (existing default). When
+    /// the user taps a future day's "Open workout" (e.g. Sunday's long run
+    /// from Saturday), this is set to that date so the sheet shows THAT
+    /// day's prescription instead of today's rest.
+    var targetDate: String? = nil
     var onReload: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @State private var reschedule: RescheduleTarget?
     @State private var showSkipConfirm = false
     @State private var working = false
 
-    private var dw: DerivedWorkout? { overview.map { $0.todayWorkout } }
-    private var todayISO: String { overview?.today ?? "" }
+    /// The day the sheet is describing (selected if set, else today).
+    private var detailDate: String { targetDate ?? overview?.today ?? "" }
+    /// The DerivedWorkout for the chosen day. When the date isn't today we
+    /// build it from the matching planWeekWorkouts entry so the eyebrow,
+    /// title, structure, and copy all reflect THAT day — not today's REST.
+    private var dw: DerivedWorkout? {
+        guard let o = overview else { return nil }
+        if targetDate == nil || targetDate == o.today { return o.todayWorkout }
+        guard let day = o.planWeekWorkouts?.first(where: { $0.dateISO == targetDate }) else {
+            return o.todayWorkout   // sensible fallback if the date isn't in the week
+        }
+        return DerivedWorkout(plan: day, fallback: nil)
+    }
+    private var todayISO: String { detailDate }
 
     var body: some View {
         ScrollView {
@@ -93,7 +110,17 @@ struct WorkoutDetailView: View {
         let dw = self.dw
         let phase = overview?.planCurrentPhase ?? "Today"
         let type = dw.map { DerivedWorkout.niceType($0.type) } ?? "Workout"
-        return "\(type) · \(phase) · today"
+        // Distinguish today vs a future preview so the eyebrow doesn't lie.
+        let when: String
+        if let t = targetDate, t != overview?.today {
+            // "Sun May 24" — match the date strip's eyebrow format.
+            let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = TimeZone(identifier: "UTC")
+            let out = DateFormatter(); out.dateFormat = "EEE MMM d"; out.timeZone = TimeZone(identifier: "UTC")
+            when = inF.date(from: t).map { out.string(from: $0) } ?? "Upcoming"
+        } else {
+            when = "today"
+        }
+        return "\(type) · \(phase) · \(when)"
     }
     private var titleLine: String {
         let label = dw?.label ?? "Today's run"

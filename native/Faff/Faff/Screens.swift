@@ -21,6 +21,9 @@ struct RootTabView: View {
     @State private var tab: FaffTab = RootTabView.initialTab
     @State private var showProfile = false
     @State private var showDetail = false
+    /// Which day the workout-detail sheet should render. nil → today
+    /// (default); set to a date when the user taps a future-day preview.
+    @State private var detailDate: String? = nil
     @State private var showWhy = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -51,7 +54,9 @@ struct RootTabView: View {
                     FaffTabBar(active: tab) { tab = $0 }
                 }
                 .sheet(isPresented: $showProfile) { ProfileView(overview: o, onLogout: onLogout) }
-                .sheet(isPresented: $showDetail) { WorkoutDetailView(overview: o, onReload: { Task { await load() } }) }
+                .sheet(isPresented: $showDetail) {
+                    WorkoutDetailView(overview: o, targetDate: detailDate, onReload: { Task { await load() } })
+                }
                 .sheet(isPresented: $showWhy) { WhyThisSheet(overview: o) { showWhy = false; tab = .coach } }
             } else if let loadError {
                 FaffStateView(title: "Couldn't load", detail: loadError) { Task { await load() } }
@@ -74,7 +79,7 @@ struct RootTabView: View {
 
     @ViewBuilder private func screen(_ o: OverviewResponse) -> some View {
         switch tab {
-        case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { showDetail = true }, onReload: { Task { await load() } })
+        case .today:  TodayView(overview: o, onWhy: { showWhy = true }, onOpenWorkout: { date in detailDate = date; showDetail = true }, onReload: { Task { await load() } })
         case .plan:   PlanView(overview: o)
         case .coach:  CoachView(overview: o)
         case .health: HealthView(overview: o, onReload: { Task { await load() } })

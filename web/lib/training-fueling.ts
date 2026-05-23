@@ -209,9 +209,28 @@ export function planTrainingFueling(input: FuelingInput): FuelingPlan {
   // 5. Plain-English copy. Use the runner's product name when set so prompts
   //    read "2 Maurten 100s" not generic "2 gels". (NO research citations in
   //    user text — citations live in code comments, not on screen.)
-  const whens = atMins.length === 1
-    ? `~${fmtMin(atMins[0])} in`
-    : `~${atMins.slice(0, -1).map(fmtMin).join(', ')} & ${fmtMin(atMins[atMins.length - 1])} in`;
+  //
+  // Time phrasing favours a CADENCE for 3+ gels (a comma-list of mixed
+  // "17 min, 42 min, 1:07 & 1:31 in" reads as visual junk you can't act on).
+  // 1 gel  → "around 17 min in"
+  // 2 gels → "around 25 and 50 min in"
+  // 3+     → "every ~25 min, starting around 17 min in"
+  const fmtPlain = (m: number): string => {
+    const r = Math.round(m);
+    if (r < 60) return `${r} min`;
+    const h = Math.floor(r / 60), mm = r % 60;
+    return mm === 0 ? `${h}h` : `${h}h ${mm}m`;
+  };
+  const whens = (() => {
+    if (atMins.length === 0) return '';
+    if (atMins.length === 1) return `around ${fmtPlain(atMins[0])} in`;
+    if (atMins.length === 2) return `around ${fmtPlain(atMins[0])} and ${fmtPlain(atMins[1])} in`;
+    // 3+ — describe the cadence, not every mark.
+    const gaps: number[] = [];
+    for (let i = 1; i < atMins.length; i++) gaps.push(atMins[i] - atMins[i - 1]);
+    const avgGap = Math.round(gaps.reduce((s, n) => s + n, 0) / gaps.length / 5) * 5; // round to 5-min step
+    return `every ~${avgGap} min, starting around ${fmtPlain(atMins[0])} in`;
+  })();
   const productSingular = (input.gelLabel && input.gelLabel.trim()) || 'gel';
   const productPlural = gels === 1
     ? productSingular
@@ -221,17 +240,17 @@ export function planTrainingFueling(input: FuelingInput): FuelingPlan {
   let shortLine: string;
   let why: string;
   if (isRehearsal) {
-    shortLine = `Fuel rehearsal: ${productPhrase} at race target (${target} g/hr), ${whens}.`;
+    shortLine = `${productPhrase} at race target (${target} g/hr), ${whens}.`;
     why = `Race-day rehearsal. ${productPhrase} at the same rate and roughly the same spacing you'll run on race day, so race day isn't a surprise to your gut.`;
   } else if (target <= 45) {
-    shortLine = `Fuel: ${productPhrase}, ${whens}.`;
+    shortLine = `${productPhrase}, ${whens}.`;
     why = `Long runs over ~75 min start to drain glycogen. ${productPhrase} (${target} g/hr) keeps the tank topped up so the last miles don't fall off, and builds the habit your gut needs before race day.`;
   } else {
-    shortLine = `Fuel: ${productPhrase} (${target} g/hr), ${whens}.`;
-    why = `${dur >= 150 ? 'Two-plus hours of running' : 'Quality work this long'} needs steady carbs. ${productPhrase} at ~${target} g/hr, ${heat.adjusted ? 'reduced for heat. ' : ''}standard endurance fueling rate.`;
+    shortLine = `${productPhrase} (${target} g/hr), ${whens}.`;
+    why = `${dur >= 150 ? 'Two-plus hours of running' : 'Quality work this long'} needs steady carbs. ${productPhrase} at ~${target} g/hr${heat.adjusted ? ', reduced for heat' : ''}. Standard endurance fueling rate.`;
   }
   if (heat.adjusted && !isRehearsal) {
-    shortLine = shortLine.replace(/\.$/, ` · hot day, dialed back.`);
+    shortLine = shortLine.replace(/\.$/, '. Hot day, dialed back.');
   }
 
   return {
