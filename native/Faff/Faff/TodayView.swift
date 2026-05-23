@@ -945,29 +945,35 @@ struct FuelingBreakdown: View {
         .faffCard()
     }
 
-    /// Render rows: a RUN leg (with miles/min/cumulative start time),
-    /// then GEL N badge, repeating. A trailing leg covers the final
-    /// stretch to the finish (or open-ended if duration is unknown).
+    /// Each gel row shows WHERE it lands (cumulative mile + cumulative time),
+    /// with the segment from the previous gel as a small annotation. A
+    /// trailing finish row tells the runner how much they have after the
+    /// last gel. The previous layout interleaved RUN / GEL rows which made
+    /// the reader cumulate mileage in their head — the mile-anchored read
+    /// is what the runner actually needs ("Gel 2 is at 6.2 mi", not "after
+    /// 3.7 mi of running from gel 1, you take Gel 2").
     private enum Row {
-        case run(durationMin: Int, miles: Double?, startCumMin: Int)
-        case gel(index: Int, atCumMin: Int)
-        case runOpen   // unknown total duration → "to finish"
+        case gel(index: Int, atCumMi: Double?, atCumMin: Int, fromPrevMi: Double?)
+        case finish(atCumMi: Double?, remainingMi: Double?, remainingMin: Int?)
     }
 
     private var rows: [Row] {
         var out: [Row] = []
-        var prev = 0
+        var prevMin = 0
         for (i, t) in fueling.atMins.enumerated() {
-            let dur = max(0, t - prev)
-            out.append(.run(durationMin: dur, miles: milesFor(dur), startCumMin: prev))
-            out.append(.gel(index: i + 1, atCumMin: t))
-            prev = t
+            let segMin = max(0, t - prevMin)
+            let atCumMi = milesFor(t)             // total miles run to this gel
+            let fromPrevMi = i == 0 ? nil : milesFor(segMin)  // segment since last gel
+            out.append(.gel(index: i + 1, atCumMi: atCumMi, atCumMin: t, fromPrevMi: fromPrevMi))
+            prevMin = t
         }
-        if let total = totalDurationMin, total > prev + 2 {
-            let dur = total - prev
-            out.append(.run(durationMin: dur, miles: milesFor(dur), startCumMin: prev))
+        if let total = totalDurationMin, total > prevMin + 2 {
+            let remMin = total - prevMin
+            out.append(.finish(atCumMi: milesFor(total),
+                               remainingMi: milesFor(remMin),
+                               remainingMin: remMin))
         } else if totalDurationMin == nil {
-            out.append(.runOpen)
+            out.append(.finish(atCumMi: nil, remainingMi: nil, remainingMin: nil))
         }
         return out
     }
@@ -980,51 +986,69 @@ struct FuelingBreakdown: View {
     @ViewBuilder
     private func rowView(_ row: Row, accent: Color) -> some View {
         switch row {
-        case .run(let dur, let mi, let cum):
-            HStack(spacing: 10) {
-                Text("RUN").font(Faff.F.oswald(11, .semibold)).tracking(1)
-                    .foregroundStyle(Faff.C.textDim)
-                    .frame(width: 36, alignment: .leading)
-                if let mi {
-                    Text("\(formatMi(mi)) mi")
-                        .font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
-                    Text("· ~\(formatMin(dur))")
-                        .font(Faff.F.inter(13)).foregroundStyle(Faff.C.textMuted)
-                } else {
-                    Text("~\(formatMin(dur))")
-                        .font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
-                }
-                Spacer(minLength: 6)
-                if cum > 0 {
-                    Text("from ~\(formatMin(cum))")
-                        .font(Faff.F.inter(11)).foregroundStyle(Faff.C.textFaint)
-                }
-            }
-            .padding(.vertical, 8)
-        case .gel(let idx, let cum):
-            HStack(spacing: 10) {
+        case .gel(let idx, let mi, let cum, let fromPrev):
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Circle().fill(accent).frame(width: 8, height: 8)
-                    .padding(.leading, 14)
-                Text("GEL \(idx)")
-                    .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
-                    .foregroundStyle(accent)
+                    .padding(.leading, 6).offset(y: -2)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text("GEL \(idx)")
+                            .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
+                            .foregroundStyle(accent)
+                        if let mi {
+                            Text("at \(formatMi(mi)) mi")
+                                .font(Faff.F.inter(13, .semibold))
+                                .foregroundStyle(Faff.C.ink)
+                        } else {
+                            Text("at ~\(formatMin(cum)) in")
+                                .font(Faff.F.inter(13, .semibold))
+                                .foregroundStyle(Faff.C.ink)
+                        }
+                    }
+                    HStack(spacing: 6) {
+                        if mi != nil {
+                            Text("~\(formatMin(cum)) in")
+                                .font(Faff.F.inter(11))
+                                .foregroundStyle(Faff.C.textMuted)
+                        }
+                        if let fromPrev {
+                            Text("·").font(Faff.F.inter(11))
+                                .foregroundStyle(Faff.C.textFaint)
+                            Text("after \(formatMi(fromPrev)) mi")
+                                .font(Faff.F.inter(11))
+                                .foregroundStyle(Faff.C.textMuted)
+                        }
+                    }
+                }
                 Spacer(minLength: 6)
-                Text("at ~\(formatMin(cum)) in")
-                    .font(Faff.F.inter(11, .medium)).foregroundStyle(Faff.C.textMuted)
             }
-            .padding(.vertical, 7).padding(.horizontal, 8)
+            .padding(.vertical, 8).padding(.horizontal, 8)
             .background(accent.opacity(0.07),
                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        case .runOpen:
-            HStack(spacing: 10) {
-                Text("RUN").font(Faff.F.oswald(11, .semibold)).tracking(1)
-                    .foregroundStyle(Faff.C.textDim)
-                    .frame(width: 36, alignment: .leading)
-                Text("to finish")
-                    .font(Faff.F.inter(13, .medium)).foregroundStyle(Faff.C.ink)
+        case .finish(let cumMi, let remMi, let remMin):
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Circle().fill(Faff.C.textDim.opacity(0.4))
+                    .frame(width: 8, height: 8)
+                    .padding(.leading, 6).offset(y: -2)
+                VStack(alignment: .leading, spacing: 1) {
+                    if let cumMi {
+                        Text("FINISH at \(formatMi(cumMi)) mi")
+                            .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
+                            .foregroundStyle(Faff.C.textDim)
+                    } else {
+                        Text("RUN TO FINISH")
+                            .font(Faff.F.oswald(12, .semibold)).tracking(1.2)
+                            .foregroundStyle(Faff.C.textDim)
+                    }
+                    if let remMi, let remMin {
+                        Text("after \(formatMi(remMi)) mi · ~\(formatMin(remMin))")
+                            .font(Faff.F.inter(11))
+                            .foregroundStyle(Faff.C.textMuted)
+                    }
+                }
                 Spacer(minLength: 6)
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 8).padding(.horizontal, 8)
         }
     }
 
