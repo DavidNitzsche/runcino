@@ -52,7 +52,7 @@ export function HrAnchorsIsland({
       <AnchorEditor
         anchor="resting-hr"
         label="Resting HR"
-        hint="The floor, your true resting beat. Enables Karvonen (%HRR) zones, more accurate for trained runners."
+        hint="Your true resting heart rate. With it set, zones are computed against your personal HR range — sharper than generic % of max."
         min={30}
         max={100}
         placeholder="e.g. 52"

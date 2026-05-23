@@ -397,7 +397,7 @@ struct HealthView: View {
             vital("Resting HR", rhr, "bpm", sub: "latest", type: "resting_hr"),
             vital("Sleep", slp, "h", dec: 1, sub: "last night", type: "sleep_hours"),
             vital("Respiration", hk.respiratoryRate, "br/m", dec: 1, sub: "latest", type: "respiratory_rate"),
-            vital("VO₂max", hk.vo2Max, "", dec: 1, sub: "latest", type: "vo2_max"),
+            vital("Cardio fitness", hk.vo2Max, "", dec: 1, sub: "latest", type: "vo2_max"),
             vital("Wrist temp", hk.wristTempC, "°C", dec: 1, sub: "sleep", type: "wrist_temp"),
         ]
         let dynamics: [Tile] = [
@@ -504,7 +504,7 @@ struct HealthView: View {
                 HStack(spacing: 14) {
                     anchorCell("MAX HR", z.maxHr.map { "\(Int($0))" } ?? "-", "bpm")
                     anchorCell("RESTING HR", z.restingHr.map { "\(Int($0))" } ?? "-", "bpm")
-                    anchorCell("ZONES", z.framework == "HRR" ? "Personalized" : "Standard", z.framework == "HRR" ? "uses resting HR" : "")
+                    anchorCell("ZONES", z.framework == "HRR" ? "Personalized" : "Standard", z.framework == "HRR" ? "tuned to your resting HR" : "")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -534,7 +534,7 @@ struct HealthView: View {
         if localHealth {
             return "Reading vitals from Apple Health on this device. They sync into your readiness score as days accumulate."
         }
-        return "Connect Apple Health for heart-rate variability, resting heart rate, sleep and VO₂max. Until then, readiness reads from training load only."
+        return "Connect Apple Health for heart-rate variability, resting heart rate, sleep and cardio fitness. Until then, readiness reads from training load only."
     }
 
     @ViewBuilder private var connectControl: some View {
@@ -1905,7 +1905,7 @@ struct MetricGuide {
                 goodWhenLower: false)
         case "vo2_max":
             return MetricGuide(
-                what: "VO₂max estimates your aerobic ceiling, how much oxygen you can use at max effort.",
+                what: "Cardio fitness (Apple's VO₂max read) estimates your aerobic ceiling — how much oxygen you can use at max effort.",
                 good: "Higher is better and it climbs with consistent training. Apple's estimate is directional, so watch the trend, not the exact figure.",
                 improve: "Easy Z2 volume builds the engine; controlled intervals sharpen the top end. Both, over weeks.",
                 goodWhenLower: false)

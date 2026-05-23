@@ -242,7 +242,7 @@ export default async function RacePlanPage({ params }: PageProps) {
       case 'C':              return 'C-RACE';
       case 'tune-up':        return 'TUNE-UP';
       case 'training-run':   return 'TRAINING RUN';
-      case 'hilly-excluded': return 'HILLY · EXCLUDED FROM VDOT';
+      case 'hilly-excluded': return 'HILLY · EXCLUDED FROM FITNESS SCORE';
       default:               return 'A-RACE';
     }
   })();
@@ -542,7 +542,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                           : perWk <= 0.45
                             ? `ambitious but doable, it needs consistent threshold work and no missed blocks.`
                             : `a real stretch, it would need everything to click; a slightly softer goal may serve you better.`;
-                      return <>You&apos;re at VDOT <strong>{readiness.currentVdot.toFixed(1)}</strong>, which projects <strong>{readiness.predictedFinishDisplay}</strong> here. Your {race.meta.goalDisplay} goal needs VDOT <strong>{readiness.goalVdot.toFixed(1)}</strong>, a {readiness.vdotGap.toFixed(1)}-point lift over {weeks} weeks ({feas}) The plan&apos;s threshold + race-pace blocks are built to close that gap; hit them and the projection moves with you.</>;
+                      return <>Your fitness today projects <strong>{readiness.predictedFinishDisplay}</strong> here. Your {race.meta.goalDisplay} goal is a <strong>{readiness.vdotGap.toFixed(1)}-point fitness lift</strong> over {weeks} weeks ({feas}) The plan&apos;s threshold + race-pace blocks are built to close that gap; hit them and the projection moves with you.</>;
                     })()
                   : <>The full 14-week plan points here. Log a recent race or a few quality runs and the coach will show your current fitness, the gap to {race.meta.goalDisplay}, and the path to close it.</>}
             </p>
@@ -587,7 +587,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                   Readiness
                 </div>
                 <div style={{ fontSize: 12 }}>
-                  Projected at current VDOT <strong>{readiness.currentVdot.toFixed(1)}</strong>:
+                  Projected at current fitness:
                   <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 17, marginLeft: 6, letterSpacing: 0.5 }}>
                     {readiness.predictedFinishDisplay}
                   </span>
@@ -595,9 +595,7 @@ export default async function RacePlanPage({ params }: PageProps) {
                 {readiness.goalVdot != null && readiness.vdotGap != null && (
                   <div style={{ fontSize: 12, marginTop: 4 }}>
                     Goal{' '}
-                    <strong>{fmtTime(readiness.goalFinishS)}</strong>{' '}
-                    requires VDOT{' '}
-                    <strong>{readiness.goalVdot.toFixed(1)}</strong>
+                    <strong>{fmtTime(readiness.goalFinishS)}</strong>
                   </div>
                 )}
                 {readiness.vdotGap != null && (
@@ -618,12 +616,10 @@ export default async function RacePlanPage({ params }: PageProps) {
                       {fmtTime(readiness.goalFinishS - readiness.predictedFinishS)}.</>
                     ) : (
                       <>
-                        Gap: <strong>{readiness.vdotGap.toFixed(1)} VDOT points</strong>
-                        {readiness.paceTGapS != null && (
-                          <>
-                            {' '}/ <strong>~{Math.abs(readiness.paceTGapS)} sec/mi</strong> T pace
-                          </>
-                        )}
+                        Gap to goal:{' '}
+                        {readiness.paceTGapS != null
+                          ? <strong>~{Math.abs(readiness.paceTGapS)} sec/mi at threshold</strong>
+                          : <strong>{readiness.vdotGap.toFixed(1)} fitness points</strong>}
                       </>
                     )}
                   </div>

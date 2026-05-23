@@ -60,12 +60,12 @@ function aggregateExplainer(vdot: FitnessVdot): string | null {
     : null;
 
   const parts: string[] = [];
-  parts.push(`Your current VDOT is **${vdot.value.toFixed(1)}**.`);
+  parts.push(`Your current fitness score is **${Math.round(vdot.value)}**.`);
 
   // Top contributor framing
   const topProvSrc = top.source === 'races' ? ' (chip time)' : '';
   parts.push(
-    ` Anchored by your **${top.name} ${topDate}** (${topFinish}${topProvSrc} → VDOT ${top.vdot.toFixed(1)}), weighted **${topPct}%** of the total.`,
+    ` Anchored by your **${top.name} ${topDate}** (${topFinish}${topProvSrc} → ${Math.round(top.vdot)}), weighted **${topPct}%** of the total.`,
   );
 
   // Goal-tier-in-cycle explainer
@@ -213,12 +213,12 @@ export function CoachReadsCard({
         )}
       </div>
 
-      {/* ── VDOT ── */}
+      {/* ── Fitness score (was VDOT) ── */}
       <div className="coach-reads-section">
-        <div className="coach-reads-label">VDOT</div>
+        <div className="coach-reads-label">Fitness score</div>
         <div className="coach-reads-row">
           <div className="coach-reads-headline">
-            <span className="coach-reads-bignum">{fitness.vdot.value.toFixed(1)}</span>
+            <span className="coach-reads-bignum">{Math.round(fitness.vdot.value)}</span>
             <span className="coach-reads-tag coach-reads-tag-source">{fitness.vdot.source}</span>
             {fitness.vdot.goalTier && (
               <span className="coach-reads-tag coach-reads-tag-goal">
@@ -254,7 +254,7 @@ export function CoachReadsCard({
                   <div key={i} className="coach-reads-contributor">
                     <div className="coach-reads-contributor-line">
                       <strong>{c.name}</strong> {fmtFinish(c.finishS)} · {fmtDate(c.date)} →
-                      <span className="coach-reads-accent"> VDOT {c.vdot.toFixed(1)}</span>
+                      <span className="coach-reads-accent"> score {Math.round(c.vdot)}</span>
                       {pct != null && (
                         <span className="coach-reads-weight-pct">{pct}%</span>
                       )}
@@ -348,46 +348,40 @@ export function CoachReadsCard({
         </div>
       )}
 
-      {/* ── DERIVED PACE BANDS (canonical Daniels) ── */}
+      {/* ── DERIVED PACE BANDS ── */}
       <div className="coach-reads-section">
         <div className="coach-reads-label">
-          Pace Bands · canonical Daniels for VDOT {fitness.vdot.value.toFixed(1)}
-          {Number.isInteger(fitness.vdot.value) ? '' : ' (interpolated)'}
+          Your training paces
         </div>
         <div className="coach-reads-pace-grid">
           <div className="coach-reads-pace-cell">
-            <div className="coach-reads-pace-zone">E · Easy</div>
+            <div className="coach-reads-pace-zone">Easy</div>
             <div className="coach-reads-pace-band">{fmtPaceBand(fitness.paces.E)}</div>
             <div className="coach-reads-pace-meta">Recovery, long runs, most training</div>
           </div>
           <div className="coach-reads-pace-cell">
-            <div className="coach-reads-pace-zone">M · Marathon</div>
+            <div className="coach-reads-pace-zone">Marathon</div>
             <div className="coach-reads-pace-band">{fmtPaceBand(fitness.paces.M)}</div>
             <div className="coach-reads-pace-meta">Long-run finishes, marathon goal pace</div>
           </div>
           <div className="coach-reads-pace-cell">
-            <div className="coach-reads-pace-zone">T · Threshold</div>
+            <div className="coach-reads-pace-zone">Threshold</div>
             <div className="coach-reads-pace-band">{fmtPaceBand(fitness.paces.T)}</div>
-            <div className="coach-reads-pace-meta">Tempo, cruise intervals, HM pace ish</div>
+            <div className="coach-reads-pace-meta">Tempo, cruise intervals, half-marathon pace-ish</div>
           </div>
           <div className="coach-reads-pace-cell">
-            <div className="coach-reads-pace-zone">I · Intervals</div>
+            <div className="coach-reads-pace-zone">Intervals</div>
             <div className="coach-reads-pace-band">{fmtPaceBand(fitness.paces.I)}</div>
-            <div className="coach-reads-pace-meta">VO2max work, 5K race pace</div>
+            <div className="coach-reads-pace-meta">Hard repeats, 5K race pace</div>
           </div>
           <div className="coach-reads-pace-cell">
-            <div className="coach-reads-pace-zone">R · Repetition</div>
+            <div className="coach-reads-pace-zone">Strides</div>
             <div className="coach-reads-pace-band">{fmtPaceBand(fitness.paces.R)}</div>
-            <div className="coach-reads-pace-meta">Strides, mile race pace</div>
+            <div className="coach-reads-pace-meta">Form work, mile race pace</div>
           </div>
         </div>
         <div className="coach-reads-pace-footnote">
-          Bands are <strong>canonical Daniels</strong> values from the official
-          Table 2 source (images committed at <code>docs/references/</code>).
-          Single-value columns (M, T, I) come from the published table; E
-          is the published range midpoint with ±10s synthesis; R derives
-          from r400 × 4.023. Source-priority chain: published &gt; i1000 × 1.609
-          &gt; i400 × 4.023 for I-mile.
+          Paces are computed from your fitness score and update whenever it does.
         </div>
       </div>
 

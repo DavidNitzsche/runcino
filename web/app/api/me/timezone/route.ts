@@ -48,8 +48,12 @@ export async function POST(req: NextRequest) {
 
   // Only write on change — this is hit on every app launch.
   if (tz !== user.timezone) {
+    // The tz column is load-bearing — every "today" derivation depends on
+    // it. If the write fails silently, every downstream date is wrong with
+    // zero visibility. Log so an ops scan can spot a pattern; the API
+    // still returns ok so the client isn't blocked on a transient blip.
     await query(`UPDATE users SET timezone = $1, updated_at = NOW() WHERE id = $2`, [tz, user.id])
-      .catch(() => {});
+      .catch((err) => { console.error('[api/me/timezone] failed to persist tz', { userId: user.id, tz, err }); });
   }
 
   return NextResponse.json({ ok: true, timezone: tz });

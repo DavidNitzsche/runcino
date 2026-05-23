@@ -106,14 +106,29 @@ struct IdleView: View {
         }
     }
 
-    /// "@ T · 6:31/mi · 90s rec" — derived from the phases.
+    /// "@ Threshold · 6:31/mi · 90s rec" — derived from the phases.
+    /// Decode the single-letter pace zone codes (E/M/T/I/R) into the words
+    /// the runner actually says, so the watch face isn't speaking Daniels.
     private var paceLine: String {
         let work = workout.phases.first { $0.type == .work }
         let rec = workout.phases.first { $0.type == .recovery }
-        var s = workout.paceLabel.map { "@ \($0)" } ?? "@ pace"
+        let label = workout.paceLabel.map { Self.expandZone($0) } ?? "pace"
+        var s = "@ \(label)"
         if let p = work?.targetPaceSPerMi { s += " · \(PaceFormat.mmss(p))/mi" }
         if let r = rec?.durationSec { s += " · \(r)s rec" }
         return s
+    }
+
+    /// "T" → "Threshold", "E" → "Easy", etc. Pass anything else through.
+    private static func expandZone(_ code: String) -> String {
+        switch code.uppercased() {
+        case "E": return "Easy"
+        case "M": return "Marathon"
+        case "T": return "Threshold"
+        case "I": return "Intervals"
+        case "R": return "Strides"
+        default:  return code
+        }
     }
 
     private var estLine: String {

@@ -56,22 +56,22 @@ export function Z2CoverageCard({ finding }: Props) {
           marginBottom: 10,
         }}
       >
-        Z2 stimulus check
+        Easy-effort check
       </div>
 
       {/* Evidence */}
       <div style={{ marginBottom: 10 }}>
         <strong style={{ color: '#080808' }}>Last 7 days:</strong>{' '}
-        {finding.last7d.runsInZ2}/{finding.last7d.easyRunCount} easy runs landed in Z2 band
-        {' '}(HR ≤{ceiling}). <strong style={{ color: '#080808' }}>Last 28 days:</strong>{' '}
-        {finding.last28d.z2SharePct}% of easy mileage in Z2 ({finding.last28d.z2Miles} of {Math.round(finding.last28d.easyMiles)} mi).
+        {finding.last7d.runsInZ2}/{finding.last7d.easyRunCount} easy runs stayed in the easy range
+        {' '}(HR at or below {ceiling}). <strong style={{ color: '#080808' }}>Last 28 days:</strong>{' '}
+        {finding.last28d.z2SharePct}% of your easy miles were in range ({finding.last28d.z2Miles} of {Math.round(finding.last28d.easyMiles)} mi).
       </div>
 
       {/* Diagnosis, direct, no hedging */}
       <div style={{ marginBottom: 10 }}>
         <strong style={{ color: '#080808' }}>Your easy runs are too hard.</strong>{' '}
-        Easy effort builds aerobic capacity without accumulating fatigue, 
-        when easy runs drift into Z3 the aerobic-base adaptation weakens AND you carry more fatigue into quality days.
+        Easy effort builds your aerobic base without piling on fatigue. When easy runs drift
+        into tempo, the base stops growing AND you carry more fatigue into your quality days.
       </div>
 
       {/* Recommendation, specific, actionable */}

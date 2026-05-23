@@ -118,10 +118,10 @@ export function PaceMigrationBanner({ beforeAfter }: { beforeAfter?: BeforeAfter
       <div style={{ fontSize: 14, lineHeight: 1.45, color: 'rgba(13, 15, 18, 0.85)' }}>
         {beforeAfter?.reason ?? (
           <>
-            Your training paces have been updated to <strong>canonical Daniels</strong> values from
-            the official Table 2 source. The previous formula was derived from race times and
-            drifted from the canonical bands, Easy paces ran too slow (over-conservative),
-            Repetition paces ran too fast (mile race pace instead of Daniels&apos; R).
+            Your training paces have been recalibrated against the standard reference table.
+            The previous formula was derived from race times and drifted, easy paces ran too
+            slow (over-conservative), strides ran too fast (mile race pace instead of the
+            true strides band).
           </>
         )}
       </div>
@@ -147,24 +147,24 @@ export function PaceMigrationBanner({ beforeAfter }: { beforeAfter?: BeforeAfter
           }}
         >
           <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 9, letterSpacing: 1.2, color: 'rgba(13, 15, 18, 0.55)', textTransform: 'uppercase', marginBottom: 6, fontWeight: 700 }}>
-            Before / after · VDOT {beforeAfter.vdot?.toFixed(1) ?? '-'}
+            Before / after · fitness score {beforeAfter.vdot ? Math.round(beforeAfter.vdot) : '-'}
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
             <thead>
               <tr style={{ color: 'rgba(13, 15, 18, 0.50)' }}>
                 <th style={{ textAlign: 'left', padding: '2px 0', fontWeight: 600 }}>Zone</th>
-                <th style={{ textAlign: 'left', padding: '2px 6px', fontWeight: 600 }}>Previous (buggy)</th>
-                <th style={{ textAlign: 'left', padding: '2px 6px', fontWeight: 600 }}>Now (canonical)</th>
+                <th style={{ textAlign: 'left', padding: '2px 6px', fontWeight: 600 }}>Previous</th>
+                <th style={{ textAlign: 'left', padding: '2px 6px', fontWeight: 600 }}>Now</th>
                 <th style={{ textAlign: 'left', padding: '2px 0', fontWeight: 600 }}>Δ</th>
               </tr>
             </thead>
             <tbody style={{ fontFamily: 'JetBrains Mono, monospace' }}>
               {([
-                ['E', beforeAfter.legacyE, beforeAfter.newE],
-                ['T', beforeAfter.legacyT, beforeAfter.newT],
-                ['I', beforeAfter.legacyI, beforeAfter.newI],
-                ['R', beforeAfter.legacyR, beforeAfter.newR],
-              ] as Array<['E' | 'T' | 'I' | 'R', number?, number?]>).map(([zone, prev, curr]) => {
+                ['Easy',      beforeAfter.legacyE, beforeAfter.newE],
+                ['Threshold', beforeAfter.legacyT, beforeAfter.newT],
+                ['Intervals', beforeAfter.legacyI, beforeAfter.newI],
+                ['Strides',   beforeAfter.legacyR, beforeAfter.newR],
+              ] as Array<[string, number?, number?]>).map(([zone, prev, curr]) => {
                 const d = fmtDelta(prev, curr);
                 const color = d.tone === 'faster' ? '#3EBD41' : d.tone === 'slower' ? '#b3450a' : 'rgba(8,8,8,.50)';
                 return (

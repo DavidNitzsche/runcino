@@ -306,38 +306,13 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                 )}
               </div>
 
-              {/* RIGHT, context column (stubs until M3) */}
+              {/* RIGHT, context column. The "Send to Watch" stub and the
+                  "Weather wiring coming soon" tile were both removed — the
+                  iPhone+watch sync is wired now (Apple Watch via Faff
+                  iPhone), and weather is fetched by the run-detail recap
+                  when GPS is available. Surfacing fake placeholders is
+                  worse than an honest empty column. */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div className="tile" style={{
-                  background: 'var(--color-corporate)', borderRadius: 13, padding: '20px 22px',
-                  color: '#fff',
-                }}>
-                  <div style={{
-                    fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.7px',
-                    fontWeight: 700, textTransform: 'uppercase', opacity: 0.75,
-                  }}>Ready when you are</div>
-                  <div style={{
-                    fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 28,
-                    lineHeight: 1, textTransform: 'uppercase', marginTop: 8,
-                  }}>Send to Watch</div>
-                  <div style={{ fontSize: 12.5, lineHeight: 1.5, opacity: 0.8, marginTop: 10 }}>
-                    Watch integration coming in M3, Garmin Connect IQ export with per-rep targets and audio cues.
-                  </div>
-                  <button disabled style={{
-                    marginTop: 14, padding: '10px 20px', borderRadius: 100,
-                    background: 'rgba(255,255,255,.16)', color: '#fff',
-                    border: '1px solid rgba(255,255,255,.18)',
-                    fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'not-allowed',
-                  }}>Send, coming soon</button>
-                </div>
-
-                <div className="tile">
-                  <div className="tile-lbl">Conditions</div>
-                  <div style={{ fontSize: 13, color: 'var(--color-t2)', marginTop: 8, lineHeight: 1.5 }}>
-                    Weather wiring coming soon. Check your local forecast before heading out.
-                  </div>
-                </div>
-
                 {paces && (
                   <div className="tile">
                     <div className="tile-h">
