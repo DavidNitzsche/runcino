@@ -448,7 +448,7 @@ export default async function TrainingPage() {
                     <TrainingCell key={`d-${d.date}`} day={cellDay} className={classes}>
                       {d.isRest ? (
                         <>
-                          <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
+                          <span className="cal-cell-type" style={isToday ? { color: 'var(--t0)', fontWeight: 700 } : undefined}>
                             {isToday ? 'Rest · Today' : 'Rest'}
                           </span>
                           <span className="cal-cell-rest-dash">-</span>
@@ -456,7 +456,7 @@ export default async function TrainingPage() {
                       ) : (
                         <>
                           {isDone && <span className="cal-cell-done">✓</span>}
-                          <span className="cal-cell-type" style={isToday ? { color: 'var(--amber)' } : undefined}>
+                          <span className="cal-cell-type" style={isToday ? { color: 'var(--t0)', fontWeight: 700 } : undefined}>
                             {d.label}{isToday ? ' · Today' : ''}
                           </span>
                           <span className="cal-cell-dist">{d.distanceMi}<span className="cal-cell-dist-unit">mi</span></span>

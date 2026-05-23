@@ -129,19 +129,26 @@ struct WatchWorkout: Codable {
     let isRace: Bool
     let goalSec: Int?               // goal finish time
     let strategyLabel: String?      // "Even effort · 8:46 flat"
-    let gelsMi: [Double]?           // gel marker mile points
+    let gelsMi: [Double]?           // gel marker mile points (race-only, distance-anchored)
+    // Training fueling — TIME-anchored gel plan that fires during any run
+    // that warrants fuel (lib/training-fueling.ts on the backend). The watch
+    // fires a haptic + screen prompt at each `fueling.atMins[i]` while the
+    // session is active; the runner sees what to take and when without
+    // opening the phone. nil → no fuel needed for this workout.
+    let fueling: WatchFueling?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
-        case isRace, goalSec, strategyLabel, gelsMi
+        case isRace, goalSec, strategyLabel, gelsMi, fueling
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
          phases: [WatchPhase], completionEndpoint: String, expiresAt: String,
          readinessScore: Int? = nil, readinessLabel: String? = nil,
          distanceMi: Double? = nil, paceLabel: String? = nil,
-         isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil) {
+         isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
+         fueling: WatchFueling? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -157,6 +164,7 @@ struct WatchWorkout: Codable {
         self.goalSec = goalSec
         self.strategyLabel = strategyLabel
         self.gelsMi = gelsMi
+        self.fueling = fueling
     }
 
     init(from decoder: Decoder) throws {
@@ -175,6 +183,7 @@ struct WatchWorkout: Codable {
         self.goalSec = try c.decodeIfPresent(Int.self, forKey: .goalSec)
         self.strategyLabel = try c.decodeIfPresent(String.self, forKey: .strategyLabel)
         self.gelsMi = try c.decodeIfPresent([Double].self, forKey: .gelsMi)
+        self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
         // Re-stamp each phase with its cursor index.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         self.phases = raw.enumerated().map { (i, p) in
@@ -209,6 +218,29 @@ struct WatchCompletion: Encodable {
     let maxHr: Int?
     var avgCadence: Int? = nil
     let phases: [WatchCompletionPhase]
+}
+
+// MARK: - Training fueling (time-anchored gel plan)
+
+/// Training fueling — gel plan the watch fires during the run. Parity with
+/// the web `FuelingPlan` (lib/training-fueling.ts).
+///
+///   - `atMins[i]` is when to fire the i-th gel prompt, in minutes from
+///     run start. The engine matches elapsed minutes against this list and
+///     emits a notification haptic + a "Fuel now" screen note when it
+///     crosses each mark.
+///   - `shortLine` is the one-liner the runner sees on the prompt
+///     ("Maurten 100 now — 1 of 3"). `gels` lets us suffix "X of Y".
+struct WatchFueling: Codable {
+    let needed: Bool
+    let gels: Int
+    let atMins: [Int]
+    let gPerHr: Int
+    let totalCarbsG: Int
+    let isRehearsal: Bool
+    let heatAdjusted: Bool
+    let shortLine: String
+    let why: String
 }
 
 // MARK: - Readiness glance (watch-app.html §G · GET /api/watch/readiness)

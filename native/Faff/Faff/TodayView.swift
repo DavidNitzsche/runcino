@@ -297,6 +297,13 @@ struct TodayView: View {
                     StatPill(value: faffApproxDuration(dw.durationMin).value,
                              unit: faffApproxDuration(dw.durationMin).unit, label: "Time")
                 }
+                // Fueling chip — when the run warrants gels, surface the plan
+                // INLINE on the pre-run hero so the runner sees what to take
+                // and when before they start. Rehearsal long runs get a green
+                // tint + RACE REHEARSAL eyebrow.
+                if let f = o.todayFueling, f.needed {
+                    FuelingChip(fueling: f).padding(.top, 12)
+                }
                 actionButtons
                     .padding(.top, 12)
             }
@@ -838,5 +845,39 @@ private struct PastDayHero: View {
         .frame(maxWidth: .infinity, alignment: .leading).faffCard(padding: 17)
         .contentShape(Rectangle())
         .onTapGesture { if !isRest, !date.isEmpty { onOpenRecap(date) } }
+    }
+}
+
+// MARK: - Fueling chip (pre-run gel plan)
+
+/// One-line gel/carb plan for runs that warrant fueling. Mirrors the web
+/// overview chip — rehearsal long runs use a green tint + RACE REHEARSAL
+/// eyebrow so they read distinct from a routine fuel line.
+private struct FuelingChip: View {
+    let fueling: OFueling
+    var body: some View {
+        let rehearsal = fueling.isRehearsal
+        let label = rehearsal ? "RACE REHEARSAL" : "FUEL"
+        // Strip the "Fuel:" / "Fuel rehearsal:" prefix from the shortLine
+        // since the eyebrow carries that.
+        let body = fueling.shortLine
+            .replacingOccurrences(of: "Fuel rehearsal: ", with: "")
+            .replacingOccurrences(of: "Fuel: ", with: "")
+        return HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Text(label)
+                .font(Faff.F.oswald(10, .semibold)).tracking(1.4)
+                .foregroundStyle(rehearsal ? Faff.C.recovery : Faff.C.textDim)
+            Text(body)
+                .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(rehearsal ? Faff.C.recovery.opacity(0.10) : Faff.C.pillBg,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(rehearsal ? Faff.C.recovery.opacity(0.30) : Faff.C.pillLine, lineWidth: 1)
+        )
     }
 }

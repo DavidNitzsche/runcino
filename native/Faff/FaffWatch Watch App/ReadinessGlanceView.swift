@@ -107,9 +107,9 @@ struct ReadinessGlanceView: View {
 #Preview("Green") {
     ReadinessGlanceView(readiness: WatchReadiness(
         score: 82, state: "green", label: "Primed",
-        recommendation: "Green. Hit today's prescription as written.",
+        recommendation: "Sleep banked. Execute the plan.",
         hrvMs: 68, rhrBpm: 48, suppressReason: nil,
-        nextRace: .init(name: "CIM", slug: "cim", daysAway: 198)))
+        nextRace: nil))
 }
 #Preview("Empty") {
     ReadinessGlanceView(readiness: WatchReadiness(

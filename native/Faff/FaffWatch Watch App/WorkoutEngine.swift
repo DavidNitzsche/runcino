@@ -82,6 +82,9 @@ final class WorkoutEngine: ObservableObject {
     /// lets a distance rep measure how far you've run *within* this rep.
     private var phaseStartMi: Double = 0
     private var workoutStart: Date = .now
+    /// Index of every fuel mark we've already fired (don't double-fire if the
+    /// engine ticks past the threshold more than once). Reset on start/reset.
+    private var firedFuelIndices: Set<Int> = []
     /// When the current pause began (nil when running).
     private var pauseStart: Date?
     /// Wall-clock seconds already banked from completed phases (so the
@@ -265,6 +268,7 @@ final class WorkoutEngine: ObservableObject {
         bankedSec = 0
         results = []
         didFireAlmostDone = false
+        firedFuelIndices.removeAll()
         planComplete = false
         workoutStart = .now
         phaseStart = .now
@@ -398,6 +402,25 @@ final class WorkoutEngine: ObservableObject {
 
         phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
         totalElapsedSec = bankedSec + phaseElapsedSec
+
+        // Fuel cues — fire a notification haptic + a full-screen "Fuel now"
+        // flip when elapsed crosses each gel mark from the prescribed plan
+        // (lib/training-fueling.ts on the backend). Idempotent per index, so
+        // a slow tick doesn't double-fire.
+        if let fueling = workout.fueling, fueling.needed {
+            let mins = totalElapsedSec / 60
+            for (i, mark) in fueling.atMins.enumerated() {
+                if mins >= mark && !firedFuelIndices.contains(i) {
+                    firedFuelIndices.insert(i)
+                    let n = i + 1
+                    let label = fueling.gels > 0 ? "Fuel · \(n) of \(fueling.gels)" : "Fuel now"
+                    // Use the existing race-fuel haptic + transition cue
+                    // pattern so the watch face flip + buzz are consistent.
+                    Haptics.play(.transitionCooldown)
+                    flash(.fuel(title: "Fuel now", sub: label), for: 5)
+                }
+            }
+        }
 
         // Live pace-drift on WORK intervals — color the pace + fire a
         // single sustained-drift cue. Driven by the tracker's GPS pace.

@@ -219,9 +219,10 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
     ? (day.description?.toLowerCase().includes('lower') ? 'Lower + Core' : 'Upper + Core')
     : null;
 
-  const typeColor = isToday
-    ? 'var(--att)'
-    : isRest
+  // Today is no longer painted amber — orange/amber = warning, today is
+  // wayfinding (the cell border + bg tint already mark it). Color falls back
+  // to the workout's own type color.
+  const typeColor = isRest
     ? 'var(--t3)'
     : day.isQuality
     ? 'var(--corp)'
@@ -237,8 +238,9 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
   return (
     <div style={{
       borderRadius: 7,
-      background: isToday ? 'rgba(209,168,90,.07)' : 'var(--l2)',
-      border: `1px solid ${isToday ? 'rgba(209,168,90,.4)' : 'var(--l4)'}`,
+      // Neutral ink tint for today (was amber); orange is reserved for warnings.
+      background: isToday ? 'rgba(8,8,8,.04)' : 'var(--l2)',
+      border: `1px solid ${isToday ? 'rgba(8,8,8,.30)' : 'var(--l4)'}`,
       display: 'flex', flexDirection: 'column',
       minHeight: 90,
       overflow: 'hidden',
@@ -249,12 +251,12 @@ function DayCellMonth({ day, todayISO }: { day: DayEntry; todayISO: string }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
           <span style={{
             fontFamily: 'var(--f-data)', fontSize: 11, fontWeight: 700,
-            color: isToday ? 'var(--att)' : 'var(--t3)', lineHeight: 1,
+            color: isToday ? 'var(--t0)' : 'var(--t3)', lineHeight: 1,
           }}>{dayN}</span>
           {isToday && (
             <span style={{
               fontFamily: 'var(--f-data)', fontSize: 7, letterSpacing: '1px',
-              color: 'var(--att)', fontWeight: 700,
+              color: 'var(--t0)', fontWeight: 700,
             }}>TODAY</span>
           )}
         </div>

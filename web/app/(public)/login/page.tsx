@@ -90,11 +90,9 @@ function LoginInner() {
             <div className="faff-form-row">
               <div className="faff-form-row-header">
                 <label className="faff-form-label" htmlFor="login-password">Password</label>
-                <a
-                  className="faff-forgot-link"
-                  href="#"
-                  onClick={(e) => { e.preventDefault(); alert('Password reset coming soon — email infra not yet wired. Contact support@faff.run.'); }}
-                >Forgot?</a>
+                {/* Dead "Forgot?" link removed — password reset isn't wired
+                    yet (no email infra), and a placeholder alert is worse
+                    than no link. Restore when reset is real. */}
               </div>
               <div className="faff-password-wrap">
                 <input

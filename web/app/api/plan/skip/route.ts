@@ -13,16 +13,23 @@
  */
 
 import { saveSkip, deleteSkip, getSkipForDate } from '../../../../lib/skip-store';
+import { getCurrentUser } from '../../../../lib/auth';
+import { userTimezone } from '../../../../lib/synthetic-plan';
+import { todayISO } from '../../../../lib/dates';
 
-function todayLAISO(): string {
-  const now = new Date();
-  const la = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-  return `${la.getFullYear()}-${String(la.getMonth() + 1).padStart(2, '0')}-${String(la.getDate()).padStart(2, '0')}`;
+/** Resolve "today" in the user's tz so a skip recorded at 11 PM is dated
+ *  TODAY, not tomorrow. Falls back to the location guess, then the app
+ *  default. (Was hardcoded to America/Los_Angeles — wrong for any non-LA
+ *  user.) */
+async function todayForReq(req?: Request): Promise<string> {
+  const user = await getCurrentUser(req).catch(() => null);
+  const tz = user?.timezone || userTimezone(user?.location);
+  return todayISO(tz);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const dateISO = todayLAISO();
+    const dateISO = await todayForReq(req);
     const skip = await getSkipForDate({ dateISO });
     return Response.json({ ok: true, skip });
   } catch (e) {
@@ -34,7 +41,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const dateISO = body.dateISO ?? todayLAISO();
+    const dateISO = body.dateISO ?? (await todayForReq(req));
 
     // Undo path, delete the row.
     if (body.undo === true) {

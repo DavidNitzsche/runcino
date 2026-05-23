@@ -51,6 +51,11 @@ struct OverviewResponse: Decodable {
     /// Active connector providers (e.g. ["strava"]). Real integration
     /// status for the More tab. Empty/absent for anonymous reads.
     let connectors: [String]?
+    /// Today's fueling plan — gel + carb schedule, anchored to time-into-run
+    /// so the watch can fire haptics at each gel mark. nil when not needed
+    /// (rest, short easy). `shortLine` renders one inline line on the
+    /// Today card; `why` opens in the workout detail.
+    let todayFueling: OFueling?
     /// Daily readiness score (0–100) + state; nil when suppressed/anon
     /// (ring renders dashed "No data" then). Surface-only.
     let readinessScore: Int?
@@ -121,6 +126,22 @@ struct OVolume: Decodable {
     let weeklyAvg8w: Double?
 }
 struct OFlags: Decodable { let healthKitAvailable: Bool? }
+
+/// Today's fueling plan (parity with web/lib/training-fueling.ts FuelingPlan).
+/// `shortLine` is the one-liner for the Today card; `why` is the longer
+/// plain-English explanation for workout-detail; `atMins` drives the watch
+/// haptic schedule during the run.
+struct OFueling: Decodable {
+    let needed: Bool
+    let gels: Int
+    let atMins: [Int]
+    let gPerHr: Int
+    let totalCarbsG: Int
+    let isRehearsal: Bool
+    let heatAdjusted: Bool
+    let shortLine: String
+    let why: String
+}
 
 /// CoachDecision<T> envelope, we only read `answer`.
 struct CoachAnswer<T: Decodable>: Decodable { let answer: T }

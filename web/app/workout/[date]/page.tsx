@@ -297,7 +297,7 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                             fontFamily: 'var(--font-data)', fontSize: 9.5, letterSpacing: '1.3px',
                             color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase', marginTop: 6,
                           }}>
-                            {m.citation} · {m.ts.slice(0, 10)}
+                            {m.ts.slice(0, 10)}
                           </div>
                         </div>
                       ))}
