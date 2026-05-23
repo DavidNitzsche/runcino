@@ -285,9 +285,9 @@ struct LivePauseFace: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, h * 0.06)
+                .padding(.horizontal, h * 0.075)
                 .padding(.top, h * 0.075)
-                .padding(.bottom, h * 0.05)
+                .padding(.bottom, h * 0.085)         // clear bottom bezel curve
             }
         }
     }
@@ -297,6 +297,12 @@ struct LivePauseFace: View {
 // TAKEOVERS (glyph + big cue + sub)
 // =====================================================================
 
+/// Takeover layout = glyph (top) · big cue (centre) · sub (bottom). The bottom
+/// row gets ~10% bottom padding so it clears Apple Watch's bottom-corner curve
+/// — without that the sub-text's descenders ride into the bezel on hardware
+/// (caught on TestFlight; sim screenshots are flat-rectangular so they don't
+/// reveal it). Horizontal padding is similar — the bottom corners are the
+/// tightest squeeze; the curve at left/right midline is generous.
 private struct Takeover<Glyph: View>: View {
     let glyph: Glyph
     let big: String
@@ -307,16 +313,19 @@ private struct Takeover<Glyph: View>: View {
         GeometryReader { geo in
             let h = geo.size.height
             VStack(alignment: .leading, spacing: 0) {
-                glyph.frame(maxHeight: .infinity, alignment: .top)
+                glyph
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, h * 0.045)            // clear the OS clock baseline
                 Text(big).foregroundStyle(bigColor).tightNumber(h * bigSize)
                     .frame(maxHeight: .infinity, alignment: .center)
-                Text(sub).font(.custom("HelveticaNeue-Bold", size: h * 0.11))
+                Text(sub).font(.custom("HelveticaNeue-Bold", size: h * 0.10))
                     .foregroundStyle(Color(hex: 0xCFD2D8))
                     .lineLimit(1).minimumScaleFactor(0.5)
                     .frame(maxHeight: .infinity, alignment: .bottom)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, h * 0.045)
+            .padding(.horizontal, h * 0.075)             // clear left/right bezel curve
+            .padding(.bottom, h * 0.105)                 // clear the bottom-corner curve
         }
     }
 }
@@ -338,18 +347,36 @@ struct GoFace: View {
 }
 
 /// Fuel — gel cue (amber = act now). Workout-type-agnostic: fires for any
-/// workout whose plan ships fuel markers (race or training).
+/// workout whose plan ships fuel markers (race or training). PERSISTENT —
+/// stays on screen until the runner swipes it down to acknowledge. The
+/// small chevron at the bottom is the discoverability hint; the actual
+/// dismiss gesture is wired in `ActiveWorkoutView` (DragGesture, ≥24pt).
 struct FuelFace: View {
     let big: String     // "GEL 2" / "FUEL · 1 of 3"
     let sub: String     // "+ water"
     var body: some View {
         Screen(background: wash(0x3A2B08)) {
-            GeometryReader { geo in
-                let h = geo.size.height
-                Takeover(glyph: Image(systemName: "drop.fill")
-                            .font(.system(size: h * 0.17))
-                            .foregroundStyle(Faff.goal),
-                         big: big, bigColor: Faff.goal, sub: sub, bigSize: 0.40)
+            ZStack {
+                GeometryReader { geo in
+                    let h = geo.size.height
+                    Takeover(glyph: Image(systemName: "drop.fill")
+                                .font(.system(size: h * 0.17))
+                                .foregroundStyle(Faff.goal),
+                             big: big, bigColor: Faff.goal, sub: sub, bigSize: 0.40)
+                }
+                // Swipe-down hint — a low-contrast chevron near the bottom-
+                // centre, far enough above the bezel that the curve can't
+                // crop it. Sits above the Takeover's content; ignored by
+                // hit-testing so the swipe still lands.
+                GeometryReader { geo in
+                    let h = geo.size.height
+                    Image(systemName: "chevron.compact.down")
+                        .font(.system(size: h * 0.09, weight: .bold))
+                        .foregroundStyle(Color(hex: 0xCFD2D8).opacity(0.50))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, h * 0.035)
+                        .allowsHitTesting(false)
+                }
             }
         }
     }
@@ -423,8 +450,8 @@ struct CompleteFace: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, h * 0.045)
-                .padding(.bottom, h * 0.05)
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)         // clear bottom bezel curve
             }
         }
     }
@@ -483,8 +510,8 @@ struct CalibrateFace: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, h * 0.045)
-                .padding(.bottom, h * 0.05)
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)         // clear bottom bezel curve
             }
         }
     }

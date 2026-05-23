@@ -54,12 +54,25 @@ struct ActiveWorkoutView: View {
                 .tabViewStyle(.page)
             }
 
-            // Edge-of-rep flips are brief + non-interactive, so they can
-            // safely sit above the pages. Fuel uses the new FuelFace; Go uses
-            // the new GoFace; the remaining cues (heads-up / phase change)
-            // keep the WatchFaces TransitionFace until they have a locked face.
+            // Edge-of-rep flips sit above the pages. Most transitions are brief
+            // + non-interactive (auto-clear after a beat). Fuel cues are
+            // PERSISTENT — they stay until the runner swipes them down to
+            // acknowledge ("yes, I took the gel"). A missed gel costs the race
+            // plan, so the alert can't time out while you fumble for your gel.
             if let cue = engine.transition {
-                ResponsiveFace { TransitionFlip(cue: cue) }.transition(.opacity)
+                let isFuel: Bool = { if case .fuel = cue { return true } else { return false } }()
+                ResponsiveFace { TransitionFlip(cue: cue) }
+                    .transition(.opacity)
+                    .gesture(
+                        // Swipe (any direction) on a persistent fuel cue
+                        // dismisses it. minimumDistance 24pt is firm enough
+                        // to avoid mis-fires from a wrist twitch on a run,
+                        // soft enough to land deliberately at arm's length.
+                        isFuel
+                            ? DragGesture(minimumDistance: 24)
+                                .onEnded { _ in engine.dismissTransition() }
+                            : nil
+                    )
             }
         }
         // Long-press anywhere → manual pause. 0.6s is firm enough to never

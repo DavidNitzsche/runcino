@@ -361,16 +361,30 @@ final class WorkoutEngine: ObservableObject {
         completion = nil
     }
 
-    /// Show a transition flip for a beat, then clear it (unless something
-    /// newer replaced it in the meantime).
+    /// Show a transition flip. **Fuel cues are persistent** — they stay on
+    /// screen until the runner swipes them away (`dismissTransition()`).
+    /// Everything else auto-clears after `seconds`. Idea: a missed gel is the
+    /// difference between hitting your race plan and bonking, so the alert
+    /// can't time out on you while you fumble for your gel.
     private func flash(_ cue: TransitionCue, for seconds: Double) {
         transition = cue
         transitionClear?.cancel()
+        // Fuel: no auto-clear. Runner explicitly acknowledges.
+        if case .fuel = cue { return }
         transitionClear = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard let self, self.transition == cue else { return }
             self.transition = nil
         }
+    }
+
+    /// Acknowledge / dismiss the current transition. Used by the UI for the
+    /// persistent fuel cue (the runner swipes it away once they've taken
+    /// the gel). Safe to call any time — clears whatever is currently up.
+    func dismissTransition() {
+        transitionClear?.cancel()
+        transitionClear = nil
+        transition = nil
     }
 
     // MARK: Timer tick

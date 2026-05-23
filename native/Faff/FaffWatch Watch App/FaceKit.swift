@@ -116,15 +116,18 @@ struct NumberFace: View {
     let rows: [NumRow]
     var strip: Strip? = nil
 
-    // recipe constants — locked from the measured rep-work face
-    private let topF: CGFloat = 0.050
+    // recipe constants — calibrated against TestFlight hardware (corner radius
+    // crops content within ~9% of the rounded corners). Sim screenshots are
+    // flat-rectangular and hide the clip; hardware reveals it. Bumped strip-
+    // bottom safety so the progress capsules stay clear of the curve.
+    private let topF: CGFloat = 0.060         // 6% from top — clears upper bezel curve
     private let gapRatio: CGFloat = 0.15      // inter-line gap as a fraction of glyph height
     private let capRatio: CGFloat = 0.73      // HelveticaNeue-Bold cap-height ÷ point-size
     private let cropK: CGFloat = 0.22         // line-box crop so element ≈ glyph
-    private let leadF: CGFloat = 0.045        // left inset (fraction of H)
-    private let stripBottomF: CGFloat = 0.040
+    private let leadF: CGFloat = 0.060        // 6% left inset — left edge of digits clears bezel
+    private let stripBottomF: CGFloat = 0.075 // 7.5% bottom safety — strip can't be curve-clipped
     private let stripBarF: CGFloat = 0.027
-    private let clockClearF: CGFloat = 0.72   // top row must end left of here (system clock lives right of it)
+    private let clockClearF: CGFloat = 0.70   // top row must end left of here (system clock lives right of it)
 
     // rough per-glyph advance (em) for HelveticaNeue-Bold, to clear the clock without measuring
     static func emWidth(_ s: String) -> CGFloat {
