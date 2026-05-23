@@ -419,6 +419,54 @@ struct MileSplitFace: View {
 }
 
 // =====================================================================
+// JUST RUN (unstructured-run escape hatch — always one swipe away)
+// =====================================================================
+
+/// JustRunFace — the "I just want to go run" page. Available as a TabView
+/// page on every home variant (rest day, workout day, no-phone-paired day).
+/// Tapping START spins up an unstructured WatchWorkout (one open-ended
+/// `.work` phase with no target pace) which routes to SteadyRunFace under
+/// the existing single-work-phase router rule.
+struct JustRunFace: View {
+    var onStart: () -> Void = {}
+    var body: some View {
+        Screen {
+            GeometryReader { geo in
+                let h = geo.size.height
+                VStack(alignment: .leading, spacing: 0) {
+                    FaceLabel(text: "Just run", color: Faff.mute, size: h * 0.06)
+                        .padding(.top, h * 0.075)
+                    Spacer(minLength: 0)
+                    // Single big glyph centred — no target to chase, so there
+                    // are no number rows. The icon says "going for a run."
+                    Image(systemName: "figure.run")
+                        .font(.system(size: h * 0.40, weight: .bold))
+                        .foregroundStyle(Faff.ink)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Spacer(minLength: 0)
+                    Button(action: onStart) {
+                        HStack(spacing: h * 0.035) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: h * 0.065, weight: .bold))
+                            Text("START")
+                                .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
+                                .tracking(2)
+                        }
+                        .foregroundStyle(Color(hex: 0x06210C))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, h * 0.030)
+                        .background(Capsule().fill(Faff.live))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)
+            }
+        }
+    }
+}
+
+// =====================================================================
 // LOBBY (pre-run launchpad — what you're about to do, then START)
 // =====================================================================
 

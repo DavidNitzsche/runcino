@@ -414,54 +414,71 @@ struct ControlsFace: View {
     }
 }
 
-// MARK: - SPLITS (every rep's pace as you bank it · deck §D)
+// MARK: - SPLITS (every rep's pace as you bank it)
 
 private struct SplitsPage: View {
     @ObservedObject var engine: WorkoutEngine
     var body: some View {
         SplitsFace(rows: engine.splits.map {
-            SplitsFace.Row(repNo: $0.repNo, label: shortLabel($0.label),
+            SplitsFace.Row(repNo: $0.repNo,
                            pace: $0.paceSPerMi.map { p in PaceFormat.mmss(p) } ?? "—",
-                           color: paceColor($0))
+                           role: paceRole($0))
         })
     }
-    private func shortLabel(_ s: String) -> String {
-        // Deck shows the rep distance ("800"), not "Interval 3/6".
-        s.split(separator: " ").first.map(String.init) ?? s
-    }
-    private func paceColor(_ s: WorkoutEngine.Split) -> Color {
-        guard s.paceSPerMi != nil else { return WP.faint }
-        if s.state == .current { return WP.orange }
-        return .zone(engine.zone(forPace: s.paceSPerMi, target: s.targetSPerMi))
+    /// Map a split's pace-vs-target zone to the locked grammar's Role for
+    /// colour: muted (no data yet) · live/over/goal once a pace is banked.
+    /// Current rep is highlighted neutral (it's the row to read NOW).
+    private func paceRole(_ s: WorkoutEngine.Split) -> Role {
+        guard s.paceSPerMi != nil else { return .mute }
+        if s.state == .current { return .neutral }
+        return Role.from(zone: engine.zone(forPace: s.paceSPerMi, target: s.targetSPerMi))
     }
 }
 
+/// Splits — number-led list under the locked grammar. No "SPLITS" header
+/// chrome, no per-row phase label ("Easy"). Each row is `repNo · pace`,
+/// with the pace coloured by drift-zone (green = on target, amber = drift,
+/// red = off). Done rows banked; current row neutral white; upcoming rows
+/// muted dashes. List scrolls if the rep count overflows.
+///
+/// Layout: explicit top spacer (Color.clear, ~14% h) so the first row sits
+/// firmly BELOW the OS clock — ScrollView in watchOS pins content to the
+/// safe-area top and ignores VStack-level top padding, so an in-flow spacer
+/// is the only reliable way to clear the clock.
 struct SplitsFace: View {
-    struct Row: Identifiable { let id = UUID(); let repNo: Int; let label: String; let pace: String; let color: Color }
+    struct Row: Identifiable {
+        let id = UUID()
+        let repNo: Int
+        let pace: String
+        let role: Role
+    }
     let rows: [Row]
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Eyebrow(text: "Splits", color: WP.muted)
-                Spacer(minLength: 78)
-            }
-            .padding(.leading, 8).padding(.top, 20).padding(.bottom, 2)
-            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
-                if idx > 0 { Rectangle().fill(WP.line).frame(height: 1) }
-                HStack(spacing: 10) {
-                    Text("\(r.repNo)").font(WF.interBold(12)).foregroundStyle(WP.faint)
-                        .frame(width: 16, alignment: .leading)
-                    Text(r.label).font(WF.interSemi(15)).foregroundStyle(WP.ink)
-                    Spacer()
-                    Text(r.pace).font(WF.bebas(26)).monospacedDigit().foregroundStyle(r.color)
+        GeometryReader { geo in
+            let h = geo.size.height
+            ZStack {
+                Color.black.ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: h * 0.030) {
+                        Color.clear.frame(height: h * 0.135)   // clears OS clock baseline
+                        ForEach(rows) { r in
+                            HStack(spacing: h * 0.045) {
+                                Text("\(r.repNo)")
+                                    .font(.custom("HelveticaNeue-Bold", size: h * 0.105))
+                                    .foregroundStyle(Faff.mute)
+                                    .frame(width: h * 0.10, alignment: .leading)
+                                Text(r.pace)
+                                    .font(.custom("HelveticaNeue-Bold", size: h * 0.155))
+                                    .foregroundStyle(r.role.color)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        Color.clear.frame(height: h * 0.060)   // clears page-indicator dots
+                    }
+                    .padding(.horizontal, h * 0.075)
                 }
-                .frame(maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, 14).padding(.bottom, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(WP.bg)
-        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
@@ -516,36 +533,67 @@ private struct SessionMapPage: View {
     }
 }
 
+/// Session map — where you are in the workout, under the locked grammar.
+/// No "SESSION" header. Each row: status dot · phase label · value (target
+/// pace, time remaining, ✓ for done, etc.). Dot colour carries state — green
+/// for done, neutral white for current, muted for upcoming. Helvetica Bold
+/// throughout. List scrolls if a long workout overflows.
 struct SessionMapFace: View {
-    struct Row: Identifiable { let id = UUID(); let label: String; let value: String; let state: SegState }
+    struct Row: Identifiable {
+        let id = UUID()
+        let label: String
+        let value: String
+        let state: SegState
+    }
     let rows: [Row]
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Eyebrow(text: "Session", color: WP.muted)
-                Spacer(minLength: 78)
-            }
-            .padding(.leading, 8).padding(.top, 20).padding(.bottom, 2)
-            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, r in
-                if idx > 0 { Rectangle().fill(WP.line).frame(height: 1) }
-                HStack(spacing: 11) {
-                    Circle().fill(dot(r.state)).frame(width: 8, height: 8)
-                    Text(r.label).font(WF.interSemi(15))
-                        .foregroundStyle(r.state == .upcoming ? WP.muted : WP.ink).lineLimit(1)
-                    Spacer()
-                    Text(r.value).font(WF.interSemi(15)).monospacedDigit().foregroundStyle(WP.muted)
+        GeometryReader { geo in
+            let h = geo.size.height
+            ZStack {
+                Color.black.ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: h * 0.030) {
+                        Color.clear.frame(height: h * 0.135)   // clears OS clock baseline
+                        ForEach(rows) { r in
+                            HStack(spacing: h * 0.040) {
+                                Circle()
+                                    .fill(dotColor(r.state))
+                                    .frame(width: h * 0.040, height: h * 0.040)
+                                Text(r.label)
+                                    .font(.custom("HelveticaNeue-Bold", size: h * 0.075))
+                                    .foregroundStyle(labelColor(r.state))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                Spacer(minLength: 0)
+                                Text(r.value)
+                                    .font(.custom("HelveticaNeue-Bold", size: h * 0.080))
+                                    .foregroundStyle(valueColor(r.state))
+                                    .monospacedDigit()
+                            }
+                        }
+                        Color.clear.frame(height: h * 0.060)   // clears page-indicator dots
+                    }
+                    .padding(.horizontal, h * 0.075)
                 }
-                .frame(maxHeight: .infinity)
-                .opacity(r.state == .upcoming ? 0.7 : 1)
             }
         }
-        .padding(.horizontal, 14).padding(.bottom, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(WP.bg)
-        .ignoresSafeArea(.container, edges: .top)
     }
-    private func dot(_ s: SegState) -> Color {
-        switch s { case .done: return WP.green; case .current: return WP.orange; case .upcoming: return WP.line }
+    private func dotColor(_ s: SegState) -> Color {
+        switch s {
+        case .done:     return Faff.live
+        case .current:  return Faff.ink
+        case .upcoming: return Faff.mute.opacity(0.55)
+        }
+    }
+    private func labelColor(_ s: SegState) -> Color {
+        s == .upcoming ? Faff.mute : Faff.ink
+    }
+    private func valueColor(_ s: SegState) -> Color {
+        switch s {
+        case .done:     return Faff.live
+        case .current:  return Faff.ink
+        case .upcoming: return Faff.mute
+        }
     }
 }
 

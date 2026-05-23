@@ -111,12 +111,20 @@ struct WorkoutRootView: View {
                 ActiveWorkoutView(engine: engine, tracker: model.tracker)
             }
         } else {
-            // Home: the workout launchpad (default) + the readiness glance one
-            // swipe away (watch-app.html §G — glance as a home page, not a
-            // legacy Glance).
+            // Home: lobby/rest (default) → JUST RUN (escape hatch — one
+            // swipe right, always available regardless of today's plan) →
+            // readiness glance. JUST RUN spins up an unstructured workout
+            // (no target, no rep structure) so the user can run anytime —
+            // rest days, when the phone hasn't paired, or when they want
+            // to override today's plan and just go.
             TabView {
                 idleHome.tag(0)
-                ResponsiveFace { ReadinessGlanceView(readiness: phone.readiness ?? Self.simulatorReadiness) }.tag(1)
+                ResponsiveFace {
+                    JustRunFace(onStart: { model.start(.makeJustRun()) })
+                }.tag(1)
+                ResponsiveFace {
+                    ReadinessGlanceView(readiness: phone.readiness ?? Self.simulatorReadiness)
+                }.tag(2)
             }
             .tabViewStyle(.page)
         }

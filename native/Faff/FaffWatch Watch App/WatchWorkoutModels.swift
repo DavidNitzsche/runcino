@@ -274,6 +274,29 @@ struct WatchReadiness: Codable {
 // MARK: - Sample · drives the simulator UI flow before WCSession exists
 
 extension WatchWorkout {
+    /// Unstructured "just run" workout. Available from the home screen as the
+    /// JUST RUN page — always one swipe away, regardless of today's plan.
+    /// Single open-ended `.work` phase with no target pace + no rep structure
+    /// → the router lands on SteadyRunFace (live pace · distance · elapsed).
+    /// A 24h duration ceiling means the phase never naturally ends; the
+    /// runner ends from controls when they're done.
+    static func makeJustRun() -> WatchWorkout {
+        let phase = WatchPhase(index: 0, type: .work, label: "Just run",
+                               durationSec: 24 * 60 * 60,
+                               targetPaceSPerMi: nil,
+                               tolerancePaceSPerMi: nil,
+                               haptic: .start)
+        return WatchWorkout(
+            workoutId: "just-run-\(UUID().uuidString)",
+            name: "Just run",
+            summary: "Unstructured run",
+            totalEstimatedMinutes: 30,
+            phases: [phase],
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2099-12-31T00:00:00Z"
+        )
+    }
+
     /// A hardcoded threshold session so the shell can be exercised in
     /// the simulator without a paired iPhone (WatchConnectivity lands
     /// in a later phase).  Mirrors the "Threshold · Cruise Intervals"

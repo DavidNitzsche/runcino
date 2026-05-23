@@ -16,45 +16,31 @@ import SwiftUI
 
 // MARK: - In-run stats (swipe page · 2×2 grid)
 
-/// In-run secondary stats — the swipe page off the work face for the "nice but
-/// rarely looked at" metrics: elapsed, distance, avg pace, active calories. A
-/// 2×2 grid that fills the screen. (Elapsed lives here, not the top-right
-/// corner the OS clock owns.)
+/// In-run secondary stats — the swipe page off the work face. Re-skinned
+/// under the locked grammar: four big number rows, colour-coded to type,
+/// no labels (position + colour carry the meaning, same as the in-run
+/// faces).
+///
+///   · distance  (blue · canonical)
+///   · elapsed   (white · neutral readout)
+///   · avg pace  (green · live when computed, muted while still 0)
+///   · calories  (muted · least-actionable readout)
 struct InRunStatsFace: View {
-    let elapsed: String
-    let distance: String      // "3.2"
-    let avgPace: String       // "6:42"
-    let calories: String      // "412"
+    let elapsed: String      // "24:18"
+    let distance: String     // "3.2"
+    let avgPace: String      // "6:42" or "—:—"
+    let calories: String     // "412" or "—"
+
+    private var paceRole: Role {
+        avgPace == "—:—" || avgPace == "—" ? .mute : .live
+    }
     var body: some View {
-        // No header — the metric labels self-describe. The 2×2 grid fills the
-        // whole screen below the clock (safe area respected), each cell
-        // centered in its quadrant.
-        VStack(spacing: 0) {
-            row(left: cell(elapsed, nil, "Elapsed"), right: cell(distance, "mi", "Distance"))
-            Rectangle().fill(WP.line).frame(height: 1)
-            row(left: cell(avgPace, "/mi", "Avg pace"), right: cell(calories, nil, "Calories"))
-        }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WP.bg)
-    }
-    private func row<L: View, R: View>(left: L, right: R) -> some View {
-        HStack(spacing: 6) {
-            left.frame(maxWidth: .infinity)
-            Rectangle().fill(WP.line).frame(width: 1, height: 40)
-            right.frame(maxWidth: .infinity)
-        }
-        .frame(maxHeight: .infinity)
-    }
-    private func cell(_ value: String, _ unit: String?, _ label: String) -> some View {
-        VStack(spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(WF.bebas(42)).monospacedDigit().foregroundStyle(WP.ink)
-                if let unit { Text(unit).font(WF.interSemi(13)).foregroundStyle(WP.muted) }
-            }
-            .lineLimit(1).minimumScaleFactor(0.6)
-            Text(label.uppercased()).font(WF.interBold(9.5)).tracking(0.7).foregroundStyle(WP.muted)
-        }
+        NumberFace(rows: [
+            NumRow(distance, .dist),
+            NumRow(elapsed,  .neutral),
+            NumRow(avgPace,  paceRole),
+            NumRow(calories, .mute)
+        ])
     }
 }
 
@@ -117,6 +103,25 @@ struct WatchFixtureView: View {
             CalibrateFace(mile: 13)
         case "stats":
             InRunStatsFace(elapsed: "24:18", distance: "3.2", avgPace: "6:42", calories: "412")
+        case "splits":
+            SplitsFace(rows: [
+                .init(repNo: 1, pace: "6:29", role: .live),
+                .init(repNo: 2, pace: "6:30", role: .live),
+                .init(repNo: 3, pace: "6:33", role: .neutral),   // current
+                .init(repNo: 4, pace: "—",    role: .mute),
+                .init(repNo: 5, pace: "—",    role: .mute),
+                .init(repNo: 6, pace: "—",    role: .mute)
+            ])
+        case "session-map":
+            SessionMapFace(rows: [
+                .init(label: "Warmup",     value: "10:00", state: .done),
+                .init(label: "Reps 1–2",   value: "✓",     state: .done),
+                .init(label: "Rep 3 · now", value: "6:31", state: .current),
+                .init(label: "Reps 4–6",   value: "3×",    state: .upcoming),
+                .init(label: "Cooldown",   value: "10:00", state: .upcoming)
+            ])
+        case "justrun", "just-run":
+            JustRunFace(onStart: {})
         case "hr":
             HRFace(pace: "9:15", hr: "142", hrRole: .live, distance: "4.1")
         case "strides":
