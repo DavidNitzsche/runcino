@@ -90,7 +90,7 @@ struct WatchFixtureView: View {
         case "go":
             GoFace(sub: "Rep 1 · 6:31")
         case "fuel":
-            FuelFace(big: "Fuel · 2 of 3", sub: "+ water")
+            FuelFace(index: 2, total: 3)
         case "landmark":
             LandmarkFace(big: "BIXBY", sub: "0.3 mi ahead")
         case "milesplit", "mile-split":
@@ -171,9 +171,9 @@ struct WatchFixtureView: View {
             // Mid-run mile-split flash for mile 5.
             MileSplitFace(mile: "MILE 5", pace: "8:39")
         case "tomorrow-fuel-1":
-            FuelFace(big: "Fuel · 1 of 3", sub: "+ water")
+            FuelFace(index: 1, total: 3)
         case "tomorrow-fuel-3":
-            FuelFace(big: "Fuel · 3 of 3", sub: "+ water")
+            FuelFace(index: 3, total: 3)
         case "tomorrow-pause":
             LivePauseFace(distance: "5.30", elapsed: "46:18", onResume: {})
         case "tomorrow-summary":

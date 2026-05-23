@@ -111,9 +111,10 @@ private struct RaceFinishCard: View {
                 LinearGradient(colors: [Color(hex: 0x0C2A14), .black],
                                startPoint: .top, endPoint: .bottom)
                     .ignoresSafeArea()
-                VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    FaceLabel(text: label, color: Faff.live, size: h * 0.06)
+                        .topTagInset(h)
                     VStack(alignment: .leading, spacing: h * 0.012) {
-                        FaceLabel(text: label, color: Faff.live, size: h * 0.07)
                         BigValue(text: finish,   role: .neutral, size: h * 0.18)
                         BigValue(text: delta,    role: deltaRole, size: h * 0.18)
                         BigValue(text: distance, role: .dist,    size: h * 0.18)

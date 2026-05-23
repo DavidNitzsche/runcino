@@ -348,35 +348,36 @@ struct GoFace: View {
 
 /// Fuel — gel cue (amber = act now). Workout-type-agnostic: fires for any
 /// workout whose plan ships fuel markers (race or training). PERSISTENT —
-/// stays on screen until the runner swipes it down to acknowledge. The
-/// small chevron at the bottom is the discoverability hint; the actual
+/// stays on screen until the runner swipes it down to acknowledge. Just two
+/// big lines (GEL / N of M) so the read is instant at a glance during a
+/// run. The chevron at the bottom is the discoverability hint; the actual
 /// dismiss gesture is wired in `ActiveWorkoutView` (DragGesture, ≥24pt).
 struct FuelFace: View {
-    let big: String     // "GEL 2" / "FUEL · 1 of 3"
-    let sub: String     // "+ water"
+    let index: Int      // 1-based gel number
+    let total: Int      // total gels in this run
     var body: some View {
         Screen(background: wash(0x3A2B08)) {
-            ZStack {
-                GeometryReader { geo in
-                    let h = geo.size.height
-                    Takeover(glyph: Image(systemName: "drop.fill")
-                                .font(.system(size: h * 0.17))
-                                .foregroundStyle(Faff.goal),
-                             big: big, bigColor: Faff.goal, sub: sub, bigSize: 0.40)
-                }
-                // Swipe-down hint — a low-contrast chevron near the bottom-
-                // centre, far enough above the bezel that the curve can't
-                // crop it. Sits above the Takeover's content; ignored by
-                // hit-testing so the swipe still lands.
-                GeometryReader { geo in
-                    let h = geo.size.height
+            GeometryReader { geo in
+                let h = geo.size.height
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Text("GEL")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.34))
+                        .foregroundStyle(Faff.goal)
+                        .padding(.vertical, -h * 0.34 * 0.22)
+                    Text("\(index) of \(total)")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.22))
+                        .foregroundStyle(Faff.goal)
+                        .padding(.vertical, -h * 0.22 * 0.22)
+                        .padding(.top, h * 0.025)
+                    Spacer(minLength: 0)
                     Image(systemName: "chevron.compact.down")
-                        .font(.system(size: h * 0.09, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xCFD2D8).opacity(0.50))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .font(.system(size: h * 0.085, weight: .bold))
+                        .foregroundStyle(Color(hex: 0xCFD2D8).opacity(0.55))
                         .padding(.bottom, h * 0.035)
                         .allowsHitTesting(false)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
     }
@@ -435,7 +436,7 @@ struct JustRunFace: View {
                 let h = geo.size.height
                 VStack(alignment: .leading, spacing: 0) {
                     FaceLabel(text: "Just run", color: Faff.mute, size: h * 0.06)
-                        .padding(.top, h * 0.075)
+                        .topTagInset(h)
                     Spacer(minLength: 0)
                     // Single big glyph centred — no target to chase, so there
                     // are no number rows. The icon says "going for a run."
@@ -502,10 +503,10 @@ struct LobbyFace: View {
             GeometryReader { geo in
                 let h = geo.size.height
                 VStack(alignment: .leading, spacing: 0) {
-                    // Tag — workout name (small, muted, top-left). Sized to
-                    // sit at the OS clock baseline so they share a row.
+                    // Tag — workout name (small, muted, top-left). Baseline-
+                    // aligned with the OS clock via topTagInset.
                     FaceLabel(text: name, color: Faff.mute, size: h * 0.06)
-                        .padding(.top, h * 0.075)
+                        .topTagInset(h)
                     Spacer(minLength: 0)
                     // Three data rows, equal-sized. Locked colour grammar:
                     // distance always blue, pace always green-when-on-target,
@@ -582,9 +583,13 @@ struct CompleteFace: View {
         Screen(background: radial(0x0C2A14)) {
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Type label at the top, baseline-aligned with the OS
+                    // clock (via topTagInset, not centred with the values).
+                    FaceLabel(text: label, color: Faff.live, size: h * 0.06)
+                        .topTagInset(h)
+                    // Three big rows centred in whatever's left.
                     VStack(alignment: .leading, spacing: h * 0.012) {
-                        FaceLabel(text: label, color: Faff.live, size: h * 0.07)
                         BigValue(text: pace,     role: .live,    size: h * 0.18)
                         BigValue(text: distance, role: .dist,    size: h * 0.18)
                         BigValue(text: elapsed,  role: .neutral, size: h * 0.18)

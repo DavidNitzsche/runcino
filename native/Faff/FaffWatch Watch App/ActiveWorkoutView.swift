@@ -606,8 +606,8 @@ private struct TransitionFlip: View {
     let cue: WorkoutEngine.TransitionCue
     var body: some View {
         switch cue {
-        case .fuel(let t, let s):
-            FuelFace(big: t, sub: s ?? "+ water")
+        case .fuel(let i, let total):
+            FuelFace(index: i, total: total)
         case .go(let t, let s):
             // The new GoFace is glyph + GO + sub. Engine's title carries the
             // rep number ("Go · Int 4") and the sub carries the target.

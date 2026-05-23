@@ -34,7 +34,7 @@ final class WorkoutEngine: ObservableObject {
         case headsUp(title: String, sub: String?)  // amber, before a rep ends
         case go(title: String, sub: String?)       // green, entering a work rep
         case phase(title: String, sub: String?)    // orange, race phase change
-        case fuel(title: String, sub: String?)     // orange, gel cue
+        case fuel(index: Int, total: Int)          // GEL · n of m takeover, persistent
         case split(mileNo: Int, paceSec: Int)      // MILE N · m:ss flash, every auto-lap
     }
 
@@ -465,15 +465,12 @@ final class WorkoutEngine: ObservableObject {
             for (i, mark) in fueling.atMins.enumerated() {
                 if mins >= mark && !firedFuelIndices.contains(i) {
                     firedFuelIndices.insert(i)
-                    let n = i + 1
-                    // Big text = the count (the actionable info — "this is
-                    // gel 2 of 3"); sub = the universal reminder ("+ water").
-                    // Mirrors the race-fuel branch below so both code paths
-                    // produce the same on-screen FuelFace shape. (Persists
-                    // until swiped down — see flash() and dismissTransition.)
-                    let title = fueling.gels > 0 ? "Fuel · \(n) of \(fueling.gels)" : "Fuel now"
+                    // Cue carries the index + total directly. FuelFace
+                    // renders GEL (big) · n of m (big). Persists until
+                    // swiped down — see flash() and dismissTransition().
+                    let total = max(fueling.gels, fueling.atMins.count)
                     Haptics.play(.transitionCooldown)
-                    flash(.fuel(title: title, sub: "+ water"), for: 5)
+                    flash(.fuel(index: i + 1, total: total), for: 5)
                 }
             }
         }
@@ -533,7 +530,7 @@ final class WorkoutEngine: ObservableObject {
             for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
                 firedGels.insert(i)
                 Haptics.almostDone()
-                flash(.fuel(title: "Gel \(i + 1)", sub: "+ water"), for: 3)
+                flash(.fuel(index: i + 1, total: gels.count), for: 3)
             }
         }
 

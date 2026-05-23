@@ -262,6 +262,21 @@ struct BigValue: View {
     }
 }
 
+// MARK: - Top-tag positioning (baseline-aligned with the OS clock)
+
+extension View {
+    /// Position a small top-left tag so its baseline lines up with the OS
+    /// clock at the top-right. Empirically tuned on watchOS Ultra 3 against
+    /// a `size: h * 0.06` FaceLabel — same numbers reliably hit the clock
+    /// baseline on Series 9/10/SE because ResponsiveFace scales the canvas
+    /// uniformly. Use everywhere a tag appears at the top of a face.
+    func topTagInset(_ h: CGFloat) -> some View {
+        self
+            .padding(.top, h * 0.085)
+            .padding(.leading, h * 0.020)
+    }
+}
+
 // MARK: - Pace zone → Role helper (called by router to colour the hero)
 
 extension Role {
