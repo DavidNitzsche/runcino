@@ -266,6 +266,14 @@ struct PlanView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(isRest ? "Rest" : (d.label ?? "Run")).font(Faff.F.inter(14, .semibold)).foregroundStyle(nameColor)
                     Text(rowSub(d, isRest: isRest, isToday: isToday, isDone: isDone, isSkipped: isSkipped, isShort: isShort, isMissed: isMissed)).font(Faff.F.inter(11)).foregroundStyle(Faff.C.textDim)
+                    // Per-day fuel line — surfaces the gel plan inline on the
+                    // Plan list so Sunday's long run shows it without a tap.
+                    if let f = d.fueling, f.needed {
+                        Text(f.isRehearsal ? "Race rehearsal · \(f.gels) gel\(f.gels == 1 ? "" : "s")" : "Fuel · \(f.gels) gel\(f.gels == 1 ? "" : "s")")
+                            .font(Faff.F.inter(10, .semibold)).tracking(0.4)
+                            .foregroundStyle(f.isRehearsal ? Faff.C.recovery : Faff.C.textMuted)
+                            .padding(.top, 2)
+                    }
                 }
                 Spacer()
                 if d.hasStrength == true { StrengthMark(size: 17) }

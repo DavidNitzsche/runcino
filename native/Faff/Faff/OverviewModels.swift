@@ -36,6 +36,10 @@ struct OverviewResponse: Decodable {
     /// Actual miles logged per day this week (dateISO → mi). Drives
     /// honest "done" markers. Empty/absent for anonymous reads.
     let completedByDate: [String: Double]?
+    /// Per-day LONGEST single run (mi). Drives the workout-completion gate
+    /// so a 2.4-mi short threshold + a separate easy doesn't false-DONE
+    /// the threshold. completedByDate keeps the SUM for weekly mileage.
+    let longestByDate: [String: Double]?
     /// Dates the runner deliberately SKIPPED this week, distinct from a
     /// missed/unlogged day so the strip + heroes can mark them differently.
     let skippedDates: [String]?
@@ -199,6 +203,11 @@ struct OPlanDay: Decodable {
     /// Server-computed structured workout (pace band + steps + effort +
     /// why), the SAME describeWorkout the web modal renders.
     let description: ODescription?
+    /// Per-day gel/carb plan (lib/training-fueling.ts on the backend).
+    /// nil when the run doesn't warrant fuel. Surfaces on the iPhone Plan
+    /// list + workout detail so Sunday's long run shows its fuel chip,
+    /// not just today's. Watch consumes via WatchWorkout.fueling.
+    let fueling: OFueling?
 }
 
 /// Mirrors lib/workout-descriptions.ts `WorkoutDescription`.
@@ -332,18 +341,30 @@ struct PlanRangeDay: Decodable, Identifiable {
     let completedMi: Double?
     /// The runner deliberately skipped this day (distinct from "missed").
     let skipped: Bool?
+    /// Per-day gel plan. nil when the run doesn't warrant fuel.
+    let fueling: OFueling?
     var id: String { date ?? UUID().uuidString }
     var isRest: Bool { (type ?? "rest") == "rest" || (distanceMi ?? 0) <= 0 }
 
-    /// Completed = logged ≥ 60% of the planned distance.
+    /// Completion bar varies by workout type — a quality session is hard
+    /// to "kinda complete" so the bar is tighter; long runs reward getting
+    /// close; easy runs are forgiving. Mirrors the web week-strip logic.
+    private var doneBar: Double {
+        switch (type ?? "easy").lowercased() {
+        case "quality", "threshold", "intervals": return 0.80
+        case "long", "long_steady":                return 0.75
+        default:                                   return 0.60
+        }
+    }
+    /// Completed = longest single run on this day met the type-aware bar.
     var isDone: Bool {
         guard let mi = distanceMi, mi > 0, let actual = completedMi else { return false }
-        return actual >= mi * 0.6
+        return actual >= mi * doneBar
     }
-    /// Logged a run but under 60% of plan, "short", not done, not missed.
+    /// Logged a run but under the bar — "short", not done, not missed.
     var isShort: Bool {
         guard let mi = distanceMi, mi > 0, let actual = completedMi, actual > 0 else { return false }
-        return actual < mi * 0.6
+        return actual < mi * doneBar
     }
     var isSkipped: Bool { skipped == true }
 
@@ -362,7 +383,7 @@ struct PlanRangeDay: Decodable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case date, type, label, distanceMi, description, paceTargetSPerMi, isQuality, isLong, isToday, hasStrength, completedMi, skipped
+        case date, type, label, distanceMi, description, paceTargetSPerMi, isQuality, isLong, isToday, hasStrength, completedMi, skipped, fueling
     }
 }
 
@@ -910,19 +931,29 @@ struct DerivedWorkout {
 
 extension OverviewResponse {
     var planToday: OPlanDay? { planWeekWorkouts?.first { $0.dateISO == today } }
-    /// A plan day is "done" only when a real run covered ≥60% of the
-    /// planned distance, not merely because the date is in the past.
+    /// Completion bar varies by workout type: quality 80% (hard to "kinda
+    /// complete"), long 75%, easy 60% (forgiving). Prefer the LONGEST
+    /// single-run map (longestByDate) over the SUM map so a separate easy
+    /// run later in the day doesn't false-DONE a short quality workout.
+    private func doneBar(for d: OPlanDay) -> Double {
+        let isQ = d.isQuality == true || ["quality", "threshold", "intervals"].contains((d.type ?? "").lowercased())
+        let isL = d.isLong == true    || ["long", "long_steady"].contains((d.type ?? "").lowercased())
+        if isQ { return 0.80 }
+        if isL { return 0.75 }
+        return 0.60
+    }
+    private func longestForDate(_ date: String) -> Double {
+        longestByDate?[date] ?? completedByDate?[date] ?? 0
+    }
     func isPlanDayDone(_ d: OPlanDay) -> Bool {
         guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
-        let actual = completedByDate?[date] ?? 0
-        return actual >= planned * 0.6
+        return longestForDate(date) >= planned * doneBar(for: d)
     }
-    /// Logged a run, but under 60% of the planned distance, "short", which is
-    /// neither done/on-plan nor missed (they did run something).
+    /// Logged a run but under the workout's bar — "short", distinct from missed.
     func isPlanDayShort(_ d: OPlanDay) -> Bool {
         guard let date = d.dateISO, let planned = d.distanceMi, planned > 0 else { return false }
-        let actual = completedByDate?[date] ?? 0
-        return actual > 0 && actual < planned * 0.6
+        let longest = longestForDate(date)
+        return longest > 0 && longest < planned * doneBar(for: d)
     }
     /// The runner deliberately skipped this day (distinct from "missed").
     func isPlanDaySkipped(_ d: OPlanDay) -> Bool {

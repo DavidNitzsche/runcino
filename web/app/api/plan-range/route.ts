@@ -20,6 +20,15 @@ import { resolvePlanUserId } from '../../../lib/plan-user';
 import { gatherCoachState } from '../../../lib/coach-state';
 import { getCurrentUser } from '../../../lib/auth';
 import { getCompletedMileageByDate, getLongestRunByDate } from '../../../lib/completed-runs';
+import { planTrainingFueling, type WorkoutFuelingType } from '../../../lib/training-fueling';
+
+/** Whole-day diff between two YYYY-MM-DD strings; negative when `b` is past. */
+function daysBetween(a: string, b: string): number {
+  const an = Date.parse(a + 'T12:00:00Z');
+  const bn = Date.parse(b + 'T12:00:00Z');
+  if (!Number.isFinite(an) || !Number.isFinite(bn)) return 0;
+  return Math.round((bn - an) / 86_400_000);
+}
 import { listRecentSkips } from '../../../lib/skip-store';
 import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../../../lib/vdot';
 import type { RunWorkoutType } from '../../../lib/coach-workouts';
@@ -31,6 +40,10 @@ import type { CoachToday } from '../../../lib/coach-engine';
 export type PlanRangeDay = CoachToday['weekShape'][number] & {
   completedMi: number | null;
   skipped: boolean;
+  /** Per-day gel/carb plan from lib/training-fueling.ts. null when the run
+   *  doesn't warrant fuel. Drives the iPhone Plan list fuel chip so
+   *  Sunday's long run shows its plan, not just today. */
+  fueling: ReturnType<typeof planTrainingFueling> | null;
 };
 
 export interface PlanRangeApiOk {
@@ -199,14 +212,52 @@ export async function GET(req: Request) {
       (await listRecentSkips({ userId: await resolvePlanUserId(), sinceISO: startISO, untilISO: endISO }).catch(() => [])).map((s) => s.dateISO),
     );
 
-    // Expand every calendar day in the window, attaching its outcome.
+    // Pre-resolve user fuel preferences + A-race days-away so each day's
+    // fueling plan can ramp correctly (Costa periodization) without
+    // re-querying per day.
+    const authUser = await getCurrentUser(req).catch(() => null);
+    const nextADays = state.races.nextA?.daysAway ?? null;
+
+    // Expand every calendar day in the window, attaching its outcome + fuel.
     const days: PlanRangeDay[] = [];
     const cursor = new Date(startISO + 'T12:00:00Z');
     const endDate = new Date(endISO + 'T12:00:00Z');
     while (cursor <= endDate) {
       const dateISO = cursor.toISOString().slice(0, 10);
       const base = workoutByDate.get(dateISO) ?? restDay(dateISO, today);
-      days.push({ ...base, completedMi: longest.get(dateISO) ?? null, skipped: skipSet.has(dateISO) });
+
+      // Fueling for THIS day.
+      let dayFueling: ReturnType<typeof planTrainingFueling> | null = null;
+      try {
+        if (base.distanceMi && base.distanceMi > 0 && base.type !== 'rest') {
+          const ftype: WorkoutFuelingType =
+            base.isLong ? 'long' : base.isQuality ? 'quality' : 'easy';
+          const pace = (base.paceTargetSPerMi?.lowS && base.paceTargetSPerMi?.highS)
+            ? (base.paceTargetSPerMi.lowS + base.paceTargetSPerMi.highS) / 2
+            : 540;
+          const durMin = Math.round((pace * base.distanceMi) / 60);
+          const dayDelta = nextADays != null
+            ? Math.max(0, nextADays - Math.max(0, daysBetween(today, dateISO)))
+            : null;
+          const plan = planTrainingFueling({
+            durationEstMin: durMin,
+            distanceMi: base.distanceMi,
+            workoutType: ftype,
+            daysToARace: dayDelta,
+            raceFuelTargetGPerHr: authUser?.fuelTargetGPerHr ?? null,
+            gelCarbsG: authUser?.fuelGelCarbsG ?? null,
+            gelLabel: authUser?.fuelBrand ?? null,
+          });
+          if (plan.needed) dayFueling = plan;
+        }
+      } catch { /* leave fueling null */ }
+
+      days.push({
+        ...base,
+        completedMi: longest.get(dateISO) ?? null,
+        skipped: skipSet.has(dateISO),
+        fueling: dayFueling,
+      });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 
