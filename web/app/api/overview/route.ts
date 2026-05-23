@@ -346,7 +346,7 @@ export async function GET(req: Request): Promise<Response> {
       ? await callRacePrediction(today, state, nextB)
       : null;
 
-    const freshness = await gatherFreshness({ state });
+    const freshness = await gatherFreshness({ state, userId: authUser?.id });
 
     // Wave G · alive-coach surfaces. Run server-side so the coach
     // module never enters the client bundle.

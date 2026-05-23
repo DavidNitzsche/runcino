@@ -66,6 +66,10 @@ export interface FreshnessDeps {
    *  passing one; this never gathers state itself to avoid a circular
    *  dependency with /api/overview. */
   state: CoachState;
+  /** Authenticated user id; scopes the per-user freshness readers
+   *  (check-in, profile). Falls back to the legacy 'me' single-tenant
+   *  row when absent so anonymous / demo callers keep working. */
+  userId?: string | null;
   /** "Now" override for testing, defaults to Date.now(). */
   nowMs?: number;
 
@@ -99,10 +103,17 @@ async function defaultStravaSyncAt(): Promise<Date | null> {
   }
 }
 
-async function defaultCheckinAt(): Promise<Date | null> {
+async function defaultCheckinAt(userId?: string | null): Promise<Date | null> {
   try {
+    // Per-user scope: real users key off user_uuid; anonymous falls back
+    // to the legacy 'me' demo row. The OLD query hardcoded 'me' which on
+    // a real-user system silently surfaced whoever last wrote with user_id
+    // ='me' (everyone — POST hardcodes it for back-compat).
     const rows = await query<{ logged_at: Date }>(
-      `SELECT logged_at FROM daily_checkin WHERE user_id = 'me' ORDER BY logged_at DESC LIMIT 1`,
+      userId
+        ? `SELECT logged_at FROM daily_checkin WHERE user_uuid = $1 ORDER BY logged_at DESC LIMIT 1`
+        : `SELECT logged_at FROM daily_checkin WHERE user_id = 'me' AND user_uuid IS NULL ORDER BY logged_at DESC LIMIT 1`,
+      userId ? [userId] : [],
     );
     return rows[0]?.logged_at ?? null;
   } catch {
@@ -110,8 +121,11 @@ async function defaultCheckinAt(): Promise<Date | null> {
   }
 }
 
-async function defaultProfileUpdatedAt(): Promise<Date | null> {
+async function defaultProfileUpdatedAt(userId?: string | null): Promise<Date | null> {
   try {
+    // 'profile' is still a single-tenant table; for a real user, fall through
+    // to 'me' (current behavior) until the multi-tenant lift lands.
+    void userId;
     const rows = await query<{ updated_at: Date }>(
       `SELECT updated_at FROM profile WHERE user_id = 'me' LIMIT 1`,
     );
@@ -139,8 +153,8 @@ async function defaultRaceCalUpdatedAt(): Promise<Date | null> {
 export async function gatherFreshness(deps: FreshnessDeps): Promise<FreshnessMap> {
   const nowMs = deps.nowMs ?? Date.now();
   const readStravaSyncAt = deps.readStravaSyncAt ?? defaultStravaSyncAt;
-  const readCheckinAt = deps.readCheckinAt ?? defaultCheckinAt;
-  const readProfileUpdatedAt = deps.readProfileUpdatedAt ?? defaultProfileUpdatedAt;
+  const readCheckinAt = deps.readCheckinAt ?? (() => defaultCheckinAt(deps.userId));
+  const readProfileUpdatedAt = deps.readProfileUpdatedAt ?? (() => defaultProfileUpdatedAt(deps.userId));
   const readRaceCalUpdatedAt = deps.readRaceCalUpdatedAt ?? defaultRaceCalUpdatedAt;
 
   const [stravaAt, checkinAt, profileAt, raceCalAt] = await Promise.all([

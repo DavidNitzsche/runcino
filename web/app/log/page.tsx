@@ -236,7 +236,7 @@ export default async function LogPage() {
   await syncStravaIfStale(auth.id);
 
   const isLegacy = auth.email === (process.env.LEGACY_OWNER_EMAIL || 'dnitch85@me.com').toLowerCase();
-  const today = todayISO(userTimezone(auth.location));
+  const today = todayISO(auth.timezone || userTimezone(auth.location));
   const todayMonthIdx = parseInt(today.slice(5, 7), 10) - 1;
   const data = await loadLogPageData(auth.id, isLegacy);
 

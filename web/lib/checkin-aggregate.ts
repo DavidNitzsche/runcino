@@ -113,16 +113,27 @@ export function aggregateCheckins(
  *  up because Postgres is temporarily unavailable. */
 export async function gatherCheckinAggregate(
   todayISO: string,
+  userId?: string | null,
 ): Promise<CheckinAggregate> {
   const sinceISO = isoDateOffset(todayISO, -6); // 7-day inclusive window
   try {
+    // For an authenticated user, scope to THEIR rows by user_uuid (the
+    // multi-tenant identity). For anonymous reads (legacy demo), fall back
+    // to the 'me' single-tenant rows. The OLD behavior hardcoded 'me' for
+    // every read, which meant a real user's coach gate read from the demo
+    // account, not their own check-ins (or, with multiple users, a soup of
+    // everyone's because POST hardcodes user_id='me').
     const rows = await query<CheckinRow>(
-      `SELECT date::text, energy, soreness, stress
-       FROM daily_checkin
-       WHERE user_id = $1 AND date >= $2 AND date <= $3
-       ORDER BY date DESC
-       LIMIT 7`,
-      ['me', sinceISO, todayISO],
+      userId
+        ? `SELECT date::text, energy, soreness, stress
+             FROM daily_checkin
+            WHERE user_uuid = $1 AND date >= $2 AND date <= $3
+            ORDER BY date DESC LIMIT 7`
+        : `SELECT date::text, energy, soreness, stress
+             FROM daily_checkin
+            WHERE user_id = 'me' AND user_uuid IS NULL AND date >= $2 AND date <= $3
+            ORDER BY date DESC LIMIT 7`,
+      userId ? [userId, sinceISO, todayISO] : [null, sinceISO, todayISO],
     );
     return aggregateCheckins(rows, todayISO);
   } catch {

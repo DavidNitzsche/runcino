@@ -226,7 +226,7 @@ export default async function RacePlanPage({ params }: PageProps) {
   if (!race) notFound();
 
   // Compute days-to-race
-  const tz = userTimezone(auth.location);
+  const tz = auth.timezone || userTimezone(auth.location);
   const today = todayISO(tz);
   const daysAway = Math.max(0, daysBetween(today, race.meta.date));
 

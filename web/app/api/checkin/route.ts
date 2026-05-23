@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser(req);
 
   // Date is optional; defaults to today in the user's timezone.
-  const date = req.nextUrl.searchParams.get('date') ?? todayISO(userTimezone(user?.location));
+  const date = req.nextUrl.searchParams.get('date') ?? todayISO(user?.timezone || userTimezone(user?.location));
 
   // Prefer rows keyed by user_uuid. Fall back to 'me' for legacy/anon.
   const rows = await query<{ energy: number; soreness: number; stress: number; notes: string | null }>(
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   // Date optional; defaults to today in the user's timezone.
   const date = body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
     ? body.date
-    : todayISO(userTimezone(user?.location));
+    : todayISO(user?.timezone || userTimezone(user?.location));
 
   if (typeof energy !== 'number' || typeof soreness !== 'number' || typeof stress !== 'number') {
     return NextResponse.json({ error: 'energy + soreness + stress required' }, { status: 400 });
@@ -66,18 +66,33 @@ export async function POST(req: NextRequest) {
 
   // UPSERT on (user_uuid, date). Sets user_id='me' for legacy compat
   // until the cutover migration drops the text column.
+  // UPSERT keyed to the right identity. Authenticated writes conflict on the
+  // partial unique (user_uuid, date), so two users on the same date no longer
+  // overwrite each other (the legacy ('me', date) constraint was the bug).
+  // Anonymous demo writes keep the ('me', date) path. user_id stays 'me' for
+  // back-compat with legacy callers until the column is dropped.
   const rows = await query<{ energy: number; soreness: number; stress: number; notes: string | null }>(
-    `INSERT INTO daily_checkin (user_id, user_uuid, date, energy, soreness, stress, notes, logged_at)
-     VALUES ('me', $1, $2, $3, $4, $5, $6, NOW())
-     ON CONFLICT (user_id, date)
-     DO UPDATE SET
-       user_uuid = EXCLUDED.user_uuid,
-       energy    = EXCLUDED.energy,
-       soreness  = EXCLUDED.soreness,
-       stress    = EXCLUDED.stress,
-       notes     = EXCLUDED.notes,
-       logged_at = NOW()
-     RETURNING energy, soreness, stress, notes;`,
+    user?.id
+      ? `INSERT INTO daily_checkin (user_id, user_uuid, date, energy, soreness, stress, notes, logged_at)
+           VALUES ('me', $1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (user_uuid, date) WHERE user_uuid IS NOT NULL
+         DO UPDATE SET
+           energy    = EXCLUDED.energy,
+           soreness  = EXCLUDED.soreness,
+           stress    = EXCLUDED.stress,
+           notes     = EXCLUDED.notes,
+           logged_at = NOW()
+         RETURNING energy, soreness, stress, notes;`
+      : `INSERT INTO daily_checkin (user_id, user_uuid, date, energy, soreness, stress, notes, logged_at)
+           VALUES ('me', NULL, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (user_id, date)
+         DO UPDATE SET
+           energy    = EXCLUDED.energy,
+           soreness  = EXCLUDED.soreness,
+           stress    = EXCLUDED.stress,
+           notes     = EXCLUDED.notes,
+           logged_at = NOW()
+         RETURNING energy, soreness, stress, notes;`,
     [user?.id ?? null, date, energy, soreness, stress, body.notes?.trim() || null],
   );
 

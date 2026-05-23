@@ -142,6 +142,17 @@ struct RunRecapContent: View {
                     StatPill(value: r.durationDisplay, unit: nil, label: "Time")
                     if let hr = r.avgHr { StatPill(value: "\(Int(hr))", unit: "bpm", label: "Avg HR") }
                 }
+                // Max HR rides a secondary row so the headline four pills keep
+                // their breathing room (web parity — the modal shows it too).
+                if let mx = r.maxHr {
+                    HStack(spacing: Faff.S.inlineGap) {
+                        StatPill(value: "\(Int(mx))", unit: "bpm", label: "Max HR")
+                        // Spacer pills to keep the same column rhythm as the row above.
+                        Color.clear.frame(maxWidth: .infinity)
+                        Color.clear.frame(maxWidth: .infinity)
+                        Color.clear.frame(maxWidth: .infinity)
+                    }.padding(.top, Faff.S.inlineGap)
+                }
             }
             if let coords = RunRecapView.decodePolyline(r.summaryPolyline), coords.count > 1 {
                 routeCard(coords)

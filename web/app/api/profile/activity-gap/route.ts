@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (user.status !== 'active') return NextResponse.json({ error: 'Account not active', status: user.status }, { status: 403 });
 
-  const today = todayISO(userTimezone(user.location));
+  const today = todayISO(user.timezone || userTimezone(user.location));
   const result = await computeStravaGap(user.id, today);
   return NextResponse.json(result);
 }

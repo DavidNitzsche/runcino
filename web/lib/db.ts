@@ -195,6 +195,16 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS daily_checkin_user_date_idx ON daily_checkin (user_id, date DESC);
     `);
+    // Multi-tenant unique key: one check-in per (real user, date). The legacy
+    // UNIQUE(user_id,date) hardcodes user_id='me' for every authenticated
+    // POST, which means two users on the same date would conflict and
+    // overwrite each other. This partial unique on user_uuid is the proper
+    // per-user constraint; the POST upserts against it for real users and
+    // keeps the legacy ('me', date) path for anonymous demo writes.
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS daily_checkin_uuid_date_uq
+        ON daily_checkin (user_uuid, date) WHERE user_uuid IS NOT NULL;
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS profile (
         user_id     TEXT PRIMARY KEY DEFAULT 'me',

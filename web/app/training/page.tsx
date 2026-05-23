@@ -55,7 +55,7 @@ export default async function TrainingPage() {
   const user = await requireActiveUser();
   await syncStravaIfStale(user.id);
 
-  const tz = userTimezone(user.location);
+  const tz = user.timezone || userTimezone(user.location);
   const today = todayISO(tz);
   // The runner's REAL coach-generated plan (same artifact /overview +
   // /api/overview serve). No synthetic fallback, when there's no plan yet,

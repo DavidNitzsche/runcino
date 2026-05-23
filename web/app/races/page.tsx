@@ -96,7 +96,7 @@ export default async function RacesPage() {
   // can land on a different UTC day than the user's local day,
   // making daysAway round differently on /races vs /races/[slug]
   // for the same race date (the 89 vs 90 mismatch).
-  const todayLocalISO = todayISO(userTimezone(auth.location));
+  const todayLocalISO = todayISO(auth.timezone || userTimezone(auth.location));
   const todayMs = Date.parse(todayLocalISO + 'T00:00:00Z');
 
   // ── 1. Upcoming + saved races from the `races` table ──

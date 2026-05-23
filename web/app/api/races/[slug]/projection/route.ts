@@ -51,7 +51,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ slug: strin
     }, { status: 400 });
   }
 
-  const today = todayISO(userTimezone(user.location));
+  const today = todayISO(user.timezone || userTimezone(user.location));
   const fitness = await resolveFitness(user.id, today);
 
   const todayMs = Date.parse(today + 'T12:00:00Z');

@@ -319,7 +319,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     getCachedActivities(opts.userId).catch(() => ({ activities: [] as NormalizedActivity[], fetchedAt: 0 })),
     // gatherCheckinAggregate swallows DB failures internally so this
     // resolves to a 0-rows aggregate when Postgres is unavailable.
-    gatherCheckinAggregate(todayISO),
+    gatherCheckinAggregate(todayISO, opts.userId),
     // Prefs are optional, when the user_prefs table is unreachable or
     // has no row, parsePrefsRow(null) returns the engine-wide defaults.
     // Prefs are user-scoped via user_id text (legacy 'me' for single-
