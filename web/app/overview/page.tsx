@@ -372,25 +372,12 @@ export default async function OverviewPage() {
 
       <div className="page">
 
-        {/* Coach adaptations, dismissible, only when something changed */}
-        <CoachAdaptedIsland />
-
-        {/* Coach proposals awaiting accept/reject (goal time changes,
-            race conflicts, plan rewrites). Renders only when pending
-            proposals exist; auto-hides after response. */}
-        <ProposalCard />
-
-        {/* Mode-specific prescription override — when the coach is in
-            INJURY / ILLNESS / RACE_DAY / RACE_WEEK / POST_RACE mode,
-            the mode voice takes priority over the standard daily card.
-            Renders null in ACTIVE / MAINTENANCE so the normal flow
-            stays clean. */}
-        <ModePrescriptionCard />
-
-        {/* Onboarding welcome — surfaces when the coach is in cold_start
-            / data_no_goal / data_with_goal_no_plan, with a CTA pointing
-            at the next setup step. Renders null in every other mode. */}
-        <GetStartedCard />
+        {/* Alert cards moved to AFTER Today, BEFORE the week strip per
+            user feedback — they're notifications, not the main read.
+            The block below renders CoachAdaptedIsland + ProposalCard +
+            ModePrescriptionCard + GetStartedCard at that lower
+            position. Search "ALERT CARDS BLOCK" below for the actual
+            render site. */}
 
         {/* ── SECTION 1 · COACH STRIP ── */}
         <div className="coach-strip">
@@ -657,6 +644,32 @@ export default async function OverviewPage() {
             </div>
           </div>
         </div>
+
+        {/* ── ALERT CARDS BLOCK ── coach notifications + proposals
+            sit BETWEEN Today and This Week per user feedback: they're
+            notifications, not the primary read. Each card renders null
+            when its data is empty so the runner sees no chrome unless
+            there's something real. */}
+
+        {/* Coach adaptations, dismissible, only when something changed */}
+        <CoachAdaptedIsland />
+
+        {/* Coach proposals awaiting accept/reject (goal time changes,
+            race conflicts, plan rewrites). Renders only when pending
+            proposals exist; auto-hides after response. */}
+        <ProposalCard />
+
+        {/* Mode-specific prescription override — when the coach is in
+            INJURY / ILLNESS / RACE_DAY / RACE_WEEK / POST_RACE mode,
+            the mode voice takes priority over the standard daily card.
+            Renders null in ACTIVE / MAINTENANCE so the normal flow
+            stays clean. */}
+        <ModePrescriptionCard />
+
+        {/* Onboarding welcome — surfaces when the coach is in cold_start
+            / data_no_goal / data_with_goal_no_plan, with a CTA pointing
+            at the next setup step. Renders null in every other mode. */}
+        <GetStartedCard />
 
         {/* ── SECTION 3 · WEEK STRIP ── */}
         <div className="week-card">

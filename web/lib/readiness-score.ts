@@ -134,13 +134,25 @@ function recommendationFor(
   }
   const note = cap(driver.note);
   switch (state) {
-    // Red and yellow carry real actions (swap, hold). Green just states
-    // the driver — telling someone "execute the plan" when the ring +
-    // word both say "recovered" is recitation, not coaching. The
-    // prescription itself lives on Today/Overview; Health diagnoses.
     case 'red':    return `Back off. ${cap(driver.note)}. Swap today for easy or recovery.`;
     case 'yellow': return `${note}. Easy is fine; hold off on a hard quality day.`;
-    case 'green':  return note;
+    case 'green':  return `${note}. ${greenActionFor(driver.name)}`;
+  }
+}
+
+/** Short forward-looking action tag keyed to the driver. Avoids the
+ *  generic "Execute the plan" filler that fired on every green read —
+ *  matches the action to what's actually driving the score so the line
+ *  reads like a coach, not a stat with a qualifier. */
+function greenActionFor(driverName: string): string {
+  switch (driverName) {
+    case 'sleep':       return 'Body\'s good to go.';
+    case 'hrv':         return 'Recovery looks deep — green light.';
+    case 'resting-hr':  return 'Engine\'s clean — green light.';
+    case 'freshness':   return 'Energy\'s there; today\'s yours.';
+    case 'load-7d':     return 'Load is right where we want it.';
+    case 'yesterday':   return 'Set up for a clean session.';
+    default:            return 'Good to go.';
   }
 }
 
