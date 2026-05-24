@@ -547,6 +547,26 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
     [userId, parseInt(cnt, 10)],
   );
 
+  // L4 trigger (closed-loop goal renegotiation, spec §23.4). New
+  // activities may have shifted fitness vs goal; let the coach check
+  // and surface a proposal if warranted. Cache invalidation also
+  // fires — activity-load + vdot-derived (in case any synced activity
+  // was a race result). Fire-and-forget so a coach-side throw never
+  // breaks the sync return.
+  (async () => {
+    try {
+      const { invalidate } = await import('./coach-reads-cache');
+      await invalidate(userId, 'activity-load');
+      const { gatherCoachState } = await import('./coach-state');
+      const { checkAndProposeGoalAdjustment } = await import('../coach/coach-goal-proposals');
+      const state = await gatherCoachState({ userId });
+      const today = state.now.slice(0, 10);
+      await checkAndProposeGoalAdjustment(state, userId, today);
+    } catch (err) {
+      console.warn('[sync-strava-user] post-sync coach hook failed', err);
+    }
+  })();
+
   return {
     ok: true,
     fetched: activities.length,

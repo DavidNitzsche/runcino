@@ -539,11 +539,11 @@ export default async function LogPage() {
                   <span className={`run-tag ${r.tag}`}>{r.tagLabel}</span>
                   <div>
                     <div className="run-name">{r.name}</div>
-                    {/* Coach REFLECTION + FORM verdict + body (W1).
-                        Verdict replaces the legacy sub when present; body
-                        sits beneath in a quieter italic. The unlock-pin
-                        sits inline next to verdict as a milestone chip
-                        when a real state change fires. */}
+                    {/* Coach REFLECTION + FORM verdict in the row (W1).
+                        Verdict replaces the legacy sub when present; the
+                        body lives on Run Detail (tap the row to open).
+                        Unlock-pin sits inline as a milestone chip when
+                        a real state change fires from this run. */}
                     <div className="run-type">
                       {r.coachReadVerdict ?? r.sub}
                       {r.coachReadUnlockPin && (
@@ -560,16 +560,6 @@ export default async function LogPage() {
                         }}>{r.coachReadUnlockPin}</span>
                       )}
                     </div>
-                    {r.coachReadBody && (
-                      <div style={{
-                        marginTop: 4,
-                        fontFamily: 'Jost, sans-serif',
-                        fontSize: 12,
-                        color: 'rgba(8,8,8,.62)',
-                        lineHeight: 1.4,
-                        fontStyle: 'italic',
-                      }}>{r.coachReadBody}</div>
-                    )}
                   </div>
                   <div className="run-shoe-wrap" data-run-id={r.id}>
                     <LogRunShoePicker
