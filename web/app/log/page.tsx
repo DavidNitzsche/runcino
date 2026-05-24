@@ -24,6 +24,7 @@ import { query } from '@/lib/db';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { gatherCoachState } from '@/lib/coach-state';
 import { coach } from '@/coach/coach';
+import { getActivePlanWeeks } from '@/lib/plan-weeks';
 import './log-v4.css';
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -116,17 +117,57 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
       // → camelCase keys: distanceMi, movingTimeS, startLocal (ISO datetime), avgHr.
       // The page used to read snake_case (distance_mi, moving_time_sec, date)
       // which silently returned NULL, making every metric show 0.
-      const acts = await query<{ id: number | string; data: Record<string, unknown>; shoe_id: number | null }>(
+      // Fetch more rows than we'll show because the dedup below collapses
+      // same-(date,distance) duplicates that multiple ingest paths (watch
+      // upload + Strava webhook + manual import) can create.
+      const actsRaw = await query<{ id: number | string; data: Record<string, unknown>; shoe_id: number | null }>(
         `SELECT id, data, shoe_id
            FROM strava_activities
           ORDER BY (data->>'startLocal') DESC
-          LIMIT 19`,
+          LIMIT 60`,
       );
-      // Gather coach state once; runRead per row reuses it. Safe to
-      // throw — falls back to coachReadVerdict/Body = null on failure.
+
+      // Read-side dedup. Group by (date, distance rounded to 0.1 mi);
+      // within a group keep the row with the most complete data —
+      // prefer one with avgHr present, then longest name (sources like
+      // 'Watch run' vs 'Tuesday Evening Run' indicate which writer was
+      // richer). Real distinct same-day runs (e.g. AM warmup + PM main)
+      // have different distances and stay separate.
+      type Act = typeof actsRaw[number];
+      const groups = new Map<string, Act>();
+      for (const a of actsRaw) {
+        const d = a.data as { startLocal?: string; distanceMi?: number; avgHr?: number; name?: string };
+        const date = (d.startLocal || '').slice(0, 10);
+        const distKey = (Math.round((Number(d.distanceMi) || 0) * 10) / 10).toFixed(1);
+        const key = `${date}|${distKey}`;
+        const existing = groups.get(key);
+        if (!existing) { groups.set(key, a); continue; }
+        const ex = existing.data as { avgHr?: number; name?: string };
+        const exHasHr = (Number(ex.avgHr) || 0) > 0;
+        const newHasHr = (Number(d.avgHr) || 0) > 0;
+        const exNameLen = (ex.name || '').length;
+        const newNameLen = (d.name || '').length;
+        // Prefer HR-having row; tiebreak by longer name.
+        if ((newHasHr && !exHasHr) || (newHasHr === exHasHr && newNameLen > exNameLen)) {
+          groups.set(key, a);
+        }
+      }
+      const acts = [...groups.values()]
+        .sort((a, b) => {
+          const aS = (a.data as { startLocal?: string }).startLocal || '';
+          const bS = (b.data as { startLocal?: string }).startLocal || '';
+          return bS.localeCompare(aS);
+        })
+        .slice(0, 19);
+
+      // Gather coach state once; runRead per row reuses it. Same for
+      // active plan weeks — letting runRead see plannedDistanceMi +
+      // plannedType picks the right verdict branch instead of always
+      // falling into "Unprescribed run logged."
       let coachState: Awaited<ReturnType<typeof gatherCoachState>> | null = null;
       try { coachState = await gatherCoachState({ userId }); } catch {}
       const today = coachState?.now.slice(0, 10) ?? todayISO(userTimezone());
+      const planWeeks = await getActivePlanWeeks().catch(() => []);
 
       recentRuns = await Promise.all(acts.map(async (a) => {
         const d = a.data as { name?: string; startLocal?: string; distanceMi?: number; movingTimeS?: number; type?: string; description?: string; avgHr?: number };
@@ -145,7 +186,20 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
         const tag: RunRow['tag'] = isRace ? 'race' : mi >= 12 ? 'long' : 'easy';
         const tagLabel = tag === 'race' ? 'Race' : tag === 'long' ? 'Long' : 'Easy';
 
-        // Coach REFLECTION + FORM read per row (W1 wiring).
+        // Coach REFLECTION + FORM read per row (W1 wiring). Look up
+        // the matched plan day so the engine can compare prescribed
+        // vs actual instead of seeing every run as unprescribed.
+        let plannedDistanceMi: number | null = null;
+        let plannedType: string | null = null;
+        for (const w of planWeeks) {
+          const day = w.days.find((dd) => dd.date === dateStr);
+          if (day && !day.isRest) {
+            plannedDistanceMi = day.distanceMi;
+            plannedType = day.type;
+            break;
+          }
+        }
+
         let coachReadVerdict: string | null = null;
         let coachReadBody: string | null = null;
         let coachReadUnlockPin: string | null = null;
@@ -160,8 +214,8 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
                 paceSPerMi: paceSec,
                 avgHr: Number(d.avgHr) || null,
                 name: d.name || 'Untitled run',
-                plannedDistanceMi: null,
-                plannedType: null,
+                plannedDistanceMi,
+                plannedType,
               },
               state: coachState,
             });
