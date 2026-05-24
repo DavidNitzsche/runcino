@@ -951,7 +951,11 @@ async function bootstrap(): Promise<void> {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_coach_reads_cache_lookup ON coach_reads_cache (user_uuid, read_kind, cache_key);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_coach_reads_cache_expired ON coach_reads_cache (ttl_at) WHERE ttl_at < NOW();`);
+    // Plain B-tree on ttl_at — the eviction sweep does `WHERE ttl_at < NOW()`
+    // and the planner uses this index for the range scan. Postgres rejects a
+    // partial index whose predicate calls NOW() (STABLE, not IMMUTABLE), which
+    // would fail the whole bootstrap and brick every DB-touching route.
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_coach_reads_cache_expired ON coach_reads_cache (ttl_at);`);
 
     // Link new coach-layer tables to users via user_uuid FK (already
     // declared inline above; this is the additive add-column-if-not-
