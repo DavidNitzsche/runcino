@@ -17,6 +17,7 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { LogRunShoePicker } from './LogRunShoePicker';
 import { RunDetailModalProvider } from './RunDetailModal';
 import { RunRowIsland } from './RunRowIsland';
+import { MergeProvider } from './MergeToolbox';
 import { RunDeleteIsland } from './RunDeleteIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
@@ -522,6 +523,7 @@ export default async function LogPage() {
               </div>
             </div>
           </div>
+          <MergeProvider>
           <div>
             {data.recentRuns.length === 0 ? (
               <div style={{ padding: '40px 28px', textAlign: 'center', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
@@ -529,7 +531,7 @@ export default async function LogPage() {
               </div>
             ) : (
               data.recentRuns.map((r) => (
-                <RunRowIsland key={r.id} runId={r.id}>
+                <RunRowIsland key={r.id} runId={r.id} distanceMi={r.mi}>
                   <div className="run-date">{r.dateLabel}</div>
                   <span className={`run-tag ${r.tag}`}>{r.tagLabel}</span>
                   <div>
@@ -589,6 +591,7 @@ export default async function LogPage() {
               ))
             )}
           </div>
+          </MergeProvider>
         </div>
 
       </div>
