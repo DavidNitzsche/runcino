@@ -900,10 +900,11 @@ struct RacesView: View {
         // chip, recap list). Priority chip top-right. Title wraps to
         // two lines and auto-shrinks at extreme lengths.
         VStack(alignment: .leading, spacing: 6) {
-            // Title row: chip aligns to the title's text baseline so
-            // its optical center sits with the first letter of the
-            // name (was using .top which pinned it above cap height).
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            // Title row: chip is top-aligned with a small downward
+            // nudge so its center sits at the title's cap-height
+            // optical center (not the baseline, which made the chip
+            // visually sag below the title letters).
+            HStack(alignment: .top, spacing: 12) {
                 Text((r.name ?? "").uppercased())
                     .font(Faff.F.display(34)).tracking(-0.5)
                     .foregroundStyle(.white)
@@ -911,6 +912,7 @@ struct RacesView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 priorityChip(r.priority, onDark: true)
+                    .padding(.top, 4)
             }
             if let d = r.date {
                 Text(RacesView.prettyDate(d))
@@ -986,10 +988,18 @@ struct RacesView: View {
     private func priorityChip(_ p: String?, onDark: Bool) -> some View {
         let pr = (p ?? "A").uppercased()
         let letter = ["A", "B", "C"].contains(pr) ? pr : "•"
-        let color: Color = pr == "A" ? Faff.C.race : (pr == "B" ? Faff.C.milestone : Faff.C.textDim)
-        Text(letter).font(Faff.F.display(12)).foregroundStyle(.white)
-            .frame(width: 22, height: 22).background(Circle().fill(color))
-            .overlay(Circle().stroke(onDark ? .white.opacity(0.5) : .clear, lineWidth: 1))
+        let priColor: Color = pr == "A" ? Faff.C.race : (pr == "B" ? Faff.C.milestone : Faff.C.textDim)
+        // On the orange race-card hero, an orange-filled chip
+        // disappears into the background. Invert: white fill + race-
+        // color letter for strong contrast. Off-dark (white cards):
+        // fill with the priority color, white letter.
+        let bg: Color = onDark ? .white : priColor
+        let fg: Color = onDark ? priColor : .white
+        return Text(letter)
+            .font(Faff.F.oswald(15, .semibold))
+            .foregroundStyle(fg)
+            .frame(width: 28, height: 28)
+            .background(Circle().fill(bg))
     }
 
     private func raceStat(_ label: String, _ value: String, align: HorizontalAlignment = .leading) -> some View {
