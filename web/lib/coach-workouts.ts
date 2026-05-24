@@ -305,7 +305,7 @@ export function race(distanceMi: number, name: string): RunPrescription {
     type: 'race', label: 'Race day',
     distanceMi: r1(distanceMi), durationMin: null,
     paceTargetSPerMi: null, hrZone: null,
-    description: `Race day · ${name} · trust the plan, execute the pacing strategy`,
+    description: `Race day · ${name} · first three miles slower than you want, then commit`,
     isQuality: true, isLong: distanceMi >= 13.1, appendStrides: false,
   };
 }

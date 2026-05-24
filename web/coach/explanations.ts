@@ -186,7 +186,7 @@ export function composeVoiceLead(ctx: VoiceLeadCtx): string {
       return [
         `Race-week tune-up, 5 miles total with 3 miles at HM goal pace.`,
         `Last race-pace check before race day. Grooves the pace into the neuromuscular system without draining you.`,
-        `If goal pace feels uncomfortable today, do not push, race-day adrenaline + freshness adds back the missing percent. Trust the work, hold the band.`,
+        `If goal pace feels uncomfortable today, do not push — race-day adrenaline + freshness adds back the missing percent. Hold the band, that's the only job.`,
       ].join(' ');
 
     case 'long_fast_finish':
@@ -243,9 +243,9 @@ export function composeVoiceLead(ctx: VoiceLeadCtx): string {
 
     case 'race':
       return [
-        `Race day. The training is built, today is execution.`,
-        `Run the first three miles slower than you want; every fast plan dies in the opening miles.`,
-        `Trust the pace plan, take fuel on schedule, drink to thirst, and run your race.`,
+        `Race day. The training is done; the legs know what to do.`,
+        `Run the first three miles slower than you want — every fast plan dies in the opening miles.`,
+        `Hold the pace plan, fuel on schedule, drink to thirst, settle the middle, commit the last 5K.`,
       ].join(' ');
 
     case 'shakeout':

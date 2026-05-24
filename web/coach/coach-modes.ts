@@ -274,7 +274,7 @@ function voiceFor(
     return `Below-the-neck or fever — don't run. Sleep, fluids, real food. The fitness will hold; the immune system gets priority.`;
   }
   if (mode === 'race_day' && state.races.nextA) {
-    return `Race day. The training is built — today is execution. Run the first three miles slower than you want; trust the pace plan; fuel on schedule.`;
+    return `Race day. The training is done; the legs know what to do. First three miles slower than you want, settle the middle, commit the last 5K. Fuel on schedule, drink to thirst.`;
   }
   if (mode === 'race_week' && state.races.nextA?.daysAway != null) {
     return `${state.races.nextA.daysAway} days out. The work is done, you can feel it because you have nothing to do. The legs are supposed to feel weird this week — that's freshness.`;

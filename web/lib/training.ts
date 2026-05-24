@@ -333,10 +333,10 @@ export function generateWeek(
   });
 
   const narrative =
-    phase === 'base'  ? `Base week ${weekNumber}. Aerobic volume, trust the easy days.` :
-    phase === 'build' ? `Build week ${weekNumber}. First real quality work of the cycle.` :
-    phase === 'peak'  ? `Peak week ${weekNumber}. Hardest of the cycle. After this, it's all downhill.` :
-                        `Taper week ${weekNumber}. Volume drops; intensity stays. Protect the gains.`;
+    phase === 'base'  ? `Base week ${weekNumber}. Frequency over intensity — easy days are where the engine compounds.` :
+    phase === 'build' ? `Build week ${weekNumber}. Threshold work goes in. The harder the session, the more the easy days matter.` :
+    phase === 'peak'  ? `Peak week ${weekNumber}. Heaviest aerobic ask of the cycle. Sleep and fueling become the limiter, not the legs.` :
+                        `Taper week ${weekNumber}. Volume drops, intensity holds. Flat legs are normal — that's the system winding down.`;
 
   return {
     weekNumber,

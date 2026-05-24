@@ -1310,7 +1310,7 @@ function strengthFitsThisDay(state: CoachState, phase: Phase, dow: number, today
 function composeRationale(state: CoachState, phase: Phase, p: RunPrescription, strength: StrengthPrescription | null): string {
   // Priority order: explicit overrides → state-driven flags → phase
   // logic → fall-through.
-  if (p.type === 'race') return `Race day. Trust the plan, execute the pacing strategy.`;
+  if (p.type === 'race') return `Race day. First three miles slower than you want, settle the middle, commit the last 5K.`;
   if (p.type === 'shakeout') return `Race tomorrow, keep the legs awake without adding fatigue.`;
 
   if (state.flags.heavyBlockSuspected && p.type === 'rest') {
