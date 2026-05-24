@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { getCurrentUser } from '@/lib/auth';
+import { ActiveModeBanner } from './components/ActiveModeBanner';
 
 export const metadata: Metadata = {
   title: 'faff.run',
@@ -39,7 +40,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap"
         />
       </head>
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        <ActiveModeBanner />
+        {children}
+      </body>
     </html>
   );
 }
