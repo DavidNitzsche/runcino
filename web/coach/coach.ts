@@ -1134,7 +1134,7 @@ class CoachImpl implements Coach {
       ? `At ${carbTarget} g/h, use a 1:0.8 glucose:fructose blend, single-source glucose alone hits the gut ceiling near 60 g/h.`
       : `At ${carbTarget} g/h, standard 2:1 glucose:fructose gels work.`;
     const heatNote = weather?.tempF != null && weather.tempF > HEAT_CARB_BUMP.value.ifTempFAbove
-      ? ` Heat bump applied (+${HEAT_CARB_BUMP.value.bumpGPerHr} g/h above ${HEAT_CARB_BUMP.value.ifTempFAbove}°F).`
+      ? ` Heat's high — bumping carbs by ${HEAT_CARB_BUMP.value.bumpGPerHr} g/h to keep up.`
       : '';
 
     return {
@@ -1512,21 +1512,21 @@ class CoachImpl implements Coach {
     };
     const candidates: Candidate[] = [];
 
-    // First T tempo: ~3 weeks into the build
+    // First threshold tempo: ~3 weeks into the build
     candidates.push({
       offsetDays: Math.max(0, daysToRace - 91),
-      label: 'First T tempo',
-      structure: '4 × 1MI @ T · 90s float',
+      label: 'First threshold tempo',
+      structure: '4 hard miles at threshold pace, 90 seconds easy jog between each',
       phaseTag: 'BUILD WK 2',
       targetPace: tPace,
       priority: 'milestone',
     });
 
-    // First HMP miles: ~6 weeks into the build
+    // First half-marathon-pace miles: ~6 weeks into the build
     candidates.push({
       offsetDays: Math.max(0, daysToRace - 56),
-      label: 'First HMP miles',
-      structure: '3 × 2MI @ HMP · 60s jog',
+      label: 'First half-pace miles',
+      structure: '3 two-mile reps at half-marathon pace, 60 seconds easy jog between',
       phaseTag: 'BUILD WK 5',
       targetPace: mPace,
       priority: 'milestone',
@@ -1538,7 +1538,7 @@ class CoachImpl implements Coach {
       candidates.push({
         offsetDays: nextB.daysAway,
         label: nextB.name,
-        structure: `B-RACE TUNE-UP · ${nextB.distanceMi.toFixed(1)} mi`,
+        structure: `Tune-up race · ${nextB.distanceMi.toFixed(1)} mi`,
         phaseTag: 'FITNESS CHECK',
         targetPace: tPace,
         priority: 'race',
@@ -1549,7 +1549,7 @@ class CoachImpl implements Coach {
     candidates.push({
       offsetDays: Math.max(0, daysToRace - 28),
       label: 'Race-pace long',
-      structure: '8 MI continuous @ HMP',
+      structure: '8 continuous miles at half-marathon pace',
       phaseTag: 'PEAK WK 1',
       targetPace: mPace,
       priority: 'milestone',
@@ -1559,7 +1559,7 @@ class CoachImpl implements Coach {
     candidates.push({
       offsetDays: Math.max(0, daysToRace - 10),
       label: 'Sharpener',
-      structure: '3 × 1KM @ T · race-week tune',
+      structure: '3 × 1K at threshold pace, race-week tune',
       phaseTag: 'TAPER',
       targetPace: tPace,
       priority: 'milestone',
@@ -1805,7 +1805,8 @@ class CoachImpl implements Coach {
 
     const bodyParts: string[] = [];
     if (recentRace && recentRace.daysAgo <= 14) {
-      bodyParts.push(`The engine is honoring the post-race recovery window (Research/00b §Recovery by Distance: ${recentRace.distanceMi >= 22 ? 'marathon 21-28d' : recentRace.distanceMi >= 12 ? 'half marathon 10-14d' : 'short race 5-7d'}).`);
+      const window = recentRace.distanceMi >= 22 ? '21-28 days' : recentRace.distanceMi >= 12 ? '10-14 days' : '5-7 days';
+      bodyParts.push(`Post-race recovery window — ${window} after ${recentRace.distanceMi >= 22 ? 'a marathon' : recentRace.distanceMi >= 12 ? 'a half' : 'a short race'}, the body's still converting that effort into fitness.`);
     }
     if (todayDay && todayDay.plannedMi > 0) {
       bodyParts.push(`Today's call: ${todayDay.label.toLowerCase()} ${todayDay.plannedMi.toFixed(1)} mi.`);
@@ -1891,8 +1892,8 @@ class CoachImpl implements Coach {
         label: 'YOUR PACE ZONES',
         valueDisplay: snapshot ? `From VDOT ${snapshot.vdot.toFixed(1)}` : 'No recent race',
         explanation: snapshot
-          ? `The Coach prescribes every run inside one of 5 pace bands anchored on VDOT ${snapshot.vdot.toFixed(1)} (from ${snapshot.source.name}, ${snapshot.source.daysAgo}d ago).`
-          : 'Log a recent 5K/10K/HM and the Coach anchors every workout pace on the resulting VDOT.',
+          ? `Every run sits inside one of 5 pace bands, anchored on your fitness score (${snapshot.vdot.toFixed(1)}, from ${snapshot.source.name}, ${snapshot.source.daysAgo}d ago).`
+          : 'Log a recent 5K, 10K, or half and every workout pace anchors on the result.',
         sourceLabel: snapshot ? `VDOT ${snapshot.vdot.toFixed(1)}` : '-',
         doctrineModule: 'pace_zones',
       },
@@ -1903,8 +1904,8 @@ class CoachImpl implements Coach {
         explanation: !longRunCapHasValue
           ? 'No training long run logged in the last 28 days, the cap starts at the next absorbed week.'
           : usePostRaceAnchor && preRaceTraining != null
-            ? `Post-race recovery, Coach holds the long run to ${longRunCap.toFixed(1)} mi next week, roughly 50% of your pre-race long (${preRaceTraining.toFixed(1)} mi)${recentRaceName ? `. Your ${recentRaceName} doesn't count toward training progression` : ''}; the ramp back takes 2-3 weeks.`
-            : `Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week. Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi; the +10% cap protects connective tissue from a single-session spike (races excluded).`,
+            ? `Post-race recovery — long run capped at ${longRunCap.toFixed(1)} mi next week, roughly 50% of your pre-race long (${preRaceTraining.toFixed(1)} mi)${recentRaceName ? `. ${recentRaceName} doesn't count toward training progression` : ''}; the ramp back takes 2-3 weeks.`
+            : `Long run capped at ${longRunCap.toFixed(1)} mi next week. Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi; the +10% ceiling protects connective tissue from a single-session spike (races excluded).`,
         sourceLabel: usePostRaceAnchor ? 'Post-race 50% restart' : '+10% rule',
         doctrineModule: 'training',
       },
@@ -1913,8 +1914,8 @@ class CoachImpl implements Coach {
         label: 'EASY-PACE TARGET',
         valueDisplay: '≥80%',
         explanation: easyShare > 0
-          ? `At least 80% of your weekly miles should be at easy pace. You're at ${easySharePct}%, ${easySharePct >= 80 ? 'right in the polarized window' : 'slightly hot; the Coach will ease back this week'}.`
-          : 'Polarized training: 80% easy / 20% hard. The Coach reads your 14-day easy share to keep the ratio honest.',
+          ? `At least 80% of your weekly miles should be at easy pace. You're at ${easySharePct}%, ${easySharePct >= 80 ? 'right in the easy-hard mix we want' : 'slightly hot — easing back the easy days this week'}.`
+          : 'The mix is 80% easy / 20% hard. Your 14-day easy share keeps that ratio honest.',
         sourceLabel: easyShare > 0 ? `${easySharePct}% easy now` : 'Polarized 80/20',
         doctrineModule: 'training',
       },
@@ -1922,25 +1923,23 @@ class CoachImpl implements Coach {
         id: 'cutback_cadence',
         label: 'RECOVERY WEEK CADENCE',
         valueDisplay: `Every ${cutbackEvery} WKS`,
-        explanation: `Every ${cutbackEvery}th week the Coach drops volume −20% so the body can absorb training. At your mileage tier (${tier} band, ${tier === 'low' ? '20-40' : tier === 'mid' ? '40-60' : tier === 'high' ? '60-80' : '80+'} mi/wk), ${cutbackEvery}-week blocks balance stimulus and recovery without losing fitness.`,
+        explanation: `Every ${cutbackEvery}th week, volume drops −20% so the body can absorb training. At your mileage tier (${tier} band, ${tier === 'low' ? '20-40' : tier === 'mid' ? '40-60' : tier === 'high' ? '60-80' : '80+'} mi/wk), ${cutbackEvery}-week blocks balance stimulus and recovery without losing fitness.`,
         sourceLabel: `${cutbackEvery}-week cycle`,
         doctrineModule: 'plan_templates',
       },
     ];
 
-    // Plan-integrity counts are not actually computed here; the engine
-    // already runs the validator inline (coachDaily → planIssues). When
-    // that surface is needed it'll get its own dedicated method. For
-    // now report a clean baseline so the Profile card renders.
+    // Plan-integrity validator is not wired through engineDetails yet.
+    // Per coach-layer spec §22.2: return null rather than fake a 12/12
+    // passing read — a lying validator is worse than a silent one. The
+    // engine DOES run inline plan checks (coachDaily → planIssues);
+    // when those are surfaced as a structured report, this field gets
+    // populated from real counts. The Profile page renders an empty
+    // tile when this is null.
     return {
       answer: {
         details,
-        planIntegrity: {
-          rulesPassed: 12,
-          rulesTotal: 12,
-          allPassing: true,
-          summary: 'All doctrine rules pass against the engine\'s current prescription.',
-        },
+        planIntegrity: null,
       },
       rationale: `Pace zones ${snapshot ? `@ VDOT ${snapshot.vdot.toFixed(1)}` : 'pending race'}; long-run cap ${longRunCap.toFixed(1)}mi; easy share ${easySharePct}%; cutback every ${cutbackEvery}wk.`,
       citations: [

@@ -315,14 +315,17 @@ export interface EngineDetail {
 
 export interface EngineDetailsReport {
   details: EngineDetail[];
-  /** Plan integrity, count of doctrine rules passed / total. */
+  /** Plan integrity, count of doctrine rules passed / total. Null
+   *  when no real validator has run — surfaces render empty rather
+   *  than fake-12/12-passing. The Profile page route correctly drops
+   *  the tile in this case. */
   planIntegrity: {
     rulesPassed: number;
     rulesTotal: number;
     allPassing: boolean;
     /** Plain-English summary line. */
     summary: string;
-  };
+  } | null;
 }
 
 /** Output of `Coach.runRead()`, the Coach Read card on a single run's
