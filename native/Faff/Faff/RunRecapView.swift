@@ -75,7 +75,13 @@ struct RunRecapView: View {
 
     private func load() async {
         defer { loading = false }
-        run = (try? await RunByDateAPI.fetch(date: date))?.run
+        // Serve warm cache first if available, then refresh in
+        // background so the recap renders instantly on re-open.
+        if let cached = RunByDateAPI.cached(date: date) {
+            run = cached.run
+            loading = false
+        }
+        if let fresh = try? await RunByDateAPI.fetch(date: date) { run = fresh.run }
         // Per-run running dynamics from Apple Health for THIS run (cadence,
         // stride, oscillation, ground contact, etc.). The Health tab carries
         // the cumulative 30-day average; the per-run read lives here.

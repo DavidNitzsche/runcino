@@ -118,7 +118,15 @@ struct RootTabView: View {
 
     private func load() async {
         loadError = nil
-        do { overview = try await OverviewAPI.fetch() }
+        do {
+            let o = try await OverviewAPI.fetch()
+            overview = o
+            // Pre-warm caches for the surfaces the user is most
+            // likely to tap into next (race detail, today's run,
+            // upcoming workout descriptions). Runs in the background;
+            // the sheets serve from cache when opened — no load flash.
+            PreloadAPI.warm(from: o)
+        }
         catch { if overview == nil { loadError = error.localizedDescription } }
     }
 }
@@ -1258,8 +1266,16 @@ struct RaceDetailView: View {
     }
 
     private func loadCourse() async {
-        defer { loadingCourse = false }
-        course = try? await RaceCourseAPI.fetch(slug: slug)
+        // Serve from cache instantly if pre-warmed — no spinner flash
+        // for the most-tapped sheet. Refresh in background to pick up
+        // any course updates.
+        if let cached = RaceCourseAPI.cached(slug: slug) {
+            course = cached
+            loadingCourse = false
+        }
+        let fresh = try? await RaceCourseAPI.fetch(slug: slug)
+        if let fresh { course = fresh }
+        loadingCourse = false
     }
 
     // MARK: Course map + elevation profile
@@ -2447,7 +2463,11 @@ struct PlanDayDetailSheet: View {
         .task {
             guard !loaded, !day.isRest, let d = day.date else { return }
             loaded = true
-            detail = try? await WorkoutDayAPI.fetch(date: d)
+            // Hit the warm cache first so the sheet renders the
+            // structure/why/focus instantly. Then refresh from network
+            // in the background to pick up any plan-engine updates.
+            if let cached = WorkoutDayAPI.cached(date: d) { detail = cached ?? nil }
+            if let fresh = try? await WorkoutDayAPI.fetch(date: d) { detail = fresh }
         }
     }
     private var eyebrow: String {

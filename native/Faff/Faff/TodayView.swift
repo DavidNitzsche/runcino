@@ -124,7 +124,13 @@ struct TodayView: View {
         let date = selDate
         let wantsRun = !date.isEmpty && !selIsRest && (isPastSel || (isTodaySel && todayDone))
         guard wantsRun else { selRun = nil; selDynamics = nil; return }
-        selRun = nil; selDynamics = nil
+        // Serve warm cache if PreloadAPI already fetched this date —
+        // no empty-state flash when switching days.
+        if let cached = RunByDateAPI.cached(date: date)?.run, date == selDate {
+            selRun = cached
+        } else {
+            selRun = nil; selDynamics = nil
+        }
         let r = (try? await RunByDateAPI.fetch(date: date))?.run
         guard date == selDate else { return }   // a faster tap won the race
         selRun = r

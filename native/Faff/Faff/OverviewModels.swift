@@ -336,15 +336,24 @@ private struct PlanWorkoutResponse: Decodable { let ok: Bool; let workout: PlanW
 
 @MainActor
 enum WorkoutDayAPI {
+    /// In-memory cache so re-opening the same workout day's detail
+    /// sheet is instant (no network round-trip flash). Bumped on
+    /// app launch + on overview refresh — see PreloadAPI.
+    private static var cache: [String: PlanWorkoutDetail?] = [:]
+    static func cached(date: String) -> PlanWorkoutDetail?? { cache[date] }
     /// The real describeWorkout for `date` (steps + effort + why + zone), or
     /// nil for rest days / no plan. Bearer-aware so it resolves to the user.
+    /// Returns cached value instantly when warm; refreshes in background
+    /// is the caller's responsibility (call `fetch` to refresh).
     static func fetch(date: String) async throws -> PlanWorkoutDetail? {
         guard let url = URL(string: "/api/plan/workout?date=\(date)", relativeTo: API.baseURL) else { throw APIError.invalidURL }
         var req = URLRequest(url: url); req.timeoutInterval = 20
         if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-        return try JSONDecoder().decode(PlanWorkoutResponse.self, from: data).workout
+        let result = try JSONDecoder().decode(PlanWorkoutResponse.self, from: data).workout
+        cache[date] = result
+        return result
     }
 }
 
@@ -618,6 +627,10 @@ struct RacePhase: Decodable, Identifiable {
 
 @MainActor
 enum RaceCourseAPI {
+    /// In-memory cache, per-slug. Race courses are immutable per slug
+    /// so the cache never needs invalidation in a session.
+    private static var cache: [String: RaceCourse] = [:]
+    static func cached(slug: String) -> RaceCourse? { cache[slug] }
     static func fetch(slug: String) async throws -> RaceCourse {
         guard let url = URL(string: "/api/races/\(slug)/course", relativeTo: API.baseURL) else { throw APIError.invalidURL }
         var req = URLRequest(url: url); req.timeoutInterval = 35
@@ -627,7 +640,9 @@ enum RaceCourseAPI {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
         }
-        return try JSONDecoder().decode(RaceCourse.self, from: data)
+        let course = try JSONDecoder().decode(RaceCourse.self, from: data)
+        cache[slug] = course
+        return course
     }
 }
 
@@ -702,6 +717,47 @@ enum ShoesAPI {
             throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8))
         }
         return true
+    }
+}
+
+// MARK: - Pre-warm cache
+
+/// Fires after the root /api/overview lands. Eagerly fetches the data
+/// the runner is most likely to tap into next (race course, today's
+/// run, the next few workout details), populating the per-API caches
+/// so the sheets render instantly when opened — no load flash.
+///
+/// All fetches run in parallel and silently swallow errors; we never
+/// block the UI on a pre-warm. Side-effect only.
+@MainActor
+enum PreloadAPI {
+    /// Pre-warm the next-tap surfaces. Safe to call after every
+    /// overview refresh; cache hits are free, misses fill behind the
+    /// scenes so the second tap is instant even when the first was
+    /// cold.
+    static func warm(from overview: OverviewResponse) {
+        Task.detached(priority: .utility) {
+            // Active A-race course — most-tapped sheet
+            if let slug = await overview.state?.races?.nextA?.slug, !slug.isEmpty,
+               await RaceCourseAPI.cached(slug: slug) == nil {
+                _ = try? await RaceCourseAPI.fetch(slug: slug)
+            }
+            // Today's run if logged + per-run-day workout descriptions
+            let today = overview.today ?? ""
+            if !today.isEmpty, await RunByDateAPI.cached(date: today) == nil {
+                _ = try? await RunByDateAPI.fetch(date: today)
+            }
+            // Pre-warm workout details for the next ~3 non-rest days
+            // (covers what the user is most likely to open from the
+            // date-strip or Plan view).
+            let days = (overview.planWeekWorkouts ?? [])
+                .filter { ($0.type ?? "rest") != "rest" }
+                .prefix(7)
+                .compactMap { $0.dateISO }
+            for d in days where await WorkoutDayAPI.cached(date: d) == nil {
+                _ = try? await WorkoutDayAPI.fetch(date: d)
+            }
+        }
     }
 }
 
@@ -852,6 +908,12 @@ struct RunSplit: Decodable, Identifiable {
 
 @MainActor
 enum RunByDateAPI {
+    /// In-memory cache per-date. Runs from past days are immutable;
+    /// today's run can change as the user logs more activity, so
+    /// callers can force a refresh by clearing the cache key.
+    private static var cache: [String: RunByDateResponse] = [:]
+    static func cached(date: String) -> RunByDateResponse? { cache[date] }
+    static func invalidate(date: String) { cache.removeValue(forKey: date) }
     static func fetch(date: String) async throws -> RunByDateResponse {
         guard let url = URL(string: "/api/runs/by-date?date=\(date)", relativeTo: API.baseURL) else { throw APIError.invalidURL }
         var req = URLRequest(url: url); req.timeoutInterval = 35
@@ -861,7 +923,9 @@ enum RunByDateAPI {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: nil)
         }
-        return try JSONDecoder().decode(RunByDateResponse.self, from: data)
+        let resp = try JSONDecoder().decode(RunByDateResponse.self, from: data)
+        cache[date] = resp
+        return resp
     }
 }
 
