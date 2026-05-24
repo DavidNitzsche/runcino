@@ -32,16 +32,17 @@ extension Color {
 }
 
 enum Faff {
-    static let live  = Color(hex: 0x3EBD41) // Success — on-pace / governed
-    static let goal  = Color(hex: 0xF3AD38) // Attention — target / "act now" (fuel)
-    static let dist  = Color(hex: 0x27B4E0) // Light Blue — DISTANCE, always
-    static let over  = Color(hex: 0xFC4D64) // Warning — off / behind / over ceiling
-    static let rest  = Color(hex: 0x008FEC) // Corporate blue — recovery / landmark chrome
-    static let ink   = Color(hex: 0xF6F7F8) // neutral readout (white)
-    static let mute  = Color(hex: 0x8A90A0)
-    static let dim   = Color(hex: 0x646464)
-    static let brand = Color(hex: 0x008FEC)
-    static let bonus = Color(hex: 0xA78BFA) // purple — distance gone past the plan (counts up)
+    static let live   = Color(hex: 0x3EBD41) // Success — on-pace / governed
+    static let goal   = Color(hex: 0xF3AD38) // Attention — target / "act now" (fuel)
+    static let dist   = Color(hex: 0x27B4E0) // Light Blue — DISTANCE, always
+    static let over   = Color(hex: 0xFC4D64) // Warning — off / behind / over ceiling (LIVE DATA)
+    static let redish = Color(hex: 0xD03F3F) // Destructive-action red (BUTTONS — matches web --color-phase-2)
+    static let rest   = Color(hex: 0x008FEC) // Corporate blue — recovery / landmark chrome
+    static let ink    = Color(hex: 0xF6F7F8) // neutral readout (white)
+    static let mute   = Color(hex: 0x8A90A0)
+    static let dim    = Color(hex: 0x646464)
+    static let brand  = Color(hex: 0x008FEC)
+    static let bonus  = Color(hex: 0xA78BFA) // purple — distance gone past the plan (counts up)
 }
 
 // MARK: - A number's role decides its colour
