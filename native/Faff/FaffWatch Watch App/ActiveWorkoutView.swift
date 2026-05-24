@@ -371,14 +371,21 @@ private struct ControlsPage: View {
 }
 
 /// The control page (deck §D): full-width stacked bars — big tap targets, not
-/// little circles. Pause/Resume (primary, filled) over End.
+/// little circles. Pause/Resume (primary, filled amber/green), End (red),
+/// and Sound (blue · toggles audible alert "ding" on every transition cue —
+/// mile splits, fuel, etc. Persists across runs via @AppStorage).
 struct ControlsFace: View {
     var paused: Bool = false
     var onPrimary: () -> Void = {}
     var onEnd: () -> Void = {}
+    /// Audible alert toggle — persists across runs. When ON, the engine
+    /// plays Haptics.chime() on top of the regular haptic for every
+    /// transition cue (split / fuel / go / etc). Reads UserDefaults key
+    /// "audibleAlerts" elsewhere in the engine.
+    @AppStorage("audibleAlerts") private var audibleAlerts: Bool = false
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             HStack {
                 Eyebrow(text: "Controls", color: WP.muted)
                 Spacer(minLength: 78)
@@ -388,6 +395,10 @@ struct ControlsFace: View {
             bar(paused ? "play.fill" : "pause.fill", paused ? "Resume" : "Pause",
                 tint: paused ? WP.green : WP.amber, filled: true, action: onPrimary)
             bar("stop.fill", "End", tint: WP.warn, filled: false, action: onEnd)
+            bar(audibleAlerts ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                audibleAlerts ? "Sound" : "Muted",
+                tint: Faff.brand, filled: audibleAlerts,
+                action: { audibleAlerts.toggle() })
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12).padding(.bottom, 8)

@@ -380,6 +380,13 @@ final class WorkoutEngine: ObservableObject {
     private func flash(_ cue: TransitionCue, for seconds: Double) {
         transition = cue
         transitionClear?.cancel()
+        // Audible "ding" on top of whatever haptic the caller already fired,
+        // if the runner has toggled Sound on (Controls page, blue button).
+        // Covers EVERY transition: mile-split, fuel, go, heads-up, phase
+        // change. Honest "if the watch isn't silent, you'll hear it" feedback.
+        if UserDefaults.standard.bool(forKey: "audibleAlerts") {
+            Haptics.chime()
+        }
         // Fuel: no auto-clear. Runner explicitly acknowledges.
         if case .fuel = cue { return }
         transitionClear = Task { [weak self] in
