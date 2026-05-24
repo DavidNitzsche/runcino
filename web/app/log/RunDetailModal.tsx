@@ -16,6 +16,15 @@ import { createContext, useContext, useEffect, useState, useMemo, type ReactNode
 
 interface ShoeInfo { brand: string; model: string; color: string | null }
 
+interface MergedSource {
+  id: number;
+  name: string;
+  distanceMi: number;
+  movingTimeS: number;
+  startLocal: string;
+  source: string;
+}
+
 interface RunDetail {
   id: string;
   name: string;
@@ -32,6 +41,10 @@ interface RunDetail {
   workoutType: number | null;
   summaryPolyline: string | null;
   shoe: ShoeInfo | null;
+  /** Other rows folded into this canonical by auto-dedup. Empty when none. */
+  mergedSources: MergedSource[];
+  /** If THIS row was folded into another canonical, the canonical's id. */
+  mergedIntoId: number | null;
 }
 
 interface PlanInfo {
@@ -203,6 +216,71 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
               <div className="rd-section">
                 <div className="rd-section-label">Notes</div>
                 <p className="rd-desc">{run.description}</p>
+              </div>
+            )}
+
+            {/* Dedup provenance + unmerge controls. Renders when this row
+                has merged sources (canonical with N folded-in dupes) OR was
+                itself folded into another (this row is a merged source). */}
+            {run.mergedSources && run.mergedSources.length > 0 && (
+              <div className="rd-section">
+                <div className="rd-section-label">Merged from {run.mergedSources.length} other {run.mergedSources.length === 1 ? 'row' : 'rows'}</div>
+                <p className="rd-desc" style={{ fontSize: 12.5, color: 'rgba(8,8,8,.6)', marginBottom: 10 }}>
+                  Auto-dedupe collapsed these matching-start rows into this one. Unmerge any to extract it back as its own line.
+                </p>
+                <ul className="rd-merged-list">
+                  {run.mergedSources.map((src) => (
+                    <li key={src.id} className="rd-merged-row">
+                      <div className="rd-merged-meta">
+                        <strong>{src.name}</strong>
+                        <span>{src.distanceMi.toFixed(1)} mi · {fmtTime(src.movingTimeS)} · {src.source}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="rd-btn rd-btn-ghost rd-merged-btn"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/runs/${src.id}/unmerge`, { method: 'POST' });
+                            if (!res.ok) {
+                              const j = await res.json().catch(() => ({}));
+                              alert(`Unmerge failed: ${j?.error ?? res.statusText}`);
+                              return;
+                            }
+                            if (typeof window !== 'undefined') window.location.reload();
+                          } catch (e) {
+                            alert(`Unmerge failed: ${e instanceof Error ? e.message : 'unknown'}`);
+                          }
+                        }}
+                      >Unmerge</button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {run.mergedIntoId != null && (
+              <div className="rd-section">
+                <div className="rd-section-label">This row was merged into another</div>
+                <p className="rd-desc" style={{ fontSize: 12.5, color: 'rgba(8,8,8,.6)', marginBottom: 10 }}>
+                  Auto-dedupe folded this row into a canonical session. Unmerge to extract it back as its own line on /log.
+                </p>
+                <button
+                  type="button"
+                  className="rd-btn rd-btn-ghost"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/runs/${runId}/unmerge`, { method: 'POST' });
+                      if (!res.ok) {
+                        const j = await res.json().catch(() => ({}));
+                        alert(`Unmerge failed: ${j?.error ?? res.statusText}`);
+                        return;
+                      }
+                      if (typeof window !== 'undefined') window.location.reload();
+                    } catch (e) {
+                      alert(`Unmerge failed: ${e instanceof Error ? e.message : 'unknown'}`);
+                    }
+                  }}
+                >Unmerge this row</button>
               </div>
             )}
 
@@ -392,6 +470,16 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             color: #FC4D64; border-color: rgba(252,77,100,.35);
           }
           .rd-btn-danger:hover { background: rgba(252,77,100,.08); }
+
+          .rd-merged-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+          .rd-merged-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; padding: 10px 12px;
+            background: rgba(8,8,8,.03); border-radius: 8px;
+          }
+          .rd-merged-meta { display: flex; flex-direction: column; gap: 2px; font-family: 'Inter', sans-serif; font-size: 12.5px; color: rgba(8,8,8,.85); }
+          .rd-merged-meta span { font-size: 11px; color: rgba(8,8,8,.55); }
+          .rd-merged-btn { padding: 6px 12px; font-size: 10px; letter-spacing: 1.3px; }
 
           @media (max-width: 600px) {
             .rd-stats { grid-template-columns: 1fr 1fr; }

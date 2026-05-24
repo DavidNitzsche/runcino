@@ -15,6 +15,9 @@ import { getActivePlanWeeks } from '@/lib/plan-weeks';
 import { describeWorkout } from '@/lib/workout-descriptions';
 import { gatherCoachState } from '@/lib/coach-state';
 import { coach } from '@/coach/coach';
+import { getCachedActivities } from '@/lib/strava-cache';
+import { dedupeRunsForDisplay, type MergedSource } from '@/lib/dedupe-runs';
+import { loadMergeOverrides } from '@/lib/run-merge-overrides';
 
 interface ActivityRow {
   id: string;
@@ -113,6 +116,28 @@ export async function GET(
     console.warn('[api/runs/:id] coach.runRead failed', { id, err });
   }
 
+  // Surface dedup state to the detail modal — so the user can see which
+  // other rows were folded into this canonical (and pick any to unmerge),
+  // OR see that THIS row was folded into another (and unmerge it back to
+  // its own line). One cache + dedup pass; cheap.
+  let mergedSources: MergedSource[] = [];
+  let mergedIntoId: number | null = null;
+  try {
+    const cache = await getCachedActivities();
+    const overrides = await loadMergeOverrides(user.id);
+    const deduped = dedupeRunsForDisplay(cache.activities, overrides);
+    const requestedId = Number(row.id);
+    const canonical = deduped.find((r) => r.id === requestedId);
+    if (canonical) {
+      mergedSources = canonical.mergedSources;
+    } else {
+      const host = deduped.find((r) =>
+        r.mergedSources.some((s) => s.id === requestedId),
+      );
+      if (host) mergedIntoId = host.id;
+    }
+  } catch { /* decorative — never block the detail load */ }
+
   return NextResponse.json({
     ok: true,
     run: {
@@ -131,6 +156,8 @@ export async function GET(
       workoutType: d.workoutType ?? null,
       summaryPolyline: d.summaryPolyline || null,
       shoe,
+      mergedSources,
+      mergedIntoId,
     },
     plan: matchedDay && matchedWeek ? {
       label: matchedDay.label,

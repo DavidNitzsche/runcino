@@ -28,6 +28,9 @@ import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 import { coach } from '../../../coach/coach';
 import { getActivePlanWeeks } from '../../../lib/plan-weeks';
+import { dedupeRunsForDisplay, type MergedSource } from '../../../lib/dedupe-runs';
+import { loadMergeOverrides } from '../../../lib/run-merge-overrides';
+import { getCurrentUser } from '../../../lib/auth';
 
 // ─────────────────────────────────────────────────────────────────────
 // Wire shapes, every Log card has a deterministic data contract that
@@ -73,6 +76,11 @@ export interface LogApiRunRow {
      *  state change fires from this run. */
     unlockPin: string | null;
   } | null;
+  /** Other rows representing the same physical session that were folded
+   *  into this canonical (auto-dedup by start-time proximity OR a manual
+   *  merge override). UI surfaces this as "merged from N sources" with
+   *  an Unmerge affordance per source. Empty when the row had no dupes. */
+  mergedSources: MergedSource[];
 }
 
 /** One PR card in the shelf. */
@@ -181,7 +189,7 @@ interface LogApiErr {
   error: string;
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
   try {
     const state = await gatherCoachState();
     const today = state.now.slice(0, 10);
@@ -199,7 +207,21 @@ export async function GET(): Promise<Response> {
     const priorYearStart = `${year - 1}-01-01`;
     const priorYearEnd = `${year - 1}-12-31`;
 
-    const allRuns = cache.activities;
+    // Collapse same-session duplicates (Strava + watch + Apple Health writing
+    // the same run as multiple rows). Start-time-proximity grouper (15min
+    // window), respects manual keep-separate / force-merge overrides, and is
+    // idempotent. Without this every weekly mileage / YTD total / PR scan
+    // double-counts. The mergedSources array carries provenance so the /log
+    // row can show "merged from N" + the modal can unmerge.
+    const user = await getCurrentUser(req).catch(() => null);
+    const overrides = await loadMergeOverrides(user?.id);
+    const dedupedAll = dedupeRunsForDisplay(cache.activities, overrides);
+    const mergedByCanonical = new Map<number, MergedSource[]>();
+    for (const r of dedupedAll) {
+      if (r.mergedSources.length > 0) mergedByCanonical.set(r.id, r.mergedSources);
+    }
+
+    const allRuns = dedupedAll as NormalizedActivity[];
     const ytdRuns = allRuns.filter((a) => a.date >= yearStart && a.date <= today);
     const priorYearRuns = allRuns.filter((a) => a.date >= priorYearStart && a.date <= priorYearEnd);
 
@@ -244,7 +266,11 @@ export async function GET(): Promise<Response> {
     // Safe to throw per the API contract; the page renders a quiet
     // fallback chip + the row's existing data when coachRead is null.
     const sortedRuns = ytdRuns.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));
-    const baseRows: LogApiRunRow[] = sortedRuns.slice(0, 7).map((r) => buildRunRow(r));
+    const baseRows: LogApiRunRow[] = sortedRuns.slice(0, 7).map((r) => {
+      const row = buildRunRow(r);
+      row.mergedSources = mergedByCanonical.get(r.id) ?? [];
+      return row;
+    });
     const planWeeks = await getActivePlanWeeks().catch(() => []);
     const recentRuns: LogApiRunRow[] = await Promise.all(
       baseRows.map(async (row) => {
@@ -585,6 +611,9 @@ function buildRunRow(r: NormalizedActivity): LogApiRunRow {
     // coach.runRead per row). Default to null here so the type matches
     // even before the engine read attaches.
     coachRead: null,
+    // Filled by the GET handler from the dedup pass. Default empty so
+    // a row that wasn't deduped still serializes a valid shape.
+    mergedSources: [],
   };
 }
 

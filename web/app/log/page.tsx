@@ -25,6 +25,8 @@ import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { gatherCoachState } from '@/lib/coach-state';
 import { coach } from '@/coach/coach';
 import { getActivePlanWeeks } from '@/lib/plan-weeks';
+import { dedupeRunsForDisplay } from '@/lib/dedupe-runs';
+import { loadMergeOverrides } from '@/lib/run-merge-overrides';
 import './log-v4.css';
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -48,6 +50,10 @@ interface RunRow {
   coachReadVerdict: string | null;
   coachReadBody: string | null;
   coachReadUnlockPin: string | null;
+  /** Count of other rows folded into this canonical by auto-dedup.
+   *  0 when the row had no duplicates. Renders as a "merged · N"
+   *  badge under the run name (modal lets you unmerge). */
+  mergedCount: number;
 }
 
 interface ShoeOption {
@@ -127,32 +133,54 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           LIMIT 60`,
       );
 
-      // Read-side dedup. Group by (date, distance rounded to 0.1 mi);
-      // within a group keep the row with the most complete data —
-      // prefer one with avgHr present, then longest name (sources like
-      // 'Watch run' vs 'Tuesday Evening Run' indicate which writer was
-      // richer). Real distinct same-day runs (e.g. AM warmup + PM main)
-      // have different distances and stay separate.
-      type Act = typeof actsRaw[number];
-      const groups = new Map<string, Act>();
-      for (const a of actsRaw) {
-        const d = a.data as { startLocal?: string; distanceMi?: number; avgHr?: number; name?: string };
-        const date = (d.startLocal || '').slice(0, 10);
-        const distKey = (Math.round((Number(d.distanceMi) || 0) * 10) / 10).toFixed(1);
-        const key = `${date}|${distKey}`;
-        const existing = groups.get(key);
-        if (!existing) { groups.set(key, a); continue; }
-        const ex = existing.data as { avgHr?: number; name?: string };
-        const exHasHr = (Number(ex.avgHr) || 0) > 0;
-        const newHasHr = (Number(d.avgHr) || 0) > 0;
-        const exNameLen = (ex.name || '').length;
-        const newNameLen = (d.name || '').length;
-        // Prefer HR-having row; tiebreak by longer name.
-        if ((newHasHr && !exHasHr) || (newHasHr === exHasHr && newNameLen > exNameLen)) {
-          groups.set(key, a);
-        }
-      }
-      const acts = [...groups.values()]
+      // Read-side dedup via the shared start-time-proximity grouper.
+      // Collapses same-session rows written by different feed paths
+      // (Strava + watch + Apple Health all emit the same run as
+      // separate ids with slightly different distances from GPS).
+      // Distinct same-day runs (AM warmup + PM main, or a crashed-and-
+      // restart pair 30+ min apart) have non-overlapping starts and
+      // stay separate. Manual keep-separate / force-merge overrides
+      // from /api/runs/[id]/unmerge + /api/runs/merge are honored.
+      const overrides = await loadMergeOverrides(userId);
+      const asNormalized = actsRaw.map((a) => {
+        const d = a.data as {
+          startLocal?: string; date?: string; name?: string;
+          distanceMi?: number; movingTimeS?: number; avgHr?: number; type?: string;
+        };
+        return {
+          id: typeof a.id === 'number' ? a.id : Number(a.id) || 0,
+          name: d.name || 'Run',
+          type: d.type || 'Run',
+          sportType: null as string | null,
+          workoutType: null as number | null,
+          startLocal: d.startLocal || '',
+          date: d.date || (d.startLocal || '').slice(0, 10),
+          distanceMi: Number(d.distanceMi) || 0,
+          movingTimeS: Number(d.movingTimeS) || 0,
+          elapsedTimeS: Number(d.movingTimeS) || 0,
+          paceSPerMi: 0,
+          avgHr: d.avgHr != null ? Number(d.avgHr) : null,
+          maxHr: null,
+          avgCadence: null,
+          elevGainFt: 0,
+          avgSpeedMph: null,
+          startLatLng: null,
+          endLatLng: null,
+          summaryPolyline: null,
+          kudosCount: 0,
+          achievementCount: 0,
+          sufferScore: null,
+          canonicalFinishS: null,
+          canonicalDistanceMi: null,
+          canonicalLabel: null,
+        };
+      });
+      const dedupedAll = dedupeRunsForDisplay(asNormalized, overrides);
+      const mergedCountById = new Map<number, number>();
+      for (const r of dedupedAll) mergedCountById.set(r.id, r.mergedSources.length);
+      const canonicalIds = new Set(dedupedAll.map((r) => r.id));
+      const acts = actsRaw
+        .filter((a) => canonicalIds.has(typeof a.id === 'number' ? a.id : Number(a.id) || 0))
         .sort((a, b) => {
           const aS = (a.data as { startLocal?: string }).startLocal || '';
           const bS = (b.data as { startLocal?: string }).startLocal || '';
@@ -227,6 +255,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           }
         }
 
+        const idAsNum = typeof a.id === 'number' ? a.id : Number(a.id) || 0;
         return {
           id: String(a.id), date: dateStr, dateLabel,
           tag, tagLabel,
@@ -243,6 +272,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           coachReadVerdict,
           coachReadBody,
           coachReadUnlockPin,
+          mergedCount: mergedCountById.get(idAsNum) ?? 0,
         };
       }));
 
@@ -558,6 +588,19 @@ export default async function LogPage() {
                           textTransform: 'uppercase',
                           fontWeight: 700,
                         }}>{r.coachReadUnlockPin}</span>
+                      )}
+                      {r.mergedCount > 0 && (
+                        <span title="Auto-dedupe collapsed duplicate source rows into this one. Tap to unmerge." style={{
+                          marginLeft: 8,
+                          background: 'rgba(8,8,8,.06)',
+                          color: 'rgba(8,8,8,.65)',
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          fontSize: 9,
+                          letterSpacing: 1,
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
+                        }}>Merged · {r.mergedCount}</span>
                       )}
                     </div>
                   </div>
