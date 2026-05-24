@@ -174,9 +174,9 @@ export function generateBriefing(input: BriefingInput): string {
       return `Race day. Conserve the first third, settle the middle, commit the last 5k.`;
     }
     if (bankedMi > 0) {
-      return `${bankedMi} mi banked this week. Today's ${todayDay.distanceMi} mi is what it was for. Go conversational; the last quarter can drift if it feels natural.`;
+      return `${bankedMi} mi banked this week. Today's ${todayDay.distanceMi} mi is the payoff. Run it conversational; the last quarter can drift faster if it wants to.`;
     }
-    return `Today's long run is the week's anchor. Conversational for the bulk; let pace come to you on the back half.`;
+    return `Today's the week's anchor — conversational for the bulk, let pace come to you on the back half.`;
   }
 
   // ── SATURDAY ── shape the weekend ──
