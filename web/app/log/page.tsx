@@ -22,6 +22,8 @@ import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
+import { gatherCoachState } from '@/lib/coach-state';
+import { coach } from '@/coach/coach';
 import './log-v4.css';
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -39,6 +41,12 @@ interface RunRow {
   pace: string;
   avgHr: number;
   shoeId: number | null;
+  /** Coach read of this run — verdict + multi-sentence body. Null
+   *  when the engine has nothing meaningful to say (per relevance
+   *  filter "silence is valid"). Per W1 wiring. */
+  coachReadVerdict: string | null;
+  coachReadBody: string | null;
+  coachReadUnlockPin: string | null;
 }
 
 interface ShoeOption {
@@ -114,7 +122,13 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           ORDER BY (data->>'startLocal') DESC
           LIMIT 19`,
       );
-      recentRuns = acts.map((a) => {
+      // Gather coach state once; runRead per row reuses it. Safe to
+      // throw — falls back to coachReadVerdict/Body = null on failure.
+      let coachState: Awaited<ReturnType<typeof gatherCoachState>> | null = null;
+      try { coachState = await gatherCoachState({ userId }); } catch {}
+      const today = coachState?.now.slice(0, 10) ?? todayISO(userTimezone());
+
+      recentRuns = await Promise.all(acts.map(async (a) => {
         const d = a.data as { name?: string; startLocal?: string; distanceMi?: number; movingTimeS?: number; type?: string; description?: string; avgHr?: number };
         const mi = Number(d.distanceMi) || 0;
         const moving = Number(d.movingTimeS) || 0;
@@ -130,18 +144,53 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
         const isRace = (d.type || '').toLowerCase() === 'race';
         const tag: RunRow['tag'] = isRace ? 'race' : mi >= 12 ? 'long' : 'easy';
         const tagLabel = tag === 'race' ? 'Race' : tag === 'long' ? 'Long' : 'Easy';
+
+        // Coach REFLECTION + FORM read per row (W1 wiring).
+        let coachReadVerdict: string | null = null;
+        let coachReadBody: string | null = null;
+        let coachReadUnlockPin: string | null = null;
+        if (coachState) {
+          try {
+            const decision = await coach.runRead({
+              today,
+              activityId: typeof a.id === 'number' ? a.id : Number(a.id) || 0,
+              activity: {
+                distanceMi: mi,
+                durationS: moving,
+                paceSPerMi: paceSec,
+                avgHr: Number(d.avgHr) || null,
+                name: d.name || 'Untitled run',
+                plannedDistanceMi: null,
+                plannedType: null,
+              },
+              state: coachState,
+            });
+            coachReadVerdict = decision.answer.verdict;
+            coachReadBody = decision.answer.body;
+            coachReadUnlockPin = decision.answer.unlockPin;
+          } catch {
+            // Quiet fallback — page renders existing data without coach read.
+          }
+        }
+
         return {
           id: String(a.id), date: dateStr, dateLabel,
           tag, tagLabel,
           name: d.name || 'Untitled run',
+          // Sub still shows the legacy classification for runs that
+          // get no coach read; the coach read is rendered separately
+          // below the name when present.
           sub: tag === 'easy' ? 'Easy · base mileage' : tag === 'long' ? 'Long' : 'Race',
           mi: Math.round(mi * 10) / 10,
           min: Math.round(moving / 60),
           pace: paceSec > 0 ? `${paceM}:${String(paceS).padStart(2, '0')}/mi` : '-',
           avgHr: Number(d.avgHr) || 0,
           shoeId: a.shoe_id,
+          coachReadVerdict,
+          coachReadBody,
+          coachReadUnlockPin,
         };
-      });
+      }));
 
       // Aggregate YTD
       const ytdRows = await query<{ count: string; total_mi: string; max_mi: string }>(
@@ -436,7 +485,37 @@ export default async function LogPage() {
                   <span className={`run-tag ${r.tag}`}>{r.tagLabel}</span>
                   <div>
                     <div className="run-name">{r.name}</div>
-                    <div className="run-type">{r.sub}</div>
+                    {/* Coach REFLECTION + FORM verdict + body (W1).
+                        Verdict replaces the legacy sub when present; body
+                        sits beneath in a quieter italic. The unlock-pin
+                        sits inline next to verdict as a milestone chip
+                        when a real state change fires. */}
+                    <div className="run-type">
+                      {r.coachReadVerdict ?? r.sub}
+                      {r.coachReadUnlockPin && (
+                        <span style={{
+                          marginLeft: 8,
+                          background: 'var(--milestone, #F5C518)',
+                          color: 'var(--ink, #0a0a0a)',
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          fontSize: 9,
+                          letterSpacing: 1,
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
+                        }}>{r.coachReadUnlockPin}</span>
+                      )}
+                    </div>
+                    {r.coachReadBody && (
+                      <div style={{
+                        marginTop: 4,
+                        fontFamily: 'Jost, sans-serif',
+                        fontSize: 12,
+                        color: 'rgba(8,8,8,.62)',
+                        lineHeight: 1.4,
+                        fontStyle: 'italic',
+                      }}>{r.coachReadBody}</div>
+                    )}
                   </div>
                   <div className="run-shoe-wrap" data-run-id={r.id}>
                     <LogRunShoePicker

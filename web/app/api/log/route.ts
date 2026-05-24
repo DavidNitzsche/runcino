@@ -26,6 +26,7 @@ import { rollupYear, naivePRs, weeklyMiles, isProbablyRace } from '../../../lib/
 import type { NormalizedActivity } from '../strava/activities/route-shared';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
+import { coach } from '../../../coach/coach';
 
 // ─────────────────────────────────────────────────────────────────────
 // Wire shapes, every Log card has a deterministic data contract that
@@ -59,6 +60,18 @@ export interface LogApiRunRow {
   /** Pace tone, drives color cue ('good' for easy, 'corp' for quality,
    *  'neutral' for race-pace, 'warn' for heavy effort). */
   paceTone: 'good' | 'corp' | 'neutral' | 'warn';
+  /** Coach read of this run — REFLECTION + FORM verdict + body.
+   *  Null on first ingest (computed lazily); the page renders a quiet
+   *  fallback. Per coach-layer spec W1 wiring. */
+  coachRead: {
+    /** 1–4 word verdict, suitable for an eyebrow chip. */
+    verdict: string;
+    /** Multi-sentence body in coach voice; expanded on row tap. */
+    body: string;
+    /** Optional unlock pin ("+12% BASELINE UNLOCKED" etc) when a real
+     *  state change fires from this run. */
+    unlockPin: string | null;
+  } | null;
 }
 
 /** One PR card in the shelf. */
@@ -222,9 +235,44 @@ export async function GET(): Promise<Response> {
     // Personal-best shelf
     const prs = buildPrs(allRuns, year);
 
-    // Recent runs feed, most-recent 7
+    // Recent runs feed, most-recent 7. Each row gets a coach.runRead()
+    // verdict + body — the REFLECTION + FORM layer (W1 wiring). Safe
+    // to throw per the API contract; the page renders a quiet
+    // fallback chip + the row's existing data when coachRead is null.
     const sortedRuns = ytdRuns.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));
-    const recentRuns: LogApiRunRow[] = sortedRuns.slice(0, 7).map((r) => buildRunRow(r));
+    const baseRows: LogApiRunRow[] = sortedRuns.slice(0, 7).map((r) => buildRunRow(r));
+    const recentRuns: LogApiRunRow[] = await Promise.all(
+      baseRows.map(async (row, idx) => {
+        const r = sortedRuns[idx];
+        try {
+          const decision = await coach.runRead({
+            today,
+            activityId: row.id,
+            activity: {
+              distanceMi: row.distanceMi,
+              durationS: row.movingTimeS,
+              paceSPerMi: row.paceSPerMi,
+              avgHr: row.avgHr,
+              name: row.name,
+              plannedDistanceMi: null,  // wire plan lookup in a follow-up commit
+              plannedType: null,
+            },
+            state,
+          });
+          return {
+            ...row,
+            coachRead: {
+              verdict: decision.answer.verdict,
+              body: decision.answer.body,
+              unlockPin: decision.answer.unlockPin,
+            },
+          };
+        } catch {
+          return { ...row, coachRead: null };
+        }
+        void r; // sortedRuns ref kept for future plan lookup
+      }),
+    );
 
     // Peak / longest summary for greet sub-lede
     const peakMonth = months.reduce<LogApiMonth | null>((peak, m) => {
