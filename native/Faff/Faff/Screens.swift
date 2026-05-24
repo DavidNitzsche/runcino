@@ -519,21 +519,21 @@ struct CoachView: View {
         let t = (d.type ?? "").lowercased()
         switch t {
         case "threshold", "threshold_intervals", "tempo", "sub_threshold":
-            return "Threshold work moves race pace more than any other single session. Hit the band, don't beat it — execution here is what triggers fitness gains."
+            return "Threshold work moves race pace more than any other session. Hit the band, don't beat it. The value is AT the pace, not below."
         case "interval", "vo2":
-            return "VO₂max reps grow your aerobic ceiling. Full recoveries so every rep is fresh. Pace stays AT the prescribed band, not below."
+            return "VO₂max reps grow the aerobic ceiling. Take full recoveries — fresh reps are the work; rushed ones just add fatigue."
         case "long", "long_steady", "medium_long":
-            return "Time on feet builds the endurance that holds pace at mile 11. Conversational throughout — the duration is the work."
+            return "Mile 11 holds together because of the long runs you do now. Conversational throughout. Time on feet is the stimulus, not pace."
         case "long_progression", "long_mp_block":
-            return "Long run with a goal-pace block — practice the discipline of pacing on tired legs. Race-day rehearsal under controlled fatigue."
+            return "Long run with a goal-pace block. The fatigue at mile 9 today is what mile 10 feels like on race day. Hit the band, don't race it."
         case "hm_specific_continuous", "hm_specific_tune", "hm_race_rehearsal":
-            return "Half-marathon specificity. Goal pace rehearsal — the most race-like session in the build."
+            return "Half-marathon specificity. Goal pace, under fatigue, in the longest chunks you'll hold this cycle. Closest thing to the race itself."
         case "marathon_specific":
-            return "Marathon-pace combo — teaches you to recover while still holding race pace."
+            return "Marathon-pace combo. Teaches the legs to hold race pace while already tired — the only honest rehearsal."
         case "race":
-            return "Race day. The training is built. Run the first three miles slower than you want, take fuel on schedule, trust the work."
+            return "Race day. First three miles slower than you want — every fast plan dies there. Settle the middle, commit the last 5K. Fuel on schedule, drink to thirst."
         default:
-            return "Quality session — protect today's easy effort so this lands clean."
+            return "Quality day. Protect today's easy effort so this lands clean tomorrow."
         }
     }
 
@@ -2631,26 +2631,26 @@ struct PathToGoalCard: View {
     /// and weeks-to-race. Coach voice, ends with a concrete action.
     private func coachNextMove(status: String, weeksToRace: Int) -> String {
         if status == "ahead" {
-            return "You're ahead of the timeline. Don't chase more. Execute the easy days, hit the prescribed threshold band, let the taper sharpen. The race wants freshness, not heroics."
+            return "Ahead of the timeline. Don't chase more — extra intensity right now buys nothing and costs the taper. Hold the easy days easy, hit the prescribed threshold band, arrive fresh."
         }
         if status == "behind" {
             if weeksToRace >= 8 {
-                return "Build the aerobic base for the next few weeks. The threshold work tightens as fitness comes online. A B-effort tune-up race in 4-6 weeks gives me a clean read and pulls the prescription faster."
+                return "Aerobic base goes in over the next few weeks; the threshold work tightens as fitness comes online. A B-effort tune-up race in 4-6 weeks gives me a clean data point and pulls the prescription tighter, faster."
             }
-            return "Less time to find the gap. Protect the quality sessions, get the long-run distance in, sleep is non-negotiable. A short tune-up race in the next 2-3 weeks is the highest-leverage move."
+            return "Less runway to find the gap. Protect the quality sessions, get the long-run distance in, sleep is non-negotiable. A short tune-up race in the next 2-3 weeks is the highest-leverage move."
         }
         // on-track
         if weeksToRace >= 8 {
-            return "You're on the curve. The early weeks are aerobic base — don't over-cook the threshold. The Build phase opens in about \(max(0, weeksToRace - 4)) weeks; that's when race pace starts to feel sustainable."
+            return "On the curve. Aerobic base for the next few weeks — don't over-cook the threshold yet. The Build phase opens in about \(max(0, weeksToRace - 4)) weeks; that's when race pace starts to feel sustainable."
         }
-        return "On the curve and close enough. Threshold execution and long-run consistency for the next \(weeksToRace) weeks. The plan is the plan."
+        return "On the curve. Hit the threshold work clean, get the long runs in, the next \(weeksToRace) weeks are about consistency over heroics."
     }
 
     private func signOff(status: String) -> String {
         switch status {
-        case "ahead":  return "Trust the work. The race is won by the runner who didn't try to win the workouts."
-        case "behind": return "The gap closes in the boring miles. Show up, hit the band, repeat."
-        default:       return "Trust the easy. The race is won in the workouts you didn't try to win."
+        case "ahead":  return "Don't try to win the workouts. That's how you lose the race."
+        case "behind": return "Gap closes in the boring miles. Show up, hit the band, repeat."
+        default:       return "Easy days easy, hard days honest. That's where the work compounds."
         }
     }
 }
