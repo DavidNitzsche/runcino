@@ -58,19 +58,10 @@ struct TodayView: View {
                 // runner orients on the week first, everything else is
                 // secondary.
                 dateStrip(overview)
-                // Race-status pill under the date strip — one-line
-                // readout of where the runner sits vs their A-race goal.
-                if let proj = overview.raceProjection, let status = proj.status,
-                   let race = overview.raceCountdown {
-                    RaceStatusPill(raceName: race.name, daysAway: race.days, status: status)
-                }
-                // Tune-up race nudge — slim inline strip right under the
-                // status pill, so it's tied to race context but doesn't
-                // dominate the page. Full coach reasoning lives on the
-                // race-detail trajectory card; this is just the nudge.
-                if overview.raceProjection?.tuneUpRecommendation != nil {
-                    TuneUpRecStrip()
-                }
+                // Race-status pill + tune-up nudge moved OFF Today.
+                // Today is for TODAY's session. Race-readiness lives on
+                // the Races tab (at-a-glance row indicators) and inside
+                // the race detail (full Path-to-Goal card + verdict).
                 coachLineView
                 heroView
                 // Inline recap, when the selected day has a logged run, surface

@@ -832,6 +832,17 @@ struct RacesView: View {
         FaffScreen(eyebrow: "Goal races", title: "Races") {
             if let h = hero {
                 Button { detail = RaceHeader(h) } label: { raceCard(h) }.buttonStyle(.plain)
+                // At-a-glance race-readiness for the A-race hero: tells
+                // the runner WHERE THEY STAND on this race without
+                // tapping in. Three stats + status pill, same format
+                // as the Path-to-Goal card on race detail (the source
+                // of truth) — just compact for the list view.
+                if (h.priority ?? "A") == "A",
+                   let proj = overview.raceProjection,
+                   let status = proj.status,
+                   h.slug == overview.state?.races?.nextA?.slug {
+                    raceReadinessGlance(proj, status: status)
+                }
             } else if !loaded {
                 HStack(spacing: 8) { ProgressView().scaleEffect(0.8); Text("Loading races…").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted) }.faffCard()
             } else {
@@ -966,6 +977,63 @@ struct RacesView: View {
             Text(value).font(Faff.F.display(20)).foregroundStyle(.white)
             Text(label.uppercased()).font(Faff.F.inter(8.5, .semibold)).tracking(0.8).foregroundStyle(.white.opacity(0.8))
         }
+    }
+
+    /// At-a-glance race-readiness card under the hero on Races. Tells
+    /// the runner WHERE THEY STAND vs the A-race goal without tapping
+    /// into the race detail. Mirrors the Path-to-Goal 3-stat grid but
+    /// compact. Same status color as the full card.
+    @ViewBuilder private func raceReadinessGlance(_ proj: ORaceProjection, status: String) -> some View {
+        let (label, color): (String, Color) = {
+            switch status {
+            case "ahead":  return ("AHEAD",    Faff.C.recovery)
+            case "behind": return ("BEHIND",   Faff.C.warn)
+            default:       return ("ON TRACK", Faff.C.race)
+            }
+        }()
+        let head = proj.headroomSPerMi ?? 0
+        let gapSign = head >= 0 ? "−" : "+"
+        let gapAbs = Int(Swift.abs(head))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("WHERE YOU STAND").font(Faff.F.oswald(11, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                Text(label)
+                    .font(Faff.F.oswald(10, .semibold)).tracking(1.2)
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(color.opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            HStack(alignment: .top, spacing: 10) {
+                glanceCell(
+                    label: "CURRENT FITNESS",
+                    value: proj.projectedDisplay ?? "-",
+                    sub: "score \(String(format: "%.1f", proj.vdot ?? 0))"
+                )
+                glanceCell(
+                    label: "GAP TO GOAL",
+                    value: "\(gapSign)\(gapAbs) s/mi",
+                    sub: head >= 0 ? "room to spare" : "behind goal pace",
+                    valueColor: head >= 0 ? Faff.C.recovery : Faff.C.warn
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
+    }
+
+    private func glanceCell(label: String, value: String, sub: String,
+                            valueColor: Color = Faff.C.ink) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+            Text(value).font(Faff.F.display(22)).foregroundStyle(valueColor)
+            Text(sub).font(Faff.F.inter(10.5)).foregroundStyle(Faff.C.textMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Faff.C.bg.opacity(0.5),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     static func finish(_ s: Double?) -> String {
         guard let s, s > 0 else { return ", " }
