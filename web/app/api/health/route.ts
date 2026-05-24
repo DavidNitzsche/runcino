@@ -371,6 +371,10 @@ export interface HealthApiReadinessComposite {
   pinVariant: 'green' | 'amber' | 'warn';
   /** ACWR + Coach context line ("SCORE +0.30 · COACH +12% VOLUME"). */
   scoreContextLabel: string;
+  /** Full multi-sentence message from coach.assessReadiness — the
+   *  REFLECTION + DIAGNOSIS in voice. Null when the engine returns
+   *  no message (per relevance filter). Per W2 wiring. */
+  coachRead: string | null;
   /** 5 signal bars, each renders as one row in the card. */
   signals: HealthApiSignal[];
 }
@@ -615,6 +619,7 @@ function buildReadinessComposite(
     pinLabel,
     pinVariant,
     scoreContextLabel,
+    coachRead: (readiness.message && readiness.message.trim()) ? readiness.message : null,
     signals,
   };
 }

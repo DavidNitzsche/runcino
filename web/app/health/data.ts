@@ -244,20 +244,27 @@ function synthesizeGreetCopy(api: HealthApiOk): {
   if (daysLogged > 0) eyebrowParts.push(`${daysLogged} DAYS LOGGED`);
   const greetEyebrow = eyebrowParts.join(' · ');
 
-  // Sub-lede: lean on the bodySystems rationale for the headline message
-  // (it already speaks in Coach voice). Fall back to a generic line if
-  // no recent race.
-  const qualityReturnsLabel = formatShortDate(api.bodySystems.answer.qualityReturnsISO);
-  const slowestBuilding = api.bodySystems.answer.systems
-    .filter((s) => s.state === 'building')
-    .sort((a, b) => b.daysToHealed - a.daysToHealed)[0];
+  // Sub-lede: prefer the engine's assessReadiness.message verbatim (W2
+  // wiring — the coach speaks for itself when it has something real
+  // to say). The previous "All vitals trending positive" formula was
+  // chrome that fired regardless of state; voice doctrine §4 says
+  // silence is valid when no specific take exists.
   let greetSub: string;
-  if (recentRace && slowestBuilding) {
-    greetSub = `All vitals trending positive. ${slowestBuilding.label} still rebuilding from ${recentRace.name}, quality returns ~ ${qualityReturnsLabel}.`;
-  } else if (recentRace) {
-    greetSub = `All vitals trending positive. ${recentRace.name} fully absorbed, back to base building.`;
+  if (api.readiness.coachRead && api.readiness.coachRead.trim()) {
+    greetSub = api.readiness.coachRead;
   } else {
-    greetSub = `All vitals trending positive. No recent race, body in steady state.`;
+    // Fallbacks: bodySystems rationale (also Coach voice) > generic.
+    const qualityReturnsLabel = formatShortDate(api.bodySystems.answer.qualityReturnsISO);
+    const slowestBuilding = api.bodySystems.answer.systems
+      .filter((s) => s.state === 'building')
+      .sort((a, b) => b.daysToHealed - a.daysToHealed)[0];
+    if (recentRace && slowestBuilding) {
+      greetSub = `${slowestBuilding.label} still rebuilding from ${recentRace.name}. Quality returns around ${qualityReturnsLabel}.`;
+    } else if (recentRace) {
+      greetSub = `${recentRace.name} fully absorbed. Back to base building.`;
+    } else {
+      greetSub = 'No recent race; body in steady state.';
+    }
   }
 
   return { greetEyebrow, greetSub, daysSincePeakStress };
