@@ -153,6 +153,16 @@ final class WorkoutTracker: NSObject, ObservableObject {
                 }
             }
 
+            // Bring up the audio session + chime engine BEFORE HK takes
+            // over the workout-processing path. Activating an audio session
+            // (.playback) DURING an active HKWorkoutSession raises an
+            // uncatchable NSException on watchOS — that's the crash that
+            // killed the user's run at mile 1. Doing it here, before
+            // startActivity(), is the supported pattern: HK respects the
+            // already-active session and coexists with it. No-op if audio
+            // hardware refuses; chime() then degrades to haptic-only.
+            ChimePlayer.shared.activate()
+
             let start = Date()
             s.startActivity(with: start)
             b.beginCollection(withStart: start) { _, _ in }
@@ -206,6 +216,11 @@ final class WorkoutTracker: NSObject, ObservableObject {
         self.session = nil
         self.builder = nil
         self.routeBuilder = nil
+
+        // Workout's over — tear down the audio session so the watch's
+        // regular silent-mode behavior comes back when the user is just
+        // looking at the summary or the home page.
+        ChimePlayer.shared.deactivate()
     }
 
     // MARK: - Apply samples (main actor)

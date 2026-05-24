@@ -50,24 +50,16 @@ enum Haptics {
     /// runner has toggled the Sound button on (Controls page, blue button →
     /// UserDefaults audibleAlerts).
     ///
-    /// IMPORTANT: This used to also call TonePlayer for a synthesized bell
-    /// that overrode silent mode. That code activated an AVAudioSession
-    /// with category .playback DURING an active HKWorkoutSession, which
-    /// throws an uncatchable NSException on watchOS — same class of bug as
-    /// allowsBackgroundLocationUpdates. Caused the watch app to crash at
-    /// the first mile-split (the first transition cue to fire during a
-    /// long run). Reverted to haptic-only — the .notification pattern is
-    /// distinctly stronger than the single tap a regular event fires, so
-    /// you still get an obvious "this is the alert" feel. True audible
-    /// playback during a workout is a real watchOS audio-session puzzle
-    /// that needs more careful work to solve safely.
+    /// History: an earlier draft activated AVAudioSession inside this
+    /// function, which raised an uncatchable NSException the first time
+    /// it fired during an active HKWorkoutSession (crashed the user's
+    /// long run at mile 1). The fix isn't to skip audio — it's to do
+    /// the session bring-up BEFORE HK takes over. That now happens in
+    /// WorkoutTracker.start() via ChimePlayer.activate(). Here we only
+    /// run the hot path: schedule a pre-built buffer on the running
+    /// engine. No session work, safe to call from any transition cue.
     static func chime() {
         WKInterfaceDevice.current().play(.notification)
+        ChimePlayer.shared.play()
     }
 }
-
-// (TonePlayer removed — the AVAudioEngine + AVAudioSession.setActive path
-// crashed mid-workout on real hardware. Activating .playback while
-// HKWorkoutSession is running throws an uncatchable NSException on
-// watchOS. Reintroduce only with a proper background-audio entitlement
-// + a session-coordination strategy that doesn't fight HK.)
