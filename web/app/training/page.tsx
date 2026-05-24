@@ -24,7 +24,7 @@ import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import { getRealPlanWeeks } from '@/lib/plan-weeks';
-import { getCompletedMileageByDate, getLongestRunByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
+import { getCompletedMileageByDate, getLongestRunByDate, getWeekStats, isWorkoutComplete, type WeekStats } from '@/lib/completed-runs';
 // generateBriefing is the day-focused briefer used by Overview/Today.
 // Training uses composeArcBriefing (defined at the bottom of this
 // file) instead — macro-arc voice, not day-of-week voice.
@@ -131,7 +131,7 @@ export default async function TrainingPage() {
   // signals the briefing reads.
   const curWeekIdx = weeks.indexOf(currentWeek);
   const previousWeek = curWeekIdx > 0 ? weeks[curWeekIdx - 1] : null;
-  const emptyStats = { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
+  const emptyStats: WeekStats = { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
   const lastWeekStats = previousWeek
     ? await getWeekStats(user.id, previousWeek.startDate, previousWeek.endDate).catch(() => emptyStats)
     : emptyStats;
@@ -555,7 +555,7 @@ interface ArcBriefingInput {
   weeks: PlanWeek[];
   daysToRace: number;
   raceLabel: string;
-  lastWeekStats: { totalMi: number; runDays: number; longest: number | null; quality: number | null; avgHr: number | null };
+  lastWeekStats: WeekStats;
 }
 
 function composeArcBriefing(input: ArcBriefingInput): string {
