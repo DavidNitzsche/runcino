@@ -17,6 +17,7 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { LogRunShoePicker } from './LogRunShoePicker';
 import { RunDetailModalProvider } from './RunDetailModal';
 import { RunRowIsland } from './RunRowIsland';
+import { RunDeleteIsland } from './RunDeleteIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
@@ -452,6 +453,7 @@ export default async function LogPage() {
                     <div className="run-num">{r.mi}<span style={{ fontSize: 12, color: 'var(--t2)' }}>mi</span></div>
                     <div className="run-num-unit">{r.pace}</div>
                   </div>
+                  <RunDeleteIsland runId={r.id} />
                 </RunRowIsland>
               ))
             )}

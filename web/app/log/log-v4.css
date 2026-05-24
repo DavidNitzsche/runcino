@@ -110,10 +110,11 @@
    The name column is 1fr so it absorbs slack. */
 .log-v4-page .run-row {
   display: grid;
-  /* date · type · name · shoes · time · miles
+  /* date · type · name · shoes · time · miles · delete
      Shoe column widened to 240px so full names ("Saucony Endorphin Speed 4",
-     "New Balance SC Trainer v3") fit without truncation. */
-  grid-template-columns: 100px 100px 1fr 240px 90px 80px;
+     "New Balance SC Trainer v3") fit without truncation. The trailing 36px
+     column hosts an inline ✕ delete button (mistake imports). */
+  grid-template-columns: 100px 100px 1fr 240px 90px 80px 36px;
   align-items: center; gap: 16px;
   padding: 14px 40px;
   border-top: 1px solid var(--divider);
@@ -319,7 +320,7 @@
   .log-v4-page .coach-strip > * { flex: 1 1 auto; }
   .log-v4-page .hero-stats { grid-template-columns: repeat(2, 1fr); }
   .log-v4-page .run-row,
-  .log-v4-page .run-row-header { grid-template-columns: 90px 90px 1fr 90px 80px; }
+  .log-v4-page .run-row-header { grid-template-columns: 90px 90px 1fr 90px 80px 32px; }
   .log-v4-page .run-shoe-cell { display: none; }
   .log-v4-page .monthly-bars,
   .log-v4-page .month-axis { padding: 0 16px; }
@@ -332,7 +333,7 @@
   .log-v4-page .strava-stats { grid-template-columns: 1fr; }
   .log-v4-page .hero-stats { grid-template-columns: 1fr 1fr; }
   .log-v4-page .run-row,
-  .log-v4-page .run-row-header { grid-template-columns: 80px 1fr 70px; }
+  .log-v4-page .run-row-header { grid-template-columns: 80px 1fr 70px 32px; }
   .log-v4-page .run-row > :nth-child(2),
   .log-v4-page .run-row-header > :nth-child(2),
   .log-v4-page .run-row > :nth-child(5),
