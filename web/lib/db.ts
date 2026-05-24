@@ -774,6 +774,196 @@ async function bootstrap(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_connector_tokens_user ON connector_tokens (user_id) WHERE disconnected_at IS NULL;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_connector_tokens_provider_user_id ON connector_tokens (provider, provider_user_id) WHERE disconnected_at IS NULL;`);
 
+    // ════════════════════════════════════════════════════════════════
+    // COACH-LAYER TABLES — Phase 8 (runner inputs) + Phase 6 (cache)
+    //
+    // Per docs/COACH_VOICE_AUDIT_AND_REWRITE.md §28. Additive only;
+    // every column except keys is nullable so partial writes from any
+    // surface succeed. user_uuid is the canonical FK; legacy text
+    // user_id sticks around for the single-user 'me' fallback during
+    // the multi-tenant cutover.
+    // ════════════════════════════════════════════════════════════════
+
+    // post_run_rpe — subjective effort + free-text notes per run.
+    // Drives the closed-loop FORM read (coach.formRead reads
+    // activity.streams + RPE to deepen the verdict).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS post_run_rpe (
+        id            SERIAL PRIMARY KEY,
+        user_id       TEXT NOT NULL DEFAULT 'me',
+        user_uuid     UUID REFERENCES users(id) ON DELETE CASCADE,
+        activity_id   TEXT NOT NULL,
+        rpe           INTEGER CHECK (rpe IS NULL OR (rpe BETWEEN 1 AND 10)),
+        notes         TEXT,
+        logged_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, activity_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_post_run_rpe_user_activity ON post_run_rpe (user_uuid, activity_id);`);
+
+    // runner_notes — free-text "talk to the coach" journal. Coach
+    // reads recent notes as context for ≥30 days. Acknowledges in
+    // voice; may trigger injury/illness/re-plan flows.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS runner_notes (
+        id            SERIAL PRIMARY KEY,
+        user_id       TEXT NOT NULL DEFAULT 'me',
+        user_uuid     UUID REFERENCES users(id) ON DELETE CASCADE,
+        kind          TEXT NOT NULL DEFAULT 'general' CHECK (kind IN ('general','injury','illness','schedule','other')),
+        text          TEXT NOT NULL,
+        coach_ack     TEXT,
+        coach_ack_at  TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_runner_notes_recent ON runner_notes (user_uuid, created_at DESC);`);
+
+    // coach_proposals — surfaces requiring runner accept/reject
+    // (goal time changes, race conflicts, plan rewrites). Renders into
+    // ProposalCard on Overview. Per autonomy contract §10.2.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coach_proposals (
+        id            SERIAL PRIMARY KEY,
+        user_id       TEXT NOT NULL DEFAULT 'me',
+        user_uuid     UUID REFERENCES users(id) ON DELETE CASCADE,
+        proposal_type TEXT NOT NULL,
+        payload       JSONB NOT NULL,
+        status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected','expired')),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        responded_at  TIMESTAMPTZ,
+        expires_at    TIMESTAMPTZ
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_coach_proposals_pending ON coach_proposals (user_uuid, status) WHERE status = 'pending';`);
+
+    // coach_actions — audit log of every coach-driven plan change,
+    // notification, and proposal. Backs the PlanAdaptedCard timeline
+    // and the COACH-WATCHING strip notifications. Per autonomy
+    // contract §10.1 / §10.3.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coach_actions (
+        id            SERIAL PRIMARY KEY,
+        user_id       TEXT NOT NULL DEFAULT 'me',
+        user_uuid     UUID REFERENCES users(id) ON DELETE CASCADE,
+        action_type   TEXT NOT NULL,
+        mode          TEXT NOT NULL CHECK (mode IN ('unilateral','propose','notify')),
+        payload       JSONB NOT NULL,
+        trigger       TEXT,
+        rationale     TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_coach_actions_recent ON coach_actions (user_uuid, created_at DESC);`);
+
+    // runner_injuries — active injury logs; trigger INJURY mode.
+    // resolved_date null = currently active. The coach gates
+    // prescriptions through injury_return.ts doctrine when active.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS runner_injuries (
+        id                    SERIAL PRIMARY KEY,
+        user_id               TEXT NOT NULL DEFAULT 'me',
+        user_uuid             UUID REFERENCES users(id) ON DELETE CASCADE,
+        site                  TEXT NOT NULL,
+        severity              TEXT NOT NULL DEFAULT 'minor' CHECK (severity IN ('minor','moderate','major')),
+        return_protocol       TEXT,
+        notes                 TEXT,
+        start_date            DATE NOT NULL DEFAULT CURRENT_DATE,
+        expected_return_date  DATE,
+        resolved_date         DATE,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_runner_injuries_active ON runner_injuries (user_uuid) WHERE resolved_date IS NULL;`);
+
+    // runner_illnesses — active illness logs; trigger ILLNESS mode.
+    // Above-the-neck-no-fever is the rule the coach honors.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS runner_illnesses (
+        id              SERIAL PRIMARY KEY,
+        user_id         TEXT NOT NULL DEFAULT 'me',
+        user_uuid       UUID REFERENCES users(id) ON DELETE CASCADE,
+        kind            TEXT NOT NULL CHECK (kind IN ('cold','flu','gi','fever','covid','other')),
+        severity        TEXT NOT NULL DEFAULT 'mild' CHECK (severity IN ('mild','moderate','severe')),
+        above_neck      BOOLEAN NOT NULL DEFAULT true,
+        notes           TEXT,
+        start_date      DATE NOT NULL DEFAULT CURRENT_DATE,
+        resolved_date   DATE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_runner_illnesses_active ON runner_illnesses (user_uuid) WHERE resolved_date IS NULL;`);
+
+    // strength_sessions — strength training logs. Coach prescribes
+    // 2/week per Research/07; CHALLENGE fires on 3-week gaps.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS strength_sessions (
+        id              SERIAL PRIMARY KEY,
+        user_id         TEXT NOT NULL DEFAULT 'me',
+        user_uuid       UUID REFERENCES users(id) ON DELETE CASCADE,
+        date            DATE NOT NULL,
+        session_type    TEXT,
+        duration_min    INTEGER,
+        notes           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_strength_sessions_by_date ON strength_sessions (user_uuid, date DESC);`);
+
+    // cross_training_sessions — bike/swim/hike/etc. Coach credits
+    // toward fitness preservation in INJURY mode per cross_training.ts.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cross_training_sessions (
+        id              SERIAL PRIMARY KEY,
+        user_id         TEXT NOT NULL DEFAULT 'me',
+        user_uuid       UUID REFERENCES users(id) ON DELETE CASCADE,
+        date            DATE NOT NULL,
+        modality        TEXT NOT NULL,
+        duration_min    INTEGER,
+        intensity       TEXT CHECK (intensity IS NULL OR intensity IN ('easy','moderate','hard')),
+        avg_hr          INTEGER,
+        notes           TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_cross_training_by_date ON cross_training_sessions (user_uuid, date DESC);`);
+
+    // coach_reads_cache — per Phase 6 / §8 cache architecture. Reads
+    // computed once on event ingest, cached here, served to web + iOS
+    // surfaces consistently. Invalidation triggers:
+    //   activity ingest → load-dependent reads
+    //   race result → VDOT-derived reads (prediction, paces, projection)
+    //   health sample → readiness + sleep_deficit
+    //   check-in → readiness
+    //   plan mutation → prescription + projection chain
+    //   goal change → all goal-anchored reads
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coach_reads_cache (
+        id                SERIAL PRIMARY KEY,
+        user_id           TEXT NOT NULL DEFAULT 'me',
+        user_uuid         UUID REFERENCES users(id) ON DELETE CASCADE,
+        read_kind         TEXT NOT NULL,
+        cache_key         TEXT NOT NULL,
+        content           JSONB NOT NULL,
+        computed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ttl_at            TIMESTAMPTZ NOT NULL,
+        source_state_hash TEXT,
+        UNIQUE (user_uuid, read_kind, cache_key)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_coach_reads_cache_lookup ON coach_reads_cache (user_uuid, read_kind, cache_key);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_coach_reads_cache_expired ON coach_reads_cache (ttl_at) WHERE ttl_at < NOW();`);
+
+    // Link new coach-layer tables to users via user_uuid FK (already
+    // declared inline above; this is the additive add-column-if-not-
+    // exists for forward-compat with the multi-tenant backfill pass).
+    for (const tbl of [
+      'post_run_rpe', 'runner_notes', 'coach_proposals', 'coach_actions',
+      'runner_injuries', 'runner_illnesses', 'strength_sessions',
+      'cross_training_sessions', 'coach_reads_cache',
+    ]) {
+      await client.query(`ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS user_uuid UUID REFERENCES users(id) ON DELETE CASCADE;`);
+    }
+
     // Link existing tables to users via nullable user_uuid FK columns.
     // Legacy user_id='me' rows keep working until they get claimed by
     // the backfill on first signup.
