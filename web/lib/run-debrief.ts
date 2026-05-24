@@ -385,24 +385,27 @@ export function generateRunDebrief(input: DebriefInput): string {
             sentences.push(`HR ran ${deltaStr} bpm over the easy ceiling — keep next session genuinely easy.`);
           }
         } else {
+          // Pace sentence didn't already mention HR — give a coach
+          // take of the HR. Translates Z-jargon to plain English; the
+          // numeric range stays so the runner knows where to aim.
           if (zone === 'Z1' || zone === 'Z2') {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), clean aerobic effort. Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm).`);
+            sentences.push(`HR averaged ${actualAvgHr}, clean aerobic effort — right in the easy range (${tgtLow}–${tgtHigh} bpm).`);
           } else if (zone === 'Z3') {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), moderate, above the easy zone. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+            sentences.push(`HR averaged ${actualAvgHr}, above the easy ceiling (${tgtLow}–${tgtHigh} bpm). Edges into moderate — let tomorrow's easy stay genuinely easy.`);
           } else {
-            sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), high for an easy day. Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm.`);
+            sentences.push(`HR averaged ${actualAvgHr}, well above the easy ceiling (${tgtLow}–${tgtHigh} bpm). That's not easy any more; recovery tomorrow.`);
           }
         }
       } else if (planType === 'quality') {
         const tLow = z4?.lowBpm ?? Math.round(maxHr * 0.85);
         const tHigh = z4?.highBpm ?? Math.round(maxHr * 0.92);
         if (zone === 'Z4' || zone === 'Z5') {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), the work showed up. Target Z4 (${tLow}–${tHigh} bpm).`);
+          sentences.push(`HR averaged ${actualAvgHr} — threshold band (${tLow}–${tHigh} bpm). The work showed up.`);
         } else {
-          sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}), lower than expected for threshold. Target Z4: ${tLow}–${tHigh} bpm.`);
+          sentences.push(`HR averaged ${actualAvgHr}, under the threshold band (${tLow}–${tHigh} bpm). Quality session ran softer than prescribed — either fitness has moved or you bailed early; check the splits.`);
         }
       } else if (planType === 'race') {
-        sentences.push(`HR averaged ${actualAvgHr} (${pct}% ${pl} · ${zone}).`);
+        sentences.push(`HR averaged ${actualAvgHr}.`);
       }
     } else {
       // Fallback: qualitative bands
