@@ -336,18 +336,23 @@
   transition: opacity 0.15s ease;
 }
 .training-v4-page .volume-bar:hover { opacity: .75; }
-/* Phase color tones — bars get their phase color, dimmer for future
-   weeks so the eye lands on done + current. */
-.training-v4-page .volume-bar.base { background: rgba(62,189,65,.40); }
-.training-v4-page .volume-bar.build { background: rgba(243,173,56,.50); }
-.training-v4-page .volume-bar.peak { background: rgba(232,128,33,.55); }
-.training-v4-page .volume-bar.taper { background: rgba(8,8,8,.30); }
-.training-v4-page .volume-bar.race { background: rgba(232,128,33,.65); }
-.training-v4-page .volume-bar.done { opacity: 1; }
-.training-v4-page .volume-bar.future { opacity: .55; }
+/* Phase color tones — bars carry their phase color at near-full
+   saturation so the BASE → BUILD → PEAK → TAPER arc is legible
+   without squinting. Future weeks tone down only slightly (so the
+   shape of the volume curve still reads as a curve, not a row of
+   ghost bars). Done weeks at full strength. */
+.training-v4-page .volume-bar.base  { background: var(--recovery);  }
+.training-v4-page .volume-bar.build { background: var(--milestone); }
+.training-v4-page .volume-bar.peak  { background: var(--race);      }
+.training-v4-page .volume-bar.taper { background: rgba(8,8,8,.45);  }
+.training-v4-page .volume-bar.race  { background: var(--race);      }
+.training-v4-page .volume-bar.done   { opacity: 1; }
+.training-v4-page .volume-bar.future { opacity: .82; }
 .training-v4-page .volume-bar.current {
-  outline: 2px solid var(--amber);
-  outline-offset: 1px;
+  /* Current week pops with a race-orange ring so the eye lands on
+     this week regardless of which phase tone it's wearing. */
+  outline: 2px solid var(--race);
+  outline-offset: 2px;
 }
 .training-v4-page .volume-bar-value {
   position: absolute;
@@ -382,11 +387,11 @@
   height: 5px;
   border-radius: 2px;
 }
-.training-v4-page .volume-phase-cell.base { background: rgba(62,189,65,.50); }
-.training-v4-page .volume-phase-cell.build { background: rgba(243,173,56,.65); }
-.training-v4-page .volume-phase-cell.peak { background: rgba(232,128,33,.70); }
-.training-v4-page .volume-phase-cell.taper { background: rgba(8,8,8,.40); }
-.training-v4-page .volume-phase-cell.race { background: var(--orange); }
+.training-v4-page .volume-phase-cell.base  { background: var(--recovery);  }
+.training-v4-page .volume-phase-cell.build { background: var(--milestone); }
+.training-v4-page .volume-phase-cell.peak  { background: var(--race);      }
+.training-v4-page .volume-phase-cell.taper { background: rgba(8,8,8,.45);  }
+.training-v4-page .volume-phase-cell.race  { background: var(--race);      }
 /* Old in-curve legend — replaced by the labeled phase axis below
    the week labels. Kept hidden for backwards compat. */
 .training-v4-page .volume-phase-legend { display: none; }
@@ -409,11 +414,15 @@
   font-weight: 700;
   border-top: 2px solid;
 }
-.training-v4-page .volume-phase-label.base { grid-column: span 6;  border-color: rgba(62,189,65,.50);  color: var(--green); }
-.training-v4-page .volume-phase-label.build { grid-column: span 3;  border-color: rgba(243,173,56,.65); color: var(--amber); }
-.training-v4-page .volume-phase-label.peak { grid-column: span 3;  border-color: rgba(232,128,33,.70);  color: var(--orange); }
-.training-v4-page .volume-phase-label.taper { grid-column: span 2;  border-color: rgba(8,8,8,.40);   color: var(--t1); }
-.training-v4-page .volume-phase-label.race { grid-column: span 1;  border-color: var(--orange);        color: var(--orange); }
+/* Phase labels under the week axis: border + text both carry the
+   full phase color so the BASE green / BUILD gold / PEAK orange /
+   TAPER ink / RACE orange reads at a glance and matches the bars
+   above (canonical palette, not washed alpha variants). */
+.training-v4-page .volume-phase-label.base  { grid-column: span 6; border-color: var(--recovery);  color: var(--recovery);  }
+.training-v4-page .volume-phase-label.build { grid-column: span 3; border-color: var(--milestone); color: var(--milestone); }
+.training-v4-page .volume-phase-label.peak  { grid-column: span 3; border-color: var(--race);      color: var(--race);      }
+.training-v4-page .volume-phase-label.taper { grid-column: span 2; border-color: rgba(8,8,8,.55);  color: var(--t1);        }
+.training-v4-page .volume-phase-label.race  { grid-column: span 1; border-color: var(--race);      color: var(--race);      }
 
 /* ── Calendar grid — weeks × Mon-Sun ──────────────────────── */
 .training-v4-page .cal-grid {
@@ -613,16 +622,20 @@
   content: '';
   width: 4px; height: 16px; border-radius: 2px;
 }
-.training-v4-page .cal-phase-row.base { background: rgba(62,189,65,.06);  color: var(--green); }
-.training-v4-page .cal-phase-row.build { background: rgba(243,173,56,.07); color: var(--amber); }
-.training-v4-page .cal-phase-row.peak { background: rgba(232,128,33,.07);  color: var(--orange); }
-.training-v4-page .cal-phase-row.taper { background: rgba(8,8,8,.05);   color: var(--t1); }
-.training-v4-page .cal-phase-row.race-week { background: rgba(232,128,33,.18);  color: var(--orange); }
-.training-v4-page .cal-phase-row.base::before { background: var(--green); }
-.training-v4-page .cal-phase-row.build::before { background: var(--amber); }
-.training-v4-page .cal-phase-row.peak::before { background: var(--orange); }
-.training-v4-page .cal-phase-row.taper::before { background: var(--t1); }
-.training-v4-page .cal-phase-row.race-week::before { background: var(--orange); }
+/* Phase section bands inside the calendar — subtle tinted wash so
+   the row reads as part of the surface, full-saturation accent on
+   the leading pip + text so the phase still pops. Tints match the
+   volume bars above (canonical recovery/milestone/race). */
+.training-v4-page .cal-phase-row.base      { background: rgba(62,189,65,.12);  color: var(--recovery);  }
+.training-v4-page .cal-phase-row.build     { background: rgba(243,173,56,.14); color: var(--milestone); }
+.training-v4-page .cal-phase-row.peak      { background: rgba(232,128,33,.14); color: var(--race);      }
+.training-v4-page .cal-phase-row.taper     { background: rgba(8,8,8,.08);      color: var(--t1);        }
+.training-v4-page .cal-phase-row.race-week { background: rgba(232,128,33,.22); color: var(--race);      }
+.training-v4-page .cal-phase-row.base::before  { background: var(--recovery);  }
+.training-v4-page .cal-phase-row.build::before { background: var(--milestone); }
+.training-v4-page .cal-phase-row.peak::before  { background: var(--race);      }
+.training-v4-page .cal-phase-row.taper::before     { background: var(--t1); }
+.training-v4-page .cal-phase-row.race-week::before { background: var(--race); }
 .training-v4-page .cal-phase-row-meta {
   margin-left: auto;
   font-weight: 400; font-size: 11px; letter-spacing: 1px;
