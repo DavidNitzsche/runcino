@@ -65,6 +65,13 @@ export type ForceMergeMap = ReadonlyMap<number, number>; // sourceId -> targetCa
 export interface DedupeOptions {
   /** ± minutes around start time considered "the same session". */
   toleranceMin?: number;
+  /** Smaller-distance / larger-distance ratio that two rows must clear to
+   *  auto-merge. Default 0.75 — Strava 7.8 + watch 7.2 of the SAME session
+   *  (ratio 0.92) merges; a 1mi crash + 11mi restart (ratio 0.09) does NOT,
+   *  even if their starts overlap. Conservative on purpose: better to leave
+   *  a real dupe split and let the user manually merge than to false-merge
+   *  a crash-restart and silently hide the partial run's stats. */
+  distanceRatioMin?: number;
   keepSeparate?: KeepSeparateIds;
   forceMerge?: ForceMergeMap;
 }
@@ -80,6 +87,7 @@ export function dedupeRunsForDisplay(
   opts: DedupeOptions = {},
 ): DedupedRun[] {
   const tolMs = (opts.toleranceMin ?? 15) * 60_000;
+  const ratioMin = opts.distanceRatioMin ?? 0.75;
   const keepSeparate = opts.keepSeparate ?? new Set<number>();
   const forceMerge = opts.forceMerge ?? new Map<number, number>();
 
@@ -129,17 +137,22 @@ export function dedupeRunsForDisplay(
       continue;
     }
 
-    // Find a group whose canonical starts within tolerance AND isn't a
-    // keep-separate pinned row.
+    // Find a group whose canonical starts within tolerance AND has a
+    // distance close enough to be the same physical session (ratio guard
+    // — 1mi crash + 11mi restart MUST NOT auto-merge, even though their
+    // starts overlap).
     let host: Group | null = null;
     for (const g of groups) {
       if (keepSeparate.has(g.canonical.id)) continue;
       const gStartMs = Date.parse(g.canonical.startLocal);
       if (!Number.isFinite(gStartMs)) continue;
-      if (Math.abs(gStartMs - startMs) <= tolMs) {
-        host = g;
-        break;
-      }
+      if (Math.abs(gStartMs - startMs) > tolMs) continue;
+      const a = Math.max(g.canonical.distanceMi, r.distanceMi);
+      const b = Math.min(g.canonical.distanceMi, r.distanceMi);
+      if (a <= 0) continue;
+      if (b / a < ratioMin) continue;
+      host = g;
+      break;
     }
 
     if (host) {

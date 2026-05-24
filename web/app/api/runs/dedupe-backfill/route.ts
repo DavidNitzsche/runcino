@@ -79,33 +79,60 @@ export async function POST() {
     const overrides = await loadMergeOverrides(user.id);
     const deduped = dedupeRunsForDisplay(asNormalized, overrides);
 
-    // For every group with merged sources: write mergedIntoId on each
-    // source pointing at the canonical. Also clear stale mergedIntoId on
-    // canonicals (in case a previous fold direction reversed).
-    let foldedCount = 0;
+    // Compute the SHOULD-BE-MERGED set from the grouper output, then
+    // reconcile against every flagged row in the DB. Three operations:
+    //   1. Rows the grouper folds (mergedSources): write mergedIntoId.
+    //   2. Canonicals + un-grouped rows that STILL carry an old flag from
+    //      a prior backfill pass with a looser rule: strip the flag so
+    //      the row re-surfaces. This is what fixes Sun May 24 after the
+    //      0.75 distance-ratio guard lands.
+    //   3. Anything else: leave alone.
+    const shouldBeMerged = new Map<number, number>(); // sourceId -> canonicalId
     for (const canonical of deduped) {
-      // Clear flag on the canonical so it surfaces.
-      await query(
-        `UPDATE strava_activities
-            SET data = data - 'mergedIntoId'
-          WHERE id = $1::BIGINT
-            AND (user_uuid = $2 OR user_uuid IS NULL)
-            AND data ? 'mergedIntoId'`,
-        [canonical.id, user.id],
-      );
-      for (const src of canonical.mergedSources) {
+      for (const src of canonical.mergedSources) shouldBeMerged.set(src.id, canonical.id);
+    }
+
+    let foldedCount = 0;
+    let unfoldedCount = 0;
+    for (const row of rows) {
+      const rid = Number(row.id);
+      const existingFlag = (row.data as { mergedIntoId?: number | string }).mergedIntoId;
+      const existingFlagNum = existingFlag != null ? Number(existingFlag) : null;
+      const target = shouldBeMerged.get(rid);
+
+      if (target != null) {
+        // Should be flagged. Skip if already correct.
+        if (existingFlagNum === target) continue;
         await query(
           `UPDATE strava_activities
               SET data = jsonb_set(data, '{mergedIntoId}', to_jsonb($1::BIGINT))
             WHERE id = $2::BIGINT
               AND (user_uuid = $3 OR user_uuid IS NULL)`,
-          [canonical.id, src.id, user.id],
+          [target, rid, user.id],
         );
         foldedCount += 1;
+      } else if (existingFlagNum != null) {
+        // Has a stale flag but the current grouper says don't fold. Clear
+        // it so the row comes back. (Skip if a manual force-merge override
+        // is what set the flag — the override is authoritative.)
+        if (overrides.forceMerge.has(rid)) continue;
+        await query(
+          `UPDATE strava_activities
+              SET data = data - 'mergedIntoId'
+            WHERE id = $1::BIGINT
+              AND (user_uuid = $2 OR user_uuid IS NULL)`,
+          [rid, user.id],
+        );
+        unfoldedCount += 1;
       }
     }
 
-    return NextResponse.json({ ok: true, scanned: rows.length, folded: foldedCount });
+    return NextResponse.json({
+      ok: true,
+      scanned: rows.length,
+      folded: foldedCount,
+      unfolded: unfoldedCount,
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'dedupe backfill failed' },

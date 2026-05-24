@@ -26,7 +26,11 @@ import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { gatherCoachState } from '@/lib/coach-state';
 import { coach } from '@/coach/coach';
 import { getActivePlanWeeks } from '@/lib/plan-weeks';
-import { countMergedSourcesByCanonical } from '@/lib/run-merge-overrides';
+import {
+  countMergedSourcesByCanonical,
+  loadManualMergeSumByCanonical,
+  combineWithMergeDelta,
+} from '@/lib/run-merge-overrides';
 import './log-v4.css';
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -139,8 +143,13 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           ORDER BY (data->>'startLocal') DESC
           LIMIT 60`,
       );
-      // Per-canonical merged-source count for the "Merged · N" badge.
+      // Per-canonical merged-source count for the "Merged · N" badge,
+      // plus the SUM of manually merged sources (distance, time, HR-mi)
+      // so a canonical with manual force-merges displays combined totals.
+      // Auto-dedup pairs (no override row) do NOT sum — those are the
+      // same session double-recorded, summing would falsely inflate.
       const mergedCountById = await countMergedSourcesByCanonical(userId);
+      const manualMergeSumById = await loadManualMergeSumByCanonical(userId);
       const acts = actsRaw
         .sort((a, b) => {
           const aS = (a.data as { startLocal?: string }).startLocal || '';
@@ -160,11 +169,22 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
 
       recentRuns = await Promise.all(acts.map(async (a) => {
         const d = a.data as { name?: string; startLocal?: string; distanceMi?: number; movingTimeS?: number; type?: string; description?: string; avgHr?: number };
-        const mi = Number(d.distanceMi) || 0;
-        const moving = Number(d.movingTimeS) || 0;
+        const rawMi = Number(d.distanceMi) || 0;
+        const rawMoving = Number(d.movingTimeS) || 0;
+        const rawAvgHr = d.avgHr != null ? Number(d.avgHr) : null;
+        // Apply any manual-merge sum: canonical's stats become canonical +
+        // Σ(merged sources). Auto-dedup pairs (no override) leave these as-is.
+        const idAsNumEarly = typeof a.id === 'number' ? a.id : Number(a.id) || 0;
+        const combined = combineWithMergeDelta(
+          { distanceMi: rawMi, movingTimeS: rawMoving, avgHr: rawAvgHr },
+          manualMergeSumById.get(idAsNumEarly),
+        );
+        const mi = combined ? combined.distanceMi : rawMi;
+        const moving = combined ? combined.movingTimeS : rawMoving;
         const paceSec = mi > 0 ? Math.round(moving / mi) : 0;
         const paceM = Math.floor(paceSec / 60);
         const paceS = paceSec % 60;
+        const displayAvgHr = combined ? (combined.avgHr ?? rawAvgHr) : rawAvgHr;
         const dateStr = (d.startLocal || '').slice(0, 10);
         const dt = dateStr ? new Date(dateStr + 'T00:00:00Z') : null;
         const dateLabel = dt
@@ -201,7 +221,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
                 distanceMi: mi,
                 durationS: moving,
                 paceSPerMi: paceSec,
-                avgHr: Number(d.avgHr) || null,
+                avgHr: displayAvgHr,
                 name: d.name || 'Untitled run',
                 plannedDistanceMi,
                 plannedType,
@@ -216,7 +236,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           }
         }
 
-        const idAsNum = typeof a.id === 'number' ? a.id : Number(a.id) || 0;
+        const idAsNum = idAsNumEarly;
         return {
           id: String(a.id), date: dateStr, dateLabel,
           tag, tagLabel,
@@ -228,7 +248,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
           mi: Math.round(mi * 10) / 10,
           min: Math.round(moving / 60),
           pace: paceSec > 0 ? `${paceM}:${String(paceS).padStart(2, '0')}/mi` : '-',
-          avgHr: Number(d.avgHr) || 0,
+          avgHr: displayAvgHr ?? 0,
           shoeId: a.shoe_id,
           coachReadVerdict,
           coachReadBody,
