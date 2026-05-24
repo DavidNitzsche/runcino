@@ -207,6 +207,12 @@ struct WatchFixtureView: View {
                         stripStates: [1, 1, 1, 2, 0, 0])
         case "steady":
             SteadyRunFace(livePace: "8:55", paceRole: .live, distance: "9.6", elapsed: "1:25")
+        case "overtime":
+            // Plan done at 11.6, runner has banked 0.4 more — total 12.0,
+            // distance row in purple (Faff.bonus) per the locked grammar.
+            SteadyRunFace(livePace: "9:02", paceRole: .neutral,
+                          distance: "12.0", elapsed: "1:47:18",
+                          distanceRole: .bonus)
         default:
             // Default fixture: rep-work face — the canonical reference.
             WorkIntervalFace(livePace: "6:33", paceRole: .live, targetPace: "6:31",

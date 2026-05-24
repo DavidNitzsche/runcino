@@ -173,15 +173,19 @@ struct StridesFace: View {
 /// Steady / cooldown / overtime — three big numbers, no target. Live pace +
 /// distance + elapsed. Used for warmup-then-easy, cooldown, and overtime (the
 /// "plan done · keep going" state) where there's nothing to chase.
+/// `distanceRole` lets the overtime variant flip distance to .bonus (purple
+/// — the locked grammar's "past the plan" colour) while regular steady use
+/// keeps the canonical .dist (blue).
 struct SteadyRunFace: View {
     let livePace: String
     let paceRole: Role          // .live during easy execution, .neutral when no target
     let distance: String
     let elapsed: String
+    var distanceRole: Role = .dist
     var body: some View {
         NumberFace(rows: [
             NumRow(livePace, paceRole),
-            NumRow(distance, .dist),
+            NumRow(distance, distanceRole),
             NumRow(elapsed,  .neutral)
         ])
     }

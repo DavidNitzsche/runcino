@@ -410,7 +410,10 @@ private struct LiveSteady: View {
     }
 }
 
-/// OVERTIME (plan done · still recording · run free)
+/// OVERTIME (plan done · still recording · run free). Distance flips to
+/// .bonus (purple) — the locked grammar's "past the plan" colour — so the
+/// runner sees at a glance that they're banking extra miles, not still in
+/// the prescribed portion. Pace stays neutral (no target), elapsed neutral.
 private struct LiveOvertime: View {
     @ObservedObject var engine: WorkoutEngine
     @ObservedObject var tracker: WorkoutTracker
@@ -421,7 +424,8 @@ private struct LiveOvertime: View {
             distance: distText(tracker.distanceMi),
             elapsed:  engine.totalElapsedSec >= 3600
                 ? PaceFormat.hms(engine.totalElapsedSec)
-                : PaceFormat.clock(engine.totalElapsedSec)
+                : PaceFormat.clock(engine.totalElapsedSec),
+            distanceRole: .bonus
         )
     }
 }
@@ -476,7 +480,11 @@ struct ControlsFace: View {
     /// plays Haptics.chime() on top of the regular haptic for every
     /// transition cue (split / fuel / go / etc). Reads UserDefaults key
     /// "audibleAlerts" elsewhere in the engine.
-    @AppStorage("audibleAlerts") private var audibleAlerts: Bool = false
+    /// Default ON: a long run is the use case (mile-splits + 3 gel cues),
+    /// and a silent miss costs more than an extra ding the runner can mute.
+    /// Existing testers who already toggled to OFF keep that value;
+    /// AppStorage only applies the default when the key is missing.
+    @AppStorage("audibleAlerts") private var audibleAlerts: Bool = true
 
     var body: some View {
         VStack(spacing: 8) {
