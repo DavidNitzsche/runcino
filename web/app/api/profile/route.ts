@@ -1050,8 +1050,8 @@ function buildEngineBlock(
 
   const paceZonesValue = vdot.value != null ? `From fitness score ${Math.round(Number(vdot.value))}` : 'NO DATA YET';
   const paceLead = vdot.value != null
-    ? 'The Coach prescribes every run inside one of these 5 pace bands.'
-    : 'Coach pace zones require a recent race result. Log one to unlock prescribed paces.';
+    ? 'Every run sits inside one of these 5 pace bands, anchored on your fitness score.'
+    : 'Pace zones need a recent race result. Log one to unlock prescribed paces.';
 
   const tiles: ProfileApiEngineDetail[] = [
     {
@@ -1069,14 +1069,14 @@ function buildEngineBlock(
       lead: longRunCap == null
         ? 'Long-run cap needs a recent training run. Log one to unlock the +10% bump.'
         : usePostRaceAnchor
-          ? `Post-race window, Coach holds next week's long to ${longRunCap.toFixed(1)} mi (~50% of pre-race long).`
-          : `The Coach won't prescribe a long run over ${longRunCap.toFixed(1)} mi next week, keeps the jump safe.`,
+          ? `Post-race window — long run capped at ${longRunCap.toFixed(1)} mi next week (~50% of pre-race long).`
+          : `Long run capped at ${longRunCap.toFixed(1)} mi next week. Keeps the jump safe.`,
       footEyebrow: longRunCap != null ? (usePostRaceAnchor ? 'WHY' : 'HOW') : '',
       footBody: longRunCap == null
         ? ''
         : usePostRaceAnchor && preRaceTraining != null
-          ? `You just raced, race efforts don't count as training progression. Pre-race longest training run was ${preRaceTraining.toFixed(1)} mi; the long rebuilds at ~50% (${longRunCap.toFixed(1)} mi) and ramps back over 2-3 weeks.`
-          : `Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi. Coach caps the next at +10%, races are excluded from this baseline.`,
+          ? `You just raced — race efforts don't count toward training progression. Pre-race longest training run was ${preRaceTraining.toFixed(1)} mi; the long rebuilds at ~50% (${longRunCap.toFixed(1)} mi) and ramps back over 2-3 weeks.`
+          : `Your longest training run in the last 28 days was ${longestTraining.toFixed(1)} mi. The next is capped at +10%; races are excluded from this baseline.`,
     },
     {
       eyebrow: 'EASY-PACE TARGET',
@@ -1094,7 +1094,7 @@ function buildEngineBlock(
       eyebrow: 'RECOVERY WEEK CADENCE',
       value: 'Every 3',
       unit: 'WKS',
-      lead: 'Every 3rd week the Coach drops volume −20% so the body can absorb training.',
+      lead: 'Every 3rd week, volume drops −20% so the body can absorb training.',
       footEyebrow: 'WHY 3 WEEKS',
       footBody:
         'At a low-band mileage tier, 3-week blocks balance stimulus and recovery without losing fitness.',

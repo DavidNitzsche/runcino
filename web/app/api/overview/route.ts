@@ -283,6 +283,23 @@ export async function GET(req: Request): Promise<Response> {
       coach.recentAdjustments({ today, state }),
     ]);
 
+    // L4 trigger: check whether fitness has moved enough to propose a
+    // goal-time renegotiation. Idempotent (only inserts when a new
+    // proposal is warranted AND no pending proposal exists for this
+    // race). Fire-and-forget — never block the overview response on
+    // a proposal write, and never fail the whole request if the
+    // proposal write fails.
+    if (userId) {
+      (async () => {
+        try {
+          const { checkAndProposeGoalAdjustment } = await import('../../../coach/coach-goal-proposals');
+          await checkAndProposeGoalAdjustment(state, userId, today);
+        } catch (err) {
+          console.warn('[api/overview] checkAndProposeGoalAdjustment failed', err);
+        }
+      })();
+    }
+
     // Extract this week's plan workouts and phase (Mon–Sun containing today).
     // Also post-process weekDeltas so planned miles come from the plan artifact
     // rather than the old coachDaily simulation.

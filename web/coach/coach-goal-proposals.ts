@@ -14,6 +14,7 @@
 import type { CoachState } from '@/lib/coach-state';
 import { createProposal, listPendingProposals } from '@/lib/proposal-store';
 import { logCoachAction } from '@/lib/coach-actions-store';
+import { coach } from './coach';
 
 export interface GoalAdjustmentPayload {
   raceSlug: string;
@@ -119,6 +120,60 @@ export async function maybeProposeGoalAdjustment(
   );
 
   return payload;
+}
+
+/** Higher-level trigger — call from any path where state has just
+ *  changed in a way that could affect race-fitness vs goal (Strava
+ *  sync, race result write, daily cron). Pulls the prediction from
+ *  raceFitnessPrediction (now real per L1), computes the gap, and
+ *  fires maybeProposeGoalAdjustment when warranted.
+ *
+ *  Cheap to call repeatedly — idempotent via the pending-proposal
+ *  check inside maybeProposeGoalAdjustment. Safe to throw — caller
+ *  ignores failure (we never want to break the activity ingest path
+ *  over a missed proposal).
+ *
+ *  Window-days approximation: until we cache prediction history,
+ *  use the freshness of the underlying race signal as the window
+ *  proxy. A 14-day-old race result IS the sustained signal for an
+ *  immediate fitness shift — multiple recent races would say it
+ *  even louder, but one race within freshness is enough to fire. */
+export async function checkAndProposeGoalAdjustment(
+  state: CoachState,
+  userUuid: string,
+  today: string,
+): Promise<GoalAdjustmentPayload | null> {
+  if (!userUuid) return null;
+  const nextA = state.races.nextA;
+  if (!nextA || !nextA.goalFinishS) return null;
+
+  // Run the prediction. If the engine can't infer fitness (no recent
+  // race), there's nothing to compare against.
+  try {
+    const pred = await coach.raceFitnessPrediction({
+      today,
+      state,
+      raceName: nextA.name,
+      raceDateISO: nextA.date,
+      raceDistanceMi: nextA.distanceMi,
+      goalTimeS: nextA.goalFinishS,
+    });
+    const headroom = pred.answer.headroomSPerMi; // positive = predicted faster than goal
+    // Window: use freshness of the anchoring race. bestForVdot is sorted
+    // newest first; the first one's daysAgo is the signal age. Default
+    // 14 days when we can't tell.
+    const anchor = state.races.bestForVdot?.[0];
+    const windowDays = anchor?.daysAgo != null ? Math.max(anchor.daysAgo, 14) : 14;
+    return await maybeProposeGoalAdjustment(
+      state,
+      userUuid,
+      pred.answer.predictedTimeS,
+      headroom,
+      windowDays,
+    );
+  } catch {
+    return null;
+  }
 }
 
 function formatHMS(seconds: number): string {
