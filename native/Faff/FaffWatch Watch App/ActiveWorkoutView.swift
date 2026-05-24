@@ -235,11 +235,24 @@ private struct LiveRace: View {
 /// Pace colour reflects the drift zone; HR row flips red when over the workout's
 /// `hrCeilingBpm`. The guardrail rotates HR ⇄ cadence every 60 s when HR is in
 /// zone (handled inside EasyFace).
+///
+/// Distance row counts DOWN to 0 when the phase is distance-based (a known
+/// total). Counting UP made sense for unbounded "go run" sessions but is
+/// disorienting on a planned long run where the runner wants to see how
+/// much further. Time-based phases (no known end distance) keep the
+/// total-covered read.
 private struct LiveEasy: View {
     @ObservedObject var engine: WorkoutEngine
     @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
+    private var distanceDisplay: String {
+        if phase.repUnit == .distance, let total = phase.distanceMi {
+            let remaining = max(0, total - engine.phaseCoveredMi)
+            return distText(remaining)
+        }
+        return distText(tracker.distanceMi)
+    }
     var body: some View {
         EasyFace(
             pace:     paceText(tracker),
@@ -247,7 +260,7 @@ private struct LiveEasy: View {
             hr:       tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
             hrOver:   engine.hrOverCeiling,
             cadence:  tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
-            distance: distText(tracker.distanceMi)
+            distance: distanceDisplay
         )
     }
 }
