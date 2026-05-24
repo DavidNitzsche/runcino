@@ -320,7 +320,10 @@ async function gatherHealthBiometrics(userId: string | undefined): Promise<{
  *  warn=depleted). Returns null when the user has no sleep samples
  *  in the window (we never show a "0h deficit" when we just have
  *  no data — that would be misleading). */
-async function loadSleepDeficit14d(userId: string | undefined): Promise<{
+/** Exported so the web Health page can render the same debt card the
+ *  iPhone does, without duplicating the query + thresholds. Single
+ *  source of truth for sleep-deficit policy. */
+export async function loadSleepDeficit14d(userId: string | undefined): Promise<{
   hoursOver14d: number;
   daysShort: number;
   avg14dHrs: number;

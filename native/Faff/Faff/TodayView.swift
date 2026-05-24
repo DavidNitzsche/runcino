@@ -54,20 +54,22 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: Faff.S.rowGap) {
                 PendingAdaptationsCard(overview: overview, onReload: onReload)
                 CoachAdaptationsCard(overview: overview)
-                // Tune-up race nudge — fires when behind on the trajectory
-                // with room to act. Coach-voice copy from the server.
-                if let rec = overview.raceProjection?.tuneUpRecommendation,
-                   let copy = rec.copy, !copy.isEmpty {
-                    TuneUpRecCard(copy: copy)
-                }
+                // Week view stays at the top of the scroll content. The
+                // runner orients on the week first, everything else is
+                // secondary.
                 dateStrip(overview)
-                // Status pill under the date strip — one-line summary of
-                // where the runner sits vs their A-race goal. Tapping it
-                // (TODO) opens the race-detail trajectory card. Color
-                // tracks status: green=ahead, ink=on-track, amber=behind.
+                // Race-status pill under the date strip — one-line
+                // readout of where the runner sits vs their A-race goal.
                 if let proj = overview.raceProjection, let status = proj.status,
                    let race = overview.raceCountdown {
                     RaceStatusPill(raceName: race.name, daysAway: race.days, status: status)
+                }
+                // Tune-up race nudge — slim inline strip right under the
+                // status pill, so it's tied to race context but doesn't
+                // dominate the page. Full coach reasoning lives on the
+                // race-detail trajectory card; this is just the nudge.
+                if overview.raceProjection?.tuneUpRecommendation != nil {
+                    TuneUpRecStrip()
                 }
                 coachLineView
                 heroView
@@ -1191,34 +1193,32 @@ struct RaceStatusPill: View {
     }
 }
 
-// MARK: - Tune-up race recommendation card
+// MARK: - Tune-up race nudge (slim inline strip)
 
-/// Coach-voice card surfaced on Today when the engine recommends a
-/// tune-up race (behind on trajectory + room to act). Single-button
-/// dismissable per session; tapping the card body opens search.
-struct TuneUpRecCard: View {
-    let copy: String
-
+/// One-line nudge surfaced on Today when the engine flags a window
+/// where a B-effort tune-up race would help. Lives right under the
+/// race-status pill so it's contextually tied to the race trajectory.
+/// Full coach reasoning lives in the race-detail "Path to your goal"
+/// trajectory card; this strip is just the prompt. Compact on purpose
+/// — the week view stays the visual anchor.
+struct TuneUpRecStrip: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "flag.checkered")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Faff.C.race)
-                Text("CONSIDER A TUNE-UP RACE")
-                    .font(Faff.F.oswald(11, .semibold)).tracking(1.2)
-                    .foregroundStyle(Faff.C.race)
-                Spacer()
-            }
-            Text(copy)
-                .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 8) {
+            Image(systemName: "flag.checkered")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Faff.C.race)
+            Text("Good week for a B-effort tune-up race")
+                .font(Faff.F.inter(12.5, .medium)).foregroundStyle(Faff.C.ink)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Faff.C.textFaint)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Faff.C.race.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 11).padding(.vertical, 8)
+        .background(Faff.C.race.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12).stroke(Faff.C.race.opacity(0.30), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8).stroke(Faff.C.race.opacity(0.22), lineWidth: 1)
         )
     }
 }

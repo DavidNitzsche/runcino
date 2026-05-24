@@ -27,7 +27,7 @@ import { computeReadinessScore } from '@/lib/readiness-score';
 import { computeZ2CoverageFinding } from '@/lib/z2-coverage';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { buildHrZonesBundle, type ZoneTier } from '@/lib/hr-zones';
-import { gatherCoachState } from '@/lib/coach-state';
+import { gatherCoachState, loadSleepDeficit14d } from '@/lib/coach-state';
 import { buildTrainingLoad } from '@/lib/training-load';
 import { generateWeeklyInsights } from '@/lib/weekly-insights';
 import { getRealPlanWeeks } from '@/lib/plan-weeks';
@@ -99,6 +99,10 @@ export default async function HealthPage() {
   const wristTemp = bio.get('wrist_temp') ?? null;
   const hasBio = rhr != null || hrv != null || sleep != null || vo2 != null;
   const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+  // 14-day sleep deficit (Whoop-style debt). Single source of truth
+  // with iPhone — same helper computes the buckets + coach copy.
+  const sleepDebt = await loadSleepDeficit14d(auth.id);
 
   // ── Running dynamics (health_samples), 30-day averages ──
   const dynRows = await query<BioRow>(
@@ -475,6 +479,80 @@ export default async function HealthPage() {
             </div>
           )}
         </div>
+
+        {/* ── SLEEP DEBT (Whoop-style 14-day) ── */}
+        {sleepDebt && (
+          (() => {
+            const status = sleepDebt.status;
+            const statusLabel =
+              status === 'banked' ? 'BANKED'
+              : status === 'depleted' ? 'DEPLETED'
+              : status === 'building-deficit' ? 'BUILDING DEFICIT'
+              : 'ON TARGET';
+            const statusBg =
+              status === 'banked' ? 'rgba(54, 168, 83, 0.14)'
+              : status === 'depleted' ? 'rgba(252, 77, 100, 0.14)'
+              : status === 'building-deficit' ? 'rgba(247, 159, 31, 0.14)'
+              : 'rgba(8, 8, 8, 0.07)';
+            const statusFg =
+              status === 'banked' ? '#36A853'
+              : status === 'depleted' ? '#FC4D64'
+              : status === 'building-deficit' ? '#F79F1F'
+              : '#080808';
+            return (
+              <div className="card" style={{ marginBottom: 16 }}>
+                <div className="card-header">
+                  <div className="card-title-group">
+                    <div className="card-title">Sleep · 14 days</div>
+                    <div className="card-sub">
+                      Cumulative debt against an 8h target. A few short
+                      nights stack up faster than you&rsquo;d think.
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    padding: '4px 9px', borderRadius: 6,
+                    background: statusBg, color: statusFg,
+                    fontFamily: 'Oswald, sans-serif', fontSize: 10,
+                    fontWeight: 600, letterSpacing: 1.2,
+                  }}>{statusLabel}</div>
+                </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: 16, padding: '8px 0 12px',
+                }}>
+                  <div>
+                    <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, color: '#080808', lineHeight: 1 }}>
+                      {sleepDebt.hoursOver14d.toFixed(1)}
+                      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(8,8,8,.45)', marginLeft: 3 }}>h</span>
+                    </div>
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 600, letterSpacing: 0.8, color: 'rgba(8,8,8,.55)', marginTop: 3 }}>DEBT</div>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, color: '#080808', lineHeight: 1 }}>
+                      {sleepDebt.avg14dHrs.toFixed(1)}
+                      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: 'rgba(8,8,8,.45)', marginLeft: 3 }}>h</span>
+                    </div>
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 600, letterSpacing: 0.8, color: 'rgba(8,8,8,.55)', marginTop: 3 }}>NIGHTLY AVG</div>
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, color: sleepDebt.daysShort > 0 ? '#FC4D64' : '#080808', lineHeight: 1 }}>
+                      {sleepDebt.daysShort}
+                    </div>
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 600, letterSpacing: 0.8, color: 'rgba(8,8,8,.55)', marginTop: 3 }}>UNDER 7H</div>
+                  </div>
+                </div>
+                {sleepDebt.message && (
+                  <div style={{
+                    fontFamily: 'Inter, sans-serif', fontSize: 13.5,
+                    color: '#080808', lineHeight: 1.55, paddingTop: 4,
+                  }}>{sleepDebt.message}</div>
+                )}
+              </div>
+            );
+          })()
+        )}
 
         {/* ── RECOVERY VITALS ── */}
         <div className="card">

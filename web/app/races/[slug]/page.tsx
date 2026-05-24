@@ -23,6 +23,7 @@ import { getRaceDB } from '@/lib/race-store';
 import { query } from '@/lib/db';
 import { computeAggregateVdot } from '@/lib/compute-vdot';
 import { vdotRow } from '@/lib/vdot';
+import { computeRaceProjection } from '@/lib/race-projection';
 import { resolveTrainingPaces } from '@/lib/training-paces-resolver';
 import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { getActivePlanWeeks } from '@/lib/plan-weeks';
@@ -403,6 +404,53 @@ export default async function RacePlanPage({ params }: PageProps) {
     }
   }
 
+  // ── Trajectory + verdict (Path to your goal) ───────────────────
+  // Mirrors the iPhone race-detail trajectory card. Reuses
+  // computeRaceProjection so the chart math is identical, and
+  // generates a coach-voice verdict based on the headroom between
+  // predicted finish and goal. Only for upcoming races with a goal.
+  let trajectory: {
+    status: 'on-track' | 'behind' | 'ahead';
+    verdict: string;
+    points: ReturnType<typeof computeRaceProjection>['points'];
+    weeksToRace: number;
+    goalFinishS: number;
+    predictedDisplay: string;
+    goalDisplay: string;
+  } | null = null;
+  // Past races have actualResult populated; trajectory is only meaningful
+  // for upcoming races where the runner can still act on it.
+  const isPastRace = !!race.actualResult?.finishS;
+  if (!isPastRace && readiness && readiness.currentVdot > 0 && goalFinishS > 0) {
+    const weeksToRace = Math.max(1, Math.min(12, Math.round(daysAway / 7)));
+    const proj = computeRaceProjection(readiness.currentVdot, race.meta.distanceMi, goalFinishS, weeksToRace);
+    const headroom = goalFinishS > 0 && race.meta.distanceMi > 0
+      ? Math.round((goalFinishS - readiness.predictedFinishS) / race.meta.distanceMi)
+      : 0;
+    const status: 'on-track' | 'behind' | 'ahead' =
+      headroom > 5 ? 'ahead' : headroom >= -8 ? 'on-track' : 'behind';
+    const verdict = (() => {
+      const goal = race.meta.goalDisplay || 'your goal';
+      if (status === 'on-track') {
+        return `${weeksToRace} weeks out from ${goal} and you're tracking. Threshold work has been landing. Keep the rhythm and we close the gap on time.`;
+      }
+      if (status === 'ahead') {
+        return `${weeksToRace} weeks out and you're already closer to ${goal} than the timeline needed. Don't blow it up trying to gain more. Execute the plan, let the taper sharpen, arrive fresh.`;
+      }
+      const absSec = Math.abs(headroom);
+      return `${weeksToRace} weeks out from ${goal} and the math says we're behind by about ${absSec} sec/mi. Training is consolidating but not accelerating fast enough. A tune-up race in the next 4-6 weeks gives me a clean data point and pulls the prescription tighter, faster.`;
+    })();
+    trajectory = {
+      status,
+      verdict,
+      points: proj.points,
+      weeksToRace,
+      goalFinishS,
+      predictedDisplay: readiness.predictedFinishDisplay,
+      goalDisplay: race.meta.goalDisplay || fmtTime(goalFinishS),
+    };
+  }
+
   // ── Chip-time vs Strava divergence ─────────────────────────────
   // When the curated actualResult.finishS differs from the matched
   // Strava activity's canonicalFinishS / movingTimeS, surface a
@@ -679,6 +727,90 @@ export default async function RacePlanPage({ params }: PageProps) {
             )}
           </div>
         </div>
+
+        {/* ── PATH TO YOUR GOAL (trajectory + verdict) ── */}
+        {trajectory && (
+          (() => {
+            const statusBg = trajectory.status === 'ahead' ? 'rgba(54,168,83,.14)'
+              : trajectory.status === 'behind' ? 'rgba(252,77,100,.14)'
+              : 'rgba(8,8,8,.07)';
+            const statusFg = trajectory.status === 'ahead' ? '#36A853'
+              : trajectory.status === 'behind' ? '#FC4D64'
+              : '#080808';
+            const statusLabel = trajectory.status === 'ahead' ? 'AHEAD'
+              : trajectory.status === 'behind' ? 'BEHIND'
+              : 'ON TRACK';
+            // Build the trajectory chart inline. Three lines:
+            // maintain (flat, grey), plan (curving toward goal, ink),
+            // goal (horizontal dashed, race-color). Auto-fits y to data.
+            const chartW = 560;
+            const chartH = 120;
+            const padL = 0, padR = 0, padT = 8, padB = 18;
+            const pts = trajectory.points;
+            const times = [
+              ...pts.map((p) => p.planFinishS),
+              ...pts.map((p) => p.maintainFinishS),
+              trajectory.goalFinishS,
+            ];
+            const lo = Math.min(...times) - 30;
+            const hi = Math.max(...times) + 30;
+            const yRange = Math.max(1, hi - lo);
+            const n = Math.max(1, pts.length - 1);
+            const xFor = (i: number) => padL + (i / n) * (chartW - padL - padR);
+            const yFor = (s: number) => padT + (1 - (s - lo) / yRange) * (chartH - padT - padB);
+            const goalY = yFor(trajectory.goalFinishS);
+            const maintainPath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i).toFixed(1)},${yFor(p.maintainFinishS).toFixed(1)}`).join(' ');
+            const planPath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i).toFixed(1)},${yFor(p.planFinishS).toFixed(1)}`).join(' ');
+            return (
+              <div className="card" style={{ marginBottom: 16 }}>
+                <div className="card-header">
+                  <div className="card-title-group">
+                    <div className="card-title">Path to your goal</div>
+                    <div className="card-sub">
+                      {trajectory.weeksToRace} weeks to race · maintain trajectory vs. plan trajectory vs. goal line
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    padding: '4px 9px', borderRadius: 6,
+                    background: statusBg, color: statusFg,
+                    fontFamily: 'Oswald, sans-serif', fontSize: 10,
+                    fontWeight: 600, letterSpacing: 1.2,
+                  }}>{statusLabel}</div>
+                </div>
+                <div style={{
+                  display: 'flex', alignItems: 'baseline',
+                  justifyContent: 'space-between', padding: '4px 0 14px',
+                }}>
+                  <div>
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 600, letterSpacing: 0.8, color: 'rgba(8,8,8,.55)' }}>PREDICTED</div>
+                    <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, color: '#080808', lineHeight: 1 }}>
+                      {trajectory.predictedDisplay}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9.5, fontWeight: 600, letterSpacing: 0.8, color: 'rgba(8,8,8,.55)' }}>GOAL</div>
+                    <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, color: '#080808', lineHeight: 1 }}>
+                      {trajectory.goalDisplay}
+                    </div>
+                  </div>
+                </div>
+                <svg viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" style={{ width: '100%', height: 120, display: 'block' }}>
+                  <line x1={0} y1={goalY} x2={chartW} y2={goalY} stroke="#FF6B47" strokeOpacity={0.65} strokeWidth={1.5} strokeDasharray="4,3" />
+                  <path d={maintainPath} fill="none" stroke="rgba(8,8,8,.35)" strokeWidth={1.5} />
+                  <path d={planPath} fill="none" stroke="#080808" strokeWidth={2} />
+                  <text x={4} y={12} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)">TODAY</text>
+                  <text x={chartW - 4} y={12} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)" textAnchor="end">RACE</text>
+                  <text x={4} y={chartH - 4} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)">MAINTAIN</text>
+                  <text x={chartW - 4} y={chartH - 4} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="#FF6B47" textAnchor="end">GOAL</text>
+                </svg>
+                <p style={{
+                  margin: '14px 0 0', fontSize: 13.5, lineHeight: 1.6, color: '#080808',
+                }}>{trajectory.verdict}</p>
+              </div>
+            );
+          })()
+        )}
 
         {/* ── COURSE PROFILE ── */}
         {phases.length > 0 && (

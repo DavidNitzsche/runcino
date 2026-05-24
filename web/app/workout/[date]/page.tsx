@@ -271,6 +271,18 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{ 
                       ))}
                     </ol>
                     <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--color-l2)' }}>
+                      {/* TODAY'S JOB — coach-voice line that translates
+                          today's prescription into goal-relevant action.
+                          Quality days carry a stretch-pace target; long /
+                          easy / rest emphasize the recovery role. Same
+                          field the iPhone renders. */}
+                      {desc.todaysJob && (
+                        <>
+                          <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.4px', color: 'var(--color-corporate)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Today&rsquo;s job</div>
+                          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--color-t1)' }}>{desc.todaysJob}</p>
+                          <div style={{ height: 12 }} />
+                        </>
+                      )}
                       <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.4px', color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>How it should feel</div>
                       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--color-t1)' }}>{desc.effort}</p>
                       <div style={{ fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.4px', color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase', margin: '12px 0 4px' }}>Why this workout</div>

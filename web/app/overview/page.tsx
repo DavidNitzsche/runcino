@@ -31,6 +31,8 @@ import { listRecentSkips } from '@/lib/skip-store';
 import { generateBriefing } from '@/lib/coach-briefing';
 import { resolveFitness } from '@/lib/fitness-resolver';
 import { describeWorkout } from '@/lib/workout-descriptions';
+import { vdotRow } from '@/lib/vdot';
+// listRacesDB already imported below.
 import { planTrainingFueling, type WorkoutFuelingType } from '@/lib/training-fueling';
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
@@ -248,6 +250,43 @@ export default async function OverviewPage() {
     z2Finding,
   ).catch(() => null);
 
+  // ── Race-readiness pill + tune-up nudge ───────────────────────
+  // Mirrors the iPhone Today surfaces. ON_TRACK / BEHIND / AHEAD pill
+  // under the coach line; slim tune-up nudge below when behind with
+  // a 4-12 week window and no tune-up already scheduled. Single source
+  // of truth for thresholds (same headroom math as /api/overview).
+  let raceStatus: 'on-track' | 'behind' | 'ahead' | null = null;
+  let tuneUpNudge = false;
+  if (fitness.activeRace && fitness.activeRace.goalPaceSPerMi > 0 && fitness.vdot.value > 0) {
+    const distKey: 'mileS' | 'km5S' | 'km10S' | 'km15S' | 'halfS' | 'marathonS' | null = (() => {
+      const m = fitness.activeRace.distanceMi;
+      if (Math.abs(m - 13.109) < 0.55) return 'halfS';
+      if (Math.abs(m - 26.219) < 1.05) return 'marathonS';
+      if (Math.abs(m - 6.214) < 0.31) return 'km10S';
+      if (Math.abs(m - 9.32) < 0.47) return 'km15S';
+      if (Math.abs(m - 3.107) < 0.155) return 'km5S';
+      return null;
+    })();
+    const row = vdotRow(Number(fitness.vdot.value));
+    if (row && distKey) {
+      const predicted = row[distKey] as number;
+      const headroom = Math.round((fitness.activeRace.goalFinishS - predicted) / fitness.activeRace.distanceMi);
+      raceStatus = headroom > 5 ? 'ahead' : headroom >= -8 ? 'on-track' : 'behind';
+      // Tune-up nudge: behind + room to act + no upcoming non-A race
+      // in next 6 weeks.
+      if (raceStatus === 'behind' && fitness.activeRace.daysAway >= 28 && fitness.activeRace.daysAway <= 84) {
+        const sixWeekIso = new Date(Date.now() + 42 * 86_400_000).toISOString().slice(0, 10);
+        const allRaces = await listRacesDB(user.id).catch(() => []);
+        const hasTuneUp = allRaces.some((r) => {
+          const pri = r.meta.priority ?? 'A';
+          if (pri === 'A' || pri === 'hilly-excluded') return false;
+          return r.meta.date >= today && r.meta.date <= sixWeekIso;
+        });
+        if (!hasTuneUp) tuneUpNudge = true;
+      }
+    }
+  }
+
   // Title bucket sizing
   const titleLabel = (todayDay?.label || (isRest ? 'REST' : 'RUN')).toUpperCase();
   const titleBucket = lenBucket(titleLabel);
@@ -374,6 +413,71 @@ export default async function OverviewPage() {
           {/* Check-In is interactive (client island) */}
           <CheckInIsland today={today} />
         </div>
+
+        {/* Race-readiness status pill + tune-up nudge. Mirror of
+            iPhone Today surfaces — one-line readout of where you sit
+            vs your A-race goal, with a slim tune-up prompt when
+            behind. Tap-through to /races/[slug] for the full
+            trajectory card. */}
+        {raceStatus && fitness.activeRace && (() => {
+          const statusBg = raceStatus === 'ahead' ? 'rgba(54,168,83,.14)'
+            : raceStatus === 'behind' ? 'rgba(252,77,100,.14)'
+            : 'rgba(8,8,8,.07)';
+          const statusFg = raceStatus === 'ahead' ? '#36A853'
+            : raceStatus === 'behind' ? '#FC4D64'
+            : '#080808';
+          const statusLabel = raceStatus === 'ahead' ? 'AHEAD'
+            : raceStatus === 'behind' ? 'BEHIND'
+            : 'ON TRACK';
+          return (
+            <a
+              href={`/races/${fitness.activeRace.slug}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 12px', borderRadius: 8,
+                background: statusBg,
+                border: `1px solid ${statusFg}40`,
+                textDecoration: 'none', color: 'inherit',
+                marginTop: 12,
+              }}
+            >
+              <span style={{
+                fontFamily: 'Oswald, sans-serif', fontSize: 10,
+                fontWeight: 600, letterSpacing: 1.2, color: statusFg,
+              }}>{statusLabel}</span>
+              <span style={{ color: 'rgba(8,8,8,.35)' }}>·</span>
+              <span style={{
+                fontFamily: 'Inter, sans-serif', fontSize: 12.5,
+                fontWeight: 600, color: '#080808',
+              }}>{fitness.activeRace.name}</span>
+              <span style={{
+                fontFamily: 'Inter, sans-serif', fontSize: 11,
+                color: 'rgba(8,8,8,.55)',
+              }}>· {fitness.activeRace.daysAway}d</span>
+              <span style={{ marginLeft: 'auto', color: 'rgba(8,8,8,.35)', fontSize: 12 }}>›</span>
+            </a>
+          );
+        })()}
+        {tuneUpNudge && fitness.activeRace && (
+          <a
+            href={`/races/${fitness.activeRace.slug}`}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 11px', borderRadius: 8,
+              background: 'rgba(255, 107, 71, .06)',
+              border: '1px solid rgba(255, 107, 71, .22)',
+              textDecoration: 'none', color: 'inherit',
+              marginTop: 8,
+            }}
+          >
+            <span style={{ fontSize: 12, color: '#FF6B47' }}>⚐</span>
+            <span style={{
+              fontFamily: 'Inter, sans-serif', fontSize: 12.5,
+              fontWeight: 500, color: '#080808',
+            }}>Good week for a B-effort tune-up race</span>
+            <span style={{ marginLeft: 'auto', color: 'rgba(8,8,8,.35)', fontSize: 12 }}>›</span>
+          </a>
+        )}
 
         {/* (No separate insights banner, anything worth saying is in the
             coach line above, not a second floating box.) */}
