@@ -220,13 +220,28 @@ struct PlanView: View {
         let work = days.filter { ($0.type ?? "") != "rest" }
         let done = work.filter { overview.isPlanDayDone($0) }.count
         let planned = days.reduce(0.0) { $0 + ($1.distanceMi ?? 0) }
+        // Actual miles run this week — SUM across all planned dates,
+        // using the longest-single-run per day (same gate that drives
+        // the workout-done check). Gives the runner a real "X of Y mi"
+        // read instead of just session count.
+        let completedThisWeek: Double = days.reduce(0.0) { sum, d in
+            guard let date = d.dateISO else { return sum }
+            let mi = overview.longestByDate?[date] ?? overview.completedByDate?[date] ?? 0
+            return sum + mi
+        }
+        // Two progress bars stacked could get noisy — keep the
+        // session-completion bar (more accurate "are we on plan?")
+        // but show mileage as the headline number so the runner sees
+        // BOTH at a glance.
         let frac = work.isEmpty ? 0 : Double(done) / Double(work.count)
-        return VStack(spacing: 9) {
-            HStack {
-                Text("\(done) of \(work.count) done this week").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
-                Spacer()
-                (Text("\(Int(planned)) mi ").font(Faff.F.inter(12.5, .bold)).foregroundStyle(Faff.C.ink)
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline) {
+                (Text("\(String(format: "%.1f", completedThisWeek)) ").font(Faff.F.inter(13, .bold)).foregroundStyle(Faff.C.ink)
+                 + Text("of ").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
+                 + Text("\(Int(planned)) mi ").font(Faff.F.inter(13, .bold)).foregroundStyle(Faff.C.ink)
                  + Text("planned").font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted))
+                Spacer()
+                Text("\(done) of \(work.count) sessions").font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.textMuted)
             }
             FaffProgressBar(fraction: frac)
         }.faffCard(padding: 16)
@@ -352,8 +367,10 @@ struct PlanView: View {
 struct CoachView: View {
     let overview: OverviewResponse
     var body: some View {
-        let dw = overview.todayWorkout
         return FaffScreen(eyebrow: "Coach", title: "Today's Read") {
+            // ── 1. Today's voice ─────────────────────────────────
+            // Compact briefing — same line that opens Today, kept here
+            // so the Coach tab is the consolidated coaching surface.
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Circle().fill(Faff.C.recovery).frame(width: 6, height: 6)
@@ -364,26 +381,210 @@ struct CoachView: View {
                     .font(Faff.F.inter(14)).foregroundStyle(Faff.C.ink).lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            CoachVerdict("Focus", dw.guidance, color: Faff.C.milestone)
-            if let acwr = overview.acwrValue, acwr > 1.3 {
-                CoachVerdict("Back off if",
-                             "Resting HR stays high two mornings, or the legs feel dead, we'll trade the long run for easy miles.",
-                             color: Faff.C.warn)
+
+            // ── 2. Path to your goal ─────────────────────────────
+            // Race trajectory readout — predicted finish, gap, status,
+            // coach-voice verdict. The "where am I vs goal" picture in
+            // one card, so the Coach tab IS the trajectory conversation.
+            if let proj = overview.raceProjection, let race = overview.raceCountdown {
+                pathToGoalCard(proj: proj, raceName: race.name, daysAway: race.days)
             }
-            Text("SIGNALS").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
-            VStack(alignment: .leading, spacing: 12) {
-                if let acwr = overview.acwrValue {
-                    SignalRow("Watching", tone: .amber,
-                              String(format: "Your last week is %.0f%% of your 8-week average, that's ramping fast. Hold easy until it settles.", acwr * 100))
-                }
-                let bankedMi = (overview.completedByDate ?? [:]).values.reduce(0, +)
-                if bankedMi > 0 {
-                    SignalRow("On track", tone: .green,
-                              String(format: "%.1f mi banked this week at conversational effort.", bankedMi))
-                }
-            }
-            .faffCard()
+
+            // ── 3. This week's job ──────────────────────────────
+            // Phase context + the hardest session ahead + volume read.
+            // Tells the runner what THIS WEEK is for, not just today.
+            weekFocusCard
+
+            // ── 4. What I'm watching ────────────────────────────
+            // Color-coded signal rows. Surfaces ALL active signals
+            // (training load + sleep + race trajectory + freshness),
+            // not just the one or two that used to show.
+            watchingCard
+
+            // ── 5. One thing ─────────────────────────────────────
+            // Single most actionable recommendation. Distilled from
+            // the strongest signal. Coaching ends in an instruction,
+            // not an observation.
+            CoachVerdict("One thing", oneThingCopy, color: Faff.C.race)
         }
+    }
+
+    // ── Path to goal card ───────────────────────────────────────
+    @ViewBuilder private func pathToGoalCard(proj: ORaceProjection, raceName: String, daysAway: Int) -> some View {
+        let status = proj.status ?? "on-track"
+        let (statusLabel, statusColor): (String, Color) = {
+            switch status {
+            case "ahead":  return ("AHEAD",    Faff.C.recovery)
+            case "behind": return ("BEHIND",   Faff.C.warn)
+            default:       return ("ON TRACK", Faff.C.race)
+            }
+        }()
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("PATH TO \(raceName.uppercased())")
+                    .font(Faff.F.oswald(11, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                Text(statusLabel)
+                    .font(Faff.F.oswald(10, .semibold)).tracking(1.2)
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(statusColor.opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("PREDICTED").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                    Text(proj.projectedDisplay ?? "-")
+                        .font(Faff.F.display(26)).foregroundStyle(Faff.C.ink)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(daysAway) DAYS OUT").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                    if let h = proj.headroomSPerMi {
+                        let abs = Int(Swift.abs(h))
+                        let sign = h >= 0 ? "+" : "-"
+                        Text("\(sign)\(abs) s/mi")
+                            .font(Faff.F.display(26))
+                            .foregroundStyle(h >= 0 ? Faff.C.recovery : Faff.C.warn)
+                    }
+                }
+            }
+            if let verdict = proj.verdict, !verdict.isEmpty {
+                Text(verdict)
+                    .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
+    }
+
+    // ── This week's job card ────────────────────────────────────
+    @ViewBuilder private var weekFocusCard: some View {
+        let weekMi = overview.state?.volume?.last7Mi ?? 0
+        let plannedThisWeek = (overview.planWeekWorkouts ?? []).reduce(0.0) { $0 + ($1.distanceMi ?? 0) }
+        // The next quality session ahead this week (excluding rest/easy).
+        let nextQuality: OPlanDay? = (overview.planWeekWorkouts ?? [])
+            .filter { ($0.dateISO ?? "") >= (overview.today ?? "") }
+            .first { ($0.isQuality == true) || ["threshold","interval","vo2","quality","tempo","long_mp_block","marathon_specific","hm_specific_continuous","hm_specific_tune","hm_race_rehearsal"].contains(($0.type ?? "").lowercased()) }
+        let phase = overview.planCurrentPhase ?? "Base"
+        VStack(alignment: .leading, spacing: 10) {
+            Text("THIS WEEK · \(phase.uppercased())")
+                .font(Faff.F.oswald(11, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            // Volume read
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(String(format: "%.1f", weekMi))")
+                    .font(Faff.F.display(28)).foregroundStyle(Faff.C.ink)
+                Text("of \(Int(plannedThisWeek)) mi banked")
+                    .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted)
+                Spacer()
+            }
+            // Next hard session
+            if let q = nextQuality {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("NEXT HARD SESSION").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                    Text("\(weekdayShort(q.dateISO)) · \(q.label ?? DerivedWorkout.niceType(q.type ?? ""))")
+                        .font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.ink)
+                    Text(nextHardSessionPurpose(q))
+                        .font(Faff.F.inter(12.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 6)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faffCard()
+    }
+
+    private func weekdayShort(_ iso: String?) -> String {
+        guard let iso, iso.count >= 10 else { return "?" }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        guard let d = f.date(from: String(iso.prefix(10))) else { return "?" }
+        let o = DateFormatter(); o.dateFormat = "EEE"; o.timeZone = TimeZone(identifier: "UTC")
+        return o.string(from: d).uppercased()
+    }
+
+    /// One-line "what this session sets up" — coaching the purpose,
+    /// not just naming the workout. Type-aware copy connects each
+    /// hard session to the goal trajectory.
+    private func nextHardSessionPurpose(_ d: OPlanDay) -> String {
+        let t = (d.type ?? "").lowercased()
+        switch t {
+        case "threshold", "threshold_intervals", "tempo", "sub_threshold":
+            return "Threshold work moves race pace more than any other single session. Hit the band, don't beat it — execution here is what triggers fitness gains."
+        case "interval", "vo2":
+            return "VO₂max reps grow your aerobic ceiling. Full recoveries so every rep is fresh. Pace stays AT the prescribed band, not below."
+        case "long", "long_steady", "medium_long":
+            return "Time on feet builds the endurance that holds pace at mile 11. Conversational throughout — the duration is the work."
+        case "long_progression", "long_mp_block":
+            return "Long run with a goal-pace block — practice the discipline of pacing on tired legs. Race-day rehearsal under controlled fatigue."
+        case "hm_specific_continuous", "hm_specific_tune", "hm_race_rehearsal":
+            return "Half-marathon specificity. Goal pace rehearsal — the most race-like session in the build."
+        case "marathon_specific":
+            return "Marathon-pace combo — teaches you to recover while still holding race pace."
+        case "race":
+            return "Race day. Execute the plan. The work is done; this is collecting receipts."
+        default:
+            return "Quality session — protect today's easy effort so this lands clean."
+        }
+    }
+
+    // ── What I'm watching card ──────────────────────────────────
+    @ViewBuilder private var watchingCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("WHAT I'M WATCHING").font(Faff.F.oswald(11, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+
+            // Training load
+            if let acwr = overview.acwrValue {
+                let pct = Int((acwr * 100).rounded())
+                let tone: Badge.Tone = acwr > 1.3 ? .amber : acwr < 0.8 ? .amber : .green
+                let label = acwr > 1.3 ? "Ramping" : acwr < 0.8 ? "Easing" : "Steady"
+                SignalRow(label, tone: tone,
+                    "Last 7 days at \(pct)% of your 8-week average. \(acwr > 1.3 ? "Hold the easy days easy until it settles." : acwr < 0.8 ? "Volume's coming down — recovery or holding fitness, both fine." : "Right in the sweet spot.")")
+            }
+
+            // Sleep debt
+            if let d = overview.state?.recovery?.sleepDeficit14d, let status = d.status {
+                let tone: Badge.Tone = status == "depleted" ? .warn : status == "building-deficit" ? .amber : .green
+                let label = status == "depleted" ? "Sleep deficit"
+                    : status == "building-deficit" ? "Sleep building deficit"
+                    : status == "banked" ? "Sleep banked" : "Sleep on track"
+                SignalRow(label, tone: tone, d.message ?? "")
+            }
+
+            // Race trajectory (if behind, surface as a watching signal)
+            if overview.raceProjection?.status == "behind" {
+                SignalRow("Race trajectory", tone: .amber,
+                    "Current trend predicts \(overview.raceProjection?.projectedDisplay ?? "—"). A tune-up race in the next 4-6 weeks would tighten the prescription.")
+            }
+
+            // On-track signals — volume banked
+            let bankedMi = (overview.completedByDate ?? [:]).values.reduce(0, +)
+            if bankedMi > 0 {
+                SignalRow("Volume banked", tone: .green,
+                    String(format: "%.1f mi this week at conversational effort.", bankedMi))
+            }
+        }
+        .faffCard()
+    }
+
+    /// "One thing" — single most actionable recommendation based on
+    /// the strongest signal. Coaching ends in an instruction.
+    private var oneThingCopy: String {
+        // Priority: sleep depleted > race behind > ACWR ramping > today's workout focus
+        if let d = overview.state?.recovery?.sleepDeficit14d, d.status == "depleted" {
+            return "Tonight is 8+ hours. Recovery is where adaptation lives, and right now we're outrunning it."
+        }
+        if let acwr = overview.acwrValue, acwr > 1.3 {
+            return "Hold the easy days easy. Your load is ramping — let it settle before the next hard session lands."
+        }
+        if overview.raceProjection?.status == "behind" {
+            return "A B-effort tune-up race in the next 4-6 weeks. Single most-leverage thing you can do to close the gap to goal."
+        }
+        if let d = overview.state?.recovery?.sleepDeficit14d, d.status == "building-deficit" {
+            return "Protect tonight's sleep. The deficit is building, and the next hard session needs it."
+        }
+        return overview.todayWorkout.guidance
     }
 }
 
@@ -474,20 +675,32 @@ struct HealthView: View {
             // Connect lives in Profile; only show it here when NOT connected.
             if !localHealth { connectControl }
 
-            if let z = overview.hrZones {
-                hrAnchorsCard(z)
-                if !z.zones.isEmpty { HrZoneScale(zones: z.zones, framework: z.framework) }
-            }
-            // Sleep deficit (Whoop-style 14-day debt). Renders inline
-            // below HR anchors when we have sleep samples in the window;
-            // hidden when no data so the page stays honest.
+            // Health page ordered by IMPORTANCE, not by what was built
+            // first. David's note: readiness top is fine, then the
+            // signals that actually move training decisions — sleep
+            // debt, daily vitals, body comp, training load. HR Anchors
+            // is a profile setting (now at the bottom, small) and HR
+            // Zones move to the Training/Profile pages where they
+            // belong (not a health signal).
+
+            // 1. Sleep debt — the most actionable recovery signal.
             if let debt = overview.state?.recovery?.sleepDeficit14d {
                 SleepDeficitCard(debt: debt)
             }
+            // 2. Daily-read recovery vitals (HRV / Resting HR / Sleep).
             section("Recovery & Vitals", vitals)
-            section("Body Composition", body)
-            section("Running Dynamics · 30-day avg", dynamics)
+            // 3. Training load (ACWR + volume + freshness).
             section("Training Load", load)
+            // 4. Body composition (long-cycle change).
+            section("Body Composition", body)
+            // 5. Running dynamics — useful, less urgent.
+            section("Running Dynamics · 30-day avg", dynamics)
+            // 6. HR Anchors at the bottom — it's a setting, not a
+            // signal. Edit access stays here so the runner can change
+            // their max/resting HR without hunting through Profile.
+            if let z = overview.hrZones {
+                hrAnchorsCard(z)
+            }
         }
         .sheet(item: $metric) { MetricDetailSheet(metric: $0, overview: overview) }
         .sheet(isPresented: $showReadiness) { ReadinessDetailSheet(overview: overview) }
@@ -1701,13 +1914,16 @@ struct ReadinessDetailSheet: View {
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).faffCard()
 
-                    // The recovery vitals the engine reads.
+                    // The recovery vitals the engine reads. Labels now
+                    // disambiguate "last night" vs "7-day avg" since the
+                    // 'WHAT'S FEEDING IT' section uses last-night sleep
+                    // while this row used to silently default to the
+                    // 7-day average (causing the 6.8/7.9 confusion).
                     vitalsRow
 
-                    // The runner's HR zones, so "hard" vs "easy" is legible.
-                    if let z = overview.hrZones, !z.zones.isEmpty {
-                        HrZoneScale(zones: z.zones, framework: z.framework)
-                    }
+                    // HR zones removed from this sheet — they're a
+                    // training-pace tool, not a readiness signal. Lives
+                    // on the Health page where it actually matters.
 
                     // Honest about gaps, signals we'd use but don't have yet.
                     if !missing.isEmpty {
@@ -1720,9 +1936,10 @@ struct ReadinessDetailSheet: View {
                         }.frame(maxWidth: .infinity, alignment: .leading).faffCard()
                     }
 
-                    CoachVerdict("How readiness works",
-                        "Every day starts at a baseline of 75. Recent training load, how fresh you are, and how your easy pace tracks against heart rate nudge it up or down. 80+ is green, hit the plan. 60–79 is yellow, watch your effort. Under 60 is red, back off. It's a read on your body, not a command; you make the call.",
-                        color: Faff.C.textDim)
+                    // "How readiness works" explainer removed — the
+                    // What's Feeding It rows already make the math
+                    // legible; the paragraph was just plumbing the
+                    // runner already understood.
                 } else {
                     CoachVerdict("No score yet",
                         "Readiness posts once a few recent runs and your Apple Health vitals (HRV, resting HR, sleep) have synced. Keep logging and it'll fill in.",
@@ -1746,14 +1963,18 @@ struct ReadinessDetailSheet: View {
     }
 
     @ViewBuilder private var vitalsRow: some View {
+        // 7-DAY AVERAGES — explicit in the label so it doesn't look
+        // contradictory to the WHAT'S FEEDING IT rows that read
+        // last-night sleep (e.g. "7.9h last night" + "Sleep 6.8h avg"
+        // are both correct — they're just different reads).
         let r = overview.state?.recovery
         let cells: [(String, String, String)] = [
-            ("HRV", r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "-", "ms · 7d"),
-            ("RESTING HR", r?.rhrBpm.map { "\(Int($0))" } ?? "-", "bpm"),
-            ("SLEEP", r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "-", "h · 7d"),
+            ("HRV", r?.hrv7dAvgMs.map { "\(Int($0))" } ?? "-", "ms · 7-day avg"),
+            ("RESTING HR", r?.rhrBpm.map { "\(Int($0))" } ?? "-", "bpm · 7-day avg"),
+            ("SLEEP", r?.sleep7dAvgHrs.map { String(format: "%.1f", $0) } ?? "-", "h · 7-day avg"),
         ]
         VStack(alignment: .leading, spacing: 10) {
-            Text("VITALS FEEDING IT").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+            Text("YOUR 7-DAY AVERAGES").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
             HStack(spacing: 10) {
                 ForEach(cells, id: \.0) { c in
                     VStack(alignment: .leading, spacing: 3) {
@@ -2071,6 +2292,32 @@ struct PlanDayDetailSheet: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }.faffCard()
                 }
+                // Full gel timeline when this workout warrants fuel
+                // (parity with WorkoutDetailView). The Plan-tab sheet
+                // was previously dropping this — Sunday's long run
+                // would show the 3-gel plan only on the Today tab.
+                if let f = day.fueling, f.needed {
+                    // Pace center from the band so the breakdown can
+                    // convert each gel-leg's minutes into miles. Falls
+                    // back to nil → breakdown hides the mileage.
+                    let paceCenter: Double? = {
+                        guard let lo = day.paceTargetSPerMi?.lowS, lo > 0 else { return nil }
+                        let hi = day.paceTargetSPerMi?.highS ?? lo
+                        return (lo + hi) / 2
+                    }()
+                    FuelingBreakdown(
+                        fueling: f,
+                        paceSPerMi: paceCenter,
+                        totalDurationMin: day.durationMin,
+                        finishMi: day.distanceMi
+                    )
+                }
+                // TODAY'S JOB coach-voice line — translates the
+                // prescription into goal-relevant action. Same field
+                // the WorkoutDetailView reads.
+                if let job = detail?.description?.todaysJob, !job.isEmpty {
+                    CoachVerdict("Today's job", job, color: Faff.C.race)
+                }
                 if let why = detail?.description?.why, !why.isEmpty {
                     CoachVerdict("Why this run", why, color: Faff.C.recovery)
                 }
@@ -2114,11 +2361,11 @@ struct PlanDayDetailSheet: View {
 
 // MARK: - Path to your goal (race trajectory card)
 
-/// Race-detail trajectory card. Shows where the runner currently sits
-/// vs their goal, the 12-week trajectory chart (maintain line + plan
-/// line + goal line), and a coach-voice verdict. Doctrine: when behind,
-/// the verdict points to a tune-up race as the lever that closes gaps
-/// in the available timeline.
+/// Race-detail trajectory card. Mirrors the web Race detail panel:
+/// 3-stat grid (CURRENT FITNESS · GAP · TRAJECTORY) + smooth
+/// projection curve + COACH'S NEXT MOVE narrative + sign-off.
+/// Single source of truth with web for what the runner sees about
+/// race readiness.
 struct PathToGoalCard: View {
     let projection: ORaceProjection
     let goalDisplay: String?
@@ -2132,6 +2379,9 @@ struct PathToGoalCard: View {
             default:         return ("ON TRACK", Faff.C.race)
             }
         }()
+        let head = projection.headroomSPerMi ?? 0
+        let gapSign = head >= 0 ? "−" : "+"   // negative headroom (behind) → +X s/mi gap
+        let gapAbs = Int(Swift.abs(head))
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Text("PATH TO YOUR GOAL")
@@ -2146,41 +2396,129 @@ struct PathToGoalCard: View {
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
 
-            // Headline numbers: current predicted finish vs goal.
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("PREDICTED").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
-                    Text(projection.projectedDisplay ?? "-")
-                        .font(Faff.F.display(28)).foregroundStyle(Faff.C.ink)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("GOAL").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
-                    Text(goalDisplay ?? "-")
-                        .font(Faff.F.display(28)).foregroundStyle(Faff.C.ink)
-                }
+            // 3-stat grid — CURRENT FITNESS · GAP TO GOAL · TRAJECTORY
+            // Mirrors the web race-detail page. "Trajectory" shows the
+            // status label here; the narrative + chart live below.
+            HStack(alignment: .top, spacing: 10) {
+                statCell(
+                    label: "CURRENT FITNESS",
+                    value: projection.projectedDisplay ?? "-",
+                    sub: "at your fitness score of \(String(format: "%.1f", projection.vdot ?? 0))"
+                )
+                statCell(
+                    label: "GAP TO GOAL",
+                    value: "\(gapSign)\(formatGap(gapAbs))",
+                    sub: head >= 0 ? "room to spare" : "behind goal pace",
+                    valueColor: head >= 0 ? Faff.C.recovery : Faff.C.warn
+                )
+                statCell(
+                    label: "TRAJECTORY",
+                    value: statusLabel,
+                    sub: trajectorySubLabel(status: status),
+                    valueColor: statusColor,
+                    valueIsLabel: true
+                )
             }
 
-            // Trajectory chart — simple line plot of maintain vs plan
-            // vs goal across the weeks remaining. Drawn natively (Swift
-            // Charts requires iOS 16+ and we already have a working
-            // canvas pattern elsewhere; reuse a manual Path here for
-            // visual simplicity).
+            // Smooth projection curve (12 weeks). Replaces the old
+            // two-line maintain/plan chart with a single curve +
+            // gradient fill + NOW marker + dashed goal line.
             if let pts = projection.points, pts.count >= 2,
                let goalS = projection.goalFinishS {
                 TrajectoryChart(points: pts, goalFinishS: goalS)
-                    .frame(height: 110)
+                    .frame(height: 120)
             }
 
-            // Coach-voice verdict.
+            // Coach voice verdict (the main read).
             if let verdict = projection.verdict, !verdict.isEmpty {
                 Text(verdict)
                     .font(Faff.F.inter(13)).foregroundStyle(Faff.C.ink).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            // "What would change our mind" — gives the runner a
+            // concrete falsifier. Only shown for BEHIND status (the
+            // case where the read could flip with new evidence).
+            if status == "behind" {
+                CoachVerdict(
+                    "What would change our mind",
+                    "A single faster threshold workout OR 5+ s/mi Z2 pace improvement OR a faster interval session in the next two weeks would weaken this read.",
+                    color: Faff.C.milestone
+                )
+            }
+
+            // COACH'S NEXT MOVE narrative — concrete near-term
+            // direction. Pulls from race week index + phase.
+            CoachVerdict(
+                "Coach's next move",
+                coachNextMove(status: status, weeksToRace: projection.weeksToRace ?? 12),
+                color: Faff.C.race
+            )
+
+            // Sign-off — rotates by status. Constant doctrine, but
+            // shifts tone with where the runner sits.
+            Text(signOff(status: status))
+                .font(Faff.F.inter(12.5, .medium)).foregroundStyle(Faff.C.textMuted)
+                .italic()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .faffCard()
+    }
+
+    private func statCell(label: String, value: String, sub: String,
+                          valueColor: Color = Faff.C.ink,
+                          valueIsLabel: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+            Text(value)
+                .font(valueIsLabel ? Faff.F.oswald(18, .semibold) : Faff.F.display(22))
+                .foregroundStyle(valueColor)
+            Text(sub).font(Faff.F.inter(10.5)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Faff.C.bg.opacity(0.5),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func formatGap(_ s: Int) -> String { "\(s) s/mi" }
+
+    private func trajectorySubLabel(status: String) -> String {
+        switch status {
+        case "ahead":  return "ahead of plan, hold sharp"
+        case "behind": return "gap isn't closing yet"
+        default:       return "on the curve"
+        }
+    }
+
+    /// Coach's next move — forward-looking direction based on status
+    /// and weeks-to-race. Coach voice, ends with a concrete action.
+    private func coachNextMove(status: String, weeksToRace: Int) -> String {
+        if status == "ahead" {
+            return "You're ahead of the timeline. Don't chase more. Execute the easy days, hit the prescribed threshold band, let the taper sharpen. The race wants freshness, not heroics."
+        }
+        if status == "behind" {
+            if weeksToRace >= 8 {
+                return "Build the aerobic base for the next few weeks. The threshold work tightens as fitness comes online. A B-effort tune-up race in 4-6 weeks gives me a clean read and pulls the prescription faster."
+            }
+            return "Less time to find the gap. Protect the quality sessions, get the long-run distance in, sleep is non-negotiable. A short tune-up race in the next 2-3 weeks is the highest-leverage move."
+        }
+        // on-track
+        if weeksToRace >= 8 {
+            return "You're on the curve. The early weeks are aerobic base — don't over-cook the threshold. The Build phase opens in about \(max(0, weeksToRace - 4)) weeks; that's when race pace starts to feel sustainable."
+        }
+        return "On the curve and close enough. Threshold execution and long-run consistency for the next \(weeksToRace) weeks. The plan is the plan."
+    }
+
+    private func signOff(status: String) -> String {
+        switch status {
+        case "ahead":  return "Trust the work. The race is won by the runner who didn't try to win the workouts."
+        case "behind": return "The gap closes in the boring miles. Show up, hit the band, repeat."
+        default:       return "Trust the easy. The race is won in the workouts you didn't try to win."
+        }
     }
 }
 
@@ -2194,71 +2532,121 @@ struct TrajectoryChart: View {
 
     var body: some View {
         GeometryReader { geo in
-            // Compute the y-range from all data so the trend is
-            // visible. Locals captured by the closures below; can't
-            // declare nested funcs inside a ViewBuilder closure.
+            // Single smooth curve from today → race day, styled like
+            // the reference: orange line with subtle gradient fill,
+            // dashed goal line across the top, a NOW marker on the
+            // current point. Two-line maintain/plan was visually
+            // busy and the maintain reference rarely told you
+            // anything actionable — dropped.
             let w = geo.size.width
             let h = geo.size.height
-            let times = points.compactMap { $0.planFinishS }
-                + points.compactMap { $0.maintainFinishS }
-                + [goalFinishS]
-            let lo = (times.min() ?? goalFinishS) - 30
-            let hi = (times.max() ?? goalFinishS) + 30
+            // y-range: goal at the top, current at the bottom. Add
+            // headroom so the curve doesn't kiss the chart edges.
+            let times = points.compactMap { $0.planFinishS } + [goalFinishS]
+            let dataMin = times.min() ?? goalFinishS
+            let dataMax = times.max() ?? goalFinishS
+            let span = max(60, dataMax - dataMin)
+            let lo = dataMin - Int(Double(span) * 0.15)
+            let hi = dataMax + Int(Double(span) * 0.15)
             let yRange = max(1.0, Double(hi - lo))
             let n = max(1, points.count - 1)
             let xFor: (Int) -> CGFloat = { i in CGFloat(i) / CGFloat(n) * w }
             let yFor: (Int) -> CGFloat = { s in CGFloat(1.0 - (Double(s) - Double(lo)) / yRange) * h }
+            let goalY = yFor(goalFinishS)
+            // Sample points on the plan curve
+            let curvePts: [CGPoint] = points.enumerated().map { (i, pt) in
+                CGPoint(x: xFor(i), y: yFor(pt.planFinishS ?? goalFinishS))
+            }
 
             ZStack {
-                // Goal line (dashed, race color)
+                // Subtle gradient fill under the curve (anchored to
+                // the chart bottom). Race color, low opacity.
                 Path { p in
-                    p.move(to: CGPoint(x: 0, y: yFor(goalFinishS)))
-                    p.addLine(to: CGPoint(x: w, y: yFor(goalFinishS)))
+                    guard let first = curvePts.first else { return }
+                    p.move(to: CGPoint(x: first.x, y: h))
+                    smoothCurve(through: curvePts, into: &p)
+                    if let last = curvePts.last {
+                        p.addLine(to: CGPoint(x: last.x, y: h))
+                    }
+                    p.closeSubpath()
                 }
-                .stroke(Faff.C.race.opacity(0.65),
+                .fill(
+                    LinearGradient(
+                        colors: [Faff.C.race.opacity(0.22), Faff.C.race.opacity(0.02)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+
+                // Dashed horizontal goal line
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: goalY))
+                    p.addLine(to: CGPoint(x: w, y: goalY))
+                }
+                .stroke(Faff.C.recovery.opacity(0.65),
                         style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
 
-                // Maintain line (flat, grey)
+                // The smooth plan curve (single line, race color)
                 Path { p in
-                    for (i, pt) in points.enumerated() {
-                        let yy = yFor(pt.maintainFinishS ?? goalFinishS)
-                        if i == 0 { p.move(to: CGPoint(x: xFor(i), y: yy)) }
-                        else { p.addLine(to: CGPoint(x: xFor(i), y: yy)) }
-                    }
+                    guard let first = curvePts.first else { return }
+                    p.move(to: first)
+                    smoothCurve(through: curvePts, into: &p)
                 }
-                .stroke(Faff.C.textFaint, lineWidth: 1.5)
+                .stroke(Faff.C.race, lineWidth: 2.5)
 
-                // Plan line (curving toward goal, ink)
-                Path { p in
-                    for (i, pt) in points.enumerated() {
-                        let yy = yFor(pt.planFinishS ?? goalFinishS)
-                        if i == 0 { p.move(to: CGPoint(x: xFor(i), y: yy)) }
-                        else { p.addLine(to: CGPoint(x: xFor(i), y: yy)) }
-                    }
+                // NOW marker on the first point
+                if let now = curvePts.first {
+                    Circle().stroke(Faff.C.race, lineWidth: 2)
+                        .frame(width: 11, height: 11)
+                        .background(Circle().fill(Color.white))
+                        .position(x: now.x, y: now.y)
                 }
-                .stroke(Faff.C.ink, lineWidth: 2)
             }
-            // Axis labels at the corners
-            .overlay(alignment: .topLeading) {
-                Text("TODAY").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
-                    .foregroundStyle(Faff.C.textFaint)
-                    .padding(.top, 2)
-            }
+            // Goal label on the dashed line, top-right
             .overlay(alignment: .topTrailing) {
-                Text("RACE").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
-                    .foregroundStyle(Faff.C.textFaint)
-                    .padding(.top, 2)
+                Text("GOAL").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
+                    .foregroundStyle(Faff.C.recovery)
+                    .padding(.top, max(0, goalY - 12)).padding(.trailing, 4)
             }
             .overlay(alignment: .bottomLeading) {
-                Text("MAINTAIN").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
+                Text("NOW").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
                     .foregroundStyle(Faff.C.textFaint)
                     .padding(.bottom, 2)
             }
             .overlay(alignment: .bottomTrailing) {
-                Text("GOAL").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
-                    .foregroundStyle(Faff.C.race.opacity(0.85))
+                Text("RACE DAY").font(Faff.F.inter(8.5, .semibold)).tracking(0.8)
+                    .foregroundStyle(Faff.C.textFaint)
                     .padding(.bottom, 2)
             }
+        }
+    }
+
+    /// Cardinal-spline smoothing through a series of points. Produces
+    /// a soft curve rather than zig-zagging line segments — much
+    /// closer to the reference's "trend" look.
+    private func smoothCurve(through pts: [CGPoint], into path: inout Path) {
+        guard pts.count >= 2 else { return }
+        if pts.count == 2 {
+            path.addLine(to: pts[1])
+            return
+        }
+        // Move to first point (caller should have already moved there
+        // OR we extend from current point — extend, since caller may
+        // have moved for the fill path).
+        let tension: CGFloat = 0.5
+        for i in 0..<(pts.count - 1) {
+            let p0 = i == 0 ? pts[0] : pts[i - 1]
+            let p1 = pts[i]
+            let p2 = pts[i + 1]
+            let p3 = i + 2 < pts.count ? pts[i + 2] : pts[i + 1]
+            let c1 = CGPoint(
+                x: p1.x + (p2.x - p0.x) * tension / 3,
+                y: p1.y + (p2.y - p0.y) * tension / 3
+            )
+            let c2 = CGPoint(
+                x: p2.x - (p3.x - p1.x) * tension / 3,
+                y: p2.y - (p3.y - p1.y) * tension / 3
+            )
+            path.addCurve(to: p2, control1: c1, control2: c2)
         }
     }
 }

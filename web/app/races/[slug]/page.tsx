@@ -740,34 +740,56 @@ export default async function RacePlanPage({ params }: PageProps) {
             const statusLabel = trajectory.status === 'ahead' ? 'AHEAD'
               : trajectory.status === 'behind' ? 'BEHIND'
               : 'ON TRACK';
-            // Build the trajectory chart inline. Three lines:
-            // maintain (flat, grey), plan (curving toward goal, ink),
-            // goal (horizontal dashed, race-color). Auto-fits y to data.
+            // Single smooth curve (cardinal-spline) from today → race,
+            // styled like the reference: race-color line + gradient
+            // fill under + dashed goal across top + NOW marker.
+            // Maintain line dropped — visually noisy and rarely actionable.
             const chartW = 560;
-            const chartH = 120;
-            const padL = 0, padR = 0, padT = 8, padB = 18;
+            const chartH = 160;
+            const padT = 18, padB = 22;
             const pts = trajectory.points;
             const times = [
               ...pts.map((p) => p.planFinishS),
-              ...pts.map((p) => p.maintainFinishS),
               trajectory.goalFinishS,
             ];
-            const lo = Math.min(...times) - 30;
-            const hi = Math.max(...times) + 30;
+            const dataMin = Math.min(...times);
+            const dataMax = Math.max(...times);
+            const span = Math.max(60, dataMax - dataMin);
+            const lo = dataMin - Math.round(span * 0.15);
+            const hi = dataMax + Math.round(span * 0.15);
             const yRange = Math.max(1, hi - lo);
             const n = Math.max(1, pts.length - 1);
-            const xFor = (i: number) => padL + (i / n) * (chartW - padL - padR);
+            const xFor = (i: number) => (i / n) * chartW;
             const yFor = (s: number) => padT + (1 - (s - lo) / yRange) * (chartH - padT - padB);
             const goalY = yFor(trajectory.goalFinishS);
-            const maintainPath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i).toFixed(1)},${yFor(p.maintainFinishS).toFixed(1)}`).join(' ');
-            const planPath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i).toFixed(1)},${yFor(p.planFinishS).toFixed(1)}`).join(' ');
+            // Cardinal-spline smoothing through plan points
+            const curveD = (() => {
+              const cp = pts.map((p, i) => ({ x: xFor(i), y: yFor(p.planFinishS) }));
+              if (cp.length < 2) return cp.length === 1 ? `M${cp[0].x},${cp[0].y}` : '';
+              let d = `M${cp[0].x.toFixed(1)},${cp[0].y.toFixed(1)}`;
+              const tension = 0.5;
+              for (let i = 0; i < cp.length - 1; i++) {
+                const p0 = i === 0 ? cp[0] : cp[i - 1];
+                const p1 = cp[i];
+                const p2 = cp[i + 1];
+                const p3 = i + 2 < cp.length ? cp[i + 2] : cp[i + 1];
+                const c1x = p1.x + (p2.x - p0.x) * tension / 3;
+                const c1y = p1.y + (p2.y - p0.y) * tension / 3;
+                const c2x = p2.x - (p3.x - p1.x) * tension / 3;
+                const c2y = p2.y - (p3.y - p1.y) * tension / 3;
+                d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+              }
+              return d;
+            })();
+            const fillD = curveD ? `${curveD} L${chartW},${chartH} L0,${chartH} Z` : '';
+            const nowPt = pts.length > 0 ? { x: xFor(0), y: yFor(pts[0].planFinishS) } : null;
             return (
               <div className="card" style={{ marginBottom: 16 }}>
                 <div className="card-header">
                   <div className="card-title-group">
                     <div className="card-title">Path to your goal</div>
                     <div className="card-sub">
-                      {trajectory.weeksToRace} weeks to race · maintain trajectory vs. plan trajectory vs. goal line
+                      {trajectory.weeksToRace} weeks to race · projected finish curve vs. goal line
                     </div>
                   </div>
                   <div style={{
@@ -795,14 +817,30 @@ export default async function RacePlanPage({ params }: PageProps) {
                     </div>
                   </div>
                 </div>
-                <svg viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" style={{ width: '100%', height: 120, display: 'block' }}>
-                  <line x1={0} y1={goalY} x2={chartW} y2={goalY} stroke="#FF6B47" strokeOpacity={0.65} strokeWidth={1.5} strokeDasharray="4,3" />
-                  <path d={maintainPath} fill="none" stroke="rgba(8,8,8,.35)" strokeWidth={1.5} />
-                  <path d={planPath} fill="none" stroke="#080808" strokeWidth={2} />
-                  <text x={4} y={12} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)">TODAY</text>
-                  <text x={chartW - 4} y={12} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)" textAnchor="end">RACE</text>
-                  <text x={4} y={chartH - 4} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)">MAINTAIN</text>
-                  <text x={chartW - 4} y={chartH - 4} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="#FF6B47" textAnchor="end">GOAL</text>
+                <svg viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" style={{ width: '100%', height: 160, display: 'block' }}>
+                  <defs>
+                    <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#FF6B47" stopOpacity="0.22" />
+                      <stop offset="100%" stopColor="#FF6B47" stopOpacity="0.02" />
+                    </linearGradient>
+                  </defs>
+                  {/* Gradient fill under the curve */}
+                  {fillD && <path d={fillD} fill="url(#trajFill)" />}
+                  {/* Dashed horizontal goal line */}
+                  <line x1={0} y1={goalY} x2={chartW} y2={goalY}
+                    stroke="#36A853" strokeOpacity={0.65} strokeWidth={1.5} strokeDasharray="4,3" />
+                  {/* The single smooth plan curve */}
+                  {curveD && <path d={curveD} fill="none" stroke="#FF6B47" strokeWidth={2.5} strokeLinecap="round" />}
+                  {/* NOW marker on the first point */}
+                  {nowPt && (
+                    <>
+                      <circle cx={nowPt.x} cy={nowPt.y} r={6} fill="white" stroke="#FF6B47" strokeWidth={2} />
+                    </>
+                  )}
+                  {/* Axis labels */}
+                  <text x={4} y={chartH - 6} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)">NOW</text>
+                  <text x={chartW - 4} y={chartH - 6} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)" textAnchor="end">RACE DAY</text>
+                  <text x={chartW - 4} y={Math.max(11, goalY - 5)} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="#36A853" textAnchor="end">GOAL · {trajectory.goalDisplay}</text>
                 </svg>
                 <p style={{
                   margin: '14px 0 0', fontSize: 13.5, lineHeight: 1.6, color: '#080808',
