@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Color Pass v1 — Current vs Vibrant</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+/* ── Page chrome ─────────────────────────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #E6E8EF;
+  font-family: 'Inter', sans-serif;
+  color: #080808;
+  padding: 32px 24px 80px;
+}
+.wrap { max-width: 1280px; margin: 0 auto; }
+h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 48px; letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+.subtitle {
+  font-size: 14px; color: rgba(8,8,8,.55);
+  margin-bottom: 8px;
+}
+.intro {
+  font-size: 13.5px; color: rgba(8,8,8,.65);
+  line-height: 1.55;
+  margin-bottom: 32px; max-width: 780px;
+}
+.intro b { color: #080808; }
+
+/* ── Palette swatches ────────────────────────────────────────────── */
+.palette-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 40px;
+}
+.palette-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px 22px;
+}
+.palette-card.dark {
+  background: #1a0f2e;
+  color: white;
+}
+.palette-label {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600; font-size: 11px; letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(8,8,8,.55);
+  margin-bottom: 12px;
+}
+.palette-card.dark .palette-label { color: rgba(255,255,255,.55); }
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.swatch {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  display: flex;
+  align-items: flex-end;
+  padding: 6px 7px;
+  font-family: 'Inter', sans-serif;
+  font-size: 9px; font-weight: 600;
+  color: white;
+  text-shadow: 0 1px 1px rgba(0,0,0,.25);
+}
+
+/* ── Comparison columns ──────────────────────────────────────────── */
+.section-h {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 0.5px;
+  margin: 36px 0 10px;
+  display: flex; align-items: baseline; gap: 12px;
+}
+.section-h small {
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: rgba(8,8,8,.55);
+  text-transform: none;
+}
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: stretch;
+}
+.col-label {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600; font-size: 10px; letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(8,8,8,.50);
+  margin-bottom: 8px;
+}
+.cell {
+  min-height: 100%;
+}
+
+/* ── COMPONENT: Today workout hero ───────────────────────────────── */
+.today-hero { padding: 20px 22px; border-radius: 14px; background: white; }
+.today-hero .eyebrow { font-family:'Inter',sans-serif; font-size:10px; letter-spacing:1.6px; font-weight:600; color: rgba(8,8,8,.55); text-transform: uppercase; margin-bottom: 6px;}
+.today-hero h2 { font-family:'Bebas Neue',sans-serif; font-size:48px; letter-spacing:-0.5px; line-height:.95; margin-bottom:16px; }
+.today-hero .stats { display:flex; gap:12px; }
+.today-hero .stat { flex:1; padding:9px 11px; border-radius:8px; background:#F6F7F8; }
+.today-hero .stat .v { font-family:'Bebas Neue',sans-serif; font-size:18px; }
+.today-hero .stat .l { font-family:'Inter',sans-serif; font-size:9px; letter-spacing:.8px; color:rgba(8,8,8,.50); font-weight:600; text-transform:uppercase; margin-top:2px;}
+.today-hero .cta { display:flex; gap:8px; margin-top: 14px; }
+.today-hero .btn { padding:11px 14px; border-radius:7px; font-family:'Oswald',sans-serif; font-weight:600; font-size:11px; letter-spacing:1.2px; cursor:pointer; border:1px solid rgba(8,8,8,.16); background:white; color:rgba(8,8,8,.65);}
+.today-hero .btn.primary { background:#E88021; color:white; border-color:#E88021; }
+
+/* NEW palette tweaks */
+.v2 .today-hero .btn.primary { background:#FF6B47; border-color:#FF6B47; }
+.v2 .today-hero .stat .v { color: #080808; }
+
+/* ── COMPONENT: Race countdown ───────────────────────────────────── */
+.race-card {
+  padding: 20px 22px; border-radius: 14px;
+  background: linear-gradient(135deg, #F07340 0%, #C44A18 100%);
+  color: white;
+}
+.v2 .race-card {
+  background: linear-gradient(135deg, #FF8A65 0%, #E64A19 100%);
+}
+.race-card h2 { font-family:'Bebas Neue',sans-serif; font-size:34px; letter-spacing:-0.5px; line-height: 0.95; }
+.race-card .top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px;}
+.race-card .chip { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid white; display:inline-flex; align-items:center; justify-content:center; font-family:'Oswald',sans-serif; font-weight:600; font-size:11px;}
+.race-card .date { margin-top:8px; font-size:12px; opacity:.9; }
+.race-card .countdown { margin-top: 14px; display:flex; align-items: baseline; gap:6px; }
+.race-card .countdown .n { font-family:'Bebas Neue',sans-serif; font-size: 56px; line-height: 0.85; }
+.race-card .countdown .l { font-size: 12px; font-weight: 600; opacity: .9; }
+.race-card .stat-row { display:flex; gap:12px; margin-top: 16px; }
+.race-card .stat { flex:1; }
+.race-card .stat .v { font-family:'Bebas Neue',sans-serif; font-size:26px; line-height:1; }
+.race-card .stat .l { font-size:9.5px; font-weight:600; letter-spacing:.9px; opacity:.78; text-transform:uppercase; margin-top: 4px; }
+
+/* ── COMPONENT: Race-day projected finish hero ───────────────────── */
+.race-day {
+  padding: 28px 30px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #2a1545 0%, #1a0928 100%);
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+.race-day::after {
+  content:""; position:absolute; inset:0;
+  background: radial-gradient(circle at 80% 40%, rgba(255,107,71,.15), transparent 50%);
+  pointer-events:none;
+}
+.race-day .meta {
+  font-family:'Inter',sans-serif; font-size: 11px; letter-spacing: 1.2px;
+  font-weight: 600; color: rgba(255,255,255,.55); text-transform:uppercase;
+  display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;
+  position: relative; z-index: 1;
+}
+.race-day .badge {
+  background: rgba(54, 168, 83, .15);
+  color: #36A853;
+  padding: 5px 10px; border-radius: 100px;
+  font-size: 10px; letter-spacing: 0.8px;
+  display:inline-flex; align-items:center; gap:6px;
+  box-shadow: 0 0 14px rgba(54, 168, 83, .35);
+}
+.race-day .badge::before { content:""; width: 6px; height: 6px; border-radius: 50%; background: #36A853; box-shadow: 0 0 6px #36A853;}
+.race-day .headline {
+  font-family:'Oswald',sans-serif; font-weight: 700;
+  font-size: 64px; line-height: 0.9; letter-spacing: -0.5px;
+  position: relative; z-index: 1;
+}
+.race-day .headline .orange { color: #FF8A65; }
+.race-day .projected {
+  font-family:'Oswald',sans-serif; font-weight: 700;
+  font-size: 96px; line-height: 1; letter-spacing: -2px;
+  color: #FF8A65; margin-top: 8px;
+  position: relative; z-index: 1;
+}
+.race-day .projected small { font-size: 16px; letter-spacing: 1px; color: rgba(255,255,255,.55); margin-left: 14px; }
+.race-day .stat-row { display:grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.10); position: relative; z-index: 1;}
+.race-day .stat-row .l { font-size: 10px; letter-spacing: 0.9px; color: rgba(255,255,255,.55); text-transform: uppercase; font-weight: 600; }
+.race-day .stat-row .v { font-family:'Oswald',sans-serif; font-weight: 600; font-size: 26px; margin-top: 4px; }
+.race-day .stat-row .v.green { color: #5BC57F; }
+.race-day .stat-row .v.orange { color: #FF8A65; }
+
+/* CURRENT version of race-day = orange gradient (race-color brand) */
+.v1 .race-day {
+  background: linear-gradient(135deg, #F07340 0%, #C44A18 100%);
+}
+.v1 .race-day .headline .orange,
+.v1 .race-day .projected,
+.v1 .race-day .stat-row .v.orange { color: white; }
+.v1 .race-day .badge { background: rgba(255,255,255,.18); color: white; box-shadow: none; }
+.v1 .race-day .badge::before { background: white; box-shadow: none; }
+.v1 .race-day .stat-row .v.green { color: #DCFAE3; }
+
+/* ── COMPONENT: Race phase tiles ─────────────────────────────────── */
+.phase-strip { display:grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.phase-tile {
+  border-radius: 12px; padding: 14px 14px 16px; color: white;
+  min-height: 120px;
+  display:flex; flex-direction: column; justify-content:space-between;
+}
+.phase-tile .n { font-family:'Bebas Neue',sans-serif; font-size: 36px; line-height: 0.9; }
+.phase-tile .name { font-family:'Oswald',sans-serif; font-weight:600; font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase; margin-top: 8px;}
+.phase-tile .meta { font-family: 'Inter', monospace; font-size: 10px; opacity: .82; margin-top: 2px;}
+.phase-tile .pace { font-family:'Bebas Neue',sans-serif; font-size: 24px; margin-top: 6px; }
+
+/* CURRENT phase colors (from app globals.css phase-0..4) */
+.v1 .phase-tile.t1 { background: #3EBD41; }
+.v1 .phase-tile.t2 { background: #F3AD38; }
+.v1 .phase-tile.t3 { background: #D03F3F; }
+.v1 .phase-tile.t4 { background: #27B4E0; }
+.v1 .phase-tile.t5 { background: #6227E0; }
+.v1 .phase-tile.t6 { background: #080808; }
+.v1 .phase-tile.t6 .pace { color: #F3AD38; }
+
+/* NEW phase colors (slightly punchier saturation, more vibrant) */
+.v2 .phase-tile.t1 { background: #36A853; }
+.v2 .phase-tile.t2 { background: #F2A33C; }
+.v2 .phase-tile.t3 { background: #E15A52; }
+.v2 .phase-tile.t4 { background: #2D8FE0; }
+.v2 .phase-tile.t5 { background: #7B3FE4; }
+.v2 .phase-tile.t6 { background: #0F0F12; }
+.v2 .phase-tile.t6 .pace { color: #FF8A65; }
+
+/* ── COMPONENT: Peak block week tiles ────────────────────────────── */
+.peak-row { display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.peak-tile {
+  border-radius: 10px; padding: 10px 11px 12px;
+  background: #F6F7F8; color: #080808;
+  display:flex; flex-direction: column;
+  min-height: 100px;
+}
+.peak-tile .w { font-family:'Inter',sans-serif; font-size: 9px; letter-spacing: 1.0px; font-weight: 600; color: rgba(8,8,8,.50); text-transform: uppercase;}
+.peak-tile .mi { font-family:'Bebas Neue',sans-serif; font-size: 32px; line-height: 0.95; margin-top: 4px; }
+.peak-tile .label { font-family:'Oswald',sans-serif; font-weight: 600; font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase; margin-top: auto; color: rgba(8,8,8,.65);}
+.peak-tile .day { font-family:'Inter',sans-serif; font-size: 9.5px; font-weight: 500; color: rgba(8,8,8,.45); margin-top: 4px; }
+
+/* Highlighted week (PEAK) — black on cream in mockup */
+.peak-tile.cream { background: #F1E6C8; }
+.v1 .peak-tile.cream .mi { color: #080808; }
+.v2 .peak-tile.cream { background: #F1E6C8; }
+.v2 .peak-tile.cream .mi { color: #080808; }
+
+.peak-tile.dark { background: #0F0F12; color: white; }
+.peak-tile.dark .w { color: rgba(255,255,255,.55); }
+.peak-tile.dark .label { color: rgba(255,255,255,.65); }
+.peak-tile.dark .day { color: rgba(255,255,255,.55); }
+.v1 .peak-tile.dark .w { color: #F07340; }
+.v2 .peak-tile.dark .w { color: #FF8A65; }
+
+.peak-tile.faded { opacity: .35; }
+
+/* ── COMPONENT: Tab bar ──────────────────────────────────────────── */
+.tabbar {
+  background: white; border-radius: 14px; padding: 8px;
+  display:flex; gap: 4px;
+}
+.tab {
+  flex: 1; text-align:center; padding: 10px 8px;
+  font-family:'Oswald',sans-serif; font-weight: 600; font-size: 10px;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  color: rgba(8,8,8,.45);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.tab.active { background: #080808; color: white; }
+.v2 .tab.active { background: #0F0F12; color: white; }
+.v2 .tab.active .dot { display:inline-block; width: 5px; height: 5px; border-radius: 50%; background: #FF8A65; margin-right: 5px; }
+
+/* ── COMPONENT: Status pill ──────────────────────────────────────── */
+.status-row { display:flex; gap: 8px; flex-wrap: wrap; }
+.pill {
+  font-family:'Oswald',sans-serif; font-weight: 600; font-size: 10px;
+  letter-spacing: 1.2px; padding: 5px 11px; border-radius: 100px;
+  display:inline-flex; align-items:center; gap: 6px;
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; }
+.v1 .pill.green { background: rgba(62, 189, 65, .14); color: #3EBD41; }
+.v1 .pill.green .dot { background: #3EBD41; }
+.v1 .pill.amber { background: rgba(243, 173, 56, .14); color: #B8842C; }
+.v1 .pill.amber .dot { background: #F3AD38; }
+.v1 .pill.warn { background: rgba(252, 77, 100, .14); color: #FC4D64; }
+.v1 .pill.warn .dot { background: #FC4D64; }
+.v2 .pill.green { background: rgba(54, 168, 83, .14); color: #36A853; box-shadow: 0 0 10px rgba(54,168,83,.25); }
+.v2 .pill.green .dot { background: #36A853; box-shadow: 0 0 6px #36A853; }
+.v2 .pill.amber { background: rgba(242, 163, 60, .14); color: #C77816; }
+.v2 .pill.amber .dot { background: #F2A33C; }
+.v2 .pill.warn { background: rgba(225, 90, 82, .14); color: #E15A52; box-shadow: 0 0 10px rgba(225,90,82,.20); }
+.v2 .pill.warn .dot { background: #E15A52; box-shadow: 0 0 6px #E15A52; }
+
+/* ── COMPONENT: Coach signal card ────────────────────────────────── */
+.coach-card { background: white; border-radius: 14px; padding: 18px 20px; }
+.coach-card .label { font-family:'Oswald',sans-serif; font-weight: 600; font-size: 11px; letter-spacing: 1.4px; color: rgba(8,8,8,.55); text-transform: uppercase; margin-bottom: 10px; }
+.coach-card .signal { display:flex; gap: 10px; margin-bottom: 12px; align-items: flex-start; }
+.coach-card .signal:last-child { margin-bottom: 0; }
+.coach-card .signal .body { flex:1; font-size: 13px; line-height: 1.55; color: #080808; }
+
+/* Footer note */
+.note { margin-top: 40px; padding: 16px 18px; background: rgba(8,8,8,.04); border-radius: 10px; font-size: 12px; line-height: 1.6; color: rgba(8,8,8,.65);}
+.note b { color: #080808; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>COLOR PASS V1</h1>
+  <div class="subtitle">Current shipping palette vs. proposed vibrant pass</div>
+  <p class="intro">
+    Same components, both palettes, side-by-side. <b>Left = what's
+    shipping today.</b> Orange-warm brand on light, single-color
+    statefulness, calm. <b>Right = proposed pass</b> inspired by the
+    mockups you shared. Warmer coral-orange, deep-purple/black for
+    race-day hero, slightly punchier phase tiles, soft glow on
+    state-positive pills. Structure unchanged.
+  </p>
+
+  <!-- Palette swatch comparison -->
+  <div class="palette-row">
+    <div class="palette-card">
+      <div class="palette-label">Current accents</div>
+      <div class="swatches">
+        <div class="swatch" style="background:#E88021">race</div>
+        <div class="swatch" style="background:#008FEC">active</div>
+        <div class="swatch" style="background:#3EBD41">recovery</div>
+        <div class="swatch" style="background:#FC4D64">warn</div>
+        <div class="swatch" style="background:#F3AD38">milestone</div>
+        <div class="swatch" style="background:#080808">ink</div>
+        <div class="swatch" style="background:#E6E8EF; color:#080808; text-shadow:none">bg</div>
+      </div>
+    </div>
+    <div class="palette-card dark">
+      <div class="palette-label">Proposed accents</div>
+      <div class="swatches">
+        <div class="swatch" style="background:#FF8A65">race</div>
+        <div class="swatch" style="background:#2D8FE0">active</div>
+        <div class="swatch" style="background:#36A853">recovery</div>
+        <div class="swatch" style="background:#E15A52">warn</div>
+        <div class="swatch" style="background:#F2A33C">milestone</div>
+        <div class="swatch" style="background:#1a0f2e">deep</div>
+        <div class="swatch" style="background:#0F0F12">ink</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Today hero ──────────────────────────────────────────────── -->
+  <div class="section-h">TODAY HERO <small>workout card on Today</small></div>
+  <div class="compare">
+    <div class="cell v1">
+      <div class="col-label">Current</div>
+      <div class="today-hero">
+        <div class="eyebrow">Today · Base · Sat May 23</div>
+        <h2>LONG RUN<br>11.6 MI</h2>
+        <div class="stats">
+          <div class="stat"><div class="v">11.6 MI</div><div class="l">Distance</div></div>
+          <div class="stat"><div class="v">8:29–8:59</div><div class="l">Pace</div></div>
+          <div class="stat"><div class="v">~1:38</div><div class="l">Time</div></div>
+        </div>
+        <div class="cta">
+          <button class="btn primary">Open Workout</button>
+          <button class="btn">Skip</button>
+          <button class="btn">Substitute</button>
+        </div>
+      </div>
+    </div>
+    <div class="cell v2">
+      <div class="col-label">Proposed</div>
+      <div class="today-hero">
+        <div class="eyebrow">Today · Base · Sat May 23</div>
+        <h2>LONG RUN<br>11.6 MI</h2>
+        <div class="stats">
+          <div class="stat"><div class="v">11.6 MI</div><div class="l">Distance</div></div>
+          <div class="stat"><div class="v">8:29–8:59</div><div class="l">Pace</div></div>
+          <div class="stat"><div class="v">~1:38</div><div class="l">Time</div></div>
+        </div>
+        <div class="cta">
+          <button class="btn primary">Open Workout</button>
+          <button class="btn">Skip</button>
+          <button class="btn">Substitute</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Race countdown card ─────────────────────────────────────── -->
+  <div class="section-h">RACE COUNTDOWN <small>hero on Races tab</small></div>
+  <div class="compare">
+    <div class="cell v1">
+      <div class="col-label">Current</div>
+      <div class="race-card">
+        <div class="top">
+          <h2>AMERICAS<br>FINEST CITY</h2>
+          <div class="chip">A</div>
+        </div>
+        <div class="date">16 Aug 2026</div>
+        <div class="countdown"><span class="n">84</span><span class="l">days out</span></div>
+        <div class="stat-row">
+          <div class="stat"><div class="v">1:30:00</div><div class="l">Goal time</div></div>
+          <div class="stat"><div class="v">6:52/mi</div><div class="l">Goal pace</div></div>
+          <div class="stat"><div class="v">13.1 mi</div><div class="l">Distance</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cell v2">
+      <div class="col-label">Proposed</div>
+      <div class="race-card">
+        <div class="top">
+          <h2>AMERICAS<br>FINEST CITY</h2>
+          <div class="chip">A</div>
+        </div>
+        <div class="date">16 Aug 2026</div>
+        <div class="countdown"><span class="n">84</span><span class="l">days out</span></div>
+        <div class="stat-row">
+          <div class="stat"><div class="v">1:30:00</div><div class="l">Goal time</div></div>
+          <div class="stat"><div class="v">6:52/mi</div><div class="l">Goal pace</div></div>
+          <div class="stat"><div class="v">13.1 mi</div><div class="l">Distance</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Race-day projected finish ───────────────────────────────── -->
+  <div class="section-h">RACE-DAY PROJECTED FINISH <small>biggest visual delta</small></div>
+  <div class="compare">
+    <div class="cell v1">
+      <div class="col-label">Current</div>
+      <div class="race-day">
+        <div class="meta">
+          <span>AFC HALF · 13.1 MI · 09:00 · DOWNTOWN SD</span>
+          <span class="badge">ON TRACK TO A-GOAL</span>
+        </div>
+        <div class="headline">ONE <span class="orange">THIRTY.</span></div>
+        <div class="projected">1:31 <small>PROJECTED</small></div>
+        <div class="stat-row">
+          <div><div class="l">Goal</div><div class="v green">1:30:00</div></div>
+          <div><div class="l">Gap</div><div class="v">+0:30</div></div>
+          <div><div class="l">Pace target</div><div class="v">6:55/mi</div></div>
+          <div><div class="l">Confidence</div><div class="v">HIGH</div></div>
+          <div><div class="l">Trajectory</div><div class="v orange">↑ −12s</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cell v2">
+      <div class="col-label">Proposed</div>
+      <div class="race-day">
+        <div class="meta">
+          <span>AFC HALF · 13.1 MI · 09:00 · DOWNTOWN SD</span>
+          <span class="badge">ON TRACK TO A-GOAL</span>
+        </div>
+        <div class="headline">ONE <span class="orange">THIRTY.</span></div>
+        <div class="projected">1:31 <small>PROJECTED</small></div>
+        <div class="stat-row">
+          <div><div class="l">Goal</div><div class="v green">1:30:00</div></div>
+          <div><div class="l">Gap</div><div class="v">+0:30</div></div>
+          <div><div class="l">Pace target</div><div class="v">6:55/mi</div></div>
+          <div><div class="l">Confidence</div><div class="v">HIGH</div></div>
+          <div><div class="l">Trajectory</div><div class="v orange">↑ −12s</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Race phase tiles ─────────────────────────────────────────── -->
+  <div class="section-h">RACE PHASE TILES <small>course pacing strip</small></div>
+  <div class="compare">
+    <div class="cell v1">
+      <div class="col-label">Current</div>
+      <div class="phase-strip">
+        <div class="phase-tile t1"><div><div class="n">01</div><div class="name">Opening</div><div class="meta">Mi 0–5</div></div><div class="pace">8:55</div></div>
+        <div class="phase-tile t2"><div><div class="n">02</div><div class="name">Lock in</div><div class="meta">Mi 5–13.1</div></div><div class="pace">8:48</div></div>
+        <div class="phase-tile t3"><div><div class="n">03</div><div class="name">Patience</div><div class="meta">Mi 13.1–20</div></div><div class="pace">8:46</div></div>
+        <div class="phase-tile t4"><div><div class="n">04</div><div class="name">Press</div><div class="meta">Mi 20–24</div></div><div class="pace">8:42</div></div>
+        <div class="phase-tile t5"><div><div class="n">05</div><div class="name">Empty the tank</div><div class="meta">Mi 24–26.2</div></div><div class="pace">8:35</div></div>
+        <div class="phase-tile t6"><div><div class="n">3:50</div><div class="name">Goal split</div><div class="meta">Finish</div></div><div class="pace">8:46/mi avg</div></div>
+      </div>
+    </div>
+    <div class="cell v2">
+      <div class="col-label">Proposed</div>
+      <div class="phase-strip">
+        <div class="phase-tile t1"><div><div class="n">01</div><div class="name">Opening</div><div class="meta">Mi 0–5</div></div><div class="pace">8:55</div></div>
+        <div class="phase-tile t2"><div><div class="n">02</div><div class="name">Lock in</div><div class="meta">Mi 5–13.1</div></div><div class="pace">8:48</div></div>
+        <div class="phase-tile t3"><div><div class="n">03</div><div class="name">Patience</div><div class="meta">Mi 13.1–20</div></div><div class="pace">8:46</div></div>
+        <div class="phase-tile t4"><div><div class="n">04</div><div class="name">Press</div><div class="meta">Mi 20–24</div></div><div class="pace">8:42</div></div>
+        <div class="phase-tile t5"><div><div class="n">05</div><div class="name">Empty the tank</div><div class="meta">Mi 24–26.2</div></div><div class="pace">8:35</div></div>
+        <div class="phase-tile t6"><div><div class="n">3:50</div><div class="name">Goal split</div><div class="meta">Finish</div></div><div class="pace">8:46/mi avg</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Peak block ──────────────────────────────────────────────── -->
+  <div class="section-h">PEAK BLOCK <small>next-4-weeks strip</small></div>
+  <div class="compare">
+    <div class="cell v1">
+      <div class="col-label">Current</div>
+      <div class="peak-row">
+        <div class="peak-tile faded"><div class="w">Wk 04</div><div class="mi">38</div><div class="day">Sat · 15 mi MP</div><div class="label">+MP block</div></div>
+        <div class="peak-tile"><div class="w">Wk 05</div><div class="mi">42</div><div class="day">Sat · 16 mi long</div><div class="label">Threshold ladder</div></div>
+        <div class="peak-tile cream"><div class="w">Wk 06</div><div class="mi">35</div><div class="day">Sat · 12 mi steady</div><div class="label">Cutback</div></div>
+        <div class="peak-tile"><div class="w">Wk 07</div><div class="mi">44</div><div class="day">Sat · 18 mi w/ 8 @ MP</div><div class="label">First peak week</div></div>
+        <div class="peak-tile dark"><div class="w">Wk 08</div><div class="mi">46</div><div class="day">Sun · Berkeley HM</div><div class="label">Peak block</div></div>
+        <div class="peak-tile"><div class="w">Wk 09</div><div class="mi">42</div><div class="day">Sat · 20 mi long</div><div class="label">Peak block</div></div>
+        <div class="peak-tile faded"><div class="w">Wk 10</div><div class="mi">36</div><div class="day">Sat · 14 mi</div><div class="label">Cutback 2</div></div>
+      </div>
+    </div>
+    <div class="cell v2">
+      <div class="col-label">Proposed</div>
+      <div class="peak-row">
+        <div class="peak-tile faded"><div class="w">Wk 04</div><div class="mi">38</div><div class="day">Sat · 15 mi MP</div><div class="label">+MP block</div></div>
+        <div class="peak-tile"><div class="w">Wk 05</div><div class="mi">42</div><div class="day">Sat · 16 mi long</div><div class="label">Threshold ladder</div></div>
+        <div class="peak-tile cream"><div class="w">Wk 06</div><div class="mi">35</div><div class="day">Sat · 12 mi steady</div><div class="label">Cutback</div></div>
+        <div class="peak-tile"><div class="w">Wk 07</div><div class="mi">44</div><div class="day">Sat · 18 mi w/ 8 @ MP</div><div class="label">First peak week</div></div>
+        <div class="peak-tile dark"><div class="w">Wk 08</div><div class="mi">46</div><div class="day">Sun · Berkeley HM</div><div class="label">Peak block</div></div>
+        <div class="peak-tile"><div class="w">Wk 09</div><div class="mi">42</div><div class="day">Sat · 20 mi long</div><div class="label">Peak block</div></div>
+        <div class="peak-tile faded"><div class="w">Wk 10</div><div class="mi">36</div><div class="day">Sat · 14 mi</div><div class="label">Cutback 2</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Status pills ─────────────────────────────────────────────── -->
+  <div class="section-h">STATUS PILLS <small>readiness, race-status, signals</small></div>
+  <div class="compare">
+    <div class="cell v1">
+      <div class="col-label">Current</div>
+      <div class="coach-card">
+        <div class="status-row">
+          <span class="pill green"><span class="dot"></span>ON TRACK</span>
+          <span class="pill amber"><span class="dot"></span>WATCHING</span>
+          <span class="pill warn"><span class="dot"></span>BEHIND</span>
+          <span class="pill green"><span class="dot"></span>PRIMED</span>
+          <span class="pill green"><span class="dot"></span>BANKED</span>
+        </div>
+      </div>
+    </div>
+    <div class="cell v2">
+      <div class="col-label">Proposed (soft glow on positive)</div>
+      <div class="coach-card">
+        <div class="status-row">
+          <span class="pill green"><span class="dot"></span>ON TRACK</span>
+          <span class="pill amber"><span class="dot"></span>WATCHING</span>
+          <span class="pill warn"><span class="dot"></span>BEHIND</span>
+          <span class="pill green"><span class="dot"></span>PRIMED</span>
+          <span class="pill green"><span class="dot"></span>BANKED</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab bar ──────────────────────────────────────────────────── -->
+  <div class="section-h">TAB BAR <small>navigation</small></div>
+  <div class="compare">
+    <div class="cell v1">
+      <div class="col-label">Current</div>
+      <div class="tabbar">
+        <div class="tab active">Today</div>
+        <div class="tab">Plan</div>
+        <div class="tab">Coach</div>
+        <div class="tab">Health</div>
+        <div class="tab">Races</div>
+      </div>
+    </div>
+    <div class="cell v2">
+      <div class="col-label">Proposed (orange dot on active)</div>
+      <div class="tabbar">
+        <div class="tab active"><span class="dot"></span>Today</div>
+        <div class="tab">Plan</div>
+        <div class="tab">Coach</div>
+        <div class="tab">Health</div>
+        <div class="tab">Races</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>What I'd actually change app-wide.</b> Most components stay
+    nearly identical — the orange brand shifts about 5° warmer
+    (E88021 → FF8A65). The big visual win is the race-day projected
+    finish hero on the deep-purple background — that's where the
+    mockup vibe lands. Phase tiles get a small saturation bump.
+    Status pills get a soft glow on positive states. Tab bar gets an
+    orange dot on the active item. Light theme stays light; we're
+    not going dark mode app-wide. Let me know what to ship.
+  </div>
+</div>
+</body>
+</html>
