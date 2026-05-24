@@ -17,6 +17,7 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CoachAdaptedIsland } from './CoachAdaptedIsland';
 import { ProposalCard } from '@/app/components/ProposalCard';
 import { ModePrescriptionCard } from '@/app/components/ModePrescriptionCard';
+import { GetStartedCard } from '@/app/components/GetStartedCard';
 import { CheckInIsland } from './CheckInIsland';
 import { requireActiveUser } from '@/lib/auth';
 import {
@@ -380,6 +381,11 @@ export default async function OverviewPage() {
             Renders null in ACTIVE / MAINTENANCE so the normal flow
             stays clean. */}
         <ModePrescriptionCard />
+
+        {/* Onboarding welcome — surfaces when the coach is in cold_start
+            / data_no_goal / data_with_goal_no_plan, with a CTA pointing
+            at the next setup step. Renders null in every other mode. */}
+        <GetStartedCard />
 
         {/* ── SECTION 1 · COACH STRIP ── */}
         <div className="coach-strip">
