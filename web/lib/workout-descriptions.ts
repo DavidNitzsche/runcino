@@ -342,7 +342,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Goal half-marathon pace, sustainable but pressing. Steady, not surging.',
     why: 'Race-specific endurance. Teaches your body to hold goal pace for extended chunks.',
-    todaysJob: 'Race rehearsal at goal pace. This is exactly what the middle of AFC feels like. Practice the discipline now, execute it on race day.',
+    todaysJob: 'Goal pace under fatigue, in chunks long enough to hurt. Hit the band, don\'t race it. If you can hold pace with breathing steady, that\'s the rehearsal we want.',
   },
   'Threshold · HM Cruise': {
     zone: 'Threshold · Zone 4',
@@ -363,7 +363,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Steady half-marathon pace, feels like work but never out of control.',
     why: 'Solid threshold dose at race pace. Long enough to feel like work, short enough not to overreach.',
-    todaysJob: 'Goal pace in shorter blocks. Less volume, same specificity. The discipline of holding pace under controlled fatigue is what wins races.',
+    todaysJob: 'Shorter blocks, same pace. The skill is staying smooth at goal pace even after the legs notice. Three clean reps says you\'re absorbing this block.',
   },
   'Threshold · HM Tempo': {
     zone: 'Threshold · Zone 4',
@@ -417,7 +417,7 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
     ],
     effort: 'Sharp but easy. Wake the system up.',
     why: 'Race-week primer. Don\'t leave anything on the table, save it for race day.',
-    todaysJob: 'Sharp but easy. Wake the system up without leaving anything in the tank. Race day is for collecting receipts.',
+    todaysJob: 'Wake the legs up. Don\'t dig in. Anything you spend here you don\'t get back on race day.',
   },
 
   // ── VO₂max / Intervals ────────────────────────────────────────

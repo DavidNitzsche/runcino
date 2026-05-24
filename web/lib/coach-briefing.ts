@@ -249,9 +249,9 @@ export function generateBriefing(input: BriefingInput): string {
     // Quality day: emphasize execution + recovery downstream.
     if (t === 'quality') {
       if (futureSundayLong) {
-        return `Today's the quality session. Execute clean, then back off. Sunday's ${futureSundayLong.distanceMi} mi long run needs fresh legs.`;
+        return `Quality day. Hit the work, finish without burying yourself. Sunday's ${futureSundayLong.distanceMi} mi long run needs fresh legs.`;
       }
-      return `Today's the quality session. Execute clean, then back off. Recovery between hard days is where the gain locks in.`;
+      return `Quality day. Hit the band, finish controlled. The next 48 hours is where the work actually lands.`;
     }
     // Long mid-week (rare): point to the volume frame.
     if (t === 'long') {
