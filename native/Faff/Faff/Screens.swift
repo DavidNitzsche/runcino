@@ -895,16 +895,16 @@ struct RacesView: View {
 
     // ── Hero (orange countdown card) ──────────────────────────────
     private func raceCard(_ r: RaceSummary) -> some View {
-        // Big name top-left, priority chip top-right. Dropped the
-        // duplicate eyebrow ("AMERICAS FINEST CITY" up top + "AFC"
-        // big below) — short name carries the recognition, date row
-        // carries the rest of the context.
+        // Full race name top-left at display size — the hero has room,
+        // the short acronym is reserved for tight surfaces (top bar
+        // chip, recap list). Priority chip top-right. Title wraps to
+        // two lines and auto-shrinks at extreme lengths.
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
-                Text(RacesView.raceShort(r.name ?? "").uppercased())
-                    .font(Faff.F.display(38)).tracking(-0.5)
+                Text((r.name ?? "").uppercased())
+                    .font(Faff.F.display(34)).tracking(-0.5)
                     .foregroundStyle(.white)
-                    .lineLimit(2).minimumScaleFactor(0.75)
+                    .lineLimit(3).minimumScaleFactor(0.6)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 priorityChip(r.priority, onDark: true)
