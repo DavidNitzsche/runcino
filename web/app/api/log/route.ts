@@ -568,6 +568,10 @@ function buildRunRow(r: NormalizedActivity): LogApiRunRow {
     avgHr: r.avgHr,
     rpe,
     paceTone,
+    // Filled by the GET handler after this returns (Promise.all over
+    // coach.runRead per row). Default to null here so the type matches
+    // even before the engine read attaches.
+    coachRead: null,
   };
 }
 

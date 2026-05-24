@@ -239,3 +239,42 @@ An agent ran a full HR/VDOT/pace audit and fix, built and verified it green on t
 The cherry-pick was aborted in an isolated worktree; `main` was never touched. The fix's *ideas* (personalize HR thresholds off real HRmax, name-or-HR hard-day detection, the dormant marathon VDOT correction) still hold, but they must be **re-derived on `main`'s current architecture**, not transplanted.
 
 **Lesson:** confirm `main` is your base before building, and never transplant a commit across diverged branches without dry-running the merge and reading the conflicts. Building on a stale branch produces work that is redundant (already done better on `main`) or deprecated (already removed from `main`).
+
+---
+
+## Fully-autonomous mode — no stopping unless mission critical (locked 2026-05-24)
+
+When David says "execute to 100% fully autonomous" (or equivalent — "full autonomous", "go in hard", "fully execute"), that's a hard instruction: **don't stop unless something is mission critical.** This applies to every agent on this app.
+
+### Not mission critical — keep going
+
+- Comfortable stopping points ("I've landed the architecture, time to write the report") — write the report at the END, after you've executed everything you can.
+- Build / TypeScript / lint errors — debug and fix them. Per `feedback_verify_by_self_audit.md` you may not have `node_modules` to typecheck locally; that's not a reason to stop, it's a reason to read more carefully + audit by tracing types in the file.
+- Merge conflicts during rebase — resolve them or `reset --hard origin/main` + `cherry-pick` your commits.
+- Push rejected because main moved — fetch, rebase or reset+cherry-pick, retry.
+- Risk concerns about touching big files (v4 component port, etc.) — read the file, make the smallest correct change, ship.
+- Other agent's WIP referenced symbols that aren't on main — add the missing definition or work around. Don't punt.
+- Decisions where the wrong choice is recoverable — pick using your best judgment ("use your best idea") and document the choice in the commit message.
+- A phase has "framework + best example" wins but isn't fully polished — keep going until everything in the spec is at least at framework level, THEN come back for polish.
+
+### Mission critical — stop and ask
+
+- A destructive operation the user hasn't authorized (force push, hard reset of unmerged work, dropping a production table, deleting non-tombstoned data).
+- A schema migration that would break the running app for live users (non-additive change, NOT NULL on existing data without backfill, renamed columns).
+- Credential / auth change that could lock the user out.
+- Money spend over an obvious budget (paid service tier, expensive API calls in a tight loop).
+- Genuinely ambiguous input where no reasonable default exists AND the wrong choice cascades.
+- A clear infrastructure failure (Railway is down, GitHub auth gone, DB unreachable) — surface and wait.
+
+### Failure mode this rule fixes
+
+The bug class: agent does 30% of the requested work, writes a "where to pick up next session" report, calls it done. The user comes back and asks "I thought you were going to build 100%, what stopped you?" — because nothing actually did stop the agent; it stopped itself at a comfortable point.
+
+Specific anti-patterns:
+- Writing the end-of-session report while there's still work in the queue.
+- Marking tasks "completed" because they're at "framework level" when the user asked for full execution.
+- Stopping after a build failure instead of fixing it.
+- Stopping after a rebase conflict instead of resolving via reset+cherry-pick.
+- Stopping because "the other agent's code might conflict" — read both, make the call.
+
+The autonomous-mode default is **forward motion**. End-of-session report happens when there's nothing left in scope, not when the agent is tired.
