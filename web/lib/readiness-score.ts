@@ -126,15 +126,21 @@ function recommendationFor(
   )[0];
 
   if (!driver) {
-    // No real driver yet — be honest instead of restating the color.
+    // No real driver yet — be honest instead of restating the color
+    // OR adding "Execute the plan" filler. Per voice doctrine: when
+    // there's nothing meaningful to say, say less, not generic.
     if (missing.length > 0) return `Score from your activity rhythm; ${missing[0]} will sharpen it.`;
-    return 'Recovery vitals on baseline, no recent overload. Execute the plan.';
+    return 'Recovery vitals on baseline, no recent overload.';
   }
   const note = cap(driver.note);
   switch (state) {
+    // Red and yellow carry real actions (swap, hold). Green just states
+    // the driver — telling someone "execute the plan" when the ring +
+    // word both say "recovered" is recitation, not coaching. The
+    // prescription itself lives on Today/Overview; Health diagnoses.
     case 'red':    return `Back off. ${cap(driver.note)}. Swap today for easy or recovery.`;
     case 'yellow': return `${note}. Easy is fine; hold off on a hard quality day.`;
-    case 'green':  return `${note}. Execute the plan.`;
+    case 'green':  return note;
   }
 }
 

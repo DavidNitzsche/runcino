@@ -212,13 +212,15 @@ export default async function HealthPage() {
   if (sleep != null) vitalBits.push(`${sleep.toFixed(1)}h sleep`);
   const briefRead = readiness?.recommendation
     ?? (hasBio ? readBodyShort() : 'Connect a wearable or log check-ins and a daily readiness read lands here.');
-  const briefWorking = posInputs.length ? cap(posInputs.join('; ')) + '.' : (vitalBits.length ? `${cap(vitalBits.join(', '))}, vitals tracking.` : 'No positive signals logged yet.');
-  const briefWatch = negInputs.length ? cap(negInputs.join('; ')) + '.' : 'Nothing flagged, no elevated load or drift signals.';
-  const briefFrame = [
-    readyScore != null ? `Readiness ${readyScore}/100` : null,
-    vo2 != null ? `VO₂max ${vo2.toFixed(1)}` : null,
-    readiness?.missingInputs?.length ? `Missing: ${readiness.missingInputs.join(', ')}` : null,
-  ].filter(Boolean).join(' · ') || 'The frame fills in as more days of data accumulate.';
+  // briefWorking only fires when posInputs has real items; the old
+  // vitalBits/"vitals tracking" fallback was filler — vitals values
+  // already live in the per-card biometric strip.
+  const briefWorking = posInputs.length ? cap(posInputs.join('; ')) + '.' : '';
+  // Brief sections render conditionally below — only when their
+  // signal pool has real items. The Watch fallback ("Nothing flagged")
+  // and the Frame (Readiness X/100 · VO₂max Y) were dropped per the
+  // relevance filter — both restated chrome the page already shows.
+  const briefWatch = negInputs.length ? cap(negInputs.join('; ')) + '.' : '';
 
   function cap(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
   function readBodyShort(): string {
@@ -270,12 +272,21 @@ export default async function HealthPage() {
               <span className="dot"></span>
               COACH · {todayLabel} · HEALTH READOUT
             </div>
-            <p className="coach-briefing">
-              {readyScore != null
-                ? <>Readiness <strong>{readyScore}/100 · {stateWord.toLowerCase()}</strong>. {briefRead}</>
-                : <>Connect Apple Health from <a href="/profile" style={{ color: 'var(--green)', textDecoration: 'underline' }}>your profile</a> to see daily readiness, HR trends, and sleep here.</>}
-              {checkin ? <> Today&apos;s check-in: <strong>{checkin.energy} energy · {checkin.soreness} soreness · {checkin.stress} stress</strong>.</> : <> Log a quick check-in on the right.</>}
-            </p>
+            {/* Health greet body: the readiness score lives on the
+                ring to the right; the check-in values live in the
+                green tile to the right. Restating either is recitation
+                per the relevance filter. Render JUST the briefRead
+                (the diagnosis driver line in coach voice) when present.
+                Empty-state copy only when there's truly nothing to
+                say — connect-Apple-Health prompt, or check-in nudge
+                when neither check-in nor wearable data exists. */}
+            {readyScore != null && briefRead ? (
+              <p className="coach-briefing">{briefRead}</p>
+            ) : !checkin && readyScore == null ? (
+              <p className="coach-briefing">
+                Connect Apple Health from <a href="/profile" style={{ color: 'var(--green)', textDecoration: 'underline' }}>your profile</a> to see daily readiness, HR trends, and sleep here. Or log a quick check-in on the right.
+              </p>
+            ) : null}
           </div>
           <CheckInMiniIsland today={today} />
         </div>
@@ -294,23 +305,39 @@ export default async function HealthPage() {
           <div className="health-hero-left">
             <div className="health-hero-eyebrow">TODAY · {todayLabel} · HEALTH</div>
             <div className="health-hero-title">{heroTitle}</div>
+            {/* Conditional rendering per relevance filter: each
+                brief-section only appears when it has something real
+                to say. Old behavior surfaced all four every time —
+                "The Read" duplicated the coach strip; "What's Working"
+                fell back to "vitals tracking" filler; "The Watch" fell
+                back to "Nothing flagged" filler; "The Frame" was pure
+                stat restatement (Readiness X/100 · VO₂max Y) of values
+                already visible in the ring + cards. All four-sections-
+                always-on was the canonical recitation failure mode the
+                spec was written to fix. */}
             <div className="brief-sections">
-              <div className="brief-section">
-                <div className="brief-section-label read">The Read</div>
-                <p className="brief-section-body">{briefRead}</p>
-              </div>
-              <div className="brief-section">
-                <div className="brief-section-label work">What&apos;s Working</div>
-                <p className="brief-section-body">{briefWorking}</p>
-              </div>
-              <div className="brief-section">
-                <div className="brief-section-label watch">The Watch</div>
-                <p className="brief-section-body">{briefWatch}</p>
-              </div>
-              <div className="brief-section">
-                <div className="brief-section-label frame">The Frame</div>
-                <p className="brief-section-body">{briefFrame}</p>
-              </div>
+              {readyScore != null && briefRead ? (
+                <div className="brief-section">
+                  <div className="brief-section-label read">The Read</div>
+                  <p className="brief-section-body">{briefRead}</p>
+                </div>
+              ) : null}
+              {posInputs.length > 0 ? (
+                <div className="brief-section">
+                  <div className="brief-section-label work">What&apos;s Working</div>
+                  <p className="brief-section-body">{briefWorking}</p>
+                </div>
+              ) : null}
+              {negInputs.length > 0 ? (
+                <div className="brief-section">
+                  <div className="brief-section-label watch">The Watch</div>
+                  <p className="brief-section-body">{briefWatch}</p>
+                </div>
+              ) : null}
+              {/* "The Frame" dropped — it restated readyScore + vo2max,
+                  both of which are visible in the ring + per-card
+                  surfaces. Missing-input prompts can move to a tiny
+                  meta line if needed but not as a coach-shaped section. */}
             </div>
           </div>
 
