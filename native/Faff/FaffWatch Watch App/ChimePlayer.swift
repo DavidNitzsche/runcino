@@ -38,11 +38,15 @@ final class ChimePlayer {
     private var isActive = false
 
     private init() {
+        // No force-unwrapping or throwing work in init — this is a static
+        // singleton created at first reference, and a crash here would
+        // happen on app launch, which is worse than a missed chime. If
+        // any of the audio plumbing comes back nil, the player just
+        // stays unprepared; play() no-ops and the runner still gets the
+        // haptic via WKInterfaceDevice.play(.notification).
         engine.attach(player)
-        // Format is locked to the player so we can pre-build a buffer with the
-        // matching format. mainMixerNode picks up the engine's output format.
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
-                                    channels: 1)!
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
+                                          channels: 1) else { return }
         engine.connect(player, to: engine.mainMixerNode, format: format)
         buffer = makeBellBuffer(format: format)
     }
