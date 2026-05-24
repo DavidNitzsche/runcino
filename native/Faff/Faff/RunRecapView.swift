@@ -19,6 +19,10 @@ struct RunRecapView: View {
     @State private var dynamics: HealthKitManager.RunDynamics?
     @State private var deleteConfirm = false
     @State private var deleting = false
+    // Post-run subjective RPE + notes (coach-layer spec §13.2 / W1).
+    // Loaded after run + populated by PostRunRpePanel; coach.runRead
+    // reads this to enrich the FORM verdict on the next read.
+    @State private var rpe: PostRunRpe?
 
     var body: some View {
         ScrollView {
@@ -29,6 +33,14 @@ struct RunRecapView: View {
                         .padding(.top, 40).frame(maxWidth: .infinity)
                 } else if let r = run {
                     RunRecapContent(run: r, dynamics: dynamics, fallbackDate: date)
+                    // Post-run RPE quick log. Surfaces under the recap
+                    // content so it's right where the runner just looked
+                    // at their splits + HR. Skippable.
+                    if let rid = r.id, !rid.isEmpty {
+                        PostRunRpePanel(activityId: rid, existing: rpe) { updated in
+                            rpe = updated
+                        }
+                    }
                     // Delete affordance for mistake imports (test runs,
                     // duplicate watch syncs). Tombstones the activity
                     // so Strava re-sync won't bring it back.
@@ -86,6 +98,11 @@ struct RunRecapView: View {
         // stride, oscillation, ground contact, etc.). The Health tab carries
         // the cumulative 30-day average; the per-run read lives here.
         dynamics = await HealthKitManager.shared.runDynamics(forDateISO: run?.date ?? date)
+        // Existing RPE log (if any) for this run, so the panel renders
+        // as "already logged · tap to edit" instead of an empty prompt.
+        if let rid = run?.id, !rid.isEmpty {
+            rpe = try? await FaffAPI.shared.getRpe(activityId: rid)
+        }
     }
 
     // MARK: Empty state (honest, no fabricated run)
@@ -283,6 +300,124 @@ struct RunRecapContent: View {
                 MetricTile(label: t.label, value: t.value, unit: t.unit,
                            delta: t.unit != nil ? "this run" : "No data", deltaTone: .flat)
             }
+        }
+    }
+}
+
+// MARK: - Post-Run RPE Panel
+//
+// Quick subjective effort log for a finished run. Per coach-layer spec
+// §13.2 / W1. POSTs to /api/activity/rpe, which the coach reads via
+// runRead/formRead to enrich the FORM verdict — when HR-pace says
+// "easy" but the runner logged 7 RPE, that's a fatigue signal.
+
+struct PostRunRpePanel: View {
+    let activityId: String
+    let existing: PostRunRpe?
+    let onSave: (PostRunRpe?) -> Void
+
+    @State private var selectedRpe: Int?
+    @State private var notes: String = ""
+    @State private var busy: Bool = false
+    @State private var saved: Bool = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("HOW HARD?")
+                    .font(Faff.F.inter(10, .semibold)).tracking(1.4)
+                    .foregroundStyle(Faff.C.textDim)
+                if saved || existing != nil {
+                    Text("· LOGGED")
+                        .font(Faff.F.inter(10, .semibold)).tracking(1.4)
+                        .foregroundStyle(Faff.C.recovery)
+                }
+                Spacer()
+            }
+            // 1–10 RPE row. Tap to select; selected fills accent.
+            HStack(spacing: 6) {
+                ForEach(1...10, id: \.self) { n in
+                    Button {
+                        selectedRpe = n
+                    } label: {
+                        Text("\(n)")
+                            .font(Faff.F.inter(13, .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill((selectedRpe ?? existing?.rpe) == n ? Faff.C.race : Faff.C.bg)
+                            )
+                            .foregroundStyle((selectedRpe ?? existing?.rpe) == n ? .white : Faff.C.ink)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Faff.C.ink.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            HStack(spacing: 10) {
+                Text("1 · easy")
+                    .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                Text("10 · all out")
+                    .font(Faff.F.inter(10)).foregroundStyle(Faff.C.textDim)
+            }
+            // Optional notes line — "calf tight", "felt great", etc.
+            TextField("Notes (optional)", text: $notes, axis: .vertical)
+                .font(Faff.F.inter(13))
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Faff.C.bg))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Faff.C.ink.opacity(0.12), lineWidth: 1))
+                .lineLimit(1...3)
+            if let err = error {
+                Text(err).font(Faff.F.inter(11)).foregroundStyle(Faff.C.warn)
+            }
+            Button {
+                Task { await save() }
+            } label: {
+                HStack {
+                    if busy { ProgressView().scaleEffect(0.8).tint(.white) }
+                    Text(saved || existing != nil ? "Update" : "Log effort")
+                        .font(Faff.F.inter(12, .semibold))
+                }
+                .frame(maxWidth: .infinity, minHeight: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(canSubmit ? Faff.C.race : Faff.C.race.opacity(0.4))
+                )
+                .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSubmit || busy)
+        }
+        .faffCard()
+        .onAppear {
+            if let e = existing {
+                if selectedRpe == nil { selectedRpe = e.rpe }
+                if notes.isEmpty, let n = e.notes { notes = n }
+            }
+        }
+    }
+
+    private var canSubmit: Bool {
+        (selectedRpe ?? existing?.rpe) != nil
+    }
+
+    private func save() async {
+        guard let r = selectedRpe ?? existing?.rpe else { return }
+        busy = true; error = nil; defer { busy = false }
+        do {
+            let saved = try await FaffAPI.shared.saveRpe(
+                activityId: activityId,
+                rpe: r,
+                notes: notes.isEmpty ? nil : notes,
+            )
+            self.saved = true
+            onSave(saved)
+        } catch {
+            self.error = "Couldn't save — try again in a moment."
         }
     }
 }

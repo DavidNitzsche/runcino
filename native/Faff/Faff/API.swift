@@ -316,6 +316,31 @@ final class FaffAPI {
         return r.checkin
     }
 
+    /// Post-run subjective RPE (1-10) + optional notes for an activity.
+    /// Per coach-layer spec §13.2 / W1: feeds the FORM read so the
+    /// coach can compare HR-pace ("looks easy") against subjective
+    /// effort ("felt 7") and pick up the fatigue signal. Bearer auth.
+    func getRpe(activityId: String) async throws -> PostRunRpe? {
+        struct Resp: Decodable { let ok: Bool; let rpe: PostRunRpe? }
+        let r: Resp = try await request(
+            method: "GET", path: "/api/activity/rpe?activityId=\(activityId)",
+            authenticated: true
+        )
+        return r.rpe
+    }
+
+    @discardableResult
+    func saveRpe(activityId: String, rpe: Int?, notes: String?) async throws -> PostRunRpe? {
+        struct Body: Encodable { let activityId: String; let rpe: Int?; let notes: String? }
+        struct Resp: Decodable { let ok: Bool; let rpe: PostRunRpe? }
+        let r: Resp = try await request(
+            method: "POST", path: "/api/activity/rpe",
+            body: Body(activityId: activityId, rpe: rpe, notes: notes),
+            authenticated: true
+        )
+        return r.rpe
+    }
+
     /// Approve or skip a BIG plan adaptation. `ids` are the proposed
     /// mutation ids from overview.pendingAdaptations. accept applies the
     /// change to the plan; decline records it as declined. Bearer auth.
@@ -473,3 +498,14 @@ struct Checkin: Decodable {
 }
 struct CheckinGetResponse: Decodable { let ok: Bool; let today: String?; let checkin: Checkin? }
 struct CheckinPostResponse: Decodable { let ok: Bool; let checkin: Checkin? }
+
+/// Per-activity subjective effort + notes. Coach reads via runRead /
+/// formRead to enrich the FORM verdict — when HR-pace says "easy" but
+/// the runner logged RPE 7, that's a fatigue signal worth surfacing.
+struct PostRunRpe: Codable {
+    let id: Int
+    let activityId: String
+    let rpe: Int?
+    let notes: String?
+    let loggedAt: String
+}
