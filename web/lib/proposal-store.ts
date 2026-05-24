@@ -106,3 +106,22 @@ export async function expireOldProposals(): Promise<void> {
       WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < NOW()`,
   );
 }
+
+/** Revoke pending proposals of a given type for a user. Used when a
+ *  context filter (e.g. post-race recovery window) makes a previously-
+ *  created proposal invalid — the data that drove it no longer applies.
+ *  Marks as 'expired' rather than deleting so the audit trail survives. */
+export async function revokePendingProposals(
+  userUuid: string,
+  proposalType: ProposalType,
+): Promise<number> {
+  const rows = await query<{ count: string }>(
+    `WITH revoked AS (
+       UPDATE coach_proposals SET status = 'expired', responded_at = NOW()
+        WHERE user_uuid = $1 AND status = 'pending' AND proposal_type = $2
+        RETURNING 1
+     ) SELECT COUNT(*)::text AS count FROM revoked`,
+    [userUuid, proposalType],
+  );
+  return parseInt(rows[0]?.count ?? '0', 10);
+}

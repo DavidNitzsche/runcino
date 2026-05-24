@@ -291,15 +291,6 @@ export default async function HealthPage() {
           <CheckInMiniIsland today={today} />
         </div>
 
-        {/* Injury + Illness logging affordances — give the runner real
-            ways to enter INJURY / ILLNESS mode, which trigger the
-            ActiveModeBanner + return-protocol or rest-prescription
-            gating across every page. */}
-        <div style={{ marginTop: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <InjuryLogIsland />
-          <IllnessLogIsland />
-        </div>
-
         {/* ── HEALTH HERO ── */}
         <div className="health-hero">
           <div className="health-hero-left">
@@ -656,6 +647,27 @@ export default async function HealthPage() {
               Running dynamics sync from your Apple Watch runs once Apple Health is connected. Per-run form appears on each run recap.
             </div>
           )}
+        </div>
+
+        {/* Status logging — injury + illness. Sits at the bottom of
+            Health because these are infrequent inputs the runner only
+            touches when something's wrong; they don't deserve top-of-
+            page real estate. The ActiveModeBanner surfaces across
+            every page once one is logged, so this lives below the
+            biometric cards where the runner naturally lands when
+            something needs reporting. */}
+        <div style={{ marginTop: 28, marginBottom: 16 }}>
+          <div style={{
+            fontFamily: 'Oswald, sans-serif', fontSize: 11, fontWeight: 700,
+            letterSpacing: 1.3, textTransform: 'uppercase',
+            color: 'rgba(8,8,8,.45)', marginBottom: 10,
+          }}>
+            Status log
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <InjuryLogIsland />
+            <IllnessLogIsland />
+          </div>
         </div>
 
       </div>

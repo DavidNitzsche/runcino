@@ -190,22 +190,28 @@ export function generateRunDebrief(input: DebriefInput): string {
   let paceSentenceHadHr = false;
 
   // ── DISTANCE ────────────────────────────────────────────────
+  // Per voice doctrine relevance filter: when the runner did what
+  // they planned, the page already shows the distance — saying "you
+  // ran the distance you planned to run" is restatement, not coaching.
+  // Real coach speaks only when distance is noteworthy: short of plan
+  // (back-off signal) or over (absorption / load story).
   if (planDistanceMi > 0) {
     const pct = Math.round((actualDistanceMi / planDistanceMi) * 100);
-    if (pct >= 90 && pct <= 110) {
-      sentences.push(`Hit the planned distance, ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} mi.`);
-    } else if (pct < 60) {
+    // 90–110% on plan → silent. Page shows the number.
+    if (pct < 60) {
       sentences.push(`Well short, ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} planned mi (${pct}%).`);
     } else if (pct < 90) {
       sentences.push(`Shorter than planned, ${actualDistanceMi.toFixed(1)} of ${planDistanceMi} mi (${pct}%).`);
-    } else if (pct <= 130) {
+    } else if (pct > 110 && pct <= 130) {
       sentences.push(`Over plan, ${actualDistanceMi.toFixed(1)} mi vs ${planDistanceMi} planned (${pct}%).`);
-    } else {
+    } else if (pct > 130) {
       sentences.push(`Way over plan, ${actualDistanceMi.toFixed(1)} mi vs ${planDistanceMi} planned (${pct}%).`);
     }
-  } else if (actualDistanceMi > 0) {
-    sentences.push(`Ran ${actualDistanceMi.toFixed(1)} mi off plan.`);
+    // else (pct 90-110): on plan, page shows it — say nothing.
   }
+  // Unprescribed run (no plan distance, real run logged) → silent here
+  // too. The runRead path covers "Unprescribed run logged" at the
+  // verdict level; saying it again here is redundant.
 
   // ── PACE + HR (cross-referenced for easy/long) ──────────────
   // Different logic per workout type:
@@ -257,7 +263,11 @@ export function generateRunDebrief(input: DebriefInput): string {
     // Cross-referenced narrative
     if (paceStatus === 'on-target') {
       if (hrStatus === 'aerobic') {
-        sentences.push(`${pace}/mi at HR ${hr}${hrPctSuffix}, textbook easy execution.`);
+        // On-target pace + aerobic HR = exactly what easy days should
+        // look like. Don't restate the numbers (page shows them) and
+        // don't reach for "textbook" — real coach says less when the
+        // run did what it was supposed to do.
+        sentences.push(`Easy band the whole way. Exactly what we wanted today.`);
       } else if (hrStatus === 'moderate') {
         sentences.push(`Pace held in target at ${pace}/mi but HR averaged ${hr}${hrPctSuffix}, moderate effort. Probably fine, but flag a check-in if it keeps trending up.`);
       } else if (hrStatus === 'elevated') {
@@ -365,11 +375,14 @@ export function generateRunDebrief(input: DebriefInput): string {
 
         if (paceSentenceHadHr) {
           if (zone === 'Z1' || zone === 'Z2') {
-            sentences.push(`Target ${tgtZone} (${tgtLow}–${tgtHigh} bpm), landed it.`);
+            // The pace sentence ("Easy band the whole way…") already
+            // conveyed that HR was right. Restating the bpm range +
+            // "landed it" is recitation. Silence is the read — page
+            // shows the HR number for anyone who wants to see it.
           } else {
             const delta = Math.round(actualAvgHr - tgtHigh);
             const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
-            sentences.push(`Target ${tgtZone}: ${tgtLow}–${tgtHigh} bpm. You ran ${deltaStr} bpm over the easy ceiling.`);
+            sentences.push(`HR ran ${deltaStr} bpm over the easy ceiling — keep next session genuinely easy.`);
           }
         } else {
           if (zone === 'Z1' || zone === 'Z2') {
