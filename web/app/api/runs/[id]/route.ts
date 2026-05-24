@@ -110,3 +110,55 @@ export async function GET(
     } : null,
   });
 }
+
+/**
+ * DELETE /api/runs/[id] — remove an activity row.
+ *
+ * Use case: mistaken imports from testing the watch or HK sync. Hard
+ * deletes the strava_activities row scoped to the calling user. Watch
+ * / HealthKit synthetic runs (negative bigint IDs from run-dedup
+ * canonicalRunId) won't re-appear since their source isn't a remote
+ * fetch. Strava-sourced runs (positive IDs) MAY re-appear on the next
+ * sync — to avoid that, we also insert into deleted_activity_ids so
+ * the sync skips them. Idempotent: returns 200 even when the row is
+ * already gone.
+ */
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  let user;
+  try {
+    user = await requireActiveUser();
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const { id } = await ctx.params;
+  try {
+    // Ensure the tombstone table exists. Idempotent CREATE.
+    await query(
+      `CREATE TABLE IF NOT EXISTS deleted_activity_ids (
+         id BIGINT PRIMARY KEY,
+         user_uuid UUID,
+         deleted_at TIMESTAMPTZ DEFAULT NOW()
+       )`,
+    );
+    // Tombstone first so even if a re-sync races us, the row is
+    // recognized as deleted.
+    await query(
+      `INSERT INTO deleted_activity_ids (id, user_uuid)
+       VALUES ($1::BIGINT, $2)
+       ON CONFLICT (id) DO NOTHING`,
+      [id, user.id],
+    );
+    await query(
+      `DELETE FROM strava_activities
+        WHERE id = $1::BIGINT
+          AND (user_uuid = $2 OR user_uuid IS NULL)`,
+      [id, user.id],
+    );
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Delete failed' }, { status: 500 });
+  }
+}

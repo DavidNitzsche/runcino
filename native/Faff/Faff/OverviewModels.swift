@@ -24,6 +24,9 @@ struct OverviewResponse: Decodable {
     let today: String?
     let planCurrentPhase: String?
     let profileName: String?
+    /// Runner's fueling settings (brand + gel carbs + g/hr target).
+    /// Drives the Profile fueling card. POST /api/me/fuel to update.
+    let fuel: OFuelSettings?
     let workout: CoachAnswer<OWorkout>?
     let readiness: CoachAnswer<OReadiness>?
     let briefing: CoachAnswer<OBriefing>?
@@ -170,6 +173,14 @@ struct OVolume: Decodable {
     let weeklyAvg8w: Double?
 }
 struct OFlags: Decodable { let healthKitAvailable: Bool? }
+
+/// Runner's fueling product. Single source of truth across the app —
+/// workouts, watch prompts, race plans all read from these three.
+struct OFuelSettings: Decodable {
+    let brand: String?
+    let gelCarbsG: Int?
+    let targetGPerHr: Int?
+}
 
 /// Today's fueling plan (parity with web/lib/training-fueling.ts FuelingPlan).
 /// `shortLine` is the one-liner for the Today card; `why` is the longer
@@ -684,6 +695,54 @@ enum ShoesAPI {
         var req = URLRequest(url: url); req.httpMethod = method; req.timeoutInterval = 30
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8))
+        }
+        return true
+    }
+}
+
+// MARK: - Run delete (mistake-import removal)
+
+/// DELETE /api/runs/[id] — hard-removes the activity row + tombstones
+/// the Strava ID so re-sync doesn't bring it back. Use for test runs
+/// or duplicate imports.
+@MainActor
+enum RunDeleteAPI {
+    @discardableResult
+    static func delete(id: String) async throws -> Bool {
+        guard let url = URL(string: "/api/runs/\(id)", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.httpMethod = "DELETE"; req.timeoutInterval = 30
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response): (Data, URLResponse)
+        do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.http(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8))
+        }
+        return true
+    }
+}
+
+// MARK: - Fueling settings API
+
+/// POST /api/me/fuel — partial-update the runner's gel product. Any
+/// field omitted is left unchanged; null clears. The whole app reads
+/// from these three numbers (workouts, watch prompts, race plans).
+@MainActor
+enum FuelSettingsAPI {
+    @discardableResult
+    static func update(brand: String?, gelCarbsG: Int?, targetGPerHr: Int?) async throws -> Bool {
+        guard let url = URL(string: "/api/me/fuel", relativeTo: API.baseURL) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url); req.httpMethod = "POST"; req.timeoutInterval = 30
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = TokenStore.shared.accessToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        var body: [String: Any] = [:]
+        if let b = brand { body["brand"] = b } else { body["brand"] = NSNull() }
+        if let c = gelCarbsG { body["gelCarbsG"] = c } else { body["gelCarbsG"] = NSNull() }
+        if let t = targetGPerHr { body["targetGPerHr"] = t } else { body["targetGPerHr"] = NSNull() }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response): (Data, URLResponse)
         do { (data, response) = try await URLSession.shared.data(for: req) } catch { throw APIError.network(error) }

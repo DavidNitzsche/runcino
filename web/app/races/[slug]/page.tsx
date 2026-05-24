@@ -817,31 +817,10 @@ export default async function RacePlanPage({ params }: PageProps) {
                     </div>
                   </div>
                 </div>
-                <svg viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" style={{ width: '100%', height: 160, display: 'block' }}>
-                  <defs>
-                    <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#FF6B47" stopOpacity="0.22" />
-                      <stop offset="100%" stopColor="#FF6B47" stopOpacity="0.02" />
-                    </linearGradient>
-                  </defs>
-                  {/* Gradient fill under the curve */}
-                  {fillD && <path d={fillD} fill="url(#trajFill)" />}
-                  {/* Dashed horizontal goal line */}
-                  <line x1={0} y1={goalY} x2={chartW} y2={goalY}
-                    stroke="#36A853" strokeOpacity={0.65} strokeWidth={1.5} strokeDasharray="4,3" />
-                  {/* The single smooth plan curve */}
-                  {curveD && <path d={curveD} fill="none" stroke="#FF6B47" strokeWidth={2.5} strokeLinecap="round" />}
-                  {/* NOW marker on the first point */}
-                  {nowPt && (
-                    <>
-                      <circle cx={nowPt.x} cy={nowPt.y} r={6} fill="white" stroke="#FF6B47" strokeWidth={2} />
-                    </>
-                  )}
-                  {/* Axis labels */}
-                  <text x={4} y={chartH - 6} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)">NOW</text>
-                  <text x={chartW - 4} y={chartH - 6} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="rgba(8,8,8,.45)" textAnchor="end">RACE DAY</text>
-                  <text x={chartW - 4} y={Math.max(11, goalY - 5)} fontFamily="Inter, sans-serif" fontSize={9} fontWeight={600} letterSpacing={0.8} fill="#36A853" textAnchor="end">GOAL · {trajectory.goalDisplay}</text>
-                </svg>
+                {/* Chart removed — the 3-stat grid + verdict tell
+                    the whole story. The projected curve was visually
+                    busy without adding signal (y-axis direction
+                    wasn't obvious to readers). */}
                 <p style={{
                   margin: '14px 0 0', fontSize: 13.5, lineHeight: 1.6, color: '#080808',
                 }}>{trajectory.verdict}</p>

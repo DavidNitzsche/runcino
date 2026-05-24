@@ -18,6 +18,7 @@ import { ConnectorsCard } from './ConnectorsCard';
 import { ProfileModalsIsland } from './ProfileModalsIsland';
 import { MaxHrIsland } from './MaxHrIsland';
 import { RestingHrIsland } from './RestingHrIsland';
+import { FuelIsland } from './FuelIsland';
 import { CoachReadsCard } from './CoachReadsCard';
 import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
@@ -497,6 +498,13 @@ export default async function ProfilePage() {
           </div>
           <RestingHrIsland />
         </div>
+
+        {/* ── FUELING ── */}
+        <FuelIsland initial={{
+          brand: auth.fuelBrand ?? null,
+          gelCarbsG: auth.fuelGelCarbsG ?? null,
+          targetGPerHr: auth.fuelTargetGPerHr ?? null,
+        }} />
 
         {/* ── SHOE ROTATION ── */}
         <div className="card">

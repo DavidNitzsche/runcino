@@ -110,6 +110,15 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
   // jsonb_set with a guard to copy existing splits forward when the
   // new payload doesn't carry them. Symmetric in both sync paths +
   // single-activity webhook updates.
+  //
+  // Tombstone check: if the row was DELETE'd via /api/runs/[id] the
+  // ID lives in deleted_activity_ids — skip the re-insert so Strava
+  // sync doesn't resurrect a row the user explicitly removed.
+  const deleted = await query<{ id: string }>(
+    `SELECT id::text FROM deleted_activity_ids WHERE id = $1::BIGINT LIMIT 1`,
+    [activityId],
+  ).catch(() => [] as { id: string }[]);
+  if (deleted.length > 0) return { ok: true, error: undefined };
   await query(
     `INSERT INTO strava_activities (id, data, fetched_at, user_uuid)
           VALUES ($1, $2::jsonb, NOW(), $3)

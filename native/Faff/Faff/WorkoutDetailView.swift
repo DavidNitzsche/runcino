@@ -52,7 +52,6 @@ struct WorkoutDetailView: View {
                             .lineSpacing(-8).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    SheetCloseButton { dismiss() }
                 }
 
                 if let steps = dw?.detail?.steps, !steps.isEmpty {
@@ -190,7 +189,6 @@ struct RescheduleSheet: View {
                             .font(Faff.F.display(32)).foregroundStyle(Faff.C.ink)
                     }
                     Spacer()
-                    SheetCloseButton { dismiss() }
                 }
                 VStack(spacing: 0) {
                     ForEach(Array(candidates.enumerated()), id: \.offset) { i, d in

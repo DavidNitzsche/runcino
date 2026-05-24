@@ -208,6 +208,27 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
 
             <div className="rd-actions">
               <a href={`https://www.strava.com/activities/${run.id}`} target="_blank" rel="noreferrer" className="rd-btn rd-btn-ghost">View on Strava ↗</a>
+              <button
+                type="button"
+                className="rd-btn rd-btn-danger"
+                onClick={async () => {
+                  if (!confirm('Delete this run? This is for mistake imports — you can’t undo it from the app.')) return;
+                  try {
+                    const res = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+                    if (!res.ok) {
+                      const j = await res.json().catch(() => ({}));
+                      alert(`Delete failed: ${j?.error ?? res.statusText}`);
+                      return;
+                    }
+                    onClose();
+                    // Reload so the recent-runs list refreshes without
+                    // the deleted row sitting around stale.
+                    if (typeof window !== 'undefined') window.location.reload();
+                  } catch (e) {
+                    alert(`Delete failed: ${e instanceof Error ? e.message : 'unknown'}`);
+                  }
+                }}
+              >Delete run</button>
               <button type="button" className="rd-btn rd-btn-ghost" onClick={onClose}>Close</button>
             </div>
           </>
@@ -367,6 +388,10 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
             border: 1px solid rgba(8,8,8,.16);
           }
           .rd-btn-ghost:hover { background: rgba(8,8,8,.04); color: #080808; }
+          .rd-btn-danger {
+            color: #FC4D64; border-color: rgba(252,77,100,.35);
+          }
+          .rd-btn-danger:hover { background: rgba(252,77,100,.08); }
 
           @media (max-width: 600px) {
             .rd-stats { grid-template-columns: 1fr 1fr; }

@@ -17,6 +17,8 @@ struct RunRecapView: View {
     @State private var run: RunRecap?
     @State private var loading = true
     @State private var dynamics: HealthKitManager.RunDynamics?
+    @State private var deleteConfirm = false
+    @State private var deleting = false
 
     var body: some View {
         ScrollView {
@@ -27,15 +29,48 @@ struct RunRecapView: View {
                         .padding(.top, 40).frame(maxWidth: .infinity)
                 } else if let r = run {
                     RunRecapContent(run: r, dynamics: dynamics, fallbackDate: date)
+                    // Delete affordance for mistake imports (test runs,
+                    // duplicate watch syncs). Tombstones the activity
+                    // so Strava re-sync won't bring it back.
+                    if let rid = r.id, !rid.isEmpty {
+                        Button { deleteConfirm = true } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash").font(.system(size: 11, weight: .semibold))
+                                Text("Delete this run").font(Faff.F.inter(12, .semibold))
+                            }
+                            .foregroundStyle(Faff.C.warn)
+                            .padding(.vertical, 12).padding(.horizontal, 16)
+                            .frame(maxWidth: .infinity)
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Faff.C.warn.opacity(0.40), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain).disabled(deleting)
+                        .padding(.top, 6)
+                    }
                 } else {
                     emptyState
                 }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
-        .overlay(alignment: .topTrailing) { SheetCloseButton { dismiss() }.padding(.top, 8).padding(.trailing, 14) }
+        // Close affordance removed — swipe down dismisses natively.
         .background(Faff.C.bg.ignoresSafeArea())
         .task { await load() }
+        .confirmationDialog("Delete this run?",
+                            isPresented: $deleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await performDelete() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("For mistake imports or duplicates only. Can't be undone from the app.")
+        }
+    }
+
+    private func performDelete() async {
+        guard let rid = run?.id, !rid.isEmpty else { return }
+        deleting = true; defer { deleting = false }
+        do {
+            try await RunDeleteAPI.delete(id: rid)
+            dismiss()
+        } catch { /* surface inline in a future round */ }
     }
 
     private func load() async {

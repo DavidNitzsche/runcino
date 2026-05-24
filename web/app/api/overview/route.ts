@@ -208,6 +208,11 @@ interface OverviewApiOk {
   /** Next 4 future weeks' long-run distances from the plan artifact.
    *  Used by the long-run strip to show projected Sunday bars. */
   planFutureLongRuns: Array<{ weekStartISO: string; longMi: number }>;
+  /** The runner's fueling settings (gel brand + carbs/gel + g/hr target).
+   *  Surfaced here so the iPhone Profile fueling card can display the
+   *  current value on first render without a separate fetch. POST
+   *  /api/me/fuel to update. */
+  fuel: { brand: string | null; gelCarbsG: number | null; targetGPerHr: number | null };
 }
 
 interface OverviewApiErr {
@@ -761,6 +766,11 @@ export async function GET(req: Request): Promise<Response> {
       raceProjection: buildRaceProjectionPayload(raceFitnessA, nextA, upcoming, todayDate),
       planFutureLongRuns,
       todayFueling,
+      fuel: {
+        brand: authUser?.fuelBrand ?? null,
+        gelCarbsG: authUser?.fuelGelCarbsG ?? null,
+        targetGPerHr: authUser?.fuelTargetGPerHr ?? null,
+      },
     };
     return Response.json(body);
   } catch (e) {

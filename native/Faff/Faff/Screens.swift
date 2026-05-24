@@ -863,7 +863,18 @@ struct RacesView: View {
             }
         }
         .task { await load() }
-        .sheet(item: $detail) { RaceDetailView(header: $0, phase: overview.planCurrentPhase, projection: $0.isPast ? nil : overview.raceProjection) }
+        .sheet(item: $detail) {
+            // Path-to-Goal trajectory ONLY for the active A-race. For
+            // B/C/tune-up races the trajectory math is meaningless
+            // here — we'd render the A-race's prediction on a C-race
+            // detail and confuse the runner (e.g. 1:37 predicted next
+            // to a 0:45 5K goal).
+            let isActiveARace = !$0.isPast
+                && ($0.priority == "A" || $0.priority == nil)
+                && $0.slug == overview.state?.races?.nextA?.slug
+            RaceDetailView(header: $0, phase: overview.planCurrentPhase,
+                           projection: isActiveARace ? overview.raceProjection : nil)
+        }
     }
 
     private func load() async {
@@ -1045,7 +1056,6 @@ struct RaceDetailView: View {
                 HStack {
                     Text(header.isPast ? "RACE RESULT" : "RACE").font(Faff.F.oswald(13, .semibold)).tracking(1.5).foregroundStyle(Faff.C.ink)
                     Spacer()
-                    Button("Done") { dismiss() }.font(Faff.F.inter(13, .semibold)).foregroundStyle(Faff.C.race)
                 }.padding(.top, 16)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(eyebrow).font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.race)
@@ -1536,6 +1546,7 @@ struct ProfileView: View {
                         Spacer()
                     }
                     trainingCard
+                    FuelCard(initial: overview.fuel)
                     shoeCard
                     VStack(alignment: .leading, spacing: 0) {
                         Text("INTEGRATIONS").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim).padding(.bottom, 8)
@@ -1715,7 +1726,6 @@ struct WhyThisSheet: View {
                         Text("Why \(dw.label.lowercased())").font(Faff.F.display(34)).foregroundStyle(Faff.C.ink)
                     }
                     Spacer()
-                    SheetCloseButton { dismiss() }
                 }
                 faffMarkdown(overview.composedCoach)
                     .font(Faff.F.inter(15)).foregroundStyle(Faff.C.ink).lineSpacing(5)
@@ -1754,7 +1764,6 @@ struct HrAnchorEditSheet: View {
                 HStack(alignment: .top) {
                     Text("HR ANCHORS").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
                     Spacer()
-                    SheetCloseButton { dismiss() }
                 }
                 CoachVerdict("How this works",
                     "These come from Apple Health automatically (max HR from your hardest efforts, resting HR from your watch). Override either if you've measured it directly, clear the field to go back to automatic. Every HR zone keys off these two numbers.",
@@ -1870,7 +1879,6 @@ struct ReadinessDetailSheet: View {
                 HStack(alignment: .top) {
                     Text("READINESS").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
                     Spacer()
-                    SheetCloseButton { dismiss() }
                 }
 
                 // Hero, ring + state + the coach's recommendation verbatim.
@@ -1946,7 +1954,6 @@ struct ReadinessDetailSheet: View {
                         color: Faff.C.textDim)
                 }
 
-                PrimaryButton(title: "Close", icon: nil) { dismiss() }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
@@ -2011,7 +2018,6 @@ struct MetricDetailSheet: View {
                 HStack(alignment: .top) {
                     Text("APPLE HEALTH").font(Faff.F.inter(10, .semibold)).tracking(2).foregroundStyle(Faff.C.textDim)
                     Spacer()
-                    SheetCloseButton { dismiss() }
                 }
                 valueCard
                 if metric.live, metric.sampleType != nil {
@@ -2032,7 +2038,6 @@ struct MetricDetailSheet: View {
                                  "\(metric.title) isn't syncing yet. Connect Apple Health (Health tab) and it'll appear here once your watch or phone records it.",
                                  color: Faff.C.textDim)
                 }
-                PrimaryButton(title: "Close", icon: nil) { dismiss() }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
@@ -2274,7 +2279,6 @@ struct PlanDayDetailSheet: View {
                             .lineSpacing(-8).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    SheetCloseButton { dismiss() }
                 }
                 HStack(spacing: Faff.S.inlineGap) {
                     StatPill(value: OverviewFormat.distance(day.distanceMi), unit: "mi", label: "Distance")
@@ -2322,7 +2326,6 @@ struct PlanDayDetailSheet: View {
                     CoachVerdict("Why this run", why, color: Faff.C.recovery)
                 }
                 CoachVerdict("Focus", detail?.description?.effort ?? effort(day.type), color: Faff.C.milestone)
-                PrimaryButton(title: "Close", icon: nil) { dismiss() }
             }
             .padding(.horizontal, Faff.S.pageEdge).padding(.bottom, Faff.S.scrollBottom)
         }
@@ -2420,14 +2423,10 @@ struct PathToGoalCard: View {
                 )
             }
 
-            // Smooth projection curve (12 weeks). Replaces the old
-            // two-line maintain/plan chart with a single curve +
-            // gradient fill + NOW marker + dashed goal line.
-            if let pts = projection.points, pts.count >= 2,
-               let goalS = projection.goalFinishS {
-                TrajectoryChart(points: pts, goalFinishS: goalS)
-                    .frame(height: 120)
-            }
+            // Chart dropped — the 3-stat grid above + the verdict
+            // below tell the whole story without needing chart-
+            // literacy. The projected curve was visually busy and
+            // confused readers (y-axis direction wasn't obvious).
 
             // Coach voice verdict (the main read).
             if let verdict = projection.verdict, !verdict.isEmpty {
@@ -2647,6 +2646,109 @@ struct TrajectoryChart: View {
                 y: p2.y - (p3.y - p1.y) * tension / 3
             )
             path.addCurve(to: p2, control1: c1, control2: c2)
+        }
+    }
+}
+
+// MARK: - Fuel settings card (Profile)
+
+/// Profile fueling card. The runner sets their gel product once here
+/// and the whole app reads from it — workouts, watch prompts, and the
+/// per-day fueling plan all use these three numbers instead of the
+/// generic 22g / 60 g·hr defaults. Saves on Done; the form mirrors
+/// the web FuelIsland (single source of truth via POST /api/me/fuel).
+struct FuelCard: View {
+    let initial: OFuelSettings?
+    @State private var brand: String = ""
+    @State private var carbs: String = ""
+    @State private var target: String = ""
+    @State private var busy = false
+    @State private var savedAt: Date?
+    @State private var error: String?
+    @State private var loaded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("FUELING").font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(Faff.C.textDim)
+                Spacer()
+                if let s = savedAt, Date().timeIntervalSince(s) < 2 {
+                    Text("Saved").font(Faff.F.inter(11, .medium)).foregroundStyle(Faff.C.recovery)
+                }
+            }
+            Text("Your gel product. The whole app reads this — workouts, watch prompts, race plans all use your real carbs-per-packet and hourly target.")
+                .font(Faff.F.inter(12)).foregroundStyle(Faff.C.textMuted).lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            // Brand
+            VStack(alignment: .leading, spacing: 4) {
+                Text("BRAND").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                TextField("e.g. Maurten 100", text: $brand)
+                    .textInputAutocapitalization(.words)
+                    .font(Faff.F.inter(14)).foregroundStyle(Faff.C.ink)
+                    .padding(.horizontal, 11).padding(.vertical, 9)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Faff.C.divider, lineWidth: 1))
+            }
+            // Carbs + target row
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("CARBS / GEL").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                    HStack(spacing: 4) {
+                        TextField("25", text: $carbs).keyboardType(.numberPad)
+                            .font(Faff.F.inter(14)).foregroundStyle(Faff.C.ink)
+                        Text("g").font(Faff.F.inter(11)).foregroundStyle(Faff.C.textFaint)
+                    }
+                    .padding(.horizontal, 11).padding(.vertical, 9)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Faff.C.divider, lineWidth: 1))
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TARGET / HR").font(Faff.F.inter(9.5, .semibold)).tracking(0.8).foregroundStyle(Faff.C.textDim)
+                    HStack(spacing: 4) {
+                        TextField("60", text: $target).keyboardType(.numberPad)
+                            .font(Faff.F.inter(14)).foregroundStyle(Faff.C.ink)
+                        Text("g/hr").font(Faff.F.inter(11)).foregroundStyle(Faff.C.textFaint)
+                    }
+                    .padding(.horizontal, 11).padding(.vertical, 9)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Faff.C.divider, lineWidth: 1))
+                }
+            }
+            if let err = error {
+                Text(err).font(Faff.F.inter(11.5)).foregroundStyle(Faff.C.warn)
+            }
+            HStack(spacing: 8) {
+                Spacer()
+                Button { Task { await save() } } label: {
+                    Text(busy ? "Saving…" : "Save")
+                        .font(Faff.F.oswald(12, .semibold)).tracking(1.2).foregroundStyle(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(Faff.C.ink, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .opacity(busy ? 0.5 : 1)
+                }.buttonStyle(.plain).disabled(busy)
+            }
+        }
+        .faffCard()
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            brand = initial?.brand ?? ""
+            carbs = initial?.gelCarbsG.map { "\($0)" } ?? ""
+            target = initial?.targetGPerHr.map { "\($0)" } ?? ""
+        }
+    }
+
+    private func save() async {
+        busy = true; error = nil
+        defer { busy = false }
+        let b = brand.trimmingCharacters(in: .whitespaces)
+        let cN = Int(carbs.trimmingCharacters(in: .whitespaces))
+        let tN = Int(target.trimmingCharacters(in: .whitespaces))
+        do {
+            try await FuelSettingsAPI.update(brand: b.isEmpty ? nil : b, gelCarbsG: cN, targetGPerHr: tN)
+            savedAt = Date()
+        } catch {
+            self.error = "Save failed. Try again."
         }
     }
 }
