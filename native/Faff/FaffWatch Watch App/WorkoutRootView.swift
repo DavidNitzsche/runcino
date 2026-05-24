@@ -161,7 +161,7 @@ struct WorkoutRootView: View {
         // Neutral fixture — no canned "Hit today's prescription" copy (it's
         // no longer the recommendation pattern), no real race name leaking.
         return WatchReadiness(score: 82, state: "green", label: "Primed",
-                              recommendation: "Sleep banked. Execute the plan.",
+                              recommendation: "Sleep banked. Today's session is good to go.",
                               hrvMs: 68, rhrBpm: 48, suppressReason: nil,
                               nextRace: nil)
         #else

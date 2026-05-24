@@ -531,7 +531,7 @@ struct CoachView: View {
         case "marathon_specific":
             return "Marathon-pace combo — teaches you to recover while still holding race pace."
         case "race":
-            return "Race day. Execute the plan. The work is done; this is collecting receipts."
+            return "Race day. The training is built. Run the first three miles slower than you want, take fuel on schedule, trust the work."
         default:
             return "Quality session — protect today's easy effort so this lands clean."
         }
@@ -2490,7 +2490,7 @@ struct PlanDayDetailSheet: View {
         case "vo2", "interval": return "Hard reps with full recoveries. Hit the paces, don't exceed them."
         case "long_steady", "long": return "Steady aerobic miles. Time on feet is the stimulus, not pace."
         case "marathon_specific", "mp": return "Goal marathon-pace effort, controlled and rhythmic."
-        case "race": return "Race day, execute the plan; conserve early, commit late."
+        case "race": return "Race day. Conserve the first third, settle the middle, commit the last 5K."
         default: return "Easy and conversational. If you can't hold a sentence, slow down."
         }
     }
