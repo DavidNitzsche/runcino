@@ -27,8 +27,12 @@ export interface TopbarProps {
   user?: { name?: string; email?: string };
 }
 
+// Tab labels: "Today" reads more honestly than "Overview" — the page
+// is about today's run + this week. Training is the macro arc (phase,
+// trajectory, build). Route paths stay as /overview etc so existing
+// links don't break.
 const TAB_LABELS: Record<TopbarTab, string> = {
-  overview: 'Overview',
+  overview: 'Today',
   training: 'Training',
   races:    'Races',
   health:   'Health',

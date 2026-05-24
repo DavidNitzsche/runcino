@@ -12,7 +12,7 @@
  */
 
 import type { CoachState } from '@/lib/coach-state';
-import { createProposal, listPendingProposals } from '@/lib/proposal-store';
+import { createProposal, listPendingProposals, revokePendingProposals } from '@/lib/proposal-store';
 import { logCoachAction } from '@/lib/coach-actions-store';
 import { coach } from './coach';
 
@@ -45,7 +45,17 @@ const MIN_RACES_INFORMING = 1; // at least one race result anchoring fitness
 
 /** Idempotent — if a pending goal-change proposal already exists for
  *  this race, returns null (don't double-propose). Otherwise evaluates
- *  the gap and writes a proposal when warranted. */
+ *  the gap and writes a proposal when warranted.
+ *
+ *  CRITICAL CONTEXT FILTER (CLAUDE.md "Per-finding context filters",
+ *  locked 2026-05-19): during the post-race recovery window, fitness
+ *  readings are depressed and NOT representative of the runner's true
+ *  trajectory — proposing a goal change off that data would be insane
+ *  coaching. The whole proposal is suppressed during the window. Same
+ *  applies to a heavy-block (stacked races in 30 days). Per-finding
+ *  filtering: this check is at the FINDING level, not just the surface
+ *  level — the parent surface might suppress its banner during race-
+ *  week but this finding fires independently and needs its own guard. */
 export async function maybeProposeGoalAdjustment(
   state: CoachState,
   userUuid: string,
@@ -56,6 +66,24 @@ export async function maybeProposeGoalAdjustment(
   if (!userUuid) return null;
   const nextA = state.races.nextA;
   if (!nextA || !nextA.goalFinishS) return null;
+
+  // Post-race recovery window — fitness is depressed, not representative.
+  // Suppress proposals AND revoke any pending ones that were created
+  // before the window started (or by a broken earlier version of this
+  // filter). The runner will see fresh proposals naturally once fitness
+  // after recovery has stabilized.
+  const inPostRaceWindow = state.recoveryWindowEndsISO != null && state.now <= state.recoveryWindowEndsISO;
+  if (inPostRaceWindow) {
+    await revokePendingProposals(userUuid, 'goal_time_change').catch(() => 0);
+    return null;
+  }
+  // Heavy-block (stacked races) — same logic. Recent racing skews fitness
+  // either way; let it settle before renegotiating goals.
+  if (state.flags?.heavyBlockSuspected) {
+    await revokePendingProposals(userUuid, 'goal_time_change').catch(() => 0);
+    return null;
+  }
+
   if (Math.abs(sustainedDeltaSPerMi) < PROPOSAL_THRESHOLD_S_PER_MI) return null;
   if (windowDays < PROPOSAL_WINDOW_DAYS) return null;
   if (((state.races.bestForVdot ?? []).length) < MIN_RACES_INFORMING) return null;

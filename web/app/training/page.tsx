@@ -25,7 +25,9 @@ import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { todayISO, daysBetween, fmtShortDate, userTimezone, type PlanWeek } from '@/lib/synthetic-plan';
 import { getRealPlanWeeks } from '@/lib/plan-weeks';
 import { getCompletedMileageByDate, getLongestRunByDate, getWeekStats, isWorkoutComplete } from '@/lib/completed-runs';
-import { generateBriefing } from '@/lib/coach-briefing';
+// generateBriefing is the day-focused briefer used by Overview/Today.
+// Training uses composeArcBriefing (defined at the bottom of this
+// file) instead — macro-arc voice, not day-of-week voice.
 import { resolvePlanUserId } from '@/lib/plan-user';
 import { WorkoutModalProvider, type WorkoutDay } from '@/app/overview/WorkoutModalIsland';
 import { TrainingCell } from './TrainingCellIsland';
@@ -120,30 +122,26 @@ export default async function TrainingPage() {
   const raceDate = goalRace?.meta.date ?? lastPlanDay;
   const daysToRace = Math.max(0, daysBetween(today, raceDate));
 
-  // Coach brief, the SAME generateBriefing the Today/overview surfaces
-  // use, not hardcoded prose. Inputs assembled like /api/overview.
+  // Training is the MACRO ARC, not today. "How's training going?" gets
+  // answered with phase + trajectory + what's banked + what's coming —
+  // NOT "today is 11.6 mi, go conversational." That's an Overview/Today
+  // briefing and belongs there. The arc briefing below is composed
+  // from the plan shape + phase + recent week stats, not generateBriefing
+  // (which is day-focused). Inputs still assembled for the few macro
+  // signals the briefing reads.
   const curWeekIdx = weeks.indexOf(currentWeek);
   const previousWeek = curWeekIdx > 0 ? weeks[curWeekIdx - 1] : null;
   const emptyStats = { totalMi: 0, runDays: 0, longest: null, quality: null, avgHr: null };
-  const yISO = (() => { const d = new Date(today + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); })();
   const lastWeekStats = previousWeek
     ? await getWeekStats(user.id, previousWeek.startDate, previousWeek.endDate).catch(() => emptyStats)
     : emptyStats;
-  const thisWeekSoFar = yISO >= currentWeek.startDate
-    ? await getWeekStats(user.id, currentWeek.startDate, yISO).catch(() => emptyStats)
-    : emptyStats;
-  const localHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date()));
-  const coachBriefing = generateBriefing({
-    firstName: user.name?.trim().split(' ')[0] || '',
-    today,
+  const coachBriefing = composeArcBriefing({
+    phaseKey,
+    currentWeek,
+    weeks,
     daysToRace,
     raceLabel: goalRaceName,
-    currentWeek,
-    previousWeek,
     lastWeekStats,
-    thisWeekSoFar,
-    todayDay: currentWeek.days.find((d) => d.date === today) ?? null,
-    localHour,
   });
 
   const phasePeak = Math.max(...phaseWeeks.map((w) => w.plannedMi));
@@ -542,4 +540,76 @@ export default async function TrainingPage() {
     </div>
     </WorkoutModalProvider>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Arc briefing — Training's coach voice answers "how's training going?"
+// not "what am I doing today?" Macro scale: phase + week-in-phase, days
+// to race, banked-vs-plan trajectory, what's next. Today belongs to the
+// Overview/Today surface. Voice doctrine §3 PROJECTION + DIAGNOSIS.
+// ─────────────────────────────────────────────────────────────────────
+
+interface ArcBriefingInput {
+  phaseKey: PlanWeek['phase'];
+  currentWeek: PlanWeek;
+  weeks: PlanWeek[];
+  daysToRace: number;
+  raceLabel: string;
+  lastWeekStats: { totalMi: number; runDays: number; longest: number | null; quality: number | null; avgHr: number | null };
+}
+
+function composeArcBriefing(input: ArcBriefingInput): string {
+  const { phaseKey, currentWeek, weeks, daysToRace, raceLabel, lastWeekStats } = input;
+  const weekOfPlan = currentWeek.weekNum;
+  const totalWeeks = weeks.length;
+  const phaseWeeks = weeks.filter((w) => w.phase === phaseKey);
+  const weekInPhase = phaseWeeks.indexOf(currentWeek) + 1;
+  const phaseLength = phaseWeeks.length;
+  const peakWeekMi = Math.max(...weeks.map((w) => w.plannedMi));
+  const peakWeekIdx = weeks.findIndex((w) => w.plannedMi === peakWeekMi);
+  const weeksToPeak = Math.max(0, peakWeekIdx - (weekOfPlan - 1));
+  const lastPlanned = weeks[weekOfPlan - 2]?.plannedMi ?? 0;
+  const lastActual = lastWeekStats.totalMi;
+  const bankedDelta = lastActual && lastPlanned ? Math.round(lastActual - lastPlanned) : 0;
+
+  // RACE_WEEK and TAPER: the work is done; trust the lower mileage.
+  if (phaseKey === 'RACE_WEEK') {
+    return `Race week — ${daysToRace} days to ${raceLabel}. The work is done; the legs are supposed to feel weird this week. Trust the lower mileage and don't try to find another hard session.`;
+  }
+  if (phaseKey === 'TAPER') {
+    return `Taper. ${daysToRace} days to ${raceLabel}. Volume drops, intensity holds. The fitness is exactly where we wanted it — let the freshness come back in.`;
+  }
+
+  // PEAK: heaviest aerobic ask of the cycle.
+  if (phaseKey === 'PEAK') {
+    return `Peak phase — week ${weekInPhase} of ${phaseLength}, ${daysToRace} days to ${raceLabel}. This is where the build pays off OR exposes where recovery's leaking. Sleep, carbs, no dumb bonus intensity.`;
+  }
+
+  // BASE and BUILD: structured arc story.
+  const phaseName = phaseKey === 'BASE' ? 'Base' : 'Build';
+  const phasePoint = phaseKey === 'BASE'
+    ? 'Aerobic floor going in — durability before the quality load climbs.'
+    : 'Threshold-dominant block — this is where the engine compounds.';
+
+  // Trajectory signal from last week's banked-vs-plan.
+  let trajectoryLine = '';
+  if (lastPlanned > 0 && lastActual > 0) {
+    if (bankedDelta >= 3) {
+      trajectoryLine = ` Last week +${bankedDelta} mi over plan — running ahead, but watch the easy-day discipline so this absorbs cleanly.`;
+    } else if (bankedDelta <= -3) {
+      trajectoryLine = ` Last week ${bankedDelta} mi under plan — closeable if the long run lands this weekend.`;
+    } else {
+      trajectoryLine = ` Last week ${lastActual} mi vs ${lastPlanned} planned — tracking.`;
+    }
+  }
+
+  // What's next signal.
+  let nextLine = '';
+  if (phaseKey === 'BASE' && weeksToPeak > 0) {
+    nextLine = ` Build phase opens in ${phaseLength - weekInPhase + 1} weeks; peak is ${weeksToPeak} weeks out at ${peakWeekMi} mi/wk.`;
+  } else if (phaseKey === 'BUILD' && weeksToPeak > 0) {
+    nextLine = ` Peak in ${weeksToPeak} weeks at ${peakWeekMi} mi/wk; ${daysToRace} days to ${raceLabel}.`;
+  }
+
+  return `${phaseName} phase, week ${weekInPhase} of ${phaseLength} (week ${weekOfPlan} of ${totalWeeks} overall). ${phasePoint}${trajectoryLine}${nextLine}`;
 }
