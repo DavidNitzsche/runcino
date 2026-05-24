@@ -94,19 +94,32 @@ struct ActiveWorkoutView: View {
             } else {
                 switch phase.type {
                 case .work:
-                    // A workout with exactly one .work phase is an easy / long /
-                    // steady run, not a rep session — route to EasyFace (rotating
-                    // HR/cadence guardrail) or SteadyRunFace (no target). Multi-
-                    // work-phase sessions (intervals, threshold blocks) get the
-                    // canonical rep-work face with the strip + counter.
-                    if isSingleWorkSession(engine) {
-                        if phase.targetPaceSPerMi != nil {
-                            LiveEasy(engine: engine, tracker: tracker, phase: phase)
+                    // displayHint takes precedence — backend signal that
+                    // this workout wants a specialised face (HR-governed,
+                    // progression, strides). Falls back to the phase-driven
+                    // defaults below when nil/unknown.
+                    switch engine.workout.displayHint {
+                    case "hr":
+                        LiveHR(engine: engine, tracker: tracker, phase: phase)
+                    case "progression":
+                        LiveProgression(engine: engine, tracker: tracker, phase: phase)
+                    case "strides":
+                        LiveStrides(engine: engine, tracker: tracker, phase: phase)
+                    default:
+                        // A workout with exactly one .work phase is an easy /
+                        // long / steady run — route to EasyFace (rotating
+                        // HR/cadence guardrail) or SteadyRunFace (no target).
+                        // Multi-work-phase sessions (intervals, threshold
+                        // blocks) get the rep-work face with strip + counter.
+                        if isSingleWorkSession(engine) {
+                            if phase.targetPaceSPerMi != nil {
+                                LiveEasy(engine: engine, tracker: tracker, phase: phase)
+                            } else {
+                                LiveSteady(engine: engine, tracker: tracker, phase: phase, role: .neutral)
+                            }
                         } else {
-                            LiveSteady(engine: engine, tracker: tracker, phase: phase, role: .neutral)
+                            LiveWorkInterval(engine: engine, tracker: tracker, phase: phase)
                         }
-                    } else {
-                        LiveWorkInterval(engine: engine, tracker: tracker, phase: phase)
                     }
                 case .warmup:
                     LiveWarmup(engine: engine, tracker: tracker, phase: phase)
@@ -235,6 +248,87 @@ private struct LiveEasy: View {
             hrOver:   engine.hrOverCeiling,
             cadence:  tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
             distance: distText(tracker.distanceMi)
+        )
+    }
+}
+
+/// HR-governed easy face — MAF / Z2 / heat-flag sessions where HR is the
+/// real anchor, not pace. Same NumberFace recipe as EasyFace but HR is the
+/// big-green hero in the middle and pace is the neutral white row above.
+/// Routed when workout.displayHint == "hr".
+private struct LiveHR: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    /// HR row role: green when in-zone, red when over ceiling, mute pre-HR.
+    private var hrRole: Role {
+        if tracker.heartRate <= 0 { return .mute }
+        if engine.hrOverCeiling { return .over }
+        return .live
+    }
+    var body: some View {
+        HRFace(
+            pace:     paceText(tracker),
+            hr:       tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
+            hrRole:   hrRole,
+            distance: distText(tracker.distanceMi)
+        )
+    }
+}
+
+/// Progression run — pace target step-changes through the workout. Each
+/// .work phase carries the next target; this adapter shows the runner the
+/// current target + how much further until the next step kicks in.
+/// Routed when workout.displayHint == "progression".
+private struct LiveProgression: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    private var stepTarget: String {
+        phase.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+    }
+    /// How much further before the pace target step-changes — either miles
+    /// (when this phase is distance-based) or m:ss to next.
+    private var toNextStep: String {
+        if phase.repUnit == .distance {
+            return engine.phaseRemainingMi.map { String(format: "%.2f", $0) } ?? "—"
+        }
+        return PaceFormat.clock(engine.phaseRemainingSec)
+    }
+    var body: some View {
+        ProgressionFace(
+            livePace:      paceText(tracker),
+            paceRole:      paceRole(engine: engine, tracker: tracker),
+            stepTarget:    stepTarget,
+            totalDistance: distText(tracker.distanceMi),
+            toNextStep:    toNextStep
+        )
+    }
+}
+
+/// Strides — short bursts (typically 8 × 20 s, full recovery between). The
+/// face leads with live pace + a burst countdown so the runner knows when
+/// the current stride ends; the strip below tracks reps done / now / left.
+/// Routed when workout.displayHint == "strides".
+private struct LiveStrides: View {
+    @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
+    let phase: WatchPhase
+
+    /// Time left in the current burst — m:ss for a 20s stride reads as "0:14".
+    private var burstCountdown: String {
+        if phase.repUnit == .distance {
+            return engine.phaseRemainingMi.map { String(format: "%.2f", $0) } ?? "—"
+        }
+        return PaceFormat.clock(engine.phaseRemainingSec)
+    }
+    var body: some View {
+        StridesFace(
+            livePace:        paceText(tracker),
+            burstCountdown:  burstCountdown,
+            stripStates:     sessionStripStates(engine)
         )
     }
 }
@@ -394,7 +488,13 @@ struct ControlsFace: View {
             Spacer(minLength: 0)
             bar(paused ? "play.fill" : "pause.fill", paused ? "Resume" : "Pause",
                 tint: paused ? WP.green : WP.amber, filled: true, action: onPrimary)
-            bar("stop.fill", "End", tint: WP.warn, filled: false, action: onEnd)
+            // End filled to match Pause's weight — they're both primary
+            // actions on this page, no reason End should read as secondary.
+            // Uses Faff.redish (#D03F3F, the approved destructive-action red)
+            // — distinct from WP.warn/Faff.over (#FC4D64, the pinker red used
+            // on live-data alerts like off-pace / HR-over). Buttons + data
+            // states get different reds so they read as different meanings.
+            bar("stop.fill", "End", tint: Faff.redish, filled: true, action: onEnd)
             bar(audibleAlerts ? "speaker.wave.2.fill" : "speaker.slash.fill",
                 audibleAlerts ? "Sound" : "Muted",
                 tint: Faff.brand, filled: audibleAlerts,
@@ -610,9 +710,8 @@ struct SessionMapFace: View {
 
 // MARK: - Transition flips (full-screen, brief · deck §C3 / §F2)
 
-/// Routes engine transitions to the right takeover face. Fuel + Go + split
-/// use the new locked takeovers; heads-up and phase-change use the WatchFaces
-/// TransitionFace until they have their own locked variants.
+/// Routes engine transitions to locked-grammar takeovers. All five cue
+/// types now use Faces.swift takeovers — no more legacy TransitionFace.
 private struct TransitionFlip: View {
     let cue: WorkoutEngine.TransitionCue
     var body: some View {
@@ -620,50 +719,24 @@ private struct TransitionFlip: View {
         case .fuel(let i, let total):
             FuelFace(index: i, total: total)
         case .go(let t, let s):
-            // The new GoFace is glyph + GO + sub. Engine's title carries the
-            // rep number ("Go · Int 4") and the sub carries the target.
+            // Engine's title carries the rep number ("Go · Int 4"); sub
+            // carries the target ("Target 6:31/mi"). GoFace shows "GO" big
+            // with both threaded into the sub line.
             GoFace(sub: "\(t)\(s.map { " · \($0)" } ?? "")")
         case .split(let n, let paceSec):
             // MILE N · m:ss takeover — the just-banked mile pace, flashed
             // briefly so the runner sees the split without leaving the face.
             MileSplitFace(mile: "MILE \(n)", pace: PaceFormat.mmss(paceSec))
-        case .headsUp(let t, let s):
-            TransitionFace(icon: "clock", title: t, titleColor: WP.amber, sub: s)
+        case .headsUp(_, let s):
+            HeadsUpFace(sub: s ?? "")
         case .phase(let t, let s):
-            TransitionFace(icon: "mountain.2.fill", title: t, titleColor: WP.orange, sub: s)
+            PhaseChangeFace(title: t, sub: s ?? "")
         }
     }
 }
 
-/// The shared centered transition layout (icon + title + sub) for the cues that
-/// don't yet have a locked takeover. Survives from the previous design.
-struct TransitionFace: View {
-    let icon: String
-    let title: String
-    var titleColor: Color = WP.amber
-    let sub: String?
-    var next: String? = nil   // what's coming after this beat (e.g. "90s jog") so you can prepare
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 34, weight: .bold)).foregroundStyle(titleColor)
-            Text(title).font(WF.bebas(44)).foregroundStyle(titleColor)
-                .lineLimit(1).minimumScaleFactor(0.5)
-            if let sub {
-                Text(sub).font(WF.interSemi(12)).tracking(0.3)
-                    .foregroundStyle(WP.muted).multilineTextAlignment(.center)
-            }
-            if let next {
-                (Text("UP NEXT  ").foregroundStyle(WP.muted)
-                 + Text(next.uppercased()).foregroundStyle(WP.ink))
-                    .font(WF.interBold(12)).tracking(0.6)
-                    .padding(.top, 4)
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WP.bg)
-    }
-}
+// (Legacy TransitionFace removed — every transition cue now routes to a
+// proper Faces.swift takeover via TransitionFlip above.)
 
 #Preview {
     ActiveWorkoutView(engine: {

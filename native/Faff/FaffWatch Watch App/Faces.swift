@@ -346,6 +346,42 @@ struct GoFace: View {
     }
 }
 
+/// HEADS-UP — amber takeover ~3 s before a work rep ends. Clock glyph +
+/// "ALMOST" + sub showing seconds/distance left. Auto-dismisses with the rep.
+struct HeadsUpFace: View {
+    let sub: String     // "3 SECONDS LEFT" / "200M LEFT" / nil-passing yields ""
+    var body: some View {
+        Screen(background: wash(0x3A2B08)) {
+            GeometryReader { geo in
+                let h = geo.size.height
+                Takeover(glyph: Image(systemName: "clock")
+                            .font(.system(size: h * 0.15))
+                            .foregroundStyle(Faff.goal),
+                         big: "ALMOST", bigColor: Faff.goal, sub: sub, bigSize: 0.38)
+            }
+        }
+    }
+}
+
+/// PHASE CHANGE — race-day takeover when crossing into a new course phase
+/// (e.g. "HURRICANE CLIMB"). Mountain glyph + phase name + new pace target.
+struct PhaseChangeFace: View {
+    let title: String   // "HURRICANE CLIMB"
+    let sub: String     // "10:38/MI · HOLD EFFORT"
+    var body: some View {
+        Screen(background: wash(0x3A2B08)) {
+            GeometryReader { geo in
+                let h = geo.size.height
+                Takeover(glyph: Image(systemName: "mountain.2.fill")
+                            .font(.system(size: h * 0.14))
+                            .foregroundStyle(Faff.goal),
+                         big: title.uppercased(), bigColor: Faff.goal, sub: sub,
+                         bigSize: 0.26)
+            }
+        }
+    }
+}
+
 /// Fuel — gel cue (amber = act now). Workout-type-agnostic: fires for any
 /// workout whose plan ships fuel markers (race or training). PERSISTENT —
 /// stays on screen until the runner swipes it down to acknowledge. Just two

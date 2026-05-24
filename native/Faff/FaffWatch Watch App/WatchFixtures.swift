@@ -194,6 +194,12 @@ struct WatchFixtureView: View {
                     totalDurationSec: 6138, avgHr: 148, maxHr: 162,
                     avgCadence: 173, phases: []),
                 onDone: {})
+        case "controls":
+            ControlsFace(paused: false, onPrimary: {}, onEnd: {})
+        case "headsup":
+            HeadsUpFace(sub: "3 SECONDS LEFT")
+        case "phase-change":
+            PhaseChangeFace(title: "HURRICANE", sub: "10:38/MI · HOLD EFFORT")
         case "hr":
             HRFace(pace: "9:15", hr: "142", hrRole: .live, distance: "4.1")
         case "strides":

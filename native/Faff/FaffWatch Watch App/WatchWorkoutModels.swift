@@ -140,11 +140,21 @@ struct WatchWorkout: Codable {
     // easy face's guardrail row flips red and holds until you drop back into
     // zone — the alert can't be hidden behind a swipe. nil → no ceiling.
     let hrCeilingBpm: Int?
+    // Optional backend signal for which IN-RUN face flavour to render.
+    // Recognised values (router falls back to phase-based defaults when nil
+    // or unknown):
+    //   · "hr"           → HRFace (HR is the hero, pace below as reference)
+    //   · "progression"  → ProgressionFace (current step target + miles to next)
+    //   · "strides"      → StridesFace (burst countdown + strip)
+    // The phase-driven default rules (single-work-phase + target → EasyFace
+    // etc.) still apply when this is nil, so older payloads keep working.
+    let displayHint: String?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
         case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
+        case displayHint
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -152,7 +162,8 @@ struct WatchWorkout: Codable {
          readinessScore: Int? = nil, readinessLabel: String? = nil,
          distanceMi: Double? = nil, paceLabel: String? = nil,
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
-         fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil) {
+         fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
+         displayHint: String? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -170,6 +181,7 @@ struct WatchWorkout: Codable {
         self.gelsMi = gelsMi
         self.fueling = fueling
         self.hrCeilingBpm = hrCeilingBpm
+        self.displayHint = displayHint
     }
 
     init(from decoder: Decoder) throws {
@@ -190,6 +202,7 @@ struct WatchWorkout: Codable {
         self.gelsMi = try c.decodeIfPresent([Double].self, forKey: .gelsMi)
         self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
         self.hrCeilingBpm = try c.decodeIfPresent(Int.self, forKey: .hrCeilingBpm)
+        self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
         // Re-stamp each phase with its cursor index.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         self.phases = raw.enumerated().map { (i, p) in
