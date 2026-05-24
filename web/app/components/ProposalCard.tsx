@@ -111,6 +111,12 @@ export function ProposalCard() {
               {p.payload.reasoning}
             </div>
           )}
+          {/* Button labels frame the choice as "accept new plan" vs
+              "hold the line on what you committed to" — never "decline
+              the coach." Per-proposal-type wording: goal_time_change
+              compares old vs new goal time; other types fall back to
+              the generic Accept/Hold pattern. The runner isn't
+              declining the coach; they're keeping their goal. */}
           <div style={{ display: 'flex', gap: 10 }}>
             <button
               type="button"
@@ -132,7 +138,7 @@ export function ProposalCard() {
                 opacity: busy === p.id ? 0.7 : 1,
               }}
             >
-              {busy === p.id ? 'Saving…' : 'Accept'}
+              {busy === p.id ? 'Saving…' : acceptLabel(p.proposalType)}
             </button>
             <button
               type="button"
@@ -152,11 +158,40 @@ export function ProposalCard() {
                 cursor: busy === p.id ? 'not-allowed' : 'pointer',
               }}
             >
-              Decline
+              {rejectLabel(p.proposalType)}
             </button>
           </div>
         </div>
       ))}
     </div>
   );
+}
+
+// Per-proposal-type button labels. The framing is "accept the new
+// thing" vs "hold what you already committed to" — the runner is
+// never declining the coach, they're choosing to keep their goal.
+function acceptLabel(proposalType: string): string {
+  switch (proposalType) {
+    case 'goal_time_change':       return 'Accept new goal';
+    case 'race_priority_change':   return 'Change priority';
+    case 'plan_rewrite':           return 'Apply the rewrite';
+    case 'race_drop':              return 'Drop the race';
+    case 'long_run_day_change':    return 'Change the day';
+    case 'build_phase_extend':
+    case 'build_phase_shorten':    return 'Update the phase';
+    default:                       return 'Accept';
+  }
+}
+
+function rejectLabel(proposalType: string): string {
+  switch (proposalType) {
+    case 'goal_time_change':       return 'Keep goal';
+    case 'race_priority_change':   return 'Keep priority';
+    case 'plan_rewrite':           return 'Keep plan';
+    case 'race_drop':              return 'Keep the race';
+    case 'long_run_day_change':    return 'Keep the day';
+    case 'build_phase_extend':
+    case 'build_phase_shorten':    return 'Keep phase';
+    default:                       return 'Keep current';
+  }
 }
