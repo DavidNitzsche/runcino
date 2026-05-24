@@ -2753,7 +2753,7 @@ class CoachImpl implements Coach {
     const top = pushes.slice(0, 3);
 
     const rationale = top.length === 0
-      ? 'No actionable pushes this week, execute the plan as written.'
+      ? 'No pushes this week — the plan as written is the right call.'
       : `${top.length} push${top.length === 1 ? '' : 'es'} surfaced; most urgent: ${top[0]!.id}.`;
 
     return {

@@ -157,7 +157,7 @@ export async function validateRaceFeasibility(
       race: raceMeta,
       predicted: null,
       verdict: 'too-close',
-      reason: `${race.meta.name} is ${daysAway} day${daysAway === 1 ? '' : 's'} away, past the point where feasibility math is useful. Trust the work, execute the plan.`,
+      reason: `${race.meta.name} is ${daysAway} day${daysAway === 1 ? '' : 's'} out — past the point where feasibility math moves the needle. The work is in; race-day execution is the lever now.`,
       falsifier: 'Feasibility check returns after the race finishes.',
       evidence: [],
     };

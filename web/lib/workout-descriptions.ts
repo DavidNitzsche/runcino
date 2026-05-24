@@ -463,9 +463,9 @@ const TEMPLATES: Record<string, WorkoutTemplate> = {
       { kind: 'simple', name: 'Settle In',         duration: 'Miles 4–10',         zoneRef: 'race-pace', zoneLabel: 'lock in and hold' },
       { kind: 'simple', name: 'Commit',            duration: 'Mile 10 → finish',   zoneRef: 'race-pace', zoneLabel: 'the last 5K is where the race is won', paceOverride: 'goal pace or faster' },
     ],
-    effort: 'Race effort. Trust the training, your legs know what to do.',
-    why: 'Race day. Execute the plan; conserve early, commit late.',
-    todaysJob: 'Execute the plan. Conservative open, lock in the middle, commit the last 5K. The work is done. Today is collecting receipts.',
+    effort: 'Race effort. The training is done; the legs know what to do.',
+    why: 'Race day. The first three miles set up everything that comes after. Hold back early, commit when the work shows up.',
+    todaysJob: 'First three miles slower than you want — every fast plan dies there. Settle the middle, then commit the last 5K. Take fuel on schedule, drink to thirst, run your race.',
   },
 
   // ── Rest ──────────────────────────────────────────────────────

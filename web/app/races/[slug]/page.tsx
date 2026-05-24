@@ -435,7 +435,7 @@ export default async function RacePlanPage({ params }: PageProps) {
         return `${weeksToRace} weeks out from ${goal} and you're tracking. Threshold work has been landing. Keep the rhythm and we close the gap on time.`;
       }
       if (status === 'ahead') {
-        return `${weeksToRace} weeks out and you're already closer to ${goal} than the timeline needed. Don't blow it up trying to gain more. Execute the plan, let the taper sharpen, arrive fresh.`;
+        return `${weeksToRace} weeks out and you're already inside ${goal}. Don't blow it up chasing more — hold the rhythm, let the taper sharpen, arrive fresh.`;
       }
       const absSec = Math.abs(headroom);
       return `${weeksToRace} weeks out from ${goal} and the math says we're behind by about ${absSec} sec/mi. Training is consolidating but not accelerating fast enough. A tune-up race in the next 4-6 weeks gives me a clean data point and pulls the prescription tighter, faster.`;

@@ -912,7 +912,7 @@ function buildRaceVerdict(
     return `${weeksToRace} weeks out from ${goal} and you're tracking. Threshold work has been landing. Keep the rhythm and we close the gap on time.`;
   }
   if (status === 'ahead') {
-    return `${weeksToRace} weeks out and you're already closer to ${goal} than the timeline needed. Don't blow it up trying to gain more. Execute the plan, let the taper sharpen, arrive fresh.`;
+    return `${weeksToRace} weeks out and you're already inside ${goal}. Don't blow it up chasing more — hold the rhythm, let the taper sharpen, arrive fresh.`;
   }
   // BEHIND
   const absSec = Math.abs(headroom);
