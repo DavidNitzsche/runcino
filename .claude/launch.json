@@ -10,6 +10,14 @@
       "autoPort": true
     },
     {
+      "name": "Docs static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4050", "--directory", "/Volumes/WP/06 Claude Code/Runcino/docs"],
+      "cwd": "/Volumes/WP/06 Claude Code/Runcino/docs",
+      "port": 4050,
+      "autoPort": true
+    },
+    {
       "name": "faff.run web",
       "runtimeExecutable": "/Volumes/WP/06 Claude Code/Runcino/web/node_modules/.bin/next",
       "runtimeArgs": ["dev", "--turbopack"],
