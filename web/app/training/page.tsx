@@ -297,7 +297,11 @@ export default async function TrainingPage() {
             <div className="hero-title">{PHASES.find((p) => p.key === phaseKey)?.label.toUpperCase() ?? 'BASE'}</div>
             <div className="hero-sub">{phaseKey === 'BASE' ? 'Aerobic Foundation' : phaseKey === 'BUILD' ? 'Threshold Build' : phaseKey === 'PEAK' ? 'Race Specificity' : phaseKey === 'TAPER' ? 'Sharpen' : 'Race Week'}</div>
             <p className="hero-explainer">
-              The {PHASES.find((p) => p.key === phaseKey)?.label} phase builds the engine, frequency over intensity, easy miles over fast ones. You&rsquo;re stacking weeks of consistent volume so the harder work later has somewhere to land. One quality session per week (threshold tempo); everything else stays conversational.
+              {phaseKey === 'BASE' && 'Frequency over intensity. Stacking aerobic miles so the harder blocks later have somewhere to land. One quality session a week, the rest conversational. Durability before fitness — this is the boring stretch that decides the rest.'}
+              {phaseKey === 'BUILD' && 'Threshold-dominant work. The aerobic base from Base phase compounds into specific fitness here. Two quality sessions some weeks, recovery between them is non-negotiable — the harder the work, the more the easy days matter.'}
+              {phaseKey === 'PEAK' && 'Race-specific work. Goal-pace volume, the last reps that translate fitness into the race you actually want to run. Big aerobic ask, sleep and fueling become the limiter, not the legs.'}
+              {phaseKey === 'TAPER' && 'Volume drops, intensity holds. The fitness is exactly where we wanted it — let the freshness come back in. Legs feeling flat or restless this week is normal; that\'s the system winding down, not breaking.'}
+              {phaseKey === 'RACE_WEEK' && 'Work is done. Trust the lower mileage. No bonus intensity. Sleep, hydrate, carbs, walk a little. Race day owns this week — every choice serves it.'}
             </p>
             <div className="stats-row">
               <div className="stat-pill">
@@ -490,8 +494,8 @@ export default async function TrainingPage() {
           <div className="adapted-items">
             {ADAPTED_ITEMS.length === 0 ? (
               <div style={{ padding: '24px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)', textAlign: 'center' }}>
-                No adjustments yet. As you log check-ins and runs, the coach engine will surface
-                plan changes here with the reasoning behind each one.
+                Plan is holding. No adjustments needed this week — keep logging runs and
+                check-ins. When the data says move, I&rsquo;ll move it and tell you why.
               </div>
             ) : (
               ADAPTED_ITEMS.map((item, i) => (
@@ -519,9 +523,9 @@ export default async function TrainingPage() {
           </div>
           {PACES.length === 0 ? (
             <div style={{ padding: '20px 40px 28px', fontFamily: 'Inter, sans-serif', fontSize: 13, color: 'rgba(8,8,8,.55)' }}>
-              We work out your easy, marathon, threshold, interval and repetition paces from
-              your fitness score, which comes from a recent race result. Once you log a race
-              finish, this card fills in.
+              Your training paces come from your fitness score, and your fitness score comes
+              from a recent race. Log one race finish and the easy / marathon / threshold /
+              interval / rep paces fill in — anchored to what you can actually do.
             </div>
           ) : (
             <div className="paces-grid">
