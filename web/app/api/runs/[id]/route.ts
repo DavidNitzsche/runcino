@@ -13,6 +13,8 @@ import { requireActiveUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { getActivePlanWeeks } from '@/lib/plan-weeks';
 import { describeWorkout } from '@/lib/workout-descriptions';
+import { gatherCoachState } from '@/lib/coach-state';
+import { coach } from '@/coach/coach';
 
 interface ActivityRow {
   id: string;
@@ -80,6 +82,37 @@ export async function GET(
     shoe = shoes[0] ?? null;
   }
 
+  // Coach REFLECTION + FORM read of this run (W1 wiring, Run Detail
+  // half). Plan-day match feeds plannedDistanceMi + plannedType so
+  // the engine can compare prescribed vs actual. Safe to throw —
+  // page degrades gracefully.
+  let coachRead: { verdict: string; body: string; unlockPin: string | null; deltas: unknown } | null = null;
+  try {
+    const state = await gatherCoachState({ userId: user.id });
+    const decision = await coach.runRead({
+      today: state.now.slice(0, 10),
+      activityId: Number(row.id) || 0,
+      activity: {
+        distanceMi: Number(d.distanceMi) || 0,
+        durationS: Number(d.movingTimeS) || 0,
+        paceSPerMi: Number(d.paceSPerMi) || 0,
+        avgHr: d.avgHr ? Number(d.avgHr) : null,
+        name: d.name || 'Untitled run',
+        plannedDistanceMi: matchedDay?.distanceMi ?? null,
+        plannedType: matchedDay?.type ?? null,
+      },
+      state,
+    });
+    coachRead = {
+      verdict: decision.answer.verdict,
+      body: decision.answer.body,
+      unlockPin: decision.answer.unlockPin,
+      deltas: decision.answer.deltas,
+    };
+  } catch (err) {
+    console.warn('[api/runs/:id] coach.runRead failed', { id, err });
+  }
+
   return NextResponse.json({
     ok: true,
     run: {
@@ -108,6 +141,7 @@ export async function GET(
       paceTarget: planDesc?.paceTarget ?? '-',
       zone: planDesc?.zone ?? null,
     } : null,
+    coachRead,
   });
 }
 

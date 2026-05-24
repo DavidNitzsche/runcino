@@ -57,6 +57,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const [shoes, setShoes]       = useState<Shoe[]>([]);
   const [shoeId, setShoeId]     = useState<number | null>(null);
   const [dynamics, setDynamics] = useState<RunDynamics | null>(null);
+  // Coach REFLECTION + FORM read of this run (W1 wiring). Fetched
+  // in parallel with the run detail; renders in CoachReadCard above
+  // splits when present.
+  const [coachRead, setCoachRead] = useState<{ verdict: string; body: string; unlockPin: string | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +88,11 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
             .then((d) => { if (!cancelled && d.dynamics) setDynamics(d.dynamics); })
             .catch(() => {});
         }
+        // Coach read in parallel; degrades silently if it fails.
+        fetch(`/api/runs/${id}`)
+          .then((r) => r.json() as Promise<{ coachRead?: { verdict: string; body: string; unlockPin: string | null } | null }>)
+          .then((j) => { if (!cancelled && j.coachRead) setCoachRead(j.coachRead); })
+          .catch(() => {});
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
@@ -159,6 +168,57 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   return (
     <Shell>
       <RunHero activity={activity} pacePerMi={pacePerMi} isRace={isRace} />
+
+      {/* Coach REFLECTION + FORM read above splits (W1 wiring).
+          Renders only when coachRead is non-null; engine silence
+          collapses the card entirely. */}
+      {coachRead && (
+        <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)', marginBottom: 10 }}>
+          <div className="card" style={{ gridColumn: 'span 12' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 12,
+              marginBottom: 8,
+            }}>
+              <div style={{
+                fontFamily: 'Oswald, sans-serif',
+                fontWeight: 700,
+                fontSize: 11,
+                letterSpacing: 1.4,
+                textTransform: 'uppercase',
+                color: 'rgba(8,8,8,.55)',
+              }}>Coach Read</div>
+              {coachRead.unlockPin && (
+                <span style={{
+                  background: 'var(--milestone, #F5C518)',
+                  color: 'var(--ink, #0a0a0a)',
+                  padding: '3px 10px',
+                  borderRadius: 999,
+                  fontSize: 10,
+                  letterSpacing: 1.1,
+                  textTransform: 'uppercase',
+                  fontWeight: 700,
+                }}>{coachRead.unlockPin}</span>
+              )}
+            </div>
+            <div style={{
+              fontFamily: 'Oswald, sans-serif',
+              fontWeight: 700,
+              fontSize: 20,
+              color: 'var(--ink, #0a0a0a)',
+              lineHeight: 1.25,
+              marginBottom: 8,
+            }}>{coachRead.verdict}</div>
+            <div style={{
+              fontFamily: 'Jost, sans-serif',
+              fontSize: 14,
+              color: 'rgba(8,8,8,.78)',
+              lineHeight: 1.55,
+            }}>{coachRead.body}</div>
+          </div>
+        </div>
+      )}
 
       <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)', marginBottom: 10 }}>
         <div className="card" style={{ gridColumn: 'span 7', padding: 0, overflow: 'hidden' }}>
