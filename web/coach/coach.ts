@@ -1978,17 +1978,31 @@ class CoachImpl implements Coach {
     const deltaMi = activity.distanceMi - plannedMi;
     const overPct = plannedMi > 0 ? deltaMi / plannedMi : 0;
     const hr = activity.avgHr ?? null;
-    // Real max HR (override → computed peak, now on CoachState); 180 is the
-    // Tanaka age-40 fallback only when unknown. Easy + threshold ceilings and
-    // the zone label come from the shared Karvonen zone builder (Research/03
-    // §4 + §5), so this verdict agrees with readiness + plan-building.
-    const hrmax = state.recovery.maxHrBpm ?? 180;
-    const hrZonesBundle = buildHrZonesBundle(state.recovery.maxHrBpm ?? 180, state.recovery.rhrBpm);
-    const z2Ceiling = hrZonesBundle?.zones.find((z) => z.tier === 'z2')?.highBpm ?? Math.round(hrmax * 0.70); // top of Easy
-    const qualityCeiling = hrZonesBundle?.zones.find((z) => z.tier === 'z4')?.highBpm ?? Math.round(hrmax * 0.92); // top of Threshold
-    const hrZoneLabel = (bpm: number) =>
-      classifyHrZone(bpm, state.recovery.maxHrBpm ?? 180, state.recovery.rhrBpm)?.toUpperCase()
-      ?? `${Math.round((bpm / hrmax) * 100)}% max`;
+    // Real max HR (override → computed peak, on CoachState). When the
+    // runner hasn't surfaced an HRmax, we still need ceilings to decide
+    // which verdict branch fires, so fall back to Tanaka age-40 (180)
+    // for the comparison thresholds — but in user-facing prose we OMIT
+    // the zone label rather than claim a "(% max)" anchored on 180,
+    // which would be a fake-personalized number (see coach-layer spec
+    // §22.1). Karvonen zones (Research/03 §4 + §5).
+    const hasMaxHr = state.recovery.maxHrBpm != null;
+    const hrmaxForThresholds = state.recovery.maxHrBpm ?? 180;
+    const hrZonesBundle = hasMaxHr
+      ? buildHrZonesBundle(state.recovery.maxHrBpm!, state.recovery.rhrBpm)
+      : null;
+    const z2Ceiling = hrZonesBundle?.zones.find((z) => z.tier === 'z2')?.highBpm ?? Math.round(hrmaxForThresholds * 0.70); // top of Easy
+    const qualityCeiling = hrZonesBundle?.zones.find((z) => z.tier === 'z4')?.highBpm ?? Math.round(hrmaxForThresholds * 0.92); // top of Threshold
+    // Returns null when we don't have a real HRmax — caller omits the
+    // zone clause entirely rather than print a fake "% max" anchored
+    // on 180.
+    const hrZoneLabel = (bpm: number): string | null => {
+      if (!hasMaxHr) return null;
+      return classifyHrZone(bpm, state.recovery.maxHrBpm!, state.recovery.rhrBpm)?.toUpperCase() ?? null;
+    };
+    const hrAnnotated = (bpm: number): string => {
+      const lbl = hrZoneLabel(bpm);
+      return lbl ? `HR ${bpm} (${lbl})` : `HR ${bpm}`;
+    };
 
     // Use TRAINING-only longest as the cap anchor. The activity's
     // distance only lifts the cap if it was a training run, not a race
@@ -2019,7 +2033,7 @@ class CoachImpl implements Coach {
       const newBaseline = Math.round(baseline * (1 + baselineBumpPct / 100) * 10) / 10;
       v = {
         verdict: 'Absorbed more than planned.',
-        body: `Ran +${deltaMi.toFixed(1)} mi over plan at HR ${hr} (${hrZoneLabel(hr)}). Effort stayed inside Z1-Z2, that's signal, not luck. Coach bumps baseline +${baselineBumpPct}% and lifts the long-run cap accordingly.`,
+        body: `Ran +${deltaMi.toFixed(1)} mi over plan at ${hrAnnotated(hr)}. Effort stayed inside the easy band, that's signal, not luck. Baseline lifts +${baselineBumpPct}% and the long-run cap moves with it.`,
         unlockPin: `+${baselineBumpPct}% BASELINE UNLOCKED`,
         deltas: [
           { label: 'VOL / WK', wasDisplay: `${baseline.toFixed(0)}`, nowDisplay: `${newBaseline.toFixed(0)} mi` },
@@ -2029,21 +2043,21 @@ class CoachImpl implements Coach {
     } else if (overPct >= 0.20 && hr != null && hr > z2Ceiling) {
       v = {
         verdict: 'Went long and hot.',
-        body: `+${deltaMi.toFixed(1)} mi over plan but HR averaged ${hr} (${hrZoneLabel(hr)}), above the easy cap. Volume didn't come for free. No state change; let tomorrow be genuinely easy.`,
+        body: `+${deltaMi.toFixed(1)} mi over plan but ${hrAnnotated(hr)}, above the easy cap. Volume didn't come for free. No state change; let tomorrow be genuinely easy.`,
         unlockPin: null,
         deltas: [],
       };
     } else if (isQualityPlanned && hr != null && hr > qualityCeiling) {
       v = {
         verdict: 'Quality day, ran hot.',
-        body: `HR averaged ${hr} (${hrZoneLabel(hr)}) on a ${plannedType.replace(/_/g, ' ')} session, above the prescribed ceiling. Pace targets likely missed late. Coach defers the next quality 24-48h to absorb.`,
+        body: `${hrAnnotated(hr)} on a ${plannedType.replace(/_/g, ' ')} session, above the prescribed ceiling. Pace targets likely missed late. Next quality session moves 24-48h out to absorb.`,
         unlockPin: null,
         deltas: [],
       };
     } else if (isQualityPlanned) {
       v = {
         verdict: 'Quality session executed.',
-        body: `Held the prescribed ${plannedType.replace(/_/g, ' ')} structure ${hr != null ? `at HR ${hr} (${hrZoneLabel(hr)})` : ''}. Clean rep. State unchanged.`,
+        body: `Held the prescribed ${plannedType.replace(/_/g, ' ')} structure${hr != null ? ` at ${hrAnnotated(hr)}` : ''}. Clean rep. State unchanged.`,
         unlockPin: null,
         deltas: [],
       };
