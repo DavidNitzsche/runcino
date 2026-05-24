@@ -527,6 +527,13 @@ export async function GET(req: Request): Promise<Response> {
           const localHour = Number(new Intl.DateTimeFormat('en-US', {
             timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false,
           }).format(new Date()));
+          // Today's actual miles, so generateBriefing can flip to
+          // post-run reflection voice when the run is done (spec §5
+          // closed loop). Safe to throw — falls back to pre-run voice
+          // when read fails.
+          const todayActualMi = await getCompletedMileageByDate(userId ?? null, today, today)
+            .then((m) => m.get(today) ?? null)
+            .catch(() => null);
           coachLine = generateBriefing({
             firstName: (profileRow?.full_name?.trim().split(' ')[0]) || '',
             today,
@@ -538,6 +545,7 @@ export async function GET(req: Request): Promise<Response> {
             thisWeekSoFar,
             todayDay,
             localHour,
+            todayActualMi,
           });
         }
       }

@@ -38,6 +38,13 @@ interface BriefingInput {
    *  matches what the runner sees on the wall clock. Defaults to 8
    *  (morning) when omitted, so existing callers don't regress. */
   localHour?: number;
+  /** Miles logged on today specifically (post-run). When non-null AND
+   *  ≥ ~90% of planned, the briefing flips from PRE-RUN prescription
+   *  voice ("Run it conversational, last quarter can drift faster") to
+   *  POST-RUN reflection voice ("X mi banked. Quiet day tomorrow.")
+   *  Acknowledges that the run is DONE — the coach must not keep
+   *  telling you how to run something you've already finished. */
+  todayActualMi?: number | null;
 }
 
 /** Pick a time-of-day greeting that matches the runner's wall clock. */
@@ -105,13 +112,48 @@ function intensityCopyFor(type: string): string {
  * ─────────────────────────────────────────────────────────────────── */
 
 export function generateBriefing(input: BriefingInput): string {
-  const { today, daysToRace, raceLabel, currentWeek, previousWeek, lastWeekStats, thisWeekSoFar, todayDay } = input;
+  const { today, daysToRace, raceLabel, currentWeek, previousWeek, lastWeekStats, thisWeekSoFar, todayDay, todayActualMi } = input;
   void raceLabel; void greetingForHour; void fmtMonthDay; void n; void urgencyFraming; void intensityCopyFor;
   const dow = dayOfWeekIdx(today);
   const isMonday    = dow === 1;
   const isSunday    = dow === 0;
   const isSaturday  = dow === 6;
   const isRest      = !todayDay || todayDay.isRest === true || todayDay.distanceMi === 0;
+
+  // ── POST-RUN OVERRIDE ────────────────────────────────────────
+  // If today's run is DONE, the coach must not keep prescribing it.
+  // "Run it conversational" is the wrong voice when the runner has
+  // already logged the miles. Flip to reflection + forward-looking.
+  // Threshold: ≥ 90% of planned (matches the "isComplete" rule used
+  // elsewhere). The dedicated Run Detail page carries the full FORM
+  // read; the briefing line just acknowledges + frames tomorrow.
+  if (todayActualMi != null && todayActualMi > 0 && todayDay && !todayDay.isRest && todayDay.distanceMi > 0) {
+    const completionPct = todayActualMi / todayDay.distanceMi;
+    if (completionPct >= 0.9) {
+      const banked = Math.round(todayActualMi * 10) / 10;
+      // Pick a forward-looking line keyed off what today was.
+      const t = todayDay.type;
+      if (t === 'long') {
+        return `${banked} mi long run banked. The week's anchor is in. Quiet day tomorrow — let the legs absorb.`;
+      }
+      if (t === 'race') {
+        return `Race in the books. Recovery starts now; sleep + carbs + walking, no running tomorrow.`;
+      }
+      if (t === 'quality') {
+        return `Quality session done — ${banked} mi in. The build adds up on days like this. Tomorrow stays easy so the work lands.`;
+      }
+      if (t === 'easy' || t === 'recovery') {
+        return `Easy ${banked} mi in. Boring on purpose, exactly the right shape. Rolling forward.`;
+      }
+      return `${banked} mi banked. Today's done; tomorrow's the next thing.`;
+    }
+    // Short of plan but still ran something — acknowledge it honestly.
+    if (completionPct >= 0.5) {
+      const banked = Math.round(todayActualMi * 10) / 10;
+      const planned = todayDay.distanceMi;
+      return `${banked} of ${planned} mi today — short, but it counts. The week's volume comes from the days you didn't bail entirely.`;
+    }
+  }
 
   // The hero already shows today's workout (EASY · 5.8 mi · 8:46/mi). The
   // coach line's job is INSIGHT — what only someone reading your week

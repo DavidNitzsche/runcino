@@ -347,6 +347,11 @@ export default async function OverviewPage() {
     thisWeekSoFar,
     todayDay,
     localHour,
+    // When today's run is done, flip the briefing from prescription
+    // ("Run it conversational, last quarter can drift") to reflection
+    // ("X mi banked, quiet day tomorrow"). Spec §5 closed loop: the
+    // coach must acknowledge what just happened.
+    todayActualMi,
   });
 
   // Today's Intensity config
