@@ -16,6 +16,7 @@ import { Topbar } from '@/app/components';
 import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CoachAdaptedIsland } from './CoachAdaptedIsland';
 import { ProposalCard } from '@/app/components/ProposalCard';
+import { ModePrescriptionCard } from '@/app/components/ModePrescriptionCard';
 import { CheckInIsland } from './CheckInIsland';
 import { requireActiveUser } from '@/lib/auth';
 import {
@@ -372,6 +373,13 @@ export default async function OverviewPage() {
             race conflicts, plan rewrites). Renders only when pending
             proposals exist; auto-hides after response. */}
         <ProposalCard />
+
+        {/* Mode-specific prescription override — when the coach is in
+            INJURY / ILLNESS / RACE_DAY / RACE_WEEK / POST_RACE mode,
+            the mode voice takes priority over the standard daily card.
+            Renders null in ACTIVE / MAINTENANCE so the normal flow
+            stays clean. */}
+        <ModePrescriptionCard />
 
         {/* ── SECTION 1 · COACH STRIP ── */}
         <div className="coach-strip">
