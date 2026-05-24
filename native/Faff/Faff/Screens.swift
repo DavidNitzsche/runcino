@@ -895,18 +895,29 @@ struct RacesView: View {
 
     // ── Hero (orange countdown card) ──────────────────────────────
     private func raceCard(_ r: RaceSummary) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 7) {
-                Text((r.name ?? "").uppercased()).font(Faff.F.inter(10, .semibold)).tracking(1.4).foregroundStyle(.white.opacity(0.85))
+        // Big name top-left, priority chip top-right. Dropped the
+        // duplicate eyebrow ("AMERICAS FINEST CITY" up top + "AFC"
+        // big below) — short name carries the recognition, date row
+        // carries the rest of the context.
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                Text(RacesView.raceShort(r.name ?? "").uppercased())
+                    .font(Faff.F.display(38)).tracking(-0.5)
+                    .foregroundStyle(.white)
+                    .lineLimit(2).minimumScaleFactor(0.75)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
                 priorityChip(r.priority, onDark: true)
-                Spacer()
             }
-            Text(RacesView.raceShort(r.name ?? "").uppercased()).font(Faff.F.display(30)).foregroundStyle(.white)
-            if let d = r.date { Text(RacesView.prettyDate(d)).font(Faff.F.inter(12, .medium)).foregroundStyle(.white.opacity(0.9)) }
+            if let d = r.date {
+                Text(RacesView.prettyDate(d))
+                    .font(Faff.F.inter(12, .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+            }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(r.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
                 Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
-            }.padding(.top, 2)
+            }.padding(.top, 6)
             HStack(spacing: 18) {
                 raceStat("Goal time", r.goalDisplay ?? "-")
                 if let p = RacesView.goalPace(r.goalDisplay, r.distanceMi) { raceStat("Goal pace", "\(p)/mi") }
