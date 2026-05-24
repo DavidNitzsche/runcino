@@ -774,9 +774,9 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
       const isSpecificWeek = !isCutback && phase === 'BUILD';
       if (isSpecificWeek) {
         if (weekIdx % 6 < 3) {
-          return 'Long run with HM finish, first two-thirds easy, then close the last 3–5 miles at goal half-marathon effort. This teaches your legs to run fast when they\'re already tired, which is exactly what mile 10 of the race asks for. Negative-split the whole thing. (Research/22 §3)';
+          return 'Long run with HM finish, first two-thirds easy, then close the last 3–5 miles at goal half-marathon effort. This teaches your legs to run fast when they\'re already tired, which is exactly what mile 10 of the race asks for. Negative-split the whole thing.';
         }
-        return 'Progression long run, three gears: first third easy, middle third steady (marathon effort), final third squeezing toward HM goal pace. Not a race. A controlled fade-in. If you go out too fast, you\'ll feel it in the back third and learn the same lesson the hard way. (Research/22 §3)';
+        return 'Progression long run, three gears: first third easy, middle third steady (marathon effort), final third squeezing toward HM goal pace. Not a race. A controlled fade-in. If you go out too fast, you\'ll feel it in the back third and learn the same lesson the hard way.';
       }
       return 'Long run at easy conversational pace. Duration builds durability; pace is irrelevant today. Run slow enough to make tomorrow\'s easy run actually easy.';
     }
@@ -792,14 +792,14 @@ function notesFor(t: WorkoutType, phase: PhaseLabel, _level: Level, weekIdx: num
     case 'race_week_tuneup': {
       const tuneUp = RACE_WEEK_TEMPLATES.value.half_sunday.find(d => d.day === 'Tue');
       return tuneUp
-        ? `Race week tune-up, ${tuneUp.workout}. Sharp legs, not tired legs. This is a sharpener, not a stimulus, get in, get out, don\'t add reps because it felt good. (Research/08 §9.3)`
-        : 'Race week tune-up, 4–5 mi with 4 × 1K at goal HMP, 90 sec jog. Sharp, not draining. Get in, get out. (Research/08 §9.3)';
+        ? `Race week tune-up, ${tuneUp.workout}. Sharp legs, not tired legs. This is a sharpener, not a stimulus, get in, get out, don\'t add reps because it felt good.`
+        : 'Race week tune-up, 4–5 mi with 4 × 1K at goal half-marathon pace, 90 sec jog. Sharp, not draining. Get in, get out.';
     }
 
     case 'interval': {
-      if (phase === 'BASE') return 'VO₂max intervals, warm up 1.5 mi easy, then 5 × 800m at 5K effort, jog equal distance between. You should finish each rep feeling like you could have gone one more. If you\'re destroyed after rep 3, the pace is too fast. (Research/04 §I-pace)';
-      if (phase === 'BUILD') return 'VO₂max intervals, 5–6 × 1K at 5K effort, 90 sec jog between. Fast and controlled. These exist to protect your top-end speed while threshold mileage is the main story, don\'t skip them, but don\'t race them either. (Research/04 §I-pace, Research/22 §3)';
-      if (phase === 'PEAK') return 'Controlled VO₂ fartlek, 8–10 × 1 min fast / 1 min easy, or 5 × 3 min at 10K effort / 2 min easy. This sits between big long runs on purpose. You want pop, not damage. If you\'re still sore from the long run, back off the pace and prioritize the leg turnover. (Research/04 §I-pace)';
+      if (phase === 'BASE') return 'VO₂max intervals, warm up 1.5 mi easy, then 5 × 800m at 5K effort, jog equal distance between. You should finish each rep feeling like you could have gone one more. If you\'re destroyed after rep 3, the pace is too fast.';
+      if (phase === 'BUILD') return 'VO₂max intervals, 5–6 × 1K at 5K effort, 90 sec jog between. Fast and controlled. These exist to protect your top-end speed while threshold mileage is the main story, don\'t skip them, but don\'t race them either.';
+      if (phase === 'PEAK') return 'Controlled VO₂ fartlek, 8–10 × 1 min fast / 1 min easy, or 5 × 3 min at 10K effort / 2 min easy. This sits between big long runs on purpose. You want pop, not damage. If you\'re still sore from the long run, back off the pace and prioritize the leg turnover.';
       return 'VO₂max intervals, 5K to 10K effort. 1K reps with equal-time jog recovery. Finish feeling fast, not finished.';
     }
 
