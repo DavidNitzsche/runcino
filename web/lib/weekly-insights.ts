@@ -88,6 +88,7 @@ export async function generateWeeklyInsights(
             data->>'type'                                           AS type
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
       ORDER BY day ASC`,
     [userId, lookbackStart, todayISO],

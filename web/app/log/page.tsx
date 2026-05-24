@@ -25,8 +25,7 @@ import { todayISO, userTimezone } from '@/lib/synthetic-plan';
 import { gatherCoachState } from '@/lib/coach-state';
 import { coach } from '@/coach/coach';
 import { getActivePlanWeeks } from '@/lib/plan-weeks';
-import { dedupeRunsForDisplay } from '@/lib/dedupe-runs';
-import { loadMergeOverrides } from '@/lib/run-merge-overrides';
+import { countMergedSourcesByCanonical } from '@/lib/run-merge-overrides';
 import './log-v4.css';
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -126,61 +125,22 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
       // Fetch more rows than we'll show because the dedup below collapses
       // same-(date,distance) duplicates that multiple ingest paths (watch
       // upload + Strava webhook + manual import) can create.
+      // NOT (data ? 'mergedIntoId') skips rows that ingest folded into a
+      // higher-rank canonical (Strava ingest auto-merges nearby watch /
+      // Apple Health rows; manual force-merge does the same). The read-
+      // edge dedup grouper is no longer needed here — the DB filter does
+      // it cleanly + cheaply. Keep-separate overrides clear the flag at
+      // the override endpoint so pinned rows re-surface immediately.
       const actsRaw = await query<{ id: number | string; data: Record<string, unknown>; shoe_id: number | null }>(
         `SELECT id, data, shoe_id
            FROM strava_activities
+          WHERE NOT (data ? 'mergedIntoId')
           ORDER BY (data->>'startLocal') DESC
           LIMIT 60`,
       );
-
-      // Read-side dedup via the shared start-time-proximity grouper.
-      // Collapses same-session rows written by different feed paths
-      // (Strava + watch + Apple Health all emit the same run as
-      // separate ids with slightly different distances from GPS).
-      // Distinct same-day runs (AM warmup + PM main, or a crashed-and-
-      // restart pair 30+ min apart) have non-overlapping starts and
-      // stay separate. Manual keep-separate / force-merge overrides
-      // from /api/runs/[id]/unmerge + /api/runs/merge are honored.
-      const overrides = await loadMergeOverrides(userId);
-      const asNormalized = actsRaw.map((a) => {
-        const d = a.data as {
-          startLocal?: string; date?: string; name?: string;
-          distanceMi?: number; movingTimeS?: number; avgHr?: number; type?: string;
-        };
-        return {
-          id: typeof a.id === 'number' ? a.id : Number(a.id) || 0,
-          name: d.name || 'Run',
-          type: d.type || 'Run',
-          sportType: null as string | null,
-          workoutType: null as number | null,
-          startLocal: d.startLocal || '',
-          date: d.date || (d.startLocal || '').slice(0, 10),
-          distanceMi: Number(d.distanceMi) || 0,
-          movingTimeS: Number(d.movingTimeS) || 0,
-          elapsedTimeS: Number(d.movingTimeS) || 0,
-          paceSPerMi: 0,
-          avgHr: d.avgHr != null ? Number(d.avgHr) : null,
-          maxHr: null,
-          avgCadence: null,
-          elevGainFt: 0,
-          avgSpeedMph: null,
-          startLatLng: null,
-          endLatLng: null,
-          summaryPolyline: null,
-          kudosCount: 0,
-          achievementCount: 0,
-          sufferScore: null,
-          canonicalFinishS: null,
-          canonicalDistanceMi: null,
-          canonicalLabel: null,
-        };
-      });
-      const dedupedAll = dedupeRunsForDisplay(asNormalized, overrides);
-      const mergedCountById = new Map<number, number>();
-      for (const r of dedupedAll) mergedCountById.set(r.id, r.mergedSources.length);
-      const canonicalIds = new Set(dedupedAll.map((r) => r.id));
+      // Per-canonical merged-source count for the "Merged · N" badge.
+      const mergedCountById = await countMergedSourcesByCanonical(userId);
       const acts = actsRaw
-        .filter((a) => canonicalIds.has(typeof a.id === 'number' ? a.id : Number(a.id) || 0))
         .sort((a, b) => {
           const aS = (a.data as { startLocal?: string }).startLocal || '';
           const bS = (b.data as { startLocal?: string }).startLocal || '';
@@ -276,13 +236,15 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
         };
       }));
 
-      // Aggregate YTD
+      // Aggregate YTD — every SUM/COUNT/MAX below skips mergedIntoId rows
+      // so dupe-pairs from multiple feed paths don't inflate the totals.
       const ytdRows = await query<{ count: string; total_mi: string; max_mi: string }>(
         `SELECT COUNT(*) AS count,
                 COALESCE(SUM((data->>'distanceMi')::NUMERIC), 0) AS total_mi,
                 COALESCE(MAX((data->>'distanceMi')::NUMERIC), 0) AS max_mi
            FROM strava_activities
-          WHERE LEFT(data->>'startLocal', 4) = '2026'`,
+          WHERE LEFT(data->>'startLocal', 4) = '2026'
+            AND NOT (data ? 'mergedIntoId')`,
       );
       totalRuns = parseInt(ytdRows[0]?.count ?? '0', 10);
       totalMiles = Math.round(Number(ytdRows[0]?.total_mi ?? 0));
@@ -291,6 +253,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
         const longRow = await query<{ data: Record<string, unknown> }>(
           `SELECT data FROM strava_activities
             WHERE LEFT(data->>'startLocal', 4) = '2026'
+              AND NOT (data ? 'mergedIntoId')
               AND (data->>'distanceMi')::NUMERIC = $1
             LIMIT 1`,
           [maxMi],
@@ -309,6 +272,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
                 COALESCE(SUM((data->>'distanceMi')::NUMERIC), 0) AS mi
            FROM strava_activities
           WHERE LEFT(data->>'startLocal', 4) = '2026'
+            AND NOT (data ? 'mergedIntoId')
           GROUP BY month`,
       );
       monthRows.forEach((r) => {
@@ -322,6 +286,7 @@ async function loadLogPageData(userId: string, isLegacy: boolean): Promise<{
                 COALESCE(SUM((data->>'distanceMi')::NUMERIC), 0) AS mi
            FROM strava_activities
           WHERE LEFT(data->>'startLocal', 4) = '2026'
+            AND NOT (data ? 'mergedIntoId')
           GROUP BY date`,
       );
       heatRows.forEach((r) => { if (r.date) heatmapByDate[r.date] = Number(r.mi); });

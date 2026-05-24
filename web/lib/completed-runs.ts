@@ -17,10 +17,15 @@ import { query } from './db';
 interface DateRow { day: string }
 
 export async function getCompletedDates(userId: string, fromISO: string, toISO: string): Promise<Set<string>> {
+  // NOT (data ? 'mergedIntoId') drops rows that ingest flagged as
+  // duplicates of a higher-rank canonical (Strava ingest folds nearby
+  // watch/health rows). Without this filter a dupe-pair would inflate
+  // the "did the runner run that day" count.
   const rows = await query<DateRow>(
     `SELECT DISTINCT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
     [userId, fromISO, toISO],
   );
@@ -50,11 +55,15 @@ export async function getCompletedDates(userId: string, fromISO: string, toISO: 
  */
 export async function getCompletedMileageByDate(userId: string | null | undefined, fromISO: string, toISO: string): Promise<Map<string, number>> {
   interface Row { day: string; mi: string }
+  // NOT (data ? 'mergedIntoId') drops dupe rows that ingest folded into a
+  // canonical — keeps the weekly mileage bar honest when Strava + watch
+  // both logged the same session.
   const rows = await query<Row>(
     `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
             SUM((data->>'distanceMi')::NUMERIC) AS mi
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
       GROUP BY day`,
     // null (not 'me') so anon reads the legacy demo activities via the
@@ -101,11 +110,15 @@ export async function getCompletedMileageByDate(userId: string | null | undefine
 export async function getLongestRunByDate(userId: string | null | undefined, fromISO: string, toISO: string): Promise<Map<string, number>> {
   interface Row { day: string; mi: string }
   const out = new Map<string, number>();
+  // Skip mergedIntoId dupe rows — if a watch row got folded into a Strava
+  // canonical, the canonical's distance is what we want to compare against
+  // the planned workout's 60% completion gate.
   const rows = await query<Row>(
     `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
             MAX((data->>'distanceMi')::NUMERIC) AS mi
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
       GROUP BY day`,
     [userId ?? null, fromISO, toISO],
@@ -192,6 +205,7 @@ export async function getWeekStats(userId: string, fromISO: string, toISO: strin
         (data->>'avgHr')::NUMERIC                                AS avg_hr
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
       ORDER BY day ASC`,
     [userId, fromISO, toISO],

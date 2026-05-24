@@ -15,9 +15,7 @@ import { getActivePlanWeeks } from '@/lib/plan-weeks';
 import { describeWorkout } from '@/lib/workout-descriptions';
 import { gatherCoachState } from '@/lib/coach-state';
 import { coach } from '@/coach/coach';
-import { getCachedActivities } from '@/lib/strava-cache';
-import { dedupeRunsForDisplay, type MergedSource } from '@/lib/dedupe-runs';
-import { loadMergeOverrides } from '@/lib/run-merge-overrides';
+import type { MergedSource } from '@/lib/dedupe-runs';
 
 interface ActivityRow {
   id: string;
@@ -118,23 +116,38 @@ export async function GET(
 
   // Surface dedup state to the detail modal — so the user can see which
   // other rows were folded into this canonical (and pick any to unmerge),
-  // OR see that THIS row was folded into another (and unmerge it back to
-  // its own line). One cache + dedup pass; cheap.
+  // OR see that THIS row was folded into another. The cache filters
+  // mergedIntoId rows out, so query the dupe-pair directly instead of
+  // going through the read-edge grouper.
   let mergedSources: MergedSource[] = [];
   let mergedIntoId: number | null = null;
   try {
-    const cache = await getCachedActivities();
-    const overrides = await loadMergeOverrides(user.id);
-    const deduped = dedupeRunsForDisplay(cache.activities, overrides);
     const requestedId = Number(row.id);
-    const canonical = deduped.find((r) => r.id === requestedId);
-    if (canonical) {
-      mergedSources = canonical.mergedSources;
-    } else {
-      const host = deduped.find((r) =>
-        r.mergedSources.some((s) => s.id === requestedId),
-      );
-      if (host) mergedIntoId = host.id;
+    // Rows that ingest (or manual force-merge) folded INTO this canonical.
+    const mergedRows = await query<{ id: string; data: Record<string, unknown> }>(
+      `SELECT id::text AS id, data
+         FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND (data->>'mergedIntoId')::BIGINT = $2::BIGINT`,
+      [user.id, requestedId],
+    ).catch(() => [] as Array<{ id: string; data: Record<string, unknown> }>);
+    mergedSources = mergedRows.map((m) => {
+      const md = m.data as { name?: string; distanceMi?: number; movingTimeS?: number; startLocal?: string };
+      const sid = Number(m.id);
+      return {
+        id: sid,
+        name: md.name || 'Run',
+        distanceMi: Number(md.distanceMi) || 0,
+        movingTimeS: Number(md.movingTimeS) || 0,
+        startLocal: md.startLocal || '',
+        source: sid > 0 ? 'strava' : (md.name || '').toLowerCase().includes('watch') ? 'watch' : 'apple-health',
+      };
+    });
+    // Reverse direction: if THIS row was itself folded into another.
+    const intoId = (d as { mergedIntoId?: number | string }).mergedIntoId;
+    if (intoId != null) {
+      const parsed = Number(intoId);
+      if (Number.isFinite(parsed)) mergedIntoId = parsed;
     }
   } catch { /* decorative — never block the detail load */ }
 

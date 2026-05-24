@@ -108,15 +108,24 @@ export async function getCachedActivities(userId?: string): Promise<{ activities
     }
   }
 
+  // NOT (data ? 'mergedIntoId') skips rows that ingest already collapsed
+  // into a higher-rank canonical (Strava ingest folds nearby watch / Apple
+  // Health rows). Without this filter the cache surfaces both halves of
+  // a dupe-pair, and every downstream sum (last7Mi, monthly volume, YTD
+  // totals, VDOT signals) double-counts. /api/log's separate dedup pass
+  // is now belt-and-suspenders — the cache is already clean.
   const rows = userId
     ? await query<{ data: NormalizedActivity; detail: StravaActivity | null; fetched_at: Date }>(
         `SELECT data, detail, fetched_at FROM strava_activities
-          WHERE user_uuid = $1 OR user_uuid IS NULL
+          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+            AND NOT (data ? 'mergedIntoId')
           ORDER BY (data->>'startLocal') DESC`,
         [userId],
       )
     : await query<{ data: NormalizedActivity; detail: StravaActivity | null; fetched_at: Date }>(
-        `SELECT data, detail, fetched_at FROM strava_activities ORDER BY (data->>'startLocal') DESC`,
+        `SELECT data, detail, fetched_at FROM strava_activities
+          WHERE NOT (data ? 'mergedIntoId')
+          ORDER BY (data->>'startLocal') DESC`,
       );
   // Re-normalize from detail when we have it, so canonical-distance
   // best_efforts surface in the listing. Falls back to the stored

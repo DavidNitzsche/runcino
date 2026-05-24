@@ -133,6 +133,16 @@ export async function syncSingleActivity(userId: string, activityId: number): Pr
     [activity.id, JSON.stringify(norm), userId],
   );
 
+  // Auto-dedupe: if an existing watch / Apple Health canonical row already
+  // covers this same session (start time within 15min), flag it as merged
+  // into the new Strava activity. Subsequent SQL aggregations filter
+  // mergedIntoId rows out so weekly mileage doesn't double-count. The read-
+  // edge dedup grouper still respects keep-separate overrides on top.
+  if (norm.startLocal) {
+    const { markLesserSourceAsMerged } = await import('./run-dedupe-write');
+    await markLesserSourceAsMerged(userId, Number(activity.id), norm.startLocal);
+  }
+
   // Bump connector stats
   const [{ cnt }] = await query<{ cnt: string }>(
     `SELECT COUNT(*)::int AS cnt FROM strava_activities WHERE user_uuid = $1`,
@@ -500,6 +510,7 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
   //    queries can scope by user. One transaction so partial failure
   //    rolls back cleanly.
   const fetchedAt = new Date();
+  const dedupePairs: Array<{ id: number; startLocal: string }> = [];
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {
@@ -523,6 +534,7 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
                   user_uuid  = COALESCE(strava_activities.user_uuid, EXCLUDED.user_uuid)`,
           [a.id, JSON.stringify(norm), fetchedAt.toISOString(), userId],
         );
+        if (norm.startLocal) dedupePairs.push({ id: Number(a.id), startLocal: norm.startLocal });
       }
       await client.query('COMMIT');
     } catch (e) {
@@ -530,6 +542,19 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
       throw e;
     }
   });
+
+  // Auto-dedupe pass: after the bulk insert lands, scan each fresh Strava
+  // row for a nearby watch / Apple Health canonical that represents the
+  // same session. Mark the lesser-source row as merged into the Strava
+  // canonical so downstream SQL aggregations can filter it out. Best-
+  // effort — failures don't fail the sync. Runs sequentially (not
+  // Promise.all) to keep DB load low; YTD sync isn't a hot path.
+  if (dedupePairs.length > 0) {
+    const { markLesserSourceAsMerged } = await import('./run-dedupe-write');
+    for (const p of dedupePairs) {
+      await markLesserSourceAsMerged(userId, p.id, p.startLocal);
+    }
+  }
 
   // 5. Update connector row stats.
   const [{ cnt }] = await query<{ cnt: string }>(

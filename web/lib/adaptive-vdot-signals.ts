@@ -389,6 +389,7 @@ export async function computeThresholdSignal(
     `SELECT id::text AS id, data
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
         AND (data->>'date') >= $2
         AND (data->>'distanceMi')::NUMERIC BETWEEN 3 AND 15
         AND (data->>'movingTimeS')::NUMERIC > 0

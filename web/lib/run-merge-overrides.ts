@@ -65,7 +65,9 @@ export async function loadMergeOverrides(userId: string | undefined): Promise<Ov
 }
 
 /** Pin a single activity as "keep separate" — the dedup grouper will never
- *  fold it into another canonical even if their start times overlap. */
+ *  fold it into another canonical even if their start times overlap. Also
+ *  strips any `mergedIntoId` flag the DB had written at ingest time, so the
+ *  row immediately re-appears on /log without waiting for a re-sync. */
 export async function setKeepSeparate(userId: string, activityId: number): Promise<void> {
   await ensureTable();
   await query(
@@ -75,11 +77,24 @@ export async function setKeepSeparate(userId: string, activityId: number): Promi
      DO UPDATE SET mode = 'keep-separate', merge_target_id = NULL, created_at = NOW()`,
     [userId, activityId],
   );
+  // Surface the row back into the cache + every downstream aggregation
+  // by clearing the DB-level dedup flag. Without this the row stays
+  // hidden until the next Strava re-sync would re-evaluate it (and even
+  // then ingest would re-merge it — the override is what stops that).
+  await query(
+    `UPDATE strava_activities
+        SET data = data - 'mergedIntoId'
+      WHERE id = $1::BIGINT
+        AND (user_uuid = $2 OR user_uuid IS NULL)`,
+    [activityId, userId],
+  );
 }
 
 /** Pin a source activity as "merge into target" — the dedup grouper will
  *  always fold it into the target's group. Used by the multi-select Merge
- *  affordance on /log: pick a target row, mark all others to merge into it. */
+ *  affordance on /log: pick a target row, mark all others to merge into it.
+ *  Also writes `mergedIntoId` to the source row's data so the cache filter
+ *  hides it immediately + downstream SUMs don't double-count. */
 export async function setForceMerge(
   userId: string,
   sourceId: number,
@@ -94,6 +109,13 @@ export async function setForceMerge(
      DO UPDATE SET mode = 'merge-into', merge_target_id = $3::BIGINT, created_at = NOW()`,
     [userId, sourceId, targetId],
   );
+  await query(
+    `UPDATE strava_activities
+        SET data = jsonb_set(data, '{mergedIntoId}', to_jsonb($1::BIGINT))
+      WHERE id = $2::BIGINT
+        AND (user_uuid = $3 OR user_uuid IS NULL)`,
+    [targetId, sourceId, userId],
+  );
 }
 
 /** Clear any override on an activity (back to default auto-dedup behavior). */
@@ -103,4 +125,32 @@ export async function clearMergeOverride(userId: string, activityId: number): Pr
     `DELETE FROM run_merge_overrides WHERE user_uuid = $1 AND activity_id = $2::BIGINT`,
     [userId, activityId],
   );
+}
+
+/** For every canonical that has rows folded into it, returns the count of
+ *  merged sources. Lets /log show a "Merged · N" badge without loading the
+ *  full source rows. Cache filter excludes mergedIntoId rows, so the badge
+ *  count can't come from the dedup grouper itself anymore. */
+export async function countMergedSourcesByCanonical(
+  userId: string | undefined,
+): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  try {
+    const rows = await query<{ canonical: string; n: string }>(
+      `SELECT (data->>'mergedIntoId')::BIGINT::TEXT AS canonical, COUNT(*)::TEXT AS n
+         FROM strava_activities
+        WHERE ${userId ? '(user_uuid = $1 OR user_uuid IS NULL)' : 'TRUE'}
+          AND data ? 'mergedIntoId'
+        GROUP BY canonical`,
+      userId ? [userId] : [],
+    );
+    for (const r of rows) {
+      const c = Number(r.canonical);
+      const n = Number(r.n);
+      if (Number.isFinite(c) && Number.isFinite(n)) out.set(c, n);
+    }
+  } catch {
+    /* badge is decorative — silent fallback to empty map */
+  }
+  return out;
 }
