@@ -388,15 +388,26 @@ function getUpNextInset(
   // Only show the inset if B is sooner than A. If they're in the same
   // direction the runner needs to see B first.
   if (daysToB < 0 || daysToB >= daysToA) return null;
+  // B-race role is derived from how close to A: per Research/08 §9.3
+  // and Research/22 §multi-race seasons, B-races sit in distinct
+  // windows relative to the A-race build:
+  //   ≤14d  → race-week sharpener / opener
+  //   15-35d → fitness check
+  //   >35d   → tune-up
+  // Until coach.bRaceClassification lands as a full engine method,
+  // this inline mapping is the source of truth. Per autonomy contract
+  // §10.1 the coach can also surface a re-classification proposal if
+  // race priorities shift.
+  let tuneupTag: 'TUNE-UP' | 'FITNESS CHECK' | 'OPENER';
+  if (daysToB <= 14) tuneupTag = 'OPENER';
+  else if (daysToB <= 35) tuneupTag = 'FITNESS CHECK';
+  else tuneupTag = 'TUNE-UP';
   return {
     slug: nextB.slug,
     name: nextB.meta.name,
     daysToRace: daysToB,
     shortDate: formatShortDate(nextB.meta.date),
-    // TODO: wire to race_week.ts B-race classification, for now we
-    // default to "TUNE-UP". Once Stage 7 lands the Coach will classify
-    // B-races as TUNE-UP / FITNESS CHECK / OPENER based on phase position.
-    tuneupTag: 'TUNE-UP',
+    tuneupTag,
   };
 }
 
