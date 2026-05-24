@@ -27,6 +27,7 @@ import type { NormalizedActivity } from '../strava/activities/route-shared';
 import { gatherFreshness } from '../../../lib/freshness';
 import type { FreshnessMap } from '../../../lib/freshness-types';
 import { coach } from '../../../coach/coach';
+import { getActivePlanWeeks } from '../../../lib/plan-weeks';
 
 // ─────────────────────────────────────────────────────────────────────
 // Wire shapes, every Log card has a deterministic data contract that
@@ -236,14 +237,27 @@ export async function GET(): Promise<Response> {
     const prs = buildPrs(allRuns, year);
 
     // Recent runs feed, most-recent 7. Each row gets a coach.runRead()
-    // verdict + body — the REFLECTION + FORM layer (W1 wiring). Safe
-    // to throw per the API contract; the page renders a quiet
+    // verdict + body — the REFLECTION + FORM layer (W1 wiring). The
+    // active plan weeks are fetched once so each row can pass its
+    // matched plannedDistanceMi + plannedType to the engine instead
+    // of always falling into the "Unprescribed run logged" branch.
+    // Safe to throw per the API contract; the page renders a quiet
     // fallback chip + the row's existing data when coachRead is null.
     const sortedRuns = ytdRuns.slice().sort((a, b) => b.startLocal.localeCompare(a.startLocal));
     const baseRows: LogApiRunRow[] = sortedRuns.slice(0, 7).map((r) => buildRunRow(r));
+    const planWeeks = await getActivePlanWeeks().catch(() => []);
     const recentRuns: LogApiRunRow[] = await Promise.all(
-      baseRows.map(async (row, idx) => {
-        const r = sortedRuns[idx];
+      baseRows.map(async (row) => {
+        let plannedDistanceMi: number | null = null;
+        let plannedType: string | null = null;
+        for (const w of planWeeks) {
+          const day = w.days.find((dd) => dd.date === row.dateISO);
+          if (day && !day.isRest) {
+            plannedDistanceMi = day.distanceMi;
+            plannedType = day.type;
+            break;
+          }
+        }
         try {
           const decision = await coach.runRead({
             today,
@@ -254,8 +268,8 @@ export async function GET(): Promise<Response> {
               paceSPerMi: row.paceSPerMi,
               avgHr: row.avgHr,
               name: row.name,
-              plannedDistanceMi: null,  // wire plan lookup in a follow-up commit
-              plannedType: null,
+              plannedDistanceMi,
+              plannedType,
             },
             state,
           });
@@ -270,7 +284,6 @@ export async function GET(): Promise<Response> {
         } catch {
           return { ...row, coachRead: null };
         }
-        void r; // sortedRuns ref kept for future plan lookup
       }),
     );
 
