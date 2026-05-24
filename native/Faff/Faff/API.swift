@@ -19,27 +19,23 @@ import Foundation
 // MARK: - Configuration
 
 enum API {
-    /// Backend base URL.  Defaults to production (faff.run) in
-    /// release builds; falls back to localhost in DEBUG builds so
-    /// the iPhone simulator hits the Mac's `npm run dev` server.
+    /// Backend base URL.  Defaults to production (www.faff.run) for ALL
+    /// builds, including DEBUG / simulator runs — the way we actually use
+    /// the sim is for visual review against real account data, not a
+    /// throwaway dev DB. The apex faff.run 301-redirects to www, and
+    /// redirects can mangle POST bodies (login), so target www directly.
     ///
-    /// To override either default for one-off testing, set the
-    /// FAFF_API_BASE_URL environment variable on the Xcode scheme
-    /// (Product → Scheme → Edit Scheme → Run → Arguments → Environment
-    /// Variables).  Useful for pointing at a staging deploy or your
-    /// Mac's LAN IP if testing from a physical iPhone on the same Wi-Fi.
+    /// To point at a local dev server (`npm run dev`) or a staging deploy,
+    /// override via env var on the Xcode scheme:
+    ///   Product → Scheme → Edit Scheme → Run → Arguments → Environment Variables
+    ///   FAFF_API_BASE_URL = http://localhost:3000
+    /// Same env var works from `xcrun simctl launch` as `SIMCTL_CHILD_FAFF_API_BASE_URL`.
     static let baseURL: URL = {
         if let override = ProcessInfo.processInfo.environment["FAFF_API_BASE_URL"],
            let url = URL(string: override) {
             return url
         }
-        #if DEBUG
-        return URL(string: "http://localhost:3000")!
-        #else
-        // Canonical API host. The apex faff.run 301-redirects to www, and
-        // redirects can mangle POST bodies (login), so target www directly.
         return URL(string: "https://www.faff.run")!
-        #endif
     }()
 }
 
