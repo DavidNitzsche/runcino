@@ -20,6 +20,7 @@ import { ConnectBannerIsland } from '../training/ConnectBannerIsland';
 import { CheckInMiniIsland } from './CheckInMiniIsland';
 import { HrAnchorsIsland } from './HrAnchorsIsland';
 import { InjuryLogIsland } from './InjuryLogIsland';
+import { IllnessLogIsland } from './IllnessLogIsland';
 import { requireActiveUser } from '@/lib/auth';
 import { syncStravaIfStale } from '@/lib/sync-strava-user';
 import { query } from '@/lib/db';
@@ -279,11 +280,13 @@ export default async function HealthPage() {
           <CheckInMiniIsland today={today} />
         </div>
 
-        {/* Injury logging affordance — gives the runner a real way to
-            enter INJURY mode, which triggers the ActiveModeBanner +
-            return-protocol prescription gating across every page. */}
-        <div style={{ marginTop: 16, marginBottom: 16 }}>
+        {/* Injury + Illness logging affordances — give the runner real
+            ways to enter INJURY / ILLNESS mode, which trigger the
+            ActiveModeBanner + return-protocol or rest-prescription
+            gating across every page. */}
+        <div style={{ marginTop: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <InjuryLogIsland />
+          <IllnessLogIsland />
         </div>
 
         {/* ── HEALTH HERO ── */}
