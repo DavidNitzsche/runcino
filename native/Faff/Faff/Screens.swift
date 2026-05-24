@@ -918,11 +918,11 @@ struct RacesView: View {
                 Text("\(r.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
                 Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
             }.padding(.top, 6)
-            HStack(spacing: 18) {
+            HStack(alignment: .top, spacing: 10) {
                 raceStat("Goal time", r.goalDisplay ?? "-")
                 if let p = RacesView.goalPace(r.goalDisplay, r.distanceMi) { raceStat("Goal pace", "\(p)/mi") }
                 raceStat("Distance", "\(OverviewFormat.distance(r.distanceMi)) mi")
-            }.padding(.top, 8)
+            }.padding(.top, 14)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
@@ -984,10 +984,16 @@ struct RacesView: View {
     }
 
     private func raceStat(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(value).font(Faff.F.display(20)).foregroundStyle(.white)
-            Text(label.uppercased()).font(Faff.F.inter(8.5, .semibold)).tracking(0.8).foregroundStyle(.white.opacity(0.8))
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(Faff.F.display(26)).tracking(-0.3)
+                .foregroundStyle(.white)
+                .lineLimit(1).minimumScaleFactor(0.65)
+            Text(label.uppercased())
+                .font(Faff.F.inter(9.5, .semibold)).tracking(0.9)
+                .foregroundStyle(.white.opacity(0.78))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// At-a-glance race-readiness card under the hero on Races. Tells
