@@ -900,7 +900,10 @@ struct RacesView: View {
         // chip, recap list). Priority chip top-right. Title wraps to
         // two lines and auto-shrinks at extreme lengths.
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 12) {
+            // Title row: chip aligns to the title's text baseline so
+            // its optical center sits with the first letter of the
+            // name (was using .top which pinned it above cap height).
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text((r.name ?? "").uppercased())
                     .font(Faff.F.display(34)).tracking(-0.5)
                     .foregroundStyle(.white)
@@ -918,11 +921,17 @@ struct RacesView: View {
                 Text("\(r.daysAway ?? 0)").font(Faff.F.display(54)).foregroundStyle(.white)
                 Text("days out").font(Faff.F.inter(12, .semibold)).foregroundStyle(.white.opacity(0.9))
             }.padding(.top, 6)
+            // Stats row: leading / center / trailing so the row
+            // hugs both card edges (matches where the title left
+            // and A-chip right land). Bigger numbers (display 32)
+            // since the hero has space for them.
             HStack(alignment: .top, spacing: 10) {
-                raceStat("Goal time", r.goalDisplay ?? "-")
-                if let p = RacesView.goalPace(r.goalDisplay, r.distanceMi) { raceStat("Goal pace", "\(p)/mi") }
-                raceStat("Distance", "\(OverviewFormat.distance(r.distanceMi)) mi")
-            }.padding(.top, 14)
+                raceStat("Goal time", r.goalDisplay ?? "-", align: .leading)
+                if let p = RacesView.goalPace(r.goalDisplay, r.distanceMi) {
+                    raceStat("Goal pace", "\(p)/mi", align: .center)
+                }
+                raceStat("Distance", "\(OverviewFormat.distance(r.distanceMi)) mi", align: .trailing)
+            }.padding(.top, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
@@ -983,17 +992,27 @@ struct RacesView: View {
             .overlay(Circle().stroke(onDark ? .white.opacity(0.5) : .clear, lineWidth: 1))
     }
 
-    private func raceStat(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+    private func raceStat(_ label: String, _ value: String, align: HorizontalAlignment = .leading) -> some View {
+        // Frame alignment matches the VStack's internal alignment so
+        // a .trailing cell pushes its content to its column's right
+        // edge — used to make the row hug the card edges.
+        let frameAlign: Alignment = {
+            switch align {
+            case .center:   return .center
+            case .trailing: return .trailing
+            default:        return .leading
+            }
+        }()
+        return VStack(alignment: align, spacing: 4) {
             Text(value)
-                .font(Faff.F.display(26)).tracking(-0.3)
+                .font(Faff.F.display(32)).tracking(-0.3)
                 .foregroundStyle(.white)
-                .lineLimit(1).minimumScaleFactor(0.65)
+                .lineLimit(1).minimumScaleFactor(0.6)
             Text(label.uppercased())
-                .font(Faff.F.inter(9.5, .semibold)).tracking(0.9)
-                .foregroundStyle(.white.opacity(0.78))
+                .font(Faff.F.inter(10, .semibold)).tracking(0.9)
+                .foregroundStyle(.white.opacity(0.80))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: frameAlign)
     }
 
     /// At-a-glance race-readiness card under the hero on Races. Tells
