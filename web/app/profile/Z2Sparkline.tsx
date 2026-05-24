@@ -100,13 +100,13 @@ export function Z2Sparkline({ data }: Props) {
           flexWrap: 'wrap',
         }}
       >
-        <span>8wk Z2 pace · HR {data.z2Band.lo}-{data.z2Band.hi}</span>
+        <span>8wk easy pace · HR {data.z2Band.lo}-{data.z2Band.hi}</span>
         {trendLabel && (
           <span style={{ color: trendColor, fontWeight: 700 }}>{trendLabel}</span>
         )}
       </div>
 
-      <svg width={W} height={H} role="img" aria-label="Z2 pace trend over 8 weeks">
+      <svg width={W} height={H} role="img" aria-label="Easy-pace HR trend over 8 weeks">
         {/* Subtle baseline gridline at mid-y */}
         <line x1={padX} x2={W - padX} y1={H / 2} y2={H / 2}
           stroke="rgba(8,8,8,.08)" strokeDasharray="2 3" />
