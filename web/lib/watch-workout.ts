@@ -84,6 +84,15 @@ export interface WatchWorkout {
   /** ISO timestamp after which this workout payload should not be
    *  used (e.g., it's stale because "today" has rolled over). */
   expiresAt: string;
+  /** Total prescribed distance (mi) for the whole workout. The watch
+   *  lobby renders this as the top "blue distance" row — without it
+   *  the row shows an em-dash placeholder. Optional so older clients
+   *  that don't decode it remain compatible. */
+  distanceMi?: number;
+  /** Daniels zone code for the headline target ("E", "M", "T", "I", "R"
+   *  or "race"). Optional — watch surfaces fall back to phase pace when
+   *  absent. */
+  paceLabel?: string;
 }
 
 // ── Pace target resolution ───────────────────────────────────────
@@ -202,6 +211,7 @@ export function buildWatchWorkout(
       name: day.label,
       summary: `${day.distanceMi.toFixed(1)} mi at easy pace`,
       totalEstimatedMinutes: Math.round(durationSec / 60),
+      distanceMi: day.distanceMi,
       phases: [
         {
           type: 'work',  // it's the whole workout · "warmup" doesn't apply
@@ -232,6 +242,7 @@ export function buildWatchWorkout(
       name: day.label,
       summary: `${day.distanceMi.toFixed(1)} mi`,
       totalEstimatedMinutes: Math.round(durationSec / 60),
+      distanceMi: day.distanceMi,
       phases: [
         {
           type: 'work',
@@ -330,6 +341,7 @@ export function buildWatchWorkout(
     name: day.label,
     summary: buildSummary(template, phases, paces),
     totalEstimatedMinutes: Math.round(totalSec / 60),
+    distanceMi: day.distanceMi,
     phases,
     completionEndpoint: '/api/watch/workouts/complete',
     expiresAt: expiresAtFromToday(todayIso),
