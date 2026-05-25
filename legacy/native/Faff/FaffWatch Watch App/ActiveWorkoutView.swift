@@ -743,12 +743,17 @@ private struct TransitionFlip: View {
             // carries the target ("Target 6:31/mi"). GoFace shows "GO" big
             // with both threaded into the sub line.
             GoFace(sub: "\(t)\(s.map { " · \($0)" } ?? "")")
+        case .planDone(let dist, let elap):
+            // Distinct from .go — fires once when the runner crosses the
+            // planned distance and overtime opens. Stats line shows what
+            // they just banked.
+            PlanDoneFace(distance: dist, elapsed: elap)
         case .split(let n, let paceSec):
             // MILE N · m:ss takeover — the just-banked mile pace, flashed
             // briefly so the runner sees the split without leaving the face.
             MileSplitFace(mile: "MILE \(n)", pace: PaceFormat.mmss(paceSec))
-        case .headsUp(_, let s):
-            HeadsUpFace(sub: s ?? "")
+        case .headsUp(let value):
+            HeadsUpFace(value: value)
         case .phase(let t, let s):
             PhaseChangeFace(title: t, sub: s ?? "")
         }

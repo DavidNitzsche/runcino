@@ -357,18 +357,72 @@ struct GoFace: View {
     }
 }
 
-/// HEADS-UP — amber takeover ~3 s before a work rep ends. Clock glyph +
-/// "ALMOST" + sub showing seconds/distance left. Auto-dismisses with the rep.
+/// PLAN DONE — green takeover the instant the runner crosses the planned
+/// distance. Reusing GoFace here was the confusion source (GO also fires
+/// at each interval rep start). This face owns its own moment:
+///   · check ✓
+///   · "PLAN DONE" headline (two stacked lines, fits at hero size)
+///   · stats line — "5.8 mi · 46:18" — the run banked, ready to remember
+/// No "keep going or end" sub: that decision lives on the Controls page.
+struct PlanDoneFace: View {
+    let distance: String    // "5.8 mi"
+    let elapsed: String     // "46:18" or "1:47:18"
+    var body: some View {
+        Screen(background: wash(0x0C2A14)) {
+            GeometryReader { geo in
+                let h = geo.size.height
+                VStack(spacing: 0) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: h * 0.11, weight: .bold))
+                        .foregroundStyle(Faff.live)
+                        .padding(.bottom, h * 0.025)
+                    Text("PLAN")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.22))
+                        .foregroundStyle(Faff.live)
+                        .tracking(-1)
+                        .padding(.vertical, -h * 0.22 * 0.20)
+                    Text("DONE")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.22))
+                        .foregroundStyle(Faff.live)
+                        .tracking(-1)
+                        .padding(.vertical, -h * 0.22 * 0.20)
+                    Text("\(distance)  ·  \(elapsed)")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.075))
+                        .foregroundStyle(Color(hex: 0xCFD2D8))
+                        .tracking(0.5)
+                        .padding(.top, h * 0.05)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)
+            }
+        }
+    }
+}
+
+/// HEADS-UP — amber takeover before a phase / workout ends. The value IS
+/// the message: "0.25" (mi) or "10s" (time). Tiny "LEFT" caption under it.
+/// No icon, no "ALMOST" word — at a glance the number tells the runner
+/// everything they need ("a quarter mile left, ease in" or "ten seconds,
+/// don't overrun"). Auto-dismisses with the rep / workout end.
 struct HeadsUpFace: View {
-    let sub: String     // "3 SECONDS LEFT" / "200M LEFT" / nil-passing yields ""
+    let value: String   // "0.25" / "10s" / "0.03"
     var body: some View {
         Screen(background: wash(0x3A2B08)) {
             GeometryReader { geo in
                 let h = geo.size.height
-                Takeover(glyph: Image(systemName: "clock")
-                            .font(.system(size: h * 0.15))
-                            .foregroundStyle(Faff.goal),
-                         big: "ALMOST", bigColor: Faff.goal, sub: sub, bigSize: 0.38)
+                VStack(spacing: h * 0.012) {
+                    Text(value)
+                        .foregroundStyle(Faff.goal)
+                        .tightNumber(h * 0.50)
+                    Text("LEFT")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                        .foregroundStyle(Faff.goal)
+                        .tracking(3)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)
             }
         }
     }
@@ -660,19 +714,40 @@ struct CompleteFace: View {
     }
 }
 
-/// Today complete — post-Done confirmation (1.5 s).
+/// Today complete — post-Done confirmation flash (~1.5 s). One last look
+/// at the run's headline numbers before the watch returns to the home
+/// page. Check ✓ + "NICE WORK" (two lines, hero) + stats caption.
 struct TodayDoneFace: View {
+    var distance: String = "—"     // "5.8 mi" / "11.6 mi"
+    var elapsed: String = "—"      // "46:18" / "1:47:18"
     var body: some View {
         Screen(background: radial(0x0C2A14)) {
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(spacing: h * 0.03) {
+                VStack(spacing: 0) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: h * 0.34, weight: .bold))
+                        .font(.system(size: h * 0.15, weight: .bold))
                         .foregroundStyle(Faff.live)
-                    FaceLabel(text: "Today complete", color: Faff.live, size: h * 0.075)
+                        .padding(.bottom, h * 0.035)
+                    Text("NICE")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.18))
+                        .foregroundStyle(Faff.live)
+                        .tracking(-0.5)
+                        .padding(.vertical, -h * 0.18 * 0.20)
+                    Text("WORK")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.18))
+                        .foregroundStyle(Faff.live)
+                        .tracking(-0.5)
+                        .padding(.vertical, -h * 0.18 * 0.20)
+                    Text("\(distance)  ·  \(elapsed)")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                        .foregroundStyle(Color(hex: 0xCFD2D8))
+                        .tracking(0.5)
+                        .padding(.top, h * 0.045)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .padding(.horizontal, h * 0.075)
+                .padding(.bottom, h * 0.085)
             }
         }
     }

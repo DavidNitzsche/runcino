@@ -89,6 +89,8 @@ struct WatchFixtureView: View {
             RestFace(restTimeLeft: "1:30", nextTargetPace: "6:31", nextDistance: "0.50")
         case "go":
             GoFace(sub: "Rep 1 · 6:31")
+        case "plandone", "plan-done":
+            PlanDoneFace(distance: "5.8 mi", elapsed: "46:18")
         case "fuel":
             FuelFace(index: 2, total: 3)
         case "landmark":
@@ -101,7 +103,7 @@ struct WatchFixtureView: View {
             CompleteFace(label: "Threshold", pace: "8:48", distance: "9.6", elapsed: "1:24",
                          onDone: {})
         case "today":
-            TodayDoneFace()
+            TodayDoneFace(distance: "5.8 mi", elapsed: "46:18")
         case "calibrate":
             CalibrateFace(mile: 13)
         case "stats":
@@ -197,7 +199,9 @@ struct WatchFixtureView: View {
         case "controls":
             ControlsFace(paused: false, onPrimary: {}, onEnd: {})
         case "headsup":
-            HeadsUpFace(sub: "3 SECONDS LEFT")
+            HeadsUpFace(value: "0.25")
+        case "headsup-time":
+            HeadsUpFace(value: "10s")
         case "phase-change":
             PhaseChangeFace(title: "HURRICANE", sub: "10:38/MI · HOLD EFFORT")
         case "hr":

@@ -31,8 +31,12 @@ final class WorkoutEngine: ObservableObject {
     /// "Ease off · 3s left" before a work interval ends, "Go · Int 4" when
     /// the next work interval begins (watch-app.html §C3). Self-clearing.
     enum TransitionCue: Equatable {
-        case headsUp(title: String, sub: String?)  // amber, before a rep ends
+        /// "0.25" / "10s" — value is the big read, "LEFT" is the small caption.
+        /// Unit (mi vs s) is baked into the value when needed: "10s" reads as
+        /// time, "0.25" without an "s" reads as distance.
+        case headsUp(value: String)
         case go(title: String, sub: String?)       // green, entering a work rep
+        case planDone(distance: String, elapsed: String)  // overtime opening
         case phase(title: String, sub: String?)    // orange, race phase change
         case fuel(index: Int, total: Int)          // GEL · n of m takeover, persistent
         case split(mileNo: Int, paceSec: Int)      // MILE N · m:ss flash, every auto-lap
@@ -424,6 +428,17 @@ final class WorkoutEngine: ObservableObject {
         transition = nil
     }
 
+    /// Format a remaining-miles distance for the heads-up cue. Two decimals
+    /// down to 0.1 (e.g. 0.25), one decimal at 0.1+, "0.05" floor when very
+    /// close. Trailing zeros stripped so 0.20 reads "0.2".
+    private func formatMiRemaining(_ mi: Double) -> String {
+        if mi < 0.1 { return String(format: "%.2f", mi) }
+        let s = String(format: "%.2f", mi)
+        // strip trailing zero ("0.20" → "0.2") but keep "0.25" as-is
+        if s.hasSuffix("0") { return String(s.dropLast()) }
+        return s
+    }
+
     // MARK: Timer tick
 
     private func startTimer() {
@@ -513,27 +528,32 @@ final class WorkoutEngine: ObservableObject {
         }
 
         // "Almost done" cue · before a phase / workout ends — haptic +
-        // a full-screen heads-up flip ("Almost there") so you don't overrun.
-        // Two trigger types:
-        //   · For a single-phase distance workout (easy / long / steady run)
-        //     the meaningful "end" is the workout target, not the phase. Fire
-        //     at 0.25 mi remaining against workout.distanceMi.
-        //   · For interval REPS (multi-phase + work phase + distance/time
-        //     measured) fire just before that REP ends — same as before.
+        // a full-screen heads-up flip so you don't overrun. The face
+        // shows ONLY the remaining number ("0.25" / "10s") as the big
+        // read; small "LEFT" caption sits below. The runner doesn't
+        // need a verb — the number IS the message.
+        //
+        // Three trigger types:
+        //   · Single-phase distance workout (easy / long / steady run):
+        //     fire at 0.25 mi remaining against workout.distanceMi.
+        //   · Interval rep, distance: fire ~0.03 mi before the rep ends.
+        //   · Interval rep, time: fire at 10 s left (bumped from 3 s so
+        //     the runner gets meaningful warning, not a "blink and miss").
         let isSinglePhaseDistanceRun =
             workout.phases.count == 1 && workout.distanceMi != nil
         let nearEnd: Bool
-        let endSub: String?
+        let headsUpValue: String
         if isSinglePhaseDistanceRun, let total = workout.distanceMi {
             let remaining = max(0, total - coveredMi)
             nearEnd = remaining > 0 && remaining <= 0.25
-            endSub = nil
+            headsUpValue = formatMiRemaining(remaining)
         } else if phase.repUnit == .distance {
-            nearEnd = (phaseRemainingMi ?? 1) <= 0.03 && phaseProgress < 1
-            endSub = nil
+            let remaining = phaseRemainingMi ?? 1
+            nearEnd = remaining <= 0.03 && phaseProgress < 1
+            headsUpValue = formatMiRemaining(remaining)
         } else {
-            nearEnd = phaseRemainingSec <= 3 && phaseRemainingSec > 0
-            endSub = "\(phaseRemainingSec)s left"
+            nearEnd = phaseRemainingSec <= 10 && phaseRemainingSec > 0
+            headsUpValue = "\(phaseRemainingSec)s"
         }
         // For single-phase distance runs we drop the phase.type == .work
         // gate — an easy long run is encoded as a single "work" phase but
@@ -544,7 +564,7 @@ final class WorkoutEngine: ObservableObject {
         if shouldFire {
             didFireAlmostDone = true
             Haptics.almostDone()
-            flash(.headsUp(title: "Almost there", sub: endSub), for: 2.6)
+            flash(.headsUp(value: headsUpValue), for: 2.6)
         }
 
         // MILE SPLIT takeover — at every integer-mile crossing, fire a brief
@@ -622,10 +642,16 @@ final class WorkoutEngine: ObservableObject {
             paceZone = .onTarget
             paceDeltaSPerMi = 0
             Haptics.play(.end)
-            // 6s so the runner has time to read the "you can stop now,
-            // or keep going" message — 3s was too brief at this big-deal
-            // moment. flash() chimes too when audibleAlerts is on.
-            flash(.go(title: "Plan done ✓", sub: "Keep going · End when ready"), for: 6)
+            // PlanDoneFace — distinct from GoFace (which fires at each
+            // interval start). "PLAN DONE" headline + the run's banked
+            // distance & elapsed as a stats line. No "keep going or end"
+            // footnote — that decision lives on the Controls page, not
+            // a banner. flash() chimes too when audibleAlerts is on.
+            let dist = String(format: "%.1f mi", coveredMi)
+            let elap = totalElapsedSec >= 3600
+                ? PaceFormat.hms(totalElapsedSec)
+                : PaceFormat.clock(totalElapsedSec)
+            flash(.planDone(distance: dist, elapsed: elap), for: 6)
             return
         }
 
