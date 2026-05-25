@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RACES · v1 mockup · 2026-05-25</title>
+<meta name="viewport" content="width=1400">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0; --dim: #4b505e;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card-2: #16191f;
+    --green: #3EBD41; --goal: #F3AD38; --over: #FC4D64;
+    --dist: #27B4E0; --rest: #008FEC; --learn: #B084FF; --race: #FF8847;
+    --f-display: 'Bebas Neue', 'Inter', sans-serif;
+    --f-body: 'Inter', -apple-system, sans-serif;
+  }
+  html, body { background: #15171c; color: var(--ink); font-family: var(--f-body); margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 48px 28px 96px; }
+  header { margin-bottom: 40px; }
+  h1 { font-family: var(--f-display); font-size: 52px; font-weight: 400; letter-spacing: 0.5px; margin: 0; }
+  .sub { color: var(--mute); margin-top: 8px; max-width: 760px; font-size: 14px; line-height: 1.6; }
+  .sub code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .meta { color: var(--dim); font-size: 11px; margin-top: 18px; letter-spacing: 0.4px; }
+
+  .stage { display: grid; grid-template-columns: 460px 1fr; gap: 48px; align-items: start; }
+  @media (max-width: 1200px) { .stage { grid-template-columns: 1fr; } }
+
+  /* ── PHONE ── */
+  .phone { position: relative; width: 460px; aspect-ratio: 460/940; background: #000; border-radius: 56px; padding: 14px; box-shadow: 0 60px 100px rgba(0,0,0,0.55), 0 20px 40px rgba(0,0,0,0.40), inset 0 0 0 2px rgba(255,255,255,0.04); margin: 0 auto; }
+  .phone .notch { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 120px; height: 32px; background: #000; border-radius: 18px; z-index: 2; }
+  .screen { position: relative; width: 100%; height: 100%; background: var(--bg); border-radius: 44px; overflow: hidden; overflow-y: auto; }
+  .screen::-webkit-scrollbar { display: none; }
+
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 32px 8px; font-size: 14px; font-weight: 600; }
+  .appbar { display: flex; justify-content: space-between; align-items: center; padding: 28px 24px 12px; }
+  .appbar .brand { font-family: var(--f-display); font-size: 26px; font-weight: 400; letter-spacing: 1px; }
+  .appbar .tab-label { font-family: var(--f-display); font-size: 18px; font-weight: 400; color: var(--mute); letter-spacing: 1.5px; }
+
+  /* ── Shared card primitives ── */
+  .lane { padding: 0 24px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; }
+  .card-eyebrow { font-family: var(--f-body); font-size: 9px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px; }
+  .coach-note { font-family: var(--f-body); font-size: 12px; line-height: 1.5; color: rgba(246,247,248,0.85); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-2); display: flex; gap: 8px; align-items: flex-start; }
+  .coach-note::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--green); margin-top: 7px; flex-shrink: 0; }
+
+  /* ── Coach voice block ── */
+  .coach { padding: 8px 24px 22px; }
+  .coach .eyebrow { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .coach .eyebrow::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(62,189,65,0.6); }
+  .coach .lead { font-family: var(--f-display); font-size: 30px; font-weight: 400; color: var(--ink); line-height: 1.05; letter-spacing: 0.5px; margin: 0 0 14px; }
+  .coach p { font-family: var(--f-body); font-size: 15px; line-height: 1.6; color: rgba(246,247,248,0.86); margin: 0 0 12px; letter-spacing: -0.01em; }
+  .coach p strong { color: var(--ink); font-weight: 600; }
+
+  /* ── race_horizon ── */
+  .horizon-grid { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-top: 4px; }
+  .horizon-left .name { font-family: var(--f-display); font-size: 24px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; line-height: 1.1; }
+  .horizon-left .meta-row { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; margin-top: 4px; text-transform: uppercase; }
+  .horizon-right { display: flex; align-items: baseline; gap: 4px; color: var(--race); }
+  .horizon-right .v { font-family: var(--f-display); font-size: 56px; font-weight: 400; line-height: 0.95; letter-spacing: 0.5px; }
+  .horizon-right .u { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+
+  /* ── race_calendar_overview ── */
+  .cal-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+  .cal-row:last-child { border-bottom: none; }
+  .cal-name { font-family: var(--f-display); font-size: 18px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; }
+  .cal-meta { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
+  .cal-days { display: flex; align-items: baseline; gap: 4px; }
+  .cal-days .v { font-family: var(--f-display); font-size: 22px; color: var(--dist); }
+  .cal-days .u { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+  .cal-days.is-A .v { color: var(--race); }
+  .cal-days.is-B .v { color: var(--rest); }
+  .cal-days.is-C .v { color: var(--learn); }
+
+  /* Priority tag */
+  .pri-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; margin-left: 6px; }
+  .pri-A { background: rgba(255,136,71,0.16); color: var(--race); }
+  .pri-B { background: rgba(0,143,236,0.16); color: var(--rest); }
+  .pri-C { background: rgba(176,132,255,0.16); color: var(--learn); }
+  .pri-tu { background: rgba(243,173,56,0.16); color: var(--goal); }
+
+  /* ── race_retrospective ── */
+  .retro-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: baseline; margin-top: 4px; }
+  .retro-name { font-family: var(--f-display); font-size: 22px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; }
+  .retro-when { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; margin-top: 4px; }
+  .retro-time { display: flex; align-items: baseline; gap: 4px; color: var(--green); }
+  .retro-time .v { font-family: var(--f-display); font-size: 24px; }
+  .retro-verdict { font-family: var(--f-body); font-size: 14px; color: rgba(246,247,248,0.85); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+
+  /* ── Past races section ── */
+  .past-section { padding: 18px 24px 24px; border-top: 1px solid var(--line-2); margin-top: 14px; }
+  .past-section .section-eyebrow { font-family: var(--f-body); font-size: 9px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--mute); margin-bottom: 12px; }
+  .past-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line-2); }
+  .past-row:last-child { border-bottom: none; }
+  .past-row .name { font-family: var(--f-display); font-size: 16px; color: var(--ink); }
+  .past-row .meta { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
+  .past-row .time { font-family: var(--f-display); font-size: 18px; color: var(--green); }
+
+  /* ── Bottom nav ── */
+  .nav { position: sticky; bottom: 0; left: 0; right: 0; background: rgba(10,12,16,0.92); backdrop-filter: blur(20px); border-top: 1px solid var(--line); padding: 12px 0 26px; display: flex; justify-content: space-around; }
+  .nav .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--dim); font-family: var(--f-body); font-size: 9px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .nav .tab.active { color: var(--green); }
+  .nav .tab svg { width: 20px; height: 20px; fill: currentColor; }
+
+  /* ── WEB view ── */
+  .web {
+    background: var(--bg);
+    border-radius: 16px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.45);
+    min-height: 940px;
+  }
+  .web-topbar {
+    display: flex; align-items: center; gap: 28px;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .web-topbar .brand { font-family: var(--f-display); font-size: 24px; letter-spacing: 1px; color: var(--ink); margin-right: auto; }
+  .web-topbar .tab { font-family: var(--f-body); font-size: 11px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: var(--mute); }
+  .web-topbar .tab.active { color: var(--ink); }
+  .web-content { padding: 32px 32px 48px; max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; }
+  .web-content .col-main, .web-content .col-side { display: flex; flex-direction: column; gap: 14px; }
+
+  /* annotations panel */
+  .notes { padding: 12px 0; }
+  .notes h2 { font-family: var(--f-display); font-size: 28px; font-weight: 400; color: var(--ink); margin: 0 0 14px; letter-spacing: 0.5px; }
+  .notes h3 { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 28px 0 10px; }
+  .notes ul { padding-left: 0; list-style: none; margin: 0 0 18px; }
+  .notes li { padding: 10px 0; border-bottom: 1px solid var(--line-2); font-size: 13.5px; line-height: 1.55; color: rgba(246,247,248,0.78); }
+  .notes li:last-child { border-bottom: none; }
+  .notes li strong { color: var(--ink); font-weight: 600; display: block; margin-bottom: 3px; }
+  .notes code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  .stage-2 { margin-top: 96px; }
+  .stage-2 h2 { font-family: var(--f-display); font-size: 36px; font-weight: 400; letter-spacing: 0.5px; margin: 0 0 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>RACES · v1 mockup · 2026-05-25</h1>
+    <p class="sub">
+      The /races surface in v4 design language. <strong style="color:var(--green);">Real coach voice + real cards</strong> generated live by the LLM against David's actual race calendar (CIM Dec 6 as A-race, AFC Aug 16 as tuneup, Dodgers, Run Malibu; past: Rose Bowl, Disney, LA, Big Sur, Sombrero).
+    </p>
+    <p class="sub">
+      Coach speaks to: <strong>the next upcoming goal, the path to get there, the race calendar as a whole</strong> — per David's brief. The page IS the coach speaking; cards are the things the coach raised.
+    </p>
+    <div class="meta">FONTS · BEBAS NEUE + INTER · COLORS · WATCH-FACE PALETTE · LLM · sonnet-4-5 · 19.1s · $0.01</div>
+  </header>
+
+  <div class="stage">
+
+    <!-- ── PHONE ── -->
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+
+        <div class="statusbar">
+          <span>9:18</span>
+          <span>● ● ● ●</span>
+        </div>
+
+        <div class="appbar">
+          <div class="brand">faff</div>
+          <div class="tab-label">RACES</div>
+        </div>
+
+        <!-- COACH VOICE -->
+        <div class="coach">
+          <div class="eyebrow">COACH · RACES</div>
+          <h2 class="lead">A transition window.</h2>
+          <p>
+            We're in a transition window right now. The spring marathon block wrapped with Big Sur and Sombrero — solid cap-stones to a dense first half of the year. <strong>Americas Finest City in 83 days isn't flagged as a priority race</strong>, which gives us room to treat it as a tuneup or tempo effort rather than a taper-and-peak event.
+          </p>
+          <p>
+            The real target is <strong>CIM in December, 195 days out</strong>. Full marathon build from a clean slate. AFC slots in nicely as a mid-build half — a chance to practice race execution and get an honest readout on where fitness is tracking without disrupting the larger arc.
+          </p>
+          <p>
+            After that, Dodgers in late September and Run Malibu in November give us two more checkpoints to dial in pacing and confirm trajectory before the main event. We're not chasing short-term peaks; we're setting up for a strong fall.
+          </p>
+        </div>
+
+        <!-- CARDS LANE -->
+        <div class="lane">
+
+          <!-- race_horizon -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--race);">UP NEXT · BUILDING</div>
+            <div class="horizon-grid">
+              <div class="horizon-left">
+                <div class="name">Americas Finest City</div>
+                <div class="meta-row">Half · Aug 16 · tuneup</div>
+              </div>
+              <div class="horizon-right">
+                <span class="v">83</span>
+                <span class="u">DAYS</span>
+              </div>
+            </div>
+            <div class="coach-note">Positioned as a mid-build half — useful for tempo work and race rehearsal without a full taper.</div>
+          </div>
+
+          <!-- race_calendar_overview -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--dist);">UPCOMING SEASON · 4 RACES</div>
+            <div class="cal-row">
+              <div>
+                <div class="cal-name">Americas Finest City <span class="pri-pill pri-tu">TUNEUP</span></div>
+                <div class="cal-meta">Half · Aug 16</div>
+              </div>
+              <div class="cal-days"><span class="v">83</span><span class="u">D</span></div>
+            </div>
+            <div class="cal-row">
+              <div>
+                <div class="cal-name">Dodgers 10K <span class="pri-pill pri-C">C</span></div>
+                <div class="cal-meta">10K · Sep 26</div>
+              </div>
+              <div class="cal-days is-C"><span class="v">124</span><span class="u">D</span></div>
+            </div>
+            <div class="cal-row">
+              <div>
+                <div class="cal-name">Run Malibu <span class="pri-pill pri-B">B</span></div>
+                <div class="cal-meta">Half · Nov 8</div>
+              </div>
+              <div class="cal-days is-B"><span class="v">167</span><span class="u">D</span></div>
+            </div>
+            <div class="cal-row">
+              <div>
+                <div class="cal-name">CIM <span class="pri-pill pri-A">A</span></div>
+                <div class="cal-meta">Marathon · Dec 6 · the target</div>
+              </div>
+              <div class="cal-days is-A"><span class="v">195</span><span class="u">D</span></div>
+            </div>
+            <div class="coach-note">CIM is the clear priority. AFC, Dodgers, and Run Malibu serve as checkpoints and rehearsals.</div>
+          </div>
+
+          <!-- race_retrospective -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--green);">LAST FINISH · 22 DAYS AGO</div>
+            <div class="retro-row">
+              <div>
+                <div class="retro-name">Sombrero Half Marathon</div>
+                <div class="retro-when">MAY 3 · 13.16 MI</div>
+              </div>
+              <div class="retro-time"><span class="v">1:40:57</span></div>
+            </div>
+            <div class="retro-verdict">Solid effort coming off Big Sur — closed out the spring block cleanly.</div>
+            <div class="coach-note">No formal goal attached, but the result suggests you're holding fitness well post-marathon cycle.</div>
+          </div>
+
+        </div>
+
+        <!-- PAST RACES SECTION (existing substrate, v4-styled) -->
+        <div class="past-section">
+          <div class="section-eyebrow">PAST RACES · 2026</div>
+          <div class="past-row">
+            <div><div class="name">Sombrero Half Marathon</div><div class="meta">MAY 3 · HALF · C</div></div>
+            <div class="time">1:40:57</div>
+          </div>
+          <div class="past-row">
+            <div><div class="name">Big Sur Marathon</div><div class="meta">APR 26 · MARATHON · HILLY</div></div>
+            <div class="time">4:12:34</div>
+          </div>
+          <div class="past-row">
+            <div><div class="name">LA Marathon</div><div class="meta">MAR 8 · MARATHON · A</div></div>
+            <div class="time">3:38:50</div>
+          </div>
+          <div class="past-row">
+            <div><div class="name">Disney Half Marathon</div><div class="meta">FEB 1 · HALF · A</div></div>
+            <div class="time">1:35:22</div>
+          </div>
+          <div class="past-row">
+            <div><div class="name">Rose Bowl Half</div><div class="meta">JAN 18 · HALF · A</div></div>
+            <div class="time">1:36:11</div>
+          </div>
+        </div>
+
+        <!-- BOTTOM NAV -->
+        <div class="nav">
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>
+            TODAY
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M19 4h-2V2h-2v2H9V2H7v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"/></svg>
+            TRAINING
+          </div>
+          <div class="tab active">
+            <svg viewBox="0 0 24 24"><path d="M7 2 L4 2 L8 11 L10 10 Z"/><path d="M17 2 L20 2 L16 11 L14 10 Z"/><circle cx="12" cy="15" r="6"/><path d="M12 12 L12.9 13.8 L14.9 14.1 L13.45 15.5 L13.8 17.5 L12 16.55 L10.2 17.5 L10.55 15.5 L9.1 14.1 L11.1 13.8 Z" fill="#0a0c10"/></svg>
+            RACES
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6z"/></svg>
+            PROFILE
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── ANNOTATIONS ── -->
+    <div class="notes">
+      <h2>What's on the page</h2>
+      <ul>
+        <li><strong>Coach voice (top, hero)</strong> · Three paragraphs about the season arc. Names the spring block as wrapped (Big Sur + Sombrero), positions AFC as tuneup rather than A-race, names CIM as the real target, frames Dodgers + Run Malibu as checkpoints. This is the coach reading the whole calendar and forming an opinion.</li>
+        <li><strong>UP NEXT · BUILDING card</strong> · The next race regardless of priority — AFC at 83 days. Orange because it's a race signal. "Building" tone derived from days_away. Coach note explains the framing.</li>
+        <li><strong>UPCOMING SEASON card</strong> · 4-race timeline at a glance. Each row shows name + priority pill + distance/date + days countdown. Color-coded by priority (A=orange/race, B=blue, C=purple). CIM at 195d is the destination.</li>
+        <li><strong>LAST FINISH card</strong> · The most recent retrospective — Sombrero 22 days ago. Coach verdict + meta note. Below 30-day window for "recent."</li>
+        <li><strong>Past races section</strong> · Existing substrate (your 2026 finishes) reskinned to v4 — slim rows, time on the right, no big chrome. The history view, scrollable below the active surface.</li>
+      </ul>
+
+      <h3>What the coach decided to surface (and what it didn't)</h3>
+      <ul>
+        <li>No <strong>race_trajectory</strong> card — coach couldn't honestly call where AFC fitness is tracking yet (only 1 week into base for CIM, no VDOT signal for AFC-half target specifically).</li>
+        <li>No <strong>goal_renegotiation</strong> — nothing strategically wrong with current goals.</li>
+        <li>The race_horizon picks AFC (next race) over CIM (A-race) because AFC is what's happening sooner. The voice handles the priority distinction in prose.</li>
+      </ul>
+
+      <h3>State source (live prod data)</h3>
+      <ul>
+        <li>Races: <code>races</code> table for David (10 races) · filtered + sorted by date</li>
+        <li>Active plan: <code>training_plans</code> latest non-archived (AFC plan, BASE week 1)</li>
+        <li>Coach voice: Claude sonnet-4-5 with the races-overview prompt, 19.1s, ~$0.01</li>
+      </ul>
+
+      <h3>What's NOT in this mockup</h3>
+      <ul>
+        <li>Race creation / edit affordances — that's CRUD, not coach surface</li>
+        <li>Per-race tap-through (would go to RACE DETAIL, coming next)</li>
+        <li>VDOT anchor card — fitness signal is in the coach voice; standalone card would be redundant</li>
+        <li>PR distance grid — moved to /profile (it's about you, not about the calendar)</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- ── WEB VIEW ── -->
+  <div class="stage-2">
+    <h2>WEB / DESKTOP VIEW</h2>
+    <p class="sub" style="margin-bottom: 24px;">
+      Same components, two-column layout. Coach voice + UP NEXT + UPCOMING SEASON on the left (the primary read). LAST FINISH + Past Races on the right (history reference). Same data, same coach voice, same DNA — just more horizontal real estate.
+    </p>
+
+    <div class="web">
+      <div class="web-topbar">
+        <div class="brand">faff</div>
+        <div class="tab">TODAY</div>
+        <div class="tab">TRAINING</div>
+        <div class="tab active">RACES</div>
+        <div class="tab">HEALTH</div>
+        <div class="tab">PROFILE</div>
+      </div>
+      <div class="web-content">
+
+        <div class="col-main">
+          <!-- COACH VOICE -->
+          <div class="coach" style="padding: 0 0 22px;">
+            <div class="eyebrow">COACH · RACES</div>
+            <h2 class="lead" style="font-size: 34px;">A transition window.</h2>
+            <p>
+              We're in a transition window right now. The spring marathon block wrapped with Big Sur and Sombrero — solid cap-stones to a dense first half of the year. <strong>Americas Finest City in 83 days isn't flagged as a priority race</strong>, which gives us room to treat it as a tuneup or tempo effort rather than a taper-and-peak event.
+            </p>
+            <p>
+              The real target is <strong>CIM in December, 195 days out</strong>. Full marathon build from a clean slate. AFC slots in nicely as a mid-build half — a chance to practice race execution and get an honest readout on where fitness is tracking without disrupting the larger arc.
+            </p>
+            <p>
+              After that, Dodgers in late September and Run Malibu in November give us two more checkpoints to dial in pacing and confirm trajectory before the main event. We're not chasing short-term peaks; we're setting up for a strong fall.
+            </p>
+          </div>
+
+          <!-- race_horizon -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--race);">UP NEXT · BUILDING</div>
+            <div class="horizon-grid">
+              <div class="horizon-left">
+                <div class="name">Americas Finest City</div>
+                <div class="meta-row">Half · Aug 16 · tuneup</div>
+              </div>
+              <div class="horizon-right">
+                <span class="v">83</span><span class="u">DAYS</span>
+              </div>
+            </div>
+            <div class="coach-note">Positioned as a mid-build half — useful for tempo work and race rehearsal without a full taper.</div>
+          </div>
+
+          <!-- race_calendar_overview -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--dist);">UPCOMING SEASON · 4 RACES</div>
+            <div class="cal-row">
+              <div><div class="cal-name">Americas Finest City <span class="pri-pill pri-tu">TUNEUP</span></div><div class="cal-meta">Half · Aug 16</div></div>
+              <div class="cal-days"><span class="v">83</span><span class="u">D</span></div>
+            </div>
+            <div class="cal-row">
+              <div><div class="cal-name">Dodgers 10K <span class="pri-pill pri-C">C</span></div><div class="cal-meta">10K · Sep 26</div></div>
+              <div class="cal-days is-C"><span class="v">124</span><span class="u">D</span></div>
+            </div>
+            <div class="cal-row">
+              <div><div class="cal-name">Run Malibu <span class="pri-pill pri-B">B</span></div><div class="cal-meta">Half · Nov 8</div></div>
+              <div class="cal-days is-B"><span class="v">167</span><span class="u">D</span></div>
+            </div>
+            <div class="cal-row">
+              <div><div class="cal-name">CIM <span class="pri-pill pri-A">A</span></div><div class="cal-meta">Marathon · Dec 6 · the target</div></div>
+              <div class="cal-days is-A"><span class="v">195</span><span class="u">D</span></div>
+            </div>
+            <div class="coach-note">CIM is the clear priority. AFC, Dodgers, and Run Malibu serve as checkpoints and rehearsals.</div>
+          </div>
+        </div>
+
+        <div class="col-side">
+          <!-- LAST FINISH -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--green);">LAST FINISH · 22 DAYS AGO</div>
+            <div class="retro-row">
+              <div>
+                <div class="retro-name">Sombrero Half Marathon</div>
+                <div class="retro-when">MAY 3 · 13.16 MI</div>
+              </div>
+              <div class="retro-time"><span class="v">1:40:57</span></div>
+            </div>
+            <div class="retro-verdict">Solid effort coming off Big Sur — closed out the spring block cleanly.</div>
+            <div class="coach-note">No formal goal attached, but the result suggests you're holding fitness well post-marathon cycle.</div>
+          </div>
+
+          <!-- Past races (compact list) -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--mute);">PAST RACES · 2026</div>
+            <div class="past-row" style="padding-top: 6px;">
+              <div><div class="name" style="font-size: 16px; font-family: var(--f-display);">Sombrero Half</div><div class="meta">MAY 3 · HALF</div></div>
+              <div class="time">1:40:57</div>
+            </div>
+            <div class="past-row">
+              <div><div class="name" style="font-size: 16px; font-family: var(--f-display);">Big Sur Marathon</div><div class="meta">APR 26 · MARATHON</div></div>
+              <div class="time">4:12:34</div>
+            </div>
+            <div class="past-row">
+              <div><div class="name" style="font-size: 16px; font-family: var(--f-display);">LA Marathon</div><div class="meta">MAR 8 · MARATHON · A</div></div>
+              <div class="time">3:38:50</div>
+            </div>
+            <div class="past-row">
+              <div><div class="name" style="font-size: 16px; font-family: var(--f-display);">Disney Half</div><div class="meta">FEB 1 · HALF · A</div></div>
+              <div class="time">1:35:22</div>
+            </div>
+            <div class="past-row">
+              <div><div class="name" style="font-size: 16px; font-family: var(--f-display);">Rose Bowl Half</div><div class="meta">JAN 18 · HALF · A</div></div>
+              <div class="time">1:36:11</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
