@@ -1,5 +1,6 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { BarChart } from '@/components/charts/HealthBars';
+import { ReadinessBreakdownView } from '@/components/readiness/ReadinessBreakdown';
 import { loadHealthState, type HealthState } from '@/lib/coach/health-state';
 import { generateBriefing } from '@/lib/coach/engine';
 
@@ -32,6 +33,14 @@ export default async function HealthPage() {
         </div>
 
         {briefing && <CoachIntro briefing={briefing} watchMode={health.watchMode} />}
+
+        {/* §8.3 — same readiness breakdown as the /today chip tap-through */}
+        {briefing && (
+          <div className="card" style={{ padding: '24px 28px', marginBottom: 18 }}>
+            <div className="card-eyebrow" style={{ color: 'var(--green)' }}>READINESS · TODAY</div>
+            <ReadinessBreakdownView breakdown={briefing._state.readiness} />
+          </div>
+        )}
 
         {health.watchItems.length > 0 && <WatchListBox items={health.watchItems} />}
 

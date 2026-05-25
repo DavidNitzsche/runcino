@@ -1,5 +1,6 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { CourseSchematic, PacePlanTable } from '@/components/races/CourseSchematic';
+import { DeleteRaceButton } from '@/components/races/RaceCrudUI';
 import { loadRacesState } from '@/lib/coach/races-state';
 import { generateBriefing } from '@/lib/coach/engine';
 
@@ -119,6 +120,12 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
             </div>
           </div>
         )}
+
+        {/* Footer actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32, paddingTop: 18, borderTop: '1px solid var(--line-2)' }}>
+          <a href="/races" style={{ color: 'var(--mute)', fontFamily: 'var(--f-display)', fontSize: 13, letterSpacing: '1.2px' }}>← BACK TO RACES</a>
+          <DeleteRaceButton slug={slug} />
+        </div>
       </div>
     </main>
   );

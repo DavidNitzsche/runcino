@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { TopNav } from '@/components/layout/TopNav';
 import { loadRacesState, type RaceRow } from '@/lib/coach/races-state';
 import { generateBriefing } from '@/lib/coach/engine';
+import { AddRaceButton } from '@/components/races/RaceCrudUI';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,10 @@ export default async function RacesPage() {
         </div>
 
         {briefing && <CoachIntro briefing={briefing} />}
+
+        {/* + ADD RACE — top of page so it's discoverable */}
+        <div style={{ marginBottom: 18 }}><AddRaceButton /></div>
+
         {races.aRace ? <ARaceHero race={races.aRace} /> : <NoARacePrompt />}
 
         {races.upcomingBs.length > 0 && (

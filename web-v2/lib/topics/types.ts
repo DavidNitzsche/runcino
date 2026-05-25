@@ -85,6 +85,7 @@ export interface CoachState {
 /* ────────────────────────── Topic payloads ────────────────────────── */
 
 export const RunRecapPayload = z.object({
+  activity_id: z.string().nullable().optional(),   // routes to /runs/[id]
   distance_mi: z.number(),
   pace: z.string().nullable(),
   time_moving: z.string().nullable(),

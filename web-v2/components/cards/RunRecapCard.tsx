@@ -1,8 +1,11 @@
+import Link from 'next/link';
+
 /**
  * Renders the run_recap topic — distance / pace / time / chips, with coach_note.
+ * §8.4 closed loop: tap "Splits · route · form data →" to drill into /runs/[id].
  */
 export function RunRecapCard({ payload, coach_note }: {
-  payload: { distance_mi: number; pace: string | null; time_moving: string | null; hr: number | null; cadence: number | null; weather_chip: string | null };
+  payload: { activity_id?: string | null; distance_mi: number; pace: string | null; time_moving: string | null; hr: number | null; cadence: number | null; weather_chip: string | null };
   coach_note: string | null;
 }) {
   return (
@@ -37,6 +40,21 @@ export function RunRecapCard({ payload, coach_note }: {
         <div className="coach-note" style={{ marginTop: 14 }}>
           {coach_note}
         </div>
+      )}
+
+      {/* §8.4 drill-down — to /runs/[activity_id] for full splits + route + HR zones */}
+      {payload.activity_id && (
+        <Link
+          href={`/runs/${encodeURIComponent(payload.activity_id)}`}
+          style={{
+            display: 'inline-block', marginTop: 12,
+            fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 500,
+            color: 'var(--mute)', letterSpacing: '0.3px',
+            textDecoration: 'none',
+          }}
+        >
+          Splits · route · form data →
+        </Link>
       )}
     </section>
   );

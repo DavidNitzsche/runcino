@@ -16,6 +16,7 @@ import { loadCoachState } from './state-loader';
 import { resolveMode, type Surface } from './router';
 import { TopicPrereqs, eligibleKinds, type Topic, type CoachState } from '@/lib/topics/types';
 import { promptFor } from '@/coach/prompts';
+import { computeReadiness, type ReadinessBreakdown } from './readiness';
 
 export interface BriefingResponse {
   surface: Surface;
@@ -39,6 +40,7 @@ export interface BriefingResponse {
     cadenceBaseline: number | null;
     nextARaceName: string | null;
     daysToARace: number | null;
+    readiness: ReadinessBreakdown;
   };
 }
 
@@ -72,6 +74,15 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
     eligible.includes(t.kind as any) && TopicPrereqs[t.kind](state)
   );
 
+  // Server-side enrichment: inject deterministic ids the LLM can't be trusted
+  // to repeat. run_recap gets the real activity_id so the card can route to
+  // /runs/[id] without round-tripping through the model.
+  for (const t of validatedTopics) {
+    if (t.kind === 'run_recap' && state.latest_activity?.id) {
+      (t.payload as any).activity_id = state.latest_activity.id;
+    }
+  }
+
   return {
     surface: resolved.surface,
     mode: resolved.mode,
@@ -93,6 +104,7 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
       cadenceBaseline: state.cadenceBaseline,
       nextARaceName: state.nextARace?.name ?? null,
       daysToARace: state.nextARace?.days_to_race ?? null,
+      readiness: computeReadiness(state),
     },
   };
 }

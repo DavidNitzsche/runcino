@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 const STEPS = ['Connect', 'Goal', 'Race', 'Confirm'] as const;
@@ -15,8 +15,45 @@ export function OnboardingFlow() {
   const [goalTime, setGoalTime] = useState('');
   const [raceName, setRaceName] = useState('');
   const [raceDate, setRaceDate] = useState('');
+  const [saving, startSaving] = useTransition();
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const idx = STEPS.indexOf(step);
+
+  // Persist everything we collected. Idempotent — re-running just upserts.
+  async function persistAndContinue() {
+    setSaveError(null);
+    startSaving(async () => {
+      try {
+        // 1. Save race (if provided)
+        if (raceName && raceDate) {
+          const distLabel = goalDistance === 'full' ? 'Marathon'
+            : goalDistance === 'half' ? 'Half Marathon'
+            : goalDistance ?? null;
+          const r = await fetch('/api/race', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: raceName,
+              date: raceDate,
+              distance_label: distLabel,
+              priority: 'A',                       // first race = A by default
+              goal: goalTime || null,
+            }),
+          });
+          if (!r.ok) throw new Error('Could not save race');
+        }
+
+        // 2. (Connection state is best stored when real OAuth lands;
+        //     for now we just don't persist them — no fake CONNECTED bits)
+
+        // Route the user home.
+        router.push('/today');
+      } catch (e: any) {
+        setSaveError(e.message ?? String(e));
+      }
+    });
+  }
 
   return (
     <div style={{ marginTop: 32 }}>
@@ -130,14 +167,16 @@ export function OnboardingFlow() {
               <Summary k="GOAL TIME"     v={goalTime || '—'} />
               <Summary k="RACE"          v={raceName ? `${raceName} · ${raceDate}` : '— (no race set yet)'} />
             </div>
+            {saveError && (
+              <div style={{ color: 'var(--over)', fontSize: 12, marginTop: 12, fontStyle: 'italic' }}>
+                {saveError}
+              </div>
+            )}
             <NavBtns
               onBack={() => setStep('Race')}
-              onNext={async () => {
-                // P6.b will POST to /api/race; for now just route to /today.
-                router.push('/today');
-              }}
-              nextLabel="GO TO TODAY"
-              canAdvance={true}
+              onNext={persistAndContinue}
+              nextLabel={saving ? 'SAVING…' : 'GO TO TODAY'}
+              canAdvance={!saving}
             />
           </>
         )}

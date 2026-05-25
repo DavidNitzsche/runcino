@@ -42,9 +42,7 @@ export default async function TodayPage() {
             todayLabel={todayLabel(briefing._state.today)}
             metaLine={metaLineFor(briefing)}
             askPrompt={askPromptFor(briefing.mode)}
-            // Readiness wires in P3.3 (§8.3 breakdown loop); placeholder for now.
-            readinessScore={78}
-            readinessLabel="READY"
+            readinessBreakdown={briefing._state.readiness}
             glance={{
               sleep7Avg:       briefing._state.sleep7Avg,
               sleep7Deficit:   briefing._state.sleep7Deficit,

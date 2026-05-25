@@ -10,6 +10,8 @@
 import type { Topic } from '@/lib/topics/types';
 import { CoachBlock } from '@/components/cards/CoachBlock';
 import { TopicRenderer } from '@/components/cards/TopicRenderer';
+import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigger';
+import type { ReadinessBreakdown } from '@/lib/coach/readiness';
 
 export interface TodayLayoutProps {
   lead: string;
@@ -33,6 +35,8 @@ export interface TodayLayoutProps {
     weekDone?: number;
     weekPlanned?: number | null;
   };
+  /** Composite readiness breakdown — tap-through on desktop chip. */
+  readinessBreakdown?: ReadinessBreakdown;
 }
 
 export function TodayLayouts(props: TodayLayoutProps) {
@@ -68,7 +72,7 @@ function MobileLayout({ lead, voice, topics, mode, briefingId, askPrompt }: Toda
 }
 
 function DesktopLayout(props: TodayLayoutProps) {
-  const { lead, voice, topics, mode, briefingId, greetingName, todayLabel, metaLine, askPrompt, readinessScore, readinessLabel } = props;
+  const { lead, voice, topics, mode, briefingId, greetingName, todayLabel, metaLine, askPrompt, readinessScore, readinessLabel, readinessBreakdown } = props;
   return (
     <div style={{ padding: '40px 40px 80px', maxWidth: 1440, margin: '0 auto' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'end', marginBottom: 28 }}>
@@ -80,13 +84,17 @@ function DesktopLayout(props: TodayLayoutProps) {
             {todayLabel}{metaLine ? ` · ${metaLine}` : ''}
           </div>
         </div>
-        {readinessScore != null && (
+        {(readinessBreakdown || readinessScore != null) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
             <div>
               <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase' }}>READINESS</div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', marginTop: 2 }}>{readinessLabel ?? 'READY'}</div>
+              <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', marginTop: 2 }}>
+                {readinessBreakdown?.label ?? readinessLabel ?? 'READY'}
+              </div>
             </div>
-            <ReadinessChipLg value={readinessScore} />
+            {readinessBreakdown
+              ? <ReadinessChipTrigger breakdown={readinessBreakdown} />
+              : <ReadinessChipLg value={readinessScore!} />}
           </div>
         )}
       </div>
