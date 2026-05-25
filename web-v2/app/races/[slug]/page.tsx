@@ -1,8 +1,11 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { CourseSchematic, PacePlanTable } from '@/components/races/CourseSchematic';
+import { RealRouteSvg } from '@/components/races/RealRouteSvg';
 import { DeleteRaceButton } from '@/components/races/RaceCrudUI';
+import { GpxUploadButton } from '@/components/races/GpxUploadButton';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { loadRacesState } from '@/lib/coach/races-state';
+import { pool } from '@/lib/db/pool';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +20,14 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
   const { slug } = await params;
 
   const races = await loadRacesState(DAVID_USER_ID);
+
+  // Course geometry (set if any GPX has been attached)
+  const geoRow = await pool.query(
+    `SELECT course_geometry, course_source FROM races WHERE slug = $1`,
+    [slug]
+  ).catch(() => ({ rows: [] }));
+  const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
+  const courseSource = geoRow.rows[0]?.course_source ?? null;
 
   const race = [races.aRace, ...races.upcomingBs, ...races.upcomingCs, ...races.past].find((r) => r?.slug === slug);
   if (!race) {
@@ -90,17 +101,22 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
         {/* Course + pace plan — present at all proximities except deep post-race */}
         {proximity !== 'post-race' && (
           <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
               <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px' }}>
                 {proximity === 'race-week' ? 'COURSE · PACE PLAN LOCKED' : 'COURSE'}
               </div>
               <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>
-                13.1 MI · MOSTLY FLAT · +224 FT
+                {courseGeometry
+                  ? `${courseGeometry.distance_mi} MI · +${courseGeometry.elevation_gain_ft} FT · ${courseSource?.toUpperCase()}`
+                  : '13.1 MI · SCHEMATIC · GPX PENDING'}
               </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <GpxUploadButton slug={slug} alreadyAttached={!!courseGeometry} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 18 }}>
               <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 12 }}>
-                <CourseSchematic />
+                {courseGeometry ? <RealRouteSvg geometry={courseGeometry} /> : <CourseSchematic />}
               </div>
               <div>
                 <PacePlanTable goalLabel={race.goal ?? undefined} />

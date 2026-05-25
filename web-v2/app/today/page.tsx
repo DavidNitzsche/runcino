@@ -1,6 +1,7 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigger';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
+import { WeekStrip } from '@/components/today/WeekStrip';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -45,6 +46,18 @@ export default async function TodayPage() {
             </div>
           )}
         </div>
+
+        {/* Week strip — past days w/ a run click through to /runs/[id] */}
+        {glance?.weekDays && glance.weekDays.length > 0 && (
+          <div style={{ marginBottom: 24, marginLeft: -24, marginRight: -24 }}>
+            <WeekStrip
+              days={glance.weekDays}
+              weekDone={glance.weekDone}
+              weekPlanned={glance.weekPlanned}
+              phaseLabel={glance.phaseLabel}
+            />
+          </div>
+        )}
       </div>
 
       {/* Two-column desktop / single column mobile. Coach voice loads async. */}

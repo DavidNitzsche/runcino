@@ -12,11 +12,27 @@
 import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 
+export interface GlanceWeekDay {
+  date: string;            // ISO YYYY-MM-DD
+  dow: number;             // 0 Sun … 6 Sat
+  // Plan side
+  plannedMi: number;
+  plannedType: string;     // 'easy' | 'rest' | 'long' | 'threshold' | etc.
+  plannedLabel: string | null;
+  // Actual (strava)
+  doneMi: number;
+  activityId: string | null;   // → click navigates to /runs/[id]
+  // Flags
+  isToday: boolean;
+  isPast: boolean;
+}
+
 export interface GlanceState {
   today: string;
   greetingName: string;
   weekDone: number;
   weekPlanned: number | null;
+  weekDays: GlanceWeekDay[];   // 7 entries, Monday → Sunday
   phaseLabel: string | null;
   sleep7Avg: number | null;
   sleep7Deficit: number;
@@ -50,6 +66,19 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   let phaseLabel: string | null = null;
   let daysToARace: number | null = null;
   let nextARaceName: string | null = null;
+  let weekDays: GlanceWeekDay[] = [];
+
+  // Compute the Mon-Sun window around today regardless of plan presence.
+  const monday = (() => {
+    const d = new Date(today + 'T12:00:00Z');
+    const dow = d.getUTCDay();
+    const shift = dow === 0 ? -6 : 1 - dow;
+    return new Date(d.getTime() + shift * 86400000).toISOString().slice(0, 10);
+  })();
+  const weekDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(Date.parse(monday + 'T12:00:00Z') + i * 86400000);
+    return { date: d.toISOString().slice(0, 10), dow: d.getUTCDay() };
+  });
 
   if (plan) {
     const weeks = (await pool.query(
@@ -78,22 +107,58 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
         nextARaceName = race.meta?.name ?? null;
       }
     }
+
+    // Plan workouts for this week
+    const planRows = (await pool.query(
+      `SELECT date_iso, dow, type, distance_mi, sub_label FROM plan_workouts
+        WHERE plan_id = $1 AND date_iso BETWEEN $2::text AND $3::text`,
+      [plan.id, weekDates[0].date, weekDates[6].date]
+    )).rows;
+    const planByDate = new Map<string, any>(planRows.map((r: any) => [r.date_iso, r]));
+
+    // Strava activities (actuals) — one per day (largest distance if multiple)
+    const stravaRows = (await pool.query(
+      `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
+              data->>'id' AS activity_id,
+              SUM((data->>'distanceMi')::numeric) AS mi
+         FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text
+        GROUP BY day, activity_id`,
+      [userId, weekDates[0].date, weekDates[6].date]
+    )).rows;
+    // Aggregate to one entry per day, keep one activity id (the longest)
+    const actualByDate = new Map<string, { mi: number; id: string | null }>();
+    for (const r of stravaRows) {
+      const cur = actualByDate.get(r.day) ?? { mi: 0, id: null };
+      cur.mi += Number(r.mi);
+      if (cur.id == null || Number(r.mi) >= cur.mi - Number(r.mi)) cur.id = r.activity_id ?? cur.id;
+      actualByDate.set(r.day, cur);
+    }
+
+    weekDays = weekDates.map(({ date, dow }) => {
+      const planRow = planByDate.get(date);
+      const actual = actualByDate.get(date);
+      return {
+        date, dow,
+        plannedMi: planRow ? Number(planRow.distance_mi) || 0 : 0,
+        plannedType: planRow?.type ?? 'rest',
+        plannedLabel: planRow?.sub_label ?? null,
+        doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
+        activityId: actual?.id ?? null,
+        isToday: date === today,
+        isPast: date < today,
+      };
+    });
+  } else {
+    weekDays = weekDates.map(({ date, dow }) => ({
+      date, dow, plannedMi: 0, plannedType: 'rest', plannedLabel: null,
+      doneMi: 0, activityId: null, isToday: date === today, isPast: date < today,
+    }));
   }
 
-  // Week done (strava sum)
-  const monday = (() => {
-    const d = new Date(today + 'T12:00:00Z');
-    const dow = d.getUTCDay();
-    const shift = dow === 0 ? -6 : 1 - dow;
-    return new Date(d.getTime() + shift * 86400000).toISOString().slice(0, 10);
-  })();
-  const weekRuns = await pool.query(
-    `SELECT SUM((data->>'distanceMi')::numeric) AS mi FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text`,
-    [userId, monday, today]
-  );
-  const weekDone = Math.round(Number(weekRuns.rows[0]?.mi ?? 0) * 10) / 10;
+  // Week done — sum from weekDays we already loaded
+  const weekDone = Math.round(weekDays.reduce((s, d) => s + d.doneMi, 0) * 10) / 10;
 
   // Sleep
   const sleep = (await pool.query(
@@ -156,7 +221,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   return {
     today,
     greetingName: prof?.full_name?.split(/\s+/)[0] ?? 'David',
-    weekDone, weekPlanned, phaseLabel,
+    weekDone, weekPlanned, weekDays, phaseLabel,
     sleep7Avg, sleep7Deficit,
     rhrCurrent, rhrBaseline, cadenceBaseline,
     daysToARace, nextARaceName,
