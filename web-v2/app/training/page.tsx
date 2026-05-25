@@ -41,7 +41,7 @@ export default async function TrainingPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 24, marginTop: 18 }}>
           {currentWeek ? (
-            <WeekAhead week={currentWeek} today={training.today} />
+            <WeekAhead week={currentWeek} today={training.today} planId={training.plan_id ?? undefined} />
           ) : (
             <div className="card" style={{ padding: 40 }}>
               <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO ACTIVE PLAN</div>

@@ -7,13 +7,14 @@
  */
 import Link from 'next/link';
 import type { PlanWeek } from '@/lib/coach/training-state';
+import { WorkoutSwapButton } from './WorkoutSwapButton';
 
 const DOW_NAMES = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 const QUALITY = new Set(['threshold', 'tempo', 'intervals']);
 
 interface Target { pace: string; secondary: string }
 
-function DayCell({ day, today }: { day: PlanWeek['days'][number]; today: string }) {
+function DayCell({ day, today, planId }: { day: PlanWeek['days'][number]; today: string; planId?: string }) {
   const isToday = day.date === today;
   const isPast = day.date < today;
   const isRest = day.type === 'rest' || day.mi === 0;
@@ -45,7 +46,18 @@ function DayCell({ day, today }: { day: PlanWeek['days'][number]; today: string 
       cursor: ran && isPast ? 'pointer' : 'default',
       transition: 'background .12s, border .12s',
       height: '100%',
+      position: 'relative',
     }}>
+      {/* Swap button — future workouts only, opens edit modal */}
+      {!isPast && planId && (
+        <WorkoutSwapButton
+          planId={planId}
+          date={day.date}
+          currentType={day.type}
+          currentMi={day.mi}
+          currentLabel={day.label}
+        />
+      )}
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: isToday ? 'var(--green)' : 'var(--mute)', letterSpacing: '1.4px' }}>
         {dowName}
       </div>
@@ -94,7 +106,7 @@ function targetFor(type: string, mi: number, label: string | null): Target {
   }
 }
 
-export function WeekAhead({ week, today }: { week: PlanWeek; today: string }) {
+export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: string; planId?: string }) {
   return (
     <div style={{
       background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16,
@@ -109,7 +121,7 @@ export function WeekAhead({ week, today }: { week: PlanWeek; today: string }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, flex: 1 }}>
-        {week.days.map((d) => <DayCell key={d.date} day={d} today={today} />)}
+        {week.days.map((d) => <DayCell key={d.date} day={d} today={today} planId={planId} />)}
       </div>
     </div>
   );
