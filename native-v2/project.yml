@@ -13,7 +13,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: ""   # filled in locally
+    DEVELOPMENT_TEAM: "F26TM6BCR3"
+    CODE_SIGN_STYLE: "Automatic"
     MARKETING_VERSION: "2.0.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_TREAT_WARNINGS_AS_ERRORS: NO

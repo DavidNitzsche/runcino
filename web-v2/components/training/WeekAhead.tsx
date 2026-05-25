@@ -1,13 +1,85 @@
 /**
  * Week-ahead grid — 7 days w/ DOW, miles, type, and bottom-anchored
  * target line (pace + HR/intent). Mirrors deck §3.
+ *
+ * Days w/ a logged strava activity → clickable Link to /runs/[activity_id].
+ * Future days + days w/o a run stay display-only.
  */
+import Link from 'next/link';
 import type { PlanWeek } from '@/lib/coach/training-state';
 
 const DOW_NAMES = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 const QUALITY = new Set(['threshold', 'tempo', 'intervals']);
 
 interface Target { pace: string; secondary: string }
+
+function DayCell({ day, today }: { day: PlanWeek['days'][number]; today: string }) {
+  const isToday = day.date === today;
+  const isPast = day.date < today;
+  const isRest = day.type === 'rest' || day.mi === 0;
+  const isQuality = QUALITY.has(day.type);
+  const isLong = day.type === 'long';
+  const isRace = day.type === 'race';
+  const ran = day.doneMi > 0 && day.activityId;
+  const tgt = targetFor(day.type, day.mi, day.label);
+
+  const typLabel = isRest && !ran ? 'REST'
+    : (day.label ? day.label.toUpperCase() : day.type.toUpperCase());
+  const dowName = DOW_NAMES[day.dow] ?? '';
+  const typColor = isToday ? 'var(--green)'
+    : isQuality ? 'var(--goal)'
+    : isLong    ? 'var(--dist)'
+    : isRace    ? 'var(--race)'
+                : 'var(--mute)';
+
+  const tile = (
+    <div style={{
+      background: isToday ? 'rgba(62,189,65,0.10)'
+        : ran ? 'rgba(62,189,65,0.05)'
+              : 'rgba(255,255,255,0.025)',
+      border: isToday ? '1px solid rgba(62,189,65,0.30)'
+        : ran && isPast ? '1px solid rgba(62,189,65,0.18)'
+                        : '1px solid transparent',
+      borderRadius: 10, padding: '14px 11px',
+      display: 'flex', flexDirection: 'column',
+      cursor: ran && isPast ? 'pointer' : 'default',
+      transition: 'background .12s, border .12s',
+      height: '100%',
+    }}>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: isToday ? 'var(--green)' : 'var(--mute)', letterSpacing: '1.4px' }}>
+        {dowName}
+      </div>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color: isRest && !ran ? 'var(--dim)' : 'var(--ink)', lineHeight: 1, marginTop: 4 }}>
+        {ran ? day.doneMi.toFixed(day.doneMi % 1 === 0 ? 0 : 1)
+          : isRest ? '—' : day.mi.toFixed(day.mi % 1 === 0 ? 0 : 1)}
+      </div>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: ran ? 'var(--green)' : typColor, letterSpacing: '0.8px', textTransform: 'uppercase', marginTop: 4 }}>
+        {ran ? 'COMPLETED' : typLabel}{isToday ? ' · TODAY' : ''}
+      </div>
+      {/* Bottom-anchored target line */}
+      <div style={{
+        marginTop: 'auto', paddingTop: 12,
+        borderTop: '1px solid var(--line-2)',
+        fontFamily: 'var(--f-body)', fontSize: 11, color: isRest && !ran ? 'var(--dim)' : 'var(--ink)',
+        fontWeight: 600, letterSpacing: '0.3px', lineHeight: 1.4,
+      }}>
+        {tgt.pace}
+        <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: 'var(--mute)', letterSpacing: '0.8px', textTransform: 'uppercase', marginTop: 3 }}>
+          {tgt.secondary}
+        </span>
+      </div>
+    </div>
+  );
+
+  if (ran && day.activityId) {
+    return (
+      <Link href={`/runs/${encodeURIComponent(day.activityId)}`} style={{ textDecoration: 'none' }}>
+        {tile}
+      </Link>
+    );
+  }
+  return tile;
+}
 
 function targetFor(type: string, mi: number, label: string | null): Target {
   switch (type) {
@@ -37,55 +109,7 @@ export function WeekAhead({ week, today }: { week: PlanWeek; today: string }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, flex: 1 }}>
-        {week.days.map((d) => {
-          const isToday = d.date === today;
-          const isRest = d.type === 'rest' || d.mi === 0;
-          const isQuality = QUALITY.has(d.type);
-          const isLong = d.type === 'long';
-          const isRace = d.type === 'race';
-          const tgt = targetFor(d.type, d.mi, d.label);
-
-          const typLabel = isRest ? 'REST'
-            : (d.label ? d.label.toUpperCase() : d.type.toUpperCase());
-
-          const dowName = DOW_NAMES[d.dow] ?? '';
-          const typColor = isToday ? 'var(--green)'
-            : isQuality ? 'var(--goal)'
-            : isLong    ? 'var(--dist)'
-            : isRace    ? 'var(--race)'
-                        : 'var(--mute)';
-
-          return (
-            <div key={d.date} style={{
-              background: isToday ? 'rgba(62,189,65,0.10)' : 'rgba(255,255,255,0.025)',
-              border: isToday ? '1px solid rgba(62,189,65,0.30)' : '1px solid transparent',
-              borderRadius: 10, padding: '14px 11px',
-              display: 'flex', flexDirection: 'column',
-            }}>
-              <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: isToday ? 'var(--green)' : 'var(--mute)', letterSpacing: '1.4px' }}>
-                {dowName}
-              </div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color: isRest ? 'var(--dim)' : 'var(--ink)', lineHeight: 1, marginTop: 4 }}>
-                {isRest ? '—' : d.mi.toFixed(d.mi % 1 === 0 ? 0 : 1)}
-              </div>
-              <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: typColor, letterSpacing: '0.8px', textTransform: 'uppercase', marginTop: 4 }}>
-                {typLabel}{isToday ? ' · TODAY' : ''}
-              </div>
-              {/* Bottom-anchored target line */}
-              <div style={{
-                marginTop: 'auto', paddingTop: 12,
-                borderTop: '1px solid var(--line-2)',
-                fontFamily: 'var(--f-body)', fontSize: 11, color: isRest ? 'var(--dim)' : 'var(--ink)',
-                fontWeight: 600, letterSpacing: '0.3px', lineHeight: 1.4,
-              }}>
-                {tgt.pace}
-                <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: 'var(--mute)', letterSpacing: '0.8px', textTransform: 'uppercase', marginTop: 3 }}>
-                  {tgt.secondary}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+        {week.days.map((d) => <DayCell key={d.date} day={d} today={today} />)}
       </div>
     </div>
   );

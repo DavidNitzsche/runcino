@@ -1,7 +1,7 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { CourseSchematic, PacePlanTable } from '@/components/races/CourseSchematic';
 import { RealRouteSvg } from '@/components/races/RealRouteSvg';
-import { DeleteRaceButton } from '@/components/races/RaceCrudUI';
+import { DeleteRaceButton, EditRaceButton } from '@/components/races/RaceCrudUI';
 import { GpxUploadButton } from '@/components/races/GpxUploadButton';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { loadRacesState } from '@/lib/coach/races-state';
@@ -143,9 +143,18 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
         )}
 
         {/* Footer actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32, paddingTop: 18, borderTop: '1px solid var(--line-2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 32, paddingTop: 18, borderTop: '1px solid var(--line-2)', gap: 12 }}>
           <a href="/races" style={{ color: 'var(--mute)', fontFamily: 'var(--f-display)', fontSize: 13, letterSpacing: '1.2px' }}>← BACK TO RACES</a>
-          <DeleteRaceButton slug={slug} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <EditRaceButton slug={slug} current={{
+              name: race.name,
+              date: race.date,
+              distance_label: race.distance_label,
+              priority: race.priority,
+              goal: race.goal,
+            }} />
+            <DeleteRaceButton slug={slug} />
+          </div>
         </div>
       </div>
     </main>

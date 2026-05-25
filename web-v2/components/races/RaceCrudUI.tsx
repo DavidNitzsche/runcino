@@ -74,6 +74,75 @@ export function AddRaceButton() {
   );
 }
 
+/** Inline edit form for a race. Updates via PATCH /api/race. */
+export function EditRaceButton({ slug, current }: {
+  slug: string;
+  current: { name: string; date: string; distance_label?: string | null; priority?: string | null; goal?: string | null };
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(current.name);
+  const [date, setDate] = useState(current.date);
+  const [distance, setDistance] = useState(current.distance_label ?? 'Half Marathon');
+  const [priority, setPriority] = useState<'A' | 'B' | 'C'>((current.priority ?? 'B') as any);
+  const [goal, setGoal] = useState(current.goal ?? '');
+  const [saving, startSaving] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+
+  function save() {
+    setErr(null);
+    if (!name.trim() || !date) { setErr('Name + date required'); return; }
+    startSaving(async () => {
+      try {
+        const r = await fetch('/api/race', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug, name, date, distance_label: distance, priority, goal: goal || null }),
+        });
+        if (!r.ok) { setErr((await r.json()).error ?? 'Save failed'); return; }
+        setOpen(false);
+        router.refresh();
+      } catch (e: any) {
+        setErr(e.message ?? String(e));
+      }
+    });
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{
+        background: 'transparent', border: '1px solid var(--line)', color: 'var(--mute)',
+        padding: '8px 14px', borderRadius: 8,
+        fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px', cursor: 'pointer',
+      }}>EDIT RACE</button>
+    );
+  }
+
+  return (
+    <div className="card" style={{ padding: '20px 24px', marginTop: 18, border: '1px solid var(--green)', background: 'rgba(62,189,65,0.04)' }}>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--green)', letterSpacing: '1.6px', textTransform: 'uppercase', marginBottom: 12 }}>
+        EDIT RACE
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: 10 }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle()} />
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle()} />
+        <select value={distance} onChange={(e) => setDistance(e.target.value)} style={inputStyle()}>
+          <option>5K</option><option>10K</option><option>Half Marathon</option><option>Marathon</option><option>50K</option>
+        </select>
+        <select value={priority} onChange={(e) => setPriority(e.target.value as any)} style={inputStyle()}>
+          <option value="A">A · Goal</option><option value="B">B · Tune-up</option><option value="C">C · For fun</option>
+        </select>
+        <input placeholder="Goal" value={goal} onChange={(e) => setGoal(e.target.value)} style={inputStyle()} />
+      </div>
+      {err && <div style={{ color: 'var(--over)', fontSize: 12, marginTop: 10 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button onClick={save} disabled={saving} style={primaryBtn(saving)}>{saving ? 'SAVING…' : 'SAVE'}</button>
+        <button onClick={() => { setOpen(false); setErr(null); }} style={secondaryBtn()}>CANCEL</button>
+      </div>
+    </div>
+  );
+}
+
 /** Delete a race. Confirmation built into UI; no confirm() popup. */
 export function DeleteRaceButton({ slug }: { slug: string }) {
   const router = useRouter();

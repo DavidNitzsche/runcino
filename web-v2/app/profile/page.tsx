@@ -1,5 +1,6 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { ProfileGapInput } from '@/components/profile/ProfileGapInput';
+import { EditableField } from '@/components/profile/EditableField';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
 
 export const dynamic = 'force-dynamic';
@@ -46,18 +47,22 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           </div>
         </div>
 
-        {/* PERSONAL */}
+        {/* PERSONAL — all fields editable inline */}
         <SectionLabel>PERSONAL</SectionLabel>
         <Grid4>
           <FieldCard k="NAME" v={profile.identity.full_name ?? '—'} />
-          <FieldCard k="SEX"  v={profile.identity.sex ?? '—'} />
-          <FieldCard k="AGE"  v={profile.identity.age != null ? String(profile.identity.age) : '—'} />
-          {profile.identity.height_cm != null ? (
-            <FieldCard k="HEIGHT" v={`${profile.identity.height_cm} cm`} />
-          ) : (
-            <ProfileGapInput field="height_cm" label="Height" why="Unlocks cadence target" focused={focusedGap === 'height_cm'} />
-          )}
+          <EditableField field="sex"  label="Sex"  kind="select" options={['Male','Female','Other']} currentValue={profile.identity.sex} />
+          <EditableField field="age"  label="Age"  kind="number" currentValue={profile.identity.age} />
+          {profile.identity.height_cm != null
+            ? <EditableField field="height_cm" label="Height" kind="number" currentValue={profile.identity.height_cm} unitLabel="cm" />
+            : <ProfileGapInput field="height_cm" label="Height" why="Unlocks cadence target" focused={focusedGap === 'height_cm'} />
+          }
         </Grid4>
+
+        {/* City editable on its own row so it has room */}
+        <div style={{ marginTop: 14 }}>
+          <EditableField field="city" label="City" kind="text" currentValue={profile.identity.city} />
+        </div>
 
         {/* PHYSIOLOGY DERIVED */}
         <SectionLabel>PHYSIOLOGY · DERIVED</SectionLabel>
