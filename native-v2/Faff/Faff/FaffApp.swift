@@ -7,6 +7,11 @@ import SwiftUI
 
 @main
 struct FaffApp: App {
+    init() {
+        // Wire the WatchConnectivity bridge as soon as the app boots.
+        // Pushes today's workout to the (frozen) watch app on activation.
+        WatchSync.shared.start()
+    }
     var body: some Scene {
         WindowGroup {
             RootTabView()

@@ -50,4 +50,16 @@ enum API {
         req.httpBody = try JSONSerialization.data(withJSONObject: patch)
         _ = try await URLSession.shared.data(for: req)
     }
+
+    /// Fetch today's WatchWorkout shape as raw Data so we can forward it
+    /// unchanged to the watch via applicationContext (preserves field shape
+    /// exactly — the watch decodes from Data into its own WatchWorkout).
+    static func fetchWatchTodayRaw() async throws -> Data {
+        let url = baseURL.appendingPathComponent("api/watch/today")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        return data
+    }
 }
