@@ -12,6 +12,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateBriefing } from '@/lib/coach/engine';
 import type { Surface } from '@/lib/coach/router';
 
+// LLM call can take 15-25s — give the route enough headroom.
+export const maxDuration = 60;
+
 const DAVID_USER_ID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const VALID_SURFACES: Surface[] = ['today', 'training', 'races', 'race-detail', 'health', 'profile'];
 

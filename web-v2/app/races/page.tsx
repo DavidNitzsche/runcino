@@ -1,18 +1,15 @@
 import Link from 'next/link';
 import { TopNav } from '@/components/layout/TopNav';
 import { loadRacesState, type RaceRow } from '@/lib/coach/races-state';
-import { generateBriefing } from '@/lib/coach/engine';
 import { AddRaceButton } from '@/components/races/RaceCrudUI';
+import { BriefingLoader } from '@/components/cards/BriefingLoader';
 
 export const dynamic = 'force-dynamic';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 export default async function RacesPage() {
-  const [races, briefing] = await Promise.all([
-    loadRacesState(DAVID_USER_ID),
-    generateBriefing(DAVID_USER_ID, 'races').catch(() => null),
-  ]);
+  const races = await loadRacesState(DAVID_USER_ID);
 
   return (
     <main>
@@ -28,7 +25,14 @@ export default async function RacesPage() {
           {races.totalPast} PAST
         </div>
 
-        {briefing && <CoachIntro briefing={briefing} />}
+        {/* Coach voice opens the page — loads async */}
+        <div style={{
+          background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
+          border: '1px solid var(--line)', borderRadius: 18,
+          padding: '4px 4px', marginBottom: 18, minHeight: 180,
+        }}>
+          <BriefingLoader surface="races" renderCards={false} />
+        </div>
 
         {/* + ADD RACE — top of page so it's discoverable */}
         <div style={{ marginBottom: 18 }}><AddRaceButton /></div>
@@ -63,26 +67,6 @@ export default async function RacesPage() {
         )}
       </div>
     </main>
-  );
-}
-
-function CoachIntro({ briefing }: { briefing: Awaited<ReturnType<typeof generateBriefing>> }) {
-  return (
-    <div style={{
-      background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
-      border: '1px solid var(--line)', borderRadius: 18,
-      padding: '24px 28px', marginBottom: 24,
-    }}>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: 'var(--green)', letterSpacing: '1.8px', textTransform: 'uppercase', marginBottom: 12 }}>COACH</div>
-      {briefing.lead && (
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 30, color: 'var(--ink)', lineHeight: 1.1, marginBottom: 12 }}>
-          {briefing.lead}
-        </div>
-      )}
-      {briefing.voice.map((p, i) => (
-        <p key={i} style={{ fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.6, color: 'rgba(246,247,248,0.86)', margin: '0 0 8px' }}>{p}</p>
-      ))}
-    </div>
   );
 }
 

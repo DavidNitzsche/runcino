@@ -1,17 +1,18 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { BarChart } from '@/components/charts/HealthBars';
 import { ReadinessBreakdownView } from '@/components/readiness/ReadinessBreakdown';
+import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { loadHealthState, type HealthState } from '@/lib/coach/health-state';
-import { generateBriefing } from '@/lib/coach/engine';
+import { loadGlanceState } from '@/lib/coach/glance-state';
 
 export const dynamic = 'force-dynamic';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 export default async function HealthPage() {
-  const [health, briefing] = await Promise.all([
+  const [health, glance] = await Promise.all([
     loadHealthState(DAVID_USER_ID),
-    generateBriefing(DAVID_USER_ID, 'health').catch(() => null),
+    loadGlanceState(DAVID_USER_ID).catch(() => null),
   ]);
 
   const headlineColor = health.watchMode === 'watch-red' ? 'var(--over)'
@@ -32,13 +33,24 @@ export default async function HealthPage() {
           LONG-TERM PATTERNS · 30-DAY VIEW · WATCH MODE: {health.watchMode.toUpperCase()}
         </div>
 
-        {briefing && <CoachIntro briefing={briefing} watchMode={health.watchMode} />}
+        {/* Coach voice — loads async */}
+        <div style={{
+          background: health.watchMode === 'watch-red'
+            ? 'linear-gradient(180deg, rgba(252,77,100,0.06), rgba(252,77,100,0) 70%)'
+            : health.watchMode === 'watch-amber'
+            ? 'linear-gradient(180deg, rgba(243,173,56,0.06), rgba(243,173,56,0) 70%)'
+            : 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
+          border: '1px solid var(--line)', borderRadius: 18, padding: '4px 4px',
+          marginBottom: 18, minHeight: 200,
+        }}>
+          <BriefingLoader surface="health" renderCards={false} />
+        </div>
 
-        {/* §8.3 — same readiness breakdown as the /today chip tap-through */}
-        {briefing && (
+        {/* §8.3 — readiness from glance state (no LLM needed) */}
+        {glance && (
           <div className="card" style={{ padding: '24px 28px', marginBottom: 18 }}>
             <div className="card-eyebrow" style={{ color: 'var(--green)' }}>READINESS · TODAY</div>
-            <ReadinessBreakdownView breakdown={briefing._state.readiness} />
+            <ReadinessBreakdownView breakdown={glance.readiness} />
           </div>
         )}
 
@@ -116,36 +128,6 @@ export default async function HealthPage() {
         </Grid2>
       </div>
     </main>
-  );
-}
-
-function CoachIntro({ briefing, watchMode }: { briefing: Awaited<ReturnType<typeof generateBriefing>>; watchMode: HealthState['watchMode'] }) {
-  const color = watchMode === 'watch-red' ? 'var(--over)' : watchMode === 'watch-amber' ? 'var(--goal)' : 'var(--green)';
-  const bg = watchMode === 'watch-red'
-    ? 'linear-gradient(180deg, rgba(252,77,100,0.06), rgba(252,77,100,0) 70%)'
-    : watchMode === 'watch-amber'
-    ? 'linear-gradient(180deg, rgba(243,173,56,0.06), rgba(243,173,56,0) 70%)'
-    : 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)';
-  const border = watchMode === 'watch-red'
-    ? 'rgba(252,77,100,0.22)'
-    : watchMode === 'watch-amber'
-    ? 'rgba(243,173,56,0.22)'
-    : 'var(--line)';
-  return (
-    <div style={{
-      background: bg, border: `1px solid ${border}`, borderRadius: 18,
-      padding: '24px 28px', marginBottom: 24,
-    }}>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color, letterSpacing: '1.8px', textTransform: 'uppercase', marginBottom: 12 }}>
-        COACH · {watchMode.toUpperCase()}
-      </div>
-      {briefing.lead && (
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', lineHeight: 1.1, marginBottom: 10 }}>{briefing.lead}</div>
-      )}
-      {briefing.voice.map((p, i) => (
-        <p key={i} style={{ fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.6, color: 'rgba(246,247,248,0.86)', margin: '0 0 8px' }}>{p}</p>
-      ))}
-    </div>
   );
 }
 

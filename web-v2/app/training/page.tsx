@@ -2,18 +2,15 @@ import { TopNav } from '@/components/layout/TopNav';
 import { PhaseStrip } from '@/components/training/PhaseStrip';
 import { PlanArc } from '@/components/training/PlanArc';
 import { WeekAhead } from '@/components/training/WeekAhead';
+import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { loadTrainingState } from '@/lib/coach/training-state';
-import { generateBriefing } from '@/lib/coach/engine';
 
 export const dynamic = 'force-dynamic';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 export default async function TrainingPage() {
-  const [training, briefing] = await Promise.all([
-    loadTrainingState(DAVID_USER_ID),
-    generateBriefing(DAVID_USER_ID, 'training').catch(() => null),
-  ]);
+  const training = await loadTrainingState(DAVID_USER_ID);
 
   const currentWeek = training.weeks.find((w) => w.isCurrent);
   const totalWeeks = training.weeks.length;
@@ -52,7 +49,13 @@ export default async function TrainingPage() {
             </div>
           )}
 
-          {briefing ? <CoachPanel briefing={briefing} /> : <CoachPlaceholder />}
+          <div style={{
+            background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
+            border: '1px solid var(--line)', borderRadius: 16,
+            padding: '8px 8px', minHeight: 220,
+          }}>
+            <BriefingLoader surface="training" renderCards={false} />
+          </div>
         </div>
 
         {training.nextQuality && (
@@ -62,46 +65,6 @@ export default async function TrainingPage() {
         )}
       </div>
     </main>
-  );
-}
-
-function CoachPanel({ briefing }: { briefing: Awaited<ReturnType<typeof generateBriefing>> }) {
-  return (
-    <div style={{
-      background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
-      border: '1px solid var(--line)', borderRadius: 16,
-      padding: '22px 24px',
-    }}>
-      <div style={{
-        fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--green)',
-        letterSpacing: '1.8px', textTransform: 'uppercase', marginBottom: 14,
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 12px rgba(62,189,65,0.6)' }} />
-        COACH · {briefing.mode.toUpperCase()}
-      </div>
-      {briefing.lead && (
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 30, color: 'var(--ink)', lineHeight: 1.1, marginBottom: 12 }}>
-          {briefing.lead}
-        </div>
-      )}
-      {briefing.voice.map((p, i) => (
-        <p key={i} style={{ fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.6, color: 'rgba(246,247,248,0.86)', margin: '0 0 10px' }}>
-          {p}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function CoachPlaceholder() {
-  return (
-    <div className="card" style={{ padding: 24 }}>
-      <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>COACH</div>
-      <p style={{ color: 'var(--mute)', fontSize: 13, lineHeight: 1.6 }}>
-        Coach voice for TRAINING wires in on next briefing fetch.
-      </p>
-    </div>
   );
 }
 
