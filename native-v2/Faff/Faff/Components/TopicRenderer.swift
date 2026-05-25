@@ -70,7 +70,7 @@ struct TopicRenderer: View {
         case .fun_fact:
             FunFactCard(
                 term: stringVal("term") ?? "",
-                body: stringVal("body") ?? "",
+                text: stringVal("body") ?? "",
                 linkSlug: stringVal("link_slug") ?? ""
             )
         default:

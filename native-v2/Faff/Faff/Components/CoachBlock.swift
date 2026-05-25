@@ -108,7 +108,13 @@ struct CoachBlock: View {
         selected = rating
         pending = true
         defer { pending = false }
-        let ok = await (onCheckIn?(rating) ?? defaultCheckIn(rating))
+        // Can't put `await` inside `??` autoclosure — unwrap explicitly.
+        let ok: Bool
+        if let handler = onCheckIn {
+            ok = await handler(rating)
+        } else {
+            ok = await defaultCheckIn(rating)
+        }
         ack = !ok ? "(couldn't save — we'll try again)"
             : rating == .solid   ? "OK. Hold the plan."
             : rating == .tired   ? "OK — we'll see how the legs are tomorrow."

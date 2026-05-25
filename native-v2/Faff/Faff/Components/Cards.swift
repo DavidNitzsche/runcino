@@ -226,7 +226,8 @@ struct WatchListCard: View {
 // MARK: Fun fact
 
 struct FunFactCard: View {
-    let term: String; let body: String; let linkSlug: String
+    // `body` is reserved by View — rename the prose field to `text`.
+    let term: String; let text: String; let linkSlug: String
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
@@ -235,7 +236,7 @@ struct FunFactCard: View {
                     .padding(4).background(Theme.learn).clipShape(Circle())
                 Text(term.uppercased()).font(.body(11, weight: .bold)).tracking(1.2).foregroundStyle(Theme.learn)
             }
-            Text(self.body).font(.body(13)).foregroundStyle(Theme.ink.opacity(0.82)).lineSpacing(3)
+            Text(self.text).font(.body(13)).foregroundStyle(Theme.ink.opacity(0.82)).lineSpacing(3)
             // Link to /learn/<slug> when reader ships in P4.
             Text("Read the research →").font(.body(10.5, weight: .semibold))
                 .foregroundStyle(Theme.learn).tracking(0.5)
