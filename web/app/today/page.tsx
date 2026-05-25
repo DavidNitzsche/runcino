@@ -17,6 +17,7 @@ import { loadTodayState, type TodayState, type TodayActualRun } from '@/lib/coac
 import { generateTodayBriefing, type TodayBriefing, type TopicCard } from '@/coach/today-briefing';
 import { query } from '@/lib/db';
 import { Topbar } from '@/app/components';
+import TodayInteractions from './TodayInteractions';
 import './today-v4.css';
 
 // Cache helpers (mirror /api/today)
@@ -94,6 +95,8 @@ export default async function TodayPage() {
         )}
 
       </div>
+      {/* Client island for interactive button handlers */}
+      <TodayInteractions />
     </div>
   );
 }
@@ -190,9 +193,9 @@ function CoachVoice({ voice, state }: { voice: string; state: TodayBriefing['sta
         <>
           <div className="ask">How are the legs?</div>
           <div className="reply">
-            <button className="reply-chip solid">SOLID</button>
-            <button className="reply-chip tired">TIRED</button>
-            <button className="reply-chip wrecked">WRECKED</button>
+            <button className="reply-chip solid"   data-action="reply" data-feel="solid">SOLID</button>
+            <button className="reply-chip tired"   data-action="reply" data-feel="tired">TIRED</button>
+            <button className="reply-chip wrecked" data-action="reply" data-feel="wrecked">WRECKED</button>
           </div>
         </>
       ) : null}
@@ -319,7 +322,10 @@ function FunFactCard({ t }: { t: Extract<TopicCard, { kind: 'fun_fact' }> }) {
         <div className="fun-title">{t.title}</div>
       </div>
       <div className="fun-body">{t.explanation}</div>
-      {t.research_doc && <a className="fun-link" href={`/research/${t.research_doc}`}>Read the research →</a>}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 6 }}>
+        {t.research_doc && <a className="fun-link" href={`/research/${t.research_doc}`}>Read the research →</a>}
+        <button className="fun-link" data-action="dismiss-fun-fact" data-term={t.term} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, marginLeft: 'auto' }}>Got it</button>
+      </div>
     </div>
   );
 }
