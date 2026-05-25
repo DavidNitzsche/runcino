@@ -24,8 +24,6 @@ import { computeRaceProjection } from '@/lib/race-projection';
 import { RaceProjectionChart } from './RaceProjectionChart';
 import { FALSIFIER_PREFIX } from '@/lib/coach-voice';
 import { classifyPR, coachingLineForPR } from '@/lib/pr-coaching';
-import { loadRacesState } from '@/lib/coach/races-state';
-import { generateRacesBriefing, type RaceTopicCard } from '@/coach/races-briefing';
 import './races-v4.css';
 
 function trajectoryColor(state: 'ahead' | 'on-track' | 'behind' | 'collecting-evidence'): string {
@@ -355,19 +353,6 @@ export default async function RacesPage() {
     pr.coachingLine = coachingLineForPR(role);
   }
 
-  // ── NEW: coach voice + topic cards for the multi-race arc.
-  // Wrapped in try/catch so a races-briefing failure doesn't kill the
-  // whole page — falls back to the existing hardcoded coach-strip prose
-  // below. Logs to console for debugging.
-  let coachLayer: { voice: string; topics: RaceTopicCard[] } | null = null;
-  try {
-    const racesState = await loadRacesState(auth.id);
-    const b = await generateRacesBriefing(racesState);
-    coachLayer = { voice: b.voice, topics: b.topics };
-  } catch (err) {
-    console.error('[races/coach] briefing failed:', err);
-  }
-
   return (
     <div className="races-v4-page">
       <Topbar activeTab="races" showAdmin={auth.is_admin} />
@@ -375,13 +360,8 @@ export default async function RacesPage() {
 
       <div className="page">
 
-        {/* ── NEW: coach voice + cards layer (v4) ── */}
-        {coachLayer && coachLayer.voice && (
-          <RacesCoachLayer voice={coachLayer.voice} topics={coachLayer.topics} />
-        )}
-
-        {/* ── COACH STRIP (legacy hardcoded fallback — kept until v4 layer is verified) ── */}
-        <div className="coach-strip" style={coachLayer?.voice ? { display: 'none' } : undefined}>
+        {/* ── COACH STRIP ── */}
+        <div className="coach-strip">
           <div className="coach-left">
             <div className="coach-label">
               <span className="dot-green"></span>
@@ -777,148 +757,4 @@ export default async function RacesPage() {
       </div>
     </div>
   );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// v4 coach layer — renders above the legacy races content
-// ─────────────────────────────────────────────────────────────────────
-
-function RacesCoachLayer({ voice, topics }: { voice: string; topics: RaceTopicCard[] }) {
-  const paragraphs = voice.split(/\n\n+/).filter((p) => p.trim().length > 0);
-  if (paragraphs.length === 0 && topics.length === 0) return null;
-  const [lead, ...rest] = paragraphs;
-
-  return (
-    <div style={{
-      background: '#0a0c10',
-      borderRadius: 18,
-      padding: '24px 22px',
-      marginBottom: 28,
-      color: '#f6f7f8',
-      fontFamily: 'Inter, sans-serif',
-    }}>
-      <div style={{
-        fontSize: 10, fontWeight: 700, color: '#3EBD41',
-        letterSpacing: 1.6, textTransform: 'uppercase',
-        marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3EBD41', boxShadow: '0 0 12px rgba(62,189,65,0.6)' }} />
-        COACH · RACES
-      </div>
-      {lead && (
-        <h2 style={{
-          fontFamily: "'Bebas Neue', 'Inter', sans-serif",
-          fontSize: 28, fontWeight: 400, color: '#f6f7f8',
-          lineHeight: 1.05, letterSpacing: 0.5, margin: '0 0 14px',
-        }}>{lead}</h2>
-      )}
-      {rest.map((p, i) => (
-        <p key={i} style={{ fontSize: 14.5, lineHeight: 1.6, color: 'rgba(246,247,248,0.86)', margin: '0 0 10px' }} dangerouslySetInnerHTML={{ __html: p.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'} as Record<string,string>)[c] ?? c).replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#f6f7f8;font-weight:600">$1</strong>') }} />
-      ))}
-      {topics.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
-          {topics.map((t, i) => <RacesCardRenderer key={i} topic={t} />)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RacesCardRenderer({ topic }: { topic: RaceTopicCard }) {
-  const card: React.CSSProperties = {
-    background: '#11141a',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 14,
-    padding: '14px 16px',
-    color: '#f6f7f8',
-  };
-  switch (topic.kind) {
-    case 'race_horizon':
-      return (
-        <div style={card}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: '#FF8847', marginBottom: 6 }}>
-            RACE · {topic.tone.toUpperCase().replace('_', ' ')}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14 }}>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, letterSpacing: 0.5 }}>{topic.name}</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, color: '#FF8847' }}>
-              <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 44, lineHeight: 0.95 }}>{topic.days_away}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: '#8a90a0' }}>{topic.days_away === 1 ? 'DAY' : 'DAYS'}</span>
-            </div>
-          </div>
-          {topic.coach_note && <div style={{ fontSize: 12, color: 'rgba(246,247,248,0.85)', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.04)' }}>{topic.coach_note}</div>}
-        </div>
-      );
-    case 'race_trajectory': {
-      const stateColor: Record<string, string> = {
-        ahead: '#3EBD41', on_track: '#3EBD41', behind: '#F3AD38', collecting_evidence: '#8a90a0',
-      };
-      const stateLabel: Record<string, string> = {
-        ahead: 'AHEAD', on_track: 'ON TRACK', behind: 'BEHIND', collecting_evidence: 'COLLECTING EVIDENCE',
-      };
-      return (
-        <div style={card}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: stateColor[topic.state] ?? '#27B4E0', marginBottom: 6 }}>
-            TRAJECTORY · {stateLabel[topic.state] ?? topic.state}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-            <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#f6f7f8' }}>{topic.goal_label}</span>
-            <span style={{ fontSize: 12, color: '#8a90a0' }}>goal · {topic.race_name}</span>
-          </div>
-          <div style={{ fontSize: 14, color: stateColor[topic.state] ?? '#f6f7f8', marginTop: 4 }}>{topic.current_projection_label} · {topic.weeks_left} weeks left</div>
-          {topic.coach_note && <div style={{ fontSize: 12, color: 'rgba(246,247,248,0.85)', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.04)' }}>{topic.coach_note}</div>}
-        </div>
-      );
-    }
-    case 'race_calendar_overview':
-      return (
-        <div style={card}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: '#27B4E0', marginBottom: 8 }}>
-            UPCOMING SEASON
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {topic.races.map((r, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13 }}>
-                <span>{r.name} <span style={{ color: '#8a90a0', fontSize: 11 }}>· {r.kind}</span></span>
-                <span style={{ color: '#27B4E0', fontFamily: "'Bebas Neue', sans-serif", fontSize: 16 }}>{r.days_away}d</span>
-              </div>
-            ))}
-          </div>
-          {topic.coach_note && <div style={{ fontSize: 12, color: 'rgba(246,247,248,0.85)', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.04)' }}>{topic.coach_note}</div>}
-        </div>
-      );
-    case 'race_retrospective':
-      return (
-        <div style={card}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: '#3EBD41', marginBottom: 6 }}>
-            RETROSPECTIVE · {topic.name}
-          </div>
-          <div style={{ fontSize: 14, color: '#f6f7f8' }}>{topic.verdict}</div>
-          <div style={{ fontSize: 12, color: '#8a90a0', marginTop: 4 }}>
-            {topic.actual_time}{topic.goal_time ? ` vs goal ${topic.goal_time}` : ''} · {topic.finished_iso}
-          </div>
-          {topic.coach_note && <div style={{ fontSize: 12, color: 'rgba(246,247,248,0.85)', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.04)' }}>{topic.coach_note}</div>}
-        </div>
-      );
-    case 'goal_renegotiation':
-      return (
-        <div style={{ ...card, border: '1px solid rgba(176,132,255,0.35)' }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.6, textTransform: 'uppercase', color: '#B084FF', marginBottom: 6 }}>
-            COACH PROPOSAL · {topic.race_name}
-          </div>
-          <div style={{ fontSize: 14, color: '#f6f7f8', marginBottom: 4 }}>
-            <strong>{topic.current_goal}</strong> → <strong style={{ color: '#B084FF' }}>{topic.proposed_goal}</strong>
-          </div>
-          <div style={{ fontSize: 12, color: '#8a90a0' }}>{topic.reasoning}</div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            {topic.options.map((o, i) => (
-              <button key={i} data-action="goal-decision" data-value={o.value} data-race={topic.race_name}
-                style={{ flex: 1, background: 'transparent', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 999, padding: '8px 4px', color: '#f6f7f8', fontFamily: "'Bebas Neue', sans-serif", fontSize: 14, letterSpacing: 1, cursor: 'pointer' }}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-  }
 }
