@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 App Store Connect API client for Faff — check build status + distribute to
-TestFlight. Reads creds from native/.asc.env (gitignored): ASC_KEY_ID,
+TestFlight. Reads creds from legacy/native/.asc.env (gitignored): ASC_KEY_ID,
 ASC_ISSUER_ID, ASC_KEY_PATH.
 
 Usage:
@@ -20,7 +20,10 @@ BUNDLE_ID = "run.faff.app"
 
 def load_env():
     env = {}
-    path = os.path.join(ROOT, "native", ".asc.env")
+    # Paths: native/ was archived to legacy/native/ under Phase 0.1
+    # (commit 64ff3a9). Production deploys keep building from legacy/
+    # until cutover.
+    path = os.path.join(ROOT, "legacy", "native", ".asc.env")
     if not os.path.exists(path):
         sys.exit(f"missing {path}")
     for line in open(path):
