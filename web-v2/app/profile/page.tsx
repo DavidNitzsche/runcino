@@ -71,25 +71,25 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <FieldCard k="MAX HR"     v={profile.physiology.max_hr != null ? `${profile.physiology.max_hr} bpm` : '—'} hint={profile.physiology.max_hr ? 'OBSERVED' : 'PENDING'} />
           <FieldCard k="RESTING HR" v={profile.physiology.rhr != null ? `${profile.physiology.rhr} bpm` : '—'}   hint={profile.physiology.rhr ? '60-DAY MEAN' : 'PENDING'} />
           <FieldCard k="VO2 MAX"    v={profile.physiology.vo2 != null ? profile.physiology.vo2.toFixed(1) : '—'}  hint={profile.physiology.vo2 ? 'APPLE WATCH' : 'PENDING'} />
-          <FieldCard k="VDOT"       v="—" hint="FROM RACE PBS (P4.b)" />
+          <FieldCard k="VDOT"       v={profile.physiology.vdot != null ? String(profile.physiology.vdot) : '—'} hint={profile.physiology.vdot != null ? 'FROM RACE PB' : 'NEEDS A RACE FINISH'} />
           <FieldCard k="WEIGHT"     v={profile.physiology.weight_lb != null ? `${profile.physiology.weight_lb} lb` : '—'} hint={profile.physiology.weight_lb ? 'APPLE HEALTH' : 'PENDING'} />
         </Grid5>
 
-        {/* CONNECTIONS — wires in P6 */}
+        {/* CONNECTIONS — real data-presence check */}
         <SectionLabel>CONNECTIONS</SectionLabel>
         <Grid3>
-          <ConnCard name="Strava" sub="Auto-sync via OAuth" connected />
-          <ConnCard name="Apple Health" sub="Sleep / HRV / RHR / weight / VO2" connected />
-          <ConnCard name="Apple Watch" sub="Paired via WatchConnectivity" connected />
+          <ConnCard name="Strava"       sub={profile.connections.strava.note}      connected={profile.connections.strava.connected} />
+          <ConnCard name="Apple Health" sub={profile.connections.appleHealth.note} connected={profile.connections.appleHealth.connected} />
+          <ConnCard name="Apple Watch"  sub={profile.connections.appleWatch.note}  connected={profile.connections.appleWatch.connected} />
         </Grid3>
 
-        {/* PREFERENCES — stub for P6 */}
-        <SectionLabel>PREFERENCES</SectionLabel>
+        {/* PREFERENCES — from user_settings (edit on /settings) */}
+        <SectionLabel>PREFERENCES · <a href="/settings" style={{ color: 'var(--learn)', textDecoration: 'none', letterSpacing: '1.4px' }}>EDIT →</a></SectionLabel>
         <Grid4>
-          <FieldCard k="LONG RUN DAY" v="Sunday" />
-          <FieldCard k="QUALITY DAYS" v="Tue · Thu" />
-          <FieldCard k="UNITS"        v="Miles · °F" />
-          <FieldCard k="REST DAY"     v="Saturday" />
+          <FieldCard k="LONG RUN DAY" v={dayLabel(profile.preferences.long_run_day)} />
+          <FieldCard k="QUALITY DAYS" v={profile.preferences.quality_days.map(dayShort).join(' · ') || '—'} />
+          <FieldCard k="UNITS"        v={`${profile.preferences.units_distance === 'mi' ? 'Miles' : 'Km'} · °${profile.preferences.units_temp}`} />
+          <FieldCard k="REST DAY"     v={dayLabel(profile.preferences.rest_day)} />
         </Grid4>
 
         {/* SHOES — click any to edit, retire, log */}
@@ -124,6 +124,13 @@ function FieldCard({ k, v, hint }: { k: string; v: string; hint?: string }) {
     </div>
   );
 }
+
+const DAY_NAMES: Record<string, [string, string]> = {
+  sun: ['Sunday', 'Sun'], mon: ['Monday', 'Mon'], tue: ['Tuesday', 'Tue'],
+  wed: ['Wednesday', 'Wed'], thu: ['Thursday', 'Thu'], fri: ['Friday', 'Fri'], sat: ['Saturday', 'Sat'],
+};
+function dayLabel(d: string): string { return DAY_NAMES[d]?.[0] ?? d; }
+function dayShort(d: string): string { return DAY_NAMES[d]?.[1] ?? d; }
 
 function ConnCard({ name, sub, connected }: { name: string; sub: string; connected: boolean }) {
   return (

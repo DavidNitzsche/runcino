@@ -45,7 +45,7 @@ export default async function TrainingPage() {
           ) : (
             <div className="card" style={{ padding: 40 }}>
               <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO ACTIVE PLAN</div>
-              <p style={{ color: 'var(--mute)', fontSize: 14 }}>Set a goal and a race to generate a plan. (P6 wires the generator.)</p>
+              <p style={{ color: 'var(--mute)', fontSize: 14 }}>Set a race on <a href="/races" style={{ color: 'var(--learn)' }}>Races</a> and the coach will draft a plan around it.</p>
             </div>
           )}
 

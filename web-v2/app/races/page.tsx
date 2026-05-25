@@ -186,7 +186,7 @@ function NoARacePrompt() {
     <div className="card" style={{ padding: '28px 32px', marginBottom: 24 }}>
       <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO RACE ON THE BOOKS</div>
       <p style={{ color: 'rgba(246,247,248,0.86)', fontSize: 14, lineHeight: 1.6 }}>
-        Pick the next race to anchor a plan around. (Race CRUD lands in P6.)
+        Pick the next race to anchor a plan around — tap <span style={{ color: 'var(--green)', fontWeight: 600 }}>+ ADD RACE</span> above.
       </p>
     </div>
   );

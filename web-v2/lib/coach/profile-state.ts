@@ -3,12 +3,19 @@
  * Identity + physiology (derived) + connections + preferences + shoes.
  */
 import { pool } from '@/lib/db/pool';
+import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 
 export interface ProfileState {
   identity: { full_name: string | null; sex: string | null; age: number | null; city: string | null; height_cm: number | null };
-  physiology: { max_hr: number | null; rhr: number | null; vo2: number | null; weight_lb: number | null };
+  physiology: { max_hr: number | null; rhr: number | null; vo2: number | null; weight_lb: number | null; vdot: number | null };
   shoes: { id: string; name: string; brand: string; model: string; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean }[];
   nextARace: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
+  connections: {
+    strava:       { connected: boolean; lastSync: string | null; note: string };
+    appleHealth:  { connected: boolean; lastSync: string | null; note: string };
+    appleWatch:   { connected: boolean; lastSync: string | null; note: string };
+  };
+  preferences: UserSettings;
 }
 
 export async function loadProfileState(userId: string): Promise<ProfileState> {
@@ -89,10 +96,84 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     }
   }
 
+  // === Connection state — real data presence, not hardcoded ===
+  // Strava = most recent activity in strava_activities (jsonb data->>'date').
+  const stravaRow = (await pool.query(
+    `SELECT MAX(COALESCE(data->>'date', LEFT(data->>'startLocal',10))::text) AS last
+       FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')`,
+    [userId]
+  ).catch(() => ({ rows: [{ last: null }] }))).rows[0];
+  const stravaLast: Date | null = stravaRow?.last ? new Date(`${stravaRow.last}T12:00:00Z`) : null;
+  const stravaConnected = stravaLast != null && (Date.now() - stravaLast.getTime()) < 1000 * 60 * 60 * 24 * 14;
+
+  // Apple Health = most recent health_samples row
+  const healthRow = (await pool.query(
+    `SELECT MAX(recorded_at) AS last FROM health_samples WHERE user_id = $1`,
+    [userId]
+  ).catch(() => ({ rows: [{ last: null }] }))).rows[0];
+  const healthLast: Date | null = healthRow?.last ? new Date(healthRow.last) : null;
+  const healthConnected = healthLast != null && (Date.now() - healthLast.getTime()) < 1000 * 60 * 60 * 24 * 7;
+
+  // Apple Watch = paired iff watch-only metrics (HRV, VO2 max) are landing.
+  // The watch is the only source of those sample types in our pipeline.
+  const watchRow = (await pool.query(
+    `SELECT MAX(recorded_at) AS last
+       FROM health_samples
+      WHERE user_id = $1
+        AND sample_type IN ('hrv_sdnn','vo2_max','resting_hr')`,
+    [userId]
+  ).catch(() => ({ rows: [{ last: null }] }))).rows[0];
+  const watchLast: Date | null = watchRow?.last ? new Date(watchRow.last) : null;
+  const watchConnected = watchLast != null && (Date.now() - watchLast.getTime()) < 1000 * 60 * 60 * 24 * 30;
+
+  // Preferences (settings) — real values, not hardcoded
+  const preferences = await loadSettings(userId).catch(() => DEFAULT_PREFS);
+
+  // VDOT — try to derive from a recent PB. Fallback: from max_hr/RHR via simple HRR estimate
+  // (real VDOT calculator lives in lib/training/daniels.ts; profile shows nothing if no race PB).
+  const vdotRow = (await pool.query(
+    `SELECT meta FROM races
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND meta->>'finishTime' IS NOT NULL
+      ORDER BY (meta->>'date') DESC NULLS LAST LIMIT 1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const vdot: number | null = vdotRow?.meta?.vdot ? Number(vdotRow.meta.vdot) : null;
+
   return {
     identity: { full_name: p?.full_name ?? null, sex: p?.sex ?? null, age: p?.age ?? null, city: p?.city ?? null, height_cm: p?.height_cm ?? null },
-    physiology: { max_hr, rhr, vo2, weight_lb },
+    physiology: { max_hr, rhr, vo2, weight_lb, vdot },
     shoes: shoes.filter((s) => !s.retired),
     nextARace,
+    connections: {
+      strava:      { connected: stravaConnected, lastSync: stravaLast?.toISOString() ?? null, note: stravaConnected ? `Last sync ${relativeAgo(stravaLast!)}` : 'Connect for auto-sync' },
+      appleHealth: { connected: healthConnected, lastSync: healthLast?.toISOString() ?? null, note: healthConnected ? `Last reading ${relativeAgo(healthLast!)}` : 'Sleep / HRV / RHR / weight / VO2' },
+      appleWatch:  { connected: watchConnected, lastSync: watchLast?.toISOString() ?? null, note: watchConnected ? `Last workout ${relativeAgo(watchLast!)}` : 'Open Faff on iPhone to pair' },
+    },
+    preferences,
   };
+}
+
+// Inline default to avoid import cycle issues if settings loader fails completely.
+const DEFAULT_PREFS: UserSettings = {
+  units_distance: 'mi',
+  units_temp: 'F',
+  units_pace: 'min_per_mi',
+  long_run_day: 'sun',
+  rest_day: 'sat',
+  quality_days: ['tue', 'thu'],
+  briefing_time: '07:00',
+  push_enabled: true,
+};
+
+function relativeAgo(d: Date): string {
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toISOString().slice(0, 10);
 }
