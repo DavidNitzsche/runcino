@@ -10,12 +10,14 @@ The card library extends across all surfaces (TODAY, RACES, TRAINING, HEALTH, et
 
 Three tiers of card visual treatment:
 
-- **Action cards** (large) — big numbers, big visuals, CTAs. The cadence experiment, sleep deficit, recovery amber.
+- **Action cards** (large) — big numbers, big visuals, CTAs. Cadence experiment, sleep deficit, recovery amber.
 - **Info cards** (medium) — focused content with one main read + supporting detail. Next workout, race horizon, weight trend.
-- **Educational cards** (light, purple-tinted) — `fun_fact` only. FYI not actionable.
-- **Slim affordance rows** — `profile_gap` (red, with +Add) and similar persistent ones.
+- **Educational cards** (light, violet-tinted) — `fun_fact` only. FYI not actionable.
+- **Slim affordance rows** — `profile_gap` (caution-yellow label, corporate-blue +Add) and similar persistent ones.
 
-Universal token: black canvas, Bebas Neue display + Inter body, three-color discipline (green / white / blue) with amber for warnings and red for gaps. See [mockups/today-v4-2026-05-24.html](./mockups/today-v4-2026-05-24.html) for the gold standard.
+**Tokens + typography:** pull from [`docs/architecture/DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) — the canonical palette (layers l0–l5; semantic colors corporate/success/caution/attention/warning/xp; additional data colors) and typography stack (Oswald + Jost + JetBrains Mono). Never invent new tokens or fonts in renderer code; always reference the canon.
+
+Visual gold standard: [mockups/today-v4-2026-05-24.html](./mockups/today-v4-2026-05-24.html).
 
 ---
 

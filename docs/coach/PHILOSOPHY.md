@@ -142,6 +142,22 @@ Every surface uses the same card library. Every surface respects the truth contr
 
 ---
 
+## Visual language
+
+The coach speaks in a specific aesthetic. **Palette and typography are NOT redefined here — they live in [`docs/architecture/DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) as the canonical source.**
+
+Quick reference (full spec in DESIGN_SYSTEM):
+
+- **Background layers** — `l0` (basement) → `l1` (background) → `l2` (raised tile) → `l3` (inset) → `l4` (border). Tiles step up one layer from their container; never jump.
+- **Semantic colors** — each has ONE role: `--corporate` (primary CTA), `--success` (good/done), `--caution` (yellow nudge: needs work), `--attention` (race signal/special day), `--warning` (red alarm only — never decorative), `--xp` (milestone/aspiration, reserved for season-arc moments).
+- **Typography** — Oswald (display, uppercase headlines + hero numbers) / Jost (body) / JetBrains Mono (data labels). No serifs. Tabular numerals on numeric hero values.
+
+**Watch face DNA** ([mockups/watch-faces.html](./mockups/watch-faces.html)) scales the same aesthetic to the watch form factor. Same tokens, smaller surface.
+
+When in doubt about colors or type: `docs/architecture/DESIGN_SYSTEM.md` wins. The coach docs describe what to say + when; the design system describes how it looks.
+
+---
+
 ## What this is NOT
 
 To keep us honest:

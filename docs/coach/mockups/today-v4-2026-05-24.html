@@ -6,27 +6,74 @@
 <meta name="viewport" content="width=1280">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Jost:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+  /* ─────────────────────────────────────────────────────────────────
+   * v4 on-system update — tokens + fonts now match the canonical
+   * design system at docs/architecture/DESIGN_SYSTEM.md.
+   *
+   * Layers (l0–l5) provide spatial depth.
+   * Semantic colors (corporate/warning/success/caution/attention/xp)
+   * each have ONE role — never mix.
+   * Type stack: Oswald (display) / Jost (body) / JetBrains Mono (data).
+   * ───────────────────────────────────────────────────────────────── */
   :root {
-    --bg: #0a0c10;
-    --ink: #f6f7f8;
-    --mute: #8a90a0;
-    --dim: #4b505e;
+    /* Layers — page → tile → raised → inset → border. Never jump more than one. */
+    --l0: #10131A;   /* Basement (page canvas) */
+    --l1: #141820;   /* Background (default tile) */
+    --l2: #1A212D;   /* First (raised tile / today card) */
+    --l3: #1D2736;   /* Second (inset content, calendar cells, progress tracks) */
+    --l4: #21303F;   /* Third (borders, strokes, hairlines) */
+    --l5: #2b3a4e;   /* Hairline highlight (rare) */
+
+    /* Type */
+    --t0: #F6F7F8;
+    --t1: rgba(246,247,248,.72);
+    --t2: rgba(246,247,248,.48);
+    --t3: rgba(246,247,248,.32);
+
+    /* Semantic system colors — each has ONE job */
+    --corporate: #008FEC;  /* Primary accent (today, links, primary CTAs) */
+    --warning:   #FC4D54;  /* Alert only (overtraining, injury risk). Never decorative. */
+    --success:   #3EBD41;  /* Good / on-track / completed */
+    --caution:   #F0DF47;  /* Needs work / soft warning (sleep short, profile gap) */
+    --attention: #F3AD3B;  /* Race signal / taper / special day */
+    --xp:        #9013FE;  /* Milestone / aspiration (reserved for season-arc moments) */
+
+    /* Additional / data colors — calendar + chart category */
+    --lt-blue: #2784E0;  /* Easy workout days */
+    --dk-blue: #2264E3;  /* Long workout days */
+    --aqua:    #27E087;  /* Quality / interval workouts */
+    --violet:  #6227E0;  /* Educational accent (fun_fact cards) */
+    --gray:    #646464;  /* Rest days, muted states */
+
+    /* Fonts — production canon */
+    --f-display: 'Oswald', 'Headliner', 'Bebas Neue', 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif;
+    --f-body:    'Jost', 'Futura PT', 'Futura', 'Trebuchet MS', 'Century Gothic', Avenir, sans-serif;
+    --f-data:    'JetBrains Mono', 'SF Mono', 'IBM Plex Mono', ui-monospace, monospace;
+
+    /* ──────────────────────────────────────────────────────────────
+     * Back-compat aliases — map the old v4 token names to the canon.
+     * Keeps the rest of the CSS structure intact while pulling the
+     * actual values from the design system. Production code should
+     * use the canonical tokens (corporate / success / caution /
+     * attention / warning / l0-l5 / t0-t3) directly, not these aliases.
+     * ────────────────────────────────────────────────────────────── */
+    --bg: var(--l0);
+    --ink: var(--t0);
+    --mute: var(--t2);
+    --dim: var(--t3);
     --line: rgba(255,255,255,0.08);
     --line-2: rgba(255,255,255,0.04);
-    --card: #11141a;
+    --card: var(--l2);
 
-    --green: #3EBD41;
-    --goal:  #F3AD38;
-    --over:  #FC4D64;
-    --dist:  #27B4E0;
-    --rest:  #008FEC;
-    --learn: #B084FF;
-    --race:  #FF8847;
-
-    --f-display: 'Bebas Neue', 'Inter', sans-serif;
-    --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --green: var(--success);
+    --goal:  var(--caution);    /* sleep deficit, soft warnings (yellow nudge tier) */
+    --over:  var(--caution);    /* profile_gap = "needs to be fixed" — caution, not alarm-red */
+    --dist:  var(--lt-blue);    /* distance / easy workouts */
+    --rest:  var(--corporate);  /* primary CTA accent */
+    --learn: var(--violet);     /* educational / fun_fact */
+    --race:  var(--attention);  /* race signal */
   }
   html, body { background: #15171c; color: var(--ink); font-family: var(--f-body); margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
   .wrap { max-width: 1280px; margin: 0 auto; padding: 48px 32px 96px; }
@@ -91,7 +138,7 @@
   .recap-top .c { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px; font-size: 11px; font-weight: 500; color: rgba(246,247,248,0.85); display: inline-flex; align-items: center; gap: 5px; }
   .recap-top .c .k { color: var(--mute); font-size: 9px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
   .recap-top .c .v { color: var(--ink); font-weight: 600; }
-  .recap-top .c.warm { color: var(--goal); border-color: rgba(243,173,56,0.30); background: rgba(243,173,56,0.08); }
+  .recap-top .c.warm { color: var(--attention); border-color: rgba(243,173,59,0.30); background: rgba(243,173,59,0.08); }
   .recap-top .recap-link { font-family: var(--f-body); font-size: 11px; font-weight: 500; color: var(--mute); text-decoration: none; margin-top: 12px; display: inline-block; letter-spacing: 0.3px; }
   .recap-top .recap-link:hover { color: var(--ink); }
 
@@ -107,8 +154,8 @@
   .reply-chip { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--ink); padding: 12px 4px; border-radius: 14px; font-family: var(--f-display); font-size: 18px; font-weight: 400; letter-spacing: 1.2px; cursor: pointer; transition: all .15s; }
   .reply-chip:hover { background: rgba(255,255,255,0.04); }
   .reply-chip.solid:hover   { border-color: rgba(62,189,65,0.50); color: var(--green); }
-  .reply-chip.tired:hover   { border-color: rgba(243,173,56,0.50); color: var(--goal); }
-  .reply-chip.wrecked:hover { border-color: rgba(252,77,100,0.50); color: var(--over); }
+  .reply-chip.tired:hover   { border-color: rgba(240,223,71,0.50); color: var(--caution); }
+  .reply-chip.wrecked:hover { border-color: rgba(252,77,84,0.50);  color: var(--warning); }
 
   /* Cards lane */
   .cards-lane { padding: 4px 24px 24px; display: flex; flex-direction: column; gap: 10px; }
@@ -193,7 +240,7 @@
   }
 
   /* Fun fact card */
-  .card.fun { background: rgba(176,132,255,0.04); border: 1px solid rgba(176,132,255,0.18); padding: 14px 16px; }
+  .card.fun { background: rgba(98,39,224,0.05); border: 1px solid rgba(98,39,224,0.22); padding: 14px 16px; }
   .card.fun .fun-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .card.fun .fun-icon { width: 18px; height: 18px; border-radius: 50%; background: var(--learn); color: #1a0f33; font-family: var(--f-body); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .card.fun .fun-title { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--learn); letter-spacing: 1.2px; text-transform: uppercase; }
@@ -207,8 +254,10 @@
   .card.gap .label { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--over); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 3px; }
   .card.gap .field { font-family: var(--f-display); font-size: 19px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; line-height: 1.1; }
   .card.gap .why { font-family: var(--f-body); font-size: 11.5px; font-weight: 400; color: var(--mute); margin-top: 2px; }
-  .card.gap .add { background: rgba(252,77,100,0.12); color: var(--over); border: 1px solid rgba(252,77,100,0.25); border-radius: 999px; padding: 7px 14px; font-family: var(--f-display); font-size: 12px; font-weight: 400; letter-spacing: 1px; cursor: pointer; flex-shrink: 0; }
-  .card.gap .add:hover { background: rgba(252,77,100,0.18); }
+  /* +Add uses --corporate (primary action) to stand out from the
+     caution-yellow gap label. Visually distinct from the sleep card. */
+  .card.gap .add { background: rgba(0,143,236,0.14); color: var(--corporate); border: 1px solid rgba(0,143,236,0.30); border-radius: 999px; padding: 7px 14px; font-family: var(--f-display); font-size: 12px; font-weight: 500; letter-spacing: 1px; cursor: pointer; flex-shrink: 0; text-transform: uppercase; }
+  .card.gap .add:hover { background: rgba(0,143,236,0.22); }
 
   /* Bottom nav */
   .nav { position: sticky; bottom: 0; left: 0; right: 0; background: rgba(10,12,16,0.92); backdrop-filter: blur(20px); border-top: 1px solid var(--line); padding: 12px 0 26px; display: flex; justify-content: space-around; }
@@ -235,13 +284,19 @@
   <header>
     <h1>TODAY v4 · cards-also-coach · 2026-05-24</h1>
     <p class="sub">
-      <strong style="color:var(--green);">Every card carries a coaching line, not just data.</strong>
+      <strong style="color:var(--success);">Every card carries a coaching line, not just data.</strong>
       Solution, advice, confidence, awareness — the cards extend the coach's voice instead of
       reporting fields. Cadence prescription deferred because height is missing; the height
       gap card carries the next step. HRmax + RHR no longer asked (derived from your health
       data, not entered).
     </p>
-    <div class="meta">FONTS · BEBAS NEUE + INTER · COLORS · WATCH-FACE PALETTE</div>
+    <p class="sub">
+      <strong>v4 update:</strong> tokens + fonts now pulled from the canonical design system
+      at <code>docs/architecture/DESIGN_SYSTEM.md</code>. Oswald + Jost + JetBrains Mono;
+      layers <code>l0–l5</code>; semantic colors corporate / success / caution / attention /
+      warning / xp. Earlier v4 used approximate watch-face tokens; this version is on-system.
+    </p>
+    <div class="meta">FONTS · OSWALD + JOST + JETBRAINS MONO · COLORS · DESIGN_SYSTEM.MD CANON</div>
 
     <div class="key-shifts" style="max-width: 760px;">
       <h4>Changes from v3</h4>
