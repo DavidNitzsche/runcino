@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Faff · Plan Generation Mockup · 2026-05-25</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg:#0a0a0c; --ink:#f6f7f8; --mute:#8b8e95; --dim:#5a5d63;
+    --line:#1d1f23; --line-2:#262830; --card:#13141a;
+    --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64; --race:#FF8847;
+    --rest:#008FEC; --learn:#B084FF; --dist:#27B4E0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', system-ui, sans-serif; }
+  body { padding: 60px 80px 120px; max-width: 1320px; margin: 0 auto; line-height: 1.55; }
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 72px; letter-spacing: 0.5px; line-height: 1; margin-bottom: 12px; }
+  h2 { font-family: 'Bebas Neue', sans-serif; font-size: 40px; letter-spacing: 0.5px; margin: 56px 0 18px; }
+  h3 { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 0.5px; margin: 24px 0 10px; color: var(--ink); }
+  .lede { color: var(--mute); font-size: 16px; margin-bottom: 12px; max-width: 760px; }
+  .meta { font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--mute); margin-bottom: 36px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px 28px; margin: 14px 0; }
+  .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--mute); margin-bottom: 8px; }
+  .row { display: grid; gap: 16px; }
+  .row.cols2 { grid-template-columns: 1fr 1fr; }
+  .row.cols3 { grid-template-columns: repeat(3, 1fr); }
+  .row.cols4 { grid-template-columns: repeat(4, 1fr); }
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; }
+  .pill.green { background: rgba(62,189,65,0.15); color: var(--green); }
+  .pill.goal { background: rgba(243,173,56,0.15); color: var(--goal); }
+  .pill.race { background: rgba(255,136,71,0.15); color: var(--race); }
+  .pill.rest { background: rgba(0,143,236,0.15); color: var(--rest); }
+  .pill.over { background: rgba(252,77,100,0.15); color: var(--over); }
+  .pill.learn { background: rgba(176,132,255,0.15); color: var(--learn); }
+  .week-row { display: grid; grid-template-columns: 80px repeat(7, 1fr) 80px; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--line-2); align-items: center; }
+  .week-row.head { color: var(--mute); font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+  .day { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 6px; text-align: center; font-size: 11px; }
+  .day.easy { background: rgba(62,189,65,0.04); border-color: rgba(62,189,65,0.18); color: rgba(246,247,248,0.85); }
+  .day.long { background: rgba(0,143,236,0.06); border-color: rgba(0,143,236,0.30); color: var(--rest); font-weight: 700; }
+  .day.quality { background: rgba(243,173,56,0.06); border-color: rgba(243,173,56,0.30); color: var(--goal); font-weight: 700; }
+  .day.race { background: rgba(255,136,71,0.10); border-color: var(--race); color: var(--race); font-weight: 700; }
+  .day.rest { background: transparent; color: var(--dim); }
+  .day .mi { font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 0.5px; line-height: 1.1; margin-top: 2px; }
+  .phase-pill { padding: 2px 8px; font-size: 9px; font-weight: 700; letter-spacing: 1px; border-radius: 4px; }
+  .phase-pill.base { background: rgba(62,189,65,0.15); color: var(--green); }
+  .phase-pill.quality { background: rgba(243,173,56,0.15); color: var(--goal); }
+  .phase-pill.race-sp { background: rgba(252,77,100,0.15); color: var(--over); }
+  .phase-pill.taper { background: rgba(0,143,236,0.15); color: var(--rest); }
+  .cite { font-size: 11px; color: var(--dim); font-style: italic; margin-top: 6px; }
+  .question { background: rgba(176,132,255,0.05); border-left: 3px solid var(--learn); padding: 14px 18px; margin: 18px 0; border-radius: 0 8px 8px 0; }
+  .question .label { font-size: 10px; font-weight: 700; letter-spacing: 1.6px; color: var(--learn); margin-bottom: 6px; }
+  .opt { background: rgba(62,189,65,0.04); border: 1px solid rgba(62,189,65,0.20); border-radius: 10px; padding: 14px 18px; margin: 10px 0; }
+  .opt .h { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 0.5px; color: var(--green); margin-bottom: 4px; }
+  .voice { background: linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 70%); border: 1px solid rgba(62,189,65,0.20); border-radius: 14px; padding: 20px 24px; margin: 12px 0; font-style: italic; color: rgba(246,247,248,0.9); line-height: 1.6; font-size: 15px; }
+  .voice .label { font-size: 10px; font-weight: 700; letter-spacing: 1.6px; color: var(--green); margin-bottom: 8px; font-style: normal; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+  table th { text-align: left; padding: 10px 8px; color: var(--mute); font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+  table td { padding: 10px 8px; border-bottom: 1px solid var(--line-2); }
+  .legend { display: flex; gap: 18px; font-size: 11px; color: var(--mute); margin: 12px 0; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<h1>P8 · PLAN GENERATION</h1>
+<div class="meta">MOCKUP DECK · 2026-05-25 · FOR DAVID REVIEW BEFORE V2 BUILD</div>
+
+<p class="lede">
+v1 is shipped and works — it generates a structurally honest plan from race + recent mileage, cited to /Research/. But the volume curve is conservative, quality prescriptions are template strings, and adaptation triggers are wired only as concept. This deck shows three decisions I need your eyes on before I rip into v2.
+</p>
+
+<h2>1 · WHERE V1 LANDS</h2>
+
+<div class="card">
+  <div class="eyebrow">CIM 2026-12-06 · 28-WEEK PLAN · GENERATED v1</div>
+  <div style="display: flex; gap: 12px; margin-top: 12px; align-items: baseline;">
+    <span style="font-family: 'Bebas Neue'; font-size: 56px;">CIM</span>
+    <span style="color: var(--mute); font-size: 14px;">195 days · marathon · goal 3:00:00 · current base 34 mpw</span>
+  </div>
+
+  <div class="legend">
+    <span><span class="swatch" style="background: rgba(62,189,65,0.30)"></span>EASY</span>
+    <span><span class="swatch" style="background: rgba(0,143,236,0.30)"></span>LONG</span>
+    <span><span class="swatch" style="background: rgba(243,173,56,0.30)"></span>QUALITY</span>
+    <span><span class="swatch" style="background: rgba(255,136,71,0.40)"></span>RACE</span>
+    <span><span class="swatch" style="background: transparent; border: 1px solid var(--line)"></span>REST</span>
+  </div>
+
+  <div class="week-row head">
+    <div>WEEK</div><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div><div>SAT</div><div>SUN</div><div>TOTAL</div>
+  </div>
+
+  <div class="week-row">
+    <div><span class="phase-pill base">BASE 1</span></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day rest">—</div>
+    <div class="day long">LONG<div class="mi">9</div></div>
+    <div style="text-align:right;font-family:'Bebas Neue';font-size:18px;">34</div>
+  </div>
+  <div class="week-row">
+    <div><span class="phase-pill base">BASE 4</span></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">4</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day rest">—</div>
+    <div class="day long">LONG<div class="mi">7</div></div>
+    <div style="text-align:right;font-family:'Bebas Neue';font-size:18px;">31<span style="font-size:9px;color:var(--mute);"> CUT</span></div>
+  </div>
+  <div class="week-row">
+    <div><span class="phase-pill quality">QUAL 1</span></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day quality">3×1mi<br>T<div class="mi">4</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day quality">6×800<br>I<div class="mi">4</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day rest">—</div>
+    <div class="day long">LONG<div class="mi">11</div></div>
+    <div style="text-align:right;font-family:'Bebas Neue';font-size:18px;">34</div>
+  </div>
+  <div class="week-row">
+    <div><span class="phase-pill race-sp">RS 1</span></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day quality">5mi<br>T<div class="mi">5</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day quality">Tempo<br>6mi<div class="mi">6</div></div>
+    <div class="day easy">E<div class="mi">5</div></div>
+    <div class="day rest">—</div>
+    <div class="day long">LONG +MP<br>14<div class="mi">14</div></div>
+    <div style="text-align:right;font-family:'Bebas Neue';font-size:18px;">40</div>
+  </div>
+  <div class="week-row">
+    <div><span class="phase-pill taper">TAPER 1</span></div>
+    <div class="day easy">E<div class="mi">4</div></div>
+    <div class="day quality">Tune<br>4mi<div class="mi">4</div></div>
+    <div class="day easy">E<div class="mi">4</div></div>
+    <div class="day easy">E<div class="mi">3</div></div>
+    <div class="day rest">—</div>
+    <div class="day easy">E<div class="mi">3</div></div>
+    <div class="day long">LONG<div class="mi">12</div></div>
+    <div style="text-align:right;font-family:'Bebas Neue';font-size:18px;">30</div>
+  </div>
+  <div class="week-row">
+    <div><span class="phase-pill taper">RACE</span></div>
+    <div class="day easy">E<div class="mi">4</div></div>
+    <div class="day easy">E<div class="mi">3</div></div>
+    <div class="day easy">E<div class="mi">4</div></div>
+    <div class="day easy">E<div class="mi">3</div></div>
+    <div class="day rest">—</div>
+    <div class="day easy">Shake<div class="mi">2</div></div>
+    <div class="day race">CIM<div class="mi">26.2</div></div>
+    <div style="text-align:right;font-family:'Bebas Neue';font-size:18px;">42</div>
+  </div>
+
+  <div class="cite">Cite: Research/00a §periodization · Research/04 §intervals-and-threshold · Research/08 §taper</div>
+</div>
+
+<h2>2 · THE THREE DECISIONS I NEED YOU FOR</h2>
+
+<div class="question">
+  <div class="label">DECISION A · VOLUME CEILING</div>
+  <p>v1 ramps 7% per non-deload week and tops out at ~40 mpw. For a sub-3 marathon target that's nowhere near the canonical 65-90 mpw peak. Two options:</p>
+</div>
+
+<div class="opt">
+  <div class="h">A1 · RESPECT THE BASE (current)</div>
+  <p>Start where you are (34 mpw), ramp gently. Never push past what your body has earned in the last 4 weeks. Honest, conservative. Possibly leaves performance on the table for an experienced runner.</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 8px;"><b>Result:</b> Peak ~40 mpw. Risk of running the race undertrained.</p>
+</div>
+
+<div class="opt">
+  <div class="h">A2 · TARGET-DRIVEN RAMP (recommended)</div>
+  <p>Set a peak target based on race distance + experience tier (Beginner / Intermediate / Advanced / Advanced+). Ramp aggressively if base is far below — but cap individual week jumps at 10% per the 10%-rule.</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 8px;"><b>Result:</b> Sub-3 marathoner peaks ~70-85 mpw. Higher injury risk if base is far below. Need to honestly assess: "if I'm at 34 now and need 70 in 18 weeks, that's a 5% sustained ramp + every 4th week cutback — doable but demanding."</p>
+</div>
+
+<div class="question">
+  <div class="label">DECISION B · ADAPTATION TRIGGERS</div>
+  <p>When the plan diverges from reality (missed run, killer hard effort, RHR spike, sleep crater), what should happen?</p>
+</div>
+
+<div class="opt">
+  <div class="h">B1 · FLAG ONLY (manual rewrite)</div>
+  <p>Coach surfaces the divergence in voice ("you missed Tuesday — let's swap workouts manually"). You hit the regenerate button when you want to.</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 8px;"><b>Pro:</b> You stay in control. <b>Con:</b> A missed mid-week + a Sunday long that's already locked in can pile.</p>
+</div>
+
+<div class="opt">
+  <div class="h">B2 · AUTO-REWRITE NEXT 7 DAYS (recommended)</div>
+  <p>When a key workout is missed or executed off-target, the next 7 days re-shape automatically — adding back the missed work where the load allows, OR scaling down the upcoming long if it's now too aggressive. Coach narrates what changed and why, cited to research. You can override.</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 8px;"><b>Pro:</b> Plan stays a real plan, not a wish list. <b>Con:</b> If the adapter is wrong, you fight it.</p>
+</div>
+
+<div class="question">
+  <div class="label">DECISION C · QUALITY PRESCRIPTIONS</div>
+  <p>How specific should "Threshold day" instructions be?</p>
+</div>
+
+<div class="opt">
+  <div class="h">C1 · COACH PROSE</div>
+  <p>"Today is threshold — controlled hard, just below the line where you'd start to gasp. 3-4 miles of work at a pace you could hold for an hour. Trust the warmup, build into the reps, hold form."</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 8px;"><b>Pro:</b> Adapts to feel. <b>Con:</b> Vague paces for runners who want specifics.</p>
+</div>
+
+<div class="opt">
+  <div class="h">C2 · DANIELS-STYLE STRUCTURED (recommended)</div>
+  <p>"Today: <b>WU 1.5mi → 4×1mi @ 6:38/mi · 90s float → CD 1mi</b>. T-pace from your VDOT-50 estimate, dropping each rep ±2s from target = the read on your engine today."</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 8px;"><b>Pro:</b> Targetable, watch-loadable. <b>Con:</b> Requires accurate VDOT or LTHR (now we have both via the new zone work).</p>
+</div>
+
+<div class="opt">
+  <div class="h">C3 · BOTH (best of both)</div>
+  <p>Display structured workout for the watch. Lead with one sentence of coach prose explaining the WHY ("we're at threshold today because last week's intervals showed your engine is ready for that next pace step — see how you respond").</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 8px;"><b>This is what I'd actually build if you say yes to all three.</b></p>
+</div>
+
+<h2>3 · VOICE INTEGRATION ON WEEKLY RATIONALE</h2>
+
+<p class="lede">Structural plan is doctrine (deterministic, cited). But the WHY of any given week needs voice. Mockup of what a weekly briefing on /training would look like:</p>
+
+<div class="voice">
+  <div class="label">COACH · WEEK 14 OF 28 · QUALITY BLOCK</div>
+  <p>You're 14 weeks out from CIM and the engine is starting to show. Two weeks ago you held threshold pace through the third rep — that's the cue we needed to step the intervals up. This week is the first time we're touching 42 miles, which is 10% over last week. Bigger than I'd usually push, but the recent run-checkins suggest you're absorbing the work without piling fatigue.</p>
+  <p style="margin-top: 10px;">Tuesday is 6×800m at I-pace · 3:25 each. Don't drift faster on rep 1 — even splits or get told. Thursday's tempo is the marker rep: a clean 5 miles at marathon pace is what you'll do on race day, just for two more hours. Saturday's long stays at 14 miles — we're letting your legs catch up before next week's bump.</p>
+  <p style="font-size: 12px; color: var(--mute); margin-top: 10px;">Cite: Research/00a §progressive-overload (10% cap), Research/08 §pacing</p>
+</div>
+
+<h2>4 · WHAT V2 SHIPS IF YOU SAY YES</h2>
+
+<table>
+  <thead>
+    <tr><th>Module</th><th>v1 (now)</th><th>v2 (proposed)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Volume curve</td><td>Conservative ramp from current base</td><td>Target-driven, peaks at experience+distance ceiling</td></tr>
+    <tr><td>Quality prescriptions</td><td>Template strings</td><td>Structured (paces from VDOT/LTHR) + coach prose WHY</td></tr>
+    <tr><td>Adaptation</td><td>Static until regenerate</td><td>Auto-rewrite next 7d on trigger events</td></tr>
+    <tr><td>Weekly rationale</td><td>Phase + week index</td><td>LLM voice w/ cited reasoning</td></tr>
+    <tr><td>Long run progression</td><td>Same share each week</td><td>Discrete steps cited to long-run physiology</td></tr>
+    <tr><td>Mid-week swap</td><td>Drag UI (P7.12)</td><td>"Move Tuesday to Wednesday" w/ rebalance</td></tr>
+  </tbody>
+</table>
+
+<div style="margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--mute); font-size: 13px;">
+  React (Slack / voice memo / edit the source HTML) and I'll execute. Per NEEDS_DAVID.md item 1.
+</div>
+
+</body>
+</html>

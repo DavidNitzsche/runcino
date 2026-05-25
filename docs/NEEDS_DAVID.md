@@ -41,6 +41,11 @@ cited to /Research/). It works but it's rough:
 placeholder — it doesn't lie, just doesn't push hard enough. Mockup,
 you review, I rebuild.
 
+**Deck shipped:** [`docs/plan-generation-mockup-2026-05-25.html`](plan-generation-mockup-2026-05-25.html)
+shows v1 in action plus three concrete A/B/C decision points
+(volume ceiling, adaptation triggers, quality prescriptions) plus
+a sample voice-narrated weekly briefing. Open it in a browser.
+
 ---
 
 ## 2. Strava push (not pull) — destination architecture
