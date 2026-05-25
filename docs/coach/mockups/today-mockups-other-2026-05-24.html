@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Today · 5 Concepts · faff.run</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#E8EAF0;--surface:#ffffff;--s2:#F4F5F8;
+  --ink:#080808;--t1:rgba(8,8,8,.62);--t2:rgba(8,8,8,.40);--t3:rgba(8,8,8,.24);
+  --ln:rgba(8,8,8,.09);--ln2:rgba(8,8,8,.15);
+  --race:#E88021;--rec:#3EBD41;--warn:#FC4D64;--mil:#F3AD38;--act:#008FEC;
+  --race-w:rgba(232,128,33,.11);--rec-w:rgba(62,189,65,.10);--act-w:rgba(0,143,236,.10);--mil-w:rgba(243,173,56,.12);
+  --dk:#0E0F12;--dk2:#171A1F;--dk3:#20242B;
+  --dki:#ECEEF2;--dkt1:rgba(236,238,242,.68);--dkt2:rgba(236,238,242,.38);--dkt3:rgba(236,238,242,.22);
+  --dkl:rgba(236,238,242,.07);--dkl2:rgba(236,238,242,.13);
+  --cs:0 2px 6px rgba(0,0,0,.04),0 8px 28px rgba(0,0,0,.09);
+}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;background:#0a0a0a;-webkit-font-smoothing:antialiased}
+
+/* ── nav ── */
+.cnav{position:sticky;top:0;z-index:999;background:#0E0F12;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:stretch;overflow-x:auto}
+.cnav-logo{padding:0 22px;font-family:'Bebas Neue',sans-serif;font-size:18px;font-style:italic;color:var(--race);display:flex;align-items:center;border-right:1px solid rgba(255,255,255,.06);white-space:nowrap;letter-spacing:.05em;flex-shrink:0}
+.cnav a{display:flex;align-items:center;padding:0 20px;height:46px;font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.3);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:color .15s}
+.cnav a:hover{color:rgba(255,255,255,.7)}
+.cnav a.on{color:var(--race);border-bottom-color:var(--race)}
+
+/* ── shared ── */
+.concept{scroll-margin-top:46px}
+.concept+.concept{border-top:8px solid #0a0a0a}
+.tb{display:flex;align-items:center;padding:0 40px;height:52px;background:var(--surface);border-bottom:1px solid var(--ln)}
+.tb.dk{background:var(--dk2);border-bottom-color:var(--dkl)}
+.tb-brand{font-family:'Bebas Neue',sans-serif;font-size:22px;font-style:italic;letter-spacing:.04em;background:linear-gradient(90deg,var(--race),var(--mil));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-right:28px}
+.tb-tabs{display:flex;flex:1}
+.tb-tab{padding:0 14px;height:52px;display:flex;align-items:center;font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);border-bottom:2px solid transparent;margin-bottom:-1px;cursor:default}
+.tb-tab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.tb.dk .tb-tab{color:var(--dkt3)}
+.tb.dk .tb-tab.on{color:var(--dki);border-bottom-color:var(--race)}
+.tb-meta{font-family:'Courier New',monospace;font-size:11px;color:var(--t3);margin-left:auto;letter-spacing:.03em}
+.tb.dk .tb-meta{color:var(--dkt3)}
+.card{background:var(--surface);border-radius:18px;box-shadow:var(--cs)}
+.pill{display:inline-flex;align-items:center;font-family:'Oswald',sans-serif;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:4px}
+.p-rec{background:var(--rec-w);color:var(--rec)}
+.p-race{background:var(--race-w);color:var(--race)}
+.p-dk{background:rgba(236,238,242,.1);color:var(--dkt1)}
+.p-mil{background:var(--mil-w);color:var(--mil)}
+.p-act{background:var(--act-w);color:var(--act)}
+
+/* shared chart headers */
+.ch{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+
+/* ════════════════════════════════════
+   D1 · BRIEFING
+   Full-width dark coach hero.
+   Three equal white data cards below.
+════════════════════════════════════ */
+#d1{background:var(--bg)}
+.d1-hero{background:var(--dk);padding:42px 40px 40px}
+.d1-inner{max-width:1360px;margin:0 auto;display:grid;grid-template-columns:1fr 300px;gap:40px;align-items:start}
+.d1-eye{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--race);display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.d1-eye::after{content:'';flex:1;height:1px;background:rgba(232,128,33,.22)}
+.d1-txt{font-family:'Inter',sans-serif;font-size:18px;font-weight:400;line-height:1.68;color:var(--dkt1);max-width:580px}
+.d1-txt p+p{margin-top:18px}
+.d1-txt strong{color:#fff;font-weight:600}
+.d1-nxt{display:flex;align-items:center;gap:14px;padding-top:22px;margin-top:22px;border-top:1px solid var(--dkl2)}
+.d1-nxt-lbl{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dkt3)}
+.d1-nxt-val{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.06em;color:var(--rec)}
+.d1-nxt-note{font-family:'Inter',sans-serif;font-size:12px;color:var(--dkt2)}
+.d1-qstats{display:flex;flex-direction:column;gap:10px}
+.d1-q{background:var(--dk2);border-radius:12px;border:1px solid var(--dkl);padding:14px 18px;display:flex;align-items:center;gap:16px}
+.d1-qv{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:.02em;line-height:1;color:var(--dki)}
+.d1-qr{display:flex;flex-direction:column;gap:5px}
+.d1-qu{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dkt3)}
+.d1-qn{font-family:'Inter',sans-serif;font-size:11px;color:var(--dkt2)}
+.d1-cards{max-width:1360px;margin:0 auto;padding:22px 40px 40px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+
+/* ════════════════════════════════════
+   D2 · COMMAND SPLIT
+   Dark left panel: coach voice + gauge.
+   White right panel: HR chart + week bars.
+════════════════════════════════════ */
+#d2{background:var(--bg)}
+.d2-wrap{display:grid;grid-template-columns:380px 1fr;min-height:calc(100vh - 52px - 46px)}
+.d2-left{background:var(--dk);padding:36px 32px;display:flex;flex-direction:column}
+.d2-eye{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--race);display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.d2-eye::after{content:'';flex:1;height:1px;background:rgba(232,128,33,.18)}
+.d2-txt{font-family:'Inter',sans-serif;font-size:15px;line-height:1.72;color:var(--dkt1)}
+.d2-txt p+p{margin-top:15px}
+.d2-txt strong{color:var(--dki);font-weight:600}
+.d2-nxt{display:flex;align-items:center;gap:10px;padding-top:18px;margin-top:18px;border-top:1px solid var(--dkl)}
+.d2-nxt-lbl{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dkt3)}
+.d2-nxt-val{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;color:var(--rec)}
+.d2-gauge-area{margin-top:auto;padding-top:24px;border-top:1px solid var(--dkl);display:flex;flex-direction:column;align-items:center;gap:10px}
+.d2-glbl{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dkt3)}
+.d2-gsub{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--rec)}
+.d2-gmeta{display:flex;gap:24px;margin-top:6px}
+.d2-gm{display:flex;flex-direction:column;align-items:center;gap:3px}
+.d2-gm-v{font-family:'Inter',sans-serif;font-size:13px;font-weight:700;color:var(--dki)}
+.d2-gm-l{font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dkt3)}
+.d2-right{padding:28px;display:flex;flex-direction:column;gap:16px}
+
+/* ════════════════════════════════════
+   D3 · METRIC STRIP
+   Dark hero: coach left + 4 big tiles right.
+   Full-width HR chart + week bars below.
+════════════════════════════════════ */
+#d3{background:var(--bg)}
+.d3-hero{background:var(--dk);padding:40px 40px 44px}
+.d3-inner{max-width:1360px;margin:0 auto;display:grid;grid-template-columns:1fr 360px;gap:44px;align-items:center}
+.d3-eye{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--race);margin-bottom:14px}
+.d3-txt{font-family:'Inter',sans-serif;font-size:17px;line-height:1.65;color:var(--dkt1);max-width:520px}
+.d3-txt p+p{margin-top:15px}
+.d3-txt strong{color:#fff;font-weight:600}
+.d3-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.d3-t{background:var(--dk2);border-radius:12px;border:1px solid var(--dkl);padding:14px 16px}
+.d3-tv{font-family:'Bebas Neue',sans-serif;font-size:38px;letter-spacing:.02em;line-height:1;color:var(--dki)}
+.d3-tv small{font-family:'Oswald',sans-serif;font-size:13px;color:var(--dkt2);letter-spacing:.04em}
+.d3-tl{font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dkt3);margin-top:5px}
+.d3-tn{font-family:'Inter',sans-serif;font-size:10px;color:var(--dkt2);margin-top:2px}
+.d3-body{max-width:1360px;margin:0 auto;padding:22px 40px 40px;display:grid;grid-template-columns:2fr 1fr;gap:16px}
+
+/* ════════════════════════════════════
+   D4 · OVERLAY FLOAT
+   Deep dark hero, coach voice prominent.
+   Single evidence card floats over the seam.
+   Week bars below on warm bg.
+════════════════════════════════════ */
+#d4{background:var(--bg)}
+.d4-hero{background:var(--dk);padding:44px 40px 90px}
+.d4-hero-inner{max-width:1360px;margin:0 auto}
+.d4-eye{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--race);margin-bottom:18px}
+.d4-txt{font-family:'Inter',sans-serif;font-size:19px;line-height:1.68;color:var(--dkt1);max-width:680px}
+.d4-txt p+p{margin-top:20px}
+.d4-txt strong{color:#fff;font-weight:600}
+.d4-nxt{display:flex;align-items:center;gap:12px;margin-top:28px;padding-top:20px;border-top:1px solid var(--dkl2)}
+.d4-nxt-lbl{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dkt3)}
+.d4-nxt-val{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;color:var(--rec)}
+.d4-nxt-note{font-family:'Inter',sans-serif;font-size:12px;color:var(--dkt2)}
+.d4-float{max-width:1360px;margin:-52px auto 0;padding:0 40px;position:relative;z-index:2}
+.d4-fc{background:var(--surface);border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.06),0 20px 64px rgba(0,0,0,.18);padding:28px 32px;display:grid;grid-template-columns:220px 1fr 200px;gap:0}
+.d4-fc-g{display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:1px solid var(--ln);padding-right:24px}
+.d4-fc-g-lbl{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin-bottom:8px}
+.d4-fc-g-sub{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;color:var(--rec);margin-top:6px}
+.d4-fc-hr{padding:0 24px;border-right:1px solid var(--ln)}
+.d4-fc-hr-hd{font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.d4-fc-stats{padding-left:24px;display:flex;flex-direction:column;justify-content:space-between}
+.d4-fs{display:flex;flex-direction:column;gap:3px}
+.d4-fs-v{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.02em;line-height:1;color:var(--ink)}
+.d4-fs-l{font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--t3)}
+.d4-below{max-width:1360px;margin:0 auto;padding:22px 40px 40px}
+
+/* ════════════════════════════════════
+   D5 · SIDEBAR
+   Persistent dark left sidebar: coach voice.
+   Light right: metric row + HR + week stacked.
+════════════════════════════════════ */
+#d5{background:var(--bg)}
+.d5-wrap{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 52px - 46px)}
+.d5-left{background:var(--dk);padding:36px 30px;display:flex;flex-direction:column;border-right:1px solid var(--dkl)}
+.d5-eye{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--race);margin-bottom:6px}
+.d5-date{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:-.01em;line-height:.9;color:var(--dki);margin-bottom:6px}
+.d5-wk{font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dkt2);margin-bottom:26px}
+.d5-txt{font-family:'Inter',sans-serif;font-size:14px;line-height:1.74;color:var(--dkt1);flex:1}
+.d5-txt p+p{margin-top:14px}
+.d5-txt strong{color:var(--dki);font-weight:600}
+.d5-nxt{padding-top:20px;margin-top:20px;border-top:1px solid var(--dkl);display:flex;flex-direction:column;gap:5px}
+.d5-nxt-lbl{font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dkt3)}
+.d5-nxt-val{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.04em;color:var(--rec)}
+.d5-nxt-note{font-family:'Inter',sans-serif;font-size:12px;color:var(--dkt2)}
+.d5-right{padding:24px;display:flex;flex-direction:column;gap:14px}
+.d5-mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.d5-m{background:var(--surface);border-radius:14px;box-shadow:var(--cs);padding:18px 20px}
+.d5-mv{font-family:'Bebas Neue',sans-serif;font-size:40px;letter-spacing:.02em;line-height:1;color:var(--ink)}
+.d5-mv small{font-family:'Oswald',sans-serif;font-size:14px;color:var(--t2);letter-spacing:.04em}
+.d5-ml{font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-top:5px}
+.d5-charts{display:grid;grid-template-columns:3fr 2fr;gap:14px;flex:1}
+</style>
+</head>
+<body>
+
+<nav class="cnav">
+  <div class="cnav-logo">faff.run</div>
+  <a href="#d1" class="on">01 Briefing</a>
+  <a href="#d2">02 Command</a>
+  <a href="#d3">03 Strip</a>
+  <a href="#d4">04 Overlay</a>
+  <a href="#d5">05 Sidebar</a>
+</nav>
+
+<!-- SVG defs (shared gradients) -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="hr-area" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#3EBD41" stop-opacity=".28"/>
+      <stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="hr-area-dk" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#3EBD41" stop-opacity=".35"/>
+      <stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3EBD41"/>
+      <stop offset="70%" stop-color="#F3AD38"/>
+    </linearGradient>
+    <linearGradient id="gauge-grad-dk" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3EBD41"/>
+      <stop offset="70%" stop-color="#F3AD38"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<!-- ════════════════════════════════════════
+     D1 · BRIEFING
+     Wide dark hero. Three white data cards.
+════════════════════════════════════════ -->
+<section class="concept" id="d1">
+  <div class="tb">
+    <div class="tb-brand">faff.run</div>
+    <div class="tb-tabs">
+      <div class="tb-tab on">Today</div><div class="tb-tab">Training</div><div class="tb-tab">Races</div><div class="tb-tab">Health</div><div class="tb-tab">Log</div>
+    </div>
+    <div class="tb-meta">SUN 24 MAY · 18:42</div>
+  </div>
+
+  <div class="d1-hero">
+    <div class="d1-inner">
+      <div>
+        <div class="d1-eye">▸ COACH &nbsp;·&nbsp; BASE WEEK 6 &nbsp;·&nbsp; AFC 84 DAYS</div>
+        <div class="d1-txt">
+          <p>Great run today. 11.1 at easy pace, HR sat right in the band the whole way. Cadence was a bit low at 160, but for easy that's fine. It actually helps.</p>
+          <p>You've put <strong>61 miles</strong> down this week, well over the 41 planned. You're proving the base is solid and the body's holding up. That opens up what we can do next.</p>
+          <p>AFC is 84 days out. Real speed work starts this week — the next 6 weeks decide the race. Your goal is reachable.</p>
+        </div>
+        <div class="d1-nxt">
+          <div class="d1-nxt-lbl">Tomorrow</div>
+          <div class="d1-nxt-val">REST DAY</div>
+          <div class="d1-nxt-note">Mon May 25 · Let the week settle. Check in before Tuesday.</div>
+        </div>
+      </div>
+      <div class="d1-qstats">
+        <div class="d1-q">
+          <div class="d1-qv">11.1</div>
+          <div class="d1-qr">
+            <div class="d1-qu">miles · Long Run</div>
+            <div class="d1-qn" style="display:flex;gap:6px;align-items:center">
+              <span class="pill p-rec">✓ Zone 2</span>
+              <span class="pill p-dk">9:45 /mi</span>
+            </div>
+          </div>
+        </div>
+        <div class="d1-q">
+          <div class="d1-qv" style="color:var(--rec)">138</div>
+          <div class="d1-qr">
+            <div class="d1-qu">avg bpm</div>
+            <div class="d1-qn">In the band all run</div>
+          </div>
+        </div>
+        <div class="d1-q">
+          <div class="d1-qv" style="color:var(--mil);font-size:28px">160 <span style="font-family:'Oswald',sans-serif;font-size:12px;color:var(--dkt3)">SPM</span></div>
+          <div class="d1-qr">
+            <div class="d1-qu">cadence</div>
+            <div class="d1-qn">Low but fine for easy</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d1-cards">
+    <!-- Card 1: Readiness gauge -->
+    <div class="card" style="padding:24px">
+      <div class="ch">Readiness <span class="pill p-rec">Ready to train</span></div>
+      <div style="display:flex;align-items:center;justify-content:center;padding:8px 0 4px">
+        <svg width="200" height="170" viewBox="0 0 200 170">
+          <!-- track 240° arc r=75 circumference=471.2 arc=314.2 gap=157 rotate 150° -->
+          <circle cx="100" cy="100" r="75" fill="none" stroke="rgba(8,8,8,.07)" stroke-width="16" stroke-linecap="round"
+            stroke-dasharray="314.2 157" transform="rotate(150 100 100)"/>
+          <!-- fill 78%: 0.78×314.2=245.1 gap=226.1 -->
+          <circle cx="100" cy="100" r="75" fill="none" stroke="url(#gauge-grad)" stroke-width="16" stroke-linecap="round"
+            stroke-dasharray="245.1 226.1" transform="rotate(150 100 100)"/>
+          <text x="100" y="96" text-anchor="middle" font-family="'Bebas Neue',sans-serif" font-size="56" fill="#080808">78</text>
+          <text x="100" y="116" text-anchor="middle" font-family="'Oswald',sans-serif" font-size="10" fill="rgba(8,8,8,.3)" letter-spacing="2">READINESS</text>
+        </svg>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <div style="background:var(--s2);border-radius:10px;padding:12px 14px">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:var(--ink)">7.7<span style="font-size:13px;font-family:'Oswald',sans-serif;color:var(--t2)"> h</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-top:4px">Sleep</div>
+        </div>
+        <div style="background:var(--s2);border-radius:10px;padding:12px 14px">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:var(--race)">61<span style="font-size:13px;font-family:'Oswald',sans-serif;color:var(--t2)"> mi</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-top:4px">Week · +49% plan</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2: HR trace -->
+    <div class="card" style="padding:24px">
+      <div class="ch">Heart Rate This Run
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--rec);letter-spacing:.04em">138 <span style="font-family:'Oswald',sans-serif;font-size:11px;color:var(--t2)">bpm avg</span></span>
+      </div>
+      <svg width="100%" viewBox="0 0 360 110" preserveAspectRatio="xMidYMid meet" style="display:block;height:110px">
+        <!-- grid -->
+        <line x1="0" y1="20" x2="360" y2="20" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+        <line x1="0" y1="52" x2="360" y2="52" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+        <line x1="0" y1="84" x2="360" y2="84" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+        <!-- zone 2 band 130-148bpm → y 26-65 -->
+        <rect x="0" y="26" width="360" height="39" fill="rgba(62,189,65,.07)" rx="0"/>
+        <text x="6" y="38" font-family="'Oswald',sans-serif" font-size="8" font-weight="600" letter-spacing="1" fill="rgba(62,189,65,.55)">ZONE 2</text>
+        <!-- y axis labels (bpm: 155=y20, 140=y52, 125=y84) -->
+        <text x="354" y="23" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">155</text>
+        <text x="354" y="55" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">140</text>
+        <text x="354" y="87" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">125</text>
+        <!-- area fill -->
+        <path d="M0,68 C28,68 28,54 56,52 C84,50 84,44 112,44 C140,44 140,50 168,48 C196,46 196,40 224,40 C252,40 252,46 280,48 C308,50 308,43 336,42 L360,42 L360,110 L0,110Z" fill="url(#hr-area)"/>
+        <!-- line -->
+        <path d="M0,68 C28,68 28,54 56,52 C84,50 84,44 112,44 C140,44 140,50 168,48 C196,46 196,40 224,40 C252,40 252,46 280,48 C308,50 308,43 336,42 L360,42" fill="none" stroke="var(--rec)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- pulse dot end -->
+        <circle cx="360" cy="42" r="5" fill="var(--rec)"/>
+        <circle cx="360" cy="42" r="10" fill="rgba(62,189,65,.18)"/>
+      </svg>
+      <div style="display:flex;align-items:center;gap:16px;margin-top:12px">
+        <div style="display:flex;align-items:center;gap:6px;font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">
+          <div style="width:10px;height:3px;background:var(--rec);border-radius:2px"></div>HR Trace
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">
+          <div style="width:10px;height:10px;background:rgba(62,189,65,.15);border-radius:2px"></div>Zone 2 · 130–148 bpm
+        </div>
+        <div style="margin-left:auto;font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">1:48:14 total</div>
+      </div>
+    </div>
+
+    <!-- Card 3: Week bars -->
+    <div class="card" style="padding:24px">
+      <div class="ch">Base Week 6
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--race);letter-spacing:.04em">61 <span style="font-family:'Oswald',sans-serif;font-size:11px;color:var(--t2)">mi</span></span>
+      </div>
+      <svg width="100%" viewBox="0 0 308 90" preserveAspectRatio="xMidYMid meet" style="display:block;height:90px">
+        <!-- plan line at y=47 (avg 5.8mi/day vs max 14.4mi, 5.8/14.4×90=36 → y=90-36=54) -->
+        <line x1="0" y1="54" x2="308" y2="54" stroke="rgba(232,128,33,.5)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="304" y="51" text-anchor="end" font-family="'Oswald',sans-serif" font-size="7" font-weight="700" fill="rgba(232,128,33,.7)" letter-spacing="1">PLAN</text>
+        <!-- bars: width=32, gap=12, col=44. 9/14.4×90=56 8.5=53 7=44 11=69 0 14.4=90 11.1=69 -->
+        <!-- Mon easy -->
+        <rect x="0" y="34" width="32" height="56" rx="5" fill="var(--rec)" opacity=".82"/>
+        <!-- Tue quality -->
+        <rect x="44" y="37" width="32" height="53" rx="5" fill="var(--act)" opacity=".82"/>
+        <!-- Wed easy -->
+        <rect x="88" y="46" width="32" height="44" rx="5" fill="var(--rec)" opacity=".82"/>
+        <!-- Thu tempo -->
+        <rect x="132" y="21" width="32" height="69" rx="5" fill="var(--mil)" opacity=".85"/>
+        <!-- Fri rest -->
+        <rect x="176" y="87" width="32" height="3" rx="2" fill="rgba(8,8,8,.1)"/>
+        <!-- Sat easy (max) -->
+        <rect x="220" y="0" width="32" height="90" rx="5" fill="var(--rec)" opacity=".82"/>
+        <!-- Sun long today -->
+        <rect x="264" y="21" width="32" height="69" rx="5" fill="var(--race)"/>
+        <!-- today glow -->
+        <rect x="264" y="21" width="32" height="69" rx="5" fill="none" stroke="var(--race)" stroke-width="2" opacity=".4"/>
+      </svg>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);margin-top:8px;text-align:center">
+        <div><div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Mon</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:var(--t2);margin-top:2px">9.0</div></div>
+        <div><div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Tue</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:var(--t2);margin-top:2px">8.5</div></div>
+        <div><div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Wed</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:var(--t2);margin-top:2px">7.0</div></div>
+        <div><div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Thu</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:var(--t2);margin-top:2px">11.0</div></div>
+        <div><div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Fri</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:var(--t3);margin-top:2px">—</div></div>
+        <div><div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Sat</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:var(--t2);margin-top:2px">14.4</div></div>
+        <div><div style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--race)">Sun</div><div style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:var(--race);margin-top:2px">11.1</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-family:'Inter',sans-serif;font-size:11px;color:var(--t2)">
+        <div style="width:20px;height:1px;border-top:1.5px dashed rgba(232,128,33,.5);flex-shrink:0"></div>
+        Plan avg 5.8 mi/day · 49% over — monitor next week's load
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════
+     D2 · COMMAND SPLIT
+     Dark left panel: coach + gauge.
+     White right: HR trace + week bars.
+════════════════════════════════════════ -->
+<section class="concept" id="d2">
+  <div class="tb dk">
+    <div class="tb-brand">faff.run</div>
+    <div class="tb-tabs">
+      <div class="tb-tab on">Today</div><div class="tb-tab">Training</div><div class="tb-tab">Races</div><div class="tb-tab">Health</div><div class="tb-tab">Log</div>
+    </div>
+    <div class="tb-meta">SUN 24 MAY · 18:42</div>
+  </div>
+  <div class="d2-wrap">
+    <div class="d2-left">
+      <div class="d2-eye">▸ COACH &nbsp; BASE WEEK 6</div>
+      <div class="d2-txt">
+        <p>Great run today. 11.1 at easy pace, HR sat right in the band the whole way. Cadence was a bit low at 160 — for easy that's fine. It actually helps.</p>
+        <p>You've put <strong>61 miles</strong> down this week, well over the 41 planned. The base is solid. AFC is <strong>84 days out</strong>. The next 6 weeks need to be intentional, not just volume.</p>
+        <p>Tomorrow is rest. Take it. Let me know how the legs feel before Tuesday.</p>
+      </div>
+      <div class="d2-nxt">
+        <div class="d2-nxt-lbl">Tomorrow</div>
+        <div class="d2-nxt-val">REST DAY</div>
+        <div style="font-family:'Inter',sans-serif;font-size:12px;color:var(--dkt2);margin-left:4px">Mon May 25</div>
+      </div>
+      <div class="d2-gauge-area">
+        <div class="d2-glbl">Readiness</div>
+        <svg width="160" height="140" viewBox="0 0 200 170">
+          <circle cx="100" cy="100" r="72" fill="none" stroke="rgba(236,238,242,.08)" stroke-width="14" stroke-linecap="round"
+            stroke-dasharray="301.6 151" transform="rotate(150 100 100)"/>
+          <circle cx="100" cy="100" r="72" fill="none" stroke="url(#gauge-grad-dk)" stroke-width="14" stroke-linecap="round"
+            stroke-dasharray="235.2 218" transform="rotate(150 100 100)"/>
+          <text x="100" y="98" text-anchor="middle" font-family="'Bebas Neue',sans-serif" font-size="52" fill="var(--dki)">78</text>
+          <text x="100" y="118" text-anchor="middle" font-family="'Oswald',sans-serif" font-size="9" fill="rgba(236,238,242,.28)" letter-spacing="2">READINESS</text>
+        </svg>
+        <div class="d2-gsub">Ready to train</div>
+        <div class="d2-gmeta">
+          <div class="d2-gm"><div class="d2-gm-v">7.7h</div><div class="d2-gm-l">Sleep</div></div>
+          <div class="d2-gm"><div class="d2-gm-v" style="color:var(--race)">61mi</div><div class="d2-gm-l">Week</div></div>
+          <div class="d2-gm"><div class="d2-gm-v">84d</div><div class="d2-gm-l">AFC</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="d2-right" style="background:var(--bg)">
+      <!-- HR card -->
+      <div class="card" style="padding:24px;flex:1">
+        <div class="ch">Heart Rate This Run
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--rec)">138 <span style="font-family:'Oswald',sans-serif;font-size:11px;color:var(--t2)">bpm avg · Zone 2 ✓</span></span>
+        </div>
+        <svg width="100%" viewBox="0 0 520 130" preserveAspectRatio="xMidYMid meet" style="display:block;height:130px">
+          <line x1="0" y1="22" x2="520" y2="22" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+          <line x1="0" y1="62" x2="520" y2="62" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+          <line x1="0" y1="100" x2="520" y2="100" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+          <rect x="0" y="30" width="520" height="46" fill="rgba(62,189,65,.07)"/>
+          <text x="8" y="44" font-family="'Oswald',sans-serif" font-size="8" font-weight="600" letter-spacing="1" fill="rgba(62,189,65,.5)">ZONE 2 BAND</text>
+          <text x="514" y="25" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">155</text>
+          <text x="514" y="65" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">140</text>
+          <text x="514" y="103" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">125</text>
+          <path d="M0,78 C42,78 42,62 84,60 C126,58 126,50 168,50 C210,50 210,56 252,54 C294,52 294,44 336,44 C378,44 378,52 420,54 C462,56 462,48 500,46 L520,46 L520,130 L0,130Z" fill="url(#hr-area)"/>
+          <path d="M0,78 C42,78 42,62 84,60 C126,58 126,50 168,50 C210,50 210,56 252,54 C294,52 294,44 336,44 C378,44 378,52 420,54 C462,56 462,48 500,46 L520,46" fill="none" stroke="var(--rec)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="520" cy="46" r="5" fill="var(--rec)"/>
+          <circle cx="520" cy="46" r="11" fill="rgba(62,189,65,.18)"/>
+        </svg>
+      </div>
+      <!-- Week bars -->
+      <div class="card" style="padding:24px">
+        <div class="ch">Base Week 6 · 61 mi done <span class="pill p-race">+49% plan</span></div>
+        <svg width="100%" viewBox="0 0 530 80" preserveAspectRatio="xMidYMid meet" style="display:block;height:80px">
+          <line x1="0" y1="47" x2="530" y2="47" stroke="rgba(232,128,33,.4)" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <text x="525" y="44" text-anchor="end" font-family="'Oswald',sans-serif" font-size="7" font-weight="700" fill="rgba(232,128,33,.7)" letter-spacing="1">PLAN</text>
+          <!-- bar width=56, gap=18, col=74, 7×74=518 -->
+          <rect x="0"   y="30" width="56" height="50" rx="5" fill="var(--rec)" opacity=".82"/>
+          <rect x="74"  y="33" width="56" height="47" rx="5" fill="var(--act)" opacity=".82"/>
+          <rect x="148" y="40" width="56" height="40" rx="5" fill="var(--rec)" opacity=".82"/>
+          <rect x="222" y="19" width="56" height="61" rx="5" fill="var(--mil)" opacity=".85"/>
+          <rect x="296" y="77" width="56" height="3"  rx="2" fill="rgba(8,8,8,.1)"/>
+          <rect x="370" y="0"  width="56" height="80" rx="5" fill="var(--rec)" opacity=".82"/>
+          <rect x="444" y="19" width="56" height="61" rx="5" fill="var(--race)"/>
+          <rect x="444" y="19" width="56" height="61" rx="5" fill="none" stroke="var(--race)" stroke-width="2" opacity=".4"/>
+        </svg>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);margin-top:8px;text-align:center">
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Mon<br><span style="color:var(--t2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0">9.0</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Tue<br><span style="color:var(--t2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0">8.5</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Wed<br><span style="color:var(--t2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0">7.0</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Thu<br><span style="color:var(--t2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0">11.0</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Fri<br><span style="color:var(--t3);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0">—</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Sat<br><span style="color:var(--t2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:none;letter-spacing:0">14.4</span></div>
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--race)">Sun<br><span style="color:var(--race);font-family:'Inter',sans-serif;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0">11.1</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════
+     D3 · METRIC STRIP
+     Dark hero: coach left, 4 big metric tiles right.
+     HR chart + week bars below on light bg.
+════════════════════════════════════════ -->
+<section class="concept" id="d3">
+  <div class="tb">
+    <div class="tb-brand">faff.run</div>
+    <div class="tb-tabs">
+      <div class="tb-tab on">Today</div><div class="tb-tab">Training</div><div class="tb-tab">Races</div><div class="tb-tab">Health</div><div class="tb-tab">Log</div>
+    </div>
+    <div class="tb-meta">SUN 24 MAY · 18:42</div>
+  </div>
+  <div class="d3-hero">
+    <div class="d3-inner">
+      <div>
+        <div class="d3-eye">▸ COACH &nbsp;·&nbsp; BASE WEEK 6 &nbsp;·&nbsp; AFC 84 DAYS</div>
+        <div class="d3-txt">
+          <p>Great run today. 11.1 at easy pace, HR sat right in the band. Cadence a bit low at 160 — for easy that's fine. It actually helps.</p>
+          <p>You've put <strong>61 miles</strong> down this week, well over the 41 planned. AFC is 84 days out — real speed work starts this week. Your goal is reachable.</p>
+          <p>Tomorrow is rest. Take it.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:22px;padding-top:18px;border-top:1px solid var(--dkl2)">
+          <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dkt3)">Tomorrow</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.06em;color:var(--rec)">REST DAY</div>
+          <div style="font-family:'Inter',sans-serif;font-size:12px;color:var(--dkt2)">Mon May 25 · Let the week settle.</div>
+        </div>
+      </div>
+      <div class="d3-tiles">
+        <div class="d3-t">
+          <div class="d3-tv">11.1<small> mi</small></div>
+          <div class="d3-tl">Distance</div>
+          <div class="d3-tn" style="display:flex;gap:5px"><span class="pill p-dk" style="font-size:8px">Long Run ✓</span></div>
+        </div>
+        <div class="d3-t">
+          <div class="d3-tv" style="font-size:30px">9:45<small>/mi</small></div>
+          <div class="d3-tl">Avg Pace</div>
+          <div class="d3-tn">Easy zone</div>
+        </div>
+        <div class="d3-t">
+          <div class="d3-tv" style="color:var(--rec)">138<small style="color:var(--dkt3)"> bpm</small></div>
+          <div class="d3-tl">Avg HR</div>
+          <div class="d3-tn" style="display:flex;gap:5px"><span class="pill p-rec" style="font-size:8px">Zone 2 ✓</span></div>
+        </div>
+        <div class="d3-t">
+          <div class="d3-tv" style="color:var(--mil)">160<small style="color:var(--dkt3)"> spm</small></div>
+          <div class="d3-tl">Cadence</div>
+          <div class="d3-tn">Low but fine</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="d3-body">
+    <!-- HR full width -->
+    <div class="card" style="padding:24px">
+      <div class="ch">Heart Rate Trace · Long Run · 1:48:14
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--rec)">138 <span style="font-family:'Oswald',sans-serif;font-size:10px;color:var(--t2)">bpm avg</span></span>
+      </div>
+      <svg width="100%" viewBox="0 0 580 120" preserveAspectRatio="xMidYMid meet" style="display:block;height:120px">
+        <line x1="0" y1="20" x2="580" y2="20" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+        <line x1="0" y1="56" x2="580" y2="56" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+        <line x1="0" y1="92" x2="580" y2="92" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+        <rect x="0" y="26" width="580" height="44" fill="rgba(62,189,65,.07)"/>
+        <text x="8" y="40" font-family="'Oswald',sans-serif" font-size="8" font-weight="600" letter-spacing="1" fill="rgba(62,189,65,.5)">ZONE 2</text>
+        <text x="574" y="23" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">155</text>
+        <text x="574" y="59" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">140</text>
+        <text x="574" y="95" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">125</text>
+        <!-- time labels -->
+        <text x="0" y="112" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">0:00</text>
+        <text x="192" y="112" text-anchor="middle" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">0:30</text>
+        <text x="386" y="112" text-anchor="middle" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">1:00</text>
+        <text x="574" y="112" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">1:48</text>
+        <path d="M0,72 C36,72 36,58 72,56 C108,54 108,48 144,48 C180,48 180,54 216,52 C252,50 252,42 288,42 C324,42 324,50 360,52 C396,54 396,46 432,46 C468,46 468,52 510,50 L580,48 L580,120 L0,120Z" fill="url(#hr-area)"/>
+        <path d="M0,72 C36,72 36,58 72,56 C108,54 108,48 144,48 C180,48 180,54 216,52 C252,50 252,42 288,42 C324,42 324,50 360,52 C396,54 396,46 432,46 C468,46 468,52 510,50 L580,48" fill="none" stroke="var(--rec)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="580" cy="48" r="5" fill="var(--rec)"/>
+        <circle cx="580" cy="48" r="11" fill="rgba(62,189,65,.18)"/>
+      </svg>
+    </div>
+    <!-- Week stacked right -->
+    <div class="card" style="padding:24px">
+      <div class="ch">Week 6 Mileage</div>
+      <svg width="100%" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid meet" style="display:block;height:120px">
+        <line x1="0" y1="65" x2="200" y2="65" stroke="rgba(232,128,33,.4)" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <text x="196" y="62" text-anchor="end" font-family="'Oswald',sans-serif" font-size="7" font-weight="700" fill="rgba(232,128,33,.7)" letter-spacing="1">PLAN</text>
+        <!-- bars w=20, gap=9, col=29. 7×29-9=194 -->
+        <rect x="0"   y="44" width="20" height="76" rx="3" fill="var(--rec)" opacity=".82"/>
+        <rect x="29"  y="48" width="20" height="72" rx="3" fill="var(--act)" opacity=".82"/>
+        <rect x="58"  y="58" width="20" height="62" rx="3" fill="var(--rec)" opacity=".82"/>
+        <rect x="87"  y="28" width="20" height="92" rx="3" fill="var(--mil)" opacity=".85"/>
+        <rect x="116" y="117" width="20" height="3"  rx="2" fill="rgba(8,8,8,.1)"/>
+        <rect x="145" y="0"   width="20" height="120" rx="3" fill="var(--rec)" opacity=".82"/>
+        <rect x="174" y="28"  width="20" height="92" rx="3" fill="var(--race)"/>
+        <rect x="174" y="28"  width="20" height="92" rx="3" fill="none" stroke="var(--race)" stroke-width="1.5" opacity=".5"/>
+      </svg>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);margin-top:8px;text-align:center;gap:2px">
+        <div style="font-family:'Oswald',sans-serif;font-size:7px;font-weight:600;text-transform:uppercase;color:var(--t3)">M<br><span style="font-family:'Inter',sans-serif;font-size:9px;color:var(--t2)">9</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:7px;font-weight:600;text-transform:uppercase;color:var(--t3)">T<br><span style="font-family:'Inter',sans-serif;font-size:9px;color:var(--t2)">8.5</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:7px;font-weight:600;text-transform:uppercase;color:var(--t3)">W<br><span style="font-family:'Inter',sans-serif;font-size:9px;color:var(--t2)">7</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:7px;font-weight:600;text-transform:uppercase;color:var(--t3)">T<br><span style="font-family:'Inter',sans-serif;font-size:9px;color:var(--t2)">11</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:7px;font-weight:600;text-transform:uppercase;color:var(--t3)">F<br><span style="font-family:'Inter',sans-serif;font-size:9px;color:var(--t3)">—</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:7px;font-weight:600;text-transform:uppercase;color:var(--t3)">S<br><span style="font-family:'Inter',sans-serif;font-size:9px;color:var(--t2)">14</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:7px;font-weight:600;text-transform:uppercase;color:var(--race)">S<br><span style="font-family:'Inter',sans-serif;font-size:9px;color:var(--race);font-weight:700">11</span></div>
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--ln)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">Total</span>
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--race);letter-spacing:.04em">61 mi</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">Plan</span>
+          <span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:var(--t2)">41 mi</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════
+     D4 · OVERLAY FLOAT
+     Deep dark hero. Evidence card floats up
+     overlapping the seam. Week below.
+════════════════════════════════════════ -->
+<section class="concept" id="d4">
+  <div class="tb">
+    <div class="tb-brand">faff.run</div>
+    <div class="tb-tabs">
+      <div class="tb-tab on">Today</div><div class="tb-tab">Training</div><div class="tb-tab">Races</div><div class="tb-tab">Health</div><div class="tb-tab">Log</div>
+    </div>
+    <div class="tb-meta">SUN 24 MAY · 18:42</div>
+  </div>
+  <div class="d4-hero">
+    <div class="d4-hero-inner">
+      <div class="d4-eye">▸ COACH · BASE WEEK 6 · AFC 84 DAYS</div>
+      <div class="d4-txt">
+        <p>Great run today. 11.1 at easy pace, HR sat right in the band the whole way. Cadence was a bit low at 160, but for easy that's fine. It actually helps.</p>
+        <p>You've put <strong>61 miles</strong> down this week, well over the 41 planned. You're proving the base is solid. That opens up what we can do next. AFC is 84 days out — the next 6 weeks decide this race.</p>
+        <p>Tomorrow is rest. Take it. Let me know how the legs feel before Tuesday.</p>
+      </div>
+      <div class="d4-nxt">
+        <div class="d4-nxt-lbl">Tomorrow</div>
+        <div class="d4-nxt-val">REST DAY</div>
+        <div class="d4-nxt-note">Mon May 25 · Let the week settle.</div>
+      </div>
+    </div>
+  </div>
+  <!-- Floating evidence card -->
+  <div class="d4-float">
+    <div class="d4-fc">
+      <!-- gauge -->
+      <div class="d4-fc-g">
+        <div class="d4-fc-g-lbl">Readiness</div>
+        <svg width="130" height="116" viewBox="0 0 200 170">
+          <circle cx="100" cy="100" r="72" fill="none" stroke="rgba(8,8,8,.07)" stroke-width="14" stroke-linecap="round"
+            stroke-dasharray="301.6 151" transform="rotate(150 100 100)"/>
+          <circle cx="100" cy="100" r="72" fill="none" stroke="url(#gauge-grad)" stroke-width="14" stroke-linecap="round"
+            stroke-dasharray="235.2 218" transform="rotate(150 100 100)"/>
+          <text x="100" y="98" text-anchor="middle" font-family="'Bebas Neue',sans-serif" font-size="52" fill="#080808">78</text>
+          <text x="100" y="116" text-anchor="middle" font-family="'Oswald',sans-serif" font-size="9" fill="rgba(8,8,8,.3)" letter-spacing="2">READINESS</text>
+        </svg>
+        <div class="d4-fc-g-sub">Ready to train</div>
+      </div>
+      <!-- HR chart -->
+      <div class="d4-fc-hr">
+        <div class="d4-fc-hr-hd">
+          Heart Rate
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--rec)">138 <span style="font-family:'Oswald',sans-serif;font-size:10px;color:var(--t2)">bpm</span></span>
+        </div>
+        <svg width="100%" viewBox="0 0 320 90" preserveAspectRatio="xMidYMid meet" style="display:block;height:90px">
+          <rect x="0" y="18" width="320" height="34" fill="rgba(62,189,65,.07)"/>
+          <text x="4" y="30" font-family="'Oswald',sans-serif" font-size="7" font-weight="600" letter-spacing="1" fill="rgba(62,189,65,.5)">Z2</text>
+          <path d="M0,54 C24,54 24,42 48,40 C72,38 72,34 96,34 C120,34 120,40 144,38 C168,36 168,30 192,30 C216,30 216,36 240,38 C264,40 264,34 296,32 L320,32 L320,90 L0,90Z" fill="url(#hr-area)"/>
+          <path d="M0,54 C24,54 24,42 48,40 C72,38 72,34 96,34 C120,34 120,40 144,38 C168,36 168,30 192,30 C216,30 216,36 240,38 C264,40 264,34 296,32 L320,32" fill="none" stroke="var(--rec)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="320" cy="32" r="4" fill="var(--rec)"/>
+          <circle cx="320" cy="32" r="9" fill="rgba(62,189,65,.18)"/>
+        </svg>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+          <span style="font-family:'Oswald',sans-serif;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Zone 2 all run · 1:48:14</span>
+        </div>
+      </div>
+      <!-- right stats -->
+      <div class="d4-fc-stats">
+        <div class="d4-fs">
+          <div class="d4-fs-v">11.1<span style="font-family:'Oswald',sans-serif;font-size:12px;color:var(--t2)"> mi</span></div>
+          <div class="d4-fs-l">Distance · Long Run</div>
+          <div style="margin-top:4px"><span class="pill p-rec" style="font-size:8px">✓ Done</span></div>
+        </div>
+        <div class="d4-fs">
+          <div class="d4-fs-v" style="font-size:24px">9:45<span style="font-family:'Oswald',sans-serif;font-size:11px;color:var(--t2)"> /mi</span></div>
+          <div class="d4-fs-l">Avg Pace</div>
+        </div>
+        <div class="d4-fs">
+          <div class="d4-fs-v" style="font-size:22px;color:var(--mil)">160<span style="font-family:'Oswald',sans-serif;font-size:11px;color:var(--t2)"> spm</span></div>
+          <div class="d4-fs-l">Cadence · low ok</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Below: week chart -->
+  <div class="d4-below">
+    <div class="card" style="padding:24px;margin-top:20px">
+      <div class="ch">Base Week 6 · All runs logged
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--race)">61 <span style="font-family:'Oswald',sans-serif;font-size:12px;color:var(--t2)">mi vs 41 planned</span></span>
+      </div>
+      <svg width="100%" viewBox="0 0 660 90" preserveAspectRatio="xMidYMid meet" style="display:block;height:90px">
+        <line x1="0" y1="53" x2="660" y2="53" stroke="rgba(232,128,33,.4)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="655" y="50" text-anchor="end" font-family="'Oswald',sans-serif" font-size="7" font-weight="700" fill="rgba(232,128,33,.7)" letter-spacing="1">PLAN AVG</text>
+        <!-- bars w=72, gap=22, col=94, 7×94-22=636 -->
+        <rect x="0"   y="34" width="72" height="56" rx="6" fill="var(--rec)" opacity=".82"/>
+        <rect x="94"  y="38" width="72" height="52" rx="6" fill="var(--act)" opacity=".82"/>
+        <rect x="188" y="46" width="72" height="44" rx="6" fill="var(--rec)" opacity=".82"/>
+        <rect x="282" y="22" width="72" height="68" rx="6" fill="var(--mil)" opacity=".85"/>
+        <rect x="376" y="87" width="72" height="3"  rx="3" fill="rgba(8,8,8,.1)"/>
+        <rect x="470" y="0"  width="72" height="90" rx="6" fill="var(--rec)" opacity=".82"/>
+        <rect x="564" y="22" width="72" height="68" rx="6" fill="var(--race)"/>
+        <rect x="564" y="22" width="72" height="68" rx="6" fill="none" stroke="var(--race)" stroke-width="2" opacity=".5"/>
+      </svg>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);margin-top:10px;text-align:center">
+        <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t3)">Mon<br><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:none">9.0 mi</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t3)">Tue<br><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:none">8.5 mi</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t3)">Wed<br><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:none">7.0 mi</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t3)">Thu<br><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:none">11.0 mi</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t3)">Fri<br><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:400;color:var(--t3);text-transform:none">rest</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--t3)">Sat<br><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:none">14.4 mi</span></div>
+        <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;color:var(--race)">Sun<br><span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:var(--race);text-transform:none">11.1 mi</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════
+     D5 · SIDEBAR
+     Fixed dark sidebar, coach voice lives there.
+     Light right: metrics + HR chart + week bars.
+════════════════════════════════════════ -->
+<section class="concept" id="d5">
+  <div class="tb dk">
+    <div class="tb-brand">faff.run</div>
+    <div class="tb-tabs">
+      <div class="tb-tab on">Today</div><div class="tb-tab">Training</div><div class="tb-tab">Races</div><div class="tb-tab">Health</div><div class="tb-tab">Log</div>
+    </div>
+    <div class="tb-meta">SUN 24 MAY · 18:42</div>
+  </div>
+  <div class="d5-wrap">
+    <div class="d5-left">
+      <div class="d5-eye">▸ Coach</div>
+      <div class="d5-date">SUN<br>24</div>
+      <div class="d5-wk">BASE WEEK 6 · AFC 84 DAYS</div>
+      <div class="d5-txt">
+        <p>Great run today. 11.1 at easy pace, HR sat right in the band the whole way. Cadence was a bit low at 160, but for easy that's fine. It actually helps.</p>
+        <p>You've put <strong>61 miles</strong> down this week, well over the 41 planned. You're proving the base is solid and the body's holding up. That opens up what we can do next.</p>
+        <p>AFC is 84 days out. Real speed work starts this week. The next 6 weeks need to be intentional — not just volume. Your goal is reachable.</p>
+        <p>Tomorrow is rest. Take it. Let me know how the legs feel before Tuesday.</p>
+      </div>
+      <div class="d5-nxt">
+        <div class="d5-nxt-lbl">Tomorrow</div>
+        <div class="d5-nxt-val">REST DAY</div>
+        <div class="d5-nxt-note">Mon May 25 · Let the week settle.</div>
+      </div>
+    </div>
+    <div class="d5-right">
+      <div class="d5-mrow">
+        <div class="d5-m">
+          <div class="d5-mv">11.1<small> mi</small></div>
+          <div class="d5-ml">Distance · Long Run</div>
+          <div style="margin-top:6px"><span class="pill p-rec" style="font-size:8px">✓ Done</span></div>
+        </div>
+        <div class="d5-m">
+          <div class="d5-mv" style="font-size:30px">9:45<small>/mi</small></div>
+          <div class="d5-ml">Avg Pace</div>
+          <div style="margin-top:6px"><span class="pill p-rec" style="font-size:8px">Easy zone</span></div>
+        </div>
+        <div class="d5-m">
+          <div class="d5-mv" style="color:var(--rec)">138<small style="color:var(--t2)"> bpm</small></div>
+          <div class="d5-ml">Avg HR</div>
+          <div style="margin-top:6px"><span class="pill p-rec" style="font-size:8px">Zone 2 ✓</span></div>
+        </div>
+        <div class="d5-m">
+          <div class="d5-mv" style="color:var(--mil)">160<small style="color:var(--t2)"> spm</small></div>
+          <div class="d5-ml">Cadence</div>
+          <div style="margin-top:6px"><span class="pill p-mil" style="font-size:8px">Low — ok</span></div>
+        </div>
+      </div>
+      <div class="d5-charts">
+        <!-- HR chart -->
+        <div class="card" style="padding:22px">
+          <div class="ch">Heart Rate · 1:48:14
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--rec)">138 bpm</span>
+          </div>
+          <svg width="100%" viewBox="0 0 460 110" preserveAspectRatio="xMidYMid meet" style="display:block;height:110px">
+            <line x1="0" y1="20" x2="460" y2="20" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+            <line x1="0" y1="56" x2="460" y2="56" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+            <line x1="0" y1="90" x2="460" y2="90" stroke="rgba(8,8,8,.05)" stroke-width="1"/>
+            <rect x="0" y="26" width="460" height="42" fill="rgba(62,189,65,.07)"/>
+            <text x="6" y="39" font-family="'Oswald',sans-serif" font-size="8" font-weight="600" letter-spacing="1" fill="rgba(62,189,65,.5)">ZONE 2</text>
+            <text x="454" y="23" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">155</text>
+            <text x="454" y="59" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">140</text>
+            <text x="454" y="93" text-anchor="end" font-family="'Oswald',sans-serif" font-size="8" fill="rgba(8,8,8,.22)">125</text>
+            <path d="M0,68 C32,68 32,52 64,50 C96,48 96,42 128,42 C160,42 160,48 192,46 C224,44 224,38 256,38 C288,38 288,44 320,46 C352,48 352,40 400,40 L460,40 L460,110 L0,110Z" fill="url(#hr-area)"/>
+            <path d="M0,68 C32,68 32,52 64,50 C96,48 96,42 128,42 C160,42 160,48 192,46 C224,44 224,38 256,38 C288,38 288,44 320,46 C352,48 352,40 400,40 L460,40" fill="none" stroke="var(--rec)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="460" cy="40" r="5" fill="var(--rec)"/>
+            <circle cx="460" cy="40" r="11" fill="rgba(62,189,65,.18)"/>
+          </svg>
+        </div>
+        <!-- Gauge + week stacked -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card" style="padding:22px;display:flex;flex-direction:column;align-items:center">
+            <div style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin-bottom:8px">Readiness</div>
+            <svg width="140" height="120" viewBox="0 0 200 170">
+              <circle cx="100" cy="100" r="72" fill="none" stroke="rgba(8,8,8,.07)" stroke-width="14" stroke-linecap="round"
+                stroke-dasharray="301.6 151" transform="rotate(150 100 100)"/>
+              <circle cx="100" cy="100" r="72" fill="none" stroke="url(#gauge-grad)" stroke-width="14" stroke-linecap="round"
+                stroke-dasharray="235.2 218" transform="rotate(150 100 100)"/>
+              <text x="100" y="96" text-anchor="middle" font-family="'Bebas Neue',sans-serif" font-size="52" fill="#080808">78</text>
+              <text x="100" y="116" text-anchor="middle" font-family="'Oswald',sans-serif" font-size="9" fill="rgba(8,8,8,.3)" letter-spacing="2">READINESS</text>
+            </svg>
+            <div style="font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;color:var(--rec);margin-top:4px">Ready to train</div>
+          </div>
+          <div class="card" style="padding:22px;flex:1">
+            <div class="ch">Week 6</div>
+            <svg width="100%" viewBox="0 0 200 80" preserveAspectRatio="xMidYMid meet" style="display:block;height:80px">
+              <line x1="0" y1="47" x2="200" y2="47" stroke="rgba(232,128,33,.4)" stroke-width="1.5" stroke-dasharray="4 3"/>
+              <rect x="0"   y="30" width="22" height="50" rx="3" fill="var(--rec)" opacity=".82"/>
+              <rect x="29"  y="33" width="22" height="47" rx="3" fill="var(--act)" opacity=".82"/>
+              <rect x="58"  y="41" width="22" height="39" rx="3" fill="var(--rec)" opacity=".82"/>
+              <rect x="87"  y="20" width="22" height="60" rx="3" fill="var(--mil)" opacity=".85"/>
+              <rect x="116" y="77" width="22" height="3"  rx="2" fill="rgba(8,8,8,.1)"/>
+              <rect x="145" y="0"  width="22" height="80" rx="3" fill="var(--rec)" opacity=".82"/>
+              <rect x="174" y="20" width="22" height="60" rx="3" fill="var(--race)"/>
+            </svg>
+            <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--ln)">
+              <span style="font-family:'Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)">Total</span>
+              <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--race);letter-spacing:.04em">61 mi</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+const secs = document.querySelectorAll('.concept');
+const links = document.querySelectorAll('.cnav a');
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting && e.intersectionRatio > 0.3) {
+      links.forEach(l => l.classList.remove('on'));
+      const l = document.querySelector(`.cnav a[href="#${e.target.id}"]`);
+      if (l) l.classList.add('on');
+    }
+  });
+}, {threshold: 0.3});
+secs.forEach(s => io.observe(s));
+</script>
+</body>
+</html>

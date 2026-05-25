@@ -1,21 +1,24 @@
 /**
- * notable-thing · pick the ONE observation worth telling the runner.
+ * notable-thing · DEPRECATED.
  *
- * Per the coach voice doctrine (see docs/COACH_TODAY_SPEC.md §6), every
- * post-run briefing names ONE thing about the run, not five. This module
- * picks that one thing from the available run data + the runner's
- * baselines, ranked by what a coach would actually notice.
+ * This module was an attempt at a deterministic ranker — me playing coach
+ * by pre-picking what's "notable" about a run before passing it to the
+ * LLM. Per the locked principle in docs/coach/PHILOSOPHY.md ("Let the
+ * coach decide"), this is exactly what we shouldn't do.
  *
- * Ranking (highest priority first):
- *   1. Form / cadence off baseline (cadence low for easy, etc.)
- *   2. HR drift unusual for the workout type
- *   3. Pace pattern (fade, surge, splits inconsistency)
- *   4. Conditions impact (heat / humidity / wind shifted the run)
- *   5. PR or new ground (longest, fastest, etc.)
+ * The current model: feed the coach rich data + research excerpts +
+ * runner baselines + the runner's plan. Coach observes everything,
+ * cross-references the research, forms opinions, decides what's worth
+ * surfacing. No pre-picked notable-thing.
  *
- * Returns a short human-readable string the coach prompt embeds, OR
- * null when nothing notable warrants saying. Nothing notable is a valid
- * outcome — coach moves to meta-pattern observations instead.
+ * Do NOT import this in new code. Kept for reference / historical
+ * record; will be deleted once we've confirmed no callers remain.
+ *
+ * See docs/coach/PHILOSOPHY.md → "Three locked principles" → "1. Let
+ * the coach decide" for why this exists as a cautionary tale.
+ *
+ * Replaced by: web/coach/prompts/daily-briefing.md (the prompt that
+ * gives the LLM rich state + research and asks it to decide).
  */
 
 export interface NotableThingInputs {
