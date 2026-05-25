@@ -55,20 +55,22 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
         style={{
           padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14,
           textAlign: 'left', cursor: 'pointer',
-          border: '1px solid rgba(252,77,100,0.25)', background: 'rgba(252,77,100,0.04)',
+          // Higher contrast — the previous 4% red wash + 25% border was almost invisible
+          // on dark backgrounds. Use a stronger amber tone (this is a "needed", not an "error").
+          border: '1px solid rgba(243,173,56,0.40)', background: 'rgba(243,173,56,0.07)',
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--over)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 4 }}>
-            MISSING
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--goal)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 4, fontWeight: 700 }}>
+            COACH NEEDS
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>{label}</div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 2 }}>{why}</div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)' }}>{label}</div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'rgba(246,247,248,0.65)', marginTop: 2 }}>{why}</div>
         </div>
         <span style={{
-          background: 'rgba(252,77,100,0.12)', color: 'var(--over)',
-          border: '1px solid rgba(252,77,100,0.25)', borderRadius: 999,
-          padding: '7px 14px', fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px',
+          background: 'var(--goal)', color: '#1a1300',
+          border: 'none', borderRadius: 999,
+          padding: '7px 14px', fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px', fontWeight: 700,
         }}>+ ADD</span>
       </button>
     );

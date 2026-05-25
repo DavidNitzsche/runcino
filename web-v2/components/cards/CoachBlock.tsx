@@ -11,7 +11,7 @@ export function CoachBlock({
   lead,
   voice,
   briefingId,
-  askPrompt = 'Let me know how it felt.',
+  askPrompt = 'How did the run feel?',
 }: {
   lead?: string;
   voice: string[];

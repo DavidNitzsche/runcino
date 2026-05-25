@@ -38,7 +38,7 @@ export function ReadinessChipTrigger({ breakdown }: { breakdown: RB }) {
         <div
           onClick={() => setOpen(false)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+            position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
             zIndex: 50,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
           }}
@@ -46,7 +46,12 @@ export function ReadinessChipTrigger({ breakdown }: { breakdown: RB }) {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 20,
+              // Opaque, slightly raised. Was var(--card) which is semi-transparent
+              // and washed out against the blurred page underneath.
+              background: '#181a1d',
+              border: '1px solid rgba(255,255,255,0.10)',
+              boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
+              borderRadius: 20,
               padding: '28px 32px', maxWidth: 480, width: '100%', maxHeight: '80vh', overflow: 'auto',
             }}
           >

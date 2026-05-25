@@ -230,10 +230,10 @@ function SkeletonBars() {
 
 function askPromptFor(mode: string): string {
   switch (mode) {
-    case 'post-run':  return 'Let me know how it felt.';
-    case 'pre-run':   return 'How are the legs?';
-    case 'rest-day':  return 'Anything sore?';
-    case 'race-day':  return 'Ready?';
-    default:          return 'Let me know.';
+    case 'post-run':  return 'How did the run feel?';
+    case 'pre-run':   return 'How are the legs this morning?';
+    case 'rest-day':  return 'How are you feeling today?';
+    case 'race-day':  return 'Ready for race day?';
+    default:          return 'How are you feeling?';
   }
 }

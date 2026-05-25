@@ -146,7 +146,11 @@ function todayLabel(iso: string | undefined): string {
 }
 
 function timeOfDayGreeting(): string {
-  const h = new Date().getHours();
+  // Server-rendered in UTC on Railway — that gave "Night" at 4pm PT.
+  // Hard-coded to America/Los_Angeles for now; flips to user.timezone when auth lands.
+  const h = parseInt(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false,
+  }).format(new Date()), 10);
   if (h < 5)  return 'Late night';
   if (h < 12) return 'Morning';
   if (h < 17) return 'Afternoon';

@@ -17,43 +17,42 @@ export function TodayPlannedCard({ today, weekDays }: {
   const todayDay = weekDays.find((d) => d.date === today);
   if (!todayDay) return null;
 
-  const ran = todayDay.doneMi > 0 && todayDay.activityId;
+  // Real run = at least 0.5mi (filters out trivial walks / GPS noise).
+  // We don't require an activityId — runs from the watch w/o Strava sync
+  // still have doneMi set in glance.
+  const ran = todayDay.doneMi >= 0.5;
   const isRest = todayDay.plannedType === 'rest' || todayDay.plannedMi === 0;
 
-  // 1. Already ran today
+  // 1. Already ran today — collapse: the right-rail "YOUR RUN COMPLETED"
+  // card already shows the recap. Here on the left we just acknowledge
+  // it's done and point at the run-detail rather than the planned target.
   if (ran) {
-    return (
-      <Link href={`/runs/${encodeURIComponent(todayDay.activityId!)}`}
-        className="card"
-        style={{
-          display: 'block',
-          background: 'linear-gradient(135deg, rgba(62,189,65,0.10), rgba(62,189,65,0.02))',
-          borderColor: 'rgba(62,189,65,0.30)',
-          padding: '20px 24px',
-        }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase' }}>
-            YOUR RUN
-          </div>
-          <div style={{
-            background: 'rgba(62,189,65,0.14)', color: 'var(--green)',
-            padding: '3px 9px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '1.2px',
-          }}>COMPLETED</div>
-        </div>
+    const card = (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr auto', gap: 18, alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 32, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1 }}>
-              {labelFor(todayDay.plannedType)} · {todayDay.doneMi.toFixed(1)} MI
-            </div>
-          </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: 'var(--green)', letterSpacing: '1.2px' }}>
+          background: 'rgba(62,189,65,0.14)', color: 'var(--green)',
+          padding: '3px 9px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '1.2px',
+        }}>DONE</div>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1 }}>
+          {labelFor(todayDay.plannedType)} · {todayDay.doneMi.toFixed(1)} MI
+        </div>
+        {todayDay.activityId && (
+          <div style={{ marginLeft: 'auto', fontFamily: 'var(--f-display)', fontSize: 12, color: 'var(--green)', letterSpacing: '1.2px' }}>
             SPLITS →
           </div>
-        </div>
-      </Link>
+        )}
+      </div>
     );
+    const wrapper: React.CSSProperties = {
+      display: 'block',
+      background: 'linear-gradient(135deg, rgba(62,189,65,0.08), rgba(62,189,65,0.02))',
+      borderColor: 'rgba(62,189,65,0.28)',
+      padding: '18px 22px',
+    };
+    if (todayDay.activityId) {
+      return <Link href={`/runs/${encodeURIComponent(todayDay.activityId)}`} className="card" style={wrapper}>{card}</Link>;
+    }
+    return <div className="card" style={wrapper}>{card}</div>;
   }
 
   // 2. Rest day

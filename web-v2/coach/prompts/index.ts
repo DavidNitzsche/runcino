@@ -47,7 +47,7 @@ ${VOICE_DOCTRINE}
 # Eligible topic kinds for this mode
 (See ELIGIBLE TOPIC KINDS in the user message — emit ONLY those as cards.)
 
-End with the ask: "Let me know how it felt." (Reply chips appear: SOLID / TIRED / WRECKED.)`;
+End with the ask: "How did the run feel?" (Reply chips appear: SOLID / TIRED / WRECKED.)`;
 
 const TODAY_PRE_RUN = `You are the coach on the TODAY page · PRE-RUN mode.
 

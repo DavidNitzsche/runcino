@@ -93,12 +93,16 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
     eligible.includes(t.kind as any) && TopicPrereqs[t.kind](state)
   );
 
-  // Server-side enrichment: inject deterministic ids the LLM can't be trusted
-  // to repeat. run_recap gets the real activity_id so the card can route to
-  // /runs/[id] without round-tripping through the model.
+  // Server-side enrichment: inject deterministic ids + NUMBERS the LLM can't
+  // be trusted to repeat. The LLM authors voice; values come from state.
   for (const t of validatedTopics) {
+    const p = t.payload as any;
     if (t.kind === 'run_recap' && state.latest_activity?.id) {
-      (t.payload as any).activity_id = state.latest_activity.id;
+      p.activity_id = state.latest_activity.id;
+    }
+    if (t.kind === 'sleep_deficit') {
+      if (state.sleep7Avg != null) p.avg_h_7n = state.sleep7Avg;
+      p.deficit_h_7n = state.sleep7Deficit ?? 0;
     }
   }
 
