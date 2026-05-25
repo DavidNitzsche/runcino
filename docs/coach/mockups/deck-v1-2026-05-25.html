@@ -368,12 +368,16 @@
   .week-ahead {
     background: var(--card); border: 1px solid var(--line); border-radius: 16px;
     padding: 22px 24px;
+    display: flex; flex-direction: column;
   }
   .week-ahead .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
   .week-ahead .head .title { font-family: var(--f-display); font-size: 22px; letter-spacing: 0.5px; }
   .week-ahead .head .total { font-family: var(--f-display); font-size: 18px; color: var(--mute); letter-spacing: 0.5px; }
-  .week-ahead .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-  .week-ahead .d { background: rgba(255,255,255,0.025); border-radius: 10px; padding: 12px 10px; }
+  .week-ahead .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; flex: 1; }
+  .week-ahead .d {
+    background: rgba(255,255,255,0.025); border-radius: 10px; padding: 14px 11px;
+    display: flex; flex-direction: column;
+  }
   .week-ahead .d.today { background: rgba(62,189,65,0.10); border: 1px solid rgba(62,189,65,0.30); }
   .week-ahead .d.rest .mi { color: var(--dim); }
   .week-ahead .d .dow { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: 1.4px; }
@@ -383,6 +387,25 @@
   .week-ahead .d.quality .typ { color: var(--goal); }
   .week-ahead .d.long .typ { color: var(--dist); }
   .week-ahead .d.race .typ { color: var(--race); }
+  /* Targets — bottom-anchored line per day cell, makes the card carry information instead of empty space */
+  .week-ahead .d .target {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--line-2);
+    font-family: var(--f-body);
+    font-size: 11px;
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    line-height: 1.4;
+  }
+  .week-ahead .d .target .hr {
+    display: block;
+    font-size: 9px; font-weight: 600; color: var(--mute);
+    letter-spacing: 0.8px; text-transform: uppercase;
+    margin-top: 3px;
+  }
+  .week-ahead .d.rest .target { color: var(--dim); }
 
   /* Section break for state matrix view */
   .matrix-grid { display: grid; gap: 24px; }
@@ -770,13 +793,13 @@
       <div class="week-ahead" style="margin-bottom:24px;">
         <div class="head"><div class="title">THIS WEEK · BASE 2</div><div class="total"><span style="color:var(--mute);">0.0</span> / 43.8 MI</div></div>
         <div class="days">
-          <div class="d today"><div class="dow">MON</div><div class="mi">5.8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
-          <div class="d quality"><div class="dow">TUE</div><div class="mi">7.9</div><div class="typ">CRUISE INT.</div></div>
-          <div class="d"><div class="dow">WED</div><div class="mi">5.8</div><div class="typ">EASY</div></div>
-          <div class="d"><div class="dow">THU</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
-          <div class="d"><div class="dow">FRI</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
-          <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
-          <div class="d long"><div class="dow">SUN</div><div class="mi">12.1</div><div class="typ">LONG</div></div>
+          <div class="d today"><div class="dow">MON</div><div class="mi">5.8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div><div class="target">9:00 /mi<span class="hr">HR &lt; 140</span></div></div>
+          <div class="d quality"><div class="dow">TUE</div><div class="mi">7.9</div><div class="typ">CRUISE INT.</div><div class="target">6:48 /mi<span class="hr">4 × 1 MI · 90S FLOAT</span></div></div>
+          <div class="d"><div class="dow">WED</div><div class="mi">5.8</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">RECOVERY</span></div></div>
+          <div class="d"><div class="dow">THU</div><div class="mi">6.1</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">HR &lt; 140</span></div></div>
+          <div class="d"><div class="dow">FRI</div><div class="mi">6.1</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">PRE-LONG</span></div></div>
+          <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div><div class="target">SLEEP +1H<span class="hr">RECOVERY DAY</span></div></div>
+          <div class="d long"><div class="dow">SUN</div><div class="mi">12.1</div><div class="typ">LONG</div><div class="target">8:50 /mi<span class="hr">HR &lt; 145 · FUEL @45'</span></div></div>
         </div>
       </div>
 
@@ -986,13 +1009,13 @@
         <div class="week-ahead">
           <div class="head"><div class="title">WEEK AHEAD</div><div class="total">43.8 MI</div></div>
           <div class="days">
-            <div class="d today"><div class="dow">MON</div><div class="mi">5.8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
-            <div class="d quality"><div class="dow">TUE</div><div class="mi">7.9</div><div class="typ">CRUISE INT.</div></div>
-            <div class="d"><div class="dow">WED</div><div class="mi">5.8</div><div class="typ">EASY</div></div>
-            <div class="d"><div class="dow">THU</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
-            <div class="d"><div class="dow">FRI</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
-            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
-            <div class="d long"><div class="dow">SUN</div><div class="mi">12.1</div><div class="typ">LONG</div></div>
+            <div class="d today"><div class="dow">MON</div><div class="mi">5.8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div><div class="target">9:00 /mi<span class="hr">HR &lt; 140</span></div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">7.9</div><div class="typ">CRUISE INT.</div><div class="target">6:48 /mi<span class="hr">4 × 1 MI · 90S FLOAT</span></div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">5.8</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">RECOVERY</span></div></div>
+            <div class="d"><div class="dow">THU</div><div class="mi">6.1</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">HR &lt; 140</span></div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">6.1</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">PRE-LONG</span></div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div><div class="target">SLEEP +1H<span class="hr">RECOVERY DAY</span></div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">12.1</div><div class="typ">LONG</div><div class="target">8:50 /mi<span class="hr">HR &lt; 145 · FUEL @45'</span></div></div>
           </div>
         </div>
         <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:16px;padding:22px 24px;">
@@ -1057,13 +1080,13 @@
         <div class="week-ahead">
           <div class="head"><div class="title">WEEK AHEAD</div><div class="total">60 MI</div></div>
           <div class="days">
-            <div class="d today"><div class="dow">MON</div><div class="mi">7</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
-            <div class="d quality"><div class="dow">TUE</div><div class="mi">9</div><div class="typ">5 × 1K @ I</div></div>
-            <div class="d"><div class="dow">WED</div><div class="mi">8</div><div class="typ">EASY</div></div>
-            <div class="d quality"><div class="dow">THU</div><div class="mi">10</div><div class="typ">TEMPO 5K</div></div>
-            <div class="d"><div class="dow">FRI</div><div class="mi">7</div><div class="typ">EASY</div></div>
-            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
-            <div class="d long"><div class="dow">SUN</div><div class="mi">15</div><div class="typ">LONG + MP</div></div>
+            <div class="d today"><div class="dow">MON</div><div class="mi">7</div><div class="typ" style="color:var(--green);">EASY · TODAY</div><div class="target">9:00 /mi<span class="hr">HR &lt; 140</span></div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">9</div><div class="typ">5 × 1K @ I</div><div class="target">3:45 /K<span class="hr">2:30 JOG RECOVERY</span></div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">8</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">RECOVERY</span></div></div>
+            <div class="d quality"><div class="dow">THU</div><div class="mi">10</div><div class="typ">TEMPO 5K</div><div class="target">6:35 /mi<span class="hr">5K STEADY @ T</span></div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">7</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">PRE-LONG</span></div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div><div class="target">SLEEP +1H<span class="hr">RECOVERY DAY</span></div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">15</div><div class="typ">LONG + MP</div><div class="target">8:30 /mi<span class="hr">5 MI @ 6:52 MP</span></div></div>
           </div>
         </div>
         <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:16px;padding:22px 24px;">
@@ -1117,13 +1140,13 @@
         <div class="week-ahead">
           <div class="head"><div class="title">WEEK AHEAD</div><div class="total">75 MI</div></div>
           <div class="days">
-            <div class="d today"><div class="dow">MON</div><div class="mi">8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
-            <div class="d quality"><div class="dow">TUE</div><div class="mi">12</div><div class="typ">3 × 2 MI @ T</div></div>
-            <div class="d"><div class="dow">WED</div><div class="mi">9</div><div class="typ">EASY</div></div>
-            <div class="d quality"><div class="dow">THU</div><div class="mi">11</div><div class="typ">HALF-MP TT</div></div>
-            <div class="d"><div class="dow">FRI</div><div class="mi">8</div><div class="typ">EASY</div></div>
-            <div class="d"><div class="dow">SAT</div><div class="mi">6</div><div class="typ">EASY + STR</div></div>
-            <div class="d long"><div class="dow">SUN</div><div class="mi">21</div><div class="typ">LONG · MP MILES</div></div>
+            <div class="d today"><div class="dow">MON</div><div class="mi">8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div><div class="target">9:00 /mi<span class="hr">HR &lt; 140</span></div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">12</div><div class="typ">3 × 2 MI @ T</div><div class="target">6:35 /mi<span class="hr">2 MIN FLOAT · HR ~162</span></div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">9</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">RECOVERY</span></div></div>
+            <div class="d quality"><div class="dow">THU</div><div class="mi">11</div><div class="typ">HALF-MP TT</div><div class="target">6:52 /mi<span class="hr">8 MI · RACE EFFORT</span></div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">8</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">FLUSH OUT</span></div></div>
+            <div class="d"><div class="dow">SAT</div><div class="mi">6</div><div class="typ">EASY + STR</div><div class="target">9:00 /mi<span class="hr">4 × 20S STRIDES</span></div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">21</div><div class="typ">LONG · MP MILES</div><div class="target">8:20 /mi<span class="hr">8 MI @ 6:52 MP</span></div></div>
           </div>
         </div>
         <div style="background:linear-gradient(180deg,rgba(176,132,255,0.06),rgba(176,132,255,0) 70%);border:1px solid rgba(176,132,255,0.22);border-radius:16px;padding:22px 24px;">
@@ -1176,13 +1199,13 @@
         <div class="week-ahead">
           <div class="head"><div class="title">WEEK AHEAD</div><div class="total">45 MI</div></div>
           <div class="days">
-            <div class="d today"><div class="dow">MON</div><div class="mi">6</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
-            <div class="d quality"><div class="dow">TUE</div><div class="mi">7</div><div class="typ">3 × 1 MI @ T</div></div>
-            <div class="d"><div class="dow">WED</div><div class="mi">6</div><div class="typ">EASY</div></div>
-            <div class="d quality"><div class="dow">THU</div><div class="mi">8</div><div class="typ">MP MILES (4)</div></div>
-            <div class="d"><div class="dow">FRI</div><div class="mi">5</div><div class="typ">EASY + STR</div></div>
-            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
-            <div class="d long"><div class="dow">SUN</div><div class="mi">13</div><div class="typ">LONG · EASY</div></div>
+            <div class="d today"><div class="dow">MON</div><div class="mi">6</div><div class="typ" style="color:var(--green);">EASY · TODAY</div><div class="target">9:00 /mi<span class="hr">HR &lt; 140</span></div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">7</div><div class="typ">3 × 1 MI @ T</div><div class="target">6:35 /mi<span class="hr">90S FLOAT · STAY SMOOTH</span></div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">6</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">RECOVERY</span></div></div>
+            <div class="d quality"><div class="dow">THU</div><div class="mi">8</div><div class="typ">MP MILES (4)</div><div class="target">6:52 /mi<span class="hr">4 × 1 MI @ MP</span></div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">5</div><div class="typ">EASY + STR</div><div class="target">9:00 /mi<span class="hr">4 × 20S STRIDES</span></div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div><div class="target">SLEEP PRIORITY<span class="hr">TAPER NERVES OK</span></div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">13</div><div class="typ">LONG · EASY</div><div class="target">9:00 /mi<span class="hr">NO MP TODAY · HR &lt; 145</span></div></div>
           </div>
         </div>
         <div style="background:linear-gradient(180deg,rgba(243,173,56,0.06),rgba(243,173,56,0) 70%);border:1px solid rgba(243,173,56,0.22);border-radius:16px;padding:22px 24px;">
@@ -1224,13 +1247,13 @@
         <div class="week-ahead">
           <div class="head"><div class="title">RACE WEEK</div><div class="total">28 MI</div></div>
           <div class="days">
-            <div class="d today"><div class="dow">MON</div><div class="mi">5</div><div class="typ" style="color:var(--green);">EASY + STR · TODAY</div></div>
-            <div class="d quality"><div class="dow">TUE</div><div class="mi">6</div><div class="typ">3 × 800 @ MP</div></div>
-            <div class="d"><div class="dow">WED</div><div class="mi">5</div><div class="typ">EASY</div></div>
-            <div class="d"><div class="dow">THU</div><div class="mi">4</div><div class="typ">EASY + STR</div></div>
-            <div class="d"><div class="dow">FRI</div><div class="mi">3</div><div class="typ">SHAKEOUT</div></div>
-            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
-            <div class="d race"><div class="dow">SUN</div><div class="mi">13.1</div><div class="typ">AFC HALF</div></div>
+            <div class="d today"><div class="dow">MON</div><div class="mi">5</div><div class="typ" style="color:var(--green);">EASY + STR · TODAY</div><div class="target">9:00 /mi<span class="hr">4 × 20S STRIDES</span></div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">6</div><div class="typ">3 × 800 @ MP</div><div class="target">6:52 /mi<span class="hr">400 JOG RECOVERY</span></div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">5</div><div class="typ">EASY</div><div class="target">9:00 /mi<span class="hr">CONVERSATIONAL</span></div></div>
+            <div class="d"><div class="dow">THU</div><div class="mi">4</div><div class="typ">EASY + STR</div><div class="target">9:00 /mi<span class="hr">4 × 20S STRIDES</span></div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">3</div><div class="typ">SHAKEOUT</div><div class="target">9:30 /mi<span class="hr">VERY EASY · LAST RUN</span></div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div><div class="target">EARLY BED<span class="hr">FEET UP · HYDRATE</span></div></div>
+            <div class="d race"><div class="dow">SUN</div><div class="mi">13.1</div><div class="typ">AFC HALF</div><div class="target">6:52 /mi<span class="hr">GOAL 1:30:00</span></div></div>
           </div>
         </div>
         <div style="background:linear-gradient(180deg,rgba(255,136,71,0.06),rgba(255,136,71,0) 70%);border:1px solid rgba(255,136,71,0.22);border-radius:16px;padding:22px 24px;">
