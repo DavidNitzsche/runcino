@@ -10,6 +10,7 @@
 		0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */; };
 		063930F921E1B26E274CC6A1 /* TrainingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C81CA1D7127B12E871854210 /* TrainingView.swift */; };
 		13B4162B4830A44A709F20B2 /* Cards.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBCEB932B2D6CD7DB54198CE /* Cards.swift */; };
+		16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139264554EDD5A64F64E384F /* Assets.xcassets */; };
 		21BAA9938430A3B59A7DA1FF /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
 		661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E27550579AE4BDFA95531DD /* Fonts.swift */; };
@@ -27,6 +28,7 @@
 /* Begin PBXFileReference section */
 		03B7740393796CCA0A47FB2D /* CoachBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachBlock.swift; sourceTree = "<group>"; };
 		0743519D766EECA60297B74F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		139264554EDD5A64F64E384F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2600BF38DD79CB8A08592B03 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		266E02CD612D7BE0F5CEB511 /* RacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RacesView.swift; sourceTree = "<group>"; };
 		29E036C5FD2EC231D2FCDC1A /* Watch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watch.swift; sourceTree = "<group>"; };
@@ -96,6 +98,7 @@
 			isa = PBXGroup;
 			children = (
 				CD71B88D7D0751ABFACD1479 /* API.swift */,
+				139264554EDD5A64F64E384F /* Assets.xcassets */,
 				3C2B62D9179AAC7D41426156 /* FaffApp.swift */,
 				4E27550579AE4BDFA95531DD /* Fonts.swift */,
 				0743519D766EECA60297B74F /* Info.plist */,
@@ -124,6 +127,7 @@
 			buildConfigurationList = 86D9C3CDB32A47295A6B93AA /* Build configuration list for PBXNativeTarget "Faff" */;
 			buildPhases = (
 				BDEA2FD24F3637461F07E44C /* Sources */,
+				733C4A07DD91440E96DCFCD0 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -169,6 +173,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		733C4A07DD91440E96DCFCD0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		BDEA2FD24F3637461F07E44C /* Sources */ = {
@@ -280,7 +295,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -298,7 +313,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};

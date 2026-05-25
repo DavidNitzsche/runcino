@@ -58,10 +58,14 @@
   }
   .cap b { color: var(--ink); font-weight: 600; }
 
-  /* ===== Apple Watch Ultra frame ===== */
+  /* ===== Apple Watch Ultra frame =====
+     Bumped 280px → 360px so the screen aperture is closer to native Ultra
+     logical resolution (205 × 251). All font sizes below use cqh units
+     (% of screen height), so they scale with the frame and never blow
+     past the bezel like the first pass did. */
   .watch {
     position: relative;
-    width: 280px;
+    width: 360px;
     aspect-ratio: 320 / 360;
     filter: drop-shadow(0 22px 40px rgba(0,0,0,0.55))
             drop-shadow(0 4px 10px rgba(0,0,0,0.40));
@@ -80,6 +84,9 @@
     background: #000;
     border-radius: 14px;
     overflow: hidden;
+    /* Container queries — `cqh` units below resolve to % of THIS box's
+       height, so all face content scales with the screen. */
+    container-type: size;
   }
 
   /* ===== Face renderers (HTML approximations of the Swift faces) =====
@@ -99,52 +106,62 @@
   .face.wash-blue    { background: radial-gradient(120% 90% at 50% 0%, #06243F 0%, #000 70%); }
   .face.wash-ink     { background: radial-gradient(120% 90% at 50% 0%, #11151C 0%, #000 70%); }
 
-  /* OS clock — the real watch always shows the system clock top-right.
-     A small approximation so the layout sits relative to it. */
+  /* OS clock — top-right corner, leaves room below for labels. */
   .osclock {
-    position: absolute; top: 8px; right: 12px;
-    font-size: 13px; font-weight: 600;
+    position: absolute; top: 4cqh; right: 5cqw;
+    font-size: 7cqh; font-weight: 600;
     color: rgba(244,229,166,0.9);
     letter-spacing: 0.5px;
   }
 
   /* Generic helpers */
-  .tnum { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .tnum { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
   .center-stack {
     flex: 1; display: flex; flex-direction: column;
     justify-content: center; align-items: center;
     text-align: center;
-    padding: 0 12px;
+    padding: 12cqh 6cqw 4cqh;       /* top room for OS clock */
   }
   .top-label {
-    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    /* Aligned with the OS clock baseline — same line, left side. */
+    font-size: 5.5cqh; font-weight: 700; text-transform: uppercase;
     letter-spacing: 1.6px; color: var(--mute);
-    position: absolute; top: 11px; left: 12px;
+    position: absolute; top: 4cqh; left: 5cqw;
+    max-width: 60cqw;                /* don't run into the clock */
+    overflow: hidden; white-space: nowrap;
   }
   .footnote {
-    font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+    font-size: 5.5cqh; font-weight: 600; letter-spacing: 0.4px;
     color: rgba(207,210,216,0.85);
     text-align: center;
-    padding: 0 12px 14px;
+    padding: 0 6cqw 7cqh;
   }
 
-  /* Big tabular numbers */
+  /* Big tabular numbers — sized as % of screen HEIGHT (cqh).
+     The native Swift code uses h * fraction sizing, which is what these
+     mirror. Sizes are conservative so 4-char strings ("0.25", "5.8 ",
+     "8:48") fit width-wise without clipping. */
   .big {
-    font-size: 92px; line-height: 0.88;
+    font-size: 38cqh; line-height: 0.88;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .bigger {
+    font-size: 46cqh; line-height: 0.85;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.03em;
   }
-  .bigger { font-size: 124px; line-height: 0.85; }
   .word {
     font-weight: 900;
     text-transform: uppercase;
     letter-spacing: -0.02em;
     line-height: 0.9;
   }
-  .word.lg { font-size: 90px; }
-  .word.md { font-size: 56px; }
-  .word.sm { font-size: 34px; }
+  .word.lg { font-size: 32cqh; }
+  .word.md { font-size: 22cqh; }
+  .word.sm { font-size: 14cqh; }
 
   .green-c { color: var(--green); }
   .goal-c  { color: var(--goal); }
@@ -155,58 +172,47 @@
   .bonus-c { color: var(--bonus); }
 
   .small-cap {
-    font-size: 12px; font-weight: 700;
+    font-size: 6cqh; font-weight: 700;
     letter-spacing: 1.6px; text-transform: uppercase;
     color: var(--mute);
   }
 
-  /* Icon-as-text (we use Unicode glyphs since SF Symbols only live on Apple
-     devices — the Swift code uses Image(systemName:"play.fill") etc.) */
+  /* Icon-as-text (Unicode stand-ins — Swift uses SF Symbols). */
   .glyph {
-    font-size: 38px; line-height: 1;
+    font-size: 14cqh; line-height: 1;
     color: inherit;
   }
 
-  /* Done button */
+  /* Done button — sized to roughly match watchOS native pill. */
   .done-btn {
-    margin: 0 14px 18px;
+    margin: 0 5cqw 6cqh;
     background: var(--green);
     color: #06210C;
     text-align: center;
-    padding: 9px 0;
+    padding: 4.5cqh 0;
     border-radius: 999px;
-    font-size: 17px;
+    font-size: 9cqh;
     font-weight: 800;
     letter-spacing: 0.3px;
   }
 
-  /* Three-row stacked numbers (Complete current) */
+  /* Three-row stacked numbers (Complete current). */
   .stack3 {
     flex: 1; display: flex; flex-direction: column;
-    justify-content: center; gap: 6px;
-    padding: 0 14px;
+    justify-content: center; gap: 2cqh;
+    padding: 12cqh 6cqw 1cqh;
   }
   .stack3 .row3 {
-    font-size: 44px; font-weight: 800; line-height: 1;
+    font-size: 18cqh; font-weight: 800; line-height: 1;
     font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
   }
 
-  /* In-run face (EasyFace approximation, for inline-flash proposals) */
-  .easyface { padding: 0 12px; gap: 8px; }
-  .easyface .row { font-size: 56px; font-weight: 800; line-height: 1;
+  /* In-run face approximation (EasyFace, for inline-flash proposals). */
+  .easyface { padding: 0 6cqw; gap: 3cqh; }
+  .easyface .face-row { font-size: 22cqh; font-weight: 800; line-height: 1;
     font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
-    display:flex; align-items: center; justify-content: space-between; }
-  .easyface .row .icon { font-size: 22px; color: var(--mute); }
-
-  /* Flash overlay on top of an in-run face */
-  .flash {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: rgba(58, 43, 8, 0.92);
-    color: var(--goal);
-  }
-  .flash .bignum { font-size: 110px; line-height: 0.85; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
-  .flash .label { font-size: 16px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; margin-top: 4px; }
+    display: flex; align-items: center; justify-content: space-between; }
+  .easyface .face-row .icon { font-size: 10cqh; color: var(--mute); }
 </style>
 </head>
 <body>
@@ -293,7 +299,7 @@
             <div class="osclock">9:41</div>
             <div class="center-stack">
               <div class="glyph goal-c" style="margin-bottom:18px">🕐</div>
-              <div class="word lg goal-c" style="font-size:64px">ALMOST</div>
+              <div class="word lg goal-c" style="font-size: min(20cqh, 23cqw)">ALMOST</div>
             </div>
             <div class="footnote" style="color: var(--mute)">(sub blank for distance runs)</div>
           </div>
@@ -311,8 +317,8 @@
           <div class="face wash-amber">
             <div class="osclock">9:41</div>
             <div class="center-stack">
-              <div class="bigger goal-c tnum">0.25</div>
-              <div class="small-cap goal-c" style="margin-top:6px;letter-spacing:2.2px;font-size:14px">MI LEFT</div>
+              <div class="bigger goal-c tnum" style="font-size: min(45cqh, 42cqw)">0.25</div>
+              <div class="small-cap goal-c" style="margin-top:2cqh;letter-spacing:2.2px;font-size:5cqh">MI LEFT</div>
             </div>
             <div class="footnote">then end</div>
           </div>
@@ -329,16 +335,16 @@
         <div class="screen">
           <div class="face wash-ink">
             <div class="osclock">9:41</div>
-            <div class="easyface center-stack" style="padding:0 14px;gap:10px">
-              <div class="row" style="opacity:0.45">
+            <div class="easyface center-stack" style="padding: 12cqh 6cqw 4cqh; gap: 3cqh">
+              <div class="face-row" style="opacity:0.45; font-size: 16cqh">
                 <span class="green-c tnum">8:42</span>
               </div>
-              <div class="row" style="opacity:0.45">
+              <div class="face-row" style="opacity:0.45; font-size: 16cqh">
                 <span class="ink-c tnum">145</span><span class="icon">♥</span>
               </div>
-              <div class="row" style="font-size:78px">
+              <div class="face-row" style="font-size: min(28cqh, 28cqw)">
                 <span class="goal-c tnum">0.25</span>
-                <span class="icon goal-c" style="font-size:20px;letter-spacing:1.5px">MI</span>
+                <span class="icon goal-c" style="font-size: 7cqh; letter-spacing:1.5px">MI</span>
               </div>
             </div>
           </div>
@@ -371,10 +377,10 @@
           <div class="face wash-green">
             <div class="osclock">10:27</div>
             <div class="center-stack">
-              <div class="glyph green-c" style="margin-bottom:18px">▶</div>
-              <div class="word lg green-c" style="font-size:96px">GO</div>
+              <div class="glyph green-c" style="margin-bottom:5cqh; font-size: 12cqh">▶</div>
+              <div class="word lg green-c" style="font-size: min(45cqh, 50cqw)">GO</div>
             </div>
-            <div class="footnote" style="font-size:9.5px">Plan done ✓ · Keep going · End when ready</div>
+            <div class="footnote" style="font-size: 4cqh">Plan done ✓ · Keep going · End when ready</div>
           </div>
         </div>
       </div>
@@ -390,11 +396,11 @@
           <div class="face wash-green">
             <div class="osclock">10:27</div>
             <div class="center-stack">
-              <div class="glyph green-c" style="margin-bottom:10px;font-size:34px">✓</div>
-              <div class="word md green-c" style="font-size:52px;letter-spacing:-0.5px">PLAN<br/>DONE</div>
-              <div class="small-cap mute-c" style="margin-top:14px;font-size:12px">5.8 mi · 46:18</div>
+              <div class="glyph green-c" style="margin-bottom:2cqh; font-size: 11cqh">✓</div>
+              <div class="word md green-c" style="font-size: min(22cqh, 32cqw); letter-spacing:-0.5px">PLAN<br/>DONE</div>
+              <div class="small-cap mute-c" style="margin-top:4cqh; font-size: 5cqh">5.8 mi · 46:18</div>
             </div>
-            <div class="footnote">Keep going or End</div>
+            <div class="footnote" style="font-size: 4.5cqh">Keep going or End</div>
           </div>
         </div>
       </div>
@@ -410,8 +416,8 @@
           <div class="face wash-green">
             <div class="osclock">10:27</div>
             <div class="center-stack">
-              <div class="word lg green-c" style="font-size:60px;letter-spacing:-0.5px">PLAN<br/>DONE</div>
-              <div class="glyph green-c" style="margin-top:18px;font-size:46px">✓</div>
+              <div class="word lg green-c" style="font-size: min(26cqh, 36cqw); letter-spacing:-0.5px">PLAN<br/>DONE</div>
+              <div class="glyph green-c" style="margin-top:5cqh; font-size: 16cqh">✓</div>
             </div>
           </div>
         </div>
@@ -465,9 +471,9 @@
             <div class="osclock">10:43</div>
             <div class="top-label green-c">Long Run</div>
             <div class="center-stack" style="padding-bottom:6px">
-              <div class="bigger dist-c tnum" style="font-size:128px;line-height:0.85">5.8</div>
-              <div class="small-cap mute-c" style="margin-top:8px;font-size:13px;letter-spacing:1.8px">MILES</div>
-              <div class="small-cap" style="margin-top:18px;font-size:14px;letter-spacing:0.5px;text-transform:none;color:var(--mute);font-weight:600">8:48 · 46:18</div>
+              <div class="bigger dist-c tnum" style="font-size: min(48cqh, 38cqw); line-height:0.85">5.8</div>
+              <div class="small-cap mute-c" style="margin-top:2cqh; font-size: 4.5cqh; letter-spacing:1.8px">MILES</div>
+              <div class="small-cap" style="margin-top:5cqh; font-size: 5cqh; letter-spacing:0.5px; text-transform:none; color:var(--mute); font-weight:600">8:48 · 46:18</div>
             </div>
             <div class="done-btn">Done</div>
           </div>
@@ -486,16 +492,16 @@
             <div class="osclock">10:43</div>
             <div class="top-label green-c">Long Run · Done</div>
             <div class="center-stack" style="padding-bottom:6px;gap:0">
-              <div class="big dist-c tnum" style="font-size:104px;line-height:0.85">5.8</div>
-              <div class="small-cap mute-c" style="margin-top:2px;font-size:12px;letter-spacing:1.8px">MILES</div>
-              <div style="display:flex;gap:18px;margin-top:18px;align-items:baseline">
+              <div class="big dist-c tnum" style="font-size: min(38cqh, 32cqw); line-height:0.85">5.8</div>
+              <div class="small-cap mute-c" style="margin-top:1cqh; font-size: 4cqh; letter-spacing:1.8px">MILES</div>
+              <div style="display:flex; gap:6cqw; margin-top:5cqh; align-items:baseline">
                 <div>
-                  <div class="row3 green-c tnum" style="font-size:30px">8:48</div>
-                  <div class="small-cap mute-c" style="font-size:10px;letter-spacing:1.6px">PACE</div>
+                  <div class="row3 green-c tnum" style="font-size: 11cqh">8:48</div>
+                  <div class="small-cap mute-c" style="font-size: 3.5cqh; letter-spacing:1.6px">PACE</div>
                 </div>
                 <div>
-                  <div class="row3 ink-c tnum" style="font-size:30px">46:18</div>
-                  <div class="small-cap mute-c" style="font-size:10px;letter-spacing:1.6px">TIME</div>
+                  <div class="row3 ink-c tnum" style="font-size: 11cqh">46:18</div>
+                  <div class="small-cap mute-c" style="font-size: 3.5cqh; letter-spacing:1.6px">TIME</div>
                 </div>
               </div>
             </div>
@@ -530,8 +536,8 @@
           <div class="face wash-green">
             <div class="osclock">10:43</div>
             <div class="center-stack">
-              <div class="glyph green-c" style="font-size:88px;margin-bottom:14px">✓</div>
-              <div class="word md green-c" style="font-size:22px;letter-spacing:0.5px;text-transform:none">Today complete</div>
+              <div class="glyph green-c" style="font-size: 32cqh; margin-bottom:4cqh">✓</div>
+              <div class="word md green-c" style="font-size: 8cqh; letter-spacing:0.5px; text-transform:none">Today complete</div>
             </div>
           </div>
         </div>
@@ -548,9 +554,9 @@
           <div class="face wash-green">
             <div class="osclock">10:43</div>
             <div class="center-stack">
-              <div class="glyph green-c" style="font-size:48px;margin-bottom:6px">✓</div>
-              <div class="big dist-c tnum" style="font-size:110px;line-height:0.85">5.8</div>
-              <div class="small-cap" style="font-size:12px;color:var(--mute);margin-top:6px;letter-spacing:1.6px">MILES BANKED</div>
+              <div class="glyph green-c" style="font-size: 16cqh; margin-bottom:2cqh">✓</div>
+              <div class="big dist-c tnum" style="font-size: min(40cqh, 34cqw); line-height:0.85">5.8</div>
+              <div class="small-cap" style="font-size: 4.5cqh; color:var(--mute); margin-top:2cqh; letter-spacing:1.6px">MILES BANKED</div>
             </div>
           </div>
         </div>
@@ -567,9 +573,9 @@
           <div class="face wash-green">
             <div class="osclock">10:43</div>
             <div class="center-stack">
-              <div class="glyph green-c" style="font-size:56px;margin-bottom:10px">✓</div>
-              <div class="word md green-c" style="font-size:34px;letter-spacing:-0.3px;line-height:0.95">NICE<br/>WORK</div>
-              <div class="small-cap mute-c" style="font-size:12px;margin-top:14px;letter-spacing:1.6px">5.8 MI · 46:18</div>
+              <div class="glyph green-c" style="font-size: 18cqh; margin-bottom:3cqh">✓</div>
+              <div class="word md green-c" style="font-size: min(15cqh, 22cqw); letter-spacing:-0.3px; line-height:0.95">NICE<br/>WORK</div>
+              <div class="small-cap mute-c" style="font-size: 4.5cqh; margin-top:4cqh; letter-spacing:1.6px">5.8 MI · 46:18</div>
             </div>
           </div>
         </div>
@@ -599,9 +605,9 @@
         <div class="screen">
           <div class="face wash-ink">
             <div class="osclock">10:27</div>
-            <div class="center-stack" style="gap:6px">
-              <div class="word md mute-c" style="font-size:38px;letter-spacing:0.2px">MILE 5</div>
-              <div class="bigger green-c tnum" style="font-size:118px">8:39</div>
+            <div class="center-stack" style="gap:2cqh">
+              <div class="word md mute-c" style="font-size: min(14cqh, 20cqw); letter-spacing:0.2px">MILE 5</div>
+              <div class="bigger green-c tnum" style="font-size: min(42cqh, 35cqw)">8:39</div>
             </div>
           </div>
         </div>

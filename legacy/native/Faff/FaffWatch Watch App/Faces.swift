@@ -373,28 +373,28 @@ struct PlanDoneFace: View {
                 let h = geo.size.height
                 VStack(spacing: 0) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: h * 0.11, weight: .bold))
+                        .font(.system(size: h * 0.13, weight: .bold))
                         .foregroundStyle(Faff.live)
-                        .padding(.bottom, h * 0.025)
+                        .padding(.bottom, h * 0.02)
                     Text("PLAN")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.22))
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.27))
                         .foregroundStyle(Faff.live)
                         .tracking(-1)
-                        .padding(.vertical, -h * 0.22 * 0.20)
+                        .padding(.vertical, -h * 0.27 * 0.20)
                     Text("DONE")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.22))
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.27))
                         .foregroundStyle(Faff.live)
                         .tracking(-1)
-                        .padding(.vertical, -h * 0.22 * 0.20)
+                        .padding(.vertical, -h * 0.27 * 0.20)
                     Text("\(distance)  ·  \(elapsed)")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.075))
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
                         .foregroundStyle(Color(hex: 0xCFD2D8))
                         .tracking(0.5)
                         .padding(.top, h * 0.05)
                 }
+                // Perfect-centered — no asymmetric bottom padding.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, h * 0.075)
-                .padding(.bottom, h * 0.085)
+                .padding(.horizontal, h * 0.06)
             }
         }
     }
@@ -411,18 +411,26 @@ struct HeadsUpFace: View {
         Screen(background: wash(0x3A2B08)) {
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(spacing: h * 0.012) {
+                // tightNumber auto-scales (minimumScaleFactor 0.25 + lineLimit 1)
+                // so we can push the size HUGE and let the fitter cap it for
+                // wide strings ("0.25") while short ones ("10s") bloom edge to
+                // edge. The padding-top on "LEFT" balances tightNumber's
+                // negative vertical padding so the two reads cleanly.
+                VStack(spacing: 0) {
                     Text(value)
                         .foregroundStyle(Faff.goal)
-                        .tightNumber(h * 0.50)
+                        .tightNumber(h * 0.62)
                     Text("LEFT")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.11))
                         .foregroundStyle(Faff.goal)
                         .tracking(3)
+                        .padding(.top, h * 0.06)
                 }
+                // Perfect-centered: no asymmetric bottom padding. The face is
+                // a brief 2.6 s takeover so it doesn't need to clear the
+                // bottom-corner bezel curve the way persistent faces do.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, h * 0.075)
-                .padding(.bottom, h * 0.085)
+                .padding(.horizontal, h * 0.06)
             }
         }
     }
@@ -726,28 +734,28 @@ struct TodayDoneFace: View {
                 let h = geo.size.height
                 VStack(spacing: 0) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: h * 0.15, weight: .bold))
+                        .font(.system(size: h * 0.16, weight: .bold))
                         .foregroundStyle(Faff.live)
-                        .padding(.bottom, h * 0.035)
+                        .padding(.bottom, h * 0.025)
                     Text("NICE")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.18))
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.24))
                         .foregroundStyle(Faff.live)
-                        .tracking(-0.5)
-                        .padding(.vertical, -h * 0.18 * 0.20)
+                        .tracking(-1)
+                        .padding(.vertical, -h * 0.24 * 0.20)
                     Text("WORK")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.18))
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.24))
                         .foregroundStyle(Faff.live)
-                        .tracking(-0.5)
-                        .padding(.vertical, -h * 0.18 * 0.20)
+                        .tracking(-1)
+                        .padding(.vertical, -h * 0.24 * 0.20)
                     Text("\(distance)  ·  \(elapsed)")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
                         .foregroundStyle(Color(hex: 0xCFD2D8))
                         .tracking(0.5)
-                        .padding(.top, h * 0.045)
+                        .padding(.top, h * 0.05)
                 }
+                // Perfect-centered — no asymmetric bottom padding.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, h * 0.075)
-                .padding(.bottom, h * 0.085)
+                .padding(.horizontal, h * 0.06)
             }
         }
     }
