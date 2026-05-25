@@ -1,256 +1,218 @@
-# Coach voice + TODAY page · spec
+# TODAY page · spec
 
-**Status:** approved direction, paused pending log-data cleanup so future voice samples reference clean numbers (the dedup pipeline currently inflates weekly mileage ~7%, which makes "well over plan" reads unreliable).
+The canonical worked example of the coach philosophy. POST-RUN state is the gold standard; other states share the same shape with different evidence widgets.
 
-**Working prompt + test rig:** [web/scripts/test-coach-voice.mjs](../web/scripts/test-coach-voice.mjs) — runs the working LLM prompt against 4 scenarios. Iterate the prompt there before porting to production.
+**Reference mockup:** [mockups/today-v4-2026-05-24.html](./mockups/today-v4-2026-05-24.html) — locked as the visual + interaction canon.
 
----
+**Visual / palette / typography:** [`docs/architecture/DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) — the design system was rewritten to match v4. The coach docs describe what to say + when; the design system describes how it looks. Renderer code pulls tokens from there.
 
-## 1 · Principles (the truth contract)
+**Source of truth for voice + topics:** [`web/coach/prompts/daily-briefing.md`](../../web/coach/prompts/daily-briefing.md) (the LLM system prompt).
 
-1. **Coach reads truth, never invents.** Plan, run data, recovery, races — all from the source. (The "Tomorrow is rest" hallucination from commit `b4981ad` was the canonical failure case. Reverted in `f1230a9`.)
-2. **Honest about data quality.** If a number is flagged unreliable, speak qualitatively ("well over plan") instead of numerically. Going silent beats being confidently wrong.
-3. **One notable observation per run, not five.** Coach picks the thing worth saying; the rest stays in the evidence widget.
-4. **"We" and "us". Goal by name** (AFC, CIM, the half). Never "your A-race."
-5. **Coach is the eye of the app.** Plan adaptations, readiness reads, mode overrides — these are things the coach SAYS, not separate banners.
+**Test rig (runs against real prod data):** [`web/scripts/test-daily-briefing.mjs`](../../web/scripts/test-daily-briefing.mjs).
 
 ---
 
-## 2 · The gold sample (David's own words)
+## Page anatomy (POST-RUN)
 
-This is the reference voice for every utterance the coach makes on the TODAY page:
-
-> Great run today. 12.1 miles at an easy pace is the perfect execution. cadence was a bit low but thats okay for an easy run, it actually helps. this week gets us back into speed. Time to start pushing to hit that goal for AFC. Its possible, but we need to be strategic.
->
-> Also, you're doing great with sustaining milage, going to up it a bit next week. Let me know how it feels.
-
-### Voice traits to embody
-- **Open with specific warmth** anchored to what just happened ("Great run today"). Never generic.
-- **Notice ONE thing and contextualize** ("cadence was a bit low but for easy that's fine").
-- **Use "we" and "us"** — collaborative, not reporting.
-- **Name the goal by name** ("for AFC"). Never "your next race."
-- **State intent** ("Time to start pushing", "going to up it a bit next week"). Coach acts, doesn't label phases.
-- **Be honest about challenge** ("It's possible, but we need to be strategic").
-- **Read meta-patterns** ("you're doing great sustaining mileage") — recognize behavior, not just quote numbers.
-- **Ask for feedback** ("Let me know how it feels"). Loop closed.
-
-### Hard rules (banned)
-- "Aerobic engine", "stimulus", "absorption window", "compound off", "the engine showing up", "the work landing" — coach-textbook jargon.
-- "You got this", "let's crush it", "trust the process", "great job", "send it", "lock in", "go time" — clichés.
-- "Today's session is…" template openers.
-- Em dashes. Use periods or commas.
-- Exclamation marks.
-- Reciting numbers the page evidence already shows (coach interprets; page records).
+```
+┌──────────────────────────────────────────────┐
+│  STATUS BAR · system                         │
+├──────────────────────────────────────────────┤
+│  faff   SUN · MAY 24            [88] ←  ring │  ← brand + date + readiness chip
+├──────────────────────────────────────────────┤
+│  THIS WEEK · BASE 1     40.5 / 41.2 MI       │  ← week strip (thin glance row)
+│  M  T  W  T  F  S  ●S                        │
+│  5.9 2.4 5.1 7.2 7.8  —  11.1                │
+├──────────────────────────────────────────────┤
+│  YOUR RUN · COMPLETED                        │  ← RECAP AT TOP (post-run)
+│  LONG · 11.1 MI                              │
+│  11.1   8:50   1:38                          │
+│  miles  /mi    moving                        │
+│  [HR 140] [CAD 160] [60° · 83% · warm]       │
+│  Splits · route · form data →                │
+├──────────────────────────────────────────────┤
+│  ● COACH                                     │  ← COACH VOICE
+│  Solid long run this morning.                │
+│                                              │
+│  11.1 miles at 8:50 pace... [3-4 paragraphs] │
+│                                              │
+│  How are the legs?                           │
+│  [SOLID]  [TIRED]  [WRECKED]                 │
+├──────────────────────────────────────────────┤
+│  CARDS LANE · topics the coach raised        │
+│  ┌──────────────────────────────────────┐    │
+│  │ COACH NEEDS · Your height        +Add│    │  ← profile_gap
+│  ├──────────────────────────────────────┤    │
+│  │ SLEEP · LAST 7 NIGHTS                │    │  ← sleep_deficit
+│  │ 6.8h · [bar chart] · coach_note      │    │
+│  ├──────────────────────────────────────┤    │
+│  │ UP NEXT · TOMORROW   EASY     5.8 MI │    │  ← next_workout
+│  │ coach_note                           │    │
+│  ├──────────────────────────────────────┤    │
+│  │ RACE · BUILDING      AFC    84 DAYS  │    │  ← race_horizon
+│  │ coach_note                           │    │
+│  ├──────────────────────────────────────┤    │
+│  │ ⓘ HRV · Heart Rate Variability       │    │  ← fun_fact
+│  │ Your HRV is 66ms today... explainer  │    │
+│  └──────────────────────────────────────┘    │
+├──────────────────────────────────────────────┤
+│  BOTTOM NAV · TODAY · TRAINING · RACES · ME  │
+└──────────────────────────────────────────────┘
+```
 
 ---
 
-## 3 · Page spine — every state
+## State-aware ordering
 
-```
-COACH voice    ← the eye, speaking. Top. Prominent.
-EVIDENCE       ← what coach refers to (run / target / recovery)
-NEXT          ← week strip, forward look
-```
+**The recap goes above the coach in POST-RUN.** Other states reorder.
 
-Same spine, different EVIDENCE widget per state.
-
----
-
-## 4 · State matrix — Group A (95% of days)
-
-### POST-RUN (today, completed)
-```
-┌─ COACH ──────────────────────────────────────────┐
-│ Multi-paragraph reflection per gold sample:      │
-│ • opener + one observation                       │
-│ • meta-pattern read                              │
-│ • forward intent (next run / next week)          │
-│ • feedback ask                                   │
-│      [ 😀 Solid ] [ 😐 Tired ] [ 😩 Wrecked ]   │
-├─ RUN RECAP ──────────────────────────────────────┤
-│ dist · time · pace · HR · the metric coach named │
-│ weather                            [ Full recap →]│
-├─ THIS WEEK ──────────────────────────────────────┤
-│ 7-day strip with today highlighted               │
-└──────────────────────────────────────────────────┘
-```
-Hidden: big LONG/EASY title, 6-tile form grid, standalone readiness ring, plan-adaptation banner.
-
-### PRE-RUN (today, planned, not started)
-```
-┌─ COACH ──────────────────────────────────────────┐
-│ 1-3 sentences framing today's intent             │
-│ Mode varies by time-of-day                       │
-├─ WORKOUT TARGET ─────────────────────────────────┤
-│ distance · target pace · est duration · fuel     │
-│ route preview                                    │
-│  [ START → ] [ View route ] [ Substitute ]       │
-├─ THIS WEEK ──────────────────────────────────────┤
-└──────────────────────────────────────────────────┘
-```
-Hidden: post-run stats, big readiness ring, yesterday rehash.
-
-### POST-RUN partial (e.g., planned 5, did 2.8)
-Same shape as POST-RUN; coach voice is honest acknowledgment + read on why + tomorrow framing. Evidence shows "X of Y mi."
-
-### REST DAY (planned)
-```
-┌─ COACH ──────────────────────────────────────────┐
-│ Short — 2-3 sentences. Why rest, what's coming.  │
-├─ RECOVERY ───────────────────────────────────────┤
-│ Sleep · HRV · resting HR · soreness check        │
-├─ THIS WEEK ──────────────────────────────────────┤
-└──────────────────────────────────────────────────┘
-```
-Hidden: workout hero, big title, intensity bar.
-
-### SKIPPED (explicit or EOD with no run)
-Coach voice: "Run didn't go in today. Real reason or excuse? Tomorrow brings X." Evidence shows what today WAS supposed to be + tomorrow's preview.
-
----
-
-## 5 · Time-of-day voice overlay
-
-Modifies the voice within any state. Same page structure.
-
-| Window | Voice mode |
+| State | Top → Bottom |
 |---|---|
-| **Morning (4am–12pm)** | Forward framing. "You've got X today." First read of the day. |
-| **Midday (12pm–5pm)** | Run not done: nudge. Done: brief reflection. |
-| **Evening (5pm–10pm)** | Full reflection if done. Honest ack if skipped. Frames tomorrow. |
-| **Late night (10pm–4am)** | Muted. "Tomorrow brings X. Get some sleep." |
+| **POST-RUN** | week strip → recap → coach → cards |
+| **PRE-RUN** | week strip → coach (framing) → workout target → cards |
+| **REST DAY** | week strip → coach → recovery widget → cards |
+| **SKIPPED / PARTIAL** | week strip → coach (honest ack) → what-today-was → cards |
+| **RACE DAY** | own page · race brief, fueling, splits, course intel |
+| **MODE OVERRIDE** (sick/injured) | week strip → mode prescription → cards |
+| **COLD START** (no plan) | onboarding voice → setup cards |
+
+Same DNA, different evidence widget. The state classifier picks which ordering applies.
 
 ---
 
-## 6 · The "one notable thing" rule (post-run)
+## The coach voice block
 
-Coach picks ONE observation per run. Ranking:
-1. **Anything off baseline?** (cadence low, HR drift high, pace fell late, sleep short)
-2. **Workout type-specific signal?** (tempo: did the band hold? long: did fueling land? easy: was effort honest?)
-3. **Weather / conditions changed the read?**
-4. **PR or new ground?**
+Generated by the LLM ([`web/coach/prompts/daily-briefing.md`](../../web/coach/prompts/daily-briefing.md)).
 
-The chosen one becomes coach prose. The rest stays in EVIDENCE for the runner to scan.
+- **3-4 paragraphs** for long-run / quality reflection
+- **2-3 sentences** for an easy weekday post-run
+- **1-3 sentences** for pre-run framing
+- **2-3 short sentences** for rest day, focused on week shape + what's coming
 
-Implementation: small ranker reading run baselines + type expectations. Doesn't exist yet; build it alongside the LLM voice wiring.
+Always:
+- Opens with specific warmth anchored to what happened
+- Notices ONE thing and contextualizes (not five stats stacked)
+- Uses "we" / "us" / names the goal by name (AFC, CIM)
+- States intent + reads meta-patterns + asks for feedback
+- Bans textbook jargon + clichés + em dashes + exclamation marks + named researchers in body
+
+See [PHILOSOPHY.md](./PHILOSOPHY.md) for the full voice doctrine + David's gold sample.
 
 ---
 
-## 7 · Coach autonomy — three tiers
+## The card library
 
-The coach has authority to adapt; the question is what requires permission.
+Cards are typed topics the coach raises. The renderer maps each kind to a component. The LLM picks which to emit per briefing — page reshapes per day based on what the coach decided.
 
-| Tier | Coach behavior | Examples |
+**Full library + schemas + interactions + backend status:** [CARD_LIBRARY.md](./CARD_LIBRARY.md)
+
+Currently 8 kinds:
+- `cadence_experiment` (suppressed when height missing)
+- `sleep_deficit` (with coach_note)
+- `next_workout` (chronological, with coach_note)
+- `profile_gap` (required when missing, only for genuinely-absent data)
+- `fun_fact` (required for technical terms, anchored to runner's current value)
+- `weight_trend` (with coach_note)
+- `race_horizon` (with coach_note)
+- `recovery_amber` (with coach_note)
+
+---
+
+## The truth contract — applied to TODAY
+
+- **Coach reads truth.** Plan, run data, recovery, races — all from source. Never invents.
+- **Speaks qualitatively when data is unreliable.** Dedup flagged a number? "Well over plan" not the specific count.
+- **Defers prescriptions when data-limited.** `cadence_experiment` SUPPRESSED when height missing — `profile_gap` card carries the next step. Same logic for any data-limited prescription.
+- **Profile gaps only emit when genuinely absent.** Loader checks every source first (HRmax/RHR are derived from `health_samples`, not asked). Runner never enters values the system can observe.
+- **No confidence on incomplete inputs.** The runner trusts the coach more when the coach admits what it doesn't know.
+
+---
+
+## Validated voice samples
+
+Live LLM output against David's real prod state, 2026-05-24, POST-RUN (11.1 mi long run completed). Generated by `web/scripts/test-daily-briefing.mjs`.
+
+> Solid long run this morning. 11.1 miles at 8:50 pace with your HR sitting at 140 is right where we want it. You executed the plan and hit the week's volume target — 40.5 of 41.2 is basically perfect.
+>
+> Cadence held at 160, which is right at your baseline. That's fine for easy work, but there's research showing that bumping it just 5% above your preferred rate drops knee loading by about 20%. I can't dial in an exact target without knowing your height — leg length drives ideal turnover — but once we have that, we can run a small experiment on your next easy run.
+>
+> Sleep has been short all week. You're averaging 6.8 hours over the last seven nights, which is below the 7-9 range where training really lands. One rough night is nothing, but a full week of deficit compounds. Your HRV and resting HR are both fine right now, so you're not in the danger zone yet, but let's not let this pattern hold. Aim for 7.5 tonight.
+>
+> This week gets us back into speed. Threshold session Tuesday is the first real quality of this build. We're 84 days out from AFC — plenty of runway, but it's time to start applying pressure. Let me know how the tempo feels.
+
+**Cards emitted alongside this voice (6 topics, 5 rendered after suppression):**
+
+1. `profile_gap` — height (Why: dial in cadence target by leg length)
+2. `cadence_experiment` — target null, action_label "Add height to unlock target" *(rendered: SUPPRESSED per the deferred-prescription rule)*
+3. `sleep_deficit` — 6.8h avg, 4.9h deficit, coach_note "Aim for 7.5h tonight to start chipping..."
+4. `next_workout` — Mon May 25, easy 5.8 mi, coach_note "Keep it conversational..."
+5. `race_horizon` — AFC, 84 days, building tone, coach_note "12 weeks gives us room..."
+6. `fun_fact` — HRV, runner's current 66ms + interpretation
+
+---
+
+## State source (live prod data — May 24, 2026)
+
+| Signal | Source | Value |
 |---|---|---|
-| **Tactical** (autonomous) | Just does it. Mentions the change next time it speaks. | Cut a tempo rep when HRV crashed. Drop a mile in extreme heat. Swap easy for shake-out pre-race. Move today's run earlier when storm forecast at noon. |
-| **Operational** (notify + undo) | Makes change, surfaces inline in coach voice, runner can undo. | Move a quality day to a different DOW. Add/drop a mid-week rest. Adjust week mileage ±5-15%. Reorder workouts after a partial. |
-| **Strategic** (propose + accept) | Coach proposes inline with buttons; never executes without nod. | Phase shift. Race goal renegotiation. Mileage step >15%. A-race swap. Plan rewrite. |
+| Today's run | `strava_activities` (Apple Watch) | 11.12 mi · 8:50/mi · HR 140 · cadence 160 |
+| Cadence baseline | `health_samples.cadence` 60-day mean | 160 spm (32 runs) |
+| Sleep | `health_samples.sleep_hours` last 7 | avg 6.8h · last night 7.7h · deficit ~5h |
+| HRV | `health_samples.hrv` most recent | 66 ms |
+| Max HR (derived) | `health_samples.max_hr` peak + run-data peak | 181 bpm |
+| Resting HR (derived) | `health_samples.resting_hr` 60-day mean | 47 bpm |
+| Weight | `health_samples.body_mass` recent | 186 lb (down 3 in 30d) |
+| Week mileage | `strava_activities` (unmerged) + `workout_completions` MAX per day | 40.5 of 41.2 mi planned |
+| Check-in | `daily_checkin` today | energy 5/5 · soreness 1/5 · stress 1/5 |
+| Plan | active `training_plans` for AFC | BASE phase week 1, 13-week plan |
+| Tomorrow | `plan_workouts` chronologically next | Mon easy 5.8 mi |
+| Race | `training_plans.race_id` + `races` | AFC, 2026-08-16, 84 days |
 
-**Key UX shift:** adaptations are NOT separate banners. The coach SAYS them.
-
-Banner today:
-```
-COACH UPDATED YOUR PLAN
-Running 10% above plan this week, nudging next week up within 10%/wk ramp cap.
-```
-
-Becomes coach voice:
-> *"You're sustaining mileage really well right now. Going to nudge next week up about 6%, see how it holds."*
-
-Strategic proposal inline in voice:
-> *"You've been holding the threshold band cleanly three weeks running. Fitness has moved 18 seconds inside your AFC goal. Want to drop the goal to 1:33, or hold and bank the buffer for race-day heat?*
->
-> *[ Drop to 1:33 ]  [ Hold the goal ]  [ Let me think ]*"
-
-**Existing infrastructure** (already in codebase, just wired to the wrong UI):
-- `coach/plan-adapter.ts` — plan adaptation logic
-- `coach/coach-goal-proposals.ts` — goal renegotiation
-- `coach_proposals` DB table
-- `coach_actions` DB table
-- `ProposalCard`, `CoachAdaptedIsland`, `ModePrescriptionCard` — current banner surfaces (to be absorbed)
+**Genuine profile gaps (loader determined):** height (not in any source).
 
 ---
 
-## 8 · Tested LLM samples (May 24)
+## Time-of-day variation
 
-Run via [web/scripts/test-coach-voice.mjs](../web/scripts/test-coach-voice.mjs). Approved by David: "this voice is good."
+The coach's voice adapts to when the runner is reading vs when the run happened.
 
-### A · Sunday post-long-run (real data)
-> Nice work on the long run. You hit the zone perfectly and the pace was right where it should be. A mile short of plan but you're well over volume this week so that's fine, maybe even smart given the humidity.
->
-> Cadence was down around 160 today. For easy runs that's actually not a problem, sometimes helps you relax into the effort. If it starts showing up on tempo days we'll address it, but for now it's just part of the easy rhythm.
->
-> Tomorrow's an easy 4, then Tuesday we're back into tempo work. 4 x 1 mile. First quality session in a bit, so we'll see how the legs respond. Let me know how the recovery feels tonight and tomorrow morning.
+- **Morning (4am-12pm)** — forward framing. "You've got X today."
+- **Midday (12pm-5pm)** — nudge if not done; brief reflection if done.
+- **Evening (5pm-10pm)** — full reflection. Frames tomorrow.
+- **Late night (10pm-4am)** — muted. "Tomorrow brings X. Get some sleep."
 
-### B · Tuesday post-quality (hypothetical)
-> Really solid tempo session this morning. All four miles right in the band, 7:04 to 7:09, and the drift was minimal. That's the kind of controlled effort we want, especially 82 days out from AFC. You held the pace, the HR stayed honest, and the progression was clean.
->
-> Sleep was a little short last night, so good awareness there. We've got easy running Wednesday and Thursday, then the long run Sunday at 13. That's where we start building the aerobic base you'll need for the half. Keep the easy days truly easy, and let me know how the legs feel going into the weekend.
-
-### C · Thursday rest (hypothetical)
-> Rest day. Good timing after Tuesday's tempo. That quad heaviness is normal, it'll clear before the weekend.
->
-> You've got 18 miles in through three days, which puts you right on track for the 31 we mapped out this week. Two rest days mid-week might feel like a lot, but it's the right call. We're building the base carefully so the mileage holds when we start layering speed back in.
->
-> Saturday's shake-out is just movement. Then Sunday we're back to 13, which will be your longest in a while. Let me know how the legs feel going into it.
-
-### D · Monday after partial + bad sleep (hypothetical)
-> You got out there on 5 hours of sleep in that humidity and your body told you no at 2.8. That's the right call. HR was high, energy was low, and pushing through would've just dug the hole deeper for tomorrow.
->
-> Tomorrow's tempo matters. Four mile repeats is real work and we need you fresh for it. Get to bed early tonight, eat well, and let's see how you feel in the morning. If the legs still feel heavy we can adjust, but I think one good night will turn this around.
->
-> You're not behind. We just need to be smart this week.
+**Critical:** the run is referenced by when IT happened ("this morning" / "this afternoon" / "tonight"), not when the page is being read. Same with sleep: always "last night," never "tonight."
 
 ---
 
-## 9 · Implementation order (when we resume)
+## What's hidden from TODAY (vs the legacy /overview)
 
-Logged here so the next session picks up cleanly without re-discussing.
+Cleanup the v4 design did:
 
-1. **Wire LLM voice into /overview for POST-RUN state.**
-   - Port prompt from `web/scripts/test-coach-voice.mjs` to `web/coach/llm.ts` as the daily-briefing call.
-   - Build the "one notable thing" ranker.
-   - Replace `generateBriefing()` call in `web/app/overview/page.tsx` with LLM call when state is POST-RUN.
-   - Render multi-paragraph output cleanly (split `\n\n`, scale subsequent paragraphs down per `overview-v4.css`).
-   - Cache result for the day (don't re-call LLM on every page load — `coach_today_cache` already exists).
-
-2. **Strip the standalone alert banners** as their content gets absorbed into voice.
-   - `CoachAdaptedIsland` → coach prose
-   - `StravaGapCard` → coach prose ("haven't seen a run in 5 days, what's going on?")
-   - `PostRaceCard` → coach prose (post-race mode voice)
-   - `ModePrescriptionCard` → coach prose with mode register
-   - `GetStartedCard` → coach prose in onboarding mode
-   - `ProposalCard` → embedded inline in coach voice with accept/decline buttons
-
-3. **PRE-RUN state** — workout target card + LLM voice for framing.
-
-4. **REST + SKIPPED + PARTIAL states** — adaptive evidence widget per state.
-
-5. **Adaptation surfacing inline** — tactical first (autonomous + mention), operational (notify + undo), strategic (propose + accept embedded in coach prose).
-
-6. **Mode overrides** — race day (own page), race week, post-race recovery, sick, injured.
-
-7. **iOS parity** — once the web TODAY page is right, port to the iOS app. The `/api/overview` route already serves the briefing as JSON, so iOS gets the same text without separate prompt logic.
+- ✗ Standalone alert banner stack (`CoachAdaptedIsland`, `StravaGapCard`, `PostRaceCard`, `ModePrescriptionCard`, `GetStartedCard`) — absorbed into coach voice + cards
+- ✗ 6-tile RUNNING FORM grid — moved to Run Detail page (the "Splits · route · form data" link)
+- ✗ Giant readiness ring as primary visual — now a 44px chip top-right
+- ✗ 5 trend rows (Mileage/Yesterday/Freshness/RHR/Sleep) — folded into coach voice + the readiness chip's tap → /health expansion
+- ✗ "Today's Intensity" gradient bar with copy — folded into the workout breakdown widget where relevant
+- ✗ Check-in slider widget as separate card — coach references in voice; full check-in flow on the morning briefing
 
 ---
 
-## 10 · Known dirty edges
+## Mockup history
 
-- **Log dedup pipeline** inflates weekly mileage ~7%. Background agent shipped 4 of 5 fixes (commits `ccd54cf`, `de05daa`, `55e3476`, `b7c452c`). Backfill (FIX 5) status check pending. This spec is paused until coach can read clean numbers — otherwise samples like "well over plan" will be wrong.
-- The `coach-briefing.ts` deterministic generator is still in use as a fallback. Eventually delete once LLM voice is fully wired and trusted.
-- iOS app reads the same briefing via `/api/overview`. Any change to briefing length/format propagates to iOS automatically (currently as a single string with `\n\n` paragraph breaks).
-
----
-
-## 11 · Reference
-
-- David's gold sample: §2
-- Working LLM prompt + scenarios: `web/scripts/test-coach-voice.mjs`
-- Page layout sketches: §4
-- Autonomy contract: §7
-- Current /overview layout (to be replaced): `web/app/overview/page.tsx`
-- Voice doctrine v1 (predecessor, more academic): `web/coach/voice.md`
+- **v4** ([mockups/today-v4-2026-05-24.html](./mockups/today-v4-2026-05-24.html)) — **CANONICAL.** Cards-coach-too principle. coach_note on every relevant card. UP NEXT redesigned (distance big on right). Cadence experiment suppressed when height missing. HRmax/RHR derived not asked. Bebas Neue + Inter on a pure-black canvas. This is the design system reference.
+- v3 ([mockups/today-v3-2026-05-24.html](./mockups/today-v3-2026-05-24.html)) — Recap above coach. Fun fact cards. Profile_gap always required when missing. Lock-in for tomorrow CTA.
+- v2 ([mockups/today-v2-2026-05-24.html](./mockups/today-v2-2026-05-24.html)) — First version with cards driven by topic emissions. week_shape card present (later removed as redundant with top week strip).
+- v1 ([mockups/today-v1-2026-05-24.html](./mockups/today-v1-2026-05-24.html)) — First watch-face-DNA pass. Coach voice as hero; LLM call working end-to-end; static card layout (not yet topic-driven).
 
 ---
 
-*Resume point: when log fixes ship and prod data is clean, run `node web/scripts/test-coach-voice.mjs` to re-verify voice against fresh numbers, then execute §9 step 1.*
+## Build status
+
+Production wiring: not yet shipped. The pipeline + voice doctrine + mockup are locked. Renderers, backend tables for interactive cards, and API wiring need building.
+
+See [NEXT_BUILD.md](./NEXT_BUILD.md) for the priority-ordered execution plan.
+
+---
+
+*Companion docs: [PHILOSOPHY.md](./PHILOSOPHY.md) · [CARD_LIBRARY.md](./CARD_LIBRARY.md) · [NEXT_BUILD.md](./NEXT_BUILD.md) · [DESIGN_SYSTEM.md](../architecture/DESIGN_SYSTEM.md). Live code: [`web/coach/prompts/daily-briefing.md`](../../web/coach/prompts/daily-briefing.md) · [`web/scripts/test-daily-briefing.mjs`](../../web/scripts/test-daily-briefing.mjs).*

@@ -142,6 +142,23 @@ Every surface uses the same card library. Every surface respects the truth contr
 
 ---
 
+## Visual language
+
+The coach speaks in a specific aesthetic. **Palette + typography are NOT redefined here — they live in [`docs/architecture/DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) as the canonical source.** The design system is locked against the v4 TODAY mockup.
+
+Quick reference (full spec in DESIGN_SYSTEM):
+
+- **Pure black canvas.** `--bg: #0a0c10`. Negative space is luxury.
+- **Bebas Neue + Inter.** Display headlines + big numbers in Bebas; body in Inter. No serifs, no third font.
+- **Three-color discipline + role-specific accents.** Green (success/done), blue (CTA/distance), white (neutral) are workhorses. Amber/red/purple/orange each carry ONE specific meaning. Used sparingly.
+- **No chrome — typography IS the structure.** Cards have minimal borders; spacing does the work.
+
+**Watch face DNA** ([mockups/watch-faces.html](./mockups/watch-faces.html)) scales the same aesthetic to the watch form factor. Same tokens, smaller surface.
+
+The coach docs describe what to say + when. The design system describes how it looks. Mockups + production code pull from `docs/architecture/DESIGN_SYSTEM.md` — never invent new tokens.
+
+---
+
 ## What this is NOT
 
 To keep us honest:

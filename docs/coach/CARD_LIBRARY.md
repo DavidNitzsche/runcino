@@ -15,7 +15,9 @@ Three tiers of card visual treatment:
 - **Educational cards** (light, purple-tinted) — `fun_fact` only. FYI not actionable.
 - **Slim affordance rows** — `profile_gap` (red, with +Add) and similar persistent ones.
 
-Universal token: black canvas, Bebas Neue display + Inter body, three-color discipline (green / white / blue) with amber for warnings and red for gaps. See [mockups/today-v4-2026-05-24.html](./mockups/today-v4-2026-05-24.html) for the gold standard.
+Universal palette + typography pulled from [`docs/architecture/DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md) — the design system is locked against the v4 mockup. Pure black canvas, Bebas Neue + Inter, three-color discipline (green / white / blue) with amber for soft warnings, red for runner-attention, purple for educational, orange for race signal. Never invent new tokens or fonts in renderer code; reference the design system.
+
+See [mockups/today-v4-2026-05-24.html](./mockups/today-v4-2026-05-24.html) for the gold standard.
 
 ---
 

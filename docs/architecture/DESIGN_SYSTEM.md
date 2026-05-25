@@ -1,209 +1,210 @@
 # faff.run Design System
 
-**Status:** locked as of hub.html hero-hub iteration.
-**Canonical reference mockup:** `designs/hub.html` (hero hub · v.1)
-**Prior system reference:** `designs/hub-system.html` (superseded)
-**Palette research:** `designs/palette-research.html`
+**Status:** locked as of v4 TODAY mockup, 2026-05-24. **This supersedes the April 2026 hub-based system.**
 
-The hub ripples to everything else — watch, iOS, future tabs. If a decision isn't in this doc, check hub-system.html before inventing a new rule.
+**Canonical reference mockup:** [docs/coach/mockups/today-v4-2026-05-24.html](../coach/mockups/today-v4-2026-05-24.html) — the v4 TODAY page.
+
+**Watch-face design source:** [docs/coach/mockups/watch-faces.html](../coach/mockups/watch-faces.html) — the design DNA scaled across surfaces.
+
+**Legacy doc (prior direction, archived):** [DESIGN_SYSTEM_LEGACY_2026-04.md](./DESIGN_SYSTEM_LEGACY_2026-04.md)
+
+If a decision isn't in this doc, check the v4 mockup first before inventing a new rule.
 
 ---
 
-## 1 · Color system
+## 1 · Visual DNA
 
-Based on a layered dark-first product palette. Five background values give real spatial depth; five semantic colors give role-based meaning; additional data colors are used sparingly for chart coding.
+The design philosophy:
 
-### 1.1 Layers (background scale)
+- **Pure black canvas.** Negative space is luxury. No layered chrome.
+- **One thing dominates per module.** A number, a checkmark, a three-line stat block. Never competing surfaces.
+- **Stats as typography, not tiles.** Numbers BIG, color-coded, no borders or boxes around them.
+- **Three-color discipline + role-specific accents.** Green/white/blue are the workhorses. Amber/red/purple/orange each carry ONE specific meaning. Used sparingly.
+- **No chrome — typography IS the structure.** Borders, cards, and dividers only when negative space can't do the job.
 
-| Token | Hex       | Role                                 |
-|-------|-----------|--------------------------------------|
-| `--l0`| `#10131A` | Basement. Page canvas.               |
-| `--l1`| `#141820` | Background. Default tile.            |
-| `--l2`| `#1A212D` | First. Raised tile / today card.     |
-| `--l3`| `#1D2736` | Second. Inset (calendar cells, progress tracks, chip default). |
-| `--l4`| `#21303F` | Third. Borders, strokes, hairlines.  |
-| `--l5`| `#2b3a4e` | Hairline highlight (rare).           |
+This DNA was distilled from the watch face inventory. It scales identically to phone (TODAY page), iOS native, and web.
 
-**Rule:** tiles step up one layer from their container. Never jump more than one. Canvas `l0` → tile `l1` → raised tile `l2` → inset content `l3`.
+---
 
-### 1.2 Type colors
+## 2 · Color tokens
 
-| Token | Value                      | Role                       |
-|-------|----------------------------|----------------------------|
-| `--t0`| `#F6F7F8`                  | Primary type.              |
-| `--t1`| `rgba(246,247,248,.72)`    | Secondary body.            |
-| `--t2`| `rgba(246,247,248,.48)`    | Tertiary / labels.         |
-| `--t3`| `rgba(246,247,248,.32)`    | Meta / captions / muted.   |
+### 2.1 Surfaces
 
-### 1.3 Semantic (system) colors
+| Token       | Hex                          | Role                                          |
+|-------------|------------------------------|-----------------------------------------------|
+| `--bg`      | `#0a0c10`                    | Page canvas. Pure dark.                       |
+| `--card`    | `#11141a`                    | Raised card / tile background.                |
+| `--line`    | `rgba(255,255,255,0.08)`     | Borders, hairlines, chip outlines.            |
+| `--line-2`  | `rgba(255,255,255,0.04)`     | Soft dividers between sections.               |
 
-Each has one job. Never mix roles.
+Tiles + cards step subtly above the page (`--card` is slightly lighter than `--bg`). Borders use `--line` for visible edges, `--line-2` for soft separations.
 
-| Token          | Hex       | Role & usage |
-|----------------|-----------|--------------|
-| `--corporate`  | `#008FEC` | **Primary accent.** Active state, today, primary links, default chart stroke, "Send to watch" CTA. |
-| `--warning`    | `#FC4D54` | **Alert only.** Overtraining, shoe retirement, ACWR danger zone, injury-risk flags. **Never decorative.** Red reads as ALARM — do not use for race signal, highlights, or accents. |
-| `--success`    | `#3EBD41` | **Good / on-track / completed.** Done workouts, positive deltas, recovery ring, metrics inside target range. |
-| `--caution`    | `#F0DF47` | **Needs work / soft warning.** Middle tier of the green→yellow→red health scale. Metrics drifting off target but not alarming: sleep short a night, HRV dip, one long run missed, shoe approaching rotation, pace behind plan. *Not* an alert — a nudge. |
-| `--attention`  | `#F3AD3B` | **Race signal / taper / special day.** Race day + race-week countdown, race tile border + glow, race-day bar, race cell in calendar, taper notice. Amber reads as *special day*, not alarm. |
-| `--xp`         | `#9013FE` | **Milestone / aspiration.** Season-goal tile gradient, marathon-prediction tile, brand logo, avatar. Reserved for achievement moments — the big annual arc, not the weekly race. |
+### 2.2 Type colors
 
-### 1.4 Additional / data colors
+| Token    | Hex / value                  | Role                          |
+|----------|------------------------------|-------------------------------|
+| `--ink`  | `#f6f7f8`                    | Primary type. Headlines, body. |
+| `--mute` | `#8a90a0`                    | Secondary type. Labels, sub-text. |
+| `--dim`  | `#4b505e`                    | Tertiary type. Inactive, meta. |
 
-Used for calendar & chart category coding. Never for chrome.
+### 2.3 Semantic + role-specific colors
 
-| Token         | Hex       | Role                         |
-|---------------|-----------|------------------------------|
-| `--lt-blue`   | `#2784E0` | Easy workout days.           |
-| `--dk-blue`   | `#2264E3` | Long workout days.           |
-| `--aqua`      | `#27E087` | Quality / interval workouts. |
-| `--yellow`    | `#F0DF47` | *Promoted to semantic `--caution` — see 1.3. No longer used decoratively.* |
-| `--pink`      | `#CD317C` | *Reserved — cross-training?* |
-| `--orange`    | `#E88221` | *Reserved — warmup zones?*   |
-| `--green`     | `#139520` | *Reserved — ultra category?* |
-| `--gray`      | `#646464` | Rest days, muted states.     |
+Each has ONE job. Never mix roles.
 
-### 1.5 Gradients
+| Token       | Hex       | Role |
+|-------------|-----------|------|
+| `--green`   | `#3EBD41` | **Success / done / on-track / good.** Completed workouts, positive states, the active TODAY chip, week-strip "done" dots, "Solid" reply, coach voice eyebrow ping. |
+| `--rest`    | `#008FEC` | **Primary blue / CTA.** "Lock in for tomorrow" button, primary actions, the "Add" button on profile gaps. |
+| `--dist`    | `#27B4E0` | **Distance / easy work / forward look.** Distance numbers in run recap, UP NEXT card distance, easy workout indicators. |
+| `--goal`    | `#F3AD38` | **Amber / soft warning / needs attention.** Sleep deficit, "warm" weather chip, "Tired" reply, recovery-amber. |
+| `--over`    | `#FC4D64` | **Red / needs the runner's attention.** Profile gap cards ("COACH NEEDS"), "Wrecked" reply, urgent flags. |
+| `--learn`   | `#B084FF` | **Purple / educational.** Fun-fact cards ("ⓘ HRV", etc). Light purple-tinted treatment. |
+| `--race`    | `#FF8847` | **Orange / race signal.** Race horizon cards, race-specific chips, countdown numbers. |
 
-Two canonical gradients. Don't invent new ones.
+**Hex values match exactly** what's used in [today-v4-2026-05-24.html](../coach/mockups/today-v4-2026-05-24.html). Renderer code should reference these by name, never inline new hex codes.
 
-- **XP → Corporate**: `linear-gradient(135deg, #9013FE 0%, #008FEC 100%)` — season goal tile, brand logo, avatar. The signature brand gesture.
-- **Layer → Accent wash**: `linear-gradient(135deg, var(--l2) 0%, rgba(ACCENT, .12) 100%)` — used with XP for marathon prediction tile, with Warning for race countdown tile. Soft accent wash on a raised tile.
+---
 
-### 1.6 Chip system
+## 3 · Typography
 
-Chips are the small status/delta labels. All share one structure:
+Two fonts. Never mix outside these roles.
 
-```
-font: Jost 8.5px / letter-spacing 1.2px / weight 700 / uppercase
-padding: 3px 7px / radius 4px / border 1px solid {variant}
+### 3.1 Stack
+
+```css
+--f-display: 'Bebas Neue', 'Inter', sans-serif;
+--f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 ```
 
-Variants: `chip` (default, layer-3 bg) · `chip--success` · `chip--warning` · `chip--attention` · `chip--corporate` · `chip--xp` · `chip--yellow`. Each uses the accent color at 12–15% bg, full color text, 30% color border.
+Loaded via Google Fonts:
+```html
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+```
+
+### 3.2 Role map
+
+| Role | Font | Treatment |
+|------|------|-----------|
+| Hero headline ("Solid long run this morning.") | display | 32-38px, weight 400, line-height 1.05 |
+| Hero numbers (run recap stats: 11.1 / 8:50 / 1:38) | display | 54-56px, weight 400, tabular-nums, line-height 0.95 |
+| Section labels ("LONG · 11.1 MI") | display | 22-24px, weight 400, uppercase |
+| Big card numbers (sleep "6.8h", next-up "5.8 MI", race "84 DAYS") | display | 42-60px, weight 400 |
+| Body paragraphs (coach voice prose) | body | 15.5-16px, weight 400, line-height 1.6, letter-spacing -0.01em |
+| Strong / emphasized in coach voice | body | weight 600 (inline `<strong>`) |
+| Card eyebrow labels ("COACH NEEDS", "SLEEP · LAST 7 NIGHTS") | body | 9-11px, weight 700, uppercase, letter-spacing 1.2-1.6px |
+| Stat units ("miles", "avg pace", "moving") | body | 10px, weight 600, uppercase, letter-spacing 1.2px |
+| Chips ("HR 140", "CAD 160") | body | 11px, weight 500-600 |
+| Reply chips (SOLID/TIRED/WRECKED) | display | 18px, weight 400, uppercase, letter-spacing 1.2px |
+| Date eyebrow ("SUN · MAY 24") | body | 11px, weight 600, uppercase, letter-spacing 1.2px |
+| Brand wordmark ("faff") | display | 26px, weight 400, letter-spacing 1px (lowercase) |
+
+### 3.3 Rules
+
+- **Display font (Bebas Neue) is uppercase-feeling by design** — its letterforms read as all-caps even when typed lowercase. Use at headline + number sizes for editorial weight.
+- **Body font (Inter) carries all reading text.** Coach voice prose, card descriptions, chip text. Variable weight: 400 normal, 600 strong, 700 labels.
+- **Tabular numerals** on all numeric hero values (`font-variant-numeric: tabular-nums`) so digit widths align across stats.
+- **Letter-spacing positive (1.2-1.8px) on small uppercase labels** for legibility at small sizes.
+- **Letter-spacing negative (-0.01em) on body paragraphs** for tighter, more conversational reading.
 
 ---
 
-## 2 · Typography system
+## 4 · Layout
 
-Three fonts, three jobs. Never mix outside these roles.
+### 4.1 Containers
 
-### 2.1 Font stacks
+- Phone-frame width (mockups): 460px outer, ~432px inner screen
+- iPhone aspect ratio: 460 / 940 in mockups
+- Card padding: 14-18px interior
+- Card radius: 14-18px
+- Card gap: 10px (within cards lane)
+- Module gap: 8-22px between major sections
+- Page horizontal padding: 24px
 
-| Token         | Stack                                                                           | Google Fonts |
-|---------------|----------------------------------------------------------------------------------|--------------|
-| `--f-display` | `"Oswald", "Headliner", "Bebas Neue", "Helvetica Neue Condensed", "Arial Narrow", sans-serif` | Oswald |
-| `--f-body`    | `"Jost", "Futura PT", "Futura", "Trebuchet MS", "Century Gothic", Avenir, sans-serif`          | Jost |
-| `--f-label`   | Same as body (used where casing/tracking differ from body defaults)              | Jost |
-| `--f-data`    | `"JetBrains Mono", "SF Mono", "IBM Plex Mono", ui-monospace, monospace`          | JetBrains Mono |
+### 4.2 The TODAY page structure (POST-RUN)
 
-**Production license plan:** swap in Headliner (or Futura Condensed Bold) + Futura PT when the iOS/native app ships. The Google Fonts stack is the universal fallback.
+```
+Status bar           18px top, 32px sides
+App bar              brand + date left | readiness chip right
+Week strip           thin glance row, 7 day cells
+Run recap            eyebrow + label + 3-stat grid + sub-chips + link
+Coach voice          eyebrow + headline + paragraphs + reply chips
+Cards lane           vertical stack, 10px gap
+Bottom nav           4 tabs, sticky
+```
 
-### 2.2 Role map
-
-| Role                          | Font      | Treatment                                                     |
-|-------------------------------|-----------|---------------------------------------------------------------|
-| Hero numbers (pace, distance) | display   | `.inst-num` 38px, `.stat-num` 36px, weight 800, tabular-nums, letter-spacing −.035em |
-| Headlines (race names, workout titles, "Ready to run", user name) | display | UPPERCASE, weight 600, letter-spacing .005em, line-height ~1 |
-| Name / hero headline          | display   | 68px uppercase, weight 600                                    |
-| Body text, KPI values         | body      | 14–19px, weight 500–800                                       |
-| Tile labels                   | label     | 9px UPPERCASE, weight 700, letter-spacing 1.8px               |
-| Timestamps, meta, technical   | data      | 8.5–10px, weight 700, letter-spacing 1.2–1.8px                |
-| Eyebrow labels ("Good morning") | label   | 11px UPPERCASE, letter-spacing 2px                            |
-
-### 2.3 Rules
-
-- **No Georgia, no italic serifs.** The condensed display carries all the editorial weight. Serifs fight Oswald.
-- **Display font is always uppercase** at headline sizes. Mixed case breaks the condensed rhythm.
-- **Display font drops periods** (`David Nitzsche`, not `David Nitzsche.`). Uppercase display doesn't want punctuation.
-- **Tabular numerals** on all numeric hero values (`font-variant-numeric: tabular-nums`).
-- **No highlighter blocks** on multi-line text. If text wraps, the highlight breaks. Use accent bars + tracked labels instead.
+Other states reorder this spine (see [docs/coach/TODAY_SPEC.md](../coach/TODAY_SPEC.md) state matrix).
 
 ---
 
-## 3 · Layout & spacing
+## 5 · Component patterns
 
-### 3.1 Containers
+### 5.1 Cards
 
-- Page max-width: `1440px`
-- Stage radius: `20px`
-- Tile radius: `14px`
-- Small chip/cell radius: `4–8px`
-- Body padding: `26px 28px 30px`
+Default: `background: var(--card)`, `border: 1px solid var(--line)`, `border-radius: 18px`, padding `16-18px`.
 
-### 3.2 Grids
+Variants:
+- **Action card** (cadence experiment, sleep deficit): large, big numbers, CTA pill at bottom
+- **Info card** (next workout, race horizon): medium, focused content
+- **Educational card** (`fun_fact`): light, purple-tinted (`rgba(176,132,255,0.04)` bg, `rgba(176,132,255,0.18)` border)
+- **Slim affordance row** (`profile_gap`): low padding, label + value left, +Add pill right
 
-- **Stat row:** 4 columns, equal, `gap: 10px`
-- **Charts row:** `1.4fr 1fr 1.1fr`, `gap: 10px` (This week / Calendar / Today)
-- **Instrument grid:** 6 columns, `grid-auto-rows: minmax(172px, 1fr)`, `gap: 10px`
-- Hero tiles: `grid-column: span 2`
+### 5.2 Big numbers in cards
 
-### 3.3 Spacing scale
+Pattern: number BIG (Bebas, 42-60px) in the role-appropriate color, unit small (Inter, 11px, mute, uppercase). Examples:
 
-Roughly 4/8/12/16/20/24/28 px. Use 10px for tile gaps (tight), 14–20px for tile interior padding.
+- Cadence experiment: `160 → 168 SPM` (current grey + arrow + target blue)
+- Sleep: `6.8h` (goal/amber) + sub-line `7-NIGHT AVG · last night 7.7h`
+- Next workout: distance big on RIGHT, label + when small on LEFT
+- Race horizon: race name + date small on LEFT, days countdown big on RIGHT
 
----
+### 5.3 Bar charts (sleep card)
 
-## 4 · Component rules
+7 vertical bars, `--goal` color at 0.85 opacity, 4px gap, 56px height container. Hours value labels above bars in `--mute` 9px. DOW row below in `--dim` 9px uppercase.
 
-### 4.1 Tiles
+### 5.4 Reply chips (post-run)
 
-- Default: `background: var(--l1)`, `border: 1px solid var(--l4)`
-- Raised: `background: var(--l2)` (today card, recovery hero)
-- Accent-washed: `linear-gradient(135deg, var(--l2), rgba(ACCENT, .12))` + matching colored border at 30% alpha
-- Race tile: `var(--l1)` bg + `border: 1px solid var(--warning)` + radial glow in corner
+3 equal-width pills, transparent background, `--line` border. On hover, border + text colorize:
+- `.solid` → `--green`
+- `.tired` → `--goal`
+- `.wrecked` → `--over`
 
-### 4.2 Data visualization
+Bebas, 18px, uppercase, letter-spacing 1.2px.
 
-- **One color per tile.** Each instrument tile commits to one accent. No rainbow zone bars.
-- **Sparklines** always include a filled area gradient (accent at 35% → 0%) + stroke line + endpoint dot.
-- **Bars** use layer-3 for inactive, accent for active. Race day bar in time/pace charts is always warning-red.
-- **Rings** use `var(--l4)` as track, accent as fill, `transform: rotate(-90deg)` so they start at 12 o'clock.
-- **Gauges** (ACWR) use corporate → success → warning arc for safe/sweet/danger zones.
+### 5.5 Readiness chip (top-right)
 
-### 4.3 Calendar color coding
+44px circular SVG ring. Track in `var(--line)` 3px stroke. Fill in `--green` (or state color) with `stroke-dasharray` proportional to value. Big number (18px Bebas, `--green`) centered.
 
-Always: Easy=light-blue · Quality=aqua · Long=dark-blue · Race=warning · Rest=layer-3. Today cell: corporate bg with layer-0 + corporate shadow ring.
+### 5.6 Week strip
 
----
-
-## 5 · Motion & interaction (forward notes)
-
-Not yet designed. When added:
-- Transitions: 180ms ease-out default, 240ms for modal/sheet
-- No bouncing, no springs. Sports dashboards feel serious.
-- Hover raises tile by one layer value (l1 → l2) + 1px border brightening
-- Active tap: 0.96 scale, 120ms
+7-day grid, equal columns, 4px gap. Each day = 8px×2px padded cell, `rgba(255,255,255,0.025)` background. Day-letter (M T W T F S S) in `--mute` 9px, mileage in `--ink` Bebas 14px, completion dot 3px below. Today cell: `--green` tint background + `--green` border + `--green` text.
 
 ---
 
 ## 6 · What NOT to do
 
-Mistakes made during exploration, locked out:
-
-1. **No rainbow within a single tile.** Multi-hue HR zone bars, rainbow training-year histograms — killed. Grid richness comes from 12 single-note tiles, not from each tile being colorful.
-2. **No orange + warm brown pairing.** Reads Halloween.
-3. **No Georgia italic.** Fights Oswald. All editorial weight comes from the condensed display.
-4. **No highlighter blocks on wrapping text.** The yellow "TAPER BEGINS / WEDNESDAY" wrap was the canonical failure.
-5. **No lime anywhere.** It was an attempted third accent — not in the system.
-6. **No flat mixing of bone + ink.** Use the layer scale. Depth is built into the palette.
-7. **No multi-line period-terminated sentences in display type.** Trim the period, trim the extra clause.
-8. **No red for race signal, decoration, or highlights.** Red (`--warning`) reads as ALARM / ALERT and nothing else. It appears only when something is genuinely wrong: overtraining, ACWR danger zone, retired shoes, injury flags. Race day, countdown, race-week bars, race calendar cells all live on `--attention` (amber) — race is a special day, not an emergency.
+- **No competing visual elements per module.** One number dominates per card; supporting content scales smaller. Never two big numbers fighting for the eye.
+- **No tiled stat grids on TODAY.** The 6-tile RUNNING FORM grid was killed in v4. Run stats are typography in a 3-column layout, not boxed tiles.
+- **No standalone banner stack.** All status / mode / adaptation content flows through the coach voice + cards lane.
+- **No big readiness ring as page primary.** Readiness is a 44px top-right chip; tap for /health deep-dive.
+- **No emoji on reply chips or anywhere coach-adjacent.** Watch UI uses monoline simple graphics; the app inherits that discipline.
+- **No alarm-red unless something is actually urgent.** Profile gaps use `--over` because runner action is needed; weather warm uses `--goal` (amber soft warning), not red. Save red for genuine alerts.
+- **No em dashes in coach voice copy** (handled in voice doctrine, not the design system, but flagged here for renderers building copy).
+- **No new tokens or fonts in renderer code.** If you need a color or type role that isn't here, add it to this doc first.
 
 ---
 
 ## 7 · Cross-platform parity
 
-Because the hub ripples to watch + iOS:
+Same DNA across all surfaces:
 
-- **Watch (SwiftUI + HKWorkoutSession):** uses same semantic tokens. Ring colors lock to: recovery = success; target pace = corporate; behind pace = warning; ahead = aqua. Race-day HUD uses warning accent throughout.
-- **iOS native:** inherits the dark palette as default; optional light mode flips layer scale (basement → white, inverting the t0–t3 scale) but keeps all semantic colors identical.
-- **Light mode (future):** palette system already supports it. Light layers from source palette: `#F6F7F8` / `#E6E8EF` / `#BFBFBF` / `#FFFFFF` / `#B6BBCC`.
+- **Web (Next.js):** consumes tokens from CSS variables matching this doc.
+- **iOS native:** mirror the tokens in SwiftUI as Color extensions + Font.custom calls. Same hex values, same Bebas/Inter stack.
+- **Watch:** the most compressed form. One number dominates per face. Same palette tokens; tighter type sizing. The watch-faces gallery is the reference.
+
+All three render the same `{ voice, topics[] }` payload from the API, just at different scales.
 
 ---
 
-## Change log
+## 8 · Change log
 
-- **2026-04-21** — Initial lock. Palette + typography + tile rules derived from hub-system.html. Previous experiments (paper/cobalt/lime/bone variants) archived in `designs/` but superseded.
-- **2026-04-21** — Hero hub locked (`designs/hub.html`). Instrument grid extended to 3 rows × 6 cols, organized into Readiness (row 1), Fitness (row 2), Volume + Race (row 3). Five research-backed training metrics integrated at hub surface: HRV 7d trend, threshold pace, aerobic decoupling, cadence, last-5K vs goal. ACWR gauge and resting HR round out the diagnostic set. Hub-system.html retained as palette reference only.
-- **2026-04-21** — Hub simplified to 2 rows × 6 cols (10 tiles). Cut: Streak, Resting HR, Longest 30d, Pace·week, Training 12mo, 2026 ring, Shoe rotation, Conditions. Added Sleep · 7d (research short-list addition). Heroes staggered diagonally (Recovery top-right, Marathon bottom-left) to avoid vertical stacking.
-- **2026-04-21** — **Red reassigned to alerts only.** `--warning` no longer carries race signal. Race day / countdown / race-week moved to `--xp` (purple), unifying the "race = goal = aspiration" color story. Red reads as ALARM and is now reserved for actual warnings (overtraining, ACWR danger, retired shoes, injury flags).
+- **2026-05-24** — v4 TODAY mockup locked as canonical. DESIGN_SYSTEM.md rewritten to reflect it. Prior April 2026 document (hub-based, Oswald/Jost) moved to [DESIGN_SYSTEM_LEGACY_2026-04.md](./DESIGN_SYSTEM_LEGACY_2026-04.md). Tokens + fonts here are exactly what the v4 mockup uses.

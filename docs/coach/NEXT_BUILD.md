@@ -72,6 +72,10 @@ Goal: David opens www.faff.run + iOS app, sees the v4 mockup rendered with his r
 - Backward compat: keep `coachLine` field (legacy iOS reads it) populated by joining `voice` paragraphs
 - Add `topics: TypedCard[]` as the new authoritative payload for new renderers
 
+**1.5b Design tokens — pull from the canon**
+
+All renderer CSS / SwiftUI / WatchKit code pulls palette + typography from [`docs/architecture/DESIGN_SYSTEM.md`](../architecture/DESIGN_SYSTEM.md). The design system is locked against the v4 TODAY mockup (Bebas Neue + Inter, pure-black canvas, the watch-face-derived semantic colors). Never redefine tokens or fonts in component code. If a renderer needs a color or font that isn't in the design system, extend DESIGN_SYSTEM.md first, then use the new token.
+
 **1.6 React renderers** (one component per card kind)
 - `web/app/today/_components/CoachVoice.tsx`
 - `web/app/today/_components/cards/CadenceExperimentCard.tsx`

@@ -11,7 +11,7 @@ The product docs for faff.run — a research-grounded running coach that lives o
 | Folder | What's in it |
 |---|---|
 | **[coach/](./coach/)** | Coach product work — philosophy, page specs, card library, mockups, execution plan |
-| **[architecture/](./architecture/)** | System design — schema, algorithms, plan architecture, design system tokens, project map |
+| **[architecture/](./architecture/)** | System design — schema, algorithms, plan architecture, [design system](./architecture/DESIGN_SYSTEM.md) (locked against v4 TODAY mockup), project map |
 | **[research/](./research/)** | Canonical training research that grounds the coach (mirrored from `/Research/` at repo root) |
 | **[domain/](./domain/)** | Domain-specific specs — race checklists, health page architecture, example data shapes |
 | **[status/](./status/)** | Rolling status — master plans, migration trackers, session handoffs, gap analyses |
