@@ -517,8 +517,8 @@ function buildUserMessage(s, stateKind) {
   lines.push(`- Diagnostic rule: if easy-pace cadence is below 160 spm for average-height runners (170-180cm), suspect overstriding. Below 155 at any pace for a non-tall runner is a strong red flag. Tall runners (>185cm) run 5-8 spm lower than average.`);
   lines.push('');
   lines.push(`## On sleep + training adaptation (general endurance research)`);
-  lines.push(`- Adult endurance athletes need 7-9h sleep for full adaptation. Sleep is when training stress consolidates.`);
-  lines.push(`- A single short night is normal; cumulative deficit over multiple nights blunts adaptation, raises injury risk, lowers immune function. Multi-night deficit is the signal worth flagging, not one-off short nights.`);
+  lines.push(`- Adult endurance athletes need 7-9h sleep for full recovery. Sleep is when training stress consolidates.`);
+  lines.push(`- A single short night is normal; cumulative deficit over multiple nights blunts recovery, raises injury risk, lowers immune function. Multi-night deficit is the signal worth flagging, not one-off short nights.`);
   lines.push(`- HRV and resting HR drift up with accumulated sleep debt. Combined with subjective rough check-ins, this is the recovery signal.`);
   lines.push('');
   lines.push(`## On week-volume + plan adherence`);
