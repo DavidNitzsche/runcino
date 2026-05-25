@@ -1,0 +1,167 @@
+/* /today · v4 page styles — locked against docs/coach/mockups/today-v4-2026-05-24.html.
+   Palette + fonts mirror the canonical mockup; tokens map to docs/architecture/DESIGN_SYSTEM.md. */
+
+.today-v4-page {
+  --bg: #0a0c10;
+  --ink: #f6f7f8;
+  --mute: #8a90a0;
+  --dim: #4b505e;
+  --line: rgba(255,255,255,0.08);
+  --line-2: rgba(255,255,255,0.04);
+  --card: #11141a;
+
+  --green: #3EBD41;
+  --goal:  #F3AD38;
+  --over:  #FC4D64;
+  --dist:  #27B4E0;
+  --rest:  #008FEC;
+  --learn: #B084FF;
+  --race:  #FF8847;
+
+  --f-display: 'Bebas Neue', 'Inter', sans-serif;
+  --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-body);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.today-v4-page * { box-sizing: border-box; }
+
+.today-v4-page .page { max-width: 480px; margin: 0 auto; padding-bottom: 80px; }
+
+/* App bar */
+.today-v4-page .appbar { display: flex; justify-content: space-between; align-items: center; padding: 28px 24px 12px; }
+.today-v4-page .brand-left { display: flex; align-items: baseline; gap: 12px; }
+.today-v4-page .appbar .brand { font-family: var(--f-display); font-size: 26px; font-weight: 400; color: var(--ink); letter-spacing: 1px; }
+.today-v4-page .appbar .date { font-family: var(--f-body); font-size: 11px; font-weight: 600; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+.today-v4-page .readiness-chip { width: 44px; height: 44px; position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.today-v4-page .readiness-chip svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.today-v4-page .readiness-chip .v { font-family: var(--f-display); font-size: 18px; font-weight: 400; color: var(--green); letter-spacing: 0.5px; line-height: 1; }
+
+/* Week strip */
+.today-v4-page .weekstrip { padding: 4px 24px 14px; }
+.today-v4-page .weekstrip .label { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 10px; display: flex; justify-content: space-between; }
+.today-v4-page .weekstrip .label .total { color: var(--green); }
+.today-v4-page .weekstrip .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.today-v4-page .weekstrip .d { background: rgba(255,255,255,0.025); border-radius: 8px; padding: 8px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.today-v4-page .weekstrip .d.today { background: rgba(62,189,65,0.16); box-shadow: inset 0 0 0 1px rgba(62,189,65,0.35); }
+.today-v4-page .weekstrip .d .dow { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1px; }
+.today-v4-page .weekstrip .d.today .dow { color: var(--green); }
+.today-v4-page .weekstrip .d .mi { font-family: var(--f-display); font-size: 14px; font-weight: 400; color: var(--ink); line-height: 1; letter-spacing: 0.5px; }
+.today-v4-page .weekstrip .d.today .mi { color: var(--green); }
+.today-v4-page .weekstrip .d.rest .mi { color: var(--dim); }
+.today-v4-page .weekstrip .d .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--green); margin-top: 2px; }
+.today-v4-page .weekstrip .d.rest .dot { background: var(--dim); }
+.today-v4-page .weekstrip .d.future .dot { background: transparent; border: 1px solid var(--dim); }
+
+/* Run recap (top, post-run) */
+.today-v4-page .recap-top { padding: 8px 24px 24px; }
+.today-v4-page .recap-top .eyebrow { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.today-v4-page .recap-top .eyebrow .badge { background: rgba(62,189,65,0.14); color: var(--green); padding: 3px 9px; border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; }
+.today-v4-page .recap-top .label-row { font-family: var(--f-display); font-size: 24px; font-weight: 400; color: var(--ink); letter-spacing: 0.8px; margin-bottom: 18px; }
+.today-v4-page .recap-top .stats { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.today-v4-page .recap-top .stats .s .v { font-family: var(--f-display); font-size: 56px; font-weight: 400; line-height: 0.95; letter-spacing: 0.5px; font-variant-numeric: tabular-nums; }
+.today-v4-page .recap-top .stats .s.dist .v { color: var(--dist); }
+.today-v4-page .recap-top .stats .s.pace .v { color: var(--green); }
+.today-v4-page .recap-top .stats .s.time .v { color: var(--ink); }
+.today-v4-page .recap-top .stats .s .u { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 4px; }
+.today-v4-page .recap-top .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.today-v4-page .recap-top .c { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px; font-size: 11px; font-weight: 500; color: rgba(246,247,248,0.85); display: inline-flex; align-items: center; gap: 5px; }
+.today-v4-page .recap-top .c .k { color: var(--mute); font-size: 9px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.today-v4-page .recap-top .c .v { color: var(--ink); font-weight: 600; }
+.today-v4-page .recap-top .c.warm { color: var(--goal); border-color: rgba(243,173,56,0.30); background: rgba(243,173,56,0.08); }
+.today-v4-page .recap-top .recap-link { font-family: var(--f-body); font-size: 11px; font-weight: 500; color: var(--mute); text-decoration: none; margin-top: 12px; display: inline-block; letter-spacing: 0.3px; }
+.today-v4-page .recap-top .recap-link:hover { color: var(--ink); }
+
+/* Coach hero */
+.today-v4-page .coach { padding: 8px 24px 22px; border-top: 1px solid var(--line-2); margin-top: 4px; padding-top: 22px; }
+.today-v4-page .coach .eyebrow { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.today-v4-page .coach .eyebrow::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(62,189,65,0.6); }
+.today-v4-page .coach .lead { font-family: var(--f-display); font-size: 32px; font-weight: 400; color: var(--ink); line-height: 1.05; letter-spacing: 0.5px; margin: 0 0 14px; }
+.today-v4-page .coach p { font-family: var(--f-body); font-size: 15.5px; line-height: 1.6; color: rgba(246,247,248,0.86); margin: 0 0 12px; letter-spacing: -0.01em; }
+.today-v4-page .coach p strong { color: var(--ink); font-weight: 600; }
+.today-v4-page .coach .ask { font-family: var(--f-body); font-size: 12px; color: var(--mute); margin-top: 18px; margin-bottom: 12px; letter-spacing: 0.2px; }
+.today-v4-page .reply { display: flex; gap: 8px; }
+.today-v4-page .reply-chip { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--ink); padding: 12px 4px; border-radius: 14px; font-family: var(--f-display); font-size: 18px; font-weight: 400; letter-spacing: 1.2px; cursor: pointer; transition: all .15s; }
+.today-v4-page .reply-chip:hover { background: rgba(255,255,255,0.04); }
+.today-v4-page .reply-chip.solid:hover   { border-color: rgba(62,189,65,0.50); color: var(--green); }
+.today-v4-page .reply-chip.tired:hover   { border-color: rgba(243,173,56,0.50); color: var(--goal); }
+.today-v4-page .reply-chip.wrecked:hover { border-color: rgba(252,77,100,0.50); color: var(--over); }
+
+/* Cards lane */
+.today-v4-page .cards-lane { padding: 4px 24px 24px; display: flex; flex-direction: column; gap: 10px; }
+.today-v4-page .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; }
+.today-v4-page .card-eyebrow { font-family: var(--f-body); font-size: 9px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px; }
+.today-v4-page .coach-note { font-family: var(--f-body); font-size: 12px; line-height: 1.5; color: rgba(246,247,248,0.85); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); display: flex; align-items: flex-start; gap: 8px; }
+.today-v4-page .coach-note::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--green); margin-top: 7px; flex-shrink: 0; }
+
+/* Cadence */
+.today-v4-page .cadence-numbers { display: flex; align-items: baseline; gap: 18px; margin: 4px 0 8px; }
+.today-v4-page .cadence-numbers .cur { font-family: var(--f-display); font-size: 48px; font-weight: 400; color: var(--mute); letter-spacing: 0.5px; line-height: 1; }
+.today-v4-page .cadence-numbers .arrow { color: var(--dim); font-size: 22px; line-height: 1; }
+.today-v4-page .cadence-numbers .tgt { font-family: var(--f-display); font-size: 56px; font-weight: 400; color: var(--dist); letter-spacing: 0.5px; line-height: 1; }
+.today-v4-page .cadence-numbers .unit { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; margin-left: 6px; }
+.today-v4-page .card-reason { font-family: var(--f-body); font-size: 12.5px; color: rgba(246,247,248,0.65); line-height: 1.5; margin: 6px 0 12px; }
+.today-v4-page .card-cta { background: var(--dist); color: #000; border: none; border-radius: 999px; padding: 10px 16px; font-family: var(--f-display); font-size: 14px; font-weight: 400; letter-spacing: 1px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.today-v4-page .card-cta:hover { opacity: 0.92; }
+
+/* Sleep */
+.today-v4-page .sleep-row { display: flex; align-items: baseline; gap: 14px; margin: 4px 0 12px; }
+.today-v4-page .sleep-row .big { font-family: var(--f-display); font-size: 48px; font-weight: 400; color: var(--goal); letter-spacing: 0.5px; line-height: 1; }
+.today-v4-page .sleep-row .sub { font-family: var(--f-body); font-size: 11px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; }
+.today-v4-page .sleep-row .sub .v { color: var(--ink); font-weight: 700; }
+.today-v4-page .sleep-bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 8px 0 8px; align-items: end; height: 56px; position: relative; }
+.today-v4-page .sleep-bars .bar { background: var(--goal); border-radius: 2px 2px 0 0; opacity: 0.85; position: relative; }
+.today-v4-page .sleep-bars .bar .h { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 3px; font-family: var(--f-body); font-size: 9px; font-weight: 600; color: var(--mute); white-space: nowrap; }
+.today-v4-page .sleep-dows { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-align: center; }
+.today-v4-page .sleep-summary { font-family: var(--f-body); font-size: 11.5px; color: var(--mute); margin-top: 14px; }
+.today-v4-page .sleep-summary .deficit { color: var(--goal); font-weight: 600; }
+
+/* Next workout */
+.today-v4-page .next-grid { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-top: 4px; }
+.today-v4-page .next-left .typ { font-family: var(--f-display); font-size: 28px; font-weight: 400; color: var(--ink); letter-spacing: 0.8px; line-height: 1; }
+.today-v4-page .next-left .when { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 6px; }
+.today-v4-page .next-right { display: flex; align-items: baseline; gap: 4px; color: var(--rest); }
+.today-v4-page .next-right .v { font-family: var(--f-display); font-size: 60px; font-weight: 400; line-height: 0.95; letter-spacing: 0.5px; }
+.today-v4-page .next-right .u { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+
+/* Race horizon */
+.today-v4-page .race-grid { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-top: 4px; }
+.today-v4-page .race-left .name { font-family: var(--f-display); font-size: 22px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; line-height: 1.1; }
+.today-v4-page .race-left .when { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; margin-top: 4px; }
+.today-v4-page .race-right { display: flex; align-items: baseline; gap: 4px; color: var(--race); }
+.today-v4-page .race-right .v { font-family: var(--f-display); font-size: 56px; font-weight: 400; line-height: 0.95; letter-spacing: 0.5px; }
+.today-v4-page .race-right .u { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+
+/* Fun fact */
+.today-v4-page .card.fun { background: rgba(176,132,255,0.04); border: 1px solid rgba(176,132,255,0.18); padding: 14px 16px; }
+.today-v4-page .card.fun .fun-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.today-v4-page .card.fun .fun-icon { width: 18px; height: 18px; border-radius: 50%; background: var(--learn); color: #1a0f33; font-family: var(--f-body); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.today-v4-page .card.fun .fun-title { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--learn); letter-spacing: 1.2px; text-transform: uppercase; }
+.today-v4-page .card.fun .fun-body { font-family: var(--f-body); font-size: 13px; line-height: 1.55; color: rgba(246,247,248,0.82); margin: 4px 0 8px; }
+.today-v4-page .card.fun .fun-link { font-family: var(--f-body); font-size: 10.5px; font-weight: 600; color: var(--learn); text-decoration: none; letter-spacing: 0.5px; }
+
+/* Profile gap */
+.today-v4-page .card.gap { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.today-v4-page .card.gap .left { flex: 1; min-width: 0; }
+.today-v4-page .card.gap .label { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--over); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 3px; }
+.today-v4-page .card.gap .field { font-family: var(--f-display); font-size: 19px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; line-height: 1.1; }
+.today-v4-page .card.gap .why { font-family: var(--f-body); font-size: 11.5px; font-weight: 400; color: var(--mute); margin-top: 2px; }
+.today-v4-page .card.gap .add { background: rgba(252,77,100,0.12); color: var(--over); border: 1px solid rgba(252,77,100,0.25); border-radius: 999px; padding: 7px 14px; font-family: var(--f-display); font-size: 12px; font-weight: 400; letter-spacing: 1px; cursor: pointer; flex-shrink: 0; }
+.today-v4-page .card.gap .add:hover { background: rgba(252,77,100,0.18); }
+
+/* Weight trend */
+.today-v4-page .weight-row { display: flex; align-items: baseline; gap: 14px; margin: 4px 0 8px; }
+.today-v4-page .weight-row .big { font-family: var(--f-display); font-size: 36px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; line-height: 1; }
+.today-v4-page .weight-row .delta { font-family: var(--f-body); font-size: 12px; font-weight: 600; color: var(--mute); }
+.today-v4-page .weight-row .delta.down { color: var(--green); }
+.today-v4-page .weight-row .delta.up   { color: var(--goal); }
+
+/* Recovery amber */
+.today-v4-page .recovery-row { display: flex; gap: 14px; margin: 4px 0 8px; }
+.today-v4-page .recovery-row .metric { display: flex; flex-direction: column; }
+.today-v4-page .recovery-row .metric .v { font-family: var(--f-display); font-size: 32px; font-weight: 400; color: var(--goal); letter-spacing: 0.5px; line-height: 1; }
+.today-v4-page .recovery-row .metric .label { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 1px; text-transform: uppercase; margin-top: 4px; }
