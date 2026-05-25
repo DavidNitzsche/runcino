@@ -1,97 +1,80 @@
-# Deploy plan — legacy + v2 coexistence
+# Deploy — full replace cutover
+
+**Decision (David, 2026-05-25): full replace. No legacy fallback in production.**
+
+`www.faff.run` builds from `web-v2/` as of this commit. The legacy app
+remains in the repo at `legacy/web/` for reference but is not deployed.
 
 ## Domains
 
-| Domain                  | Points at        | When            |
-| ----------------------- | ---------------- | --------------- |
-| `www.faff.run`          | legacy/web       | today, until cutover |
-| `legacy.faff.run`       | legacy/web       | from P0.8 onward, permanently as fallback |
-| `next.faff.run`         | web-v2 staging   | from P0.8 onward, where David tests v2 daily |
-| (cutover)               | web-v2           | when v2 is unambiguously better |
+| Domain          | Builds from | When           |
+| --------------- | ----------- | -------------- |
+| `www.faff.run`  | web-v2      | now            |
 
-## Setup steps (one-time, by David in Railway console)
+That's it. Single deploy target.
 
-1. **Add a second Railway service** for v2:
-   - Repo: same `DavidNitzsche/runcino`
-   - Root config: `web-v2/railway.json` (already in repo)
-   - Branch: `main`
-   - Custom domain: `next.faff.run`
-   - Env vars: `DATABASE_URL` (same Railway pg), `ANTHROPIC_API_KEY`
-   - Builder: NIXPACKS (auto-detect Next.js)
+## Railway
 
-2. **Add `legacy.faff.run` as a domain alias** of the existing service.
-   The current root `railway.json` already builds from `legacy/web` so the
-   service keeps working unchanged.
+Root `railway.json` points at `web-v2/`. Next push to `main` triggers a
+Railway rebuild against the new app. No console changes required — the
+existing service just builds the new directory.
 
-3. **Cutover (later)**: swap which service serves `www.faff.run`.
-   Both services share the same database, so no data migration needed.
+Required env vars (already set on Railway from the legacy deploy):
+- `DATABASE_URL` — Railway pg, shared with v2
+- `ANTHROPIC_API_KEY` — coach engine
 
-## Migrations
+## Database
 
-Before the next deploy of v2, apply the SQL migrations against prod:
+All 4 v2 migrations (100-103) are already applied to prod:
+- `check_ins` — §8.1 reply chip loop
+- `coach_intents` — §8.6 acknowledgement log
+- `course_library` + `races.course_geometry` — §8.2 GPX ingestion
+- `learn_articles` — §8.5 reader
 
-```bash
-psql $DATABASE_URL -f web-v2/db/migrations/100_check_ins.sql
-psql $DATABASE_URL -f web-v2/db/migrations/101_coach_intents.sql
-psql $DATABASE_URL -f web-v2/db/migrations/102_course_library.sql
-psql $DATABASE_URL -f web-v2/db/migrations/103_learn_articles.sql
-```
-
-These are additive + idempotent; legacy/web ignores them.
+Schema is fully backward-compatible. Existing tables (profile, races,
+training_plans, plan_weeks, plan_phases, plan_workouts,
+strava_activities, health_samples, shoes) are unchanged.
 
 ## iOS
 
-`legacy/native` (existing Faff TestFlight target) stays as the user-facing
-iOS app until P5 ships `native-v2`. Update the iOS `API.baseURL` to
-`next.faff.run` once you're ready to dogfood v2 from your phone.
+`legacy/native/Faff/Faff.xcodeproj` is the current TestFlight target.
+To swap to v2:
+
+```bash
+brew install xcodegen  # if not already
+cd native-v2
+xcodegen generate
+open Faff.xcodeproj
+# Build + submit to TestFlight under the existing run.faff.app bundle id
+```
+
+The watch app at `legacy/native/Faff/FaffWatch Watch App/` ships
+inside the legacy Xcode project — it stays in legacy and continues
+working unchanged via the wire contract (see WATCH_CONTRACT.md).
+
+When native-v2's Xcode project is built and TestFlight'd, point its
+target at the watch source files in legacy/ to include the watch
+app in the new build. (One-time setup in Xcode.)
 
 ## Rollback
 
-If `next.faff.run` is broken, nothing else is affected — `www.faff.run`
-continues serving from `legacy/web`. Worst case after cutover, point
-`www.faff.run` back at the legacy service in the Railway console.
+If web-v2 in production breaks:
 
-## Cutover checklist (P6 → production)
+1. `git revert <the cutover commit>` (the one that flipped root configs).
+2. `git push origin main` — Railway rebuilds from legacy/web.
+3. ~5-10 minute outage during the rebuild.
 
-Before flipping `www.faff.run` to web-v2:
+The legacy code stays intact in /legacy throughout. Rollback is a
+one-command operation if needed.
 
-1. **Verify v2 staging at next.faff.run for ≥ 7 days w/ David's daily use.**
-   - All briefings produce valid voice (no eval FAIL exits).
-   - Reply-chip → check_ins writes succeed.
-   - GPX placeholder renders cleanly on race-detail.
-   - At least one §8.6 closed-loop run (gap input → next briefing acks).
+## Monitoring after cutover
 
-2. **Database state.**
-   - All 4 v2 migrations applied (100-103).
-   - check_ins / coach_intents tables populated by David's usage.
-   - Existing legacy tables untouched.
+Watch for:
+- `/api/briefing` 500s (Anthropic API hiccups, prereq logic bugs)
+- Empty `topics[]` arrays (LLM not following the schema)
+- Voice eval FAIL exits in CI (`scripts/voice-eval/run.mjs`)
+- `check_ins` table growth (reply chips actually being tapped)
+- `coach_intents` for `profile_field_added` (gap input loop firing)
 
-3. **Root config flip.**
-   In `package.json` + `railway.json`, change `cd legacy/web` → `cd web-v2`.
-   - **Test the flip locally first.** `npm install && npm run build`
-     from the repo root should now build web-v2.
-   - Commit this as the cutover commit. Push deploys it.
-
-4. **iOS cutover.**
-   - Run `xcodegen generate` in `native-v2/`.
-   - Build/run on a real device (Watch paired) to verify
-     applicationContext push works.
-   - Submit to TestFlight as a new build of the existing Faff app id
-     (`run.faff.app`). The watch app inside ships unchanged.
-   - When the TestFlight build promotes, the existing watch app
-     continues running — no separate watch deploy.
-
-5. **DNS final.**
-   - Keep `legacy.faff.run` pointed at legacy/web service for one
-     month post-cutover.
-   - Drop legacy/ once v2 has shown 30 days of clean operation.
-
-## Rollback after cutover
-
-If v2 breaks in production:
-
-1. Revert the package.json + railway.json cutover commit (`git revert`).
-2. Push — Railway rebuilds from legacy/web.
-3. legacy.faff.run alias remains, so DNS doesn't need touching.
-
-Worst case 5-10 minute outage during the rebuild.
+David is the primary user. Voice drift, broken loops, wrong data —
+flag in conversation and we ship a fix.
