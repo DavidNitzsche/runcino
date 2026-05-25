@@ -14,8 +14,11 @@ CREATE TABLE IF NOT EXISTS check_ins (
     surface      text NOT NULL DEFAULT 'today'
 );
 
-CREATE INDEX IF NOT EXISTS check_ins_user_ts_idx     ON check_ins (user_id, ts DESC);
-CREATE INDEX IF NOT EXISTS check_ins_user_recent_idx ON check_ins (user_id, ts) WHERE ts > now() - interval '14 days';
+-- Single composite index covers the recent-window queries the coach engine runs
+-- (always filtered by user_id, ordered/bounded by ts). Partial index w/ now()
+-- isn't allowed (predicate must be IMMUTABLE), and the composite serves the
+-- same access pattern.
+CREATE INDEX IF NOT EXISTS check_ins_user_ts_idx ON check_ins (user_id, ts DESC);
 
 COMMENT ON TABLE check_ins IS
   'Runner subjective check-ins (SOLID/TIRED/WRECKED). One row per chip tap. Coach reads ~3-7 day window on next briefing.';
