@@ -55,7 +55,11 @@ const WARM_VERBS = [
 function structuralCheck(candidate) {
   const text = (candidate.voice ?? []).join('\n').toLowerCase();
   const lead = (candidate.lead ?? '').toLowerCase();
-  const full = lead + '\n' + text;
+  // Also scan topic coach_notes — banned phrases leak there too.
+  const topicNotes = (candidate.topics ?? [])
+    .map((t) => (t.coach_note ?? '').toLowerCase())
+    .join('\n');
+  const full = [lead, text, topicNotes].join('\n');
 
   const issues = [];
   let level = 'pass';

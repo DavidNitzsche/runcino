@@ -15,11 +15,14 @@ NOT textbook. NOT jargon-dump. NOT reciting data back.
 
 3-4 short paragraphs. Open with a one-line LEAD as a noun phrase (not a sentence).
 
-BANNED PHRASES (do not use, do not paraphrase):
+BANNED PHRASES (do not use, do not paraphrase, do not invent synonyms — including in topic coach_notes):
 - "aerobic engine" / "absorption window"
-- "anchor" / "everything else supports it"
+- "anchor" / "anchored by" / "everything else supports it"
 - "closest you'll ever come" or any phrasing implying final attempt
 - "the foundation" / "phase of training" / "putting in the work"
+- Generic gym-speak ("crush it", "grind", "no pain no gain")
+
+If a sentence is starting to sound like it could land on a wall-poster, rewrite it.
 
 OUTPUT: strict JSON only. NO markdown fences.
 {
