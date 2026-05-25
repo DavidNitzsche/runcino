@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TODAY · mockup · watch-face DNA</title>
+<meta name="viewport" content="width=1100">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Watch-face palette transposed to a phone page */
+    --bg:        #0a0c10;
+    --ink:       #f6f7f8;
+    --mute:      #8a90a0;
+    --dim:       #4b505e;
+    --line:      rgba(255,255,255,0.08);
+    --line-2:    rgba(255,255,255,0.04);
+    --card:      #11141a;
+
+    --green:     #3EBD41;
+    --goal:      #F3AD38;
+    --over:      #FC4D64;
+    --dist:      #27B4E0;
+    --rest:      #008FEC;
+
+    /* Brand fonts */
+    --f-display: 'Bebas Neue', 'Inter', sans-serif;
+    --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  html, body {
+    background: #15171c;
+    color: var(--ink);
+    font-family: var(--f-body);
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Page chrome ── */
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+  header { margin-bottom: 48px; }
+  header h1 {
+    font-family: var(--f-display);
+    font-size: 56px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    margin: 0;
+    color: var(--ink);
+  }
+  header .sub {
+    color: var(--mute);
+    font-size: 14px;
+    margin-top: 8px;
+    line-height: 1.6;
+    max-width: 680px;
+  }
+  header .meta {
+    color: var(--dim);
+    font-size: 11px;
+    margin-top: 20px;
+    letter-spacing: 0.4px;
+  }
+
+  /* ── Layout: phone + annotations side by side ── */
+  .stage {
+    display: grid;
+    grid-template-columns: 460px 1fr;
+    gap: 56px;
+    align-items: start;
+  }
+  @media (max-width: 1000px) {
+    .stage { grid-template-columns: 1fr; }
+  }
+
+  /* ── iPhone frame ── */
+  .phone {
+    position: relative;
+    width: 460px;
+    aspect-ratio: 460 / 940;
+    background: #000;
+    border-radius: 56px;
+    padding: 14px;
+    box-shadow:
+      0 60px 100px rgba(0,0,0,0.55),
+      0 20px 40px rgba(0,0,0,0.40),
+      inset 0 0 0 2px rgba(255,255,255,0.04);
+    margin: 0 auto;
+  }
+  .phone .notch {
+    position: absolute;
+    top: 22px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 32px;
+    background: #000;
+    border-radius: 18px;
+    z-index: 2;
+  }
+  .screen {
+    position: relative;
+    width: 100%; height: 100%;
+    background: var(--bg);
+    border-radius: 44px;
+    overflow: hidden;
+    overflow-y: auto;
+  }
+  .screen::-webkit-scrollbar { display: none; }
+
+  /* ── Status bar (system) ── */
+  .statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 32px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* ── Top app bar ── */
+  .appbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 36px 28px 12px;
+  }
+  .appbar .brand {
+    font-family: var(--f-display);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--ink);
+    letter-spacing: 0.5px;
+  }
+  .appbar .date {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--mute);
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+  }
+
+  /* ── Coach voice block (the hero) ── */
+  .coach {
+    padding: 24px 28px 28px;
+  }
+  .coach .eyebrow {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .coach .eyebrow::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px rgba(62,189,65,0.6);
+  }
+  .coach .lead {
+    font-family: var(--f-display);
+    font-size: 38px;
+    font-weight: 400;
+    color: var(--ink);
+    line-height: 1.05;
+    letter-spacing: 0.5px;
+    margin: 0 0 18px;
+  }
+  .coach p {
+    font-family: var(--f-body);
+    font-size: 16px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.85);
+    margin: 0 0 14px;
+    letter-spacing: -0.01em;
+  }
+  .coach p:last-of-type { margin-bottom: 22px; }
+  .coach p strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .coach .ask {
+    font-family: var(--f-body);
+    font-size: 13px;
+    color: var(--mute);
+    margin-top: 22px;
+    margin-bottom: 14px;
+  }
+  .reply {
+    display: flex;
+    gap: 10px;
+  }
+  .reply-chip {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 13px 8px;
+    border-radius: 16px;
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background .15s, border-color .15s;
+  }
+  .reply-chip:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.16);
+  }
+  .reply-chip .emoji { font-size: 16px; }
+
+  /* ── Divider ── */
+  .div {
+    height: 1px;
+    background: var(--line-2);
+    margin: 28px 28px;
+  }
+
+  /* ── Run recap (watch-face style: three big numbers, color-coded) ── */
+  .recap {
+    padding: 12px 28px 0;
+  }
+  .recap .label {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .recap .label .badge {
+    background: rgba(62,189,65,0.14);
+    color: var(--green);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+  }
+  .recap-stats {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .stat .v {
+    font-family: var(--f-display);
+    font-size: 54px;
+    font-weight: 400;
+    line-height: 0.95;
+    letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .v.green { color: var(--green); }
+  .stat .v.blue  { color: var(--dist); }
+  .stat .v.white { color: var(--ink); }
+  .stat .u {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--mute);
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── Sub-stats row ── */
+  .sub-stats {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .chip {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-family: var(--f-body);
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(246,247,248,0.85);
+    letter-spacing: 0.2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chip .k {
+    color: var(--mute);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .chip .v {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .chip.warm { color: var(--goal); border-color: rgba(243,173,56,0.30); background: rgba(243,173,56,0.08); }
+
+  .full-recap {
+    color: var(--mute);
+    font-family: var(--f-body);
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
+    letter-spacing: 0.3px;
+    margin-top: 14px;
+    display: inline-block;
+  }
+  .full-recap:hover { color: var(--ink); }
+
+  /* ── Week strip ── */
+  .week {
+    padding: 18px 28px 28px;
+  }
+  .week .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 18px;
+  }
+  .week .header .title {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .week .header .total {
+    font-family: var(--f-display);
+    font-size: 22px;
+    color: var(--green);
+    font-weight: 400;
+    letter-spacing: 0.5px;
+  }
+  .week .header .total small {
+    color: var(--mute);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0;
+    margin-left: 4px;
+  }
+  .days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 4px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.02);
+    position: relative;
+  }
+  .day.today {
+    background: rgba(62,189,65,0.12);
+    box-shadow: inset 0 0 0 1px rgba(62,189,65,0.30);
+  }
+  .day .dow {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--mute);
+    margin-bottom: 6px;
+  }
+  .day.today .dow { color: var(--green); }
+  .day .mi {
+    font-family: var(--f-display);
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--ink);
+    line-height: 1;
+    letter-spacing: 0.5px;
+  }
+  .day.today .mi { color: var(--green); }
+  .day .typ {
+    font-family: var(--f-body);
+    font-size: 8px;
+    font-weight: 700;
+    color: var(--mute);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .day .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-top: 8px;
+  }
+  .day .dot.skip { background: var(--dim); }
+  .day .dot.future { background: transparent; border: 1px solid var(--dim); }
+
+  /* ── Bottom nav ── */
+  .nav {
+    position: sticky;
+    bottom: 0;
+    left: 0; right: 0;
+    background: rgba(10,12,16,0.92);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--line);
+    padding: 14px 0 28px;
+    display: flex;
+    justify-content: space-around;
+  }
+  .nav .tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--dim);
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .nav .tab.active { color: var(--green); }
+  .nav .tab svg { width: 22px; height: 22px; fill: currentColor; }
+
+  /* ── Annotations panel ── */
+  .notes {
+    padding: 12px 0;
+  }
+  .notes h2 {
+    font-family: var(--f-display);
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--ink);
+    letter-spacing: 0.5px;
+    margin: 0 0 18px;
+  }
+  .notes ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 36px;
+  }
+  .notes li {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line-2);
+    font-size: 14px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+  }
+  .notes li:last-child { border-bottom: none; }
+  .notes li strong {
+    color: var(--ink);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .notes h3 {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    margin: 36px 0 14px;
+  }
+  .notes .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-top: 18px;
+  }
+  .notes .compare .col {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .notes .compare .col h4 {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin: 0 0 10px;
+  }
+  .notes .compare .col.now h4 { color: var(--over); }
+  .notes .compare .col.new  h4 { color: var(--green); }
+  .notes .compare ul { margin: 0; }
+  .notes .compare li {
+    padding: 6px 0;
+    font-size: 12px;
+    border: none;
+    color: rgba(246,247,248,0.70);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>TODAY · post-run · 2026-05-24</h1>
+    <p class="sub">
+      Mockup of the rebuilt TODAY page using the watch-face design language (pure black canvas,
+      one thing dominates per module, stats as typography, three-color discipline). Coach voice
+      and stats are <strong style="color:var(--green);">real data from prod Postgres</strong> via
+      <code>web/scripts/test-daily-briefing.mjs</code> — Claude sonnet-4.5 with the new
+      <code>web/coach/prompts/daily-briefing.md</code>.
+    </p>
+    <div class="meta">FONTS · BEBAS NEUE + INTER · COLORS LIFTED FROM <code>docs/watch-faces.html</code></div>
+  </header>
+
+  <div class="stage">
+    <!-- ── PHONE MOCKUP ── -->
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+
+        <!-- Status bar -->
+        <div class="statusbar">
+          <span>9:18</span>
+          <span>● ● ● ●</span>
+        </div>
+
+        <!-- App bar -->
+        <div class="appbar">
+          <div class="brand">faff</div>
+          <div class="date">SUN · MAY 24</div>
+        </div>
+
+        <!-- COACH VOICE (the hero) -->
+        <div class="coach">
+          <div class="eyebrow">COACH · POST-RUN</div>
+          <h2 class="lead">Great long run tonight.</h2>
+          <p>
+            11 miles at easy pace is exactly what we needed to close out the week.
+            You hit <strong>40.5 of the planned 41</strong> and that consistency is what
+            builds the fitness we're chasing for <strong>AFC</strong>.
+          </p>
+          <p>
+            <strong>Cadence was a bit low, around 160.</strong> For easy that's actually
+            fine, usually means you're relaxed and not forcing anything. Don't worry
+            about it on these days.
+          </p>
+          <p>
+            Tomorrow's an easy 6, then Tuesday we start working again with threshold.
+            First quality session of this block. Going to see where the legs are after
+            building this base.
+          </p>
+
+          <div class="ask">Let me know how it feels.</div>
+          <div class="reply">
+            <button class="reply-chip"><span class="emoji">😀</span> Solid</button>
+            <button class="reply-chip"><span class="emoji">😐</span> Tired</button>
+            <button class="reply-chip"><span class="emoji">😩</span> Wrecked</button>
+          </div>
+        </div>
+
+        <div class="div"></div>
+
+        <!-- RUN RECAP (watch-face style: 3 big stats, color-coded) -->
+        <div class="recap">
+          <div class="label">
+            <span>LONG RUN</span>
+            <span class="badge">COMPLETED</span>
+          </div>
+          <div class="recap-stats">
+            <div class="stat">
+              <div class="v blue">11.1</div>
+              <div class="u">miles</div>
+            </div>
+            <div class="stat">
+              <div class="v green">8:50</div>
+              <div class="u">avg pace</div>
+            </div>
+            <div class="stat">
+              <div class="v white">1:38</div>
+              <div class="u">moving</div>
+            </div>
+          </div>
+          <div class="sub-stats">
+            <span class="chip"><span class="k">HR</span><span class="v">140</span></span>
+            <span class="chip"><span class="k">CAD</span><span class="v">160</span></span>
+            <span class="chip warm">60° · 83% humidity · warm</span>
+          </div>
+          <a class="full-recap" href="#">View splits + route →</a>
+        </div>
+
+        <div class="div"></div>
+
+        <!-- WEEK STRIP -->
+        <div class="week">
+          <div class="header">
+            <div class="title">BASE · WEEK 1</div>
+            <div class="total">40.5<small>/41.2 mi</small></div>
+          </div>
+          <div class="days">
+            <div class="day">
+              <div class="dow">M</div>
+              <div class="mi">5.9</div>
+              <div class="typ">EASY</div>
+              <div class="dot"></div>
+            </div>
+            <div class="day">
+              <div class="dow">T</div>
+              <div class="mi">2.4</div>
+              <div class="typ">EASY</div>
+              <div class="dot"></div>
+            </div>
+            <div class="day">
+              <div class="dow">W</div>
+              <div class="mi">5.1</div>
+              <div class="typ">EASY</div>
+              <div class="dot"></div>
+            </div>
+            <div class="day">
+              <div class="dow">T</div>
+              <div class="mi">7.2</div>
+              <div class="typ">EASY</div>
+              <div class="dot"></div>
+            </div>
+            <div class="day">
+              <div class="dow">F</div>
+              <div class="mi">7.8</div>
+              <div class="typ">EASY</div>
+              <div class="dot"></div>
+            </div>
+            <div class="day">
+              <div class="dow">S</div>
+              <div class="mi">—</div>
+              <div class="typ">REST</div>
+              <div class="dot skip"></div>
+            </div>
+            <div class="day today">
+              <div class="dow">S</div>
+              <div class="mi">11.1</div>
+              <div class="typ">LONG</div>
+              <div class="dot"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTTOM NAV -->
+        <div class="nav">
+          <div class="tab active">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+            TODAY
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18v3H3zm0 6h18v3H3zm0 6h12v3H3z"/></svg>
+            TRAINING
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>
+            RACES
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6z"/></svg>
+            PROFILE
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── ANNOTATIONS ── -->
+    <div class="notes">
+      <h2>What's different</h2>
+      <ul>
+        <li>
+          <strong>Coach voice IS the page.</strong>
+          The opener "GREAT LONG RUN TONIGHT." is in Bebas Neue 38px — the role the giant
+          number plays on a watch face. Below it, three short coach paragraphs do the work
+          that 6 separate cards used to.
+        </li>
+        <li>
+          <strong>One observation per run.</strong>
+          Cadence-low called out + contextualized, not buried in a 6-tile RUNNING FORM
+          grid. Other metrics (vert osc, ground contact, stride length) hide on Splits +
+          Route page where they belong.
+        </li>
+        <li>
+          <strong>Inline feedback chips.</strong>
+          "Let me know how it feels" — coach's actual ask becomes three tap targets right
+          where it's read. No modal, no navigation, loop closed.
+        </li>
+        <li>
+          <strong>Run recap is typography.</strong>
+          11.1 / 8:50 / 1:38 — three numbers, three colors (blue/green/white), 54px Bebas.
+          Same DNA as watch face wf-15-summary. No tiles, no borders, no labels for labels.
+        </li>
+        <li>
+          <strong>Week strip is sparse.</strong>
+          Mileage per day + completion dot + type tag. Today highlighted in green.
+          7 days, glanceable in under a second. No "View Full Schedule →" CTA — the link is the day.
+        </li>
+        <li>
+          <strong>No banners. Anywhere.</strong>
+          Plan adaptation is in the coach voice. Readiness is in the coach voice. Mode
+          overrides are in the coach voice. The only standalone surfaces are the run
+          (evidence) and the week (forward look).
+        </li>
+        <li>
+          <strong>Dark canvas, 3-color discipline.</strong>
+          Green = good/done. White = neutral fact. Blue = distance/forward. Amber = warning
+          (the "warm" weather chip). Used sparingly, never decoratively.
+        </li>
+      </ul>
+
+      <h3>vs the page that's live right now</h3>
+      <div class="compare">
+        <div class="col now">
+          <h4>NOW · /overview live</h4>
+          <ul>
+            <li>~7 surfaces stacked vertically</li>
+            <li>Coach voice = 1 line</li>
+            <li>Stats in 6-tile grid (RUNNING FORM)</li>
+            <li>Big readiness ring (decorative)</li>
+            <li>Up to 4 alert banners stacked</li>
+            <li>Light beige bg, 8+ font sizes competing</li>
+            <li>Check-in widget separate column</li>
+            <li>Week strip at bottom (afterthought)</li>
+          </ul>
+        </div>
+        <div class="col new">
+          <h4>NEW · this mockup</h4>
+          <ul>
+            <li>4 modules: coach / reply / recap / week</li>
+            <li>Coach voice = 3 paragraphs, the headline</li>
+            <li>Stats: 3 big numbers, color-coded</li>
+            <li>No readiness ring (folded into coach prose)</li>
+            <li>Zero banners</li>
+            <li>Dark canvas, Bebas + Inter, 3 colors total</li>
+            <li>Reply chips inline under coach voice</li>
+            <li>Week strip mid-page, glanceable in 1s</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>State source</h3>
+      <ul>
+        <li>
+          <strong>Coach text:</strong> Claude sonnet-4.5, ~6s call, ~$0.005. Prompt:
+          <code>web/coach/prompts/daily-briefing.md</code>. State loader:
+          <code>web/scripts/test-daily-briefing.mjs</code>. 100% real prod data.
+        </li>
+        <li>
+          <strong>40.5 / 41.2 mi:</strong> live Postgres query mirroring
+          <code>getCompletedMileageByDate</code> — strava_activities (unmerged) + workout_completions per day, MAX'd. Matches your Apple Fitness screenshot.
+        </li>
+        <li>
+          <strong>Cadence 160:</strong> averaged from <code>health_samples</code> table
+          (Apple Health per-mile cadence). Baseline 175 spm → "cadence-low" notable
+          fired → coach mentioned it.
+        </li>
+        <li>
+          <strong>AFC in 84 days:</strong> from the active <code>training_plans</code> row
+          (race_id = americas-finest-city) — NOT from the races table's priority column
+          (which has it as "-"; CIM is the only "A").
+        </li>
+      </ul>
+
+      <h3>What I want to know</h3>
+      <ul>
+        <li><strong>Does this aesthetic land?</strong> If yes, this is the new TODAY direction.</li>
+        <li><strong>Anything missing you'd want visible from the start?</strong> (e.g., recovery numbers, next workout target, A-race countdown chip?)</li>
+        <li><strong>How do you want PRE-RUN and REST states to differ?</strong> I can mock those next — same DNA, different evidence widget.</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
