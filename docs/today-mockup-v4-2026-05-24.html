@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TODAY v4 · cards-also-coach · 2026-05-24</title>
+<meta name="viewport" content="width=1280">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --dim: #4b505e;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.04);
+    --card: #11141a;
+
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --rest:  #008FEC;
+    --learn: #B084FF;
+    --race:  #FF8847;
+
+    --f-display: 'Bebas Neue', 'Inter', sans-serif;
+    --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  html, body { background: #15171c; color: var(--ink); font-family: var(--f-body); margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 48px 32px 96px; }
+  header { margin-bottom: 48px; }
+  header h1 { font-family: var(--f-display); font-size: 56px; font-weight: 400; letter-spacing: 0.5px; margin: 0; color: var(--ink); }
+  header .sub { color: var(--mute); font-size: 14px; margin-top: 10px; line-height: 1.6; max-width: 760px; }
+  header .sub code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  header .meta { color: var(--dim); font-size: 11px; margin-top: 20px; letter-spacing: 0.4px; }
+
+  .stage { display: grid; grid-template-columns: 460px 1fr; gap: 56px; align-items: start; }
+  @media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } }
+
+  /* iPhone */
+  .phone {
+    position: relative; width: 460px; aspect-ratio: 460 / 940;
+    background: #000; border-radius: 56px; padding: 14px;
+    box-shadow: 0 60px 100px rgba(0,0,0,0.55), 0 20px 40px rgba(0,0,0,0.40), inset 0 0 0 2px rgba(255,255,255,0.04);
+    margin: 0 auto;
+  }
+  .phone .notch { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 120px; height: 32px; background: #000; border-radius: 18px; z-index: 2; }
+  .screen { position: relative; width: 100%; height: 100%; background: var(--bg); border-radius: 44px; overflow: hidden; overflow-y: auto; }
+  .screen::-webkit-scrollbar { display: none; }
+
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 32px 8px; font-size: 14px; font-weight: 600; color: var(--ink); }
+
+  /* App bar */
+  .appbar { display: flex; justify-content: space-between; align-items: center; padding: 28px 24px 12px; }
+  .brand-left { display: flex; align-items: baseline; gap: 12px; }
+  .appbar .brand { font-family: var(--f-display); font-size: 26px; font-weight: 400; color: var(--ink); letter-spacing: 1px; }
+  .appbar .date { font-family: var(--f-body); font-size: 11px; font-weight: 600; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+  .readiness-chip { width: 44px; height: 44px; position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .readiness-chip svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .readiness-chip .v { font-family: var(--f-display); font-size: 18px; font-weight: 400; color: var(--green); letter-spacing: 0.5px; line-height: 1; }
+
+  /* Week strip */
+  .weekstrip { padding: 4px 24px 14px; }
+  .weekstrip .label { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .weekstrip .label .total { color: var(--green); }
+  .weekstrip .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .weekstrip .d { background: rgba(255,255,255,0.025); border-radius: 8px; padding: 8px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .weekstrip .d.today { background: rgba(62,189,65,0.16); box-shadow: inset 0 0 0 1px rgba(62,189,65,0.35); }
+  .weekstrip .d .dow { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1px; }
+  .weekstrip .d.today .dow { color: var(--green); }
+  .weekstrip .d .mi { font-family: var(--f-display); font-size: 14px; font-weight: 400; color: var(--ink); line-height: 1; letter-spacing: 0.5px; }
+  .weekstrip .d.today .mi { color: var(--green); }
+  .weekstrip .d.rest .mi { color: var(--dim); }
+  .weekstrip .d .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--green); margin-top: 2px; }
+  .weekstrip .d.rest .dot { background: var(--dim); }
+
+  /* RUN RECAP — at top */
+  .recap-top { padding: 8px 24px 24px; }
+  .recap-top .eyebrow { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .recap-top .eyebrow .badge { background: rgba(62,189,65,0.14); color: var(--green); padding: 3px 9px; border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; }
+  .recap-top .label-row { font-family: var(--f-display); font-size: 24px; font-weight: 400; color: var(--ink); letter-spacing: 0.8px; margin-bottom: 18px; }
+  .recap-top .stats { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .recap-top .stats .s .v { font-family: var(--f-display); font-size: 56px; font-weight: 400; line-height: 0.95; letter-spacing: 0.5px; font-variant-numeric: tabular-nums; }
+  .recap-top .stats .s.dist .v { color: var(--dist); }
+  .recap-top .stats .s.pace .v { color: var(--green); }
+  .recap-top .stats .s.time .v { color: var(--ink); }
+  .recap-top .stats .s .u { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 4px; }
+  .recap-top .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .recap-top .c { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px; font-size: 11px; font-weight: 500; color: rgba(246,247,248,0.85); display: inline-flex; align-items: center; gap: 5px; }
+  .recap-top .c .k { color: var(--mute); font-size: 9px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .recap-top .c .v { color: var(--ink); font-weight: 600; }
+  .recap-top .c.warm { color: var(--goal); border-color: rgba(243,173,56,0.30); background: rgba(243,173,56,0.08); }
+  .recap-top .recap-link { font-family: var(--f-body); font-size: 11px; font-weight: 500; color: var(--mute); text-decoration: none; margin-top: 12px; display: inline-block; letter-spacing: 0.3px; }
+  .recap-top .recap-link:hover { color: var(--ink); }
+
+  /* Coach hero */
+  .coach { padding: 8px 24px 22px; border-top: 1px solid var(--line-2); margin-top: 4px; padding-top: 22px; }
+  .coach .eyebrow { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .coach .eyebrow::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(62,189,65,0.6); }
+  .coach .lead { font-family: var(--f-display); font-size: 32px; font-weight: 400; color: var(--ink); line-height: 1.05; letter-spacing: 0.5px; margin: 0 0 14px; }
+  .coach p { font-family: var(--f-body); font-size: 15.5px; line-height: 1.6; color: rgba(246,247,248,0.86); margin: 0 0 12px; letter-spacing: -0.01em; }
+  .coach p strong { color: var(--ink); font-weight: 600; }
+  .coach .ask { font-family: var(--f-body); font-size: 12px; color: var(--mute); margin-top: 18px; margin-bottom: 12px; letter-spacing: 0.2px; }
+  .reply { display: flex; gap: 8px; }
+  .reply-chip { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--ink); padding: 12px 4px; border-radius: 14px; font-family: var(--f-display); font-size: 18px; font-weight: 400; letter-spacing: 1.2px; cursor: pointer; transition: all .15s; }
+  .reply-chip:hover { background: rgba(255,255,255,0.04); }
+  .reply-chip.solid:hover   { border-color: rgba(62,189,65,0.50); color: var(--green); }
+  .reply-chip.tired:hover   { border-color: rgba(243,173,56,0.50); color: var(--goal); }
+  .reply-chip.wrecked:hover { border-color: rgba(252,77,100,0.50); color: var(--over); }
+
+  /* Cards lane */
+  .cards-lane { padding: 4px 24px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; }
+  .card-eyebrow { font-family: var(--f-body); font-size: 9px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px; }
+
+  /* Card coach_note — small italicized coaching line at bottom of relevant cards */
+  .coach-note {
+    font-family: var(--f-body); font-size: 12px; line-height: 1.5;
+    color: rgba(246,247,248,0.85);
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-2);
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .coach-note::before {
+    content: '';
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-top: 7px;
+    flex-shrink: 0;
+  }
+
+  /* SLEEP card */
+  .sleep-row { display: flex; align-items: baseline; gap: 14px; margin: 4px 0 12px; }
+  .sleep-row .big { font-family: var(--f-display); font-size: 48px; font-weight: 400; color: var(--goal); letter-spacing: 0.5px; line-height: 1; }
+  .sleep-row .sub { font-family: var(--f-body); font-size: 11px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; }
+  .sleep-row .sub .v { color: var(--ink); font-weight: 700; }
+  .sleep-bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 8px 0 8px; align-items: end; height: 56px; position: relative; }
+  .sleep-bars .bar { background: var(--goal); border-radius: 2px 2px 0 0; opacity: 0.85; position: relative; }
+  .sleep-bars .bar .h { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 3px; font-family: var(--f-body); font-size: 9px; font-weight: 600; color: var(--mute); white-space: nowrap; }
+  .sleep-dows { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-align: center; }
+  .sleep-summary { font-family: var(--f-body); font-size: 11.5px; color: var(--mute); margin-top: 14px; }
+  .sleep-summary .deficit { color: var(--goal); font-weight: 600; }
+
+  /* UP NEXT card — distance big on right */
+  .next-grid { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-top: 4px; }
+  .next-left .typ {
+    font-family: var(--f-display); font-size: 28px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.8px; line-height: 1;
+  }
+  .next-left .when {
+    font-family: var(--f-body); font-size: 10px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .next-right {
+    display: flex; align-items: baseline; gap: 4px;
+    color: var(--rest);
+  }
+  .next-right .v {
+    font-family: var(--f-display); font-size: 60px; font-weight: 400;
+    line-height: 0.95; letter-spacing: 0.5px;
+  }
+  .next-right .u {
+    font-family: var(--f-body); font-size: 11px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase;
+  }
+
+  /* RACE HORIZON card */
+  .race-grid { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-top: 4px; }
+  .race-left .name {
+    font-family: var(--f-display); font-size: 22px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; line-height: 1.1;
+  }
+  .race-left .when {
+    font-family: var(--f-body); font-size: 10px; font-weight: 600;
+    color: var(--mute); letter-spacing: 0.5px; margin-top: 4px;
+  }
+  .race-right {
+    display: flex; align-items: baseline; gap: 4px;
+    color: var(--race);
+  }
+  .race-right .v {
+    font-family: var(--f-display); font-size: 56px; font-weight: 400;
+    line-height: 0.95; letter-spacing: 0.5px;
+  }
+  .race-right .u {
+    font-family: var(--f-body); font-size: 11px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase;
+  }
+
+  /* Fun fact card */
+  .card.fun { background: rgba(176,132,255,0.04); border: 1px solid rgba(176,132,255,0.18); padding: 14px 16px; }
+  .card.fun .fun-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .card.fun .fun-icon { width: 18px; height: 18px; border-radius: 50%; background: var(--learn); color: #1a0f33; font-family: var(--f-body); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .card.fun .fun-title { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--learn); letter-spacing: 1.2px; text-transform: uppercase; }
+  .card.fun .fun-body { font-family: var(--f-body); font-size: 13px; line-height: 1.55; color: rgba(246,247,248,0.82); margin: 4px 0 8px; }
+  .card.fun .fun-link { font-family: var(--f-body); font-size: 10.5px; font-weight: 600; color: var(--learn); text-decoration: none; letter-spacing: 0.5px; }
+  .card.fun .fun-link:hover { opacity: 0.85; }
+
+  /* Profile gap card */
+  .card.gap { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .card.gap .left { flex: 1; min-width: 0; }
+  .card.gap .label { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--over); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 3px; }
+  .card.gap .field { font-family: var(--f-display); font-size: 19px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; line-height: 1.1; }
+  .card.gap .why { font-family: var(--f-body); font-size: 11.5px; font-weight: 400; color: var(--mute); margin-top: 2px; }
+  .card.gap .add { background: rgba(252,77,100,0.12); color: var(--over); border: 1px solid rgba(252,77,100,0.25); border-radius: 999px; padding: 7px 14px; font-family: var(--f-display); font-size: 12px; font-weight: 400; letter-spacing: 1px; cursor: pointer; flex-shrink: 0; }
+  .card.gap .add:hover { background: rgba(252,77,100,0.18); }
+
+  /* Bottom nav */
+  .nav { position: sticky; bottom: 0; left: 0; right: 0; background: rgba(10,12,16,0.92); backdrop-filter: blur(20px); border-top: 1px solid var(--line); padding: 12px 0 26px; display: flex; justify-content: space-around; }
+  .nav .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--dim); font-family: var(--f-body); font-size: 9px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .nav .tab.active { color: var(--green); }
+  .nav .tab svg { width: 20px; height: 20px; fill: currentColor; }
+
+  /* Annotations */
+  .notes { padding: 12px 0; }
+  .notes h2 { font-family: var(--f-display); font-size: 32px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; margin: 0 0 18px; }
+  .notes h3 { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 36px 0 14px; }
+  .notes ul { list-style: none; padding: 0; margin: 0 0 24px; }
+  .notes li { padding: 12px 0; border-bottom: 1px solid var(--line-2); font-size: 13.5px; line-height: 1.55; color: rgba(246,247,248,0.78); }
+  .notes li:last-child { border-bottom: none; }
+  .notes li strong { color: var(--ink); font-weight: 600; display: block; margin-bottom: 3px; }
+  .notes code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .notes .key-shifts { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.20); border-radius: 14px; padding: 18px 22px; margin: 18px 0 32px; }
+  .notes .key-shifts h4 { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.4px; text-transform: uppercase; margin: 0 0 10px; }
+  .notes .key-shifts ol { padding-left: 18px; margin: 0; font-size: 13px; line-height: 1.7; color: rgba(246,247,248,0.85); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>TODAY v4 · cards-also-coach · 2026-05-24</h1>
+    <p class="sub">
+      <strong style="color:var(--green);">Every card carries a coaching line, not just data.</strong>
+      Solution, advice, confidence, awareness — the cards extend the coach's voice instead of
+      reporting fields. Cadence prescription deferred because height is missing; the height
+      gap card carries the next step. HRmax + RHR no longer asked (derived from your health
+      data, not entered).
+    </p>
+    <div class="meta">FONTS · BEBAS NEUE + INTER · COLORS · WATCH-FACE PALETTE</div>
+
+    <div class="key-shifts" style="max-width: 760px;">
+      <h4>Changes from v3</h4>
+      <ol>
+        <li><strong>Every card except fun_fact + profile_gap carries a coach_note</strong> — a short coaching line</li>
+        <li><strong>UP NEXT card redesigned</strong> — distance big on right (5.8), label + when small on left, no date (eyebrow says "TOMORROW")</li>
+        <li><strong>SLEEP card now ends with a specific action</strong> — *"Aim for 7.5h tonight to start chipping at the deficit..."* — not just a stat report</li>
+        <li><strong>CADENCE EXPERIMENT card SUPPRESSED</strong> — height missing, so prescription is deferred. Coach voice + height gap card carry the next step.</li>
+        <li><strong>HRmax / RHR profile_gap cards REMOVED</strong> — both derived from health_samples (181 bpm peak, 47 bpm RHR). The runner never enters values the system can observe.</li>
+        <li><strong>New RACE HORIZON card</strong> — countdown + tone + coach_note framing</li>
+      </ol>
+    </div>
+  </header>
+
+  <div class="stage">
+    <!-- ── PHONE ── -->
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+
+        <div class="statusbar">
+          <span>9:18</span>
+          <span>● ● ● ●</span>
+        </div>
+
+        <div class="appbar">
+          <div class="brand-left">
+            <div class="brand">faff</div>
+            <div class="date">SUN · MAY 24</div>
+          </div>
+          <div class="readiness-chip" title="Readiness 88 — tap for breakdown">
+            <svg viewBox="0 0 44 44">
+              <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3"/>
+              <circle cx="22" cy="22" r="18" fill="none" stroke="#3EBD41" stroke-width="3"
+                stroke-dasharray="99.5 113" stroke-linecap="round"/>
+            </svg>
+            <div class="v">88</div>
+          </div>
+        </div>
+
+        <div class="weekstrip">
+          <div class="label">
+            <span>THIS WEEK · BASE 1</span>
+            <span class="total">40.5 / 41.2 MI</span>
+          </div>
+          <div class="days">
+            <div class="d"><div class="dow">M</div><div class="mi">5.9</div><div class="dot"></div></div>
+            <div class="d"><div class="dow">T</div><div class="mi">2.4</div><div class="dot"></div></div>
+            <div class="d"><div class="dow">W</div><div class="mi">5.1</div><div class="dot"></div></div>
+            <div class="d"><div class="dow">T</div><div class="mi">7.2</div><div class="dot"></div></div>
+            <div class="d"><div class="dow">F</div><div class="mi">7.8</div><div class="dot"></div></div>
+            <div class="d rest"><div class="dow">S</div><div class="mi">—</div><div class="dot"></div></div>
+            <div class="d today"><div class="dow">S</div><div class="mi">11.1</div><div class="dot"></div></div>
+          </div>
+        </div>
+
+        <div class="recap-top">
+          <div class="eyebrow">
+            <span>YOUR RUN</span>
+            <span class="badge">COMPLETED</span>
+          </div>
+          <div class="label-row">LONG · 11.1 MI</div>
+          <div class="stats">
+            <div class="s dist"><div class="v">11.1</div><div class="u">miles</div></div>
+            <div class="s pace"><div class="v">8:50</div><div class="u">avg pace</div></div>
+            <div class="s time"><div class="v">1:38</div><div class="u">moving</div></div>
+          </div>
+          <div class="chips">
+            <span class="c"><span class="k">HR</span><span class="v">140</span></span>
+            <span class="c"><span class="k">CAD</span><span class="v">160</span></span>
+            <span class="c warm">60° · 83% · warm</span>
+          </div>
+          <a class="recap-link" href="#">Splits · route · form data →</a>
+        </div>
+
+        <!-- COACH -->
+        <div class="coach">
+          <div class="eyebrow">COACH</div>
+          <h2 class="lead">Solid long run this morning.</h2>
+          <p>
+            11.1 miles at 8:50 pace with your HR sitting at 140 is right where we want it.
+            You executed the plan and hit the week's volume target — <strong>40.5 of 41.2</strong>
+            is basically perfect.
+          </p>
+          <p>
+            Cadence held at 160, which is right at your baseline. That's fine for easy work,
+            but there's research showing that bumping it just 5% above your preferred rate
+            drops knee loading by about 20%. I can't dial in an exact target without knowing
+            your height — leg length drives ideal turnover — but once we have that, we can
+            run a small experiment on your next easy run.
+          </p>
+          <p>
+            Sleep has been short all week. You're averaging 6.8 hours over the last seven
+            nights, which is below the 7-9 range where training really lands. One rough
+            night is nothing, but a full week of deficit compounds. Your HRV and resting
+            HR are both fine right now, so you're not in the danger zone yet, but let's not
+            let this pattern hold. Aim for 7.5 tonight.
+          </p>
+          <p>
+            This week gets us back into speed. Threshold session Tuesday is the first real
+            quality of this build. We're 84 days out from AFC — plenty of runway, but it's
+            time to start applying pressure. Let me know how the tempo feels.
+          </p>
+
+          <div class="ask">Let me know how it felt.</div>
+          <div class="reply">
+            <button class="reply-chip solid">SOLID</button>
+            <button class="reply-chip tired">TIRED</button>
+            <button class="reply-chip wrecked">WRECKED</button>
+          </div>
+        </div>
+
+        <!-- ── CARDS LANE ── -->
+        <div class="cards-lane">
+
+          <!-- 1. profile_gap (height) — gates cadence prescription -->
+          <div class="card gap">
+            <div class="left">
+              <div class="label">COACH NEEDS</div>
+              <div class="field">Your height</div>
+              <div class="why">To unlock a cadence target tailored to your leg length</div>
+            </div>
+            <button class="add">+ Add</button>
+          </div>
+
+          <!-- 2. sleep_deficit with coach_note -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--goal);">SLEEP · LAST 7 NIGHTS</div>
+            <div class="sleep-row">
+              <span class="big">6.8h</span>
+              <span class="sub">7-NIGHT AVG · last night <span class="v">7.7h</span></span>
+            </div>
+            <div class="sleep-bars" style="position:relative;">
+              <div class="bar" style="height: 70%;"><span class="h">6.3</span></div>
+              <div class="bar" style="height: 77%;"><span class="h">7.0</span></div>
+              <div class="bar" style="height: 72%;"><span class="h">6.5</span></div>
+              <div class="bar" style="height: 66%;"><span class="h">6.0</span></div>
+              <div class="bar" style="height: 72%;"><span class="h">6.5</span></div>
+              <div class="bar" style="height: 77%;"><span class="h">7.0</span></div>
+              <div class="bar" style="height: 87%;"><span class="h">7.7</span></div>
+              <div style="position:absolute; left:0; right:0; bottom:88%; height:0; border-top: 1px dashed rgba(255,255,255,0.22);"></div>
+            </div>
+            <div class="sleep-dows">
+              <span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span>
+            </div>
+            <div class="sleep-summary">
+              <span class="deficit">About 5h of sleep debt this week.</span>
+            </div>
+            <div class="coach-note">
+              Aim for 7.5h tonight to start chipping at the deficit. No need to chase it all back in one night — pick two nights this week to bank an extra hour.
+            </div>
+          </div>
+
+          <!-- 3. next_workout · distance big on right -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--rest);">UP NEXT · TOMORROW</div>
+            <div class="next-grid">
+              <div class="next-left">
+                <div class="typ">EASY</div>
+                <div class="when">MON</div>
+              </div>
+              <div class="next-right">
+                <span class="v">5.8</span>
+                <span class="u">MI</span>
+              </div>
+            </div>
+            <div class="coach-note">
+              Keep it conversational. Shake out the long run, nothing more.
+            </div>
+          </div>
+
+          <!-- 4. race_horizon -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--race);">RACE · BUILDING</div>
+            <div class="race-grid">
+              <div class="race-left">
+                <div class="name">America's Finest City</div>
+                <div class="when">HALF MARATHON · AUG 16</div>
+              </div>
+              <div class="race-right">
+                <span class="v">84</span>
+                <span class="u">DAYS</span>
+              </div>
+            </div>
+            <div class="coach-note">
+              12 weeks gives us room to add real quality. Threshold work starts this week — time to start applying pressure.
+            </div>
+          </div>
+
+          <!-- 5. fun_fact · HRV -->
+          <div class="card fun">
+            <div class="fun-head">
+              <div class="fun-icon">ⓘ</div>
+              <div class="fun-title">HRV · Heart Rate Variability</div>
+            </div>
+            <div class="fun-body">
+              The time variation between your heartbeats, measured overnight by your watch.
+              Higher HRV generally means your nervous system is recovered and ready for hard
+              training. Lower HRV can signal fatigue, stress, or illness. It's one of the
+              best early-warning signals we have for overtraining.
+            </div>
+            <a class="fun-link" href="#">Read the research →</a>
+          </div>
+
+        </div>
+
+        <!-- Bottom nav -->
+        <div class="nav">
+          <div class="tab active">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+            TODAY
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18v3H3zm0 6h18v3H3zm0 6h12v3H3z"/></svg>
+            TRAINING
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>
+            RACES
+          </div>
+          <div class="tab">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6z"/></svg>
+            PROFILE
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Annotations ── -->
+    <div class="notes">
+      <h2>The principle: cards coach too</h2>
+      <ul>
+        <li>
+          <strong>SLEEP card ends with action, not just a stat.</strong>
+          *"Aim for 7.5h tonight to start chipping at the deficit. No need to chase it all back in one night — pick two nights this week to bank an extra hour."* That's coaching, not reporting.
+        </li>
+        <li>
+          <strong>UP NEXT card prep advice.</strong>
+          *"Keep it conversational. Shake out the long run, nothing more."* — the coach is telling you HOW to run tomorrow, not just WHAT.
+        </li>
+        <li>
+          <strong>RACE HORIZON card framing.</strong>
+          *"12 weeks gives us room to add real quality. Threshold work starts this week — time to start applying pressure."* — context for why this distance matters now.
+        </li>
+        <li>
+          <strong>profile_gap height card.</strong>
+          Stands in for the cadence experiment until height is filled. Once height is in, next briefing can prescribe a real target.
+        </li>
+      </ul>
+
+      <h3>What got cut</h3>
+      <ul>
+        <li>
+          <strong>HRmax + RHR profile_gap cards</strong> — derived from health_samples. 181 bpm peak across 272 samples; 47 bpm RHR mean across 60 days. No reason to ask the runner.
+        </li>
+        <li>
+          <strong>Cadence experiment card</strong> — suppressed because height is missing. Coach voice properly defers ("once we have that, we can run a small experiment"). The height gap card carries the call to action.
+        </li>
+      </ul>
+
+      <h3>What's needed before this ships</h3>
+      <ul>
+        <li><strong>Schema:</strong> add <code>height_cm</code> to profile; create <code>coach_intent</code> + <code>known_terms</code> tables</li>
+        <li><strong>API:</strong> generic profile-update endpoint with validation</li>
+        <li><strong>Renderer:</strong> React component per card kind, +Add inline input, "Lock in" button calls intent endpoint, "Got it" dismiss</li>
+        <li><strong>Loader:</strong> reads new fields, factors into derived state, passes intents to next briefing</li>
+      </ul>
+
+      <h3>State source (live prod data)</h3>
+      <ul>
+        <li>Coach text + topics: Claude sonnet-4.5, 20.7s, $0.014 — cached on (user, date, latest_activity, latest_checkin)</li>
+        <li>Max HR 181 / RHR 47 bpm: derived from <code>health_samples</code> across 60 days</li>
+        <li>Sleep 6.8h avg, ~5h deficit: per-night <code>sleep_hours</code> samples</li>
+        <li>Cadence 160 baseline: <code>health_samples</code> 60-day mean, 32 runs</li>
+        <li>40.5 / 41.2 mi: <code>strava_activities</code> (unmerged) + <code>workout_completions</code> per-day MAX</li>
+        <li>Mon easy 5.8: <code>plan_workouts</code> chronologically next</li>
+        <li>AFC in 84 days: active <code>training_plans</code></li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -290,8 +290,41 @@ async function loadState() {
   }
 
   // ── Profile baselines ──
-  const profQ = await pool.query(`SELECT full_name, hrmax, rhr FROM profile WHERE user_uuid = $1 LIMIT 1`, [USER_ID]).catch(() => ({ rows: [] }));
+  // PRINCIPLE: derive what we can from health/run data before treating
+  // anything as missing. The runner shouldn't have to type values the
+  // system can observe.
+  const profQ = await pool.query(`SELECT full_name, sex, age, hrmax, rhr FROM profile WHERE user_uuid = $1 LIMIT 1`, [USER_ID]).catch(() => ({ rows: [] }));
   const profile = profQ.rows[0] ?? {};
+
+  // Observed HRmax — peak across health_samples + run data
+  const obsMaxHrQ = await pool.query(`
+    SELECT GREATEST(
+      (SELECT MAX(value)::int FROM health_samples WHERE user_id=$1 AND sample_type='max_hr'),
+      (SELECT MAX((data->>'maxHr')::numeric)::int FROM strava_activities WHERE user_uuid=$1 OR user_uuid IS NULL)
+    ) AS observed_max
+  `, [USER_ID]).catch(() => ({ rows: [] }));
+  const observedMaxHr = Number(obsMaxHrQ.rows[0]?.observed_max) || null;
+
+  // Observed RHR — 60-day mean from health_samples
+  const obsRhrQ = await pool.query(`
+    SELECT AVG(value)::int AS mean FROM health_samples
+    WHERE user_id=$1 AND sample_type='resting_hr'
+      AND recorded_at >= NOW() - interval '60 days'
+  `, [USER_ID]).catch(() => ({ rows: [] }));
+  const observedRhr = Number(obsRhrQ.rows[0]?.mean) || null;
+
+  // Compute genuine profile gaps — fields we can't derive from any source
+  const gaps = [];
+  if (!profile.height_cm && !profile.height_in) gaps.push({ field: 'height', impact: 'Cadence read depends on leg length; pace/duration estimates are slightly less precise' });
+  // HRmax and RHR are derived, NOT gaps. Skip them.
+  // Height is the only true gap right now.
+
+  const derived = {
+    maxHr: observedMaxHr,           // 181 for David
+    restingHr: observedRhr,          // 47 for David
+    maxHrSource: profile.hrmax ? 'manual' : 'observed_peak',
+    restingHrSource: profile.rhr ? 'manual' : 'observed_60d_mean',
+  };
 
   return {
     today,
@@ -307,6 +340,8 @@ async function loadState() {
     checkIn,
     nextRace: nextA,
     profile,
+    derived,
+    gaps,
   };
 }
 
@@ -493,11 +528,27 @@ function buildUserMessage(s, stateKind) {
     lines.push('');
   }
 
-  // ── PROFILE GAPS — be explicit about what's missing ──
-  lines.push(`PROFILE NOTES:`);
-  lines.push(`  Height: NOT RECORDED. Some cadence/form research depends on runner height — flag this to the runner if relevant.`);
-  lines.push(`  HRmax + RHR target: NOT SET (manual entry). Coach can't make HR-zone-specific calls until these are entered.`);
-  lines.push('');
+  // ── DERIVED PROFILE — what we've already computed from data ──
+  if (s.derived) {
+    const lines2 = [];
+    if (s.derived.maxHr) lines2.push(`Max HR: ${s.derived.maxHr} bpm (${s.derived.maxHrSource === 'manual' ? 'manually set' : 'observed peak across health_samples + run data'})`);
+    if (s.derived.restingHr) lines2.push(`Resting HR: ${s.derived.restingHr} bpm (${s.derived.restingHrSource === 'manual' ? 'manually set' : '60-day mean from health_samples'})`);
+    if (lines2.length) {
+      lines.push(`DERIVED PROFILE (already computed from runner's data — use these, don't ask the runner for them):`);
+      lines2.forEach(l => lines.push('  · ' + l));
+      lines.push('');
+    }
+  }
+
+  // ── TRUE PROFILE GAPS — only what's genuinely missing from all sources ──
+  if (s.gaps && s.gaps.length > 0) {
+    lines.push(`MISSING DATA (these are GENUINE gaps — not in health_samples, not derivable from run data, not in profile. Emit a profile_gap topic for EACH of these. Do NOT emit profile_gap topics for anything else, especially not HRmax or RHR which we derive from health data):`);
+    s.gaps.forEach(g => lines.push(`  · ${g.field} — ${g.impact}`));
+    lines.push('');
+  } else {
+    lines.push(`MISSING DATA: none — profile is complete enough to coach with confidence.`);
+    lines.push('');
+  }
 
   if (s.checkIn) {
     const ci = [];
