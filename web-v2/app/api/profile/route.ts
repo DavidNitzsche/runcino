@@ -6,6 +6,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { bustBriefingCache } from '@/lib/coach/cache';
+import { generateBriefing } from '@/lib/coach/engine';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -60,6 +62,11 @@ export async function PATCH(req: NextRequest) {
         [userId, k, String(v)]
       );
     }
+
+    // Bust briefing cache + warm next briefing in background.
+    await bustBriefingCache(userId);
+    void generateBriefing(userId, 'today').catch(() => {});
+    void generateBriefing(userId, 'training').catch(() => {});
 
     return NextResponse.json({ ok: true, updated: updates });
   } catch (err: any) {

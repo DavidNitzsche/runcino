@@ -1,6 +1,11 @@
 /**
  * ReadinessBreakdown — §8.3 surface. Same component on /today chip
  * tap-through AND on /health as a permanent section.
+ *
+ * Redesigned: each input row is a 3-column tile (LABEL · VALUE · WEIGHT-CHIP).
+ * Weight chip clearly distinguishes "this input's contribution" from "the
+ * observed value" — earlier version had both numbers fighting for the same
+ * column position which was hard to read.
  */
 import type { ReadinessBreakdown as RB } from '@/lib/coach/readiness';
 
@@ -13,7 +18,7 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
   return (
     <div>
       {!compact && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
           <span style={{ fontFamily: 'var(--f-display)', fontSize: 56, color, lineHeight: 1, letterSpacing: '0.5px' }}>
             {breakdown.score}
           </span>
@@ -23,14 +28,24 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {breakdown.inputs.map((inp) => (
-          <InputRow key={inp.key} input={inp} />
-        ))}
-      </div>
+      <table style={{
+        width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px',
+        fontFamily: 'var(--f-body)', fontSize: 13,
+      }}>
+        <thead>
+          <tr style={{ fontSize: 9, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+            <th style={{ textAlign: 'left',   padding: '0 12px 6px 12px' }}>INPUT</th>
+            <th style={{ textAlign: 'left',   padding: '0 12px 6px 12px' }}>YOUR VALUE</th>
+            <th style={{ textAlign: 'right',  padding: '0 12px 6px 12px' }}>EFFECT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {breakdown.inputs.map((inp) => <InputRow key={inp.key} input={inp} />)}
+        </tbody>
+      </table>
 
       <div style={{
-        marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line-2)',
+        marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--line-2)',
         fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', lineHeight: 1.55,
       }}>
         Base 70 {breakdown.inputs.map((i) => `${i.weight >= 0 ? '+' : ''}${i.weight}`).join(' ')}{' '}={' '}
@@ -41,22 +56,45 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
 }
 
 function InputRow({ input }: { input: import('@/lib/coach/readiness').ReadinessInput }) {
-  const bg = input.weight > 0  ? 'rgba(62,189,65,0.06)'
-    : input.weight < 0          ? 'rgba(252,77,100,0.06)'
-                                 : 'rgba(255,255,255,0.025)';
-  const wColor = input.weight > 0 ? 'var(--green)'
-    : input.weight < 0           ? 'var(--over)'
-                                  : 'var(--mute)';
+  const wColor = input.weight > 0 ? 'var(--green)' : input.weight < 0 ? 'var(--over)' : 'var(--mute)';
+  const wBg    = input.weight > 0 ? 'rgba(62,189,65,0.12)' : input.weight < 0 ? 'rgba(252,77,100,0.12)' : 'rgba(255,255,255,0.04)';
+
+  // Split "SLEEP · 25%" into label + weight-share for cleaner columns.
+  const [labelPart, sharePart] = input.label.split(' · ');
+
   return (
-    <div style={{ background: bg, borderRadius: 8, padding: '10px 12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-body)', fontSize: 9, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>
-        <span>{input.label}</span>
-        <span style={{ color: wColor }}>{input.weight >= 0 ? `+${input.weight}` : input.weight}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontFamily: 'var(--f-body)', fontSize: 12 }}>
-        <span style={{ color: 'var(--ink)' }}>{input.observedV}</span>
-        <span style={{ color: 'var(--mute)' }}>{input.observedSub}</span>
-      </div>
-    </div>
+    <tr style={{ background: 'rgba(255,255,255,0.025)' }}>
+      <td style={{
+        padding: '12px 14px', borderRadius: '8px 0 0 8px',
+        color: 'var(--ink)', fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '0.5px',
+        width: 1, whiteSpace: 'nowrap',
+      }}>
+        {labelPart}
+        {sharePart && (
+          <span style={{ marginLeft: 8, color: 'var(--dim)', fontFamily: 'var(--f-body)', fontSize: 11, letterSpacing: '1px' }}>
+            ({sharePart})
+          </span>
+        )}
+      </td>
+      <td style={{ padding: '12px 14px', color: 'var(--ink)' }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16 }}>{input.observedV}</div>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 2 }}>
+          {input.observedSub}
+        </div>
+      </td>
+      <td style={{
+        padding: '12px 14px', textAlign: 'right', borderRadius: '0 8px 8px 0', width: 1, whiteSpace: 'nowrap',
+      }}>
+        <span style={{
+          display: 'inline-block',
+          background: wBg,
+          color: wColor,
+          padding: '4px 10px', borderRadius: 999,
+          fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '0.5px',
+        }}>
+          {input.weight > 0 ? `+${input.weight}` : input.weight === 0 ? '0' : input.weight}
+        </span>
+      </td>
+    </tr>
   );
 }

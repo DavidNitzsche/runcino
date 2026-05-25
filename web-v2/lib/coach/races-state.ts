@@ -20,7 +20,8 @@ export interface RaceRow {
 
 export interface RacesState {
   today: string;
-  aRace: RaceRow | null;
+  aRaces: RaceRow[];          // ALL upcoming A-races (CIM, LA Marathon, etc)
+  aRace: RaceRow | null;       // the next one — kept for backward compat
   upcomingBs: RaceRow[];
   upcomingCs: RaceRow[];
   past: RaceRow[];
@@ -63,12 +64,14 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
   const upcoming = all.filter((r) => !r.is_past && r.date).sort((a, b) => a.date.localeCompare(b.date));
   const past     = all.filter((r) => r.is_past).sort((a, b) => b.date.localeCompare(a.date));
 
-  const aRace = upcoming.find((r) => r.priority === 'A') ?? null;
+  const aRaces = upcoming.filter((r) => r.priority === 'A');
+  const aRace = aRaces[0] ?? null;
   const upcomingBs = upcoming.filter((r) => r.priority === 'B');
   const upcomingCs = upcoming.filter((r) => r.priority === 'C' || r.priority == null);
 
   return {
     today,
+    aRaces,
     aRace,
     upcomingBs,
     upcomingCs,

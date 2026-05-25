@@ -8,6 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { bustBriefingCache } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
         body.user_uuid ?? DAVID_USER_ID,
       ]
     );
+    await bustBriefingCache(DAVID_USER_ID);
     return NextResponse.json({ ok: true, id: r.rows[0].id });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -58,6 +60,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const r = await pool.query(`UPDATE shoes SET ${cols.join(', ')} WHERE id = $1 RETURNING id`, vals);
     if (r.rowCount === 0) return NextResponse.json({ error: 'shoe not found' }, { status: 404 });
+    await bustBriefingCache(DAVID_USER_ID);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -69,6 +72,7 @@ export async function DELETE(req: NextRequest) {
   if (!body?.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   try {
     await pool.query(`DELETE FROM shoes WHERE id = $1`, [body.id]);
+    await bustBriefingCache(DAVID_USER_ID);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

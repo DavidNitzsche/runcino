@@ -29,7 +29,7 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
   const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
   const courseSource = geoRow.rows[0]?.course_source ?? null;
 
-  const race = [races.aRace, ...races.upcomingBs, ...races.upcomingCs, ...races.past].find((r) => r?.slug === slug);
+  const race = [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs, ...races.past].find((r) => r?.slug === slug);
   if (!race) {
     return (
       <main>

@@ -17,6 +17,7 @@ import { resolveMode, type Surface } from './router';
 import { TopicPrereqs, eligibleKinds, type Topic, type CoachState } from '@/lib/topics/types';
 import { promptFor } from '@/coach/prompts';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
+import { signatureOf, readCachedBriefing, writeCachedBriefing } from './cache';
 
 export interface BriefingResponse {
   surface: Surface;
@@ -48,6 +49,24 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
   const state = await loadCoachState(userId);
   const resolved = resolveMode(surface, state, raceSlug);
   const eligible = eligibleKinds(state, resolved.candidateTopics);
+
+  // Cache layer — read first. Voice only regenerates when state inputs change.
+  const sig = signatureOf(state, raceSlug);
+  const cached = await readCachedBriefing(userId, surface, sig);
+  if (cached) {
+    return {
+      surface: cached.surface,
+      mode: cached.mode,
+      lead: cached.lead,
+      voice: cached.voice,
+      topics: cached.topics,
+      _state: {
+        ...cached._state,
+        // Always re-compute readiness from fresh state (cheap, no LLM)
+        readiness: computeReadiness(state),
+      },
+    };
+  }
 
   const systemPrompt = promptFor(resolved.surface, resolved.mode);
   const userMessage = buildUserMessage(state, resolved, eligible);
@@ -83,7 +102,7 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
     }
   }
 
-  return {
+  const response: BriefingResponse = {
     surface: resolved.surface,
     mode: resolved.mode,
     lead: parsed.lead ?? '',
@@ -107,29 +126,53 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
       readiness: computeReadiness(state),
     },
   };
+
+  // Persist to cache so the next request with same signature is instant.
+  await writeCachedBriefing(userId, surface, sig, resolved.mode, response as any);
+
+  return response;
 }
 
 function buildUserMessage(state: CoachState, resolved: ReturnType<typeof resolveMode>, eligible: string[]): string {
   const lines: string[] = [];
   lines.push(`RUNNER: ${state.profile?.full_name ?? 'David'}.`);
-  lines.push(`TODAY: ${state.today}.`);
+  lines.push(`TODAY: ${state.today} (${dayOfWeekName(state.today)}).`);
   lines.push(`SURFACE: ${resolved.surface} · MODE: ${resolved.mode}.`);
   lines.push('');
+
+  // HR ZONES — computed from maxHR so the coach can reason about effort correctly.
+  // Don't characterize an HR as "high" or "low" — refer to the zones.
+  if (state.profile?.hrmax) {
+    const max = state.profile.hrmax;
+    lines.push(`HR ZONES (from observed maxHR ${max}):`);
+    lines.push(`  Z1 recovery:  < ${Math.round(max * 0.60)} bpm`);
+    lines.push(`  Z2 easy:      ${Math.round(max * 0.60)}-${Math.round(max * 0.72)} bpm`);
+    lines.push(`  Z3 threshold: ${Math.round(max * 0.72)}-${Math.round(max * 0.84)} bpm`);
+    lines.push(`  Z4 tempo:     ${Math.round(max * 0.84)}-${Math.round(max * 0.92)} bpm`);
+    lines.push(`  Z5 VO2:       > ${Math.round(max * 0.92)} bpm`);
+    lines.push(`  ↳ "easy aerobic" runs naturally drift into low Z3 (130-150ish for this athlete) — that's NORMAL HR drift, not a concern.`);
+    lines.push('');
+  }
+
   if (state.latest_activity) {
     const a = state.latest_activity;
-    lines.push(`LATEST RUN (${a.date}): ${a.mi.toFixed(1)}mi · pace ${a.pace ?? '—'} · HR ${a.hr ?? '—'} · cad ${a.cadence ?? '—'}${a.name ? ' · "' + a.name + '"' : ''}`);
+    lines.push(`LATEST RUN (${a.date} = ${dayOfWeekName(a.date)}): ${a.mi.toFixed(1)}mi · pace ${a.pace ?? '—'} · HR ${a.hr ?? '—'} · cad ${a.cadence ?? '—'}${a.name ? ' · "' + a.name + '"' : ''}`);
   }
   lines.push(`WEEK: ${state.weekDone}mi done / ${state.weekPlanned ?? '?'}mi planned${state.phaseLabel ? ' · phase ' + state.phaseLabel : ''}`);
   if (state.nextWorkout) {
     const n = state.nextWorkout;
-    lines.push(`NEXT WORKOUT: ${n.date} ${n.type} ${n.mi}mi${n.label ? ' · ' + n.label : ''}`);
+    lines.push(`NEXT WORKOUT: ${n.date} (${dayOfWeekName(n.date)}) ${n.type} ${n.mi}mi${n.label ? ' · ' + n.label : ''}`);
   }
   if (state.nextARace) {
-    lines.push(`A-RACE: ${state.nextARace.name} in ${state.nextARace.days_to_race} days · goal ${state.nextARace.goal ?? '—'}`);
+    // Include explicit date AND month name so the LLM can't mis-narrate it.
+    const monthName = MONTH_NAMES[new Date(state.nextARace.date + 'T12:00:00Z').getUTCMonth()];
+    lines.push(`A-RACE: ${state.nextARace.name} on ${state.nextARace.date} (${monthName} ${new Date(state.nextARace.date + 'T12:00:00Z').getUTCDate()}) — ${state.nextARace.days_to_race} days away · goal ${state.nextARace.goal ?? '—'}`);
+    lines.push(`  ↳ Use ${monthName} in any month references. Do NOT invent a different month.`);
   }
   lines.push(`SLEEP: 7n avg ${state.sleep7Avg ?? '—'}h · deficit ${state.sleep7Deficit}h`);
   if (state.rhrCurrent != null) {
-    lines.push(`RHR: current ${state.rhrCurrent} · 14d baseline ${state.rhrBaseline ?? '—'}`);
+    const delta = state.rhrBaseline != null ? state.rhrCurrent - state.rhrBaseline : null;
+    lines.push(`RHR: current ${state.rhrCurrent} · baseline ${state.rhrBaseline ?? '—'}${delta != null ? ' · delta ' + (delta >= 0 ? '+' : '') + delta : ''}`);
   }
   if (state.hrvCurrent != null) {
     lines.push(`HRV: current ${state.hrvCurrent}ms · 30d baseline ${state.hrvBaseline ?? '—'}`);
@@ -147,10 +190,13 @@ function buildUserMessage(state: CoachState, resolved: ReturnType<typeof resolve
     lines.push('');
   }
   if (state.recentCheckIns.length) {
-    lines.push(`RECENT CHECK-INS (runner's voice):`);
+    lines.push(`RECENT CHECK-INS (runner's own rating — do NOT make these up if none exist):`);
     for (const c of state.recentCheckIns.slice(0, 3)) {
       lines.push(`  · ${c.ts} → ${c.rating.toUpperCase()}`);
     }
+    lines.push('');
+  } else {
+    lines.push(`RECENT CHECK-INS: none. The runner has NOT tapped SOLID/TIRED/WRECKED today or this week. Do NOT claim they did.`);
     lines.push('');
   }
   lines.push(`ELIGIBLE TOPIC KINDS (prereqs met — emit ONLY these as cards):`);
@@ -159,6 +205,12 @@ function buildUserMessage(state: CoachState, resolved: ReturnType<typeof resolve
   lines.push(`# YOUR JOB`);
   lines.push(`Coach voice for this surface + mode per the prompt above. Return strict JSON: {lead, voice: string[], topics: Topic[]}. NO markdown fences.`);
   return lines.join('\n');
+}
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function dayOfWeekName(iso: string): string {
+  return DOW_NAMES[new Date(iso + 'T12:00:00Z').getUTCDay()];
 }
 
 function parseLLMOutput(raw: string): { lead?: string; voice?: string[]; topics?: Topic[] } {

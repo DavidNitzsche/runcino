@@ -9,6 +9,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { bustBriefingCache } from '@/lib/coach/cache';
+import { generateBriefing } from '@/lib/coach/engine';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const VALID_RATINGS = ['solid', 'tired', 'wrecked'] as const;
@@ -45,6 +47,12 @@ export async function POST(req: NextRequest) {
       hint: 'Did you apply web-v2/db/migrations/100_check_ins.sql?',
     }, { status: 500 });
   }
+
+  // Bust cache so the next briefing fetch sees the new check-in.
+  // Fire-and-forget regen for the surface they're on — by the time the user
+  // navigates back, the new voice is cached and ready.
+  await bustBriefingCache(userId);
+  void generateBriefing(userId, (surface as any) ?? 'today').catch(() => {});
 
   return NextResponse.json({
     ok: true,

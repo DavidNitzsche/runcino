@@ -62,14 +62,14 @@ export default async function HealthPage() {
             value={health.sleep.avg7n != null ? `${health.sleep.avg7n.toFixed(1)}h` : '—'}
             valueColor="var(--goal)"
             sub={`7-NIGHT AVG · 30D avg ${health.sleep.avg30n ?? '—'}h · −${(7.5 - (health.sleep.avg7n ?? 7.5)).toFixed(1)} vs target`}
-            chart={<BarChart series={health.sleepSeries.map((d) => d.hours)} min={4} max={10} color="#F3AD38" />}
+            chart={<BarChart series={health.sleepSeries.map((d) => d.hours)} min={4} max={10} color="#F3AD38" unit="h" baseline={7.5} />}
           />
           <TrendCard
             title="RESTING HR · 60 DAYS" titleColor="var(--over)"
             value={health.rhr.current != null ? `${health.rhr.current}` : '—'}
             valueColor={health.rhr.delta != null && health.rhr.delta >= 5 ? 'var(--over)' : 'var(--green)'}
             sub={`CURRENT BPM · baseline ${health.rhr.baseline ?? '—'} · ${health.rhr.delta != null ? (health.rhr.delta >= 0 ? `+${health.rhr.delta}` : `${health.rhr.delta}`) : '—'}`}
-            chart={<BarChart series={health.rhrSeries.map((d) => d.bpm)} min={40} max={70} color="#FC4D64" />}
+            chart={<BarChart series={health.rhrSeries.map((d) => d.bpm)} min={40} max={70} color="#FC4D64" unit="bpm" baseline={health.rhr.baseline ?? undefined} xLabel="60D AGO → TODAY" />}
           />
         </Grid2>
 
@@ -79,14 +79,14 @@ export default async function HealthPage() {
             value={health.hrv.current != null ? `${health.hrv.current} ms` : '—'}
             valueColor="var(--green)"
             sub={`baseline ${health.hrv.baseline ?? '—'} ms${health.hrv.pctAboveBaseline != null ? ` · +${health.hrv.pctAboveBaseline}%` : ''}`}
-            chart={<BarChart series={health.hrvSeries.map((d) => d.ms)} min={30} max={100} color="#3EBD41" />}
+            chart={<BarChart series={health.hrvSeries.map((d) => d.ms)} min={30} max={100} color="#3EBD41" unit="ms" baseline={health.hrv.baseline ?? undefined} />}
           />
           <TrendCard
             title="WEIGHT · 30 DAYS" titleColor="var(--dist)"
             value={health.weight.current != null ? `${health.weight.current.toFixed(1)} lb` : '—'}
             valueColor="var(--ink)"
             sub={`${health.weight.delta30 != null ? (health.weight.delta30 >= 0 ? `+${health.weight.delta30}` : `${health.weight.delta30}`) : '—'} lb vs 30d ago`}
-            chart={<BarChart series={health.weightSeries.map((d) => d.lb)} min={170} max={200} color="#27B4E0" />}
+            chart={<BarChart series={health.weightSeries.map((d) => d.lb)} min={170} max={200} color="#27B4E0" unit="lb" />}
           />
         </Grid2>
 

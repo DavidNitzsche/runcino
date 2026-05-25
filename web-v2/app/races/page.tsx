@@ -19,7 +19,9 @@ export default async function RacesPage() {
           {races.aRace ? 'Races.' : "What's next?"}
         </h1>
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 12, marginBottom: 28 }}>
-          {races.aRace ? '1 A-RACE · ' : 'NO A-RACE SET · '}
+          {races.aRaces.length > 0
+            ? `${races.aRaces.length} A-RACE${races.aRaces.length === 1 ? '' : 'S'} · `
+            : 'NO A-RACE SET · '}
           {races.upcomingBs.length} B-RACE{races.upcomingBs.length === 1 ? '' : 'S'} ·{' '}
           {races.upcomingCs.length} C-RACE{races.upcomingCs.length === 1 ? '' : 'S'} ·{' '}
           {races.totalPast} PAST
@@ -37,7 +39,13 @@ export default async function RacesPage() {
         {/* + ADD RACE — top of page so it's discoverable */}
         <div style={{ marginBottom: 18 }}><AddRaceButton /></div>
 
-        {races.aRace ? <ARaceHero race={races.aRace} /> : <NoARacePrompt />}
+        {races.aRaces.length > 0 ? (
+          <>
+            {/* Closest A is the hero; any additional As stack below as smaller cards */}
+            <ARaceHero race={races.aRaces[0]} />
+            {races.aRaces.slice(1).map((r) => <SecondaryARace key={r.slug} race={r} />)}
+          </>
+        ) : <NoARacePrompt />}
 
         {races.upcomingBs.length > 0 && (
           <>
@@ -110,6 +118,31 @@ function ARaceHero({ race }: { race: RaceRow }) {
           </div>
         </div>
       )}
+    </Link>
+  );
+}
+
+function SecondaryARace({ race }: { race: RaceRow }) {
+  return (
+    <Link href={`/races/${race.slug}`} style={{
+      display: 'block',
+      background: 'linear-gradient(135deg, rgba(255,136,71,0.06), rgba(255,136,71,0.02))',
+      border: '1px solid rgba(255,136,71,0.22)',
+      borderRadius: 16, padding: '20px 24px', marginBottom: 16,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <span style={{ display: 'inline-block', fontFamily: 'var(--f-display)', fontSize: 10, letterSpacing: '1px', padding: '2px 7px', borderRadius: 4, background: 'rgba(255,136,71,0.18)', color: 'var(--race)' }}>A</span>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', marginTop: 8, letterSpacing: '0.5px' }}>{race.name}</div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
+            {race.distance_label ?? ''} {race.date ? `· ${formatDate(race.date)}` : ''}{race.goal ? ` · goal ${race.goal}` : ''}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 44, color: 'var(--race)', lineHeight: 1 }}>{race.days}</div>
+          <div style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.2px' }}>DAYS</div>
+        </div>
+      </div>
     </Link>
   );
 }
