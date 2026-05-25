@@ -3,14 +3,22 @@ import { PhaseStrip } from '@/components/training/PhaseStrip';
 import { PlanArc } from '@/components/training/PlanArc';
 import { WeekAhead } from '@/components/training/WeekAhead';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
+import { GeneratePlanCTA, RegeneratePlanButton } from '@/components/plan/GeneratePlanButton';
 import { loadTrainingState } from '@/lib/coach/training-state';
+import { loadRacesState } from '@/lib/coach/races-state';
 
 export const dynamic = 'force-dynamic';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 export default async function TrainingPage() {
-  const training = await loadTrainingState(DAVID_USER_ID);
+  const [training, races] = await Promise.all([
+    loadTrainingState(DAVID_USER_ID),
+    loadRacesState(DAVID_USER_ID).catch(() => null),
+  ]);
+  // The next A race the user could anchor a new plan around
+  const anchorRace = training.race
+    ?? (races?.aRaces[0] ? { slug: races.aRaces[0].slug, name: races.aRaces[0].name, date: races.aRaces[0].date, goal: races.aRaces[0].goal, days_to_race: races.aRaces[0].days } : null);
 
   const currentWeek = training.weeks.find((w) => w.isCurrent);
   const totalWeeks = training.weeks.length;
@@ -39,9 +47,18 @@ export default async function TrainingPage() {
           raceGoal={training.race?.goal}
         />
 
+        {/* Regenerate pill — only when a plan + race both exist */}
+        {currentWeek && training.race && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6, marginBottom: -8 }}>
+            <RegeneratePlanButton raceSlug={training.race.slug} raceName={training.race.name} />
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 24, marginTop: 18 }}>
           {currentWeek ? (
             <WeekAhead week={currentWeek} today={training.today} planId={training.plan_id ?? undefined} />
+          ) : anchorRace ? (
+            <GeneratePlanCTA raceSlug={anchorRace.slug} raceName={anchorRace.name} />
           ) : (
             <div className="card" style={{ padding: 40 }}>
               <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO ACTIVE PLAN</div>
