@@ -11,7 +11,20 @@ import { generateBriefing } from '@/lib/coach/engine';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
-const ALLOWED = new Set(['height_cm', 'sex', 'age', 'city']);
+const ALLOWED = new Set([
+  'height_cm', 'sex', 'age', 'city', 'full_name',
+  'birthday', 'lthr', 'hrmax_observed', 'experience_level',
+]);
+
+// When LTHR is set manually, also stamp lthr_set_at + lthr_method.
+function decorateUpdates(updates: Record<string, any>): Record<string, any> {
+  const out = { ...updates };
+  if ('lthr' in updates) {
+    out.lthr_set_at = new Date().toISOString();
+    if (!('lthr_method' in updates)) out.lthr_method = 'manual';
+  }
+  return out;
+}
 
 export async function PATCH(req: NextRequest) {
   let body: Record<string, any>;
@@ -31,10 +44,11 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'No allowed fields in body' }, { status: 400 });
   }
 
+  const decorated = decorateUpdates(updates);
   // Build dynamic UPDATE
-  const cols = Object.keys(updates);
+  const cols = Object.keys(decorated);
   const setClauses = cols.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const values = cols.map((c) => updates[c]);
+  const values = cols.map((c) => decorated[c]);
 
   try {
     const res = await pool.query(

@@ -4,10 +4,32 @@
  */
 import { pool } from '@/lib/db/pool';
 import { loadSettings, type UserSettings } from '@/lib/coach/settings';
+import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
+
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
 export interface ProfileState {
-  identity: { full_name: string | null; sex: string | null; age: number | null; city: string | null; height_cm: number | null };
-  physiology: { max_hr: number | null; rhr: number | null; vo2: number | null; weight_lb: number | null; vdot: number | null };
+  identity: {
+    full_name: string | null;
+    sex: string | null;
+    birthday: string | null;     // ISO date
+    age: number | null;          // computed from birthday
+    city: string | null;
+    height_cm: number | null;
+    experience_level: ExperienceLevel | null;
+  };
+  physiology: {
+    max_hr: number | null;           // best estimate (user-entered, observed, or derived)
+    max_hr_source: 'observed' | 'lthr-derived' | 'formula' | 'manual' | null;
+    rhr: number | null;
+    vo2: number | null;
+    weight_lb: number | null;
+    vdot: number | null;
+    lthr: number | null;
+    lthr_method: string | null;      // how it was set
+    lthr_set_at: string | null;      // ISO timestamp
+    zones: ZoneTable | null;         // computed zones (LTHR-based if available, else %MHR)
+  };
   shoes: { id: string; name: string; brand: string; model: string; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean }[];
   nextARace: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
   connections: {
@@ -18,23 +40,38 @@ export interface ProfileState {
   preferences: UserSettings;
 }
 
+function ageFromBirthday(iso: string | null): number | null {
+  if (!iso) return null;
+  const b = new Date(iso + 'T12:00:00Z');
+  if (isNaN(b.getTime())) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - b.getUTCFullYear();
+  const beforeBday = now.getUTCMonth() < b.getUTCMonth() ||
+                     (now.getUTCMonth() === b.getUTCMonth() && now.getUTCDate() < b.getUTCDate());
+  if (beforeBday) age--;
+  return age;
+}
+
 export async function loadProfileState(userId: string): Promise<ProfileState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 
   const p = (await pool.query(
-    `SELECT full_name, sex, age, city, height_cm, hrmax, rhr
+    `SELECT full_name, sex, age, city, height_cm, hrmax, rhr,
+            birthday::text AS birthday,
+            lthr, hrmax_observed, experience_level,
+            lthr_method, lthr_set_at::text AS lthr_set_at
        FROM profile
       WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
       ORDER BY (user_uuid = $1) DESC LIMIT 1`,
     [userId]
   )).rows[0];
 
-  // Derived max HR + RHR from health_samples (fallback to profile cols)
+  // Observed max HR from health_samples (peak across all recorded HR samples).
+  // Final max_hr decision happens below after LTHR is known.
   const mhrRow = (await pool.query(
     `SELECT MAX(value) AS m FROM health_samples WHERE user_id = $1 AND sample_type = 'hr'`,
     [userId]
   )).rows[0];
-  const max_hr = mhrRow?.m ? Math.round(Number(mhrRow.m)) : (p?.hrmax ?? null);
 
   const rhrRow = (await pool.query(
     `SELECT AVG(value) AS a FROM health_samples
@@ -142,9 +179,66 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   ).catch(() => ({ rows: [] }))).rows[0];
   const vdot: number | null = vdotRow?.meta?.vdot ? Number(vdotRow.meta.vdot) : null;
 
+  // === LTHR + true MaxHR ===
+  // Prefer user-entered values; fall back to derived-from-race if we have race meta.
+  let lthr: number | null = p?.lthr ?? null;
+  let lthrMethod: string | null = p?.lthr_method ?? null;
+  if (lthr == null) {
+    // Try to derive from race data — half-marathon avg HR is the best proxy
+    const raceWithHr = (await pool.query(
+      `SELECT meta FROM races
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND meta->>'finishTime' IS NOT NULL
+          AND meta->>'avgHrBpm' IS NOT NULL
+        ORDER BY (meta->>'date') DESC NULLS LAST LIMIT 5`,
+      [userId]
+    ).catch(() => ({ rows: [] }))).rows;
+    for (const row of raceWithHr) {
+      const m = row.meta;
+      const est = estimateLTHR({
+        raceDistanceMi: Number(m.distanceMi ?? 13.1),
+        avgHrBpm: Number(m.avgHrBpm),
+      });
+      if (est) {
+        lthr = est.lthr;
+        lthrMethod = `derived: ${m.name ?? 'race'} (${est.note})`;
+        break;
+      }
+    }
+  }
+
+  // True MaxHR: prefer user-entered, then derived from LTHR (typically LTHR + ~22 bpm),
+  // then observed (existing logic), then null.
+  const max_hr: number | null = p?.hrmax_observed ?? (lthr != null ? estimateMaxHRFromLTHR(lthr) : (mhrRow?.m ? Math.round(Number(mhrRow.m)) : (p?.hrmax ?? null)));
+  const max_hr_source: ProfileState['physiology']['max_hr_source'] =
+    p?.hrmax_observed ? 'manual' :
+    lthr != null ? 'lthr-derived' :
+    mhrRow?.m ? 'observed' :
+    p?.hrmax ? 'formula' : null;
+
+  const zones = computeZones({ lthr, maxHr: max_hr });
+
+  const birthday = p?.birthday ?? null;
+  const age = ageFromBirthday(birthday) ?? p?.age ?? null;
+
   return {
-    identity: { full_name: p?.full_name ?? null, sex: p?.sex ?? null, age: p?.age ?? null, city: p?.city ?? null, height_cm: p?.height_cm ?? null },
-    physiology: { max_hr, rhr, vo2, weight_lb, vdot },
+    identity: {
+      full_name: p?.full_name ?? null,
+      sex: p?.sex ?? null,
+      birthday,
+      age,
+      city: p?.city ?? null,
+      height_cm: p?.height_cm ?? null,
+      experience_level: (p?.experience_level as ExperienceLevel | null) ?? null,
+    },
+    physiology: {
+      max_hr, max_hr_source,
+      rhr, vo2, weight_lb, vdot,
+      lthr,
+      lthr_method: lthrMethod,
+      lthr_set_at: p?.lthr_set_at ?? null,
+      zones,
+    },
     shoes: shoes.filter((s) => !s.retired),
     nextARace,
     connections: {

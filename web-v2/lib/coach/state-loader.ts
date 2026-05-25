@@ -11,9 +11,10 @@ import type { CoachState } from '@/lib/topics/types';
 export async function loadCoachState(userId: string): Promise<CoachState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 
-  // PROFILE
+  // PROFILE — includes LTHR + observed maxHR + experience for HR-zone reasoning
   const profResult = await pool.query(
-    `SELECT full_name, sex, age, city, hrmax, rhr, height_cm
+    `SELECT full_name, sex, age, city, hrmax, hrmax_observed, lthr,
+            rhr, height_cm, experience_level
        FROM profile
       WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
       ORDER BY (user_uuid = $1) DESC LIMIT 1`,
@@ -218,8 +219,11 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       age: profile.age ?? null,
       city: profile.city ?? null,
       height_cm: profile.height_cm ?? null,
-      hrmax: profile.hrmax ?? null,
+      // Prefer user-entered observed maxHR; fall back to legacy column.
+      hrmax: profile.hrmax_observed ?? profile.hrmax ?? null,
+      lthr: profile.lthr ?? null,
       rhr: profile.rhr ?? null,
+      experience_level: profile.experience_level ?? null,
     } : null,
     latest_activity,
     weekDone,

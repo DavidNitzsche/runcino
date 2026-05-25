@@ -18,6 +18,7 @@ import { TopicPrereqs, eligibleKinds, type Topic, type CoachState } from '@/lib/
 import { promptFor } from '@/coach/prompts';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { signatureOf, readCachedBriefing, writeCachedBriefing } from './cache';
+import { computeZones, zonesAsPromptText } from '@/lib/training/zones';
 
 export interface BriefingResponse {
   surface: Surface;
@@ -144,17 +145,16 @@ function buildUserMessage(state: CoachState, resolved: ReturnType<typeof resolve
   lines.push(`SURFACE: ${resolved.surface} · MODE: ${resolved.mode}.`);
   lines.push('');
 
-  // HR ZONES — computed from maxHR so the coach can reason about effort correctly.
-  // Don't characterize an HR as "high" or "low" — refer to the zones.
-  if (state.profile?.hrmax) {
-    const max = state.profile.hrmax;
-    lines.push(`HR ZONES (from observed maxHR ${max}):`);
-    lines.push(`  Z1 recovery:  < ${Math.round(max * 0.60)} bpm`);
-    lines.push(`  Z2 easy:      ${Math.round(max * 0.60)}-${Math.round(max * 0.72)} bpm`);
-    lines.push(`  Z3 threshold: ${Math.round(max * 0.72)}-${Math.round(max * 0.84)} bpm`);
-    lines.push(`  Z4 tempo:     ${Math.round(max * 0.84)}-${Math.round(max * 0.92)} bpm`);
-    lines.push(`  Z5 VO2:       > ${Math.round(max * 0.92)} bpm`);
-    lines.push(`  ↳ "easy aerobic" runs naturally drift into low Z3 (130-150ish for this athlete) — that's NORMAL HR drift, not a concern.`);
+  // HR ZONES — use LTHR-anchored (Friel) when available; %MHR fallback otherwise.
+  // This is the foundation for the coach reasoning about effort correctly.
+  // Cite: Research/03-heart-rate-zones.md §6.
+  const zones = computeZones({ lthr: state.profile?.lthr ?? null, maxHr: state.profile?.hrmax ?? null });
+  if (zones) {
+    lines.push(zonesAsPromptText(zones));
+    lines.push('');
+  }
+  if (state.profile?.experience_level) {
+    lines.push(`EXPERIENCE: ${state.profile.experience_level.replace('_', '+')} — calibrate volume expectations accordingly.`);
     lines.push('');
   }
 

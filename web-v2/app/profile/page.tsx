@@ -48,32 +48,78 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           </div>
         </div>
 
-        {/* PERSONAL — all fields editable inline */}
+        {/* PERSONAL — birthday auto-updates age */}
         <SectionLabel>PERSONAL</SectionLabel>
         <Grid4>
           <FieldCard k="NAME" v={profile.identity.full_name ?? '—'} />
           <EditableField field="sex"  label="Sex"  kind="select" options={['Male','Female','Other']} currentValue={profile.identity.sex} />
-          <EditableField field="age"  label="Age"  kind="number" currentValue={profile.identity.age} />
+          <EditableField
+            field="birthday" label="Birthday" kind="text"
+            currentValue={profile.identity.birthday}
+            unitLabel={profile.identity.age != null ? `(age ${profile.identity.age})` : ''}
+          />
           {profile.identity.height_cm != null
             ? <EditableField field="height_cm" label="Height" kind="number" currentValue={profile.identity.height_cm} unitLabel="cm" />
             : <ProfileGapInput field="height_cm" label="Height" why="Unlocks cadence target" focused={focusedGap === 'height_cm'} />
           }
         </Grid4>
 
-        {/* City editable on its own row so it has room */}
-        <div style={{ marginTop: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
           <EditableField field="city" label="City" kind="text" currentValue={profile.identity.city} />
+          <EditableField
+            field="experience_level" label="Experience" kind="select"
+            options={['beginner','intermediate','advanced','advanced_plus']}
+            currentValue={profile.identity.experience_level}
+          />
         </div>
 
-        {/* PHYSIOLOGY DERIVED */}
-        <SectionLabel>PHYSIOLOGY · DERIVED</SectionLabel>
-        <Grid5>
-          <FieldCard k="MAX HR"     v={profile.physiology.max_hr != null ? `${profile.physiology.max_hr} bpm` : '—'} hint={profile.physiology.max_hr ? 'OBSERVED' : 'PENDING'} />
-          <FieldCard k="RESTING HR" v={profile.physiology.rhr != null ? `${profile.physiology.rhr} bpm` : '—'}   hint={profile.physiology.rhr ? '60-DAY MEAN' : 'PENDING'} />
+        {/* PHYSIOLOGY — LTHR is primary zone anchor (Friel). MAX HR editable too. */}
+        <SectionLabel>PHYSIOLOGY · TRAINING ANCHORS</SectionLabel>
+        <Grid4>
+          <EditableField
+            field="lthr" label="LTHR" kind="number"
+            currentValue={profile.physiology.lthr} unitLabel="bpm"
+          />
+          <EditableField
+            field="hrmax_observed" label="Max HR" kind="number"
+            currentValue={profile.physiology.max_hr} unitLabel="bpm"
+          />
+          <FieldCard k="RESTING HR" v={profile.physiology.rhr != null ? `${profile.physiology.rhr} bpm` : '—'} hint={profile.physiology.rhr ? '60-DAY MEAN' : 'PENDING'} />
+          <FieldCard k="VDOT" v={profile.physiology.vdot != null ? String(profile.physiology.vdot) : '—'} hint={profile.physiology.vdot != null ? 'FROM RACE PB' : 'NEEDS A RACE FINISH'} />
+        </Grid4>
+
+        {/* Live zone table — recomputes from LTHR/MaxHR every render */}
+        {profile.physiology.zones && (
+          <div className="card" style={{ marginTop: 14, padding: '18px 22px' }}>
+            <div className="card-eyebrow" style={{ color: 'var(--green)' }}>
+              HR ZONES · {profile.physiology.zones.method === 'lthr-friel' ? 'LTHR-ANCHORED (FRIEL)' : '%MHR FALLBACK'}
+              {' · '}{profile.physiology.zones.anchor.label} {profile.physiology.zones.anchor.bpm}
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10, fontFamily: 'var(--f-body)', fontSize: 13 }}>
+              <tbody>
+                {profile.physiology.zones.zones.map((z) => (
+                  <tr key={z.idx} style={{ borderBottom: '1px solid var(--line-2)' }}>
+                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-display)', fontSize: 13, color: 'var(--green)', letterSpacing: '0.5px', width: 50 }}>{z.shortLabel}</td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-display)', fontSize: 14, color: 'var(--ink)', width: 130 }}>{z.label}</td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--ink)', width: 130 }}>{z.lower}–{z.upper} bpm</td>
+                    <td style={{ padding: '8px 10px', fontSize: 11.5, color: 'var(--mute)', lineHeight: 1.45 }}>{z.purpose}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 10, lineHeight: 1.5 }}>
+              {profile.physiology.lthr_method ? `LTHR source: ${profile.physiology.lthr_method}. ` : ''}
+              Re-test LTHR every 6-12 weeks. Cite: <a href="/learn/heart-rate-zones" style={{ color: 'var(--learn)' }}>Research/03 §6</a>.
+            </div>
+          </div>
+        )}
+
+        {/* PHYSIOLOGY · MEASURED */}
+        <SectionLabel>PHYSIOLOGY · MEASURED</SectionLabel>
+        <Grid4>
           <FieldCard k="VO2 MAX"    v={profile.physiology.vo2 != null ? profile.physiology.vo2.toFixed(1) : '—'}  hint={profile.physiology.vo2 ? 'APPLE WATCH' : 'PENDING'} />
-          <FieldCard k="VDOT"       v={profile.physiology.vdot != null ? String(profile.physiology.vdot) : '—'} hint={profile.physiology.vdot != null ? 'FROM RACE PB' : 'NEEDS A RACE FINISH'} />
           <FieldCard k="WEIGHT"     v={profile.physiology.weight_lb != null ? `${profile.physiology.weight_lb} lb` : '—'} hint={profile.physiology.weight_lb ? 'APPLE HEALTH' : 'PENDING'} />
-        </Grid5>
+        </Grid4>
 
         {/* CONNECTIONS — real data-presence check */}
         <SectionLabel>CONNECTIONS</SectionLabel>

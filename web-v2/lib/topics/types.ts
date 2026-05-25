@@ -29,8 +29,10 @@ export interface CoachState {
     age: number | null;
     city: string | null;
     height_cm: number | null;
-    hrmax: number | null;       // derived from health_samples
-    rhr: number | null;         // derived from health_samples
+    hrmax: number | null;       // best-known max HR (manual > LTHR-derived > observed)
+    lthr: number | null;        // Friel LTHR — primary zone anchor (Research/03 §6)
+    rhr: number | null;
+    experience_level: 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
   } | null;
 
   latest_activity: {
