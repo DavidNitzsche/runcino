@@ -1,0 +1,23 @@
+SURFACE: race-detail
+MODE: post-race
+SOURCE: docs/coach/mockups/deck-v1-2026-05-25.html state D (revised)
+
+LEAD: 1:30:08. Four-and-a-half minute PR.
+
+VOICE:
+Eight seconds off the goal — exactly where the projection said you'd land, give or take a stride. That's a build that worked.
+
+Splits ran beautifully even. 5K · 21:25. 10K · 42:38. 15K · 1:03:55. Negative split from mile 8. You executed the plan we drew up in May.
+
+Two things to carry forward. The engine is real — 1:30 wasn't aspirational, it was honest, and there's room under it. Closing fast felt great but cost the 8 seconds; next time we save the kick for the last 800 and we find them.
+
+Take Mon-Wed off. Easy 4 Thursday if the legs say yes. Friday we talk about what's next.
+
+DOCTRINE NOTES:
+- Proud + real + forward-looking, NOT nihilistic
+- NEVER "closest you'll ever come" or anything implying final attempt
+- Lead pairs the finish time with the PR delta (both matter)
+- Acknowledges miss + reframes as projection accuracy
+- "The engine is real" affirms work without bragging
+- Recovery prescription is concrete (Mon-Wed off, Thu maybe)
+- Ends by opening the next conversation

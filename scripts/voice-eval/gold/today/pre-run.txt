@@ -1,0 +1,24 @@
+SURFACE: today
+MODE: pre-run
+SOURCE: web/scripts/mockup-today.mjs real LLM output 2026-05-25
+
+LEAD: A short shake-out and a big week ahead.
+
+VOICE:
+Yesterday's mile was a nice way to close out last week — easy HR, getting the legs moving without any load. Today we're kicking off a proper volume block: 43.8 miles planned, anchored by Sunday's 12-miler and tomorrow's cruise intervals.
+
+You've got an easy 5.8 on the calendar for today. Think of it as setting the table. We want fresh legs for Tuesday's threshold work, so keep this conversational. If you're feeling yesterday's mile at all (you shouldn't be), dial it back even more.
+
+Sleep's been running about an hour short all week — 6.7 average against your 7.5 target. That adds up, especially when we're pushing volume. If you can bank an extra 30–45 minutes tonight, you'll feel it tomorrow when the intervals start.
+
+We're 83 days out from America's Finest City. Base phase is about building the engine — aerobic capacity, durability, rhythm. This week's mileage is a step up, and that's exactly where we want to be right now.
+
+ASK: How are the legs?
+CHIPS: SOLID · TIRED · WRECKED
+
+DOCTRINE NOTES:
+- Anchors to yesterday + frames today + previews the week
+- "Setting the table" metaphor is approved warm language
+- Specific stats grounded in data (43.8mi, 6.7h, 83 days)
+- No prescriptions ("you should") — invitations ("think of it as", "if you can bank")
+- Acknowledges discomfort ("if you're feeling yesterday's mile at all")

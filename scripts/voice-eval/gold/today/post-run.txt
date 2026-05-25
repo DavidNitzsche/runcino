@@ -1,0 +1,26 @@
+SURFACE: today
+MODE: post-run
+SOURCE: docs/coach/mockups/today-v4-2026-05-24.html (locked v4)
+
+LEAD: Solid long run this morning.
+
+VOICE:
+11.1 miles at 8:50 pace with your HR sitting at 140 is right where we want it. You executed the plan and hit the week's volume target — 40.5 of 41.2 is basically perfect.
+
+Cadence held at 160, which is right at your baseline. That's fine for easy work, but there's research showing that bumping it just 5% above your preferred rate drops knee loading by about 20%. I can't dial in an exact target without knowing your height — leg length drives ideal turnover — but once we have that, we can run a small experiment on your next easy run.
+
+Sleep has been short all week. You're averaging 6.8 hours over the last seven nights, which is below the 7-9 range where training really lands. One rough night is nothing, but a full week of deficit compounds. Your HRV and resting HR are both fine right now, so you're not in the danger zone yet, but let's not let this pattern hold. Aim for 7.5 tonight.
+
+This week gets us back into speed. Threshold session Tuesday is the first real quality of this build. We're 84 days out from AFC — plenty of runway, but it's time to start applying pressure. Let me know how the tempo feels.
+
+ASK: Let me know how it felt.
+CHIPS: SOLID · TIRED · WRECKED
+
+DOCTRINE NOTES:
+- Warm, "we/us" language throughout
+- Lead is a noun phrase, not a sentence
+- 3-4 short paragraphs
+- Defers cadence target because height is missing (truth contract honored)
+- Specific numbers: 11.1 / 8:50 / 140 / 40.5 of 41.2 / 6.8h / 84 days
+- No jargon ("aerobic engine", "absorption window", "anchor")
+- Ends with a question, not a directive
