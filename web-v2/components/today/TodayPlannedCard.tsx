@@ -7,8 +7,8 @@
  *   - Rest day                            → "REST DAY · recover hard"
  *   - Nothing scheduled                   → quiet placeholder
  */
-import Link from 'next/link';
 import type { GlanceWeekDay } from '@/lib/coach/glance-state';
+import { RunDetailTrigger } from '@/components/runs/RunDetailModal';
 
 export function TodayPlannedCard({ today, weekDays }: {
   today: string;
@@ -27,32 +27,31 @@ export function TodayPlannedCard({ today, weekDays }: {
   // card already shows the recap. Here on the left we just acknowledge
   // it's done and point at the run-detail rather than the planned target.
   if (ran) {
-    const card = (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{
-          background: 'rgba(62,189,65,0.14)', color: 'var(--green)',
-          padding: '3px 9px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '1.2px',
-        }}>DONE</div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1 }}>
-          {labelFor(todayDay.plannedType)} · {todayDay.doneMi.toFixed(1)} MI
-        </div>
-        {todayDay.activityId && (
-          <div style={{ marginLeft: 'auto', fontFamily: 'var(--f-display)', fontSize: 12, color: 'var(--green)', letterSpacing: '1.2px' }}>
-            SPLITS →
+    return (
+      <div className="card" style={{
+        display: 'block',
+        background: 'linear-gradient(135deg, rgba(62,189,65,0.08), rgba(62,189,65,0.02))',
+        borderColor: 'rgba(62,189,65,0.28)',
+        padding: '18px 22px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            background: 'rgba(62,189,65,0.14)', color: 'var(--green)',
+            padding: '3px 9px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '1.2px',
+          }}>DONE</div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1 }}>
+            {labelFor(todayDay.plannedType)} · {todayDay.doneMi.toFixed(1)} MI
           </div>
-        )}
+          <div style={{ marginLeft: 'auto' }}>
+            <RunDetailTrigger
+              activityId={todayDay.activityId}
+              label="SPLITS →"
+              style={{ marginTop: 0, fontFamily: 'var(--f-display)', fontSize: 12, color: 'var(--green)', letterSpacing: '1.2px' }}
+            />
+          </div>
+        </div>
       </div>
     );
-    const wrapper: React.CSSProperties = {
-      display: 'block',
-      background: 'linear-gradient(135deg, rgba(62,189,65,0.08), rgba(62,189,65,0.02))',
-      borderColor: 'rgba(62,189,65,0.28)',
-      padding: '18px 22px',
-    };
-    if (todayDay.activityId) {
-      return <Link href={`/runs/${encodeURIComponent(todayDay.activityId)}`} className="card" style={wrapper}>{card}</Link>;
-    }
-    return <div className="card" style={wrapper}>{card}</div>;
   }
 
   // 2. Rest day

@@ -21,14 +21,34 @@ export interface RunDetail {
 
 export async function loadRunDetail(userId: string, activityId: string): Promise<RunDetail | null> {
   // The id passed in is whatever the briefing surfaced — could be a strava id,
-  // or a synthesized id like `${date}-${distance}`. Try a few lookups.
-  const r = (await pool.query(
+  // OR a synthesized "YYYY-MM-DD-mi.mi" id (state-loader fallback when the
+  // activity has no strava id, e.g. watch-synced runs).
+  let r = (await pool.query(
     `SELECT data FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
     [userId, activityId]
   )).rows[0]?.data;
+
+  // Fallback: synthetic id "YYYY-MM-DD-mi"
+  if (!r) {
+    const m = activityId.match(/^(\d{4}-\d{2}-\d{2})-([\d.]+)$/);
+    if (m) {
+      const [, date, mi] = m;
+      const row = (await pool.query(
+        `SELECT data FROM strava_activities
+          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+            AND NOT (data ? 'mergedIntoId')
+            AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $2
+            AND ABS((data->>'distanceMi')::numeric - $3::numeric) < 0.05
+          ORDER BY data->>'startLocal' DESC LIMIT 1`,
+        [userId, date, mi]
+      ).catch(() => ({ rows: [] }))).rows[0];
+      r = row?.data;
+    }
+  }
+
   if (!r) return null;
 
   const splits = Array.isArray(r.splits) ? r.splits.map((s: any, i: number) => ({

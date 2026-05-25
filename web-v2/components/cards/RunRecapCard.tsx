@@ -1,8 +1,9 @@
-import Link from 'next/link';
+import { RunDetailTrigger } from '@/components/runs/RunDetailModal';
 
 /**
  * Renders the run_recap topic — distance / pace / time / chips, with coach_note.
- * §8.4 closed loop: tap "Splits · route · form data →" to drill into /runs/[id].
+ * §8.4 closed loop: tap "Splits · route · form data" → opens a MODAL on /today
+ * (never leaves the page). Modal lazy-fetches /api/runs/[id].
  */
 export function RunRecapCard({ payload, coach_note }: {
   payload: { activity_id?: string | null; distance_mi: number; pace: string | null; time_moving: string | null; hr: number | null; cadence: number | null; weather_chip: string | null };
@@ -42,20 +43,8 @@ export function RunRecapCard({ payload, coach_note }: {
         </div>
       )}
 
-      {/* §8.4 drill-down — to /runs/[activity_id] for full splits + route + HR zones */}
-      {payload.activity_id && (
-        <Link
-          href={`/runs/${encodeURIComponent(payload.activity_id)}`}
-          style={{
-            display: 'inline-block', marginTop: 12,
-            fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 500,
-            color: 'var(--mute)', letterSpacing: '0.3px',
-            textDecoration: 'none',
-          }}
-        >
-          Splits · route · form data →
-        </Link>
-      )}
+      {/* §8.4 drill-down — modal on /today, never navigate away */}
+      <RunDetailTrigger activityId={payload.activity_id} />
     </section>
   );
 }
