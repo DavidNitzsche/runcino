@@ -162,39 +162,75 @@ async function loadState() {
     }
   }
 
-  // ── This week banked (unmerged) ──
-  const bankedQ = await pool.query(`
-    SELECT SUM((data->>'distanceMi')::numeric) AS mi
+  // ── This week banked — MIRROR getCompletedMileageByDate in completed-runs.ts:
+  //     per-day SUM of strava_activities (unmerged), MAX'd against
+  //     workout_completions.total_distance_mi (faff watch app).
+  //     Then sum across days for the week total.
+  const fromISO = currentWeek?.startDate || today;
+  const toISO = currentWeek?.endDate || today;
+  const stravaPerDay = await pool.query(`
+    SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
+           SUM((data->>'distanceMi')::numeric) AS mi
     FROM strava_activities
     WHERE (user_uuid = $1 OR user_uuid IS NULL)
-      AND (data->>'startLocal') >= $2
-      AND (data->>'startLocal') < $3
       AND NOT (data ? 'mergedIntoId')
-  `, [USER_ID, currentWeek?.startDate || today, addDays(currentWeek?.endDate || today, 1)]);
-  const bankedMi = Number(bankedQ.rows[0]?.mi) || 0;
+      AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
+    GROUP BY day
+  `, [USER_ID, fromISO, toISO]);
+  const wcPerDay = await pool.query(`
+    SELECT LEFT(workout_id, 10) AS day, SUM(total_distance_mi) AS mi
+    FROM workout_completions
+    WHERE user_id = $1
+      AND status IN ('completed','partial')
+      AND total_distance_mi IS NOT NULL
+      AND workout_id ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+      AND LEFT(workout_id, 10) BETWEEN $2 AND $3
+    GROUP BY LEFT(workout_id, 10)
+  `, [USER_ID, fromISO, toISO]).catch(() => ({ rows: [] }));
+  const dayMi = new Map();
+  for (const r of stravaPerDay.rows) if (r.day) dayMi.set(r.day, Number(r.mi) || 0);
+  for (const r of wcPerDay.rows) {
+    if (!r.day) continue;
+    const mi = Number(r.mi) || 0;
+    dayMi.set(r.day, Math.max(dayMi.get(r.day) ?? 0, mi));
+  }
+  const bankedMi = [...dayMi.values()].reduce((s, x) => s + x, 0);
 
-  // ── Last week banked + longest ──
+  // ── Last week banked + longest (mirror getCompletedMileageByDate) ──
   let lastBankedMi = null;
   if (prevWeek) {
-    const r = await pool.query(`
-      SELECT (data->>'distanceMi')::numeric AS mi, (data->>'paceSPerMi')::numeric AS pace
+    const pwStrava = await pool.query(`
+      SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
+             (data->>'distanceMi')::numeric AS mi,
+             (data->>'paceSPerMi')::numeric AS pace
       FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND (data->>'startLocal') >= $2
-        AND (data->>'startLocal') < $3
         AND NOT (data ? 'mergedIntoId')
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
       ORDER BY mi DESC
-    `, [USER_ID, prevWeek.startDate, addDays(prevWeek.endDate, 1)]);
-    const runs = r.rows.map((x) => ({ mi: Number(x.mi) || 0, pace: Number(x.pace) || 0 }));
-    const total = runs.reduce((s, x) => s + x.mi, 0);
-    const longest = runs[0]?.mi || 0;
-    const longestPace = runs[0]?.pace || 0;
+    `, [USER_ID, prevWeek.startDate, prevWeek.endDate]);
+    const pwWc = await pool.query(`
+      SELECT LEFT(workout_id, 10) AS day, SUM(total_distance_mi) AS mi
+      FROM workout_completions
+      WHERE user_id = $1 AND status IN ('completed','partial')
+        AND total_distance_mi IS NOT NULL
+        AND workout_id ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+        AND LEFT(workout_id, 10) BETWEEN $2 AND $3
+      GROUP BY LEFT(workout_id, 10)
+    `, [USER_ID, prevWeek.startDate, prevWeek.endDate]).catch(() => ({ rows: [] }));
+    const dayMi = new Map();
+    for (const r of pwStrava.rows) if (r.day) dayMi.set(r.day, (dayMi.get(r.day) ?? 0) + (Number(r.mi) || 0));
+    for (const r of pwWc.rows) {
+      if (!r.day) continue;
+      dayMi.set(r.day, Math.max(dayMi.get(r.day) ?? 0, Number(r.mi) || 0));
+    }
+    const total = [...dayMi.values()].reduce((s, x) => s + x, 0);
+    const longest = pwStrava.rows[0] ? Number(pwStrava.rows[0].mi) : 0;
+    const longestPace = pwStrava.rows[0] ? Number(pwStrava.rows[0].pace) : 0;
     lastBankedMi = { mi: total, longest, longestPace };
   }
 
   // ── Recovery from health_samples ──
-  // user_id is uuid. Sample types: sleep_hours, hrv, resting_hr.
-  // Take the most-recent value of each within the last 2 days.
   const recQ = await pool.query(`
     SELECT DISTINCT ON (sample_type) sample_type, value, recorded_at
     FROM health_samples
@@ -202,10 +238,25 @@ async function loadState() {
       AND sample_type IN ('sleep_hours','hrv','resting_hr')
       AND recorded_at >= ($2::date - interval '2 days')
     ORDER BY sample_type, recorded_at DESC
-  `, [USER_ID, today]).catch((e) => { console.error('health_samples err:', e.message); return { rows: [] }; });
+  `, [USER_ID, today]).catch(() => ({ rows: [] }));
   const recMap = Object.fromEntries(recQ.rows.map((r) => [r.sample_type, Number(r.value)]));
+
+  // 7-night sleep + cumulative deficit vs 8h target — multi-night signal
+  // matters more than last-night alone for recovery/adaptation.
+  const sleepQ = await pool.query(`
+    SELECT value FROM health_samples
+    WHERE user_id = $1 AND sample_type = 'sleep_hours'
+      AND sample_date <= $2::date
+    ORDER BY sample_date DESC LIMIT 7
+  `, [USER_ID, today]).catch(() => ({ rows: [] }));
+  const sleepValues = sleepQ.rows.map((r) => Number(r.value)).filter((v) => v > 0);
+  const sleepAvg7 = sleepValues.length > 0 ? sleepValues.reduce((s, x) => s + x, 0) / sleepValues.length : null;
+  const sleepDeficit7h = sleepValues.length > 0 ? sleepValues.reduce((s, x) => s + Math.max(0, 8 - x), 0) : null;
+
   const recovery = {
     sleepHoursLastNight: recMap.sleep_hours ?? null,
+    sleepAvg7Nights: sleepAvg7,
+    sleepDeficit7Nights: sleepDeficit7h,
     hrvMs: recMap.hrv ?? null,
     hrvBaselineMs: null,
     restingHrBpm: recMap.resting_hr ?? null,
@@ -338,15 +389,28 @@ function classify(s) {
 
 function buildUserMessage(s, stateKind) {
   const lines = [];
-  lines.push(`RUNNER: David.`);
-  lines.push(s.nextRace ? `NEXT A-RACE: ${s.nextRace.name} in ${daysBetween(s.today, s.nextRace.date)} days.` : `NEXT A-RACE: none.`);
+
+  // ── WHO + RACE HORIZON ──
+  lines.push(`RUNNER: David, M, age 40, Los Angeles.`);
+  lines.push(s.nextRace ? `NEXT A-RACE: ${s.nextRace.name} in ${daysBetween(s.today, s.nextRace.date)} days.` : `NEXT A-RACE: none on calendar.`);
   lines.push('');
 
-  const hour = s.localHour;
-  const tod = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 22 ? 'evening' : 'late night';
-  lines.push(`TODAY: ${dowName(s.today)}, ${s.today}, ${tod} (local hour ${hour}).`);
+  // ── WHEN IS THIS BEING READ + WHEN DID THE RUN HAPPEN ──
+  const readHour = s.localHour;
+  const readTod = readHour < 12 ? 'morning' : readHour < 17 ? 'afternoon' : readHour < 22 ? 'evening' : 'late night';
+  lines.push(`READING NOW: ${dowName(s.today)} ${s.today}, ${readTod} (local hour ${readHour}).`);
+  if (s.actualToday?.startLocal) {
+    const runHourMatch = s.actualToday.startLocal.match(/T(\d\d):/);
+    const runHour = runHourMatch ? Number(runHourMatch[1]) : null;
+    const runTod = runHour == null ? null
+      : runHour < 12 ? 'this morning'
+      : runHour < 17 ? 'this afternoon'
+      : 'this evening';
+    if (runTod) lines.push(`RUN HAPPENED: ${runTod} (local hour ${runHour}). Reference the run by this time, not by when the user is reading.`);
+  }
   lines.push('');
 
+  // ── PLAN vs ACTUAL TODAY ──
   if (s.todayDay && !s.todayDay.isRest && s.todayDay.distanceMi > 0) {
     lines.push(`PLAN FOR TODAY: ${s.todayDay.label} — ${s.todayDay.type}, ${s.todayDay.distanceMi} mi.`);
   } else lines.push(`PLAN FOR TODAY: rest day.`);
@@ -358,14 +422,6 @@ function buildUserMessage(s, stateKind) {
       (a.avgCadence ? ` · cadence ${Math.round(a.avgCadence)} spm` : ''));
   } else lines.push(`ACTUAL: nothing logged yet today.`);
   lines.push('');
-
-  if (s.notable) {
-    lines.push(`COACH OBSERVATION TO MENTION (the ONE thing worth saying about this run): ${s.notable.text}`);
-    lines.push('');
-  } else if (stateKind === 'post-run' || stateKind === 'partial') {
-    lines.push(`COACH OBSERVATION: nothing notable in the run data — talk meta-pattern or week shape instead.`);
-    lines.push('');
-  }
 
   const phaseLabel = s.currentWeek?.phase || 'BASE';
   const phaseWeekIdx = s.plan?.weeks
@@ -404,13 +460,44 @@ function buildUserMessage(s, stateKind) {
     lines.push('');
   }
 
-  if (s.recovery) {
-    const r = [];
-    if (s.recovery.sleepHoursLastNight) r.push(`sleep ${s.recovery.sleepHoursLastNight.toFixed(1)}h`);
-    if (s.recovery.hrvMs) r.push(`HRV ${s.recovery.hrvMs.toFixed(0)}ms`);
-    if (s.recovery.restingHrBpm) r.push(`RHR ${s.recovery.restingHrBpm}`);
-    if (r.length) { lines.push(`RECOVERY: ${r.join(' · ')}`); lines.push(''); }
+  // ── RECOVERY — sleep, HRV, RHR (data, no interpretation) ──
+  if (s.sleepNights && s.sleepNights.length > 0) {
+    const last7 = s.sleepNights.slice(0, 7);
+    const avg7 = last7.reduce((sum, x) => sum + x.h, 0) / last7.length;
+    const lastN = last7[0];
+    lines.push(`SLEEP:`);
+    lines.push(`  last night (${lastN.date}): ${lastN.h.toFixed(1)}h`);
+    lines.push(`  last 7 nights: ${last7.map(n => n.h.toFixed(1) + 'h').join(' · ')}`);
+    lines.push(`  7-night average: ${avg7.toFixed(1)}h (vs typical adult target 7-9h)`);
+    lines.push('');
   }
+  if (s.recovery && (s.recovery.hrvMs || s.recovery.restingHrBpm)) {
+    const r = [];
+    if (s.recovery.hrvMs) r.push(`HRV ${s.recovery.hrvMs.toFixed(0)}ms`);
+    if (s.recovery.restingHrBpm) r.push(`RHR ${s.recovery.restingHrBpm} bpm`);
+    lines.push(`OTHER RECOVERY: ${r.join(' · ')}`);
+    lines.push('');
+  }
+
+  // ── RUN FORM BASELINES — from this runner's own historical data ──
+  if (s.baselines?.cadence60d && s.baselines.cadence60d.nDays >= 5) {
+    const c = s.baselines.cadence60d;
+    lines.push(`CADENCE BASELINE (this runner's last 60 days): mean ${c.mean.toFixed(0)} spm · range ${c.min.toFixed(0)}-${c.max.toFixed(0)} · ${c.nDays} runs`);
+    lines.push('');
+  }
+
+  // ── WEIGHT TREND ──
+  if (s.weightKgRecent && s.weightKgRecent.length > 0) {
+    const lbs = s.weightKgRecent.map(w => ({ date: w.date, lb: w.kg * 2.20462 }));
+    lines.push(`WEIGHT (recent): ${lbs.map(w => `${w.date} ${w.lb.toFixed(1)}lb`).join(' · ')}`);
+    lines.push('');
+  }
+
+  // ── PROFILE GAPS — be explicit about what's missing ──
+  lines.push(`PROFILE NOTES:`);
+  lines.push(`  Height: NOT RECORDED. Some cadence/form research depends on runner height — flag this to the runner if relevant.`);
+  lines.push(`  HRmax + RHR target: NOT SET (manual entry). Coach can't make HR-zone-specific calls until these are entered.`);
+  lines.push('');
 
   if (s.checkIn) {
     const ci = [];
@@ -420,7 +507,41 @@ function buildUserMessage(s, stateKind) {
     if (ci.length) { lines.push(`CHECK-IN: ${ci.join(' · ')}`); lines.push(''); }
   }
 
-  lines.push(`STATE: ${stateKind.toUpperCase()}. Write the coach's voice for the TODAY page. Plain prose, paragraph breaks where natural. No headings.`);
+  // ── RELEVANT RESEARCH (excerpted; the coach uses these to ground reads) ──
+  lines.push(`# RESEARCH RELEVANT TO TODAY'S DATA`);
+  lines.push('');
+  lines.push(`## On cadence (from Research/16-form-biomechanics.md)`);
+  lines.push(`- The "180 spm" rule is a myth at universal-target level. Daniels' original observation was at sub-5:00/mile race pace on world-class athletes. He never prescribed 180 as a universal target.`);
+  lines.push(`- Heiderscheit (2011) is the foundational study: bumping cadence 5% above preferred reduces knee energy absorption ~20%; 10% bump = ~34% reduction. Hip + knee loading drops substantially.`);
+  lines.push(`- Cadence varies by leg length, pace, fatigue, footwear, surface. A 5'4" runner and 6'2" runner cannot share the same cadence at the same pace.`);
+  lines.push(`- Diagnostic rule: if easy-pace cadence is below 160 spm for average-height runners (170-180cm), suspect overstriding. Below 155 at any pace for a non-tall runner is a strong red flag. Tall runners (>185cm) run 5-8 spm lower than average.`);
+  lines.push('');
+  lines.push(`## On sleep + training adaptation (general endurance research)`);
+  lines.push(`- Adult endurance athletes need 7-9h sleep for full adaptation. Sleep is when training stress consolidates.`);
+  lines.push(`- A single short night is normal; cumulative deficit over multiple nights blunts adaptation, raises injury risk, lowers immune function. Multi-night deficit is the signal worth flagging, not one-off short nights.`);
+  lines.push(`- HRV and resting HR drift up with accumulated sleep debt. Combined with subjective rough check-ins, this is the recovery signal.`);
+  lines.push('');
+  lines.push(`## On week-volume + plan adherence`);
+  lines.push(`- Hitting 95-105% of planned weekly mileage is "on plan" — small under/over is normal training noise.`);
+  lines.push(`- The cumulative load across weeks matters more than any single day. Missing a session is a story; missing three is a pattern.`);
+  lines.push(`- Quality day = where fitness gets MADE. Easy days = where adaptation HAPPENS. Skipping easies undermines the work just as much as skipping quality.`);
+  lines.push('');
+
+  // ── INSTRUCTION ──
+  lines.push(`# YOUR JOB`);
+  lines.push('');
+  lines.push(`You are the coach. You have all of the data above and the relevant research. The runner is reading their TODAY page right now.`);
+  lines.push('');
+  lines.push(`Read everything. Form opinions. Decide what is worth saying TODAY. You're a real coach who looked at the screen and has thoughts — not a system reporting fields back. Things to consider, in no particular order:`);
+  lines.push(`- What's the most important thing this runner should hear right now?`);
+  lines.push(`- Is there a pattern in the data (cadence baseline, sleep, weight, week shape) the research flags as worth raising? Persistent patterns can be worth surfacing even if today's run wasn't unusual.`);
+  lines.push(`- Is there something the runner is doing well that deserves acknowledgment?`);
+  lines.push(`- What's coming next that deserves framing?`);
+  lines.push(`- Is there profile data missing that's limiting your read? Flag it.`);
+  lines.push('');
+  lines.push(`Write the coach's voice. Plain prose, paragraph breaks where natural. No headings, no bullets, no markdown. Length adaptive to the day's weight — long run reflection earns 3-4 paragraphs; a quiet easy day earns 2 sentences.`);
+  lines.push('');
+  lines.push(`STATE: ${stateKind.toUpperCase()}.`);
   return lines.join('\n');
 }
 
@@ -429,11 +550,50 @@ function daysBetween(a, b) { return Math.round((Date.parse(b + 'T12:00:00Z') - D
 async function main() {
   const state = await loadState();
 
-  // Notable thing
-  const baselines = { cadenceEasy: 175, avgHrEasy: 145 };  // TODO: pull from real profile data
-  const weather = null;
-  const notable = pickNotable(state.actualToday, state.todayDay, baselines, weather);
-  state.notable = notable;
+  // PRINCIPLE: feed the coach rich data + research. Don't pre-pick what
+  // matters or pre-prescribe what to say. The coach observes, reads the
+  // research, and decides. The notable-thing ranker is GONE.
+
+  // Baselines: computed from real data, given to the coach as facts.
+  const cadBase = await pool.query(`
+    SELECT AVG(daily_avg)::numeric AS mean_cad,
+           MIN(daily_avg)::numeric AS min_cad,
+           MAX(daily_avg)::numeric AS max_cad,
+           COUNT(*) AS n_days
+    FROM (
+      SELECT sample_date, AVG(value) AS daily_avg
+      FROM health_samples
+      WHERE user_id=$1 AND sample_type='cadence'
+        AND sample_date >= ($2::date - interval '60 days')
+        AND sample_date < $2::date
+      GROUP BY sample_date
+    ) t
+  `, [USER_ID, state.today]).catch(() => ({ rows: [] }));
+  state.baselines = {
+    cadence60d: cadBase.rows[0] ? {
+      mean: Number(cadBase.rows[0].mean_cad),
+      min: Number(cadBase.rows[0].min_cad),
+      max: Number(cadBase.rows[0].max_cad),
+      nDays: Number(cadBase.rows[0].n_days),
+    } : null,
+  };
+
+  // Weight trend (last 4 readings)
+  const wt = await pool.query(`
+    SELECT sample_date, value FROM health_samples
+    WHERE user_id=$1 AND sample_type='body_mass'
+    ORDER BY sample_date DESC LIMIT 4
+  `, [USER_ID]).catch(() => ({ rows: [] }));
+  state.weightKgRecent = wt.rows.map((r) => ({ date: r.sample_date.toISOString().slice(0,10), kg: Number(r.value) }));
+
+  // Per-night sleep, last 14
+  const sleep14 = await pool.query(`
+    SELECT sample_date, value FROM health_samples
+    WHERE user_id=$1 AND sample_type='sleep_hours'
+    ORDER BY sample_date DESC LIMIT 14
+  `, [USER_ID]).catch(() => ({ rows: [] }));
+  state.sleepNights = sleep14.rows.map((r) => ({ date: r.sample_date.toISOString().slice(0,10), h: Number(r.value) }));
+
   const stateKind = classify(state);
 
   console.log('━'.repeat(76));
@@ -449,7 +609,8 @@ async function main() {
   console.log('recovery:', JSON.stringify(state.recovery));
   console.log('checkIn:', state.checkIn);
   console.log('nextRace:', state.nextRace);
-  console.log('notable:', notable ? notable.kind + ': ' + notable.text : 'none');
+  console.log('cadence baseline (60d):', state.baselines?.cadence60d);
+  console.log('sleep 7-night avg:', (state.sleepNights?.slice(0,7).reduce((s,x)=>s+x.h,0)/7 || 0).toFixed(2) + 'h');
   console.log();
 
   console.log('━'.repeat(76));
@@ -471,9 +632,30 @@ async function main() {
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userMsg }],
   });
-  const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  const raw = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  // Strip ```json fences if present
+  const jsonText = (raw.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, raw])[1].trim();
+  let parsed;
+  try { parsed = JSON.parse(jsonText); }
+  catch (e) {
+    console.log('RAW (failed to parse JSON):');
+    console.log(raw);
+    throw e;
+  }
   console.log();
-  console.log(text);
+  console.log('━━━ VOICE ━━━');
+  console.log();
+  console.log(parsed.voice);
+  console.log();
+  console.log('━━━ TOPICS (cards to render) ━━━');
+  console.log();
+  for (const t of (parsed.topics || [])) {
+    console.log(`• ${t.kind}`);
+    for (const [k, v] of Object.entries(t)) {
+      if (k === 'kind') continue;
+      console.log(`    ${k}: ${typeof v === 'string' ? '"' + v + '"' : v}`);
+    }
+  }
   console.log();
   console.log(`  · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${resp.usage.input_tokens} in / ${resp.usage.output_tokens} out · cache=${resp.usage.cache_read_input_tokens || 0}r/${resp.usage.cache_creation_input_tokens || 0}w`);
 
