@@ -1,6 +1,7 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { ProfileGapInput } from '@/components/profile/ProfileGapInput';
 import { EditableField } from '@/components/profile/EditableField';
+import { AddShoeButton, ShoeEditCard } from '@/components/profile/ShoeCrudUI';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
 
 export const dynamic = 'force-dynamic';
@@ -91,33 +92,16 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <FieldCard k="REST DAY"     v="Saturday" />
         </Grid4>
 
-        {/* SHOES — quiet, near the bottom */}
+        {/* SHOES — click any to edit, retire, log */}
         <SectionLabel>SHOE ROTATION · {profile.shoes.length} ACTIVE</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-          {profile.shoes.map((s) => (
-            <div key={s.id} className="card" style={{ padding: '14px' }}>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', lineHeight: 1.1 }}>{s.name}</div>
-              <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', marginTop: 2 }}>
-                {s.runTypes.join(' · ').toUpperCase() || 'DAILY'}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 10 }}>
-                <span style={{
-                  fontFamily: 'var(--f-display)', fontSize: 24,
-                  color: s.pctUsed >= 80 ? 'var(--over)' : s.pctUsed >= 60 ? 'var(--goal)' : 'var(--green)',
-                }}>{s.mileage}</span>
-                <span style={{ fontSize: 10, color: 'var(--mute)' }}>/ {s.cap} mi</span>
-              </div>
-              <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', width: `${Math.min(100, s.pctUsed)}%`,
-                  background: s.pctUsed >= 80 ? 'var(--over)' : s.pctUsed >= 60 ? 'var(--goal)' : 'var(--green)',
-                }} />
-              </div>
-            </div>
-          ))}
+          {profile.shoes.map((s) => <ShoeEditCard key={s.id} shoe={s} />)}
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <AddShoeButton />
         </div>
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginTop: 14, lineHeight: 1.55 }}>
-          Coach only chimes in here when there's a real flag.
+          Click any shoe to edit mileage or retire. Coach only chimes in here when there's a real flag.
         </div>
       </div>
     </main>
