@@ -1,0 +1,1553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>faff.run · mockup deck · all surfaces, all states · 2026-05-25</title>
+<meta name="viewport" content="width=1440">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --bg-page: #15171c;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --dim: #4b505e;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.04);
+    --card: #11141a;
+    --card-2: #13171f;
+
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --rest:  #008FEC;
+    --learn: #B084FF;
+    --race:  #FF8847;
+
+    --f-display: 'Bebas Neue', 'Inter', sans-serif;
+    --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg-page); color: var(--ink); font-family: var(--f-body); margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+
+  /* ───────── DECK CHROME ───────── */
+  .deck-header { padding: 64px 64px 32px; max-width: 1600px; }
+  .deck-header h1 { font-family: var(--f-display); font-size: 88px; font-weight: 400; letter-spacing: 0.5px; margin: 0; line-height: 1; }
+  .deck-header h1 .accent { color: var(--green); }
+  .deck-header .sub { color: var(--mute); font-size: 16px; line-height: 1.6; max-width: 880px; margin-top: 18px; }
+  .deck-header .sub strong { color: var(--ink); font-weight: 600; }
+  .deck-header .meta { color: var(--dim); font-size: 11px; margin-top: 18px; letter-spacing: 0.4px; }
+
+  /* TOC — sticky on right */
+  .toc {
+    position: fixed; top: 24px; right: 24px; z-index: 50;
+    background: rgba(10,12,16,0.85); backdrop-filter: blur(20px);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 20px; max-width: 240px;
+    font-family: var(--f-body);
+  }
+  .toc-title { font-family: var(--f-display); font-size: 14px; color: var(--green); letter-spacing: 1.6px; margin-bottom: 12px; }
+  .toc ol { list-style: none; padding: 0; margin: 0; }
+  .toc li { padding: 4px 0; font-size: 12px; }
+  .toc li a { color: var(--mute); text-decoration: none; font-weight: 500; letter-spacing: 0.3px; }
+  .toc li a:hover { color: var(--ink); }
+  .toc li .sub { color: var(--dim); font-size: 10px; padding-left: 10px; display: block; }
+
+  /* Section dividers */
+  .surface { padding: 80px 64px 24px; max-width: 1600px; }
+  .surface .eyebrow {
+    font-family: var(--f-body); font-size: 12px; font-weight: 700;
+    color: var(--green); letter-spacing: 2px; text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .surface .eyebrow::before { content: ''; width: 28px; height: 1px; background: var(--green); }
+  .surface h2 {
+    font-family: var(--f-display); font-size: 64px; font-weight: 400;
+    letter-spacing: 0.5px; margin: 0; line-height: 1;
+  }
+  .surface .lede {
+    color: var(--mute); font-size: 15px; line-height: 1.6;
+    max-width: 880px; margin-top: 14px;
+  }
+  .surface .lede strong { color: var(--ink); font-weight: 600; }
+
+  .state-row { padding: 32px 64px; max-width: 1600px; }
+  .state-row .state-label {
+    display: inline-flex; align-items: center; gap: 12px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 16px 6px 8px;
+    margin-bottom: 18px;
+  }
+  .state-row .state-label .pill {
+    background: var(--green); color: #001;
+    font-family: var(--f-display); font-size: 12px; font-weight: 400;
+    letter-spacing: 1px; padding: 4px 10px; border-radius: 999px;
+  }
+  .state-row .state-label .name {
+    font-family: var(--f-display); font-size: 18px; letter-spacing: 1px;
+  }
+  .state-row .state-label .when {
+    font-family: var(--f-body); font-size: 11px; font-weight: 600;
+    color: var(--mute); letter-spacing: 0.5px; margin-left: 4px;
+  }
+  .state-row .caption {
+    color: var(--mute); font-size: 13.5px; line-height: 1.55;
+    max-width: 720px; margin-bottom: 22px;
+  }
+  .state-row .caption strong { color: var(--ink); font-weight: 600; }
+
+  /* ───────── DOCTRINE BLOCK ───────── */
+  .doctrine {
+    margin: 24px 64px 32px; max-width: 1600px;
+    background: linear-gradient(180deg, rgba(62,189,65,0.06), rgba(62,189,65,0) 80%);
+    border: 1px solid rgba(62,189,65,0.20);
+    border-radius: 22px;
+    padding: 36px 40px;
+  }
+  .doctrine h3 {
+    font-family: var(--f-display); font-size: 32px; font-weight: 400;
+    margin: 0 0 6px; letter-spacing: 0.5px;
+  }
+  .doctrine .intro {
+    color: var(--mute); font-size: 14px; line-height: 1.6;
+    max-width: 880px; margin-bottom: 24px;
+  }
+  .doctrine table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  .doctrine th {
+    text-align: left; font-family: var(--f-body); font-weight: 700;
+    color: var(--mute); letter-spacing: 1.4px; text-transform: uppercase;
+    font-size: 10px; padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .doctrine td {
+    padding: 14px 12px; vertical-align: top;
+    border-bottom: 1px solid var(--line-2);
+    line-height: 1.5;
+  }
+  .doctrine td code {
+    background: rgba(255,255,255,0.06); color: var(--ink);
+    padding: 2px 6px; border-radius: 4px; font-size: 11px;
+  }
+  .doctrine td.surf { color: var(--green); font-weight: 600; letter-spacing: 0.5px; }
+  .doctrine td.trigger { color: var(--mute); font-family: 'SF Mono', Menlo, monospace; font-size: 11.5px; }
+  .doctrine td.behavior { color: var(--ink); }
+
+  /* ───────── SHARED CARD PRIMITIVES (from v4) ───────── */
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; }
+  .card .card-eyebrow {
+    font-family: var(--f-body); font-size: 9px; font-weight: 700;
+    letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .coach-note {
+    font-family: var(--f-body); font-size: 12px; line-height: 1.5;
+    color: rgba(246,247,248,0.85);
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--line-2);
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .coach-note::before {
+    content: ''; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--green); margin-top: 7px; flex-shrink: 0;
+  }
+
+  /* ───────── iPHONE FRAME ───────── */
+  .phone {
+    position: relative; width: 460px; aspect-ratio: 460 / 940;
+    background: #000; border-radius: 56px; padding: 14px;
+    box-shadow: 0 60px 100px rgba(0,0,0,0.55), 0 20px 40px rgba(0,0,0,0.40), inset 0 0 0 2px rgba(255,255,255,0.04);
+    flex-shrink: 0;
+  }
+  .phone .notch { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 120px; height: 32px; background: #000; border-radius: 18px; z-index: 2; }
+  .screen { position: relative; width: 100%; height: 100%; background: var(--bg); border-radius: 44px; overflow: hidden; overflow-y: auto; }
+  .screen::-webkit-scrollbar { display: none; }
+
+  .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 18px 32px 8px; font-size: 14px; font-weight: 600; color: var(--ink); }
+
+  .appbar { display: flex; justify-content: space-between; align-items: center; padding: 22px 24px 10px; }
+  .appbar .brand-left { display: flex; align-items: baseline; gap: 12px; }
+  .appbar .brand { font-family: var(--f-display); font-size: 26px; font-weight: 400; color: var(--ink); letter-spacing: 1px; }
+  .appbar .date { font-family: var(--f-body); font-size: 11px; font-weight: 600; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+  .readiness-chip { width: 44px; height: 44px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .readiness-chip svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .readiness-chip .v { font-family: var(--f-display); font-size: 18px; font-weight: 400; letter-spacing: 0.5px; line-height: 1; }
+
+  /* Phones in a row */
+  .phone-row {
+    display: flex; gap: 28px; flex-wrap: wrap; justify-content: flex-start;
+    align-items: flex-start;
+  }
+  .phone-wrap { display: flex; flex-direction: column; gap: 16px; }
+  .phone-wrap .state-label { margin-bottom: 0; }
+  .phone-wrap .caption { margin-bottom: 0; max-width: 460px; }
+
+  /* ───────── BROWSER FRAME (web) ───────── */
+  .browser {
+    background: var(--bg); border-radius: 18px; overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.45), 0 12px 24px rgba(0,0,0,0.30), inset 0 0 0 1px rgba(255,255,255,0.05);
+    max-width: 1440px;
+  }
+  .browser-chrome {
+    height: 38px; background: #0d0f14;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 16px; border-bottom: 1px solid var(--line);
+  }
+  .browser-chrome .dot { width: 12px; height: 12px; border-radius: 50%; background: #2a2e36; }
+  .browser-chrome .url {
+    margin-left: 24px; background: rgba(255,255,255,0.04); border-radius: 8px;
+    padding: 6px 14px; font-family: var(--f-body); font-size: 12px; color: var(--mute);
+    flex: 1; max-width: 480px; letter-spacing: 0.2px;
+  }
+  .browser-chrome .url .host { color: var(--ink); font-weight: 500; }
+  .topnav {
+    display: flex; align-items: center; gap: 40px; padding: 18px 36px 0;
+  }
+  .topnav .brand { font-family: var(--f-display); font-size: 26px; color: var(--ink); letter-spacing: 1.2px; }
+  .topnav .tabs { display: flex; gap: 26px; flex: 1; }
+  .topnav .tab { font-family: var(--f-display); font-size: 14px; color: var(--mute); letter-spacing: 1.4px; padding: 6px 0; border-bottom: 2px solid transparent; cursor: pointer; }
+  .topnav .tab.active { color: var(--green); border-bottom-color: var(--green); }
+  .topnav .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--learn), var(--race)); color: #1a0f33; font-family: var(--f-display); font-size: 13px; display: flex; align-items: center; justify-content: center; }
+
+  /* ───────── COACH BLOCK (shared) ───────── */
+  .coach { padding: 8px 24px 22px; border-top: 1px solid var(--line-2); margin-top: 4px; padding-top: 22px; }
+  .coach .eyebrow {
+    font-family: var(--f-body); font-size: 10px; font-weight: 700;
+    color: var(--green); letter-spacing: 1.6px; text-transform: uppercase;
+    margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .coach .eyebrow::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(62,189,65,0.6); }
+  .coach .eyebrow.amber { color: var(--goal); }
+  .coach .eyebrow.amber::before { background: var(--goal); box-shadow: 0 0 12px rgba(243,173,56,0.6); }
+  .coach .eyebrow.over { color: var(--over); }
+  .coach .eyebrow.over::before { background: var(--over); box-shadow: 0 0 12px rgba(252,77,100,0.6); }
+  .coach .lead { font-family: var(--f-display); font-size: 28px; font-weight: 400; line-height: 1.05; letter-spacing: 0.5px; margin: 0 0 12px; }
+  .coach p { font-family: var(--f-body); font-size: 14px; line-height: 1.6; color: rgba(246,247,248,0.86); margin: 0 0 10px; letter-spacing: -0.01em; }
+  .coach p strong { color: var(--ink); font-weight: 600; }
+  .coach .ask { font-family: var(--f-body); font-size: 12px; color: var(--mute); margin-top: 16px; margin-bottom: 10px; }
+  .reply { display: flex; gap: 8px; }
+  .reply-chip { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--ink); padding: 12px 4px; border-radius: 14px; font-family: var(--f-display); font-size: 16px; letter-spacing: 1.2px; cursor: pointer; }
+
+  /* ───────── WEEK STRIP (iPhone) ───────── */
+  .weekstrip { padding: 4px 24px 14px; }
+  .weekstrip .label { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .weekstrip .label .total { color: var(--green); }
+  .weekstrip .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .weekstrip .d { background: rgba(255,255,255,0.025); border-radius: 8px; padding: 8px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .weekstrip .d.today { background: rgba(62,189,65,0.16); box-shadow: inset 0 0 0 1px rgba(62,189,65,0.35); }
+  .weekstrip .d .dow { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1px; }
+  .weekstrip .d.today .dow { color: var(--green); }
+  .weekstrip .d .mi { font-family: var(--f-display); font-size: 14px; color: var(--ink); line-height: 1; }
+  .weekstrip .d.today .mi { color: var(--green); }
+  .weekstrip .d.rest .mi { color: var(--dim); }
+  .weekstrip .d .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--green); margin-top: 2px; }
+  .weekstrip .d.rest .dot { background: var(--dim); }
+
+  /* Cards lane (iPhone) */
+  .cards-lane { padding: 4px 24px 24px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* Stat blocks */
+  .recap-top { padding: 8px 24px 18px; }
+  .recap-top .eyebrow { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+  .recap-top .eyebrow .badge { background: rgba(62,189,65,0.14); color: var(--green); padding: 3px 9px; border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; }
+  .recap-top .label-row { font-family: var(--f-display); font-size: 22px; color: var(--ink); letter-spacing: 0.8px; margin-bottom: 14px; }
+  .recap-top .stats { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 14px; margin-bottom: 10px; }
+  .recap-top .s .v { font-family: var(--f-display); font-size: 48px; line-height: 0.95; letter-spacing: 0.5px; font-variant-numeric: tabular-nums; }
+  .recap-top .s.dist .v { color: var(--dist); }
+  .recap-top .s.pace .v { color: var(--green); }
+  .recap-top .s .u { font-family: var(--f-body); font-size: 10px; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 4px; }
+  .recap-top .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .recap-top .c { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 10px; }
+  .recap-top .c .k { color: var(--mute); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; margin-right: 4px; }
+  .recap-top .c .v { color: var(--ink); font-weight: 600; }
+  .recap-top .c.warm { color: var(--goal); border-color: rgba(243,173,56,0.30); background: rgba(243,173,56,0.08); }
+
+  /* UP NEXT (small) */
+  .next-grid { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; margin-top: 4px; }
+  .next-left .typ { font-family: var(--f-display); font-size: 24px; color: var(--ink); letter-spacing: 0.8px; line-height: 1; }
+  .next-left .when { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 5px; }
+  .next-right { display: flex; align-items: baseline; gap: 4px; }
+  .next-right .v { font-family: var(--f-display); font-size: 48px; line-height: 0.95; letter-spacing: 0.5px; }
+  .next-right .u { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+
+  /* RACE HORIZON */
+  .race-grid { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; margin-top: 4px; }
+  .race-left .name { font-family: var(--f-display); font-size: 20px; color: var(--ink); letter-spacing: 0.5px; line-height: 1.1; }
+  .race-left .when { font-family: var(--f-body); font-size: 10px; color: var(--mute); margin-top: 4px; }
+  .race-right { display: flex; align-items: baseline; gap: 4px; color: var(--race); }
+  .race-right .v { font-family: var(--f-display); font-size: 44px; line-height: 0.95; letter-spacing: 0.5px; }
+  .race-right .u { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+
+  /* PROFILE GAP */
+  .card.gap { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .card.gap .label { font-family: var(--f-body); font-size: 9px; font-weight: 700; color: var(--over); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 3px; }
+  .card.gap .field { font-family: var(--f-display); font-size: 18px; color: var(--ink); }
+  .card.gap .why { font-family: var(--f-body); font-size: 11px; color: var(--mute); margin-top: 2px; }
+  .card.gap .add { background: rgba(252,77,100,0.12); color: var(--over); border: 1px solid rgba(252,77,100,0.25); border-radius: 999px; padding: 7px 14px; font-family: var(--f-display); font-size: 12px; letter-spacing: 1px; }
+
+  /* Fun fact card */
+  .card.fun { background: rgba(176,132,255,0.04); border: 1px solid rgba(176,132,255,0.18); }
+  .card.fun .fun-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .card.fun .fun-icon { width: 18px; height: 18px; border-radius: 50%; background: var(--learn); color: #1a0f33; font-family: var(--f-body); font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .card.fun .fun-title { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--learn); letter-spacing: 1.2px; text-transform: uppercase; }
+  .card.fun .fun-body { font-family: var(--f-body); font-size: 12px; line-height: 1.55; color: rgba(246,247,248,0.82); margin: 4px 0 6px; }
+  .card.fun .fun-link { font-family: var(--f-body); font-size: 10px; font-weight: 600; color: var(--learn); }
+
+  /* ───────── ROUTE + ELEVATION ───────── */
+  .route-card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; }
+  .route-card .head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  .route-card .title { font-family: var(--f-display); font-size: 18px; color: var(--ink); letter-spacing: 0.5px; }
+  .route-card .meta { font-family: var(--f-body); font-size: 10px; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+  .route-card .route-svg { background: rgba(255,255,255,0.02); border-radius: 12px; padding: 12px; }
+  .route-card .ele-band { margin-top: 14px; }
+  .route-card .ele-band .stats { display: flex; gap: 18px; font-family: var(--f-body); font-size: 10px; color: var(--mute); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+  .route-card .ele-band .stats .v { color: var(--ink); font-family: var(--f-display); font-size: 18px; letter-spacing: 0.5px; }
+
+  /* ───────── DATA SOURCES ───────── */
+  .data-sources { padding: 80px 64px 96px; max-width: 1600px; }
+  .data-sources h2 { font-family: var(--f-display); font-size: 48px; margin: 0 0 24px; letter-spacing: 0.5px; }
+  .data-sources table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-sources th { text-align: left; font-family: var(--f-body); font-weight: 700; color: var(--mute); letter-spacing: 1.4px; text-transform: uppercase; font-size: 10px; padding: 12px; border-bottom: 1px solid var(--line); }
+  .data-sources td { padding: 14px 12px; border-bottom: 1px solid var(--line-2); line-height: 1.55; }
+  .data-sources td code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+  .data-sources td.surf { color: var(--green); font-weight: 600; }
+
+  /* ───────── WEB-SCALE COMPONENTS (TRAINING, HEALTH etc) ───────── */
+  .web-frame { padding: 36px 40px; }
+  .web-frame .page-title { font-family: var(--f-display); font-size: 56px; line-height: 1; margin: 0 0 18px; letter-spacing: 0.5px; }
+  .web-frame .page-sub { font-family: var(--f-body); font-size: 13px; color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 28px; }
+  .web-grid { display: grid; gap: 16px; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid-2 { grid-template-columns: 1.4fr 1fr; }
+
+  /* PHASE STRIP */
+  .phase-strip { display: flex; gap: 6px; margin-bottom: 22px; background: rgba(255,255,255,0.02); border-radius: 12px; padding: 10px; }
+  .phase-strip .ph { flex: 1; padding: 12px 14px; border-radius: 8px; }
+  .phase-strip .ph .label { font-family: var(--f-display); font-size: 14px; color: var(--mute); letter-spacing: 1.6px; }
+  .phase-strip .ph .span { font-family: var(--f-body); font-size: 10px; color: var(--dim); letter-spacing: 0.5px; margin-top: 2px; text-transform: uppercase; }
+  .phase-strip .ph.current { background: rgba(62,189,65,0.10); border: 1px solid rgba(62,189,65,0.35); }
+  .phase-strip .ph.current .label { color: var(--green); }
+  .phase-strip .ph.done .label { color: var(--dim); text-decoration: line-through; }
+  .phase-strip .ph.taper.current .label { color: var(--goal); }
+  .phase-strip .ph.taper.current { background: rgba(243,173,56,0.10); border-color: rgba(243,173,56,0.35); }
+  .phase-strip .ph.race.current .label { color: var(--race); }
+  .phase-strip .ph.race.current { background: rgba(255,136,71,0.10); border-color: rgba(255,136,71,0.35); }
+
+  /* PLAN ARC — full plan to race */
+  .plan-arc {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 22px 24px; margin-bottom: 18px;
+  }
+  .plan-arc .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+  .plan-arc .head .title { font-family: var(--f-display); font-size: 22px; letter-spacing: 0.5px; }
+  .plan-arc .head .race { font-family: var(--f-body); font-size: 11px; color: var(--race); letter-spacing: 1.2px; text-transform: uppercase; }
+  .plan-arc .weeks { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; height: 80px; align-items: end; }
+  .plan-arc .w {
+    background: rgba(255,255,255,0.04);
+    border-radius: 4px 4px 0 0; position: relative;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    min-height: 8px;
+  }
+  .plan-arc .w.base { background: rgba(39,180,224,0.45); }
+  .plan-arc .w.build { background: rgba(62,189,65,0.55); }
+  .plan-arc .w.peak { background: rgba(176,132,255,0.55); }
+  .plan-arc .w.taper { background: rgba(243,173,56,0.55); }
+  .plan-arc .w.race { background: rgba(255,136,71,0.75); }
+  .plan-arc .w.current { outline: 2px solid var(--ink); outline-offset: -1px; }
+  .plan-arc .w .mi-tag { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); font-family: var(--f-body); font-size: 9px; color: var(--mute); margin-bottom: 3px; white-space: nowrap; }
+  .plan-arc .x-axis { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; margin-top: 6px; font-family: var(--f-body); font-size: 9px; color: var(--dim); letter-spacing: 0.5px; }
+  .plan-arc .legend { display: flex; gap: 18px; margin-top: 14px; font-family: var(--f-body); font-size: 10px; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; }
+  .plan-arc .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+  /* WEEK AHEAD (web) */
+  .week-ahead {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 22px 24px;
+  }
+  .week-ahead .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+  .week-ahead .head .title { font-family: var(--f-display); font-size: 22px; letter-spacing: 0.5px; }
+  .week-ahead .head .total { font-family: var(--f-display); font-size: 18px; color: var(--mute); letter-spacing: 0.5px; }
+  .week-ahead .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .week-ahead .d { background: rgba(255,255,255,0.025); border-radius: 10px; padding: 12px 10px; }
+  .week-ahead .d.today { background: rgba(62,189,65,0.10); border: 1px solid rgba(62,189,65,0.30); }
+  .week-ahead .d.rest .mi { color: var(--dim); }
+  .week-ahead .d .dow { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: 1.4px; }
+  .week-ahead .d.today .dow { color: var(--green); }
+  .week-ahead .d .mi { font-family: var(--f-display); font-size: 26px; color: var(--ink); line-height: 1; margin-top: 4px; }
+  .week-ahead .d .typ { font-family: var(--f-body); font-size: 9px; color: var(--mute); letter-spacing: 0.8px; text-transform: uppercase; margin-top: 4px; }
+  .week-ahead .d.quality .typ { color: var(--goal); }
+  .week-ahead .d.long .typ { color: var(--dist); }
+  .week-ahead .d.race .typ { color: var(--race); }
+
+  /* Section break for state matrix view */
+  .matrix-grid { display: grid; gap: 24px; }
+  .matrix-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .matrix-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  /* Tiny labels */
+  .pill-pri { display: inline-block; font-family: var(--f-display); font-size: 11px; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px; }
+  .pill-pri.A { background: rgba(255,136,71,0.18); color: var(--race); }
+  .pill-pri.B { background: rgba(243,173,56,0.18); color: var(--goal); }
+  .pill-pri.C { background: rgba(176,132,255,0.18); color: var(--learn); }
+
+  /* SECTION-INSERTION ANCHORS (populated by later Edits) */
+  /* SECTION-TODAY-IPHONE */
+  /* SECTION-TODAY-WEB */
+  /* SECTION-TRAINING */
+  /* SECTION-RACES */
+  /* SECTION-RACE-DETAIL */
+  /* SECTION-HEALTH */
+  /* SECTION-PROFILE */
+
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DECK HEADER
+     ═══════════════════════════════════════════════════════════ -->
+<div class="deck-header">
+  <h1>faff.run <span class="accent">·</span> deck</h1>
+  <p class="sub">
+    <strong>Every surface. Every state.</strong>
+    Mockups for TODAY (iPhone + web), TRAINING, RACES, RACE DETAIL, HEALTH, PROFILE —
+    each shown across the moments it actually has to handle: post-run, pre-run, rest day,
+    far from a race, race week, race day, post-race; base phase, build, peak, taper.
+    Every state ties back to a real trigger the coach engine can detect, so the system
+    can actually <em>produce</em> these views — they're not just drawings.
+  </p>
+  <div class="meta">FONTS · BEBAS NEUE + INTER · COLORS · WATCH-FACE PALETTE · DATA · LIVE PROD WHERE AVAILABLE · 2026-05-25</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     STICKY TABLE OF CONTENTS
+     ═══════════════════════════════════════════════════════════ -->
+<nav class="toc">
+  <div class="toc-title">DECK</div>
+  <ol>
+    <li><a href="#doctrine">0 · How states are triggered</a></li>
+    <li><a href="#today-iphone">1 · TODAY · iPhone</a><span class="sub">4 states</span></li>
+    <li><a href="#today-web">2 · TODAY · web</a><span class="sub">3 states</span></li>
+    <li><a href="#training">3 · TRAINING</a><span class="sub">5 phases</span></li>
+    <li><a href="#races">4 · RACES</a><span class="sub">4 states</span></li>
+    <li><a href="#race-detail">5 · RACE DETAIL</a><span class="sub">4 proximities</span></li>
+    <li><a href="#health">6 · HEALTH</a><span class="sub">3 states</span></li>
+    <li><a href="#profile">7 · PROFILE</a><span class="sub">fixed</span></li>
+    <li><a href="#data">8 · Data sources</a></li>
+  </ol>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════
+     0 · DOCTRINE — STATE → TRIGGER → BEHAVIOR
+     ═══════════════════════════════════════════════════════════ -->
+<section id="doctrine" class="surface">
+  <div class="eyebrow">0 · DOCTRINE</div>
+  <h2>The coach changes because the inputs change.</h2>
+  <p class="lede">
+    These mockups aren't decoration. Each state is the output of a rule the system can
+    actually evaluate — a date math, a signal threshold, a phase boundary. If the inputs
+    are there, the engine can produce the view. If we ever ship a mockup whose trigger we
+    can't compute, that's a flag, not a feature.
+  </p>
+</section>
+
+<div class="doctrine">
+  <h3>State → trigger → what changes</h3>
+  <p class="intro">
+    Every coach state below is keyed off facts already in the database
+    (<code>plan_workouts</code>, <code>training_plans</code>, <code>races</code>,
+    <code>strava_activities</code>, <code>health_samples</code>, <code>profile</code>).
+    The engine reads these on every briefing and routes to the matching voice mode + card set.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:24%">State</th>
+        <th style="width:38%">Trigger (computable today)</th>
+        <th style="width:38%">What the coach does</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="surf">TODAY · post-run morning</td>
+        <td class="trigger">latest_activity.date == today AND now &gt; activity.end + 30min</td>
+        <td class="behavior">Recap the run, name the week's volume hit, set up tomorrow. Reply chip: SOLID / TIRED / WRECKED.</td>
+      </tr>
+      <tr>
+        <td class="surf">TODAY · pre-run morning</td>
+        <td class="trigger">today has plan_workout AND no strava_activity today AND hour &lt; 14</td>
+        <td class="behavior">Frame what today's run is for, ground in yesterday, surface any signals worth knowing before lacing up.</td>
+      </tr>
+      <tr>
+        <td class="surf">TODAY · rest day</td>
+        <td class="trigger">plan_workouts[today].type == 'rest'</td>
+        <td class="behavior">Permission, not absence. Sleep / mobility / recovery framing. No "you should be running" energy.</td>
+      </tr>
+      <tr>
+        <td class="surf">TODAY · race day</td>
+        <td class="trigger">plan_workouts[today].type == 'race' OR races where date == today</td>
+        <td class="behavior">Tone shifts to calm + ready. No volume talk. Splits target, fueling reminder, weather, "go get it."</td>
+      </tr>
+      <tr>
+        <td class="surf">TRAINING · phase modes</td>
+        <td class="trigger">plan_phases.label for current week (BASE / BUILD / PEAK / TAPER / RACE)</td>
+        <td class="behavior">Phase strip ringed at current; arc shows volume curve to race; voice frames what THIS phase is about.</td>
+      </tr>
+      <tr>
+        <td class="surf">RACE DETAIL · proximity</td>
+        <td class="trigger">days_to_race bucket: &gt;60 / 30-60 / 7-30 / 0-7 / past</td>
+        <td class="behavior">Far: trajectory + goal. Mid: sharpening + projection. Race week: fueling, weather, pacing, kit, alarm. Post: recap + lessons.</td>
+      </tr>
+      <tr>
+        <td class="surf">HEALTH · watch escalation</td>
+        <td class="trigger">RHR 7d &gt; baseline + N bpm AND sleep 7d &lt; target - 1h AND days_to_race &lt; 21</td>
+        <td class="behavior">Watch list flips amber → red. Voice elevates from "noticing" to "we should adjust." Recovery card surfaces.</td>
+      </tr>
+      <tr>
+        <td class="surf">RACES · A-race amplified</td>
+        <td class="trigger">races.priority == 'A' AND days_to_race &lt; 120</td>
+        <td class="behavior">Big A-card with goal, projection vs goal, why this race matters. Coach voice frames the season around it.</td>
+      </tr>
+      <tr>
+        <td class="surf">PROFILE · gap surfacing</td>
+        <td class="trigger">profile.height_cm IS NULL — and downstream features need it (cadence target)</td>
+        <td class="behavior">Coach explains what the missing field unlocks. Doesn't badger. Doesn't ask for things the system can derive (HRmax, RHR).</td>
+      </tr>
+      <tr>
+        <td class="surf">PROFILE · shoe alert (rare)</td>
+        <td class="trigger">shoe.mileage + projection_to_race &gt; shoe.retirement_cap AND shoe is the actual race shoe</td>
+        <td class="behavior">ONLY then does a shoe card surface. Default profile is identity + settings — shoes live in their own section, quiet.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     1 · TODAY · iPHONE
+     ═══════════════════════════════════════════════════════════ -->
+<section id="today-iphone" class="surface">
+  <div class="eyebrow">1 · TODAY · iPHONE</div>
+  <h2>The day, at hand.</h2>
+  <p class="lede">
+    The home surface. Voice anchors to the moment: <strong>post-run</strong> recaps and sets up tomorrow;
+    <strong>pre-run</strong> frames the day's intent; <strong>rest day</strong> grants permission;
+    <strong>race day</strong> shifts to calm, ready, no volume talk. Same surface, four voices.
+  </p>
+</section>
+
+<div class="state-row">
+  <div class="phone-row">
+
+    <!-- STATE A · POST-LONG-RUN MORNING (locked v4 voice) -->
+    <div class="phone-wrap">
+      <div class="state-label"><span class="pill">A</span><span class="name">POST-LONG-RUN</span><span class="when">SUN 9:18 AM · the locked v4</span></div>
+      <p class="caption">11.1mi long done. Coach recaps, names the volume hit (40.5/41.2), looks ahead to threshold Tuesday. Reply chips wait.</p>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="statusbar"><span>9:18</span><span>● ● ● ●</span></div>
+          <div class="appbar">
+            <div class="brand-left"><div class="brand">faff</div><div class="date">SUN · MAY 24</div></div>
+            <div class="readiness-chip">
+              <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3EBD41" stroke-width="3" stroke-dasharray="99.5 113" stroke-linecap="round"/></svg>
+              <div class="v" style="color:#3EBD41;">88</div>
+            </div>
+          </div>
+          <div class="weekstrip">
+            <div class="label"><span>THIS WEEK · BASE 1</span><span class="total">40.5 / 41.2 MI</span></div>
+            <div class="days">
+              <div class="d"><div class="dow">M</div><div class="mi">5.9</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">T</div><div class="mi">2.4</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">W</div><div class="mi">5.1</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">T</div><div class="mi">7.2</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">F</div><div class="mi">7.8</div><div class="dot"></div></div>
+              <div class="d rest"><div class="dow">S</div><div class="mi">—</div><div class="dot"></div></div>
+              <div class="d today"><div class="dow">S</div><div class="mi">11.1</div><div class="dot"></div></div>
+            </div>
+          </div>
+          <div class="recap-top">
+            <div class="eyebrow"><span>YOUR RUN</span><span class="badge">COMPLETED</span></div>
+            <div class="label-row">LONG · 11.1 MI</div>
+            <div class="stats">
+              <div class="s dist"><div class="v">11.1</div><div class="u">miles</div></div>
+              <div class="s pace"><div class="v">8:50</div><div class="u">avg pace</div></div>
+              <div class="s"><div class="v" style="color:var(--ink);">1:38</div><div class="u">moving</div></div>
+            </div>
+            <div class="chips"><span class="c"><span class="k">HR</span><span class="v">140</span></span><span class="c"><span class="k">CAD</span><span class="v">160</span></span><span class="c warm">60° · warm</span></div>
+          </div>
+          <div class="coach">
+            <div class="eyebrow">COACH</div>
+            <h2 class="lead">Solid long run this morning.</h2>
+            <p>11.1 miles at 8:50 with HR sitting at 140 — exactly the engine work we wanted. <strong>40.5 of 41.2</strong> for the week, basically perfect.</p>
+            <p>Cadence held at 160. That's fine for easy work, but I want to run a small experiment on turnover once we have your height in — leg length drives the right target.</p>
+            <p>Sleep's been short all week — 6.8h average. Not the danger zone yet, but a full week of deficit compounds. Aim for 7.5 tonight.</p>
+            <p>Threshold Tuesday is the first real quality of this build. We're 84 days out from AFC — time to start applying pressure.</p>
+            <div class="ask">Let me know how it felt.</div>
+            <div class="reply"><button class="reply-chip">SOLID</button><button class="reply-chip">TIRED</button><button class="reply-chip">WRECKED</button></div>
+          </div>
+          <div class="cards-lane">
+            <div class="card"><div class="card-eyebrow" style="color:var(--rest);">UP NEXT · TOMORROW</div><div class="next-grid"><div class="next-left"><div class="typ">EASY</div><div class="when">MON</div></div><div class="next-right" style="color:var(--rest);"><span class="v">5.8</span><span class="u">MI</span></div></div><div class="coach-note">Keep it conversational. Shake out the long run, nothing more.</div></div>
+            <div class="card"><div class="card-eyebrow" style="color:var(--race);">RACE · BUILDING</div><div class="race-grid"><div class="race-left"><div class="name">America's Finest City</div><div class="when">HALF · AUG 16</div></div><div class="race-right"><span class="v">84</span><span class="u">DAYS</span></div></div><div class="coach-note">Twelve weeks of runway. Quality starts this week.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATE B · PRE-EASY-RUN MORNING -->
+    <div class="phone-wrap">
+      <div class="state-label"><span class="pill">B</span><span class="name">PRE-RUN MORNING</span><span class="when">MON 7:42 AM · before today's easy</span></div>
+      <p class="caption">No run yet today. Coach frames intent — what's today for — and flags RHR sitting a touch elevated. Tomorrow's threshold looms.</p>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="statusbar"><span>7:42</span><span>● ● ● ●</span></div>
+          <div class="appbar">
+            <div class="brand-left"><div class="brand">faff</div><div class="date">MON · MAY 25</div></div>
+            <div class="readiness-chip">
+              <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3"/><circle cx="22" cy="22" r="18" fill="none" stroke="#F3AD38" stroke-width="3" stroke-dasharray="86 113" stroke-linecap="round"/></svg>
+              <div class="v" style="color:#F3AD38;">76</div>
+            </div>
+          </div>
+          <div class="weekstrip">
+            <div class="label"><span>THIS WEEK · BASE 2</span><span class="total" style="color:var(--mute);">0.0 / 43.8 MI</span></div>
+            <div class="days">
+              <div class="d today"><div class="dow">M</div><div class="mi">5.8</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">T</div><div class="mi">7.9</div><div class="dot" style="background:var(--goal);"></div></div>
+              <div class="d"><div class="dow">W</div><div class="mi">5.8</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">T</div><div class="mi">6.1</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">F</div><div class="mi">6.1</div><div class="dot"></div></div>
+              <div class="d rest"><div class="dow">S</div><div class="mi">—</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">S</div><div class="mi">12.1</div><div class="dot" style="background:var(--dist);"></div></div>
+            </div>
+          </div>
+          <div class="coach" style="border-top:none; padding-top: 12px;">
+            <div class="eyebrow">COACH</div>
+            <h2 class="lead">A short shake-out and a big week ahead.</h2>
+            <p>Yesterday's mile was an easy close to last week. Today we kick off real volume — <strong>43.8mi planned</strong>, anchored by Sunday's 12-miler and tomorrow's cruise intervals.</p>
+            <p>Easy <strong>5.8 on the calendar</strong>. Keep it conversational. We want fresh legs for the threshold work tomorrow.</p>
+            <p>Your resting HR is at <strong>54 against a 48 baseline</strong> — not alarm bells, but I'll be watching. Could be the short sleep this week, could be the volume step-up.</p>
+            <div class="ask">How are the legs?</div>
+            <div class="reply"><button class="reply-chip">SOLID</button><button class="reply-chip">TIRED</button><button class="reply-chip">WRECKED</button></div>
+          </div>
+          <div class="cards-lane">
+            <div class="card"><div class="card-eyebrow" style="color:var(--rest);">UP NEXT · TODAY</div><div class="next-grid"><div class="next-left"><div class="typ">EASY</div><div class="when">MON</div></div><div class="next-right" style="color:var(--rest);"><span class="v">5.8</span><span class="u">MI</span></div></div><div class="coach-note">Setting the table for Tuesday. Conversational pace, nothing more.</div></div>
+            <div class="card" style="background:rgba(252,77,100,0.04); border-color:rgba(252,77,100,0.22);"><div class="card-eyebrow" style="color:var(--over);">RHR · WATCHING</div><div style="display:flex;align-items:baseline;gap:14px;margin-top:4px;"><span style="font-family:var(--f-display);font-size:38px;color:var(--over);letter-spacing:0.5px;line-height:1;">54</span><span style="font-size:11px;color:var(--mute);font-weight:600;">14D BASELINE <span style="color:var(--ink);">48</span> · <span style="color:var(--over);">+6</span></span></div><div class="coach-note">A flag, not a fire. Watching through tomorrow.</div></div>
+            <div class="card"><div class="card-eyebrow" style="color:var(--race);">RACE · BUILDING</div><div class="race-grid"><div class="race-left"><div class="name">America's Finest City</div><div class="when">HALF · AUG 16</div></div><div class="race-right"><span class="v">83</span><span class="u">DAYS</span></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATE C · REST DAY MORNING -->
+    <div class="phone-wrap">
+      <div class="state-label"><span class="pill">C</span><span class="name">REST DAY</span><span class="when">SAT 8:14 AM · planned rest</span></div>
+      <p class="caption">No "you should be running" energy. Permission. Sleep, mobility, ease. Tomorrow's long run gets the page's quiet attention.</p>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="statusbar"><span>8:14</span><span>● ● ● ●</span></div>
+          <div class="appbar">
+            <div class="brand-left"><div class="brand">faff</div><div class="date">SAT · MAY 30</div></div>
+            <div class="readiness-chip">
+              <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3EBD41" stroke-width="3" stroke-dasharray="102 113" stroke-linecap="round"/></svg>
+              <div class="v" style="color:#3EBD41;">90</div>
+            </div>
+          </div>
+          <div class="weekstrip">
+            <div class="label"><span>THIS WEEK · BASE 2</span><span class="total"><span style="color:var(--green);">31.7</span> / 43.8 MI</span></div>
+            <div class="days">
+              <div class="d"><div class="dow">M</div><div class="mi">5.8</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">T</div><div class="mi">7.9</div><div class="dot" style="background:var(--goal);"></div></div>
+              <div class="d"><div class="dow">W</div><div class="mi">5.8</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">T</div><div class="mi">6.1</div><div class="dot"></div></div>
+              <div class="d"><div class="dow">F</div><div class="mi">6.1</div><div class="dot"></div></div>
+              <div class="d today rest"><div class="dow" style="color:var(--green);">S</div><div class="mi" style="color:var(--green);">REST</div><div class="dot" style="background:var(--green);"></div></div>
+              <div class="d"><div class="dow">S</div><div class="mi">12.1</div><div class="dot" style="background:var(--dist);"></div></div>
+            </div>
+          </div>
+          <div class="coach" style="border-top:none;padding-top:14px;">
+            <div class="eyebrow">COACH</div>
+            <h2 class="lead">Rest is the work today.</h2>
+            <p>Five sessions in five days. <strong>31.7 miles banked</strong> against 43.8 planned. The legs earned today.</p>
+            <p>No watch alerts to chase. Move loosely if you want — easy walk, mobility, a coffee in the sun. Otherwise just rest. Tomorrow's a 12-miler and you'll want it sharp.</p>
+            <p>You slept <strong>7.9h last night</strong>. That's a green light. Try for another.</p>
+          </div>
+          <div class="cards-lane">
+            <div class="card"><div class="card-eyebrow" style="color:var(--dist);">TOMORROW · LONG</div><div class="next-grid"><div class="next-left"><div class="typ">LONG</div><div class="when">SUN · AEROBIC</div></div><div class="next-right" style="color:var(--dist);"><span class="v">12.1</span><span class="u">MI</span></div></div><div class="coach-note">Same plot as last Sunday's 11.1 — controlled, sub-9 pace, HR under 145. Hydrate today.</div></div>
+            <div class="card fun"><div class="fun-head"><div class="fun-icon">ⓘ</div><div class="fun-title">WHY REST WORKS</div></div><div class="fun-body">Rest days don't pause training — they're when adaptation actually happens. Glycogen restores, micro-tears repair, the nervous system resets. The fitness gain from yesterday's threshold lands today, not Tuesday.</div><a class="fun-link" href="#">Read the research →</a></div>
+            <div class="card"><div class="card-eyebrow" style="color:var(--race);">RACE · BUILDING</div><div class="race-grid"><div class="race-left"><div class="name">America's Finest City</div><div class="when">HALF · AUG 16</div></div><div class="race-right"><span class="v">78</span><span class="u">DAYS</span></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATE D · RACE DAY MORNING -->
+    <div class="phone-wrap">
+      <div class="state-label"><span class="pill">D</span><span class="name">RACE DAY</span><span class="when">SUN 4:50 AM · AFC HALF · go time</span></div>
+      <p class="caption">No volume talk. No coaching about cadence. Splits, fuel, weather, calm. The whole UI clears so the only thing in your face is the race.</p>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="statusbar"><span>4:50</span><span>● ● ● ●</span></div>
+          <div class="appbar">
+            <div class="brand-left"><div class="brand">faff</div><div class="date" style="color:var(--race);">RACE DAY · AUG 16</div></div>
+            <div class="readiness-chip">
+              <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3"/><circle cx="22" cy="22" r="18" fill="none" stroke="#3EBD41" stroke-width="3" stroke-dasharray="107 113" stroke-linecap="round"/></svg>
+              <div class="v" style="color:#3EBD41;">95</div>
+            </div>
+          </div>
+          <div style="padding: 8px 24px 0;">
+            <div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--race);letter-spacing:1.6px;text-transform:uppercase;">AMERICA'S FINEST CITY · 13.1 MI</div>
+            <div style="font-family:var(--f-display);font-size:46px;color:var(--ink);letter-spacing:0.5px;line-height:1;margin-top:8px;">1:30:00</div>
+            <div style="font-family:var(--f-body);font-size:11px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;margin-top:6px;">GOAL FINISH · 6:52/MI</div>
+          </div>
+          <div class="coach" style="border-top:none;padding-top:18px;">
+            <div class="eyebrow">COACH</div>
+            <h2 class="lead">You're ready.</h2>
+            <p>Twelve weeks of work shows up today. You did it. Now do the simple thing — <strong>let the early miles feel too easy</strong>. The first 5K is the test of your patience.</p>
+            <p>Target 6:52/mi. If you're at 6:40 at mile 2 — back off. If you're at 7:00 and feeling fine — hold. The work for 1:30 is done; the only thing left is to spend it intelligently.</p>
+            <p>Eat the gel at mile 4 and mile 8. Drink at every aid station even if you don't think you need it. 65°F, light breeze — clean conditions.</p>
+            <p>Go get it.</p>
+          </div>
+          <div class="cards-lane">
+            <div class="card"><div class="card-eyebrow" style="color:var(--race);">SPLITS · GOAL 1:30</div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px;font-family:var(--f-body);font-size:12px;"><div style="color:var(--mute);">5K · <span style="color:var(--ink);font-weight:600;">21:20</span></div><div style="color:var(--mute);">10K · <span style="color:var(--ink);font-weight:600;">42:40</span></div><div style="color:var(--mute);">15K · <span style="color:var(--ink);font-weight:600;">1:04:00</span></div><div style="color:var(--mute);">20K · <span style="color:var(--ink);font-weight:600;">1:25:20</span></div></div></div>
+            <div class="card" style="border-color:rgba(255,136,71,0.25);background:rgba(255,136,71,0.04);"><div class="card-eyebrow" style="color:var(--race);">WEATHER · 6 AM START</div><div style="font-family:var(--f-display);font-size:28px;color:var(--ink);letter-spacing:0.5px;margin-top:4px;">65° · LIGHT BREEZE</div><div style="font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:6px;">Marine layer through mile 6. Sun emerges late.</div></div>
+            <div class="card"><div class="card-eyebrow" style="color:var(--goal);">FUEL</div><div style="font-family:var(--f-body);font-size:12px;color:rgba(246,247,248,0.85);line-height:1.55;margin-top:4px;">Gel · mile 4 · mile 8. Water every aid station. Skip Gatorade unless it's hot.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     2 · TODAY · WEB
+     ═══════════════════════════════════════════════════════════ -->
+<section id="today-web" class="surface">
+  <div class="eyebrow">2 · TODAY · WEB</div>
+  <h2>The morning, at desk scale.</h2>
+  <p class="lede">
+    Same surface, more room. Coach voice goes hero-scale. Week strip earns labels per day.
+    Cards rail on the right stays in glance distance. Three moments below: <strong>pre-run morning</strong>,
+    <strong>post-quality evening</strong>, <strong>race week T-2</strong>.
+  </p>
+</section>
+
+<!-- STATE A · PRE-RUN MORNING (web) -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">A</span><span class="name">PRE-RUN MORNING</span><span class="when">MON 7:42 AM</span></div>
+  <p class="caption">Start of a volume week. Coach frames the week ahead and flags RHR. Micro-stat strip gives the dashboard layer that doesn't fit on phone.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab active">TODAY</div><div class="tab">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end;margin-bottom:28px;">
+        <div>
+          <div class="page-title">Morning, <span style="color:var(--green);">David.</span></div>
+          <div class="page-sub">MON · MAY 25 · BASE 2 · <span style="color:var(--rest);">●</span> 83 DAYS TO AFC</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div><div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;">READINESS</div><div style="font-family:var(--f-display);font-size:20px;color:var(--ink);">MODERATE</div></div>
+          <div style="width:64px;height:64px;position:relative;display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 64 64" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);"><circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/><circle cx="32" cy="32" r="26" fill="none" stroke="#F3AD38" stroke-width="4" stroke-dasharray="124 163" stroke-linecap="round"/></svg>
+            <div style="font-family:var(--f-display);font-size:26px;color:var(--goal);">76</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="week-ahead" style="margin-bottom:24px;">
+        <div class="head"><div class="title">THIS WEEK · BASE 2</div><div class="total"><span style="color:var(--mute);">0.0</span> / 43.8 MI</div></div>
+        <div class="days">
+          <div class="d today"><div class="dow">MON</div><div class="mi">5.8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
+          <div class="d quality"><div class="dow">TUE</div><div class="mi">7.9</div><div class="typ">CRUISE INT.</div></div>
+          <div class="d"><div class="dow">WED</div><div class="mi">5.8</div><div class="typ">EASY</div></div>
+          <div class="d"><div class="dow">THU</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
+          <div class="d"><div class="dow">FRI</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
+          <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
+          <div class="d long"><div class="dow">SUN</div><div class="mi">12.1</div><div class="typ">LONG</div></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:32px;">
+        <div>
+          <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:22px;padding:32px 36px;">
+            <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--green);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:18px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 12px rgba(62,189,65,0.6);"></span>COACH
+            </div>
+            <div style="font-family:var(--f-display);font-size:52px;color:var(--ink);line-height:1.02;letter-spacing:0.5px;margin-bottom:18px;">A short shake-out and a big week ahead.</div>
+            <p style="font-family:var(--f-body);font-size:16px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Yesterday's mile was an easy close to last week. Today we kick off real volume — <strong>43.8 miles planned</strong>, with cruise intervals tomorrow and a 12-miler waiting Sunday.</p>
+            <p style="font-family:var(--f-body);font-size:16px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">You've got an easy <strong>5.8 on the calendar today</strong>. Keep it conversational. We want fresh legs for tomorrow.</p>
+            <p style="font-family:var(--f-body);font-size:16px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Sleep's been short — <strong>6.7h average</strong> against your 7.5h target. Bank 30-45 extra minutes tonight and you'll feel it Tuesday.</p>
+            <p style="font-family:var(--f-body);font-size:16px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Your resting HR is at <strong>54 against a 48 baseline</strong> — a flag, not a fire. Could be the sleep, could be the volume step-up. Watching it through tomorrow.</p>
+            <div style="font-family:var(--f-body);font-size:12px;color:var(--mute);margin:24px 0 12px;">How are the legs this morning?</div>
+            <div class="reply" style="max-width:420px;"><button class="reply-chip">SOLID</button><button class="reply-chip">TIRED</button><button class="reply-chip">WRECKED</button></div>
+          </div>
+          <div style="margin-top:24px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+            <div class="card" style="padding:14px 16px;"><div style="font-family:var(--f-body);font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">SLEEP · 7N</div><div style="font-family:var(--f-display);font-size:28px;color:var(--goal);">6.7h</div><div style="font-size:10px;color:var(--mute);margin-top:4px;">−0.8 vs target</div></div>
+            <div class="card" style="padding:14px 16px;"><div style="font-family:var(--f-body);font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">RHR</div><div style="font-family:var(--f-display);font-size:28px;color:var(--over);">54 bpm</div><div style="font-size:10px;color:var(--over);margin-top:4px;">+6 vs baseline</div></div>
+            <div class="card" style="padding:14px 16px;"><div style="font-family:var(--f-body);font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">CADENCE · 60D</div><div style="font-family:var(--f-display);font-size:28px;color:var(--green);">158 spm</div><div style="font-size:10px;color:var(--mute);margin-top:4px;">holding baseline</div></div>
+            <div class="card" style="padding:14px 16px;"><div style="font-family:var(--f-body);font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">WEEK MI</div><div style="font-family:var(--f-display);font-size:28px;color:var(--rest);">0.0 / 43.8</div><div style="font-size:10px;color:var(--mute);margin-top:4px;">week just starting</div></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="card"><div class="card-eyebrow" style="color:var(--rest);">UP NEXT · TODAY</div><div class="next-grid"><div class="next-left"><div class="typ">EASY</div><div class="when">MON · CONVERSATIONAL</div></div><div class="next-right" style="color:var(--rest);"><span class="v">5.8</span><span class="u">MI</span></div></div><div class="coach-note">Setting the table for Tuesday. Dial it back if anything's residual.</div></div>
+          <div class="card" style="background:rgba(252,77,100,0.04);border-color:rgba(252,77,100,0.22);"><div class="card-eyebrow" style="color:var(--over);">RESTING HR · WATCHING</div><div style="display:flex;align-items:baseline;gap:14px;margin-top:4px;"><span style="font-family:var(--f-display);font-size:44px;color:var(--over);">54</span><span style="font-size:11px;color:var(--mute);font-weight:600;">14D BASELINE <span style="color:var(--ink);">48</span> · <span style="color:var(--over);">+6</span></span></div><div class="coach-note">A yellow flag. Sleep + volume jump could both be playing in. I'll watch through tomorrow.</div></div>
+          <div class="card"><div class="card-eyebrow" style="color:var(--race);">RACE · BUILDING</div><div class="race-grid"><div class="race-left"><div class="name">America's Finest City</div><div class="when">HALF · AUG 16</div><div style="font-size:11px;color:var(--goal);margin-top:4px;letter-spacing:0.5px;">GOAL · 1:30:00</div></div><div class="race-right"><span class="v">83</span><span class="u">DAYS</span></div></div><div class="coach-note">Twelve weeks of runway. Mileage first, sharpness later.</div></div>
+          <div class="card gap"><div><div class="label">COACH NEEDS</div><div class="field">Your height</div><div class="why">To unlock a cadence target tailored to your leg length</div></div><button class="add">+ Add</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE B · POST-QUALITY EVENING (web) -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">B</span><span class="name">POST-QUALITY EVENING</span><span class="when">TUE 6:30 PM · cruise intervals done</span></div>
+  <p class="caption">Threshold session finished mid-morning, viewing later. Recap is detailed; coach assesses execution + sets up Wednesday's recovery; explainer card on cruise intervals appears now that the term came up.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab active">TODAY</div><div class="tab">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end;margin-bottom:28px;">
+        <div>
+          <div class="page-title">Nice work, <span style="color:var(--green);">David.</span></div>
+          <div class="page-sub">TUE · MAY 26 · BASE 2 · QUALITY DAY</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div><div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;">READINESS · TOMORROW</div><div style="font-family:var(--f-display);font-size:20px;color:var(--ink);">EASY GO</div></div>
+          <div style="width:64px;height:64px;position:relative;display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 64 64" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);"><circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/><circle cx="32" cy="32" r="26" fill="none" stroke="#3EBD41" stroke-width="4" stroke-dasharray="130 163" stroke-linecap="round"/></svg>
+            <div style="font-family:var(--f-display);font-size:26px;color:var(--green);">80</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:32px;">
+        <div>
+          <div class="card" style="padding:24px 28px;margin-bottom:18px;">
+            <div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--goal);letter-spacing:1.6px;text-transform:uppercase;display:flex;align-items:center;gap:10px;margin-bottom:14px;">YOUR RUN <span style="background:rgba(243,173,56,0.16);color:var(--goal);padding:3px 10px;border-radius:999px;font-size:9px;letter-spacing:1.2px;">QUALITY · COMPLETED</span></div>
+            <div style="font-family:var(--f-display);font-size:32px;color:var(--ink);letter-spacing:0.8px;margin-bottom:18px;">CRUISE INTERVALS · 7.9 MI</div>
+            <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:18px;">
+              <div><div style="font-family:var(--f-display);font-size:48px;color:var(--dist);letter-spacing:0.5px;line-height:0.95;">7.9</div><div style="font-family:var(--f-body);font-size:10px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;margin-top:4px;">miles</div></div>
+              <div><div style="font-family:var(--f-display);font-size:48px;color:var(--green);letter-spacing:0.5px;line-height:0.95;">6:48</div><div style="font-family:var(--f-body);font-size:10px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;margin-top:4px;">int. pace</div></div>
+              <div><div style="font-family:var(--f-display);font-size:48px;color:var(--goal);letter-spacing:0.5px;line-height:0.95;">160</div><div style="font-family:var(--f-body);font-size:10px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;margin-top:4px;">avg hr · int</div></div>
+              <div><div style="font-family:var(--f-display);font-size:48px;color:var(--ink);letter-spacing:0.5px;line-height:0.95;">58:42</div><div style="font-family:var(--f-body);font-size:10px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;margin-top:4px;">moving</div></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+              <span class="c" style="background:rgba(255,255,255,0.04);border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:11px;">4 × 1mi @ 6:48 · 90s float</span>
+              <span class="c" style="background:rgba(255,255,255,0.04);border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:11px;">62° · clear</span>
+            </div>
+          </div>
+          <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:22px;padding:28px 32px;">
+            <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--green);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 12px rgba(62,189,65,0.6);"></span>COACH
+            </div>
+            <div style="font-family:var(--f-display);font-size:42px;color:var(--ink);line-height:1.05;margin-bottom:14px;">That's the work.</div>
+            <p style="font-family:var(--f-body);font-size:15px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Four mile-repeats at 6:48 with HR holding at 160 — clean execution, all four splits within 4 seconds of each other. That's threshold dialed in, not flailing at it.</p>
+            <p style="font-family:var(--f-body);font-size:15px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Your RHR was a flag this morning. Watching what it does tonight matters more than how the legs feel right now. Wednesday is easy 5.8 regardless.</p>
+            <p style="font-family:var(--f-body);font-size:15px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">First real quality of this build, done well. The march to <strong>1:30 at AFC</strong> just got a little more real.</p>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="card"><div class="card-eyebrow" style="color:var(--rest);">UP NEXT · WEDNESDAY</div><div class="next-grid"><div class="next-left"><div class="typ">EASY</div><div class="when">RECOVERY</div></div><div class="next-right" style="color:var(--rest);"><span class="v">5.8</span><span class="u">MI</span></div></div><div class="coach-note">Easy means easy. Heart rate under 138. The point is the float, not the distance.</div></div>
+          <div class="card fun"><div class="fun-head"><div class="fun-icon">ⓘ</div><div class="fun-title">CRUISE INTERVALS · WHAT + WHY</div></div><div class="fun-body">"Cruise" intervals are mile or longer repeats at lactate threshold — the pace you could hold for about an hour all-out. Short floats between reps keep you near the lactate ceiling without spilling over. Daniels calls it the most time-efficient way to raise your sustainable race pace.</div><a class="fun-link" href="#">Read the research →</a></div>
+          <div class="card"><div class="card-eyebrow" style="color:var(--goal);">SPLITS · TODAY</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;font-family:var(--f-display);font-size:16px;color:var(--ink);text-align:center;"><div>6:50<div style="font-size:10px;color:var(--mute);font-family:var(--f-body);">1</div></div><div>6:46<div style="font-size:10px;color:var(--mute);font-family:var(--f-body);">2</div></div><div>6:48<div style="font-size:10px;color:var(--mute);font-family:var(--f-body);">3</div></div><div>6:48<div style="font-size:10px;color:var(--mute);font-family:var(--f-body);">4</div></div></div></div>
+          <div class="card"><div class="card-eyebrow" style="color:var(--race);">RACE · BUILDING</div><div class="race-grid"><div class="race-left"><div class="name">AFC Half</div><div class="when">AUG 16 · 1:30 GOAL</div></div><div class="race-right"><span class="v">82</span><span class="u">DAYS</span></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE C · RACE WEEK T-2 (web) -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">C</span><span class="name">RACE WEEK · T-2</span><span class="when">FRI BEFORE AFC · taper voice</span></div>
+  <p class="caption">Plan is two short shakeout days. Coach mode flips: sharpness over volume. New cards appear — weather forecast, kit list, race-morning logistics. The "race-week" trigger surfaces what no other moment shows.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab active">TODAY</div><div class="tab">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:32px;align-items:end;margin-bottom:28px;">
+        <div>
+          <div class="page-title" style="color:var(--race);">2 DAYS.</div>
+          <div class="page-sub">FRI · AUG 14 · RACE WEEK · AFC HALF</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div><div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;">READINESS</div><div style="font-family:var(--f-display);font-size:20px;color:var(--green);">SHARP</div></div>
+          <div style="width:64px;height:64px;position:relative;display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 64 64" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);"><circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/><circle cx="32" cy="32" r="26" fill="none" stroke="#3EBD41" stroke-width="4" stroke-dasharray="148 163" stroke-linecap="round"/></svg>
+            <div style="font-family:var(--f-display);font-size:26px;color:var(--green);">91</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:32px;">
+        <div>
+          <div style="background:linear-gradient(180deg,rgba(255,136,71,0.06),rgba(255,136,71,0) 70%);border:1px solid rgba(255,136,71,0.22);border-radius:22px;padding:32px 36px;margin-bottom:18px;">
+            <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--race);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:18px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--race);box-shadow:0 0 12px rgba(255,136,71,0.6);"></span>COACH · RACE WEEK
+            </div>
+            <div style="font-family:var(--f-display);font-size:52px;color:var(--ink);line-height:1.02;margin-bottom:18px;">The work is done. Now we sharpen.</div>
+            <p style="font-family:var(--f-body);font-size:16px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Twelve weeks of build are in the bank. Today is <strong>4 easy miles with two strides at the end</strong> — just to wake the legs up. Tomorrow same shape. Save everything for Sunday.</p>
+            <p style="font-family:var(--f-body);font-size:16px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Sleep, hydrate, eat normal. <strong>No new shoes, no new gels, no new playlist</strong>. Race week is when fitness compounds and discipline becomes the lever.</p>
+            <p style="font-family:var(--f-body);font-size:16px;line-height:1.65;color:rgba(246,247,248,0.88);margin:0 0 12px;">Weather looks clean — 65° at the start, light marine layer. Your 1:30 projection sits right where it sat after the August time trial: <strong>1:29:40 ± 50s</strong>. Treat it as honest, not a target to chase.</p>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="card" style="border-color:rgba(255,136,71,0.25);background:rgba(255,136,71,0.04);"><div class="card-eyebrow" style="color:var(--race);">SUNDAY · 6 AM START</div><div style="font-family:var(--f-display);font-size:32px;color:var(--ink);letter-spacing:0.5px;margin-top:4px;">65° · BREEZE 8 MPH</div><div style="font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:6px;">Marine layer mile 0-6. Sun mile 8 onward.</div><div class="coach-note">Clean conditions for 1:30 effort. No adjustment.</div></div>
+          <div class="card"><div class="card-eyebrow" style="color:var(--goal);">KIT LIST</div><div style="font-family:var(--f-body);font-size:12.5px;color:rgba(246,247,248,0.85);line-height:1.7;margin-top:4px;">· Race kit · pinned bib<br>· Vaporfly 3 · race shoes<br>· 2 gels · 1 backup<br>· Hat + visor<br>· Throwaway long sleeve</div></div>
+          <div class="card"><div class="card-eyebrow" style="color:var(--rest);">RACE MORNING</div><div style="font-family:var(--f-body);font-size:12.5px;color:rgba(246,247,248,0.85);line-height:1.7;margin-top:4px;">04:00 · alarm<br>04:30 · oats + coffee<br>05:00 · uber to start<br>05:30 · warmup<br>05:50 · corral<br><strong style="color:var(--race);">06:00 · gun</strong></div></div>
+          <div class="card"><div class="card-eyebrow" style="color:var(--green);">UP NEXT · TODAY</div><div class="next-grid"><div class="next-left"><div class="typ">EASY + STRIDES</div><div class="when">4 MI · 2 × 20S STRIDES</div></div><div class="next-right" style="color:var(--green);"><span class="v">4.0</span><span class="u">MI</span></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     3 · TRAINING
+     ═══════════════════════════════════════════════════════════ -->
+<section id="training" class="surface">
+  <div class="eyebrow">3 · TRAINING</div>
+  <h2>The plan, all of it.</h2>
+  <p class="lede">
+    <strong>Full arc to race day, every week.</strong> The plan adapts week to week, but the
+    shape of the arc — base → build → peak → taper — is visible the whole time. The week-ahead
+    panel is the actionable layer. Voice is mode-aware per phase. Voice rule:
+    <strong>no "anchor / supports it" jargon</strong> — speak plainly.
+  </p>
+</section>
+
+<!-- STATE A · BASE PHASE -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">A</span><span class="name">BASE PHASE</span><span class="when">WEEK 2 OF 12 · current</span></div>
+  <p class="caption">Building the aerobic engine. Voice talks about WHY now and what's coming. Mileage curve visible all the way to race day.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/training</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab active">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title">12 weeks to AFC.</div>
+      <div class="page-sub">BASE · WEEK 2 OF 12 · 43.8 MI PLANNED</div>
+
+      <div class="phase-strip">
+        <div class="ph current"><div class="label">BASE</div><div class="span">WK 1-4</div></div>
+        <div class="ph"><div class="label">BUILD</div><div class="span">WK 5-8</div></div>
+        <div class="ph"><div class="label">PEAK</div><div class="span">WK 9-10</div></div>
+        <div class="ph"><div class="label">TAPER</div><div class="span">WK 11</div></div>
+        <div class="ph"><div class="label">RACE</div><div class="span">WK 12</div></div>
+      </div>
+
+      <div class="plan-arc">
+        <div class="head"><div class="title">VOLUME ARC · NOW → RACE DAY</div><div class="race">AFC · AUG 16 · GOAL 1:30</div></div>
+        <div class="weeks">
+          <div class="w base" style="height: 36%;"><span class="mi-tag">36</span></div>
+          <div class="w base current" style="height: 44%;"><span class="mi-tag">44</span></div>
+          <div class="w base" style="height: 48%;"><span class="mi-tag">48</span></div>
+          <div class="w base" style="height: 42%;"><span class="mi-tag">42</span></div>
+          <div class="w build" style="height: 55%;"><span class="mi-tag">55</span></div>
+          <div class="w build" style="height: 60%;"><span class="mi-tag">60</span></div>
+          <div class="w build" style="height: 50%;"><span class="mi-tag">50</span></div>
+          <div class="w build" style="height: 65%;"><span class="mi-tag">65</span></div>
+          <div class="w peak" style="height: 75%;"><span class="mi-tag">75</span></div>
+          <div class="w peak" style="height: 70%;"><span class="mi-tag">70</span></div>
+          <div class="w taper" style="height: 45%;"><span class="mi-tag">45</span></div>
+          <div class="w race" style="height: 28%;"><span class="mi-tag">28</span></div>
+        </div>
+        <div class="x-axis"><span>W1</span><span>W2</span><span>W3</span><span>W4</span><span>W5</span><span>W6</span><span>W7</span><span>W8</span><span>W9</span><span>W10</span><span>W11</span><span>W12</span></div>
+        <div class="legend"><span><span class="sw" style="background:rgba(39,180,224,0.45);"></span>BASE</span><span><span class="sw" style="background:rgba(62,189,65,0.55);"></span>BUILD</span><span><span class="sw" style="background:rgba(176,132,255,0.55);"></span>PEAK</span><span><span class="sw" style="background:rgba(243,173,56,0.55);"></span>TAPER</span><span><span class="sw" style="background:rgba(255,136,71,0.75);"></span>RACE</span></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin-top:18px;">
+        <div class="week-ahead">
+          <div class="head"><div class="title">WEEK AHEAD</div><div class="total">43.8 MI</div></div>
+          <div class="days">
+            <div class="d today"><div class="dow">MON</div><div class="mi">5.8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">7.9</div><div class="typ">CRUISE INT.</div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">5.8</div><div class="typ">EASY</div></div>
+            <div class="d"><div class="dow">THU</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">6.1</div><div class="typ">EASY</div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">12.1</div><div class="typ">LONG</div></div>
+          </div>
+        </div>
+        <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:16px;padding:22px 24px;">
+          <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--green);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 12px rgba(62,189,65,0.6);"></span>COACH
+          </div>
+          <div style="font-family:var(--f-display);font-size:30px;color:var(--ink);line-height:1.1;margin-bottom:12px;">Volume goes up. Quality starts.</div>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">We're in week 2 of base. The job here is to lay the aerobic floor — more easy miles, a little more time on feet, the body learning to recycle the workload.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">First cruise intervals show up Tuesday. That's the cue that base is ending: we begin teaching the body to clear lactate at faster paces.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Mileage steps from 36 → 44 this week. That's a 22% jump, which is on the upper edge — manageable because the sessions are all aerobic except Tuesday.</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px;">
+        <div class="card"><div class="card-eyebrow" style="color:var(--goal);">NEXT QUALITY · TUE</div><div style="font-family:var(--f-display);font-size:22px;color:var(--ink);margin-top:4px;">CRUISE INTERVALS</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">4 × 1 MI @ THRESHOLD · 90S FLOAT</div><div class="coach-note">Threshold means controlled hard — comfortable for a mile, miserable to hold for two. Don't race the splits.</div></div>
+        <div class="card"><div class="card-eyebrow" style="color:var(--dist);">SUNDAY LONG</div><div style="font-family:var(--f-display);font-size:22px;color:var(--ink);margin-top:4px;">12.1 MI · AEROBIC</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">HR &lt; 145 · SUB-9:00</div><div class="coach-note">Step up from last Sunday's 11.1. Same plot — controlled, fueled, finished feeling like you could do more.</div></div>
+        <div class="card"><div class="card-eyebrow" style="color:var(--learn);">SINCE LAST CHECK-IN</div><div style="font-family:var(--f-body);font-size:13px;color:rgba(246,247,248,0.85);line-height:1.6;margin-top:4px;">+1 quality day vs last week · +6 mi volume · cadence holding at 158 spm</div><div class="coach-note">Plan didn't change this week — just executed the next step of the existing curve.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE B · BUILD PHASE -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">B</span><span class="name">BUILD PHASE</span><span class="when">WEEK 6 OF 12 · midway</span></div>
+  <p class="caption">Volume + quality both stepping up. Voice shifts to "the work is landing." Workouts get more specific (intervals + tempos), mileage at 60. Race feels reachable.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/training</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab active">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title">6 weeks left.</div>
+      <div class="page-sub">BUILD · WEEK 6 OF 12 · 60 MI PLANNED</div>
+      <div class="phase-strip">
+        <div class="ph done"><div class="label">BASE</div><div class="span">WK 1-4</div></div>
+        <div class="ph current"><div class="label">BUILD</div><div class="span">WK 5-8</div></div>
+        <div class="ph"><div class="label">PEAK</div><div class="span">WK 9-10</div></div>
+        <div class="ph"><div class="label">TAPER</div><div class="span">WK 11</div></div>
+        <div class="ph"><div class="label">RACE</div><div class="span">WK 12</div></div>
+      </div>
+      <div class="plan-arc">
+        <div class="head"><div class="title">VOLUME ARC · NOW → RACE DAY</div><div class="race">AFC · AUG 16 · GOAL 1:30</div></div>
+        <div class="weeks">
+          <div class="w base" style="height: 36%;"></div>
+          <div class="w base" style="height: 44%;"></div>
+          <div class="w base" style="height: 48%;"></div>
+          <div class="w base" style="height: 42%;"></div>
+          <div class="w build" style="height: 55%;"></div>
+          <div class="w build current" style="height: 60%;"><span class="mi-tag">60</span></div>
+          <div class="w build" style="height: 50%;"><span class="mi-tag">50</span></div>
+          <div class="w build" style="height: 65%;"><span class="mi-tag">65</span></div>
+          <div class="w peak" style="height: 75%;"><span class="mi-tag">75</span></div>
+          <div class="w peak" style="height: 70%;"><span class="mi-tag">70</span></div>
+          <div class="w taper" style="height: 45%;"><span class="mi-tag">45</span></div>
+          <div class="w race" style="height: 28%;"><span class="mi-tag">28</span></div>
+        </div>
+        <div class="x-axis"><span>W1</span><span>W2</span><span>W3</span><span>W4</span><span>W5</span><span>W6</span><span>W7</span><span>W8</span><span>W9</span><span>W10</span><span>W11</span><span>W12</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin-top:18px;">
+        <div class="week-ahead">
+          <div class="head"><div class="title">WEEK AHEAD</div><div class="total">60 MI</div></div>
+          <div class="days">
+            <div class="d today"><div class="dow">MON</div><div class="mi">7</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">9</div><div class="typ">5 × 1K @ I</div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">8</div><div class="typ">EASY</div></div>
+            <div class="d quality"><div class="dow">THU</div><div class="mi">10</div><div class="typ">TEMPO 5K</div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">7</div><div class="typ">EASY</div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">15</div><div class="typ">LONG + MP</div></div>
+          </div>
+        </div>
+        <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:16px;padding:22px 24px;">
+          <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--green);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 12px rgba(62,189,65,0.6);"></span>COACH
+          </div>
+          <div style="font-family:var(--f-display);font-size:30px;color:var(--ink);line-height:1.1;margin-bottom:12px;">The work is landing.</div>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Two quality days now — intervals Tuesday, tempo Thursday — and the long run picks up MP miles. This is where fitness compounds.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Your 5K time trial last Sunday: 18:32. That's a meaningful step down from 19:10 four weeks ago. Race-pace projection at AFC moved from 1:32 to 1:30:40.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Recovery between quality days matters more than the quality days themselves. Easy means easy this week. HR under 140 on Mon/Wed/Fri.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE C · PEAK PHASE -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">C</span><span class="name">PEAK PHASE</span><span class="when">WEEK 9 OF 12 · highest volume</span></div>
+  <p class="caption">Highest mileage. Hardest sessions. Voice notes that this is the test — execute these two weeks and AFC is the victory lap.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/training</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab active">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title">Peak week.</div>
+      <div class="page-sub">PEAK · WEEK 9 OF 12 · 75 MI PLANNED · 3 WEEKS TO RACE</div>
+      <div class="phase-strip">
+        <div class="ph done"><div class="label">BASE</div><div class="span">WK 1-4</div></div>
+        <div class="ph done"><div class="label">BUILD</div><div class="span">WK 5-8</div></div>
+        <div class="ph current"><div class="label">PEAK</div><div class="span">WK 9-10</div></div>
+        <div class="ph"><div class="label">TAPER</div><div class="span">WK 11</div></div>
+        <div class="ph"><div class="label">RACE</div><div class="span">WK 12</div></div>
+      </div>
+      <div class="plan-arc">
+        <div class="head"><div class="title">VOLUME ARC · NOW → RACE DAY</div><div class="race">AFC · AUG 16 · GOAL 1:30</div></div>
+        <div class="weeks">
+          <div class="w base" style="height: 36%;"></div><div class="w base" style="height: 44%;"></div><div class="w base" style="height: 48%;"></div><div class="w base" style="height: 42%;"></div>
+          <div class="w build" style="height: 55%;"></div><div class="w build" style="height: 60%;"></div><div class="w build" style="height: 50%;"></div><div class="w build" style="height: 65%;"></div>
+          <div class="w peak current" style="height: 75%;"><span class="mi-tag">75</span></div>
+          <div class="w peak" style="height: 70%;"><span class="mi-tag">70</span></div>
+          <div class="w taper" style="height: 45%;"><span class="mi-tag">45</span></div>
+          <div class="w race" style="height: 28%;"><span class="mi-tag">28</span></div>
+        </div>
+        <div class="x-axis"><span>W1</span><span>W2</span><span>W3</span><span>W4</span><span>W5</span><span>W6</span><span>W7</span><span>W8</span><span>W9</span><span>W10</span><span>W11</span><span>W12</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin-top:18px;">
+        <div class="week-ahead">
+          <div class="head"><div class="title">WEEK AHEAD</div><div class="total">75 MI</div></div>
+          <div class="days">
+            <div class="d today"><div class="dow">MON</div><div class="mi">8</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">12</div><div class="typ">3 × 2 MI @ T</div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">9</div><div class="typ">EASY</div></div>
+            <div class="d quality"><div class="dow">THU</div><div class="mi">11</div><div class="typ">HALF-MP TT</div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">8</div><div class="typ">EASY</div></div>
+            <div class="d"><div class="dow">SAT</div><div class="mi">6</div><div class="typ">EASY + STR</div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">21</div><div class="typ">LONG · MP MILES</div></div>
+          </div>
+        </div>
+        <div style="background:linear-gradient(180deg,rgba(176,132,255,0.06),rgba(176,132,255,0) 70%);border:1px solid rgba(176,132,255,0.22);border-radius:16px;padding:22px 24px;">
+          <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--learn);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--learn);box-shadow:0 0 12px rgba(176,132,255,0.6);"></span>COACH · PEAK
+          </div>
+          <div style="font-family:var(--f-display);font-size:30px;color:var(--ink);line-height:1.1;margin-bottom:12px;">This is the week that earns the race.</div>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">75 miles is your highest of this build. Thursday is a half-marathon-pace time trial over 8 miles — the closest dress rehearsal we get to race effort.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Sunday's 21 with 8 at MP is the cornerstone session. If that goes well, the math says 1:29:30 is real. If it shakes you, we recalibrate the goal in this week's debrief.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Recovery is going to feel tight all week. Sleep + food are the lever, not extra training. Skip Saturday strides if you wake up flat.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE D · TAPER PHASE -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">D</span><span class="name">TAPER</span><span class="when">WEEK 11 OF 12 · volume cut, sharpness held</span></div>
+  <p class="caption">Volume drops 35%, intensity stays. Voice gets shorter — taper anxiety is a thing; coach reassures. Race week prep starts surfacing.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/training</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab active">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title">Taper week.</div>
+      <div class="page-sub">TAPER · WEEK 11 OF 12 · 45 MI · RACE IN 9 DAYS</div>
+      <div class="phase-strip">
+        <div class="ph done"><div class="label">BASE</div></div>
+        <div class="ph done"><div class="label">BUILD</div></div>
+        <div class="ph done"><div class="label">PEAK</div></div>
+        <div class="ph taper current"><div class="label">TAPER</div><div class="span">WK 11</div></div>
+        <div class="ph"><div class="label">RACE</div><div class="span">WK 12</div></div>
+      </div>
+      <div class="plan-arc">
+        <div class="head"><div class="title">VOLUME ARC · NOW → RACE DAY</div><div class="race">AFC · AUG 16 · GOAL 1:30</div></div>
+        <div class="weeks">
+          <div class="w base" style="height: 36%;"></div><div class="w base" style="height: 44%;"></div><div class="w base" style="height: 48%;"></div><div class="w base" style="height: 42%;"></div>
+          <div class="w build" style="height: 55%;"></div><div class="w build" style="height: 60%;"></div><div class="w build" style="height: 50%;"></div><div class="w build" style="height: 65%;"></div>
+          <div class="w peak" style="height: 75%;"></div><div class="w peak" style="height: 70%;"></div>
+          <div class="w taper current" style="height: 45%;"><span class="mi-tag">45</span></div>
+          <div class="w race" style="height: 28%;"><span class="mi-tag">28</span></div>
+        </div>
+        <div class="x-axis"><span>W1</span><span>W2</span><span>W3</span><span>W4</span><span>W5</span><span>W6</span><span>W7</span><span>W8</span><span>W9</span><span>W10</span><span>W11</span><span>W12</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin-top:18px;">
+        <div class="week-ahead">
+          <div class="head"><div class="title">WEEK AHEAD</div><div class="total">45 MI</div></div>
+          <div class="days">
+            <div class="d today"><div class="dow">MON</div><div class="mi">6</div><div class="typ" style="color:var(--green);">EASY · TODAY</div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">7</div><div class="typ">3 × 1 MI @ T</div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">6</div><div class="typ">EASY</div></div>
+            <div class="d quality"><div class="dow">THU</div><div class="mi">8</div><div class="typ">MP MILES (4)</div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">5</div><div class="typ">EASY + STR</div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
+            <div class="d long"><div class="dow">SUN</div><div class="mi">13</div><div class="typ">LONG · EASY</div></div>
+          </div>
+        </div>
+        <div style="background:linear-gradient(180deg,rgba(243,173,56,0.06),rgba(243,173,56,0) 70%);border:1px solid rgba(243,173,56,0.22);border-radius:16px;padding:22px 24px;">
+          <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--goal);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--goal);box-shadow:0 0 12px rgba(243,173,56,0.6);"></span>COACH · TAPER
+          </div>
+          <div style="font-family:var(--f-display);font-size:30px;color:var(--ink);line-height:1.1;margin-bottom:12px;">Less, sharper.</div>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Volume drops 35% this week. Intensity stays — quality days keep the legs awake. The fitness was built. Now we let it surface.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">You'll feel weird. Restless, heavy legs one day, antsy the next. That's normal — taper does that. Trust it. Don't add miles.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Sunday's 13 is easy — same shape as the long runs you've been doing, just at conversational pace. No MP miles this week.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE E · RACE WEEK -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">E</span><span class="name">RACE WEEK</span><span class="when">WEEK 12 · 4 runs left before the race</span></div>
+  <p class="caption">Volume floors. Two short runs with strides. Long run replaced by the race itself. Coach voice shortens; race-day prep cards crowd in.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/training</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab active">TRAINING</div><div class="tab">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title" style="color:var(--race);">Race week.</div>
+      <div class="page-sub">RACE · WEEK 12 OF 12 · 28 MI · AFC IN 6 DAYS</div>
+      <div class="phase-strip">
+        <div class="ph done"><div class="label">BASE</div></div>
+        <div class="ph done"><div class="label">BUILD</div></div>
+        <div class="ph done"><div class="label">PEAK</div></div>
+        <div class="ph done"><div class="label">TAPER</div></div>
+        <div class="ph race current"><div class="label">RACE</div><div class="span">WK 12</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin-top:18px;">
+        <div class="week-ahead">
+          <div class="head"><div class="title">RACE WEEK</div><div class="total">28 MI</div></div>
+          <div class="days">
+            <div class="d today"><div class="dow">MON</div><div class="mi">5</div><div class="typ" style="color:var(--green);">EASY + STR · TODAY</div></div>
+            <div class="d quality"><div class="dow">TUE</div><div class="mi">6</div><div class="typ">3 × 800 @ MP</div></div>
+            <div class="d"><div class="dow">WED</div><div class="mi">5</div><div class="typ">EASY</div></div>
+            <div class="d"><div class="dow">THU</div><div class="mi">4</div><div class="typ">EASY + STR</div></div>
+            <div class="d"><div class="dow">FRI</div><div class="mi">3</div><div class="typ">SHAKEOUT</div></div>
+            <div class="d rest"><div class="dow">SAT</div><div class="mi">—</div><div class="typ">REST</div></div>
+            <div class="d race"><div class="dow">SUN</div><div class="mi">13.1</div><div class="typ">AFC HALF</div></div>
+          </div>
+        </div>
+        <div style="background:linear-gradient(180deg,rgba(255,136,71,0.06),rgba(255,136,71,0) 70%);border:1px solid rgba(255,136,71,0.22);border-radius:16px;padding:22px 24px;">
+          <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--race);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--race);box-shadow:0 0 12px rgba(255,136,71,0.6);"></span>COACH · RACE WEEK
+          </div>
+          <div style="font-family:var(--f-display);font-size:30px;color:var(--ink);line-height:1.1;margin-bottom:12px;">Sharpen, don't add.</div>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Three short shakeouts with strides between now and Friday. Saturday off entirely. Then race day.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">No new shoes. No new fuel. No new playlist. Race week discipline is what protects the build.</p>
+          <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Detailed prep is on the race page — splits, weather, kit, alarm. Eyes there for race-week reading.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     4 · RACES
+     ═══════════════════════════════════════════════════════════ -->
+<section id="races" class="surface">
+  <div class="eyebrow">4 · RACES</div>
+  <h2>The season, not a list.</h2>
+  <p class="lede">
+    <strong>The A-race is the centerpiece.</strong> Big card, goal time, why it matters,
+    projection vs goal. <strong>Coach voice opens the page</strong> — not a recap, a perspective:
+    where we are in the arc, what each upcoming race is for. Past races sit lower; they're
+    the record, not the headline.
+  </p>
+</section>
+
+<!-- STATE A · CURRENT · AFC AMPLIFIED -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">A</span><span class="name">CURRENT</span><span class="when">MAY 25 · AFC is the A-race</span></div>
+  <p class="caption">AFC reads as an A-race: amplified card with goal 1:30 and a projection vs goal. Coach voice at the top frames the season. Past races below.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/races</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab">TRAINING</div><div class="tab active">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title">Races.</div>
+      <div class="page-sub">1 A-RACE · 2 B-RACES · 4 PAST</div>
+
+      <!-- COACH VOICE — opens the page -->
+      <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:18px;padding:24px 28px;margin-bottom:24px;">
+        <div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--green);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 12px rgba(62,189,65,0.6);"></span>COACH
+        </div>
+        <div style="font-family:var(--f-display);font-size:30px;color:var(--ink);line-height:1.1;margin-bottom:12px;">AFC is the season.</div>
+        <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 8px;">Everything from now to August 16 points at <strong>1:30 at America's Finest City</strong>. Twelve weeks of build, one A-race, an ambitious but real goal — your Disney half in January was 1:34:54, and the AFC course is faster.</p>
+        <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 8px;">The 10K in July and the Carlsbad 5K in June are B-races — sharpener events, useful as time-trial data and pacing practice. They're not the goal.</p>
+      </div>
+
+      <!-- AFC HERO CARD -->
+      <div style="background:linear-gradient(135deg,rgba(255,136,71,0.08),rgba(255,136,71,0.02));border:1px solid rgba(255,136,71,0.30);border-radius:22px;padding:32px 36px;margin-bottom:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+          <div>
+            <span class="pill-pri A">A · GOAL RACE</span>
+            <div style="font-family:var(--f-display);font-size:56px;color:var(--ink);letter-spacing:0.5px;line-height:1;margin-top:14px;">America's Finest City</div>
+            <div style="font-family:var(--f-body);font-size:13px;color:var(--mute);letter-spacing:0.8px;text-transform:uppercase;margin-top:8px;">HALF MARATHON · SAN DIEGO · AUG 16, 2026</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:var(--f-display);font-size:80px;color:var(--race);line-height:0.95;letter-spacing:0.5px;">83</div>
+            <div style="font-family:var(--f-body);font-size:11px;color:var(--mute);letter-spacing:1.4px;text-transform:uppercase;">DAYS</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.06);">
+          <div>
+            <div style="font-family:var(--f-body);font-size:10px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px;">GOAL</div>
+            <div style="font-family:var(--f-display);font-size:44px;color:var(--goal);letter-spacing:0.5px;">1:30:00</div>
+            <div style="font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:4px;">6:52/mi · ambitious + real</div>
+          </div>
+          <div>
+            <div style="font-family:var(--f-body);font-size:10px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px;">CURRENT PROJECTION</div>
+            <div style="font-family:var(--f-display);font-size:44px;color:var(--ink);letter-spacing:0.5px;">1:33:40</div>
+            <div style="font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:4px;">based on last 4 weeks · closing</div>
+          </div>
+          <div>
+            <div style="font-family:var(--f-body);font-size:10px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px;">PB · HALF</div>
+            <div style="font-family:var(--f-display);font-size:44px;color:var(--ink);letter-spacing:0.5px;">1:34:54</div>
+            <div style="font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:4px;">Disney · Jan 2026</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- UPCOMING B-RACES -->
+      <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;margin:24px 0 12px;">UPCOMING · B-RACES</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div><span class="pill-pri B">B · TUNE-UP</span><div style="font-family:var(--f-display);font-size:24px;color:var(--ink);margin-top:8px;">Carlsbad 5000</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">5K · JUN 28 · CARLSBAD</div></div>
+            <div style="text-align:right;"><div style="font-family:var(--f-display);font-size:32px;color:var(--goal);line-height:1;">34</div><div style="font-size:10px;color:var(--mute);letter-spacing:1.2px;">DAYS</div></div>
+          </div>
+          <div class="coach-note">Time-trial data for AFC pacing. Run it, don't taper for it.</div>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div><span class="pill-pri B">B · SHARPENER</span><div style="font-family:var(--f-display);font-size:24px;color:var(--ink);margin-top:8px;">Pasadena 10K</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">10K · JUL 19 · PASADENA</div></div>
+            <div style="text-align:right;"><div style="font-family:var(--f-display);font-size:32px;color:var(--goal);line-height:1;">55</div><div style="font-size:10px;color:var(--mute);letter-spacing:1.2px;">DAYS</div></div>
+          </div>
+          <div class="coach-note">Race-effort indicator. Sub-40 here means 1:30 is more than projection.</div>
+        </div>
+      </div>
+
+      <!-- PAST RACES -->
+      <div style="font-family:var(--f-body);font-size:11px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;margin:24px 0 12px;">PAST · 2026</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+        <div class="card" style="padding:14px 16px;"><div style="font-family:var(--f-display);font-size:18px;color:var(--ink);">Disney Half</div><div style="font-size:10px;color:var(--mute);">JAN 11</div><div style="font-family:var(--f-display);font-size:24px;color:var(--green);margin-top:6px;">1:34:54</div><div style="font-size:10px;color:var(--mute);">PB · 7:14/mi</div></div>
+        <div class="card" style="padding:14px 16px;"><div style="font-family:var(--f-display);font-size:18px;color:var(--ink);">Sombrero Half</div><div style="font-size:10px;color:var(--mute);">MAR 22</div><div style="font-family:var(--f-display);font-size:24px;color:var(--ink);margin-top:6px;">1:40:57</div><div style="font-size:10px;color:var(--mute);">+224 ft · hilly</div></div>
+        <div class="card" style="padding:14px 16px;"><div style="font-family:var(--f-display);font-size:18px;color:var(--ink);">LA Big 5K</div><div style="font-size:10px;color:var(--mute);">APR 5</div><div style="font-family:var(--f-display);font-size:24px;color:var(--ink);margin-top:6px;">19:42</div><div style="font-size:10px;color:var(--mute);">6:21/mi</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE B · AFC RACE WEEK -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">B</span><span class="name">A-RACE · RACE WEEK</span><span class="when">5 DAYS TO AFC</span></div>
+  <p class="caption">Page reorients to the imminent race. AFC card grows; everything else demotes. Coach voice locks onto execution.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/races</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab">TRAINING</div><div class="tab active">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title" style="color:var(--race);">5 days.</div>
+      <div class="page-sub">RACE WEEK · AMERICA'S FINEST CITY</div>
+
+      <div style="background:linear-gradient(180deg,rgba(255,136,71,0.06),rgba(255,136,71,0) 70%);border:1px solid rgba(255,136,71,0.22);border-radius:18px;padding:24px 28px;margin-bottom:18px;">
+        <div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--race);letter-spacing:1.8px;text-transform:uppercase;display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--race);box-shadow:0 0 12px rgba(255,136,71,0.6);"></span>COACH · RACE WEEK
+        </div>
+        <div style="font-family:var(--f-display);font-size:30px;color:var(--ink);line-height:1.1;margin-bottom:10px;">The page is the race now.</div>
+        <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 8px;">Three short shakeouts before Sunday. Saturday off. Eyes on the race detail page — that's where weather, splits, and kit live.</p>
+        <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 8px;">Projection sits at <strong>1:29:40 ± 50s</strong>. The work is in the bank.</p>
+      </div>
+
+      <div style="background:linear-gradient(135deg,rgba(255,136,71,0.10),rgba(255,136,71,0.02));border:1px solid rgba(255,136,71,0.35);border-radius:22px;padding:40px 44px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+          <div>
+            <span class="pill-pri A">A · RACE WEEK</span>
+            <div style="font-family:var(--f-display);font-size:68px;color:var(--ink);letter-spacing:0.5px;line-height:1;margin-top:14px;">America's Finest City</div>
+            <div style="font-family:var(--f-body);font-size:13px;color:var(--mute);letter-spacing:0.8px;text-transform:uppercase;margin-top:8px;">HALF MARATHON · SAN DIEGO · SUN 6 AM</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:var(--f-display);font-size:128px;color:var(--race);line-height:0.95;letter-spacing:0.5px;">5</div>
+            <div style="font-family:var(--f-body);font-size:13px;color:var(--mute);letter-spacing:1.4px;text-transform:uppercase;">DAYS</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-top:24px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.06);">
+          <div><div style="font-size:10px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px;">GOAL</div><div style="font-family:var(--f-display);font-size:36px;color:var(--goal);">1:30:00</div></div>
+          <div><div style="font-size:10px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px;">PROJECTION</div><div style="font-family:var(--f-display);font-size:36px;color:var(--green);">1:29:40</div></div>
+          <div><div style="font-size:10px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px;">WEATHER</div><div style="font-family:var(--f-display);font-size:36px;color:var(--ink);">65°</div></div>
+          <div><div style="font-size:10px;color:var(--mute);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px;">START TIME</div><div style="font-family:var(--f-display);font-size:36px;color:var(--ink);">06:00</div></div>
+        </div>
+        <a href="#race-detail" style="display:inline-block;margin-top:24px;background:var(--race);color:#0a0c10;font-family:var(--f-display);font-size:14px;padding:12px 24px;border-radius:999px;letter-spacing:1.4px;text-decoration:none;">OPEN RACE DETAIL →</a>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;margin:32px 0 12px;">AFTER AFC</div>
+      <div class="card" style="opacity:0.6;"><div style="display:flex;justify-content:space-between;"><div><div style="font-family:var(--f-display);font-size:20px;">California International Marathon</div><div style="font-size:10px;color:var(--mute);">DEC 6 · A-RACE · STRETCH GOAL</div></div><div style="font-family:var(--f-display);font-size:24px;color:var(--mute);">112d</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE C · MULTI-RACE STACK -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">C</span><span class="name">MULTI-RACE STACK</span><span class="when">A + several Bs in the season</span></div>
+  <p class="caption">When the calendar gets busy — A-race still leads visually, B/C races below in a clean grid. Coach voice frames priorities so the runner doesn't lose the plot.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/races</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab">TRAINING</div><div class="tab active">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title">Busy season.</div>
+      <div class="page-sub">1 A · 2 B · 3 C · 5 PAST</div>
+      <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:18px;padding:24px 28px;margin-bottom:24px;">
+        <div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--green);letter-spacing:1.8px;text-transform:uppercase;margin-bottom:12px;">COACH</div>
+        <div style="font-family:var(--f-display);font-size:28px;color:var(--ink);line-height:1.1;margin-bottom:10px;">AFC is the only one that matters.</div>
+        <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 8px;">Six races on the calendar. <strong>AFC is the A — everything else is fitness or fun</strong>. Carlsbad and Pasadena are useful as time trials. The C-races are social runs; show up and enjoy them, no taper.</p>
+      </div>
+      <div style="background:linear-gradient(135deg,rgba(255,136,71,0.08),rgba(255,136,71,0.02));border:1px solid rgba(255,136,71,0.30);border-radius:22px;padding:28px 32px;margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div><span class="pill-pri A">A · GOAL</span><div style="font-family:var(--f-display);font-size:42px;color:var(--ink);margin-top:10px;">America's Finest City · 1:30</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">HALF · AUG 16 · SAN DIEGO</div></div>
+          <div style="text-align:right;"><div style="font-family:var(--f-display);font-size:64px;color:var(--race);">83</div><div style="font-size:11px;color:var(--mute);letter-spacing:1.2px;">DAYS</div></div>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;margin:18px 0 12px;">B-RACES · TUNE-UPS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+        <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><span class="pill-pri B">B</span><div style="font-family:var(--f-display);font-size:22px;margin-top:8px;">Carlsbad 5000</div><div style="font-size:10px;color:var(--mute);">5K · JUN 28</div></div><div style="font-family:var(--f-display);font-size:26px;color:var(--goal);">34d</div></div></div>
+        <div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><span class="pill-pri B">B</span><div style="font-family:var(--f-display);font-size:22px;margin-top:8px;">Pasadena 10K</div><div style="font-size:10px;color:var(--mute);">10K · JUL 19</div></div><div style="font-family:var(--f-display);font-size:26px;color:var(--goal);">55d</div></div></div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase;margin:18px 0 12px;">C-RACES · FOR FUN</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+        <div class="card" style="padding:14px 16px;opacity:0.85;"><span class="pill-pri C">C</span><div style="font-family:var(--f-display);font-size:18px;margin-top:6px;">Beach 4-Mile</div><div style="font-size:10px;color:var(--mute);">JUN 8 · social</div></div>
+        <div class="card" style="padding:14px 16px;opacity:0.85;"><span class="pill-pri C">C</span><div style="font-family:var(--f-display);font-size:18px;margin-top:6px;">Trail 10K</div><div style="font-size:10px;color:var(--mute);">JUL 4 · sunrise</div></div>
+        <div class="card" style="padding:14px 16px;opacity:0.85;"><span class="pill-pri C">C</span><div style="font-family:var(--f-display);font-size:18px;margin-top:6px;">Beer Mile</div><div style="font-size:10px;color:var(--mute);">JUL 26 · the joke race</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATE D · OFF SEASON -->
+<div class="state-row">
+  <div class="state-label"><span class="pill">D</span><span class="name">OFF-SEASON</span><span class="when">no A-race set</span></div>
+  <p class="caption">Page changes purpose: become a place to pick what's next. Coach voice prompts the conversation; suggestions surface based on history.</p>
+  <div class="browser">
+    <div class="browser-chrome"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="url"><span class="host">faff.run/races</span></div></div>
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs"><div class="tab">TODAY</div><div class="tab">TRAINING</div><div class="tab active">RACES</div><div class="tab">HEALTH</div><div class="tab">PROFILE</div></div>
+      <div class="avatar">DN</div>
+    </div>
+    <div class="web-frame">
+      <div class="page-title">What's next?</div>
+      <div class="page-sub">NO A-RACE SET · OFF-SEASON</div>
+      <div style="background:linear-gradient(180deg,rgba(62,189,65,0.04),rgba(62,189,65,0) 60%);border:1px solid var(--line);border-radius:18px;padding:28px 32px;margin-bottom:24px;">
+        <div style="font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--green);letter-spacing:1.8px;text-transform:uppercase;margin-bottom:12px;">COACH</div>
+        <div style="font-family:var(--f-display);font-size:34px;color:var(--ink);line-height:1.1;margin-bottom:12px;">No race on the books.</div>
+        <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">You finished AFC at 1:30:08 a month ago. Recovery's done — the legs are ready for the next thing. The question is what.</p>
+        <p style="font-family:var(--f-body);font-size:14px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;">Three honest options based on where your fitness sits and what you've said you want:</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+        <div class="card" style="padding:20px 22px;border-color:rgba(255,136,71,0.30);"><div style="font-family:var(--f-display);font-size:22px;color:var(--ink);">Marathon build</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">CIM · DEC 6 · 18 weeks</div><div class="coach-note">The natural step up. CIM is fast and downhill — sub-3:15 is in range based on AFC.</div></div>
+        <div class="card" style="padding:20px 22px;"><div style="font-family:var(--f-display);font-size:22px;color:var(--ink);">Another half</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">LA HALF · NOV 16 · 14 weeks</div><div class="coach-note">Chase 1:28. Same training shape as AFC, just sharper. Lower risk.</div></div>
+        <div class="card" style="padding:20px 22px;"><div style="font-family:var(--f-display);font-size:22px;color:var(--ink);">Speed block</div><div style="font-size:11px;color:var(--mute);margin-top:4px;">5K-10K · 8-10 weeks</div><div class="coach-note">Skip distance, build top-end speed. Returns to half/full faster next spring.</div></div>
+      </div>
+      <div style="margin-top:24px;text-align:center;">
+        <button style="background:var(--green);color:#001;font-family:var(--f-display);font-size:14px;letter-spacing:1.4px;border:none;padding:14px 32px;border-radius:999px;cursor:pointer;">+ ADD A RACE</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- SECTION-RACE-DETAIL -->
+
+<!-- SECTION-HEALTH -->
+
+<!-- SECTION-PROFILE -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     8 · DATA SOURCES
+     ═══════════════════════════════════════════════════════════ -->
+<section id="data" class="data-sources">
+  <h2>Data sources behind every state</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:24%">Surface / state</th>
+        <th style="width:38%">Reads from</th>
+        <th style="width:38%">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="surf">TODAY · coach voice + topics</td>
+        <td><code>web/scripts/mockup-today.mjs</code> → Claude sonnet-4-5</td>
+        <td>System prompt encodes voice doctrine; user message is full state snapshot.</td>
+      </tr>
+      <tr>
+        <td class="surf">Latest run · recap</td>
+        <td><code>strava_activities</code> (unmerged, latest by date)</td>
+        <td>Distance, pace, HR, cadence, temp, name.</td>
+      </tr>
+      <tr>
+        <td class="surf">Week mileage</td>
+        <td><code>strava_activities</code> ∪ <code>plan_workouts</code></td>
+        <td>Done = strava since Mon. Planned = plan_workouts sum.</td>
+      </tr>
+      <tr>
+        <td class="surf">Next workout</td>
+        <td><code>plan_workouts</code> ordered by date</td>
+        <td>First future non-rest workout.</td>
+      </tr>
+      <tr>
+        <td class="surf">Phase / plan arc</td>
+        <td><code>plan_phases</code> + <code>plan_weeks</code> + <code>plan_workouts</code></td>
+        <td>Phase label per week, planned mileage per week.</td>
+      </tr>
+      <tr>
+        <td class="surf">Race + countdown</td>
+        <td><code>races</code> joined to active <code>training_plans</code></td>
+        <td>Name, date, priority, goal, days_to_race.</td>
+      </tr>
+      <tr>
+        <td class="surf">Route + elevation</td>
+        <td>GPX in <code>web/public/sample-*.gpx</code> · parser <code>web/scripts/gpx-to-svg.mjs</code></td>
+        <td>Polyline + ascent (ft) + min/max elevation. Race detail uses real course GPX when present.</td>
+      </tr>
+      <tr>
+        <td class="surf">Sleep / HRV / RHR / weight / cadence / VO2</td>
+        <td><code>health_samples</code> (per sample_type, 7/30/60 day windows)</td>
+        <td>Watch escalation logic compares 7d to 30d/60d baselines.</td>
+      </tr>
+      <tr>
+        <td class="surf">Shoes</td>
+        <td><code>shoes</code> + per-shoe run count from <code>strava_activities.shoe_id</code></td>
+        <td>Mileage / cap / role / retired. Race-shoe call only when shoe is the race shoe.</td>
+      </tr>
+      <tr>
+        <td class="surf">Profile</td>
+        <td><code>profile</code> (full_name, sex, age, city, height_cm)</td>
+        <td>HRmax / RHR derived from <code>health_samples</code> — never asked.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+</body>
+</html>
