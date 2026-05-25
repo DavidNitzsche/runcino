@@ -138,10 +138,25 @@
   line-height: 1.5;
   color: var(--t0);
   font-weight: 400;
+  margin: 0 0 14px 0;
+}
+
+.overview-v4-page .coach-briefing + .coach-briefing {
+  /* Subsequent paragraphs scale down slightly so the lead paragraph
+     carries the headline weight and supporting clauses read as
+     supporting context, not as four equal-weight thoughts. */
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--t1);
+}
+
+.overview-v4-page .coach-briefing:last-child {
+  margin-bottom: 0;
 }
 
 .overview-v4-page .coach-briefing strong {
   font-weight: 700;
+  color: var(--t0);
 }
 
 .overview-v4-page .coach-right {

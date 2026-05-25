@@ -386,7 +386,14 @@ export default async function OverviewPage() {
               <span className="dot-green"></span>
               COACH · {new Date(today + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase()} · {phaseLabel.toUpperCase()} WEEK {phaseWeekIdx}
             </div>
-            <p className="coach-briefing">{briefing}</p>
+            {/* Multi-paragraph coach briefing — generator returns paragraphs
+                joined by '\n\n'. Split + render each as its own <p> so the
+                coach reads as a person speaking 2-4 sentences, not a single
+                line of recitation. iOS / any string-consuming client just
+                sees the paragraphs run on, which is acceptable degraded. */}
+            {briefing.split(/\n\n+/).filter((p) => p.trim().length > 0).map((para, i) => (
+              <p key={i} className="coach-briefing">{para}</p>
+            ))}
           </div>
 
           {/* Check-In is interactive (client island) */}
