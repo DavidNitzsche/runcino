@@ -118,6 +118,17 @@ export async function upsertCanonicalRun(
 ): Promise<{ written: boolean; id: number | null }> {
   if (!(run.distanceMi > 0)) return { written: false, id: null };
   const id = canonicalRunId(userId, run.startISO);
+  // Tombstone check: if the user explicitly deleted a row via /api/runs/[id]
+  // the id is recorded in deleted_activity_ids. AH/watch re-ingest uses a
+  // deterministic synthetic-id hash keyed on (user, start-minute), so the
+  // same session arriving a second time would resurrect the deleted row.
+  // Same guard as syncStravaForUser handles for positive Strava ids — also
+  // applied here for the synthetic-negative side so deletes actually stick.
+  const deleted = await query<{ id: string }>(
+    `SELECT id::text FROM deleted_activity_ids WHERE id = $1::BIGINT LIMIT 1`,
+    [id],
+  ).catch(() => [] as { id: string }[]);
+  if (deleted.length > 0) return { written: false, id: null };
   const nearby = await findNearbyRunId(userId, run.startISO);
   if (nearby != null && nearby !== id) {
     // A different-source row (often the real Strava activity) already covers

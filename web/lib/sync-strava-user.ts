@@ -509,12 +509,20 @@ export async function syncStravaForUser(userId: string): Promise<SyncResult | Sy
   // 4. Upsert into strava_activities, keyed by user_uuid so multi-tenant
   //    queries can scope by user. One transaction so partial failure
   //    rolls back cleanly.
+  // Tombstone filter: same guard as syncSingleActivity — never resurrect
+  // an activity id the user explicitly deleted via /api/runs/[id].
+  // Without this, every YTD pull would re-create the deleted rows.
+  const tombstones = await query<{ id: string }>(
+    `SELECT id::text FROM deleted_activity_ids`,
+  ).catch(() => [] as { id: string }[]);
+  const tombstoned = new Set(tombstones.map((t) => t.id));
   const fetchedAt = new Date();
   const dedupePairs: Array<{ id: number; startLocal: string }> = [];
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {
       for (const a of activities) {
+        if (tombstoned.has(String(a.id))) continue;
         const norm = normalizeActivity(a);
         // SPLITS PRESERVATION: see syncSingleActivity for rationale.
         // YTD sync hits the list endpoint which never returns
