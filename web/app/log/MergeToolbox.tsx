@@ -99,12 +99,32 @@ export function MergeProvider({ children }: { children: ReactNode }) {
         if (dist > best) { best = dist; canonical = id; }
       }
       const sources = ids.filter((id) => id !== canonical);
-      const res = await fetch('/api/runs/merge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetId: Number(canonical), sourceIds: sources.map(Number) }),
-      });
-      const j = await res.json().catch(() => ({}));
+      const post = (confirm: boolean) =>
+        fetch('/api/runs/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetId: Number(canonical),
+            sourceIds: sources.map(Number),
+            ...(confirm ? { confirm: true } : {}),
+          }),
+        });
+      let res = await post(false);
+      let j = await res.json().catch(() => ({}));
+      // Guardrail fired — distance ratio < 0.5 OR time gap > 4h. Ask the
+      // user before bypassing the safety net.
+      if (res.status === 400 && (j?.guard === 'distance_ratio' || j?.guard === 'time_gap')) {
+        const msg = j.guard === 'distance_ratio'
+          ? `Distance ratio is ${j.ratio} (target ${j.target?.distanceMi}mi vs source ${j.source?.distanceMi}mi). These look like different sessions. Merge anyway?`
+          : `Time gap is ${j.gapHours}h. These look like different sessions. Merge anyway?`;
+        if (typeof window !== 'undefined' && window.confirm(msg)) {
+          res = await post(true);
+          j = await res.json().catch(() => ({}));
+        } else {
+          setFlash('Merge cancelled.');
+          return;
+        }
+      }
       if (!res.ok) {
         setFlash(`Merge failed: ${j?.error ?? res.statusText}`);
         return;
