@@ -1,37 +1,42 @@
 /**
- * GET /api/briefing
+ * GET /api/briefing?surface=today&mode=auto&user_id=<uuid>
  *
- * Returns { lead, voice, topics[] } for the current user + surface + mode.
- * Phase 0 stub: returns a fixed shape so the client renders end-to-end before
- * the engine is productionized. Phase 1 replaces this with the real briefing
- * service backed by mockup-today.mjs logic + topic-prereq enforcement.
+ * Calls the coach engine (state loader → router → prereqs → LLM) and returns
+ * { lead, voice, topics } for the requested surface.
  *
- * Query params:
- *   surface   one of: today | training | races | race-detail | health | profile
- *   mode      surface-specific: today=post-run|pre-run|rest|race-day, etc.
- *   user_id   uuid (defaults to David in dev)
+ * Caches in-memory for 5 minutes per (user, date, surface) since the LLM
+ * call is expensive; cache key includes latest activity id + check-in id so
+ * a new run / check-in busts it.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { generateBriefing } from '@/lib/coach/engine';
+import type { Surface } from '@/lib/coach/router';
+
+const DAVID_USER_ID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
+const VALID_SURFACES: Surface[] = ['today', 'training', 'races', 'race-detail', 'health', 'profile'];
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  const surface = params.get('surface') ?? 'today';
-  const mode    = params.get('mode')    ?? 'post-run';
+  const surfaceParam = (params.get('surface') ?? 'today') as Surface;
+  const userId = params.get('user_id') ?? DAVID_USER_ID;
+  const raceSlug = params.get('race') ?? undefined;
 
-  // Phase 0 stub: literal payload from the locked v4 mockup. Phase 1 will
-  // replace this body with the briefing service output.
-  return NextResponse.json({
-    surface,
-    mode,
-    lead: 'Solid long run this morning.',
-    voice: [
-      "11.1 miles at 8:50 with HR sitting at 140 — exactly the engine work we wanted. **40.5 of 41.2** for the week, basically perfect.",
-      "Cadence held at 160. That's fine for easy work, but I want to run a small experiment on turnover once we have your height in — leg length drives the right target.",
-      "Sleep's been short all week — 6.8h average. Not the danger zone yet, but a full week of deficit compounds. Aim for 7.5 tonight.",
-      "Threshold Tuesday is the first real quality of this build. We're 84 days out from AFC — time to start applying pressure.",
-    ],
-    topics: [],
-    _scaffold: true,
-    _note: 'Phase 0 stub. Phase 1 replaces with real briefing service.',
-  });
+  if (!VALID_SURFACES.includes(surfaceParam)) {
+    return NextResponse.json({ error: `Invalid surface: ${surfaceParam}` }, { status: 400 });
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({
+      error: 'ANTHROPIC_API_KEY not set — coach engine offline. Provide .env.local with the key or run against the stub by deleting the env var check.',
+    }, { status: 503 });
+  }
+
+  try {
+    const briefing = await generateBriefing(userId, surfaceParam, raceSlug);
+    return NextResponse.json(briefing);
+  } catch (err: any) {
+    return NextResponse.json({
+      error: err.message ?? String(err),
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    }, { status: 500 });
+  }
 }
