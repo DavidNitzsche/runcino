@@ -622,7 +622,10 @@ final class WorkoutEngine: ObservableObject {
             paceZone = .onTarget
             paceDeltaSPerMi = 0
             Haptics.play(.end)
-            flash(.go(title: "Plan done ✓", sub: "Keep going · End when ready"), for: 3)
+            // 6s so the runner has time to read the "you can stop now,
+            // or keep going" message — 3s was too brief at this big-deal
+            // moment. flash() chimes too when audibleAlerts is on.
+            flash(.go(title: "Plan done ✓", sub: "Keep going · End when ready"), for: 6)
             return
         }
 

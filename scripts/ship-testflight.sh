@@ -2,19 +2,24 @@
 #
 # Ship the Faff iOS app (it embeds the watch app) to TestFlight.
 #
-# Secrets live in native/.asc.env (gitignored): ASC_KEY_ID, ASC_ISSUER_ID,
-# ASC_KEY_PATH, ASC_TEAM_ID. The build number auto-increments from
-# native/.asc.build (committed, so the next number is tracked in-repo).
+# Secrets live in legacy/native/.asc.env (gitignored): ASC_KEY_ID,
+# ASC_ISSUER_ID, ASC_KEY_PATH, ASC_TEAM_ID. The build number
+# auto-increments from legacy/native/.asc.build (committed, so the
+# next number is tracked in-repo).
+#
+# Paths: web/ and native/ were archived to legacy/ under Phase 0.1
+# of the v2 rebuild — production deploys keep building from legacy/
+# until cutover (see commit 64ff3a9).
 #
 # Usage:
-#   scripts/ship-testflight.sh            # uses native/.asc.build
+#   scripts/ship-testflight.sh            # uses legacy/native/.asc.build
 #   scripts/ship-testflight.sh 18         # force a specific build number
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ENV_FILE="$ROOT/native/.asc.env"
-BUILD_FILE="$ROOT/native/.asc.build"
+ENV_FILE="$ROOT/legacy/native/.asc.env"
+BUILD_FILE="$ROOT/legacy/native/.asc.build"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "ERROR: missing $ENV_FILE" >&2
@@ -45,7 +50,7 @@ cat > /tmp/ExportOptions.plist <<PLIST
 PLIST
 
 echo "→ Archiving…"
-( cd "$ROOT/native/Faff" && xcodebuild -scheme Faff -configuration Release \
+( cd "$ROOT/legacy/native/Faff" && xcodebuild -scheme Faff -configuration Release \
     -destination 'generic/platform=iOS' -archivePath /tmp/Faff.xcarchive archive \
     -allowProvisioningUpdates CURRENT_PROJECT_VERSION="$BUILD" )
 
@@ -62,7 +67,7 @@ xcrun altool --upload-app -f /tmp/FaffExport/Faff.ipa -t ios \
   --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 
 echo "$((BUILD + 1))" > "$BUILD_FILE"
-echo "✓ Uploaded build $BUILD. native/.asc.build bumped to $((BUILD + 1)) — commit it."
+echo "✓ Uploaded build $BUILD. legacy/native/.asc.build bumped to $((BUILD + 1)) — commit it."
 
 # Wait for processing, then clear export compliance + distribute to the
 # internal beta group so it's actually installable (not just "uploaded").
