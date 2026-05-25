@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROFILE · v1 mockup · 2026-05-25</title>
+<meta name="viewport" content="width=1400">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0a0c10;--ink:#f6f7f8;--mute:#8a90a0;--dim:#4b505e;--line:rgba(255,255,255,0.08);--line-2:rgba(255,255,255,0.04);--card:#11141a;--green:#3EBD41;--goal:#F3AD38;--over:#FC4D64;--dist:#27B4E0;--rest:#008FEC;--learn:#B084FF;--race:#FF8847;--f-display:'Bebas Neue','Inter',sans-serif;--f-body:'Inter',-apple-system,sans-serif;}
+  html,body{background:#15171c;color:var(--ink);font-family:var(--f-body);margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1400px;margin:0 auto;padding:48px 28px 96px;}
+  header{margin-bottom:40px;}
+  h1{font-family:var(--f-display);font-size:52px;font-weight:400;letter-spacing:0.5px;margin:0;}
+  .sub{color:var(--mute);margin-top:8px;max-width:760px;font-size:14px;line-height:1.6;}
+  .sub code{background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;font-size:12px;}
+  .meta{color:var(--dim);font-size:11px;margin-top:18px;letter-spacing:0.4px;}
+  .stage{display:grid;grid-template-columns:460px 1fr;gap:48px;align-items:start;}
+  @media(max-width:1200px){.stage{grid-template-columns:1fr;}}
+  .phone{position:relative;width:460px;aspect-ratio:460/940;background:#000;border-radius:56px;padding:14px;box-shadow:0 60px 100px rgba(0,0,0,0.55),0 20px 40px rgba(0,0,0,0.40);margin:0 auto;}
+  .phone .notch{position:absolute;top:22px;left:50%;transform:translateX(-50%);width:120px;height:32px;background:#000;border-radius:18px;z-index:2;}
+  .screen{position:relative;width:100%;height:100%;background:var(--bg);border-radius:44px;overflow:hidden;overflow-y:auto;}
+  .screen::-webkit-scrollbar{display:none;}
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:18px 32px 8px;font-size:14px;font-weight:600;}
+  .appbar{display:flex;justify-content:space-between;align-items:center;padding:28px 24px 12px;}
+  .appbar .brand{font-family:var(--f-display);font-size:26px;letter-spacing:1px;}
+  .appbar .tab-label{font-family:var(--f-display);font-size:18px;color:var(--mute);letter-spacing:1.5px;}
+
+  /* Profile identity card */
+  .identity{padding:8px 24px 22px;}
+  .identity .avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--learn),var(--rest));display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:24px;color:#0a0c10;font-weight:400;letter-spacing:1px;}
+  .identity .name{font-family:var(--f-display);font-size:30px;font-weight:400;letter-spacing:0.5px;margin-top:14px;}
+  .identity .sub{font-family:var(--f-body);font-size:12px;color:var(--mute);letter-spacing:0.5px;margin-top:4px;text-transform:uppercase;}
+
+  /* Coach voice (shoes-only) */
+  .coach{padding:0 24px 22px;}
+  .coach .eyebrow{font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--green);letter-spacing:1.6px;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+  .coach .eyebrow::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 12px rgba(62,189,65,0.6);}
+  .coach .lead{font-family:var(--f-display);font-size:26px;line-height:1.1;letter-spacing:0.5px;margin:0 0 12px;font-weight:400;}
+  .coach p{font-size:14.5px;line-height:1.6;color:rgba(246,247,248,0.86);margin:0 0 10px;letter-spacing:-0.01em;}
+  .coach p strong{color:var(--ink);font-weight:600;}
+
+  .lane{padding:4px 24px 24px;display:flex;flex-direction:column;gap:12px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;}
+  .card-eyebrow{font-family:var(--f-body);font-size:9px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:8px;}
+  .coach-note{font-family:var(--f-body);font-size:12px;line-height:1.5;color:rgba(246,247,248,0.85);margin-top:12px;padding-top:10px;border-top:1px solid var(--line-2);display:flex;gap:8px;align-items:flex-start;}
+  .coach-note::before{content:'';width:4px;height:4px;border-radius:50%;background:var(--green);margin-top:7px;flex-shrink:0;}
+
+  /* Shoe status card */
+  .shoe-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:baseline;}
+  .shoe-name{font-family:var(--f-display);font-size:20px;color:var(--ink);letter-spacing:0.5px;}
+  .shoe-sub{font-family:var(--f-body);font-size:10px;font-weight:600;color:var(--mute);letter-spacing:0.5px;margin-top:2px;text-transform:uppercase;}
+  .shoe-mi{font-family:var(--f-display);font-size:24px;color:var(--ink);letter-spacing:0.5px;}
+  .shoe-mi .u{font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--mute);letter-spacing:1px;text-transform:uppercase;margin-left:3px;}
+
+  .shoe-bar{height:6px;background:rgba(255,255,255,0.06);border-radius:999px;margin-top:10px;overflow:hidden;}
+  .shoe-bar .fill{height:100%;border-radius:999px;}
+  .shoe-bar .fill.fresh{background:var(--green);}
+  .shoe-bar .fill.seasoned{background:var(--dist);}
+  .shoe-bar .fill.approaching{background:var(--goal);}
+  .shoe-bar .fill.retire{background:var(--over);}
+
+  .status-pill{display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-left:8px;}
+  .status-pill.fresh{background:rgba(62,189,65,0.16);color:var(--green);}
+  .status-pill.seasoned{background:rgba(39,180,224,0.16);color:var(--dist);}
+  .status-pill.approaching{background:rgba(243,173,56,0.16);color:var(--goal);}
+  .status-pill.retire{background:rgba(252,77,100,0.16);color:var(--over);}
+
+  /* Race-fit card */
+  .race-fit-header{font-family:var(--f-display);font-size:22px;color:var(--goal);letter-spacing:0.5px;}
+  .race-fit-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;font-family:var(--f-body);font-size:13.5px;}
+  .race-fit-row .l{color:var(--mute);}
+  .race-fit-row .r{color:var(--ink);font-weight:600;}
+  .race-fit-row .r.warn{color:var(--goal);}
+
+  /* Settings sections (no coach) */
+  .settings-section{padding:18px 24px;border-top:1px solid var(--line-2);}
+  .settings-section .eyebrow{font-family:var(--f-body);font-size:9px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);margin-bottom:14px;}
+  .field-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line-2);}
+  .field-row:last-child{border-bottom:none;}
+  .field-row .label{font-family:var(--f-body);font-size:13px;color:var(--ink);}
+  .field-row .value{font-family:var(--f-body);font-size:13px;color:var(--mute);font-weight:500;}
+  .field-row .value.missing{color:var(--over);}
+  .field-row .value .derived{font-size:9px;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-left:6px;font-weight:700;}
+
+  /* Bottom nav */
+  .nav{position:sticky;bottom:0;background:rgba(10,12,16,0.92);backdrop-filter:blur(20px);border-top:1px solid var(--line);padding:12px 0 26px;display:flex;justify-content:space-around;}
+  .nav .tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim);font-family:var(--f-body);font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase;}
+  .nav .tab.active{color:var(--green);}
+  .nav .tab svg{width:20px;height:20px;fill:currentColor;}
+
+  /* Web */
+  .web{background:var(--bg);border-radius:16px;box-shadow:0 40px 80px rgba(0,0,0,0.45);min-height:940px;overflow:hidden;}
+  .web-topbar{display:flex;align-items:center;gap:28px;padding:18px 32px;border-bottom:1px solid var(--line);}
+  .web-topbar .brand{font-family:var(--f-display);font-size:24px;letter-spacing:1px;margin-right:auto;}
+  .web-topbar .tab{font-family:var(--f-body);font-size:11px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);}
+  .web-topbar .tab.active{color:var(--ink);}
+  .web-content{padding:32px 32px 48px;max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:28px;}
+  .web-content .col{display:flex;flex-direction:column;gap:14px;}
+
+  .notes{padding:12px 0;}
+  .notes h2{font-family:var(--f-display);font-size:28px;font-weight:400;color:var(--ink);margin:0 0 14px;}
+  .notes h3{font-family:var(--f-body);font-size:10px;font-weight:700;color:var(--green);letter-spacing:1.6px;text-transform:uppercase;margin:28px 0 10px;}
+  .notes ul{padding-left:0;list-style:none;margin:0 0 18px;}
+  .notes li{padding:10px 0;border-bottom:1px solid var(--line-2);font-size:13.5px;line-height:1.55;color:rgba(246,247,248,0.78);}
+  .notes li:last-child{border-bottom:none;}
+  .notes li strong{color:var(--ink);font-weight:600;display:block;margin-bottom:3px;}
+  .notes code{background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px;font-size:12px;}
+  .stage-2{margin-top:96px;}
+  .stage-2 h2{font-family:var(--f-display);font-size:36px;margin:0 0 18px;letter-spacing:0.5px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>PROFILE · v1 mockup · 2026-05-25</h1>
+    <p class="sub">
+      The PROFILE surface in v4. Per David: "may not need the coach here, this is the guts the user fills in — <strong style="color:var(--green);">except for shoes</strong>." So that's exactly the structure: identity → coach voice ONLY about shoes → shoe cards → settings (data entry, no coach voice).
+    </p>
+    <p class="sub">
+      Real shoe data from David's <code>shoes</code> table (7 pairs in rotation). Coach flagged Zoom Fly 6 as the watch item — 150mi already, sitting unused, scheduled as CIM race shoe in 195 days = risky.
+    </p>
+    <div class="meta">FONTS · BEBAS NEUE + INTER · LLM · 18.0s · ~$0.01</div>
+  </header>
+
+  <div class="stage">
+
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+
+        <div class="statusbar"><span>9:18</span><span>● ● ● ●</span></div>
+        <div class="appbar">
+          <div class="brand">faff</div>
+          <div class="tab-label">PROFILE</div>
+        </div>
+
+        <!-- Identity -->
+        <div class="identity">
+          <div class="avatar">DN</div>
+          <div class="name">David Nitzsche</div>
+          <div class="sub">M · 40 · Los Angeles</div>
+        </div>
+
+        <!-- Coach voice (SHOES ONLY) -->
+        <div class="coach">
+          <div class="eyebrow">COACH · SHOES</div>
+          <h2 class="lead">Solid rotation. Two to watch.</h2>
+          <p>
+            Seven pairs gives you good variety across trainers, tempo shoes, and race options. Most are fresh or lightly seasoned. <strong>Two to watch: Nike Zoom Fly 6 and Vomero Plus, both around 150 miles with no recent activity.</strong>
+          </p>
+          <p>
+            If you're planning Zoom Fly 6 for CIM in December, let's get some miles on it soon to confirm fit feels race-ready. Otherwise, your SC Trainers and Superblast 3 are tracking nicely.
+          </p>
+        </div>
+
+        <div class="lane">
+
+          <!-- shoe_race_fit · CIM warning -->
+          <div class="card" style="border-color: rgba(243,173,56,0.32); background: rgba(243,173,56,0.04);">
+            <div class="card-eyebrow" style="color:var(--goal);">RACE FIT · CIM · 195 DAYS</div>
+            <div class="race-fit-header">Nike Zoom Fly 6 · risky</div>
+            <div class="race-fit-row"><span class="l">Current mileage</span><span class="r">150 mi</span></div>
+            <div class="race-fit-row"><span class="l">Projected at race</span><span class="r warn">~250 mi (at retirement)</span></div>
+            <div class="race-fit-row"><span class="l">Retirement cap</span><span class="r">250 mi</span></div>
+            <div class="coach-note">If averaging ~40 mpw, the Zoom Fly 6 will hit ~250 miles by race day — right at retirement. Consider breaking in a fresh race shoe by late summer if you want a safer December option.</div>
+          </div>
+
+          <!-- Shoe rotation cards -->
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--green);">YOUR ROTATION · 7 PAIRS</div>
+
+            <!-- New Balance SC Trainer v3 -->
+            <div style="padding: 10px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="shoe-row">
+                <div>
+                  <div class="shoe-name">New Balance SC Trainer v3 <span class="status-pill fresh">FRESH</span></div>
+                  <div class="shoe-sub">QUALITY · 40 / 300 mi</div>
+                </div>
+                <div class="shoe-mi">13<span class="u">%</span></div>
+              </div>
+              <div class="shoe-bar"><div class="fill fresh" style="width: 13%;"></div></div>
+            </div>
+
+            <!-- Asics Superblast 3 -->
+            <div style="padding: 10px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="shoe-row">
+                <div>
+                  <div class="shoe-name">Asics Superblast 3 <span class="status-pill fresh">FRESH</span></div>
+                  <div class="shoe-sub">EASY · UPTEMPO · 54 / 350 mi</div>
+                </div>
+                <div class="shoe-mi">15<span class="u">%</span></div>
+              </div>
+              <div class="shoe-bar"><div class="fill fresh" style="width: 15%;"></div></div>
+            </div>
+
+            <!-- Asics Novablast 5 -->
+            <div style="padding: 10px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="shoe-row">
+                <div>
+                  <div class="shoe-name">Asics Novablast 5 <span class="status-pill fresh">FRESH</span></div>
+                  <div class="shoe-sub">RECOVERY · 40 / 400 mi · preferred</div>
+                </div>
+                <div class="shoe-mi">10<span class="u">%</span></div>
+              </div>
+              <div class="shoe-bar"><div class="fill fresh" style="width: 10%;"></div></div>
+            </div>
+
+            <!-- Nike Vomero Plus -->
+            <div style="padding: 10px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="shoe-row">
+                <div>
+                  <div class="shoe-name">Nike Vomero Plus <span class="status-pill seasoned">SEASONED</span></div>
+                  <div class="shoe-sub">EASY · LONG · 150 / 400 mi</div>
+                </div>
+                <div class="shoe-mi">38<span class="u">%</span></div>
+              </div>
+              <div class="shoe-bar"><div class="fill seasoned" style="width: 38%;"></div></div>
+            </div>
+
+            <!-- Nike Zoom Fly 6 -->
+            <div style="padding: 10px 0;">
+              <div class="shoe-row">
+                <div>
+                  <div class="shoe-name">Nike Zoom Fly 6 <span class="status-pill approaching">WATCH</span></div>
+                  <div class="shoe-sub">RACE · 150 / 250 mi · queued for CIM</div>
+                </div>
+                <div class="shoe-mi">60<span class="u">%</span></div>
+              </div>
+              <div class="shoe-bar"><div class="fill approaching" style="width: 60%;"></div></div>
+            </div>
+
+            <div class="coach-note">Rotation covers the bases: cushioned easy, responsive tempo, race-day option. Two shoes (Novablast 5 + Vomero Premium not pictured) sitting unused — worth rotating in or reassessing.</div>
+          </div>
+
+        </div>
+
+        <!-- SETTINGS sections (no coach voice) -->
+        <div class="settings-section">
+          <div class="eyebrow">PERSONAL</div>
+          <div class="field-row"><span class="label">Name</span><span class="value">David Nitzsche</span></div>
+          <div class="field-row"><span class="label">Sex</span><span class="value">M</span></div>
+          <div class="field-row"><span class="label">Age</span><span class="value">40</span></div>
+          <div class="field-row"><span class="label">City</span><span class="value">Los Angeles</span></div>
+          <div class="field-row"><span class="label">Height</span><span class="value missing">+ ADD</span></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="eyebrow">PHYSIOLOGY · DERIVED FROM YOUR DATA</div>
+          <div class="field-row"><span class="label">Max HR</span><span class="value">181 bpm <span class="derived">OBSERVED</span></span></div>
+          <div class="field-row"><span class="label">Resting HR</span><span class="value">47 bpm <span class="derived">60-DAY MEAN</span></span></div>
+          <div class="field-row"><span class="label">VO2 max</span><span class="value">61.3 <span class="derived">APPLE</span></span></div>
+          <div class="field-row"><span class="label">VDOT</span><span class="value">~50.4 <span class="derived">RACES</span></span></div>
+          <div class="field-row"><span class="label">Weight</span><span class="value">186.1 lb <span class="derived">APPLE</span></span></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="eyebrow">CONNECTIONS</div>
+          <div class="field-row"><span class="label">Strava</span><span class="value" style="color:var(--green);">CONNECTED</span></div>
+          <div class="field-row"><span class="label">Apple Health</span><span class="value" style="color:var(--green);">CONNECTED</span></div>
+          <div class="field-row"><span class="label">faff Watch app</span><span class="value" style="color:var(--green);">PAIRED</span></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="eyebrow">PREFERENCES</div>
+          <div class="field-row"><span class="label">Long-run day</span><span class="value">Sunday</span></div>
+          <div class="field-row"><span class="label">Quality days</span><span class="value">Tue · Thu</span></div>
+          <div class="field-row"><span class="label">Units</span><span class="value">Miles · °F</span></div>
+        </div>
+
+        <div class="nav">
+          <div class="tab"><svg viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3z"/></svg>TODAY</div>
+          <div class="tab"><svg viewBox="0 0 24 24"><path d="M19 4h-2V2h-2v2H9V2H7v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"/></svg>TRAINING</div>
+          <div class="tab"><svg viewBox="0 0 24 24"><path d="M7 2 L4 2 L8 11 L10 10 Z"/><path d="M17 2 L20 2 L16 11 L14 10 Z"/><circle cx="12" cy="15" r="6"/></svg>RACES</div>
+          <div class="tab active"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6z"/></svg>PROFILE</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Annotations -->
+    <div class="notes">
+      <h2>What's on the page</h2>
+      <ul>
+        <li><strong>Identity (top)</strong> · Avatar (initials, brand gradient), name, sex/age/city. Personal anchor.</li>
+        <li><strong>Coach voice — SHOES ONLY</strong> · Per your brief, this is the one thing the coach speaks to on Profile. 2 short paragraphs naming the shoes to watch.</li>
+        <li><strong>RACE FIT card (amber)</strong> · CIM 195 days out, Zoom Fly 6 risky. Three rows: current mi, projected at race, retirement cap. Coach note explains.</li>
+        <li><strong>YOUR ROTATION card</strong> · 5 shoes (top 5; rest summarized in coach note). Each row: name + status pill + role + mi-bar with %used. Color-coded: fresh green, seasoned blue, watch amber, retire red.</li>
+        <li><strong>PERSONAL settings</strong> · Name/sex/age/city — data entry, no coach. Height row shows the +ADD affordance (gap).</li>
+        <li><strong>PHYSIOLOGY (derived)</strong> · Max HR, RHR, VO2, VDOT, Weight — each with a "derived" tag showing where the value came from (OBSERVED / 60-DAY MEAN / APPLE / RACES). The runner never enters values the system can observe.</li>
+        <li><strong>CONNECTIONS</strong> · Strava, Apple Health, watch pair status. Quick verify they're all green.</li>
+        <li><strong>PREFERENCES</strong> · Long-run day, quality days, units. Data entry.</li>
+      </ul>
+
+      <h3>What the coach did NOT touch</h3>
+      <ul>
+        <li>Personal data entry · just settings rows</li>
+        <li>Physiology values · derived from data, displayed transparently with source tags</li>
+        <li>Connection status · status indicators only</li>
+        <li>Preferences · pure data entry</li>
+        <li>This matches your brief: coach only where it adds value (shoes), elsewhere the page is "the guts"</li>
+      </ul>
+
+      <h3>State source</h3>
+      <ul>
+        <li>Shoes: <code>shoes</code> table — 7 pairs for David, with run_types + mileage + mileage_cap</li>
+        <li>Race for fit-context: <code>races</code> table (CIM next A-race)</li>
+        <li>Physiology: derived from <code>health_samples</code> (max_hr peak, resting_hr 60d mean, vo2_max, body_mass)</li>
+        <li>Coach: Claude sonnet-4-5, 18.0s, ~$0.01</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- WEB -->
+  <div class="stage-2">
+    <h2>WEB / DESKTOP VIEW</h2>
+    <p class="sub" style="margin-bottom:24px;">Identity + shoe coach + cards on left. Settings sections on the right.</p>
+    <div class="web">
+      <div class="web-topbar">
+        <div class="brand">faff</div>
+        <div class="tab">TODAY</div>
+        <div class="tab">TRAINING</div>
+        <div class="tab">RACES</div>
+        <div class="tab">HEALTH</div>
+        <div class="tab active">PROFILE</div>
+      </div>
+      <div class="web-content">
+        <div class="col">
+          <div class="identity" style="padding:0 0 22px;">
+            <div class="avatar">DN</div>
+            <div class="name">David Nitzsche</div>
+            <div class="sub">M · 40 · Los Angeles</div>
+          </div>
+          <div class="coach" style="padding:0 0 18px;">
+            <div class="eyebrow">COACH · SHOES</div>
+            <h2 class="lead" style="font-size:30px;">Solid rotation. Two to watch.</h2>
+            <p>Seven pairs gives you good variety. <strong>Two to watch: Nike Zoom Fly 6 and Vomero Plus, both around 150 miles with no recent activity.</strong></p>
+            <p>If Zoom Fly 6 is your CIM race shoe, get some miles on it soon. Otherwise SC Trainers + Superblast 3 are tracking nicely.</p>
+          </div>
+          <div class="card" style="border-color: rgba(243,173,56,0.32); background: rgba(243,173,56,0.04);">
+            <div class="card-eyebrow" style="color:var(--goal);">RACE FIT · CIM · 195 DAYS</div>
+            <div class="race-fit-header">Nike Zoom Fly 6 · risky</div>
+            <div class="race-fit-row"><span class="l">Current</span><span class="r">150 mi</span></div>
+            <div class="race-fit-row"><span class="l">At race</span><span class="r warn">~250 mi</span></div>
+            <div class="race-fit-row"><span class="l">Retirement</span><span class="r">250 mi</span></div>
+            <div class="coach-note">Break in a fresh race shoe by late summer if you want a safer December option.</div>
+          </div>
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--green);">ROTATION · 7 PAIRS</div>
+            <div style="padding: 8px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="shoe-row"><div><div class="shoe-name">SC Trainer v3 <span class="status-pill fresh">FRESH</span></div><div class="shoe-sub">QUALITY · 40/300</div></div><div class="shoe-mi">13<span class="u">%</span></div></div>
+              <div class="shoe-bar"><div class="fill fresh" style="width:13%;"></div></div>
+            </div>
+            <div style="padding: 8px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="shoe-row"><div><div class="shoe-name">Superblast 3 <span class="status-pill fresh">FRESH</span></div><div class="shoe-sub">EASY · UPTEMPO · 54/350</div></div><div class="shoe-mi">15<span class="u">%</span></div></div>
+              <div class="shoe-bar"><div class="fill fresh" style="width:15%;"></div></div>
+            </div>
+            <div style="padding: 8px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="shoe-row"><div><div class="shoe-name">Vomero Plus <span class="status-pill seasoned">SEASONED</span></div><div class="shoe-sub">EASY · LONG · 150/400</div></div><div class="shoe-mi">38<span class="u">%</span></div></div>
+              <div class="shoe-bar"><div class="fill seasoned" style="width:38%;"></div></div>
+            </div>
+            <div style="padding: 8px 0;">
+              <div class="shoe-row"><div><div class="shoe-name">Zoom Fly 6 <span class="status-pill approaching">WATCH</span></div><div class="shoe-sub">RACE · 150/250 · CIM</div></div><div class="shoe-mi">60<span class="u">%</span></div></div>
+              <div class="shoe-bar"><div class="fill approaching" style="width:60%;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--mute);">PERSONAL</div>
+            <div class="field-row"><span class="label">Name</span><span class="value">David Nitzsche</span></div>
+            <div class="field-row"><span class="label">Sex · Age · City</span><span class="value">M · 40 · LA</span></div>
+            <div class="field-row"><span class="label">Height</span><span class="value missing">+ ADD</span></div>
+          </div>
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--mute);">PHYSIOLOGY · DERIVED</div>
+            <div class="field-row"><span class="label">Max HR</span><span class="value">181 bpm <span class="derived">OBSERVED</span></span></div>
+            <div class="field-row"><span class="label">Resting HR</span><span class="value">47 bpm <span class="derived">60-DAY</span></span></div>
+            <div class="field-row"><span class="label">VO2 max</span><span class="value">61.3 <span class="derived">APPLE</span></span></div>
+            <div class="field-row"><span class="label">VDOT</span><span class="value">~50.4 <span class="derived">RACES</span></span></div>
+            <div class="field-row"><span class="label">Weight</span><span class="value">186.1 lb <span class="derived">APPLE</span></span></div>
+          </div>
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--mute);">CONNECTIONS</div>
+            <div class="field-row"><span class="label">Strava</span><span class="value" style="color:var(--green);">CONNECTED</span></div>
+            <div class="field-row"><span class="label">Apple Health</span><span class="value" style="color:var(--green);">CONNECTED</span></div>
+            <div class="field-row"><span class="label">faff Watch</span><span class="value" style="color:var(--green);">PAIRED</span></div>
+          </div>
+          <div class="card">
+            <div class="card-eyebrow" style="color:var(--mute);">PREFERENCES</div>
+            <div class="field-row"><span class="label">Long-run day</span><span class="value">Sunday</span></div>
+            <div class="field-row"><span class="label">Quality days</span><span class="value">Tue · Thu</span></div>
+            <div class="field-row"><span class="label">Units</span><span class="value">Miles · °F</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
