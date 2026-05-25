@@ -241,6 +241,13 @@ export async function computeReadinessScore(
     // HR fields can be decimals (e.g. 143.7) on HealthKit-enriched
     // activities, so cast via NUMERIC + ROUND, a bare ::INTEGER throws
     // "invalid input syntax for type integer" and nulls the whole score.
+    //
+    // NOT (data ? 'mergedIntoId') drops dupe rows that ingest folded into
+    // a higher-rank canonical (e.g. AH/watch merged into the Strava row
+    // for the same session). Without this filter a single session counted
+    // twice and inflated 14-day load — a stale dupe could fake "easy
+    // strain" or move the recent-load factor by a full bin. Matches the
+    // same predicate used by getCompletedMileageByDate.
     `SELECT data->>'date'              AS date,
             ROUND((data->>'workoutType')::NUMERIC)::INTEGER AS workout_type,
             (data->>'distanceMi')::TEXT  AS distance,
@@ -248,6 +255,7 @@ export async function computeReadinessScore(
             ROUND((data->>'maxHr')::NUMERIC)::INTEGER    AS max_hr
        FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
         AND (data->>'date') >= $2
         AND (data->>'date') < $3
         AND (data->>'distanceMi')::NUMERIC > 0
