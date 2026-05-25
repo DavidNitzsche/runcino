@@ -9,6 +9,25 @@
  */
 
 import Link from 'next/link';
+import { ProfileGapInput } from '@/components/profile/ProfileGapInput';
+
+const GAP_FIELD_LABEL: Record<string, string> = {
+  height_cm:        'Height',
+  birthday:         'Birthday',
+  lthr:             'LTHR (threshold HR)',
+  hrmax_observed:   'Max HR',
+  experience_level: 'Experience level',
+  sex:              'Sex',
+  city:             'City',
+};
+
+const GAP_FIELD_WHY: Record<string, string> = {
+  height_cm:        'Unlocks cadence target (180 spm baseline)',
+  birthday:         'Unlocks age-based recovery + heat adjustments',
+  lthr:             'Primary HR-zone anchor (Friel method)',
+  hrmax_observed:   'Refines zones if LTHR is unknown',
+  experience_level: 'Caps weekly mileage to a safe ceiling',
+};
 
 export function NextWorkoutCard({ payload, coach_note }: {
   payload: { dow?: string; type?: string; label?: string | null; mi?: number };
@@ -73,30 +92,11 @@ export function RaceHorizonCard({ payload, coach_note }: {
 export function ProfileGapCard({ payload }: {
   payload: { field: string; why: string };
 }) {
-  const fieldLabel = payload.field === 'height_cm' ? 'Your height' : payload.field;
+  // Use the inline editor — David doesn't want to leave /today to add data.
+  const label = GAP_FIELD_LABEL[payload.field] ?? payload.field;
+  const why = GAP_FIELD_WHY[payload.field] ?? payload.why ?? '';
   return (
-    <div className="card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, fontWeight: 700, color: 'var(--over)', letterSpacing: '1.6px', textTransform: 'uppercase', marginBottom: 3 }}>
-          COACH NEEDS
-        </div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
-          {fieldLabel}
-        </div>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 11.5, color: 'var(--mute)', marginTop: 2 }}>
-          {payload.why}
-        </div>
-      </div>
-      <Link href={`/profile?gap=${encodeURIComponent(payload.field)}`}
-        style={{
-          background: 'rgba(252,77,100,0.12)', color: 'var(--over)',
-          border: '1px solid rgba(252,77,100,0.25)', borderRadius: 999,
-          padding: '7px 14px', fontFamily: 'var(--f-display)', fontSize: 12,
-          letterSpacing: '1px', flexShrink: 0,
-        }}>
-        + Add
-      </Link>
-    </div>
+    <ProfileGapInput field={payload.field} label={label} why={why} />
   );
 }
 

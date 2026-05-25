@@ -20,18 +20,13 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>NSHealthShareUsageDescription</key>
-	<string>Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>Faff writes completed workouts to Apple Health so your history stays in one place.</string>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>WKApplication</key>
+	<true/>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>run.faff.app</string>
+	<key>WKWatchOnly</key>
+	<false/>
 </dict>
 </plist>
