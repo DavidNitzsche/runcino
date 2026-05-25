@@ -461,7 +461,8 @@
     <li><a href="#race-detail">5 · RACE DETAIL</a><span class="sub">4 proximities</span></li>
     <li><a href="#health">6 · HEALTH</a><span class="sub">3 states</span></li>
     <li><a href="#profile">7 · PROFILE</a><span class="sub">fixed</span></li>
-    <li><a href="#data">8 · Data sources</a></li>
+    <li><a href="#interactions">8 · Interactions</a><span class="sub">6 flows</span></li>
+    <li><a href="#data">9 · Data sources</a></li>
   </ol>
 </nav>
 
@@ -2293,7 +2294,472 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════
-     8 · DATA SOURCES
+     8 · INTERACTIONS · FLOWS
+     Each interaction is the closed loop: trigger → state change → store → coach reads it next time.
+     ═══════════════════════════════════════════════════════════ -->
+<section id="interactions" class="surface">
+  <div class="eyebrow">8 · INTERACTIONS · FLOWS</div>
+  <h2>How things connect.</h2>
+  <p class="lede">
+    The mockups so far are surfaces. <strong>This section is what happens between them.</strong>
+    Six concrete interactions — each shown with its trigger, what it stores, and how the coach
+    reads it on the next briefing. These are the closed loops that make the system feel like it
+    learns.
+  </p>
+</section>
+
+<!-- Shared interaction-card style -->
+<style>
+  .flow {
+    display: grid; grid-template-columns: 1fr auto; gap: 32px;
+    padding: 28px 64px 8px; max-width: 1600px;
+    align-items: start;
+  }
+  .flow .left { min-width: 0; }
+  .flow .right { width: 460px; flex-shrink: 0; }
+  .flow h3 {
+    font-family: var(--f-display); font-size: 38px; font-weight: 400;
+    letter-spacing: 0.5px; margin: 0 0 4px; line-height: 1.05;
+  }
+  .flow .num {
+    display: inline-block; background: var(--green); color: #001;
+    font-family: var(--f-display); font-size: 14px; letter-spacing: 1px;
+    padding: 3px 10px; border-radius: 4px; margin-bottom: 12px;
+  }
+  .flow .narrative {
+    color: rgba(246,247,248,0.86); font-size: 14.5px; line-height: 1.65;
+    margin: 8px 0 18px; max-width: 720px;
+  }
+  .flow .narrative strong { color: var(--ink); font-weight: 600; }
+  .doctrine-box {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 22px; margin-top: 14px;
+  }
+  .doctrine-box .head { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 12px; }
+  .doctrine-box dl { display: grid; grid-template-columns: 100px 1fr; gap: 8px 16px; margin: 0; font-family: var(--f-body); font-size: 12.5px; line-height: 1.55; }
+  .doctrine-box dt { font-weight: 700; color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase; font-size: 10px; padding-top: 2px; }
+  .doctrine-box dd { margin: 0; color: rgba(246,247,248,0.85); }
+  .doctrine-box dd code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 11.5px; }
+  .doctrine-box dd strong { color: var(--ink); }
+
+  /* Mini-phone for flow mockups — smaller frame so 2-3 fit in the right column */
+  .mini-phone {
+    position: relative; width: 220px; aspect-ratio: 220 / 450;
+    background: #000; border-radius: 26px; padding: 7px;
+    box-shadow: 0 30px 50px rgba(0,0,0,0.50), 0 8px 16px rgba(0,0,0,0.35), inset 0 0 0 1.5px rgba(255,255,255,0.04);
+    flex-shrink: 0;
+  }
+  .mini-phone .notch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 58px; height: 16px; background: #000; border-radius: 9px; z-index: 2; }
+  .mini-phone .screen { position: relative; width: 100%; height: 100%; background: var(--bg); border-radius: 20px; overflow: hidden; }
+  .mini-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+  .mini-row .step-arrow {
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-display); font-size: 24px; color: var(--green);
+    padding-top: 200px;
+  }
+  .mini-cap {
+    font-family: var(--f-body); font-size: 10px; color: var(--mute);
+    letter-spacing: 1.4px; text-transform: uppercase; margin-top: 8px;
+    text-align: center; width: 220px;
+  }
+</style>
+
+<!-- ─────────────────────────────────────────────────────────
+     8.1 · REPLY CHIPS — SOLID / TIRED / WRECKED
+     ───────────────────────────────────────────────────────── -->
+<div class="flow">
+  <div class="left">
+    <span class="num">8.1</span>
+    <h3>Reply chips: SOLID · TIRED · WRECKED</h3>
+    <p class="narrative">
+      The chips are the runner's voice in the loop. Tapping one records a check-in,
+      flips the chip to selected, and earns a one-line acknowledgement from the coach inline.
+      <strong>The real consequence is on the next briefing</strong> — the rating, combined
+      with HRV / RHR / sleep signals, can soften, hold, or harden tomorrow's session.
+    </p>
+    <div class="doctrine-box">
+      <div class="head">CLOSED LOOP</div>
+      <dl>
+        <dt>TRIGGER</dt><dd>Tap one chip. Toggle-once, can be changed within the same briefing.</dd>
+        <dt>STORES</dt><dd><code>check_ins(user_id, ts, rating, briefing_id, note)</code> — rating one of <code>solid</code> / <code>tired</code> / <code>wrecked</code>.</dd>
+        <dt>IMMEDIATE</dt><dd>Chip fills with rating color. Coach voice adds a one-liner inline ("OK — let's see how the legs are tomorrow"). No page navigation.</dd>
+        <dt>NEXT BRIEFING</dt><dd><strong>SOLID</strong> → coach holds or steps slightly. <strong>TIRED</strong> → softens next quality day (drop 1 rep, ease the float). <strong>WRECKED</strong> → swaps tomorrow's quality for easy, opens a recovery watch-list item.</dd>
+        <dt>WHY</dt><dd>Subjective rating + objective signals = full picture. RHR can lie if you slept well after stress; you can't. Both inputs together let the coach do its job.</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="right">
+    <!-- Mini mockup: chip BEFORE → AFTER showing inline coach reply + tomorrow's session softened -->
+    <div class="mini-row">
+      <div class="mini-phone">
+        <div class="notch"></div>
+        <div class="screen" style="padding:48px 14px 14px;">
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">How are the legs?</div>
+          <div style="display:flex;gap:6px;margin-bottom:14px;">
+            <button style="flex:1;background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 2px;border-radius:8px;font-family:var(--f-display);font-size:11px;letter-spacing:1px;">SOLID</button>
+            <button style="flex:1;background:rgba(243,173,56,0.12);border:1px solid rgba(243,173,56,0.55);color:var(--goal);padding:8px 2px;border-radius:8px;font-family:var(--f-display);font-size:11px;letter-spacing:1px;">TIRED</button>
+            <button style="flex:1;background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 2px;border-radius:8px;font-family:var(--f-display);font-size:11px;letter-spacing:1px;">WRECKED</button>
+          </div>
+          <div style="background:rgba(243,173,56,0.06);border:1px solid rgba(243,173,56,0.20);border-radius:10px;padding:10px 12px;font-family:var(--f-body);font-size:11px;line-height:1.5;color:rgba(246,247,248,0.85);">
+            <div style="font-family:var(--f-body);font-size:9px;color:var(--goal);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin-bottom:6px;">COACH · ACKNOWLEDGED</div>
+            Got it. Easy 5.8 stays easy today — HR under 140, no surge. We'll see what tomorrow's threshold looks like; if you're still flat, we move it.
+          </div>
+        </div>
+      </div>
+      <div class="mini-phone">
+        <div class="notch"></div>
+        <div class="screen" style="padding:48px 14px 14px;">
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--rest);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">TOMORROW · ADAPTED</div>
+          <div style="font-family:var(--f-display);font-size:20px;color:var(--ink);line-height:1;letter-spacing:0.5px;">EASY 6</div>
+          <div style="font-family:var(--f-body);font-size:10px;color:var(--mute);letter-spacing:1px;margin-top:4px;">WAS CRUISE INT · 7.9 MI</div>
+          <div style="background:rgba(243,173,56,0.06);border:1px solid rgba(243,173,56,0.20);border-radius:10px;padding:10px 12px;margin-top:12px;font-family:var(--f-body);font-size:11px;line-height:1.5;color:rgba(246,247,248,0.85);">
+            Yesterday's TIRED + RHR at 54 = enough signal to push the cruise to Wednesday. Same shape, just a day later. No fitness lost; recovery banked.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mini-cap">CHIP TAP → INLINE ACK → NEXT BRIEFING ADAPTED</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────
+     8.2 · GPX INGESTION
+     ───────────────────────────────────────────────────────── -->
+<div class="flow">
+  <div class="left">
+    <span class="num">8.2</span>
+    <h3>How the real course GPX gets in.</h3>
+    <p class="narrative">
+      Three vectors. The schematic placeholder is what you see <em>until one of them fires</em>.
+      Once a real GPX is attached, the schematic is replaced everywhere — the route polyline
+      is the actual line, the elevation bars are derived from real altitude samples, the
+      mile-segment notes ("climb at mile 6") come from grade analysis, not editorial text.
+    </p>
+    <div class="doctrine-box">
+      <div class="head">THREE INGEST VECTORS</div>
+      <dl>
+        <dt>UPLOAD</dt><dd><strong>+ Course GPX</strong> button on the race detail page → file picker (.gpx, .tcx, .fit) → server parses → writes <code>races.course_geometry</code> + <code>races.course_source = 'upload'</code>. Manual, runner-driven, works for any race.</dd>
+        <dt>LIBRARY</dt><dd>A curated <code>course_library</code> table holds GPX for known races (AFC, Boston, CIM, Disney, NYRR events). On race creation, we look up by name+date+location and auto-attach. Zero work from the runner for famous courses.</dd>
+        <dt>STRAVA</dt><dd>If you've run the course as a training run, the matched <code>strava_activities</code> row's GPS becomes the preview. Falls back to schematic if no match found.</dd>
+        <dt>RESULT</dt><dd>Schematic <strong>replaced everywhere it's referenced</strong> — race detail, today page race horizon, splits-vs-plan in post-race. Elevation bars become real per-mile gain/loss from altitude samples.</dd>
+        <dt>WHEN</dt><dd>(a) at race creation (library) (b) anytime user uploads (c) on Strava sync (auto-match). All three idempotent — re-attaching overwrites cleanly.</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="right">
+    <!-- Mini mockup: BEFORE (schematic) → AFTER (real route) -->
+    <div class="mini-row">
+      <div class="mini-phone">
+        <div class="notch"></div>
+        <div class="screen" style="padding:38px 12px 12px;">
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">COURSE</div>
+          <div style="background:rgba(255,255,255,0.025);border-radius:8px;padding:14px 10px;font-family:var(--f-body);font-size:9px;color:var(--mute);text-align:center;line-height:1.5;letter-spacing:0.5px;">
+            <div style="font-size:30px;color:var(--dim);margin-bottom:8px;">⎯⎯⎯</div>
+            SCHEMATIC<br>GPX PENDING
+          </div>
+          <button style="width:100%;margin-top:10px;background:rgba(62,189,65,0.10);border:1px solid rgba(62,189,65,0.30);color:var(--green);padding:10px 0;border-radius:8px;font-family:var(--f-display);font-size:12px;letter-spacing:1.2px;">+ COURSE GPX</button>
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);text-align:center;margin-top:8px;line-height:1.5;">Or wait for Strava match on training run</div>
+        </div>
+      </div>
+      <div class="mini-phone">
+        <div class="notch"></div>
+        <div class="screen" style="padding:38px 12px 12px;">
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between;"><span>COURSE</span><span style="color:var(--green);">● REAL GPX</span></div>
+          <div style="background:rgba(255,255,255,0.025);border-radius:8px;padding:14px;">
+            <svg viewBox="0 0 180 100" style="width:100%;height:auto;">
+              <path d="M10,80 C30,75 50,72 70,55 C85,40 100,30 115,32 C125,33 135,45 145,60 C155,72 165,80 175,82" fill="none" stroke="#FF8847" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="10" cy="80" r="4" fill="#3EBD41" stroke="#0a0c10" stroke-width="1.5"/>
+              <circle cx="175" cy="82" r="4" fill="#F3AD38" stroke="#0a0c10" stroke-width="1.5"/>
+            </svg>
+            <div style="font-family:var(--f-body);font-size:8px;color:var(--mute);letter-spacing:0.5px;margin-top:6px;">SOURCE · CURATED LIBRARY · MATCHED AFC HALF</div>
+          </div>
+          <div style="font-family:var(--f-body);font-size:10px;color:rgba(246,247,248,0.85);margin-top:10px;line-height:1.5;">Route + elevation now data-driven. Segment notes derived from grade analysis.</div>
+        </div>
+      </div>
+    </div>
+    <div class="mini-cap">SCHEMATIC → REAL GPX ATTACHED</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────
+     8.3 · READINESS CHIP — WHAT'S IN 88
+     ───────────────────────────────────────────────────────── -->
+<div class="flow">
+  <div class="left">
+    <span class="num">8.3</span>
+    <h3>Readiness 88 — what's behind the number.</h3>
+    <p class="narrative">
+      The readiness chip is a composite. Tapping it opens a breakdown showing each input's
+      contribution. <strong>The same breakdown lives on HEALTH as a full section</strong> —
+      same numbers, more room for explainer copy per input. That's the right place to teach
+      what each input does and how it weighs.
+    </p>
+    <div class="doctrine-box">
+      <div class="head">COMPOSITION</div>
+      <dl>
+        <dt>BASELINE</dt><dd>70 (your normal). Range 0–100. Bands: <strong>&gt;85 sharp</strong>, <strong>65–85 ready</strong>, <strong>50–65 moderate</strong>, <strong>&lt;50 pull back</strong>.</dd>
+        <dt>SLEEP</dt><dd>25% weight. 7-night avg vs 7.5h target. −2 per 0.25h below target, +1 per 0.25h above.</dd>
+        <dt>HRV</dt><dd>25% weight. Last night vs 30-day baseline. Linear: +/−1 per 2% deviation.</dd>
+        <dt>RHR</dt><dd>20% weight. 3-day avg vs 60-day baseline. −2 per bpm above, capped at −10.</dd>
+        <dt>SUBJECTIVE</dt><dd>15% weight. Last 2 check-ins. SOLID = +3, TIRED = −3, WRECKED = −8.</dd>
+        <dt>LOAD</dt><dd>15% weight. Acute:chronic ratio (7d:28d mileage). 0.8–1.3 neutral, &gt;1.5 = −5 (overreaching).</dd>
+        <dt>TAP</dt><dd>Opens the breakdown sheet (right). Also accessible as a permanent section on HEALTH.</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="right">
+    <div class="mini-phone">
+      <div class="notch"></div>
+      <div class="screen" style="padding:36px 12px 12px;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;">Readiness · breakdown</div>
+          <div style="font-family:var(--f-body);font-size:11px;color:var(--mute);">×</div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px;">
+          <span style="font-family:var(--f-display);font-size:44px;color:var(--green);line-height:1;">88</span>
+          <span style="font-family:var(--f-body);font-size:10px;color:var(--green);letter-spacing:1.2px;letter-spacing:1px;">READY</span>
+        </div>
+        <!-- Per-input rows -->
+        <div style="display:flex;flex-direction:column;gap:6px;font-family:var(--f-body);font-size:10px;">
+          <div style="background:rgba(243,173,56,0.06);border-radius:6px;padding:8px 9px;">
+            <div style="display:flex;justify-content:space-between;color:var(--mute);letter-spacing:1px;font-weight:700;text-transform:uppercase;font-size:8.5px;"><span>SLEEP · 25%</span><span style="color:var(--goal);">−5</span></div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;"><span style="color:var(--ink);">6.7h vs 7.5h target</span><span style="color:var(--mute);">0.8h short</span></div>
+          </div>
+          <div style="background:rgba(62,189,65,0.06);border-radius:6px;padding:8px 9px;">
+            <div style="display:flex;justify-content:space-between;color:var(--mute);letter-spacing:1px;font-weight:700;text-transform:uppercase;font-size:8.5px;"><span>HRV · 25%</span><span style="color:var(--green);">+13</span></div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;"><span style="color:var(--ink);">71ms vs 56 baseline</span><span style="color:var(--green);">+27%</span></div>
+          </div>
+          <div style="background:rgba(252,77,100,0.06);border-radius:6px;padding:8px 9px;">
+            <div style="display:flex;justify-content:space-between;color:var(--mute);letter-spacing:1px;font-weight:700;text-transform:uppercase;font-size:8.5px;"><span>RHR · 20%</span><span style="color:var(--over);">−10</span></div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;"><span style="color:var(--ink);">54 vs 48 baseline</span><span style="color:var(--over);">+6 bpm</span></div>
+          </div>
+          <div style="background:rgba(255,255,255,0.025);border-radius:6px;padding:8px 9px;">
+            <div style="display:flex;justify-content:space-between;color:var(--mute);letter-spacing:1px;font-weight:700;text-transform:uppercase;font-size:8.5px;"><span>CHECK-IN · 15%</span><span style="color:var(--mute);">0</span></div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;"><span style="color:var(--ink);">No rating yet today</span><span style="color:var(--mute);">—</span></div>
+          </div>
+          <div style="background:rgba(255,255,255,0.025);border-radius:6px;padding:8px 9px;">
+            <div style="display:flex;justify-content:space-between;color:var(--mute);letter-spacing:1px;font-weight:700;text-transform:uppercase;font-size:8.5px;"><span>LOAD · 15%</span><span style="color:var(--mute);">+0</span></div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;"><span style="color:var(--ink);">A:C 1.18</span><span style="color:var(--mute);">neutral</span></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-family:var(--f-body);font-size:10px;color:var(--mute);line-height:1.55;">
+          Base 70 + 13 HRV − 5 sleep − 10 RHR + 20 = <span style="color:var(--green);font-weight:700;">88</span>. Tap any row to learn what that input means.
+        </div>
+      </div>
+    </div>
+    <div class="mini-cap">TAP CHIP → BREAKDOWN · ALSO ON HEALTH</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────
+     8.4 · RECAP → RUN DETAIL
+     ───────────────────────────────────────────────────────── -->
+<div class="flow">
+  <div class="left">
+    <span class="num">8.4</span>
+    <h3>Recap → Run detail.</h3>
+    <p class="narrative">
+      Today's recap is the summary. The <em>"Splits · route · form data →"</em> link at the
+      bottom is the drill-down — opens a dedicated run page with everything the watch and
+      Strava captured: per-mile splits, route, HR by zone, cadence over time, elevation,
+      weather. <strong>Same surface used for past-day click-through</strong> — tap any
+      completed day in the week-strip to land here.
+    </p>
+    <div class="doctrine-box">
+      <div class="head">DRILL-DOWN</div>
+      <dl>
+        <dt>TRIGGER</dt><dd>Tap "Splits · route · form data →" on TODAY's recap. OR tap a completed day in any week-strip. OR tap a row in a training log list view.</dd>
+        <dt>ROUTE</dt><dd><code>/runs/&lt;activity_id&gt;</code></dd>
+        <dt>READS</dt><dd><code>strava_activities</code> (per-mile splits, HR stream, cadence stream, GPS line, weather snapshot)</dd>
+        <dt>SHOWS</dt><dd><strong>Hero stats</strong> (distance, pace, time) · <strong>per-mile splits table</strong> (mile, pace, HR, cadence, elev) · <strong>route polyline</strong> · <strong>HR-zone bars</strong> · <strong>cadence per mile</strong> · <strong>elevation bar chart</strong> · <strong>conditions chip</strong> · <strong>coach mini-comment</strong> tied to the run</dd>
+        <dt>BACK</dt><dd>← restores the previous surface and scroll position.</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="right">
+    <div class="mini-phone">
+      <div class="notch"></div>
+      <div class="screen" style="padding:36px 12px 10px;overflow-y:auto;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-family:var(--f-display);font-size:14px;color:var(--mute);">←</span><span style="font-family:var(--f-display);font-size:12px;letter-spacing:1.2px;">LONG · SUN MAY 24</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+          <div><div style="font-family:var(--f-display);font-size:24px;color:var(--dist);line-height:1;">11.1</div><div style="font-size:8px;color:var(--mute);letter-spacing:1px;">MILES</div></div>
+          <div><div style="font-family:var(--f-display);font-size:24px;color:var(--green);line-height:1;">8:50</div><div style="font-size:8px;color:var(--mute);letter-spacing:1px;">PACE</div></div>
+          <div><div style="font-family:var(--f-display);font-size:24px;color:var(--ink);line-height:1;">1:38</div><div style="font-size:8px;color:var(--mute);letter-spacing:1px;">TIME</div></div>
+        </div>
+        <!-- Splits bars per mile -->
+        <div style="font-family:var(--f-body);font-size:8px;color:var(--mute);letter-spacing:1.2px;font-weight:700;text-transform:uppercase;margin:8px 0 6px;">SPLITS · PACE PER MILE</div>
+        <div style="display:flex;align-items:end;gap:2px;height:50px;">
+          <div style="flex:1;background:var(--green);height:60%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:65%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:70%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:68%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:72%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:75%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:73%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:78%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:80%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--green);height:85%;border-radius:1.5px 1.5px 0 0;"></div>
+          <div style="flex:1;background:var(--goal);height:90%;border-radius:1.5px 1.5px 0 0;"></div>
+        </div>
+        <div style="display:flex;gap:2px;margin-top:3px;font-family:var(--f-body);font-size:7px;color:var(--mute);justify-content:space-between;"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span></div>
+        <!-- HR zone bars -->
+        <div style="font-family:var(--f-body);font-size:8px;color:var(--mute);letter-spacing:1.2px;font-weight:700;text-transform:uppercase;margin:10px 0 4px;">HR · TIME IN ZONE</div>
+        <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;">
+          <div style="flex:18;background:var(--rest);"></div>
+          <div style="flex:62;background:var(--green);"></div>
+          <div style="flex:18;background:var(--goal);"></div>
+          <div style="flex:2;background:var(--over);"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:var(--f-body);font-size:7px;color:var(--mute);margin-top:3px;"><span>Z1 18%</span><span>Z2 62%</span><span>Z3 18%</span><span>Z4 2%</span></div>
+        <!-- mini route schematic -->
+        <div style="font-family:var(--f-body);font-size:8px;color:var(--mute);letter-spacing:1.2px;font-weight:700;text-transform:uppercase;margin:10px 0 4px;">ROUTE</div>
+        <svg viewBox="0 0 180 60" style="width:100%;height:auto;">
+          <path d="M10,40 C25,32 45,28 65,30 C80,32 95,42 110,40 C125,38 140,30 160,28 C168,28 172,30 175,32" fill="none" stroke="#27B4E0" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="10" cy="40" r="3" fill="#3EBD41"/>
+          <circle cx="175" cy="32" r="3" fill="#F3AD38"/>
+        </svg>
+        <div style="background:rgba(62,189,65,0.06);border:1px solid rgba(62,189,65,0.20);border-radius:8px;padding:8px 10px;margin-top:10px;font-family:var(--f-body);font-size:9.5px;line-height:1.5;color:rgba(246,247,248,0.85);">
+          Even effort. Mile 11 was the fastest — closing strong. HR climbed 8 bpm over the run, which is normal drift for 60° humid.
+        </div>
+      </div>
+    </div>
+    <div class="mini-cap">/runs/&lt;activity_id&gt;</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────
+     8.5 · CARD → READER
+     ───────────────────────────────────────────────────────── -->
+<div class="flow">
+  <div class="left">
+    <span class="num">8.5</span>
+    <h3>Card → Reader.</h3>
+    <p class="narrative">
+      The explainer cards (WHY REST WORKS, HRV · WHAT + WHY, etc.) tease the topic. The
+      <em>"Read the research →"</em> link opens an in-app reader — not a dump into an academic
+      abstract. <strong>Faff owns the article surface</strong>: curated coach-voice content
+      first, citation links to the actual papers below. Stays in the coaching frame.
+    </p>
+    <div class="doctrine-box">
+      <div class="head">LEARN SURFACE</div>
+      <dl>
+        <dt>TRIGGER</dt><dd>Tap "Read the research →" on any explainer card.</dd>
+        <dt>ROUTE</dt><dd><code>/learn/&lt;topic-slug&gt;</code> (e.g., <code>/learn/why-rest-works</code>, <code>/learn/hrv</code>, <code>/learn/vo2-max</code>)</dd>
+        <dt>READS</dt><dd><code>learn_articles</code> — coach-curated, versioned, written in our voice. Each article carries 2–4 citation rows pointing to actual papers (DOI, journal, year).</dd>
+        <dt>SHOWS</dt><dd>Topic title · 3–4 paragraph plain-English explainer · "What the research says" section · citations as outbound links · related topics card at bottom</dd>
+        <dt>BACK</dt><dd>← restores the previous surface. Most readers come from TODAY or HEALTH.</dd>
+        <dt>WHY OUR OWN SURFACE</dt><dd>Sending the runner to a PubMed abstract breaks the voice. We translate; we cite.</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="right">
+    <div class="mini-phone">
+      <div class="notch"></div>
+      <div class="screen" style="padding:36px 14px 14px;overflow-y:auto;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;"><span style="font-family:var(--f-display);font-size:14px;color:var(--mute);">←</span><span style="font-family:var(--f-display);font-size:11px;color:var(--learn);letter-spacing:1.4px;">LEARN · RECOVERY</span></div>
+        <h2 style="font-family:var(--f-display);font-size:24px;line-height:1.05;letter-spacing:0.5px;margin:0 0 10px;color:var(--ink);">Why rest works.</h2>
+        <p style="font-family:var(--f-body);font-size:11px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0 0 8px;">Training doesn't make you fitter. Recovering from training does. The work tears the system down; the rest builds it back, stronger.</p>
+        <p style="font-family:var(--f-body);font-size:11px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0 0 8px;">Inside a single rest day, three things land: glycogen restocks, muscle micro-tears repair, and the nervous system that fired hard yesterday resets. Skip the rest and you skip the adaptation.</p>
+        <p style="font-family:var(--f-body);font-size:11px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0 0 12px;">The classic mistake: counting workouts, not adaptations. A week with two hard days plus rest produces more fitness than a week of seven moderate days.</p>
+        <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin:8px 0 6px;">WHAT THE RESEARCH SAYS</div>
+        <div style="font-family:var(--f-body);font-size:10px;color:rgba(246,247,248,0.85);line-height:1.55;display:flex;flex-direction:column;gap:6px;">
+          <div style="border-left:2px solid var(--learn);padding-left:8px;"><span style="color:var(--learn);font-weight:600;">Seiler, 2010 →</span> Polarized training distributions out-perform threshold-heavy ones across elite endurance athletes.</div>
+          <div style="border-left:2px solid var(--learn);padding-left:8px;"><span style="color:var(--learn);font-weight:600;">Mujika, 2017 →</span> Recovery as a trainable skill — controlled rest improves response to subsequent stimulus.</div>
+        </div>
+      </div>
+    </div>
+    <div class="mini-cap">/learn/why-rest-works</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────
+     8.6 · GAP → INPUT → COACH
+     ───────────────────────────────────────────────────────── -->
+<div class="flow">
+  <div class="left">
+    <span class="num">8.6</span>
+    <h3>Gap → Input → Coach.</h3>
+    <p class="narrative">
+      This is the closed loop the rest of the deck depends on. The COACH NEEDS card is the
+      input. Tap +Add → inline sheet → save → coach state invalidated → next briefing has
+      the value. <strong>The voice acknowledges the new field once</strong> ("Now that I have
+      your height..."), then the experiment / target / prescription that was blocked behind
+      it surfaces as a regular card from then on.
+    </p>
+    <div class="doctrine-box">
+      <div class="head">CLOSED LOOP · WORKED EXAMPLE: HEIGHT</div>
+      <dl>
+        <dt>1. TRIGGER</dt><dd>Tap "+ Add" on the COACH NEEDS · YOUR HEIGHT card.</dd>
+        <dt>2. INPUT</dt><dd>Sheet slides up: numeric field + unit toggle (cm/in) + Save. Validates 120–220 cm range. Returns focus + keyboard automatically.</dd>
+        <dt>3. SAVE</dt><dd><code>PATCH /api/profile {height_cm: 180}</code>. Writes <code>profile.height_cm</code>. Logs <code>coach_intents(reason='profile_field_added', field='height_cm', value='180')</code>.</dd>
+        <dt>4. INVALIDATE</dt><dd>Coach state cache busted for this user. Next briefing fetch recomputes topics from scratch.</dd>
+        <dt>5. NEXT BRIEFING</dt><dd>Gap card removed (height is no longer missing). Topic eligibility recalculated: <code>cadence_experiment</code> now passes its prereq check (needs height). Voice acknowledges once via the logged intent: <em>"Now that I have your height, let's run a cadence experiment on tomorrow's easy — target 165–168 spm."</em></dd>
+        <dt>6. ONGOING</dt><dd>Profile page now shows Height 180 cm. The intent log keeps it from being re-acknowledged forever — one mention, then it's just part of the runner's record.</dd>
+        <dt>GENERALIZES</dt><dd>Same pattern for weight (manual override), age, city, race goal, race date, preferred long-run day. Every profile_gap card rides this loop.</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="right">
+    <div class="mini-row">
+      <!-- STATE 1: gap card visible -->
+      <div class="mini-phone">
+        <div class="notch"></div>
+        <div class="screen" style="padding:42px 12px 12px;">
+          <div style="font-family:var(--f-body);font-size:8px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin-bottom:4px;">TODAY · CARDS</div>
+          <div style="background:rgba(252,77,100,0.05);border:1px solid rgba(252,77,100,0.20);border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div>
+              <div style="font-family:var(--f-body);font-size:8px;color:var(--over);letter-spacing:1.2px;font-weight:700;text-transform:uppercase;">COACH NEEDS</div>
+              <div style="font-family:var(--f-display);font-size:13px;color:var(--ink);margin-top:2px;">Your height</div>
+              <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);margin-top:2px;">Unlocks cadence target</div>
+            </div>
+            <button style="background:rgba(252,77,100,0.15);color:var(--over);border:1px solid rgba(252,77,100,0.30);border-radius:999px;padding:5px 10px;font-family:var(--f-display);font-size:9px;letter-spacing:1px;">+ ADD</button>
+          </div>
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);text-align:center;margin-top:120px;letter-spacing:1px;">1. THE GAP CARD</div>
+        </div>
+      </div>
+      <!-- STATE 2: input sheet -->
+      <div class="mini-phone">
+        <div class="notch"></div>
+        <div class="screen" style="padding:0 0;">
+          <!-- dimmed bg -->
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);"></div>
+          <!-- bottom sheet -->
+          <div style="position:absolute;bottom:0;left:0;right:0;background:#11141a;border-radius:14px 14px 0 0;padding:18px 14px 24px;">
+            <div style="width:32px;height:3px;background:rgba(255,255,255,0.18);border-radius:2px;margin:0 auto 14px;"></div>
+            <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin-bottom:10px;">Add your height</div>
+            <div style="display:flex;align-items:baseline;gap:8px;background:rgba(255,255,255,0.04);border:1px solid var(--green);border-radius:8px;padding:10px 12px;">
+              <span style="font-family:var(--f-display);font-size:24px;color:var(--ink);">180</span>
+              <span style="font-family:var(--f-body);font-size:10px;color:var(--mute);">cm</span>
+              <span style="flex:1;"></span>
+              <button style="background:transparent;border:1px solid var(--line);color:var(--mute);border-radius:6px;padding:3px 7px;font-family:var(--f-display);font-size:9px;letter-spacing:1px;">CM</button>
+              <button style="background:transparent;border:1px solid var(--line);color:var(--mute);border-radius:6px;padding:3px 7px;font-family:var(--f-display);font-size:9px;letter-spacing:1px;">IN</button>
+            </div>
+            <button style="width:100%;background:var(--green);color:#001;border:none;border-radius:8px;padding:10px 0;margin-top:10px;font-family:var(--f-display);font-size:11px;letter-spacing:1.2px;">SAVE</button>
+          </div>
+          <div style="position:absolute;top:160px;left:0;right:0;font-family:var(--f-body);font-size:9px;color:var(--mute);text-align:center;letter-spacing:1px;">2. INLINE INPUT SHEET</div>
+        </div>
+      </div>
+      <!-- STATE 3: next briefing -->
+      <div class="mini-phone">
+        <div class="notch"></div>
+        <div class="screen" style="padding:42px 12px 12px;">
+          <div style="font-family:var(--f-body);font-size:8px;color:var(--green);letter-spacing:1.4px;font-weight:700;text-transform:uppercase;margin-bottom:6px;">NEXT BRIEFING · COACH</div>
+          <div style="font-family:var(--f-body);font-size:10px;line-height:1.55;color:rgba(246,247,248,0.85);margin-bottom:12px;">Now that I have your height (180 cm), let's run a cadence experiment on tomorrow's easy — target <strong style="color:var(--ink);">165–168 spm</strong>.</div>
+          <div style="background:rgba(176,132,255,0.04);border:1px solid rgba(176,132,255,0.20);border-radius:10px;padding:10px 12px;">
+            <div style="font-family:var(--f-body);font-size:8px;color:var(--learn);letter-spacing:1.2px;font-weight:700;text-transform:uppercase;">CADENCE · EXPERIMENT</div>
+            <div style="font-family:var(--f-display);font-size:14px;color:var(--ink);margin-top:4px;">TOMORROW'S EASY · +5 SPM</div>
+            <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);margin-top:4px;line-height:1.55;">From 158 → 165–168. ~20% knee-load reduction at this stride.</div>
+          </div>
+          <div style="font-family:var(--f-body);font-size:9px;color:var(--mute);text-align:center;margin-top:60px;letter-spacing:1px;">3. CARD APPEARS · GAP GONE</div>
+        </div>
+      </div>
+    </div>
+    <div class="mini-cap">CARD → SHEET → NEXT BRIEFING</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     9 · DATA SOURCES
      ═══════════════════════════════════════════════════════════ -->
 <section id="data" class="data-sources">
   <h2>Data sources behind every state</h2>
