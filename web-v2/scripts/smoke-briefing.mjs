@@ -42,6 +42,7 @@ const env = Object.fromEntries(
 const USER_ID = env.DEFAULT_USER_ID || '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const args = parseArgs(process.argv.slice(2));
 const surface = args.surface ?? 'today';
+const modeOverride = args.mode ?? null; // null = let router decide
 
 const pool = new pg.Pool({
   connectionString: env.DATABASE_URL,
@@ -183,35 +184,35 @@ const Prereqs = {
   },
 };
 
-// ── System prompt (mirrors coach/prompts/index.ts post-run) ──
-const SYSTEM_TODAY_POST_RUN = `You are the coach on the TODAY page · POST-RUN mode.
-
-# Voice
+// ── System prompts (mirrors coach/prompts/index.ts per-mode) ──
+const DOCTRINE_VOICE = `# Voice
 Warm, direct, "we"/"us" language. Anchored to the moment.
 Not textbook. Not jargon. Not reciting data.
 3-4 short paragraphs. Open with a one-line LEAD as a noun phrase.
 
-BANNED PHRASES:
+BANNED PHRASES (do not use, do not paraphrase, do not invent synonyms — including in topic coach_notes):
 - "aerobic engine" / "absorption window"
-- "anchor" / "everything else supports it"
+- "anchor" / "anchored by" / "everything else supports it"
 - "closest you'll ever come" or anything implying final attempt
 - "the foundation" / "phase of training" / "putting in the work"
+- Generic gym-speak ("crush it", "grind", "no pain no gain")
 
 # Output (strict JSON, NO fences)
 {
   "lead": "<noun phrase>",
   "voice": ["paragraph 1", "paragraph 2", ...],
   "topics": [ { "kind": "<topic_kind>", "payload": {...}, "coach_note": "<short>" } ]
-}
+}`;
 
-# What you talk about (post-run)
-- The run that just happened
-- Week's volume hit
-- One signal to watch IF worth raising
-- Next workout in plain terms
-- A-race as the season's frame
+const PROMPTS = {
+  'post-run': `You are the coach on the TODAY page · POST-RUN mode.\n\n${DOCTRINE_VOICE}\n\n# What you talk about\n- The run that just happened\n- Week's volume hit\n- One signal to watch IF worth raising\n- Next workout in plain terms\n- A-race as the season's frame\n\nEnd by inviting check-in.`,
+  'pre-run':  `You are the coach on the TODAY page · PRE-RUN mode.\n\n${DOCTRINE_VOICE}\n\n# What you talk about\n- What today's run is for\n- Yesterday as context\n- Any signals worth knowing before lacing up\n- Week ahead briefly\n\nDon't recap a run that hasn't happened. Don't prescribe paces unless data supports them.`,
+  'rest-day': `You are the coach on the TODAY page · REST DAY mode.\n\n${DOCTRINE_VOICE}\n\n# What you talk about\n- Permission, not absence. Rest IS the work.\n- Sleep, mobility, recovery framing\n- Tomorrow's session as quiet anticipation\n- NEVER "you should be running" energy\n\nLength: SHORTER than post-run. 2-3 paragraphs. Brevity is part of the doctrine here.`,
+  'race-day': `You are the coach on the TODAY page · RACE DAY mode.\n\n${DOCTRINE_VOICE}\n\n# What you talk about\n- Calm + ready. NO volume talk. NO training-load math.\n- Splits target, fueling reminder, weather, "go get it"\n- Trust they did the work. Don't reopen the build.\n- End with a one-liner of confidence.`,
+};
 
-End by inviting check-in ("Let me know how it felt").`;
+// Resolved later from modeOverride or router result.
+let SYSTEM_PROMPT = '';
 
 function buildUserMsg(state, resolved, eligible) {
   const L = [];
@@ -266,7 +267,17 @@ async function main() {
     cadence_baseline: state.cadenceBaseline,
   });
 
-  const resolved = resolveMode(surface, state);
+  let resolved = resolveMode(surface, state);
+  if (modeOverride) {
+    const cand = {
+      'post-run': ['run_recap','sleep_deficit','next_workout','race_horizon','cadence_experiment','profile_gap'],
+      'pre-run':  ['next_workout','sleep_deficit','watch_list','race_horizon','profile_gap'],
+      'rest-day': ['next_workout','fun_fact','race_horizon'],
+      'race-day': ['race_horizon'],
+    }[modeOverride];
+    if (!cand) { console.error('unknown mode override:', modeOverride); process.exit(2); }
+    resolved = { surface, mode: modeOverride, candidateTopics: cand };
+  }
   const eligible = resolved.candidateTopics.filter((k) => Prereqs[k](state));
   console.log('\n━━━ MODE ━━━');
   console.log(`  surface: ${resolved.surface}`);
@@ -274,13 +285,14 @@ async function main() {
   console.log(`  candidates: ${resolved.candidateTopics.join(', ')}`);
   console.log(`  eligible:   ${eligible.join(', ')}`);
 
+  SYSTEM_PROMPT = PROMPTS[resolved.mode] ?? PROMPTS['post-run'];
   console.log('\n━━━ LLM CALL ━━━');
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const t0 = Date.now();
   const resp = await client.messages.create({
     model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1800,
-    system: [{ type: 'text', text: SYSTEM_TODAY_POST_RUN, cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: buildUserMsg(state, resolved, eligible) }],
   });
   const raw = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();

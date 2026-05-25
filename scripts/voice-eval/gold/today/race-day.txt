@@ -1,0 +1,25 @@
+SURFACE: today
+MODE: race-day
+SOURCE: docs/coach/mockups/deck-v1-2026-05-25.html state D (race day)
+
+LEAD: You're ready.
+
+VOICE:
+Twelve weeks of work shows up today. You did it. Now do the simple thing — let the early miles feel too easy. The first 5K is the test of your patience.
+
+Target 6:52/mi. If you're at 6:40 at mile 2 — back off. If you're at 7:00 and feeling fine — hold. The work for 1:30 is done; the only thing left is to spend it intelligently.
+
+Eat the gel at mile 4 and mile 8. Drink at every aid station even if you don't think you need it. 65°F, light breeze — clean conditions.
+
+Go get it.
+
+DOCTRINE NOTES:
+- Calm + ready. NO volume talk. NO training-load math.
+- Trust the build that's already done
+- Splits target stated as one line ("Target 6:52/mi")
+- Concrete patience guardrails ("if you're at 6:40 at mile 2 — back off")
+- Fueling reminder concrete
+- Weather context one line
+- Ends with confidence, not a lecture ("Go get it.")
+- 4 paragraphs max
+- NO BANNED PHRASES — especially nothing implying "last chance" or finality

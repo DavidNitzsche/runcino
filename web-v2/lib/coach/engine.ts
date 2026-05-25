@@ -23,7 +23,23 @@ export interface BriefingResponse {
   lead: string;
   voice: string[];
   topics: Topic[];
-  _state: { user_id: string; today: string; candidateKinds: string[]; eligibleKinds: string[] };
+  _state: {
+    user_id: string;
+    today: string;
+    candidateKinds: string[];
+    eligibleKinds: string[];
+    // Glance metrics — used by web-companion MicroStatStrip and watch glance.
+    weekDone: number;
+    weekPlanned: number | null;
+    phaseLabel: string | null;
+    sleep7Avg: number | null;
+    sleep7Deficit: number;
+    rhrCurrent: number | null;
+    rhrBaseline: number | null;
+    cadenceBaseline: number | null;
+    nextARaceName: string | null;
+    daysToARace: number | null;
+  };
 }
 
 export async function generateBriefing(userId: string, surface: Surface, raceSlug?: string): Promise<BriefingResponse> {
@@ -67,6 +83,16 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
       today: state.today,
       candidateKinds: resolved.candidateTopics,
       eligibleKinds: eligible,
+      weekDone: state.weekDone,
+      weekPlanned: state.weekPlanned,
+      phaseLabel: state.phaseLabel,
+      sleep7Avg: state.sleep7Avg,
+      sleep7Deficit: state.sleep7Deficit,
+      rhrCurrent: state.rhrCurrent,
+      rhrBaseline: state.rhrBaseline,
+      cadenceBaseline: state.cadenceBaseline,
+      nextARaceName: state.nextARace?.name ?? null,
+      daysToARace: state.nextARace?.days_to_race ?? null,
     },
   };
 }

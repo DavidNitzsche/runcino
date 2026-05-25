@@ -1,6 +1,5 @@
 import { TopNav } from '@/components/layout/TopNav';
-import { CoachBlock } from '@/components/cards/CoachBlock';
-import { TopicRenderer } from '@/components/cards/TopicRenderer';
+import { TodayLayouts } from '@/components/layout/TodayLayouts';
 import { generateBriefing } from '@/lib/coach/engine';
 
 // LLM call gated by topic-prereq filter, not by Next's route cache.
@@ -9,7 +8,6 @@ export const dynamic = 'force-dynamic';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
-// Server component — fetches the briefing at request time. Phase 2 adds cache.
 export default async function TodayPage() {
   let briefing: Awaited<ReturnType<typeof generateBriefing>> | null = null;
   let error: string | null = null;
@@ -33,35 +31,36 @@ export default async function TodayPage() {
       )}
 
       {briefing && (
-        <div style={{
-          maxWidth: 460,
-          margin: '0 auto',
-          background: 'var(--bg)',
-          paddingBottom: 40,
-        }}>
-          {/* Mobile-first column matching iPhone deck width. Web companion lands in P2. */}
-          <CoachBlock
+        <>
+          <TodayLayouts
             lead={briefing.lead}
             voice={briefing.voice}
+            topics={briefing.topics}
+            mode={briefing.mode}
             briefingId={`${briefing._state.user_id}|${briefing._state.today}|${briefing.surface}`}
-            askPrompt={
-              briefing.mode === 'post-run'  ? 'Let me know how it felt.' :
-              briefing.mode === 'pre-run'   ? 'How are the legs?' :
-              briefing.mode === 'rest-day'  ? 'Anything sore?' :
-                                              'Ready?'
-            }
+            greetingName="David"
+            todayLabel={todayLabel(briefing._state.today)}
+            metaLine={metaLineFor(briefing)}
+            askPrompt={askPromptFor(briefing.mode)}
+            // Readiness wires in P3.3 (§8.3 breakdown loop); placeholder for now.
+            readinessScore={78}
+            readinessLabel="READY"
+            glance={{
+              sleep7Avg:       briefing._state.sleep7Avg,
+              sleep7Deficit:   briefing._state.sleep7Deficit,
+              rhrCurrent:      briefing._state.rhrCurrent,
+              rhrBaseline:     briefing._state.rhrBaseline,
+              cadenceBaseline: briefing._state.cadenceBaseline,
+              weekDone:        briefing._state.weekDone,
+              weekPlanned:     briefing._state.weekPlanned,
+            }}
           />
 
-          <div style={{ padding: '4px 24px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {briefing.topics.map((topic, i) => (
-              <TopicRenderer key={i} topic={topic} />
-            ))}
-          </div>
-
-          {/* Debug strip — visible only in dev. Drops in P2 with full styling pass. */}
+          {/* Debug strip — dev only. */}
           {process.env.NODE_ENV !== 'production' && (
             <div style={{
-              padding: '12px 24px', fontFamily: 'var(--f-body)', fontSize: 10,
+              maxWidth: 1440, margin: '0 auto',
+              padding: '12px 40px', fontFamily: 'var(--f-body)', fontSize: 10,
               color: 'var(--dim)', letterSpacing: '0.5px',
               borderTop: '1px dashed var(--line-2)',
             }}>
@@ -71,8 +70,32 @@ export default async function TodayPage() {
               <div>EMITTED: {briefing.topics.map(t => t.kind).join(', ')}</div>
             </div>
           )}
-        </div>
+        </>
       )}
     </main>
   );
+}
+
+function todayLabel(iso: string): string {
+  const d = new Date(iso + 'T12:00:00Z');
+  const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return `${days[d.getUTCDay()]} · ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+function askPromptFor(mode: string): string {
+  switch (mode) {
+    case 'post-run':  return 'Let me know how it felt.';
+    case 'pre-run':   return 'How are the legs?';
+    case 'rest-day':  return 'Anything sore?';
+    case 'race-day':  return 'Ready?';
+    default:          return 'Let me know.';
+  }
+}
+
+function metaLineFor(briefing: Awaited<ReturnType<typeof generateBriefing>>): string | undefined {
+  const lines: string[] = [];
+  // The state-loader puts phaseLabel / next A-race countdown into _state in P3+;
+  // for now we synthesize from what we know.
+  return lines.length ? lines.join(' · ') : undefined;
 }

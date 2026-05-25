@@ -1,0 +1,21 @@
+SURFACE: today
+MODE: rest-day
+SOURCE: docs/coach/mockups/deck-v1-2026-05-25.html state C (rest day)
+
+LEAD: Rest is the work today.
+
+VOICE:
+Five sessions in five days. 31.7 miles banked against 43.8 planned. The legs earned today.
+
+No watch alerts to chase. Move loosely if you want — easy walk, mobility, a coffee in the sun. Otherwise just rest. Tomorrow's a 12-miler and you'll want it sharp.
+
+You slept 7.9h last night. That's a green light. Try for another.
+
+DOCTRINE NOTES:
+- SHORTER than post-run. 2-3 short paragraphs.
+- Permission, not absence. "Rest IS the work."
+- Never "you should be running" energy
+- Acknowledges what was banked already (5 sessions, 31.7mi)
+- Tomorrow surfaced as gentle anticipation, not a homework reminder
+- Specific positive signal where available ("7.9h last night = green light")
+- Closes with one ask, no chip prompt expected for rest-day mode
