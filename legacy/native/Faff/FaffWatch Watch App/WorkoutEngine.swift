@@ -55,6 +55,13 @@ final class WorkoutEngine: ObservableObject {
     @Published private(set) var isPaused = false
     /// 3 · 2 · 1 pre-roll value, shown by CountdownView while .countingDown.
     @Published private(set) var countdownValue = 0
+    /// END-OF-PHASE countdown for time-based interval reps — live ticking
+    /// 10 → 0 in the last ten seconds, beeped + tick'd every second so the
+    /// runner can pace their effort to the count. nil whenever not in
+    /// last-ten-seconds window. Used instead of a static "10s LEFT" flash
+    /// for time-based reps; distance-based reps still use the .headsUp
+    /// flash with "0.25 LEFT" since distance doesn't tick the same way.
+    @Published private(set) var endingCountdownSec: Int? = nil
     /// True once every prescribed phase is done but the session is STILL
     /// recording — "overtime". The plan is complete (logged as such), yet we
     /// keep the clock + HKWorkoutSession running so the user can run farther or
@@ -135,6 +142,10 @@ final class WorkoutEngine: ObservableObject {
         e.paceDeltaSPerMi = deltaSPerMi
         return e
     }
+
+    /// Test-only — freeze the ending countdown at a specific value so the
+    /// `-face endcountdown` fixture renders mid-stream without a live tick.
+    func setEndingCountdownFixture(_ n: Int) { endingCountdownSec = n }
 
     // MARK: Derived
 
@@ -527,20 +538,23 @@ final class WorkoutEngine: ObservableObject {
             }
         }
 
-        // "Almost done" cue · before a phase / workout ends — haptic +
-        // a full-screen heads-up flip so you don't overrun. The face
-        // shows ONLY the remaining number ("0.25" / "10s") as the big
-        // read; small "LEFT" caption sits below. The runner doesn't
-        // need a verb — the number IS the message.
+        // End-of-phase cue — two flavours depending on what's being measured:
         //
-        // Three trigger types:
-        //   · Single-phase distance workout (easy / long / steady run):
-        //     fire at 0.25 mi remaining against workout.distanceMi.
-        //   · Interval rep, distance: fire ~0.03 mi before the rep ends.
-        //   · Interval rep, time: fire at 10 s left (bumped from 3 s so
-        //     the runner gets meaningful warning, not a "blink and miss").
+        //   · DISTANCE-based phases (single-phase long run + distance interval
+        //     reps) get a one-shot .headsUp flash with the remaining miles
+        //     ("0.25 LEFT"). Static, auto-dismisses after 2.6 s. GPS jitter
+        //     on the hundredths column makes a live count unstable, so the
+        //     flash pattern is right here.
+        //
+        //   · TIME-based interval reps get a LIVE countdown — the engine
+        //     publishes endingCountdownSec each second from 10 → 0, with a
+        //     tick haptic + chime on every decrement. The runner can pace
+        //     their effort to the count. No static "10s LEFT" flash — the
+        //     live countdown replaces it.
         let isSinglePhaseDistanceRun =
             workout.phases.count == 1 && workout.distanceMi != nil
+
+        // Static heads-up flash (distance-based only).
         let nearEnd: Bool
         let headsUpValue: String
         if isSinglePhaseDistanceRun, let total = workout.distanceMi {
@@ -552,19 +566,47 @@ final class WorkoutEngine: ObservableObject {
             nearEnd = remaining <= 0.03 && phaseProgress < 1
             headsUpValue = formatMiRemaining(remaining)
         } else {
-            nearEnd = phaseRemainingSec <= 10 && phaseRemainingSec > 0
-            headsUpValue = "\(phaseRemainingSec)s"
+            nearEnd = false       // time-based: handled by live countdown below
+            headsUpValue = ""
         }
-        // For single-phase distance runs we drop the phase.type == .work
-        // gate — an easy long run is encoded as a single "work" phase but
-        // even if that ever changes we still want the heads-up. Races are
-        // out (race phase boundaries are terrain markers, not rep ends).
         let shouldFire = !isRace && !didFireAlmostDone && nearEnd &&
             (isSinglePhaseDistanceRun || phase.type == .work)
         if shouldFire {
             didFireAlmostDone = true
             Haptics.almostDone()
             flash(.headsUp(value: headsUpValue), for: 2.6)
+        }
+
+        // Live ending countdown (time-based reps). Fires for BOTH work
+        // reps (next: GO into the next rep) and recovery reps (next: GO
+        // into the next work rep), since the runner needs the heads-up
+        // in either direction. Race phase boundaries are out (they're
+        // terrain markers, not rep ends).
+        let isTimeRep = phase.repUnit == .time && !isRace &&
+            (phase.type == .work || phase.type == .recovery)
+        if isTimeRep && phaseRemainingSec > 0 && phaseRemainingSec <= 10 {
+            // Fire tick + chime ONCE per second-decrement (the engine ticks
+            // every 1 s, so any tick that lands inside this window sees a
+            // new phaseRemainingSec value vs what we last published).
+            if endingCountdownSec != phaseRemainingSec {
+                endingCountdownSec = phaseRemainingSec
+                if phaseRemainingSec == 1 {
+                    // Final beat — stronger haptic (.notification, the
+                    // double-buzz "alert" pattern) so the runner feels
+                    // the cliff edge clearly. Chime fires too if Sound
+                    // is on. Then the next tick advances the phase and
+                    // the countdown clears — runner jumps straight from
+                    // "1" to GO / Rest face, never sees "0".
+                    Haptics.almostDone()
+                } else {
+                    Haptics.tick()
+                }
+                if UserDefaults.standard.bool(forKey: "audibleAlerts") {
+                    ChimePlayer.shared.play()
+                }
+            }
+        } else if endingCountdownSec != nil {
+            endingCountdownSec = nil
         }
 
         // MILE SPLIT takeover — at every integer-mile crossing, fire a brief

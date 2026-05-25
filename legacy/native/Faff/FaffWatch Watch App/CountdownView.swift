@@ -35,3 +35,33 @@ struct CountdownView: View {
         }
     }
 }
+
+/// END-OF-PHASE countdown — same render as the pre-start CountdownView,
+/// but amber (Faff.goal) to signal "ending" rather than "starting." Driven
+/// by engine.endingCountdownSec, which ticks from 10 → 0 in the last ten
+/// seconds of a time-based interval rep. Engine fires Haptics.tick() +
+/// ChimePlayer.play() on each decrement so the runner hears the beat.
+struct EndingCountdownView: View {
+    @ObservedObject var engine: WorkoutEngine
+
+    var body: some View {
+        ResponsiveFace {
+            GeometryReader { geo in
+                let h = geo.size.height
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    Text("\(engine.endingCountdownSec ?? 0)")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.90))
+                        .foregroundStyle(Faff.goal)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.3)
+                        .contentTransition(.numericText(countsDown: true))
+                        .animation(.snappy, value: engine.endingCountdownSec)
+                        .padding(.vertical, -h * 0.90 * 0.22)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+    }
+}

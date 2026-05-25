@@ -54,6 +54,16 @@ struct ActiveWorkoutView: View {
                 .tabViewStyle(.page)
             }
 
+            // Live ending countdown — sits ABOVE the pages, BELOW the
+            // transition flips. Fires in the last 10 s of a time-based work
+            // rep (10 → 0). When non-nil, it covers the live face so the
+            // runner gets the full-screen countdown read. The engine clears
+            // it back to nil when the phase advances.
+            if engine.endingCountdownSec != nil {
+                ResponsiveFace { EndingCountdownView(engine: engine) }
+                    .transition(.opacity)
+            }
+
             // Edge-of-rep flips sit above the pages. Most transitions are brief
             // + non-interactive (auto-clear after a beat). Fuel cues are
             // PERSISTENT — they stay until the runner swipes them down to
@@ -82,6 +92,7 @@ struct ActiveWorkoutView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: engine.transition)
         .animation(.easeInOut(duration: 0.18), value: engine.isPaused)
+        .animation(.easeInOut(duration: 0.18), value: engine.endingCountdownSec != nil)
     }
 
     @ViewBuilder

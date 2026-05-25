@@ -142,6 +142,15 @@ struct WatchFixtureView: View {
             CountdownView(engine: WorkoutEngine.fixture(
                 workout: .sample, currentIndex: 0,
                 phaseElapsedSec: 0, totalElapsedSec: 0))
+        case "endcountdown", "ending":
+            // End-of-rep countdown frozen at "8" — what the runner sees
+            // ~3 s into the final 10 of a time-based interval rep.
+            EndingCountdownView(engine: {
+                let e = WorkoutEngine.fixture(workout: .sample, currentIndex: 0,
+                                              phaseElapsedSec: 0, totalElapsedSec: 0)
+                e.setEndingCountdownFixture(8)
+                return e
+            }())
         case "summary-workout":
             SummaryView(
                 workout: .sample,
