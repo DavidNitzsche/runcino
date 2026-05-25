@@ -1,8 +1,17 @@
 # faff.run · native-v2 (SwiftUI)
 
-Replacement for `legacy/native`. Built against the deck at
-`docs/coach/mockups/deck-v1-2026-05-25.html` — same design system as
-`web-v2`, just rendered with SwiftUI.
+Replacement for the iPhone app at `legacy/native/Faff/Faff/`. Built against
+the deck at `docs/coach/mockups/deck-v1-2026-05-25.html` — same design
+system as `web-v2`, just rendered with SwiftUI.
+
+## ⚠️ Watch app is OUT OF SCOPE
+
+The watch app (`legacy/native/Faff/FaffWatch Watch App/`) stays as-is.
+**Do not rebuild it.** native-v2's only obligation is to speak its existing
+wire format (`applicationContext` keys + `WatchWorkout` JSON shape).
+
+See `docs/coach/WATCH_CONTRACT.md` for the frozen contract and v2's
+obligations (P1.5 in the task list).
 
 ## Current state
 
