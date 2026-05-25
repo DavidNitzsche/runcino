@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Create your account</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body {
+  background: var(--bg);
+  color: var(--t0);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Nav — minimal on auth pages */
+.navbar { background: var(--bg); }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 72px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 3px; line-height: 1; font-style: italic; text-decoration: none; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-logo:hover { background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%); -webkit-background-clip: text; background-clip: text; }
+.nav-back { font-family: 'Inter', sans-serif; font-size: 13px; color: var(--t1); text-decoration: none; letter-spacing: 0.3px; }
+.nav-back:hover { color: var(--t0); }
+
+/* Main auth area — centered vertically */
+.auth-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px 80px;
+}
+.auth-card {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+  padding: 48px 48px 40px;
+  width: 100%;
+  max-width: 440px;
+  position: relative;
+  overflow: hidden;
+}
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #F3AD38 0%, #E85D26 50%, #C73E0B 100%);
+}
+
+.auth-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 2.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.auth-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 48px; line-height: 0.95;
+  letter-spacing: -0.5px;
+  color: var(--t0);
+  margin-bottom: 10px;
+}
+.auth-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--t1);
+  line-height: 1.5;
+  margin-bottom: 32px;
+}
+
+.form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.form-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 1.2px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+}
+.form-input {
+  width: 100%;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  padding: 13px 14px;
+  background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent;
+  border-radius: 9px;
+  color: var(--t0);
+  outline: none;
+  transition: border-color .12s, background .12s;
+}
+.form-input:focus {
+  border-color: var(--t1);
+  background: var(--card);
+}
+.form-input::placeholder { color: var(--t3); }
+
+.password-wrap { position: relative; }
+.password-toggle {
+  position: absolute;
+  right: 12px; top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+.password-toggle:hover { color: var(--t0); }
+
+.form-help {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* Password rules — live-update via JS later */
+.password-rules {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: rgba(13,15,18,.03);
+  border-radius: 8px;
+}
+.password-rule {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+  display: flex; align-items: center; gap: 6px;
+}
+.password-rule::before {
+  content: '○';
+  font-size: 11px;
+  color: var(--t3);
+}
+.password-rule.met::before { content: '●'; color: var(--green); }
+.password-rule.met { color: var(--t1); }
+
+.btn-submit {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px; font-weight: 600;
+  color: #fff;
+  background: var(--t0);
+  border: none;
+  border-radius: 9px;
+  padding: 14px;
+  cursor: pointer;
+  width: 100%;
+  letter-spacing: 0.4px;
+  margin-top: 8px;
+}
+.btn-submit:hover { background: rgba(13,15,18,.85); }
+
+.auth-meta {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+  text-align: center;
+  margin-top: 20px;
+  line-height: 1.5;
+  letter-spacing: 0.1px;
+}
+.auth-meta a { color: var(--t1); text-decoration: underline; text-underline-offset: 2px; }
+.auth-meta a:hover { color: var(--t0); }
+
+.auth-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 28px 0 24px;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px; letter-spacing: 1.5px;
+  color: var(--t3); text-transform: uppercase;
+  font-weight: 600;
+}
+.auth-divider::before, .auth-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--divider);
+}
+
+.auth-bottom {
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+  margin-top: 24px;
+}
+.auth-bottom a {
+  color: var(--t0);
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.auth-bottom a:hover { text-decoration: underline; text-underline-offset: 3px; }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="landing-v4.html">faff.run</a>
+    <a class="nav-back" href="landing-v4.html">← Back home</a>
+  </div>
+</nav>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-eyebrow">Sign up</div>
+    <h1 class="auth-title">Create your account</h1>
+    <p class="auth-sub">Free forever. No credit card. Onboarding takes under 2 minutes.</p>
+
+    <form id="signup-form" autocomplete="off">
+      <div class="form-row">
+        <label class="form-label" for="signup-email">Email</label>
+        <input class="form-input" id="signup-email" type="email" required>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="signup-password">Password</label>
+        <div class="password-wrap">
+          <input class="form-input" id="signup-password" type="password" required minlength="8">
+          <button type="button" class="password-toggle" onclick="togglePwd('signup-password', this)">Show</button>
+        </div>
+        <!-- Live rule indicators — JS toggles `.met` as user types -->
+        <div class="password-rules">
+          <div class="password-rule" data-rule="length">8+ characters</div>
+          <div class="password-rule" data-rule="upper">Uppercase letter</div>
+          <div class="password-rule" data-rule="number">Number</div>
+          <div class="password-rule" data-rule="symbol">Symbol</div>
+        </div>
+      </div>
+
+      <button class="btn-submit" type="submit">Create account →</button>
+
+      <div class="auth-meta">
+        By signing up you agree to our
+        <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.
+      </div>
+    </form>
+
+    <div class="auth-divider">Already a member?</div>
+    <div class="auth-bottom">Have an account? <a href="login-v4.html">Sign in →</a></div>
+  </div>
+</div>
+
+<script>
+  // Password show/hide toggle
+  function togglePwd(id, btn) {
+    const input = document.getElementById(id);
+    const showing = input.type === 'password';
+    input.type = showing ? 'text' : 'password';
+    btn.textContent = showing ? 'Hide' : 'Show';
+  }
+
+  // Live password-rule indicator. Mockup-only validation —
+  // the real backend will enforce its own rules + bcrypt.
+  const pwd = document.getElementById('signup-password');
+  pwd.addEventListener('input', () => {
+    const v = pwd.value;
+    const checks = {
+      length: v.length >= 8,
+      upper: /[A-Z]/.test(v),
+      number: /\d/.test(v),
+      symbol: /[^A-Za-z0-9]/.test(v),
+    };
+    document.querySelectorAll('.password-rule').forEach((el) => {
+      el.classList.toggle('met', !!checks[el.dataset.rule]);
+    });
+  });
+
+  // Mockup submit — just hop to onboarding. Real /web/ port will POST
+  // to /api/auth/signup, set the session cookie, then redirect.
+  document.getElementById('signup-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    window.location.href = 'onboarding-v4.html';
+  });
+</script>
+</body>
+</html>

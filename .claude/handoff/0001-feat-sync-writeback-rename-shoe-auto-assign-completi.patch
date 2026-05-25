@@ -1,0 +1,1307 @@
+From e5349b95a166cf12912d376eee01fdebef5cc86e Mon Sep 17 00:00:00 2001
+From: David Nitzsche <david@Davids-Mac-mini.attlocal.net>
+Date: Mon, 18 May 2026 21:41:01 -0700
+Subject: [PATCH] =?UTF-8?q?feat(sync):=20writeback=20rename=20+=20shoe=20a?=
+ =?UTF-8?q?uto-assign=20+=20completion=20=E2=9C=93=20pins?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Closes the run-completion loop that was missing: after a Strava
+sync, the matched activity now gets renamed to the planned title
+("Easy · Apr 14"), the user's preferred shoe for the run-type is
+stamped on the activity row, and the planned workout shows a green
+✓ DONE pin on the overview hero + an actuals strip on /workout/[date].
+
+· lib/plan-match: pure helpers (activity↔workout match ±15% distance,
+  60% completion threshold, shoe-RunType mapper) — single source of
+  truth consumed by sync route + UI.
+· lib/strava-writeback: PUT /activities/{id} with idempotent prefix
+  check, "Easy · Apr 14" title generator with subLabel support.
+· /api/strava/sync: new runPlanMatchPass — iterates buildPlanMatches,
+  pushes rename + auto-assigns preferred shoe (skips when user has
+  manually set shoe_id).
+· /api/strava/connect: OAuth scope upgraded to include activity:write.
+· /api/overview + /overview: surfaces todayCompletion through the
+  data layer; TodayCard hero swaps the SCHEDULED pin for ✓ DONE +
+  actual mi when ≥60% planned; greet tile TODAY tile flips to good.
+· /workout/[date]: pulls cached activities, surfaces ✓ COMPLETED chip
+  + Actuals from Strava tile (mi · duration · pace · HR).
+· lib/db: tracking columns writeback_at, writeback_name,
+  shoe_auto_assigned_at on strava_activities (idempotent ALTERs).
+· tests: 28 cases covering match tolerance, rest-day exclusion,
+  completion threshold, title generator, name-already-matches.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+---
+ web/app/api/overview/route.ts        |  43 ++++
+ web/app/api/strava/connect/route.ts  |   7 +-
+ web/app/api/strava/sync/route.ts     | 139 +++++++++--
+ web/app/overview/data.ts             |  11 +
+ web/app/overview/page.tsx            |  29 ++-
+ web/app/workout/[date]/page.tsx      |  90 +++++++-
+ web/lib/__tests__/plan-match.test.ts | 332 +++++++++++++++++++++++++++
+ web/lib/db.ts                        |  19 ++
+ web/lib/plan-match.ts                | 182 +++++++++++++++
+ web/lib/strava-cache.ts              |  57 +++++
+ web/lib/strava-writeback.ts          | 120 ++++++++++
+ 11 files changed, 1006 insertions(+), 23 deletions(-)
+ create mode 100644 web/lib/__tests__/plan-match.test.ts
+ create mode 100644 web/lib/plan-match.ts
+ create mode 100644 web/lib/strava-writeback.ts
+
+diff --git a/web/app/api/overview/route.ts b/web/app/api/overview/route.ts
+index 8bf9099..2844cf2 100644
+--- a/web/app/api/overview/route.ts
++++ b/web/app/api/overview/route.ts
+@@ -37,6 +37,11 @@ import { narrativeLine, type NarrativeLine } from '../../../coach/coach-narrativ
+ import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+ import type { PlanWorkout } from '../../../coach/plan-types';
+ import { getProfile } from '../../../lib/profile-store';
++import { getCachedActivities } from '../../../lib/strava-cache';
++import {
++  findWorkoutForDate,
++  isWorkoutComplete,
++} from '../../../lib/plan-match';
+ 
+ interface OverviewApiOk {
+   ok: true;
+@@ -71,6 +76,16 @@ interface OverviewApiOk {
+   planCurrentPhase: string | null;
+   /** Runner display name from the profile table. null when no profile row. */
+   profileName: string | null;
++  /** Today's completion snapshot — planned vs actual + isComplete flag.
++   *  Drives the ✓ pill on the hero TodayCard (and any other surface
++   *  that wants a single boolean for "did the user do today's run").
++   *  null when no plan exists or today is a rest day. */
++  todayCompletion: {
++    dateISO: string;
++    plannedMi: number;
++    actualMi: number;
++    isComplete: boolean;
++  } | null;
+ }
+ 
+ interface OverviewApiErr {
+@@ -216,6 +231,33 @@ export async function GET(): Promise<Response> {
+         : undefined,
+     });
+ 
++    // Today completion — pulled from the same cache the week strip
++    // reads, so the hero ✓ chip and the strip's DONE pill move
++    // together. Defaults to null when no plan or today is a rest day.
++    const todayCompletion = await (async () => {
++      const plan = planResult.plan;
++      if (!plan) return null;
++      const planned = findWorkoutForDate(plan, today);
++      if (!planned || planned.type === 'rest' || planned.distanceMi <= 0) return null;
++      let actualMi = 0;
++      try {
++        const { activities } = await getCachedActivities();
++        actualMi = Math.round(
++          activities
++            .filter((a) => a.date === today && (a.type === 'Run' || a.sportType === 'Run' || a.sportType === 'TrailRun'))
++            .reduce((s, a) => s + a.distanceMi, 0) * 10,
++        ) / 10;
++      } catch {
++        // Strava unavailable — fall through with actualMi = 0.
++      }
++      return {
++        dateISO: today,
++        plannedMi: planned.distanceMi,
++        actualMi,
++        isComplete: isWorkoutComplete(planned.distanceMi, actualMi),
++      };
++    })();
++
+     const body: OverviewApiOk = {
+       ok: true,
+       today,
+@@ -236,6 +278,7 @@ export async function GET(): Promise<Response> {
+       planWeekWorkouts,
+       planCurrentPhase,
+       profileName: profileRow?.full_name?.trim() || null,
++      todayCompletion,
+     };
+     return Response.json(body);
+   } catch (e) {
+diff --git a/web/app/api/strava/connect/route.ts b/web/app/api/strava/connect/route.ts
+index 67f5e4d..ba3f68a 100644
+--- a/web/app/api/strava/connect/route.ts
++++ b/web/app/api/strava/connect/route.ts
+@@ -71,7 +71,12 @@ export async function GET(req: Request) {
+     client_id: clientId,
+     redirect_uri: redirectUri,
+     response_type: 'code',
+-    scope: 'read,activity:read_all',
++    // `activity:write` is required for the writeback rename in
++    // /api/strava/sync (PUT /activities/{id}). Without it Strava
++    // returns 401 on the rename and the sync continues without
++    // renaming — re-run /api/strava/connect to refresh the token
++    // with this scope.
++    scope: 'read,activity:read_all,activity:write',
+     approval_prompt: 'auto',
+   });
+   const authorizeUrl = `https://www.strava.com/oauth/authorize?${params}`;
+diff --git a/web/app/api/strava/sync/route.ts b/web/app/api/strava/sync/route.ts
+index d3fc814..23b8421 100644
+--- a/web/app/api/strava/sync/route.ts
++++ b/web/app/api/strava/sync/route.ts
+@@ -1,15 +1,26 @@
+ /**
+- * /api/strava/sync — match Strava activities to saved races and write
+- * actualResult into Postgres.
++ * /api/strava/sync — match Strava activities to saved races AND to
++ * the active training plan, then push writeback (rename) + auto-assign
++ * shoes for each plan match.
+  *
+- * GET / POST — both refresh the activity cache (if stale) and run the
+- * race matcher across every saved race in Postgres. Returns
+- * { updated: string[], fetchedAt } so the client can decide whether
+- * to re-fetch /api/races.
++ * GET / POST — both refresh the activity cache (if stale), run the
++ * race matcher across every saved race in Postgres, then run the
++ * plan-match pass:
++ *   1. for each (plan workout, same-day activity) pair:
++ *      a. rename the Strava activity to the planned title ("Easy ·
++ *         Apr 14") via PUT /activities/{id} when the name doesn't
++ *         already encode our label.
++ *      b. when shoe_id is still NULL, pick the user's preferred shoe
++ *         for the planned run-type and stamp it on the activity row
++ *         + increment the shoe's mileage.
++ *
++ * Returns { updated: string[], fetchedAt, plan: { renamed, shoed,
++ * errors } } so the Overview page can show a fresh-state toast.
+  *
+  * Manual entries (actualResult.source === 'manual') are sticky and
+  * never overwritten by sync. Only Strava-sourced rows refresh, plus
+- * any race that has no actualResult yet.
++ * any race that has no actualResult yet. Shoes the user has manually
++ * assigned (shoe_id IS NOT NULL) are never overwritten.
+  */
+ 
+ import {
+@@ -17,13 +28,40 @@ import {
+   activityToResult,
+   type StravaActivity,
+ } from '../../../../lib/strava';
+-import { getCachedActivities, getCacheFetchedAt, getCachedDetail, setCachedDetail } from '../../../../lib/strava-cache';
++import {
++  getCachedActivities,
++  getCacheFetchedAt,
++  getCachedDetail,
++  setCachedDetail,
++  getActivitySyncMeta,
++  markWriteback,
++  autoAssignShoe,
++} from '../../../../lib/strava-cache';
+ import type { NormalizedActivity } from '../activities/route-shared';
+ import { listRacesDB, setActualResultDB } from '../../../../lib/race-store';
+ import { ensureSeed } from '../../../../lib/seed-server';
+ import type { ActualResult } from '../../../../lib/storage-types';
++import { getCurrentPlan } from '../../../../coach/plan-lifecycle';
++import { buildPlanMatches, runTypeForWorkout, type PlanMatch } from '../../../../lib/plan-match';
++import {
++  plannedActivityTitle,
++  renameStravaActivity,
++  nameAlreadyMatchesPlan,
++} from '../../../../lib/strava-writeback';
++import { listShoes, recommendShoe } from '../../../../lib/shoe-store';
+ 
+-async function runSync(): Promise<{ updated: string[]; fetchedAt: string | null; error?: string }> {
++interface PlanSyncReport {
++  renamed: Array<{ id: number; title: string }>;
++  shoed: Array<{ id: number; shoeId: number; runType: string }>;
++  errors: string[];
++}
++
++async function runSync(): Promise<{
++  updated: string[];
++  fetchedAt: string | null;
++  plan?: PlanSyncReport;
++  error?: string;
++}> {
+   if (!process.env.STRAVA_REFRESH_TOKEN) {
+     return { updated: [], fetchedAt: null, error: 'STRAVA_REFRESH_TOKEN not set — visit /api/strava/connect to capture it.' };
+   }
+@@ -34,20 +72,26 @@ async function runSync(): Promise<{ updated: string[]; fetchedAt: string | null;
+   // Filter to candidates: races without a result OR previously sourced
+   // from Strava. Manual entries stay frozen.
+   const candidates = races.filter(r => r.actualResult == null || r.actualResult.source === 'strava');
+-  if (candidates.length === 0) {
+-    const at = await getCacheFetchedAt();
+-    return { updated: [], fetchedAt: at ? new Date(at).toISOString() : null };
+-  }
+ 
+   // Pull the cached activity list (refreshes from Strava if stale).
+-  let activities;
++  // Used by both the race matcher AND the plan-match pass below.
++  let activities: NormalizedActivity[];
+   try {
+     ({ activities } = await getCachedActivities());
+   } catch (e) {
+     return { updated: [], fetchedAt: null, error: String(e) };
+   }
+ 
++  // Run the plan-match pass regardless of whether any races exist —
++  // every Strava activity that lands on a planned workout day needs
++  // its writeback + shoe assignment, race or not.
++  const plan = await runPlanMatchPass(activities);
++
+   const updated: string[] = [];
++  if (candidates.length === 0) {
++    const at = await getCacheFetchedAt();
++    return { updated, fetchedAt: at ? new Date(at).toISOString() : null, plan };
++  }
+   for (const race of candidates) {
+     const match = findMatchByDate(activities, race.meta.date, race.meta.distanceMi);
+     if (!match) continue;
+@@ -98,7 +142,72 @@ async function runSync(): Promise<{ updated: string[]; fetchedAt: string | null;
+   }
+ 
+   const at = await getCacheFetchedAt();
+-  return { updated, fetchedAt: at ? new Date(at).toISOString() : null };
++  return { updated, fetchedAt: at ? new Date(at).toISOString() : null, plan };
++}
++
++/** Iterate every (plan workout, same-day activity) match and:
++ *    - rename the activity on Strava to encode the planned title
++ *    - assign the user's preferred shoe (when none is set)
++ *  Returns a per-activity tally so callers can surface what happened.
++ *  Soft-fails: a failed rename / shoe assign is logged into errors[]
++ *  and the loop continues — partial progress is better than nothing. */
++async function runPlanMatchPass(activities: NormalizedActivity[]): Promise<PlanSyncReport> {
++  const report: PlanSyncReport = { renamed: [], shoed: [], errors: [] };
++
++  // Load the active plan + the shoe rotation up front. Either may be
++  // absent (no plan authored yet / no shoes seeded) — that just means
++  // the loop has nothing to do.
++  const planResult = await getCurrentPlan('me').catch((e) => {
++    report.errors.push(`getCurrentPlan: ${e instanceof Error ? e.message : String(e)}`);
++    return { plan: null };
++  });
++  const plan = planResult.plan;
++  if (!plan) return report;
++
++  const shoes = await listShoes().catch((e) => {
++    report.errors.push(`listShoes: ${e instanceof Error ? e.message : String(e)}`);
++    return [];
++  });
++
++  const matches: PlanMatch[] = buildPlanMatches(plan, activities);
++  for (const m of matches) {
++    // ── Writeback ───────────────────────────────────────────────
++    const title = plannedActivityTitle(m.workout);
++    if (!nameAlreadyMatchesPlan(m.activity.name, title)) {
++      const result = await renameStravaActivity(m.activity.id, m.activity.name, title);
++      if (result.ok && result.changed) {
++        try {
++          await markWriteback(m.activity.id, title);
++          report.renamed.push({ id: m.activity.id, title });
++        } catch (e) {
++          report.errors.push(`markWriteback ${m.activity.id}: ${e instanceof Error ? e.message : String(e)}`);
++        }
++      } else if (!result.ok && result.error) {
++        report.errors.push(`rename ${m.activity.id}: ${result.error}`);
++      }
++    }
++
++    // ── Shoe auto-assign ────────────────────────────────────────
++    // Only assign when the user hasn't picked a shoe yet (shoe_id is
++    // NULL). Manual picks are sticky — see `users.strava_writeback`
++    // semantics: writeback can re-touch the name, but a user's
++    // intentional shoe choice is never overwritten.
++    const meta = await getActivitySyncMeta(m.activity.id).catch(() => null);
++    if (meta && meta.shoe_id == null && shoes.length > 0) {
++      const runType = runTypeForWorkout(m.workout.type);
++      const shoe = recommendShoe(shoes, runType);
++      if (shoe) {
++        try {
++          await autoAssignShoe(m.activity.id, shoe.id, m.activity.distanceMi);
++          report.shoed.push({ id: m.activity.id, shoeId: shoe.id, runType });
++        } catch (e) {
++          report.errors.push(`autoAssignShoe ${m.activity.id}: ${e instanceof Error ? e.message : String(e)}`);
++        }
++      }
++    }
++  }
++
++  return report;
+ }
+ 
+ /** Find the cached normalized activity that best matches a saved race
+diff --git a/web/app/overview/data.ts b/web/app/overview/data.ts
+index 0da5fc6..07d724a 100644
+--- a/web/app/overview/data.ts
++++ b/web/app/overview/data.ts
+@@ -128,6 +128,10 @@ export interface OverviewData {
+   planWeekWorkouts: OverviewApiPayload['planWeekWorkouts'];
+   /** Current week's phase from the plan (BASE/BUILD/PEAK/TAPER). */
+   planCurrentPhase: string | null;
++  /** Today's completion snapshot (planned vs actual + isComplete).
++   *  Drives the ✓ chip on the hero TodayCard. null when no plan or
++   *  today is a rest day. */
++  todayCompletion: OverviewApiPayload['todayCompletion'] | null;
+ }
+ 
+ // ─────────────────────────────────────────────────────────────────────
+@@ -402,6 +406,12 @@ interface OverviewApiPayload {
+   }> | null;
+   planCurrentPhase?: string | null;
+   profileName?: string | null;
++  todayCompletion?: {
++    dateISO: string;
++    plannedMi: number;
++    actualMi: number;
++    isComplete: boolean;
++  } | null;
+   error?: string;
+ }
+ 
+@@ -537,6 +547,7 @@ export async function loadOverviewData(
+     freshness,
+     planWeekWorkouts: api.planWeekWorkouts ?? null,
+     planCurrentPhase: api.planCurrentPhase ?? null,
++    todayCompletion: api.todayCompletion ?? null,
+   };
+ }
+ 
+diff --git a/web/app/overview/page.tsx b/web/app/overview/page.tsx
+index 4eb8ffd..2f5becf 100644
+--- a/web/app/overview/page.tsx
++++ b/web/app/overview/page.tsx
+@@ -183,17 +183,27 @@ function OverviewGreet({ data }: { data: OverviewData | null }) {
+   const readinessVariant = readinessLevel === 'green' ? 'good' : readinessLevel === 'yellow' ? 'amber' : 'default';
+   const readinessVal = readinessLevel === 'green' ? '88' : readinessLevel === 'yellow' ? '62' : '40';
+ 
++  // Today tile — switch to a green ✓ DONE variant once the planned
++  // miles are fulfilled (60% threshold lives in lib/plan-match.ts).
++  const todayCompletion = data.todayCompletion;
++  const todayDone = todayCompletion?.isComplete ?? false;
++
+   return (
+     <Greet>
+       <GreetId eyebrow={greetEyebrow} title={profile.name.toUpperCase()} />
+       <GreetState>
+         <GreetTile
+-          variant="amber"
+-          eyebrow="TODAY"
+-          value={todayDist}
++          variant={todayDone ? 'good' : 'amber'}
++          eyebrow={todayDone ? 'TODAY · DONE' : 'TODAY'}
++          value={todayDone && todayCompletion ? todayCompletion.actualMi.toFixed(1) : todayDist}
+           unit="MI"
+-          delta={todayPace.toUpperCase()}
++          delta={
++            todayDone && todayCompletion
++              ? `✓ ${todayPace.toUpperCase()}`
++              : todayPace.toUpperCase()
++          }
+         />
++
+         <GreetTile
+           variant={readinessVariant}
+           eyebrow="READINESS"
+@@ -346,11 +356,20 @@ function TodayCard({ data }: { data: OverviewData }) {
+     ? { why: planMutation.reason }
+     : data.adjustedToday;
+ 
++  // Today completion pin — when the Strava activity for today covers
++  // ≥60% of planned miles, surface a ✓ DONE chip in place of the
++  // SCHEDULED / COACH ADJUSTED pin. Threshold lives in
++  // lib/plan-match.ts (COMPLETION_MIN_FRACTION).
++  const completion = data.todayCompletion;
++  const isDone = completion?.isComplete ?? false;
++
+   return (
+     <Card wash="amber" span={6} padding="26px 28px" style={{ minHeight: 340 }}>
+       <CardHeader>
+         <CardLabel color="var(--att)">{eyebrow}</CardLabel>
+-        {adjusted ? (
++        {isDone && completion ? (
++          <CardPin variant="green">✓ DONE · {completion.actualMi.toFixed(1)} MI</CardPin>
++        ) : adjusted ? (
+           <CardPin variant="coach">▾ COACH ADJUSTED</CardPin>
+         ) : (
+           <CardPin variant="amber">{w.isQuality ? 'QUALITY' : 'SCHEDULED'}</CardPin>
+diff --git a/web/app/workout/[date]/page.tsx b/web/app/workout/[date]/page.tsx
+index 7499bab..52ab877 100644
+--- a/web/app/workout/[date]/page.tsx
++++ b/web/app/workout/[date]/page.tsx
+@@ -14,6 +14,8 @@ import { getCurrentPlan } from '../../../coach/plan-lifecycle';
+ import { vdotSnapshot, pacesFromVdot } from '../../../lib/vdot';
+ import { gatherCoachState } from '../../../lib/coach-state';
+ import type { PlanWorkout, PhaseLabel } from '../../../coach/plan-types';
++import { getCachedActivities } from '../../../lib/strava-cache';
++import { findActivityForWorkout, isWorkoutComplete } from '../../../lib/plan-match';
+ 
+ function fmtPace(sPerMi: number): string {
+   const m = Math.floor(sPerMi / 60);
+@@ -49,10 +51,13 @@ const PHASE_CHIP: Record<PhaseLabel, { label: string; color: string }> = {
+ export default async function WorkoutDetailPage({ params }: { params: Promise<{ date: string }> }) {
+   const { date } = await params;
+ 
+-  // Load plan + state in parallel.
+-  const [planResult, state] = await Promise.all([
++  // Load plan + state + the Strava activity cache in parallel. The
++  // activity cache feeds the actuals panel (✓ COMPLETED + actual
++  // mi/pace/HR) when a matching activity exists for this date.
++  const [planResult, state, stravaCache] = await Promise.all([
+     getCurrentPlan('me').catch(() => ({ plan: null, action: 'error' })),
+     gatherCoachState().catch(() => null),
++    getCachedActivities().catch(() => ({ activities: [] })),
+   ]);
+ 
+   const plan = planResult.plan;
+@@ -109,6 +114,16 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{
+   const isQuality = workout?.isQuality ?? false;
+   const subLabel = workout?.subLabel;
+ 
++  // Actuals — find the Strava activity that covers this planned workout
++  // (same date, ±15% distance for distance-anchored workouts). Surfaces
++  // a ✓ COMPLETED pin in the hero + an actuals strip when present.
++  const matchedActivity = workout
++    ? findActivityForWorkout(workout, stravaCache.activities)
++    : null;
++  const completed = workout && matchedActivity
++    ? isWorkoutComplete(workout.distanceMi, matchedActivity.distanceMi)
++    : false;
++
+   return (
+     <>
+       <Caption left="Runcino · workout" right={`WORKOUT · ${date}`} />
+@@ -145,6 +160,19 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{
+                   borderColor: isQuality ? 'rgba(79,143,247,.25)' : undefined,
+                 }}>
+                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
++                    {completed && (
++                      <span
++                        className="chip"
++                        style={{
++                          color: 'var(--color-good)',
++                          borderColor: 'var(--color-good)',
++                          background: 'rgba(62,189,65,.08)',
++                          fontWeight: 700,
++                        }}
++                      >
++                        ✓ COMPLETED · {matchedActivity!.distanceMi.toFixed(1)} MI
++                      </span>
++                    )}
+                     {isQuality && (
+                       <span className="chip chip--corporate">{workout.type.toUpperCase()}</span>
+                     )}
+@@ -191,6 +219,64 @@ export default async function WorkoutDetailPage({ params }: { params: Promise<{
+                   )}
+                 </div>
+ 
++                {/* Actuals — rendered only when we have a matched Strava
++                    activity for this date. Shows what the runner actually
++                    did so they can compare against the prescription above
++                    without leaving the workout detail. */}
++                {matchedActivity && (
++                  <div
++                    className="tile"
++                    style={{
++                      padding: '18px 22px',
++                      borderLeft: '3px solid var(--color-good)',
++                      background: 'linear-gradient(135deg, var(--color-l2) 0%, rgba(62,189,65,.04) 100%)',
++                    }}
++                  >
++                    <div style={{
++                      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
++                      marginBottom: 12,
++                    }}>
++                      <div className="tile-lbl" style={{ color: 'var(--color-good)' }}>
++                        Actuals from Strava
++                      </div>
++                      <Link
++                        href={`/runs/${matchedActivity.id}`}
++                        style={{
++                          fontFamily: 'var(--font-data)', fontSize: 10, letterSpacing: '1.6px',
++                          color: 'var(--color-t3)', fontWeight: 700, textTransform: 'uppercase',
++                          textDecoration: 'none',
++                        }}
++                      >
++                        Open run →
++                      </Link>
++                    </div>
++                    <div style={{
++                      display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14,
++                    }}>
++                      <Kpi
++                        value={matchedActivity.distanceMi.toFixed(1)}
++                        unit="mi"
++                        label="Distance"
++                      />
++                      <Kpi
++                        value={`${Math.round(matchedActivity.movingTimeS / 60)}`}
++                        unit="min"
++                        label="Duration"
++                      />
++                      <Kpi
++                        value={fmtPace(matchedActivity.paceSPerMi)}
++                        unit="/mi"
++                        label="Avg pace"
++                      />
++                      <Kpi
++                        value={matchedActivity.avgHr != null ? String(Math.round(matchedActivity.avgHr)) : '—'}
++                        unit="bpm"
++                        label="Avg HR"
++                      />
++                    </div>
++                  </div>
++                )}
++
+                 {/* Notes / prescription */}
+                 {workout.notes && (
+                   <div style={{
+diff --git a/web/lib/__tests__/plan-match.test.ts b/web/lib/__tests__/plan-match.test.ts
+new file mode 100644
+index 0000000..7e74e24
+--- /dev/null
++++ b/web/lib/__tests__/plan-match.test.ts
+@@ -0,0 +1,332 @@
++/**
++ * plan-match — match logic + completion threshold + shoe-type mapping.
++ *
++ * Covers the regression points in BUGFIX_RUN_COMPLETION_WORKFLOW:
++ *   - same-day distance-tolerant matching (±15%)
++ *   - rest days don't match (a rogue easy 5-miler on a rest day stays
++ *     unmatched)
++ *   - 60% completion threshold
++ *   - shoe-type mapping picks the right RunType for each WorkoutType
++ *
++ * Synthetic fixtures (no DB / no Strava). Verifies the contract the
++ * /api/strava/sync route depends on, plus the UI completion pins on
++ * /overview and /workout/[date].
++ */
++
++import { describe, it, expect } from 'vitest';
++import {
++  activityMatchesWorkout,
++  findActivityForWorkout,
++  findWorkoutForActivity,
++  findWorkoutForDate,
++  buildPlanMatches,
++  isWorkoutComplete,
++  runTypeForWorkout,
++  getCompletedMileageByDate,
++  COMPLETION_MIN_FRACTION,
++} from '../plan-match';
++import {
++  plannedActivityTitle,
++  nameAlreadyMatchesPlan,
++  formatActivityDate,
++} from '../strava-writeback';
++import type { Plan, PlanWorkout, PlanWeek } from '../../coach/plan-types';
++import type { NormalizedActivity } from '../../app/api/strava/activities/route-shared';
++
++// ── Fixtures ──────────────────────────────────────────────────────
++
++function makeWorkout(over: Partial<PlanWorkout>): PlanWorkout {
++  return {
++    id: 'w-' + (over.dateISO ?? 'x'),
++    dateISO: '2026-04-14',
++    dow: 2,
++    type: 'easy',
++    distanceMi: 6,
++    paceTargetSPerMi: 540,
++    durationMin: null,
++    isQuality: false,
++    isLong: false,
++    notes: '',
++    subLabel: null,
++    originalDateISO: '2026-04-14',
++    originalType: 'easy',
++    originalDistanceMi: 6,
++    mutations: [],
++    ...over,
++  };
++}
++
++function makeActivity(over: Partial<NormalizedActivity>): NormalizedActivity {
++  return {
++    id: 100,
++    name: 'Morning Run',
++    type: 'Run',
++    sportType: 'Run',
++    workoutType: 0,
++    startLocal: '2026-04-14T07:00:00Z',
++    date: '2026-04-14',
++    distanceMi: 6.1,
++    movingTimeS: 3300,
++    elapsedTimeS: 3300,
++    paceSPerMi: 540,
++    avgHr: 142,
++    maxHr: 152,
++    avgCadence: 174,
++    elevGainFt: 60,
++    avgSpeedMph: 6.5,
++    startLatLng: null,
++    endLatLng: null,
++    summaryPolyline: null,
++    kudosCount: 0,
++    achievementCount: 0,
++    sufferScore: null,
++    canonicalFinishS: null,
++    canonicalDistanceMi: null,
++    canonicalLabel: null,
++    ...over,
++  };
++}
++
++function makePlan(workouts: PlanWorkout[]): Plan {
++  const week: PlanWeek = {
++    id: 'wk-1',
++    weekIdx: 0,
++    weekStartISO: '2026-04-13',
++    phaseId: 'ph-1',
++    isCutback: false,
++    isPeak: false,
++    isRaceWeek: false,
++    rationale: '',
++    workouts,
++  };
++  return {
++    id: 'plan-1',
++    userId: 'me',
++    mode: 'race-prep',
++    raceId: null,
++    goalISO: '2026-06-01',
++    authoredISO: '2026-04-01T00:00:00Z',
++    authoredFromState: {
++      weeklyAvg4w: 30,
++      weeklyAvg8w: 28,
++      longestTrainingRunLast28Mi: 12,
++      level: 'intermediate',
++      longRunDow: 0,
++      qualityDows: [2, 4],
++      restDow: 1,
++      builderVersion: 1,
++    },
++    phases: [{ id: 'ph-1', label: 'BASE', startWeekIdx: 0, endWeekIdx: 0, rationale: '', citation: '' }],
++    weeks: [week],
++    archivedISO: null,
++  };
++}
++
++// ── Tests ─────────────────────────────────────────────────────────
++
++describe('activityMatchesWorkout', () => {
++  it('matches a same-day run within ±15% distance', () => {
++    const w = makeWorkout({ distanceMi: 6 });
++    expect(activityMatchesWorkout(makeActivity({ distanceMi: 5.4 }), w)).toBe(true);
++    expect(activityMatchesWorkout(makeActivity({ distanceMi: 6.8 }), w)).toBe(true);
++  });
++
++  it('rejects activities outside ±15% distance', () => {
++    const w = makeWorkout({ distanceMi: 6 });
++    // 16.7 mi (long run on a 6 mi planned day) is well outside.
++    expect(activityMatchesWorkout(makeActivity({ distanceMi: 16.7 }), w)).toBe(false);
++    expect(activityMatchesWorkout(makeActivity({ distanceMi: 3 }), w)).toBe(false);
++  });
++
++  it('rejects activities on other dates', () => {
++    const w = makeWorkout({ dateISO: '2026-04-14', distanceMi: 6 });
++    expect(activityMatchesWorkout(makeActivity({ date: '2026-04-15' }), w)).toBe(false);
++  });
++
++  it('rejects rest-day workouts even when an activity exists', () => {
++    const w = makeWorkout({ type: 'rest', distanceMi: 0 });
++    expect(activityMatchesWorkout(makeActivity({ distanceMi: 6 }), w)).toBe(false);
++  });
++
++  it('rejects non-run activities (ride, swim)', () => {
++    const w = makeWorkout({ distanceMi: 6 });
++    expect(activityMatchesWorkout(makeActivity({ type: 'Ride', sportType: 'Ride' }), w)).toBe(false);
++  });
++});
++
++describe('findActivityForWorkout', () => {
++  it('prefers the activity closest to planned distance', () => {
++    const w = makeWorkout({ distanceMi: 6 });
++    const acts = [
++      makeActivity({ id: 1, distanceMi: 5.3 }),
++      makeActivity({ id: 2, distanceMi: 6.1 }),  // closest
++      makeActivity({ id: 3, distanceMi: 6.5 }),
++    ];
++    expect(findActivityForWorkout(w, acts)?.id).toBe(2);
++  });
++
++  it('falls back to the longest same-day run when none is within ±15%', () => {
++    const w = makeWorkout({ distanceMi: 6 });
++    const acts = [
++      makeActivity({ id: 1, distanceMi: 2 }),  // way too short
++      makeActivity({ id: 2, distanceMi: 16 }), // way too long but longest
++    ];
++    expect(findActivityForWorkout(w, acts)?.id).toBe(2);
++  });
++
++  it('returns null when no run on that date', () => {
++    const w = makeWorkout({ dateISO: '2026-04-14' });
++    const acts = [makeActivity({ date: '2026-04-15' })];
++    expect(findActivityForWorkout(w, acts)).toBeNull();
++  });
++});
++
++describe('isWorkoutComplete', () => {
++  it('treats actual ≥ 60% planned as complete', () => {
++    expect(isWorkoutComplete(10, 6)).toBe(true);  // exactly threshold
++    expect(isWorkoutComplete(10, 10)).toBe(true);
++    expect(isWorkoutComplete(10, 12)).toBe(true);
++  });
++
++  it('treats actual < 60% planned as incomplete', () => {
++    expect(isWorkoutComplete(10, 5.9)).toBe(false);
++    expect(isWorkoutComplete(10, 0)).toBe(false);
++  });
++
++  it('never marks a rest / zero-planned day complete', () => {
++    expect(isWorkoutComplete(0, 5)).toBe(false);
++  });
++
++  it('uses the documented threshold constant', () => {
++    expect(COMPLETION_MIN_FRACTION).toBe(0.6);
++  });
++});
++
++describe('findWorkoutForActivity / findWorkoutForDate', () => {
++  const plan = makePlan([
++    makeWorkout({ dateISO: '2026-04-13', type: 'long', distanceMi: 14 }),
++    makeWorkout({ dateISO: '2026-04-14', type: 'easy', distanceMi: 6 }),
++    makeWorkout({ dateISO: '2026-04-15', type: 'rest', distanceMi: 0 }),
++  ]);
++
++  it('finds the workout for a given activity by date + distance', () => {
++    const w = findWorkoutForActivity(plan, makeActivity({ date: '2026-04-14', distanceMi: 6.1 }));
++    expect(w?.dateISO).toBe('2026-04-14');
++    expect(w?.type).toBe('easy');
++  });
++
++  it('returns null when no plan workout matches', () => {
++    expect(findWorkoutForActivity(plan, makeActivity({ date: '2026-04-20' }))).toBeNull();
++  });
++
++  it('findWorkoutForDate includes rest days', () => {
++    expect(findWorkoutForDate(plan, '2026-04-15')?.type).toBe('rest');
++  });
++});
++
++describe('buildPlanMatches', () => {
++  it('only returns matches for non-rest, non-zero-distance days', () => {
++    const plan = makePlan([
++      makeWorkout({ dateISO: '2026-04-13', type: 'long', distanceMi: 14 }),
++      makeWorkout({ dateISO: '2026-04-14', type: 'easy', distanceMi: 6 }),
++      makeWorkout({ dateISO: '2026-04-15', type: 'rest', distanceMi: 0 }),
++    ]);
++    const acts = [
++      makeActivity({ id: 1, date: '2026-04-13', distanceMi: 14.2 }),
++      makeActivity({ id: 2, date: '2026-04-14', distanceMi: 5.8 }),
++      makeActivity({ id: 3, date: '2026-04-15', distanceMi: 4 }), // unmatched, rest day
++    ];
++    const matches = buildPlanMatches(plan, acts);
++    expect(matches).toHaveLength(2);
++    expect(matches.map(m => m.activity.id).sort()).toEqual([1, 2]);
++    expect(matches.every(m => m.isComplete)).toBe(true);
++  });
++
++  it('marks under-distance matches as incomplete', () => {
++    const plan = makePlan([makeWorkout({ distanceMi: 10 })]);
++    const acts = [makeActivity({ distanceMi: 5.5 })]; // 55% < 60%
++    const matches = buildPlanMatches(plan, acts);
++    expect(matches).toHaveLength(1);
++    expect(matches[0].isComplete).toBe(false);
++  });
++});
++
++describe('runTypeForWorkout', () => {
++  it('maps the plan workout type to the right shoe RunType', () => {
++    expect(runTypeForWorkout('easy')).toBe('easy');
++    expect(runTypeForWorkout('long')).toBe('long');
++    expect(runTypeForWorkout('recovery')).toBe('recovery');
++    expect(runTypeForWorkout('shakeout')).toBe('recovery');
++    expect(runTypeForWorkout('threshold')).toBe('tempo');
++    expect(runTypeForWorkout('mp')).toBe('tempo');
++    expect(runTypeForWorkout('interval')).toBe('intervals');
++    expect(runTypeForWorkout('race')).toBe('race');
++    expect(runTypeForWorkout('rest')).toBe('as_needed');
++  });
++});
++
++describe('getCompletedMileageByDate', () => {
++  it('reports per-date completed miles for planned days', () => {
++    const plan = makePlan([
++      makeWorkout({ dateISO: '2026-04-13', type: 'long', distanceMi: 14 }),
++      makeWorkout({ dateISO: '2026-04-14', type: 'easy', distanceMi: 6 }),
++    ]);
++    const acts = [
++      makeActivity({ date: '2026-04-13', distanceMi: 14.2 }),
++      makeActivity({ date: '2026-04-14', distanceMi: 5.4 }),
++    ];
++    const m = getCompletedMileageByDate(plan, acts);
++    expect(m.get('2026-04-13')).toBe(14.2);
++    expect(m.get('2026-04-14')).toBe(5.4);
++  });
++});
++
++// ── strava-writeback title generator ─────────────────────────────
++
++describe('plannedActivityTitle', () => {
++  it('generates "Type · Mon DD" for plain workouts', () => {
++    const w = makeWorkout({ type: 'easy', dateISO: '2026-04-14' });
++    expect(plannedActivityTitle(w)).toBe('Easy · Apr 14');
++  });
++
++  it('includes subLabel when present and not duplicative', () => {
++    const w = makeWorkout({ type: 'long', dateISO: '2026-04-13', subLabel: 'Long Run · HM Finish' });
++    expect(plannedActivityTitle(w)).toBe('Long Run · HM Finish · Apr 13');
++  });
++
++  it('strips duplicate type prefix from subLabel', () => {
++    const w = makeWorkout({ type: 'long', dateISO: '2026-04-13', subLabel: 'Long Run · Progression' });
++    expect(plannedActivityTitle(w)).toBe('Long Run · Progression · Apr 13');
++  });
++
++  it('handles threshold sessions', () => {
++    const w = makeWorkout({ type: 'threshold', dateISO: '2026-04-16' });
++    expect(plannedActivityTitle(w)).toBe('Threshold · Apr 16');
++  });
++});
++
++describe('nameAlreadyMatchesPlan', () => {
++  it('returns true on exact match', () => {
++    expect(nameAlreadyMatchesPlan('Easy · Apr 14', 'Easy · Apr 14')).toBe(true);
++  });
++
++  it('returns true when the activity has appended notes', () => {
++    expect(nameAlreadyMatchesPlan('Easy · Apr 14 · felt great', 'Easy · Apr 14')).toBe(true);
++  });
++
++  it('returns false on Strava default name', () => {
++    expect(nameAlreadyMatchesPlan('Morning Run', 'Easy · Apr 14')).toBe(false);
++  });
++
++  it('returns false when only the type matches but not the date', () => {
++    expect(nameAlreadyMatchesPlan('Easy · Apr 13', 'Easy · Apr 14')).toBe(false);
++  });
++});
++
++describe('formatActivityDate', () => {
++  it('formats ISO dates as "Mon DD"', () => {
++    expect(formatActivityDate('2026-04-14')).toBe('Apr 14');
++    expect(formatActivityDate('2026-01-01')).toBe('Jan 1');
++    expect(formatActivityDate('2026-12-31')).toBe('Dec 31');
++  });
++});
+diff --git a/web/lib/db.ts b/web/lib/db.ts
+index 4624f8e..fe71f42 100644
+--- a/web/lib/db.ts
++++ b/web/lib/db.ts
+@@ -122,6 +122,25 @@ async function bootstrap(): Promise<void> {
+       ALTER TABLE shoes
+         ADD COLUMN IF NOT EXISTS preferred BOOLEAN NOT NULL DEFAULT TRUE;
+     `);
++    // Writeback bookkeeping: when did /api/strava/sync last push a
++    // planned title back to Strava, and what title did it push? Lets
++    // the sync skip already-renamed activities cheaply (one row read
++    // instead of a Strava round-trip). NULL = never renamed.
++    await client.query(`
++      ALTER TABLE strava_activities
++        ADD COLUMN IF NOT EXISTS writeback_at   TIMESTAMPTZ;
++    `);
++    await client.query(`
++      ALTER TABLE strava_activities
++        ADD COLUMN IF NOT EXISTS writeback_name TEXT;
++    `);
++    // Shoe auto-assign bookkeeping: distinct from shoe_id (which the
++    // user can override). When the sync auto-assigns a shoe we stamp
++    // this so re-syncs don't trample a user's manual reassignment.
++    await client.query(`
++      ALTER TABLE strava_activities
++        ADD COLUMN IF NOT EXISTS shoe_auto_assigned_at TIMESTAMPTZ;
++    `);
+     await client.query(`
+       CREATE TABLE IF NOT EXISTS recovery_sessions (
+         id            SERIAL PRIMARY KEY,
+diff --git a/web/lib/plan-match.ts b/web/lib/plan-match.ts
+new file mode 100644
+index 0000000..c58c53e
+--- /dev/null
++++ b/web/lib/plan-match.ts
+@@ -0,0 +1,182 @@
++/**
++ * plan-match · pure helpers for matching Strava activities to the
++ * planned workout for the same calendar day, and deciding whether
++ * the planned work was "completed."
++ *
++ * Single source of truth for:
++ *   - which activity (if any) covers a given PlanWorkout
++ *   - which PlanWorkout (if any) covers a given Strava activity
++ *   - whether today's planned mileage has been fulfilled
++ *
++ * Consumed by:
++ *   - /api/strava/sync (writeback rename + shoe auto-assign)
++ *   - /api/overview & /overview UI (✓ chip on the hero TodayCard)
++ *   - /workout/[date] (actuals panel + completion pin)
++ *   - lib/__tests__/plan-match.test.ts (synthetic fixture)
++ *
++ * Completion threshold: actual miles ≥ 60% of planned miles.
++ * Below that, the day reads as "started" but not done — keeps the
++ * coach from claiming a 4-mile shakeout finished a 16-mile long run.
++ *
++ * Matcher tolerance: same calendar day (YYYY-MM-DD), Run-type
++ * activity, distance within ±15% of planned (or any same-day run when
++ * planned is 0 / unspecified). Loose enough that a 5.8 mi recovery
++ * day still matches when the user runs 5.3 or 6.4.
++ */
++
++import type { Plan, PlanWorkout, WorkoutType } from '../coach/plan-types';
++import type { NormalizedActivity } from '../app/api/strava/activities/route-shared';
++
++export const COMPLETION_MIN_FRACTION = 0.6;
++export const MATCH_DISTANCE_TOLERANCE = 0.15;
++
++export interface PlanMatch {
++  workout: PlanWorkout;
++  activity: NormalizedActivity;
++  actualMi: number;
++  plannedMi: number;
++  /** actualMi / max(plannedMi, 0.1). 1.0 = exactly on plan. */
++  fraction: number;
++  isComplete: boolean;
++}
++
++function isRun(a: NormalizedActivity): boolean {
++  return a.type === 'Run' || a.sportType === 'Run' || a.sportType === 'TrailRun';
++}
++
++/** True when the activity should be considered a match for the workout.
++ *  Rules: same date, is a run, distance within ±15% of planned (or any
++ *  same-day run when planned is 0). */
++export function activityMatchesWorkout(
++  activity: NormalizedActivity,
++  workout: PlanWorkout,
++): boolean {
++  if (activity.date !== workout.dateISO) return false;
++  if (!isRun(activity)) return false;
++  if (workout.type === 'rest') return false;
++  if (workout.distanceMi <= 0) return true;
++  const delta = Math.abs(activity.distanceMi - workout.distanceMi) / Math.max(workout.distanceMi, 0.1);
++  return delta <= MATCH_DISTANCE_TOLERANCE;
++}
++
++/** Pick the best Strava activity for a planned workout.
++ *  Preference order: distance-tolerant same-day run (closest to planned)
++ *  → any same-day run (longest first, for runners who logged a long run
++ *  on a rest day or doubled up). Returns null when no run on that date. */
++export function findActivityForWorkout(
++  workout: PlanWorkout,
++  activities: NormalizedActivity[],
++): NormalizedActivity | null {
++  const sameDay = activities.filter(a => a.date === workout.dateISO && isRun(a));
++  if (sameDay.length === 0) return null;
++  if (workout.distanceMi > 0) {
++    const within = sameDay.filter(a =>
++      Math.abs(a.distanceMi - workout.distanceMi) / Math.max(workout.distanceMi, 0.1) <= MATCH_DISTANCE_TOLERANCE,
++    );
++    if (within.length > 0) {
++      return within.sort(
++        (a, b) =>
++          Math.abs(a.distanceMi - workout.distanceMi) - Math.abs(b.distanceMi - workout.distanceMi),
++      )[0];
++    }
++  }
++  return sameDay.sort((a, b) => b.distanceMi - a.distanceMi)[0];
++}
++
++/** Reverse lookup: given an activity, find the PlanWorkout it covers.
++ *  null when the date isn't in the plan, the day is a rest, or the
++ *  distance is wildly off (e.g. a 26-mi run on a 4-mi recovery day). */
++export function findWorkoutForActivity(
++  plan: Plan,
++  activity: NormalizedActivity,
++): PlanWorkout | null {
++  for (const week of plan.weeks) {
++    for (const workout of week.workouts) {
++      if (activityMatchesWorkout(activity, workout)) return workout;
++    }
++  }
++  return null;
++}
++
++/** Find the PlanWorkout (if any) for a specific calendar date. Includes
++ *  rest days — caller decides whether to surface those. */
++export function findWorkoutForDate(plan: Plan, dateISO: string): PlanWorkout | null {
++  for (const week of plan.weeks) {
++    for (const workout of week.workouts) {
++      if (workout.dateISO === dateISO) return workout;
++    }
++  }
++  return null;
++}
++
++/** Decide whether a planned workout's mileage has been fulfilled.
++ *  actual ≥ 60% × planned (treats a rest day with miles=0 as not done
++ *  by definition — there's nothing to fulfill). */
++export function isWorkoutComplete(plannedMi: number, actualMi: number): boolean {
++  if (plannedMi <= 0) return false;
++  return actualMi >= plannedMi * COMPLETION_MIN_FRACTION;
++}
++
++/** Build every (workout, activity) pair where a same-day run covers
++ *  the planned workout. Used by /api/strava/sync to drive writeback +
++ *  shoe auto-assign in one pass. */
++export function buildPlanMatches(
++  plan: Plan,
++  activities: NormalizedActivity[],
++): PlanMatch[] {
++  const out: PlanMatch[] = [];
++  for (const week of plan.weeks) {
++    for (const workout of week.workouts) {
++      if (workout.type === 'rest' || workout.distanceMi <= 0) continue;
++      const match = findActivityForWorkout(workout, activities);
++      if (!match) continue;
++      const fraction = match.distanceMi / Math.max(workout.distanceMi, 0.1);
++      out.push({
++        workout,
++        activity: match,
++        actualMi: match.distanceMi,
++        plannedMi: workout.distanceMi,
++        fraction,
++        isComplete: isWorkoutComplete(workout.distanceMi, match.distanceMi),
++      });
++    }
++  }
++  return out;
++}
++
++/** Map of completed mileage per date in the current plan window — i.e.
++ *  for each planned date that has a same-day run, the total miles run.
++ *  Used by the calendar / week-strip / today-card to show a ✓ pill. */
++export function getCompletedMileageByDate(
++  plan: Plan,
++  activities: NormalizedActivity[],
++): Map<string, number> {
++  const out = new Map<string, number>();
++  for (const week of plan.weeks) {
++    for (const workout of week.workouts) {
++      const sameDay = activities.filter(a => a.date === workout.dateISO && isRun(a));
++      if (sameDay.length === 0) continue;
++      const total = Math.round(sameDay.reduce((s, a) => s + a.distanceMi, 0) * 10) / 10;
++      out.set(workout.dateISO, total);
++    }
++  }
++  return out;
++}
++
++/** Workout-type → RunType for shoe auto-assignment. Prefers the
++ *  planned type over Strava's freeform activity name so a planned
++ *  "Easy" run with an activity called "Lunch run" still gets the easy
++ *  shoe. Mirrors lib/shoe-utils.inferRunType but flows from the plan. */
++export function runTypeForWorkout(type: WorkoutType): 'race' | 'long' | 'easy' | 'recovery' | 'tempo' | 'intervals' | 'as_needed' {
++  switch (type) {
++    case 'race':      return 'race';
++    case 'long':      return 'long';
++    case 'recovery':  return 'recovery';
++    case 'shakeout':  return 'recovery';
++    case 'easy':      return 'easy';
++    case 'threshold': return 'tempo';
++    case 'mp':        return 'tempo';
++    case 'interval':  return 'intervals';
++    default:          return 'as_needed';
++  }
++}
+diff --git a/web/lib/strava-cache.ts b/web/lib/strava-cache.ts
+index 2e0148d..594483f 100644
+--- a/web/lib/strava-cache.ts
++++ b/web/lib/strava-cache.ts
+@@ -125,3 +125,60 @@ export async function setCachedDetail(id: number, detail: unknown): Promise<void
+     [id, JSON.stringify(detail)],
+   );
+ }
++
++/** Bookkeeping a writeback rename — caller (sync route) records the
++ *  title it sent to Strava so the next sync can short-circuit.
++ *  Also updates the cached `data` blob so the in-app activity list
++ *  reflects the new name without waiting for the next Strava pull. */
++export async function markWriteback(
++  id: number,
++  newName: string,
++): Promise<void> {
++  await query(
++    `UPDATE strava_activities
++     SET writeback_at = NOW(),
++         writeback_name = $2,
++         data = jsonb_set(data, '{name}', to_jsonb($2::text), false)
++     WHERE id = $1`,
++    [id, newName],
++  );
++}
++
++export interface ActivitySyncMeta {
++  shoe_id: number | null;
++  shoe_auto_assigned_at: Date | null;
++  writeback_at: Date | null;
++  writeback_name: string | null;
++}
++
++/** Read the sync-meta row for one activity (writeback + shoe state).
++ *  null when the activity isn't in our cache. */
++export async function getActivitySyncMeta(id: number): Promise<ActivitySyncMeta | null> {
++  const rows = await query<ActivitySyncMeta>(
++    `SELECT shoe_id, shoe_auto_assigned_at, writeback_at, writeback_name
++     FROM strava_activities WHERE id = $1`,
++    [id],
++  );
++  return rows[0] ?? null;
++}
++
++/** Auto-assign a shoe to an activity. Increments the shoe's mileage by
++ *  the activity's distance. Idempotent on shoe_id (caller checks that
++ *  shoe_id is currently NULL before invoking — we don't overwrite a
++ *  user's manual pick). */
++export async function autoAssignShoe(
++  activityId: number,
++  shoeId: number,
++  distanceMi: number,
++): Promise<void> {
++  await query(
++    `UPDATE strava_activities
++     SET shoe_id = $2, shoe_auto_assigned_at = NOW()
++     WHERE id = $1`,
++    [activityId, shoeId],
++  );
++  await query(
++    `UPDATE shoes SET mileage = mileage + $1 WHERE id = $2`,
++    [distanceMi, shoeId],
++  );
++}
+diff --git a/web/lib/strava-writeback.ts b/web/lib/strava-writeback.ts
+new file mode 100644
+index 0000000..ff6ca91
+--- /dev/null
++++ b/web/lib/strava-writeback.ts
+@@ -0,0 +1,120 @@
++/**
++ * strava-writeback · server-side helpers for renaming a Strava
++ * activity once we've matched it to a planned workout.
++ *
++ * Why: when we sync an activity and find it's the planned "Easy" run
++ * for Apr 14, Strava shows the generic "Morning Run" name unless we
++ * push our planned label back. The writeback gives the user a record
++ * of *what they were supposed to be doing* embedded in their Strava
++ * feed, so a post-mortem month later doesn't require cross-referencing
++ * with this app.
++ *
++ * Scope requirement: Strava's PUT /activities/{id} requires the
++ * `activity:write` OAuth scope. The /api/strava/connect flow asks for
++ * it. If the stored refresh token predates the scope addition, the
++ * Strava API call surfaces a 401 — caller logs and continues (no UI
++ * regressions from a writeback failure).
++ *
++ * Idempotency: we only rename when the activity's current name doesn't
++ * already start with the planned title prefix. So re-running sync
++ * doesn't re-touch the activity. The Strava API also accepts the
++ * unchanged value as a no-op but we avoid the round-trip.
++ */
++
++import { refreshAccessToken } from './strava';
++import type { PlanWorkout, WorkoutType } from '../coach/plan-types';
++
++const STRAVA_API_BASE = 'https://www.strava.com/api/v3';
++
++const TYPE_LABEL: Record<WorkoutType, string> = {
++  easy:      'Easy',
++  long:      'Long Run',
++  threshold: 'Threshold',
++  interval:  'Intervals',
++  mp:        'Marathon Pace',
++  recovery:  'Recovery',
++  shakeout:  'Shakeout',
++  race:      'Race',
++  rest:      'Rest',
++};
++
++const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
++
++/** "Apr 14" — month abbrev + day of month, parsed from ISO YYYY-MM-DD. */
++export function formatActivityDate(dateISO: string): string {
++  const [y, m, d] = dateISO.split('-').map(Number);
++  if (!y || !m || !d) return dateISO;
++  return `${MONTH_SHORT[m - 1]} ${d}`;
++}
++
++/** "Easy · Apr 14" or "Long Run · HM Finish · Apr 14".
++ *  The subLabel (when present) carries the per-week variant
++ *  ("HM Finish", "Progression") for richer Strava history. */
++export function plannedActivityTitle(workout: PlanWorkout): string {
++  const base = TYPE_LABEL[workout.type] ?? workout.type;
++  const dateLabel = formatActivityDate(workout.dateISO);
++  const parts: string[] = [base];
++  if (workout.subLabel && workout.subLabel.trim() !== '' && workout.subLabel !== base) {
++    // subLabel may already encode the workout type (e.g. "Long Run · HM Finish").
++    // Strip a leading duplicate so we don't render "Long Run · Long Run · …".
++    const stripped = workout.subLabel.replace(new RegExp(`^${base}\\s*·\\s*`, 'i'), '').trim();
++    if (stripped) parts.push(stripped);
++  }
++  parts.push(dateLabel);
++  return parts.join(' · ');
++}
++
++/** True when the activity's existing name already encodes our planned
++ *  title (avoids re-PUTting Strava on every sync). We treat a leading
++ *  prefix as "already named" — the user may have manually appended a
++ *  note like "Easy · Apr 14 · felt great", and we leave that alone. */
++export function nameAlreadyMatchesPlan(currentName: string, plannedTitle: string): boolean {
++  const cur = currentName.trim();
++  if (cur === plannedTitle) return true;
++  return cur.startsWith(plannedTitle + ' ') || cur.startsWith(plannedTitle + '·');
++}
++
++export interface RenameResult {
++  ok: boolean;
++  /** True when we actually called Strava (and it returned 200). False
++   *  when we skipped because the name already matched. */
++  changed: boolean;
++  newName?: string;
++  error?: string;
++}
++
++/** PUT the new name to Strava. Returns ok=true/changed=false when we
++ *  skipped because the name already matched; ok=true/changed=true on
++ *  a successful rename; ok=false when Strava rejected the call (most
++ *  commonly 401 if the token lacks activity:write scope). */
++export async function renameStravaActivity(
++  activityId: number,
++  currentName: string,
++  newName: string,
++): Promise<RenameResult> {
++  if (nameAlreadyMatchesPlan(currentName, newName)) {
++    return { ok: true, changed: false };
++  }
++  try {
++    const { accessToken } = await refreshAccessToken();
++    const res = await fetch(`${STRAVA_API_BASE}/activities/${activityId}`, {
++      method: 'PUT',
++      headers: {
++        Authorization: `Bearer ${accessToken}`,
++        'Content-Type': 'application/json',
++      },
++      body: JSON.stringify({ name: newName }),
++    });
++    if (!res.ok) {
++      const body = await res.text().catch(() => '');
++      return {
++        ok: false,
++        changed: false,
++        error: `Strava rename failed: ${res.status} ${body.slice(0, 200)}`,
++      };
++    }
++    return { ok: true, changed: true, newName };
++  } catch (e) {
++    return { ok: false, changed: false, error: e instanceof Error ? e.message : String(e) };
++  }
++}
+-- 
+2.39.5 (Apple Git-154)
+

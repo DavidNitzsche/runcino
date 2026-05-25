@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Health · Web</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEECEA; --card:#FFFFFF; --ink:#0D0F12;
+  --t1:rgba(13,15,18,.56); --t2:rgba(13,15,18,.40); --t3:rgba(13,15,18,.22);
+  --divider:rgba(13,15,18,.08); --pill:rgba(13,15,18,.04); --pill-line:rgba(13,15,18,.08);
+  --green:#2CA82F; --orange:#E85D26; --amber:#D4900A; --amber-ink:#B3450A; --warn:#F43F5E; --blue:#2563EB;
+  --green-wash:rgba(44,168,47,.12); --amber-wash:rgba(212,144,10,.15); --orange-wash:rgba(232,93,38,.12);
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 6px 22px rgba(0,0,0,.05);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05);
+  --f-display:"Bebas Neue",sans-serif; --f-body:"Inter",sans-serif; --f-sub:"Oswald",sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased;line-height:1.5}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ── top nav ── */
+.nav{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:34px;height:62px;padding:0 40px;background:rgba(238,236,234,.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--divider)}
+.nav .lg{font-family:var(--f-display);font-style:italic;font-size:26px;letter-spacing:2px;background:linear-gradient(135deg,#F3AD38,#E85D26 60%,#C73E0B);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav .tabs{display:flex;gap:4px}
+.nav .tab{font-family:var(--f-sub);font-size:14px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--t2);padding:8px 14px;border-radius:9px}
+.nav .tab.on{color:var(--ink);background:var(--pill)}
+.nav .right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.nav .racechip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;background:var(--orange-wash);color:var(--orange);font-size:12.5px;font-weight:700}
+.nav .racechip .dd{opacity:.7;font-weight:600}
+.nav .avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#F3AD38,#E85D26 70%);display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--f-sub);font-weight:600;font-size:15px}
+
+/* ── page ── */
+.page{max-width:1240px;margin:0 auto;padding:34px 40px 90px}
+.pagehead{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px}
+.eyb{font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--t2)}
+.h1{font-family:var(--f-display);font-size:64px;line-height:.86;letter-spacing:-.5px;text-transform:uppercase;margin-top:8px}
+.seg{display:flex;background:var(--pill);border:1px solid var(--pill-line);border-radius:11px;padding:3px;gap:3px}
+.seg .si{font-size:12px;font-weight:600;color:var(--t1);padding:7px 16px;border-radius:8px;cursor:default}
+.seg .si.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow-sm)}
+
+.card{background:var(--card);border-radius:18px;box-shadow:var(--shadow);padding:24px}
+.sec-label{font-family:var(--f-sub);font-size:13px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--t2);margin:30px 2px 14px;display:flex;align-items:center;gap:10px}
+.sec-label .meta{font-family:var(--f-body);font-size:11.5px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--t3)}
+
+/* ── hero ── */
+.hero{display:grid;grid-template-columns:260px 1fr 300px;gap:32px;align-items:center}
+.ring-wrap{position:relative;width:200px;height:200px;margin:0 auto}
+.ring-wrap .vv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-wrap .vv .n{font-family:var(--f-display);font-size:78px;line-height:.8;color:var(--amber-ink)}
+.ring-wrap .vv .s{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t2);margin-top:4px}
+.badge{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:5px 11px;border-radius:8px;display:inline-block}
+.badge.amber{color:var(--amber-ink);background:var(--amber-wash)} .badge.green{color:var(--green);background:var(--green-wash)} .badge.grey{color:var(--t2);background:var(--pill)}
+.hero-mid{display:grid;grid-template-columns:1fr 1fr;gap:18px 28px}
+.read .rl{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.read .rl.read-c{color:var(--green)} .read .rl.work{color:var(--green)} .read .rl.watch{color:var(--amber-ink)} .read .rl.frame{color:var(--t1)}
+.read .rb{font-size:13px;line-height:1.5;color:var(--ink)}
+.hero-right{border-left:1px solid var(--divider);padding-left:28px}
+.hero-right .rr-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px}
+.hero-right .rr-k{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t2)}
+.hero-right .rr-v{font-size:13px;font-weight:700;color:var(--green)}
+
+/* ── tile grid ── */
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+.tile{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:16px 16px 14px;display:flex;flex-direction:column;min-width:0}
+.tile .k{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .vr{display:flex;align-items:baseline;gap:3px;margin-top:9px}
+.tile .v{font-family:var(--f-display);font-size:34px;line-height:.8}
+.tile .u{font-size:10px;color:var(--t1);font-weight:500}
+.tile .spark{margin-top:11px}
+.tile .spark svg{display:block;width:100%;height:30px}
+.tile .d{font-size:10.5px;font-weight:700;margin-top:9px}
+.tile .d.good{color:var(--green)} .tile .d.watch{color:var(--amber-ink)} .tile .d.flat{color:var(--t2)}
+
+/* ── training load ── */
+.load{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px}
+.card-h .ct{font-family:var(--f-sub);font-size:16px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.card-h .cs{font-size:12px;color:var(--t2)}
+.form-stats{display:flex;gap:30px;margin-bottom:18px}
+.form-stat .fl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t2)}
+.form-stat .fv{font-family:var(--f-display);font-size:40px;line-height:.85;margin-top:4px}
+.form-stat .fs{font-size:11px;color:var(--t1);margin-top:2px}
+.legend{display:flex;gap:16px;font-size:11px;font-weight:600;color:var(--t1)}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;margin:6px 0 16px}
+.gauge-v{font-family:var(--f-display);font-size:46px;line-height:.8;color:var(--amber-ink)}
+.mini-row{display:flex;justify-content:space-between;font-size:12px;padding:10px 0;border-top:1px solid var(--divider)}
+.mini-row .mk{color:var(--t2);font-weight:600;letter-spacing:.03em;text-transform:uppercase;font-size:10.5px}
+.mini-row .mv{font-weight:700} .mini-row .mv.green{color:var(--green)} .mini-row .mv.amber{color:var(--amber-ink)}
+.bar{height:7px;border-radius:4px;background:rgba(13,15,18,.07);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;border-radius:4px;background:var(--green)} .bar i.amber{background:var(--amber)}
+
+@media(max-width:1080px){.grid{grid-template-columns:repeat(3,1fr)}.hero{grid-template-columns:1fr}.hero-right{border-left:0;border-top:1px solid var(--divider);padding-left:0;padding-top:20px}.load{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ── TOP NAV ── -->
+<nav class="nav">
+  <span class="lg">FAFF</span>
+  <div class="tabs">
+    <span class="tab">Overview</span>
+    <span class="tab">Training</span>
+    <span class="tab">Coach</span>
+    <span class="tab on">Health</span>
+    <span class="tab">Races</span>
+  </div>
+  <div class="right">
+    <span class="racechip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 21V4m0 1.6 5.6 1.2a3 3 0 0 0 2.4-.4l2.5-1.7a1 1 0 0 1 1.5.9v7.2a1 1 0 0 1-.4.8l-3.1 2.1a3 3 0 0 1-2.5.4L6 14.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>AFC<span class="dd">· 89d</span></span>
+    <div class="avatar">D</div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- ── PAGE HEADER ── -->
+  <div class="pagehead">
+    <div>
+      <div class="eyb">Apple Health · synced 2m ago</div>
+      <div class="h1">Body State</div>
+    </div>
+    <div class="seg"><span class="si">Today</span><span class="si on">7 Days</span><span class="si">30 Days</span></div>
+  </div>
+
+  <!-- ── READINESS HERO ── -->
+  <div class="card hero">
+    <div>
+      <div class="ring-wrap">
+        <svg width="200" height="200" viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="84" fill="none" stroke="rgba(13,15,18,.08)" stroke-width="14" stroke-dasharray="396 528" stroke-linecap="round" transform="rotate(135 100 100)"/>
+          <circle cx="100" cy="100" r="84" fill="none" stroke="#D4900A" stroke-width="14" stroke-dasharray="253 528" stroke-linecap="round" transform="rotate(135 100 100)"/>
+        </svg>
+        <div class="vv"><div class="n tnum">64</div><div class="s">Recovery</div></div>
+      </div>
+      <div style="text-align:center;margin-top:6px"><span class="badge amber">Hold easy</span></div>
+    </div>
+
+    <div class="hero-mid">
+      <div class="read"><div class="rl read-c">The Read</div><div class="rb">Recovered enough for quality, but acute load is still elevated 11 days post-race. Hold aerobic until it settles — the engine's fine, the tissue needs time.</div></div>
+      <div class="read"><div class="rl work">What's Working</div><div class="rb">HRV up 6 ms over 7 days, resting HR down 2. The aerobic base is taking — easy-day HR is trending down at the same pace.</div></div>
+      <div class="read"><div class="rl watch">The Watch</div><div class="rb">Acute load (ACWR 1.42) is climbing. Keep easy days easy until it drops back under 1.3 — that's when quality returns.</div></div>
+      <div class="read"><div class="rl frame">The Frame</div><div class="rb">Sleep averaging 7:48 against a 7:30 need; respiration and resting HR steady. Recovery infrastructure is solid.</div></div>
+    </div>
+
+    <div class="hero-right">
+      <div class="rr-top"><span class="rr-k">HRV · 30-day</span><span class="rr-v">68 ms · ↑6</span></div>
+      <svg viewBox="0 0 300 96" preserveAspectRatio="none" style="width:100%;height:96px;display:block">
+        <rect x="0" y="44" width="300" height="20" fill="rgba(44,168,47,.10)"/>
+        <line x1="0" y1="54" x2="300" y2="54" stroke="rgba(44,168,47,.35)" stroke-width="1" stroke-dasharray="4 4"/>
+        <path d="M4,66 L30,60 L54,70 L78,54 L102,64 L126,70 L150,58 L174,66 L198,50 L222,58 L246,46 L270,52 L294,38" fill="none" stroke="#2CA82F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="294" cy="38" r="4" fill="#2CA82F" stroke="#fff" stroke-width="2.5"/>
+      </svg>
+      <div style="display:flex;justify-content:space-between;font-size:9.5px;font-weight:600;color:var(--t3);margin-top:6px"><span>Apr 20</span><span>May 5</span><span>Today</span></div>
+    </div>
+  </div>
+
+  <!-- ── RECOVERY & VITALS ── -->
+  <div class="sec-label">Recovery &amp; Vitals</div>
+  <div class="grid">
+    <div class="tile"><div class="k">HRV</div><div class="vr"><span class="v tnum">68</span><span class="u">ms</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,22 L18,20 L34,24 L50,16 L66,18 L82,12 L98,8" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">↑ 6 · 7d</div></div>
+    <div class="tile"><div class="k">Resting HR</div><div class="vr"><span class="v tnum">48</span><span class="u">bpm</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,12 L18,14 L34,11 L50,16 L66,15 L82,19 L98,21" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">↓ 2</div></div>
+    <div class="tile"><div class="k">Sleep</div><div class="vr"><span class="v tnum">7:48</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,16 L18,12 L34,18 L50,14 L66,10 L82,15 L98,12" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">need 7:30</div></div>
+    <div class="tile"><div class="k">VO₂max</div><div class="vr"><span class="v tnum">51</span><span class="u">ml/kg</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,22 L18,21 L34,20 L50,18 L66,17 L82,15 L98,13" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">↑ 1</div></div>
+    <div class="tile"><div class="k">Respiration</div><div class="vr"><span class="v tnum">14.2</span><span class="u">/min</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,15 L18,16 L34,14 L50,15 L66,15 L82,14 L98,15" fill="none" stroke="rgba(13,15,18,.3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d flat">steady</div></div>
+    <div class="tile"><div class="k">Wrist temp</div><div class="vr"><span class="v tnum">+0.2</span><span class="u">°F</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,16 L18,15 L34,16 L50,14 L66,15 L82,16 L98,14" fill="none" stroke="rgba(13,15,18,.3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d flat">normal</div></div>
+  </div>
+
+  <!-- ── RUNNING DYNAMICS ── -->
+  <div class="sec-label">Running Dynamics <span class="meta">· last run · May 18</span></div>
+  <div class="grid">
+    <div class="tile"><div class="k">Cadence</div><div class="vr"><span class="v tnum">178</span><span class="u">spm</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,20 L18,18 L34,19 L50,16 L66,15 L82,14 L98,13" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">↑ 3</div></div>
+    <div class="tile"><div class="k">Stride</div><div class="vr"><span class="v tnum">1.18</span><span class="u">m</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,15 L18,14 L34,16 L50,15 L66,14 L82,15 L98,15" fill="none" stroke="rgba(13,15,18,.3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d flat">steady</div></div>
+    <div class="tile"><div class="k">Vert Osc</div><div class="vr"><span class="v tnum">8.2</span><span class="u">cm</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,12 L18,13 L34,12 L50,14 L66,15 L82,17 L98,18" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">efficient</div></div>
+    <div class="tile"><div class="k">Grnd Contact</div><div class="vr"><span class="v tnum">242</span><span class="u">ms</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,12 L18,13 L34,14 L50,15 L66,17 L82,18 L98,20" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">↓ 6</div></div>
+    <div class="tile"><div class="k">Vert Ratio</div><div class="vr"><span class="v tnum">6.9</span><span class="u">%</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,14 L18,15 L34,14 L50,15 L66,16 L82,16 L98,17" fill="none" stroke="#2CA82F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d good">good</div></div>
+    <div class="tile"><div class="k">Run Power</div><div class="vr"><span class="v tnum">287</span><span class="u">W</span></div><div class="spark"><svg viewBox="0 0 100 30" preserveAspectRatio="none"><path d="M2,16 L18,15 L34,17 L50,14 L66,16 L82,15 L98,16" fill="none" stroke="rgba(13,15,18,.3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="d flat">avg</div></div>
+  </div>
+
+  <!-- ── TRAINING LOAD ── -->
+  <div class="sec-label">Training Load</div>
+  <div class="load">
+    <div class="card">
+      <div class="card-h"><span class="ct">Fitness · Fatigue · Form</span><span class="cs">CTL / ATL / TSB · last 6 weeks</span></div>
+      <div class="form-stats">
+        <div class="form-stat"><div class="fl">Fitness · CTL</div><div class="fv tnum">52</div><div class="fs">building</div></div>
+        <div class="form-stat"><div class="fl">Fatigue · ATL</div><div class="fv tnum" style="color:var(--amber-ink)">58</div><div class="fs">elevated</div></div>
+        <div class="form-stat"><div class="fl">Form · TSB</div><div class="fv tnum">−6</div><div class="fs">fresh-ish</div></div>
+      </div>
+      <svg viewBox="0 0 600 150" preserveAspectRatio="none" style="width:100%;height:150px;display:block">
+        <line x1="0" y1="100" x2="600" y2="100" stroke="rgba(13,15,18,.06)" stroke-width="1"/>
+        <path d="M0,118 L100,110 L200,98 L300,90 L400,84 L500,80 L600,78 L600,150 L0,150 Z" fill="rgba(44,168,47,.08)"/>
+        <path d="M0,118 L100,110 L200,98 L300,90 L400,84 L500,80 L600,78" fill="none" stroke="#2CA82F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M0,124 L100,108 L200,112 L300,96 L400,72 L500,70 L600,66" fill="none" stroke="#D4900A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M0,96 L100,108 L200,92 L300,100 L400,108 L500,106 L600,104" fill="none" stroke="rgba(13,15,18,.4)" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="600" cy="78" r="4" fill="#2CA82F" stroke="#fff" stroke-width="2.5"/>
+        <circle cx="600" cy="66" r="4" fill="#D4900A" stroke="#fff" stroke-width="2.5"/>
+      </svg>
+      <div class="legend" style="margin-top:14px"><span><i style="background:#2CA82F"></i>Fitness (CTL)</span><span><i style="background:#D4900A"></i>Fatigue (ATL)</span><span><i style="background:rgba(13,15,18,.4)"></i>Form (TSB)</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><span class="ct">Acute Load</span><span class="cs">ACWR · 7d ÷ 28d</span></div>
+      <div class="gauge-wrap">
+        <svg width="220" height="120" viewBox="0 0 220 120">
+          <path d="M20,110 A90,90 0 0,1 73,28" fill="none" stroke="#2CA82F" stroke-width="14" stroke-linecap="round"/>
+          <path d="M80,24 A90,90 0 0,1 140,24" fill="none" stroke="rgba(44,168,47,.4)" stroke-width="14" stroke-linecap="round"/>
+          <path d="M147,28 A90,90 0 0,1 200,110" fill="none" stroke="#D4900A" stroke-width="14" stroke-linecap="round"/>
+          <line x1="110" y1="110" x2="168" y2="52" stroke="var(--ink)" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="110" cy="110" r="6" fill="var(--ink)"/>
+        </svg>
+        <div class="gauge-v tnum">1.42</div>
+        <span class="badge amber">Watching · hold easy</span>
+      </div>
+      <div class="mini-row"><span class="mk">Weekly volume</span><span class="mv green">9.5 / 43 mi</span></div>
+      <div class="bar"><i style="width:22%"></i></div>
+      <div class="mini-row"><span class="mk">Easy-pace HR drift</span><span class="mv green">−4 bpm · 3 wk</span></div>
+      <div class="bar"><i style="width:74%"></i></div>
+      <div class="mini-row"><span class="mk">Sweet spot</span><span class="mv amber">target ≤ 1.30</span></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Races</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* v4 tokens — match training-v4 / overview-v4. */
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+/* Nav (shared) */
+.navbar { background: var(--bg); position: sticky; top: 0; z-index: 100; }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; line-height: 1; font-style: italic; text-decoration: none; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-logo:hover { background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%); -webkit-background-clip: text; background-clip: text; }
+.nav-links { display: flex; align-items: center; gap: 36px; }
+.nav-link { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2px; color: var(--t1); text-transform: uppercase; cursor: pointer; text-decoration: none; }
+.nav-link.active { color: var(--t0); font-weight: 500; }
+.nav-right { display: flex; align-items: center; gap: 16px; }
+.nav-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--t0); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px;; overflow: hidden }
+.nav-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.page { max-width: 1280px; margin: 0 auto; padding: 36px 40px 80px; }
+
+/* ── Coach strip ────────────────────────────────────────── */
+.coach-strip { display: flex; align-items: stretch; justify-content: space-between; height: 200px; margin-bottom: 16px; }
+.coach-left { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.coach-label { display: flex; align-items: center; gap: 7px; font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 14px; }
+.coach-label .dot-green { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.coach-briefing { font-family: 'Inter', sans-serif; font-size: 22px; line-height: 1.5; color: var(--t0); font-weight: 400; }
+.coach-briefing strong { font-weight: 700; }
+
+/* Right side: VDOT anchor card — which race is currently driving
+   the runner's paces, with a freshness countdown. */
+.vdot-anchor-card {
+  flex-shrink: 0; margin-left: 48px; width: 300px;
+  display: flex; flex-direction: column; justify-content: center;
+  background: var(--card); border-radius: 20px; padding: 24px 28px;
+  box-shadow: var(--card-shadow);
+}
+.vdot-anchor-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; }
+.vdot-anchor-row { display: flex; align-items: baseline; gap: 12px; margin-top: 6px; }
+.vdot-anchor-num { font-family: 'Bebas Neue', sans-serif; font-size: 96px; line-height: 0.86; color: var(--green); letter-spacing: -2px; }
+.vdot-anchor-fresh {
+  margin-top: 18px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: rgba(44,168,47,.10);
+  border-radius: 8px;
+}
+.vdot-anchor-fresh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.vdot-anchor-fresh-text { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--green); font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; }
+.vdot-anchor-fresh-text strong { font-weight: 700; }
+
+/* ── A-race hero ────────────────────────────────────────── */
+.a-race-card {
+  background: var(--card); border-radius: 20px; box-shadow: var(--card-shadow);
+  display: grid; grid-template-columns: 1fr 460px;
+  margin-top: 16px; overflow: hidden;
+}
+.a-race-left { padding: 40px; display: flex; flex-direction: column; }
+.a-race-eyebrow { font-family: 'Inter', sans-serif; font-size: 12px; letter-spacing: 2.5px; color: var(--t2); text-transform: uppercase; margin-bottom: 20px; }
+.a-race-title { font-family: 'Bebas Neue', sans-serif; font-size: 110px; line-height: 0.86; letter-spacing: -3px; color: var(--t0); flex: 0 0 auto; margin-left: -6px; }
+.a-race-sub { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 18px; color: var(--orange); margin-top: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
+.a-race-explainer { font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6; color: var(--t1); margin-top: 16px; max-width: 540px; }
+
+.path-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  margin-top: 28px;
+}
+.path-stat {
+  background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 16px 20px;
+}
+.path-stat-label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--t2); text-transform: uppercase; font-weight: 600; }
+.path-stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 36px; line-height: 1; color: var(--t0); margin-top: 6px; }
+.path-stat-value.green { color: var(--green); }
+.path-stat-value.orange { color: var(--orange); }
+.path-stat-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 4px; }
+
+/* Right side is a black panel — flips the whole color system inside. */
+.a-race-right {
+  background: var(--t0);
+  padding: 40px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  color: rgba(255,255,255,.78);
+}
+.a-race-right .path-section-label {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+  letter-spacing: 1.5px; color: rgba(255,255,255,.45);
+  text-transform: uppercase; margin-bottom: 14px;
+}
+
+.path-progress { margin-top: 4px; }
+.a-race-right .path-progress-bar { height: 8px; background: rgba(255,255,255,.10); border-radius: 4px; overflow: hidden; }
+.path-progress-fill { height: 100%; background: var(--orange); border-radius: 4px; }
+.a-race-right .path-progress-meta {
+  display: flex; justify-content: space-between; font-family: 'Inter', sans-serif;
+  font-size: 12px; color: rgba(255,255,255,.55); margin-top: 8px;
+}
+.a-race-right .path-progress-meta strong { color: #FFFFFF; font-weight: 600; }
+
+/* Inline paragraph (Coach's Next Move body) — light text on black. */
+.a-race-right p { color: rgba(255,255,255,.85); }
+.a-race-right p strong { color: #FFFFFF; font-weight: 700; }
+
+.coach-take {
+  font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55;
+  color: rgba(255,255,255,.65);
+  margin-top: 28px; padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+.coach-take strong { color: #FFFFFF; font-weight: 700; }
+
+/* ── Card with title-first hierarchy (matches /training) ─── */
+.card { background: var(--card); border-radius: 16px; box-shadow: var(--card-shadow); margin-top: 16px; }
+.card-header { padding: 28px 40px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.card-title-group { display: flex; flex-direction: column; gap: 6px; }
+.card-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 22px; color: var(--t0); line-height: 1.1; }
+.card-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 0.3px; }
+.card-sub strong { color: var(--t1); font-weight: 600; }
+.card-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); text-align: right; }
+.card-meta strong { color: var(--t0); font-weight: 700; }
+
+/* ── Race history rows ───────────────────────────────────── */
+.race-row {
+  display: grid;
+  grid-template-columns: 56px 28px auto 1fr auto;
+  align-items: center;
+  padding: 16px 40px;
+  gap: 28px;
+  border-top: 1px solid var(--divider);
+}
+.race-row-date { text-align: left; }
+/* Swap visual order of last two columns: status (notes) → col 4, time → col 5 */
+.race-row > :nth-child(4) { order: 5; }
+.race-row > :nth-child(5) { order: 4; }
+/* Extra breathing room between the A/B/C tag and the race name */
+.race-row > :nth-child(3) { margin-left: 12px; }
+.race-row:first-of-type { border-top: 1px solid var(--divider); }
+.race-row.a-race { background: rgba(232,93,38,.04); }
+.race-row-tag {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
+  background: rgba(13,15,18,.07); color: var(--t2);
+}
+.race-row-tag.a { background: rgba(232,93,38,.16); color: var(--orange); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0; }
+.race-row-tag.b { background: rgba(212,144,10,.16); color: var(--amber); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0; }
+.race-row-tag.c { background: rgba(13,15,18,.06); color: var(--t2); font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0; }
+.race-row-date { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 1px; color: var(--t2); text-transform: uppercase; }
+.race-row-name { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: var(--t0); }
+.race-row-name-sub { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 2px; }
+.race-row-time { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: var(--t0); line-height: 1; text-align: right; }
+.race-row-pace { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 3px; text-align: right; }
+.race-row-status {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: 1px; text-transform: uppercase; text-align: right;
+  color: var(--t2);
+}
+.race-row-status.a { color: var(--orange); }
+.race-row-status.b { color: var(--amber); }
+.race-row-status.c { color: var(--t2); }
+
+/* ── PRs grid ─────────────────────────────────────────────── */
+.prs-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  padding: 0 40px 28px;
+}
+.pr-cell {
+  background: rgba(13,15,18,.04); border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px; padding: 18px 20px;
+}
+.pr-distance { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 1.5px; color: var(--t1); text-transform: uppercase; }
+.pr-time { font-family: 'Bebas Neue', sans-serif; font-size: 32px; line-height: 1; color: var(--t0); margin-top: 8px; }
+.pr-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); margin-top: 6px; }
+.pr-meta strong { color: var(--t1); font-weight: 600; }
+
+/* ── Upcoming Races timeline ─────────────────────────────── */
+.races-timeline {
+  padding: 24px 0 32px;
+}
+.races-timeline-track-area {
+  position: relative;
+  margin: 0 40px;
+  height: 270px;
+}
+.races-timeline-track-line {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 2px;
+  background: var(--divider);
+  transform: translateY(-50%);
+}
+
+/* Each station spans the full vertical height; badge floats in the
+   middle, info block floats above or below per placement class. */
+.races-timeline-station {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 160px;
+  margin-left: -80px;
+}
+/* Today is special: small dot, left-anchored */
+.races-timeline-now {
+  position: absolute;
+  top: 0; bottom: 0;
+  margin-left: 0;
+  width: 100px;
+}
+/* Last station anchored to right edge of track */
+.races-timeline-station.is-last {
+  margin-left: -160px;
+}
+
+/* The badge / dot sits on the line */
+.races-timeline-tag {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 16px; font-weight: 700;
+  z-index: 2;
+  border: 3px solid var(--card);
+}
+.races-timeline-station.is-last .races-timeline-tag {
+  left: auto; right: 0;
+  transform: translate(50%, -50%);
+}
+.races-timeline-tag.a {
+  background: var(--orange); color: white;
+  box-shadow: 0 0 0 5px rgba(232,93,38,.12);
+}
+.races-timeline-tag.b {
+  background: var(--amber); color: white;
+  box-shadow: 0 0 0 5px rgba(212,144,10,.12);
+}
+.races-timeline-tag.c {
+  background: #E6E5E1; color: var(--t1);
+  box-shadow: 0 0 0 5px rgba(13,15,18,.05);
+}
+.races-timeline-now-dot {
+  position: absolute;
+  top: 50%; left: 0;
+  transform: translateY(-50%);
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(44,168,47,.16);
+  z-index: 2;
+}
+
+/* Info block: absolutely above or below the line */
+.races-timeline-station-info {
+  position: absolute;
+  left: 0; right: 0;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+}
+.races-timeline-station.placement-above .races-timeline-station-info {
+  bottom: calc(50% + 36px);
+}
+.races-timeline-station.placement-below .races-timeline-station-info {
+  top: calc(50% + 36px);
+}
+.races-timeline-station.is-last .races-timeline-station-info {
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* Today info block (sits below the line, left-aligned) */
+.races-timeline-now-info {
+  position: absolute;
+  top: calc(50% + 22px);
+  left: 0;
+  display: flex; flex-direction: column; align-items: flex-start;
+}
+.races-timeline-now-label {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px; letter-spacing: 1.5px;
+  color: var(--green); font-weight: 700;
+  text-transform: uppercase;
+}
+.races-timeline-now-date {
+  margin-top: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t2);
+}
+.races-timeline-date {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px; letter-spacing: 1.5px;
+  color: var(--t2); font-weight: 600;
+  text-transform: uppercase;
+}
+.races-timeline-name {
+  margin-top: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; font-weight: 700;
+  color: var(--t0); line-height: 1.25;
+  max-width: 140px;
+}
+.races-timeline-goal {
+  margin-top: 8px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 26px;
+  color: var(--t0); line-height: 1;
+  letter-spacing: -0.5px;
+}
+.races-timeline-pace {
+  margin-top: 2px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: var(--t2);
+}
+.races-timeline-away {
+  margin-top: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; font-weight: 600;
+  color: var(--t2); letter-spacing: 0.3px;
+}
+.races-timeline-station.priority-a .races-timeline-away { color: var(--orange); }
+.races-timeline-station.priority-b .races-timeline-away { color: var(--amber); }
+
+/* Above-placement: read top-down as days-away → goal → pace → name → date,
+   so the date sits closest to the badge (mirrors the below layout's date-at-top). */
+.races-timeline-station.placement-above .races-timeline-away { order: 1; margin-top: 0; }
+.races-timeline-station.placement-above .races-timeline-goal { order: 2; margin-top: 8px; }
+.races-timeline-station.placement-above .races-timeline-pace { order: 3; margin-top: 2px; }
+.races-timeline-station.placement-above .races-timeline-name { order: 4; margin-top: 8px; }
+.races-timeline-station.placement-above .races-timeline-date { order: 5; margin-top: 6px; }
+</style>
+<script src="faff-store.js"></script>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
+    <div class="nav-links">
+      <a class="nav-link" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training-v4.html">Training</a>
+      <a class="nav-link active" href="races-v4.html">Races</a>
+      <a class="nav-link" href="health-v4.html">Health</a>
+      <a class="nav-link" href="log-v4.html">Log</a>
+      <a class="nav-link" href="profile-v4.html">Profile</a>
+    </div>
+    <div class="nav-right"><div class="nav-avatar">DN</div></div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- COACH STRIP -->
+  <div class="coach-strip">
+    <div class="coach-left">
+      <div class="coach-label">
+        <span class="dot-green"></span>
+        COACH · RACE CALENDAR · WHAT'S NEXT
+      </div>
+      <p class="coach-briefing">
+        <strong>AFC Half is 93 days out</strong> — your A-race for this cycle and the only one
+        that counts on the fitness ledger. You're in week 1 of 14, banking base miles.
+        First half-pace work lands at week 5 — that's where the <strong>1:35 starts to feel
+        real</strong>. No tune-up B-race on the calendar yet; we'll slot one around week 10
+        if you want a dress rehearsal.
+      </p>
+    </div>
+
+    <div class="vdot-anchor-card">
+      <div class="vdot-anchor-label">Your VDOT</div>
+      <div class="vdot-anchor-row">
+        <span class="vdot-anchor-num">48.1</span>
+      </div>
+      <div class="vdot-anchor-fresh">
+        <span class="vdot-anchor-fresh-dot"></span>
+        <span class="vdot-anchor-fresh-text"><strong>Fresh</strong> · 26d to refresh</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- A-RACE HERO -->
+  <div class="a-race-card">
+    <div class="a-race-left">
+      <div class="a-race-eyebrow">A-RACE · GOAL TIME 1:35:00</div>
+      <div class="a-race-title">AFC<br>HALF</div>
+      <div class="a-race-sub">Americas Finest City · Aug 16</div>
+      <p class="a-race-explainer">
+        The full 14-week plan points here. Goal of <strong>1:35:00</strong> is at 7:15/mi —
+        about 8 seconds per mile faster than your current threshold pace. Closeable with
+        disciplined work.
+      </p>
+
+      <div class="path-stats">
+        <div class="path-stat">
+          <div class="path-stat-label">Current Fitness</div>
+          <div class="path-stat-value">1:36:42</div>
+          <div class="path-stat-sub">VDOT 48.1 · Riegel to 13.1</div>
+        </div>
+        <div class="path-stat">
+          <div class="path-stat-label">Gap to Goal</div>
+          <div class="path-stat-value orange">−8<span style="font-size:18px; color:var(--t2); margin-left: 6px;">s/mi</span></div>
+          <div class="path-stat-sub">≈ 1:42 over the half</div>
+        </div>
+        <div class="path-stat">
+          <div class="path-stat-label">Feasibility</div>
+          <div class="path-stat-value green">On track</div>
+          <div class="path-stat-sub">~0.5 VDOT/wk closes it</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="a-race-right">
+      <div>
+        <div class="path-section-label">Path to the Line</div>
+        <div class="path-progress">
+          <div class="path-progress-bar">
+            <div class="path-progress-fill" style="width: 7%;"></div>
+          </div>
+          <div class="path-progress-meta">
+            <span><strong>Week 1</strong> of 14 · Base phase</span>
+            <span>7%</span>
+          </div>
+        </div>
+
+        <div style="margin-top: 28px;">
+          <div class="path-section-label">Coach's Next Move</div>
+          <p style="font-family: 'Inter', sans-serif; font-size: 14px; line-height: 1.55;">
+            Build the aerobic base for four weeks. First real threshold dose lands in
+            <strong>24 days</strong> when the Build phase opens. That's where the half-marathon
+            pace starts to feel sustainable.
+          </p>
+        </div>
+      </div>
+
+      <p class="coach-take">
+        <strong>Trust the easy.</strong> The race is won in the workouts you didn't try to win.
+      </p>
+    </div>
+  </div>
+
+  <!-- UPCOMING RACES — horizontal timeline -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Upcoming Races</div>
+      </div>
+    </div>
+
+    <!-- Stations rendered from FaffStore.races.upcoming by inline script below.
+         Positions computed proportional to daysAway with the rightmost race at 100%.
+         Placement alternates ABOVE/BELOW the line to prevent label collisions. -->
+    <div class="races-timeline">
+      <div class="races-timeline-track-area" id="upcoming-timeline">
+        <div class="races-timeline-track-line"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RACE HISTORY -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Recent Races</div>
+      </div>
+    </div>
+
+    <!-- Rendered from FaffStore.getState().races.recent by inline script below -->
+    <div id="recent-races"></div>
+
+  </div>
+
+  <!-- PRs by distance -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <div class="card-title">Personal Records</div>
+      </div>
+    </div>
+
+    <div class="prs-grid">
+      <div class="pr-cell">
+        <div class="pr-distance">Marathon</div>
+        <div class="pr-time">3:31:00</div>
+        <div class="pr-meta"><strong>LA Marathon</strong> · Mar 15</div>
+      </div>
+      <div class="pr-cell">
+        <div class="pr-distance">Half</div>
+        <div class="pr-time">1:34:54</div>
+        <div class="pr-meta"><strong>Powered by the Mouse</strong> · Feb 1</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script>
+  // ── Recent Races · render from FaffStore.races.recent ──────────
+  function renderRecentRaces() {
+    if (!window.FaffStore) return;
+    const container = document.getElementById('recent-races');
+    if (!container) return;
+    const races = (FaffStore.getState().races || {}).recent || [];
+
+    function fmtDate(iso) {
+      const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(iso.slice(5,7),10)-1];
+      return `${month} ${parseInt(iso.slice(8,10),10)}`;
+    }
+    function esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    container.innerHTML = races.map(function (r) {
+      const tag = (r.priority || 'C').toLowerCase();
+      const rowClass = 'race-row' + (r.currentAnchor ? ' a-race' : '');
+      const statusInner = r.note
+        ? (r.currentAnchor
+            ? r.note.split('·')[0].trim() + '<br><span style="font-weight:400; color:var(--t2);">' + (r.note.split('·')[1]||'').trim() + '</span>'
+            : esc(r.note))
+        : '&nbsp;';
+      return (
+        '<div class="' + rowClass + '">' +
+          '<div class="race-row-date">' + fmtDate(r.date) + '</div>' +
+          '<span class="race-row-tag ' + tag + '">' + tag.toUpperCase() + '</span>' +
+          '<div>' +
+            '<div class="race-row-name">' + esc(r.name) + '</div>' +
+            '<div class="race-row-name-sub">' + esc(r.distanceLabel) + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div class="race-row-time">' + esc(r.finish) + '</div>' +
+            '<div class="race-row-pace">' + esc(r.pace) + '</div>' +
+          '</div>' +
+          '<div class="race-row-status ' + tag + '">' + statusInner + '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  // ── Upcoming Races · render horizontal timeline from store ──────────
+  function renderUpcomingTimeline() {
+    if (!window.FaffStore) return;
+    const area = document.getElementById('upcoming-timeline');
+    if (!area) return;
+
+    const state = FaffStore.getState();
+    const races = (state.races || {}).upcoming || [];
+    if (!races.length) { area.innerHTML = '<div class="races-timeline-track-line"></div>'; return; }
+
+    // Position each race proportional to daysAway, rightmost = 100%
+    const maxDays = Math.max(...races.map(r => r.daysAway));
+
+    function fmtShortDate(iso) {
+      const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(iso.slice(5,7),10)-1];
+      return `${month} ${parseInt(iso.slice(8,10),10)}`;
+    }
+    function fmtTodayShort(iso) {
+      return fmtShortDate(iso);
+    }
+    function esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    const todayISO = state.today;
+    const todayHTML =
+      '<div class="races-timeline-now" style="left: 0%;">' +
+        '<div class="races-timeline-now-dot"></div>' +
+        '<div class="races-timeline-now-info">' +
+          '<div class="races-timeline-now-label">Today</div>' +
+          '<div class="races-timeline-now-date">' + fmtTodayShort(todayISO) + '</div>' +
+        '</div>' +
+      '</div>';
+
+    // Alternate placement starting with 'above' for the first race
+    const stationsHTML = races.map(function (r, i) {
+      const pct = (r.daysAway / maxDays) * 100;
+      const placement = (i % 2 === 0) ? 'placement-above' : 'placement-below';
+      const isLast = (i === races.length - 1);
+      const tag = (r.priority || 'C').toLowerCase();
+      const classes = [
+        'races-timeline-station',
+        'priority-' + tag,
+        placement,
+        isLast ? 'is-last' : '',
+      ].filter(Boolean).join(' ');
+      return (
+        '<div class="' + classes + '" style="left: ' + pct.toFixed(1) + '%;">' +
+          '<div class="races-timeline-tag ' + tag + '">' + tag.toUpperCase() + '</div>' +
+          '<div class="races-timeline-station-info">' +
+            '<div class="races-timeline-date">' + fmtShortDate(r.date) + '</div>' +
+            '<div class="races-timeline-name">' + esc(r.name) + '</div>' +
+            '<div class="races-timeline-goal">' + esc(r.goal) + '</div>' +
+            '<div class="races-timeline-pace">goal · ' + esc(r.goalPace) + '</div>' +
+            '<div class="races-timeline-away">' + r.daysAway + 'd away</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    area.innerHTML = '<div class="races-timeline-track-line"></div>' + todayHTML + stationsHTML;
+  }
+
+  if (window.FaffStore) {
+    renderRecentRaces();
+    renderUpcomingTimeline();
+    FaffStore.subscribe(function () {
+      renderRecentRaces();
+      renderUpcomingTimeline();
+    });
+  }
+</script>
+<script src="faff-bind.js" defer></script>
+<script src="faff-live.js" defer></script>
+</body>
+</html>

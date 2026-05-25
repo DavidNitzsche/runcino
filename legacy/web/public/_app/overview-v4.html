@@ -1,0 +1,1862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Overview</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #EEECEA;
+  --card: #FFFFFF;
+  --t0: #0D0F12;
+  --t1: rgba(13,15,18,.55);
+  --t2: rgba(13,15,18,.35);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F;
+  --orange: #E85D26;
+  --amber: #D4900A;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+
+body {
+  background: var(--bg);
+  color: var(--t0);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+}
+
+/* ══════════════════════════
+   NAV BAR
+══════════════════════════ */
+.navbar {
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; line-height: 1; font-style: italic; text-decoration: none; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-logo:hover { background: linear-gradient(135deg, #F8C46B 0%, #FF6F3C 60%, #E04E1B 100%); -webkit-background-clip: text; background-clip: text; }
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.nav-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--t1);
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.nav-link.active {
+  color: var(--t0);
+  font-weight: 500;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nav-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--t0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.5px;; overflow: hidden
+}
+.nav-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 40px 80px;
+}
+
+/* ══════════════════════════
+   SECTION 1 — COACH STRIP
+══════════════════════════ */
+.coach-strip {
+  /* LAYOUT LAW: stretch so both sides fill identical height.
+     Coach-right pins its button to the bottom via space-between.
+     Min-height keeps short briefings from collapsing the strip.
+     CONTENT RULE: briefing = 2–4 sentences / ~60 words max.
+     Font stays 22px always — trim copy, never the size. */
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  padding-bottom: 0;
+  height: 200px;
+  margin-bottom: 16px;
+}
+
+.coach-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.coach-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.coach-label .dot-green {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.coach-briefing {
+  font-family: 'Inter', sans-serif;
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--t0);
+  font-weight: 400;
+}
+
+.coach-briefing strong {
+  font-weight: 700;
+}
+
+.coach-right {
+  flex-shrink: 0;
+  margin-left: 48px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0;
+  background: var(--card);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+}
+
+.checkin-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.checkin-sliders {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.checkin-slider-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 24px;
+  align-items: center;
+  gap: 12px;
+}
+
+.checkin-slider-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  text-align: right;
+}
+
+/* Native range input — styled to match design */
+.checkin-range {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  border: none;
+  display: block;
+}
+.checkin-range.energy   { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #2CA82F 100%); }
+.checkin-range.soreness { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #E85D26 100%); }
+.checkin-range.stress   { background: linear-gradient(to right, rgba(13,15,18,.10) 0%, #D4900A 100%); }
+
+.checkin-range::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; }
+.checkin-range::-moz-range-track            { height: 8px; border-radius: 4px; }
+
+.checkin-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(13,15,18,.22);
+  box-shadow: 0 1px 6px rgba(0,0,0,.16);
+  cursor: grab;
+  margin-top: -6px;
+}
+.checkin-range::-moz-range-thumb {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(13,15,18,.22);
+  box-shadow: 0 1px 6px rgba(0,0,0,.16);
+  cursor: grab;
+}
+.checkin-range:disabled { opacity: 0.5; cursor: default; }
+
+.checkin-slider-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--t1);
+  text-align: right;
+}
+
+.checkin-btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--t0);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+/* ══════════════════════════
+   SECTION 2 — HERO CARD
+══════════════════════════ */
+.hero-card {
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--card-shadow);
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+/* Hero Left */
+.hero-left {
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.hero-title {
+  font-family: 'Bebas Neue', sans-serif;
+  line-height: 0.86;
+  color: var(--t0);
+  flex: 0 0 auto;
+  margin-left: -6px; /* correct Bebas Neue side-bearing so ink aligns with eyebrow text */
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+  /* Default — sized for 'EASY RUN'-length workout names */
+  font-size: 300px;
+  letter-spacing: -4px;
+}
+/* Workout-title size buckets. Engine sets data-len based on the
+   character count of the workout name. Each bucket keeps the title
+   feeling hero-sized while preventing layout breakage on long titles.
+   Engine should also drop any hardcoded <br> for md+ since longer
+   titles wrap naturally at word boundaries. */
+.hero-title[data-len="xs"] { font-size: 320px; letter-spacing: -5px; } /* ≤6: REST, EASY */
+.hero-title[data-len="sm"] { font-size: 300px; letter-spacing: -4px; } /* 7-12: EASY RUN, LONG RUN, TEMPO */
+.hero-title[data-len="md"] { font-size: 180px; letter-spacing: -3px; } /* 13-20: EASY + STRIDES, LONG RUN · HM */
+.hero-title[data-len="lg"] { font-size: 120px; letter-spacing: -2px; } /* 21-30: THRESHOLD · CRUISE INTERVALS */
+.hero-title[data-len="xl"] { font-size: 80px;  letter-spacing: -1px; } /* 31+: fallback for novellas */
+
+.coach-note-inline {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--t2);
+  line-height: 1.55;
+  margin-top: 14px;
+}
+
+.stats-row {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  margin-top: 4px; /* Bebas Neue line-height:.86 adds ~20px dead space below ink, so 4+20≈24px visual gap */
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  background: rgba(13,15,18,.04);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px;
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.stat-value {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--t0);
+}
+
+.stat-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+  margin-left: 1px;
+}
+
+.stat-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.stat-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.segments-table {
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 24px;
+}
+
+.segment-row {
+  display: grid;
+  grid-template-columns: 110px 60px 70px 90px;
+  align-items: center;
+  padding: 14px 20px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+
+.segment-row:last-child {
+  border-bottom: none;
+}
+
+.segment-row.main {
+  background: rgba(44,168,47,.06);
+}
+
+.segment-label {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--t1);
+  text-transform: uppercase;
+}
+
+.segment-row.main .segment-label {
+  color: var(--green);
+}
+
+.segment-dim {
+  color: var(--t2);
+}
+
+.segment-data {
+  color: var(--t1);
+}
+
+.segment-row.main .segment-pace {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.hero-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn-primary {
+  background: var(--t0);
+  color: #FFFFFF;
+  padding: 14px 32px;
+  border-radius: 10px;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1.5px solid rgba(13,15,18,.2);
+  color: var(--t0);
+  padding: 14px 32px;
+  border-radius: 10px;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* Hero Right */
+.hero-right {
+  background: rgba(13,15,18,.02);
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.readiness-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.readiness-label-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.badge-ready {
+  background: rgba(44,168,47,.12);
+  color: var(--green);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+
+.readiness-ring-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.readiness-ring-wrap svg {
+  overflow: visible;
+}
+
+.readiness-building {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--green);
+  text-align: center;
+  text-transform: uppercase;
+  margin-top: 16px;
+}
+
+.trend-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trend-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.trend-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.trend-row-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.trend-row-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.trend-row-value.green { color: var(--green); }
+.trend-row-value.amber { color: var(--amber); }
+.trend-row-value.dim { color: var(--t2); }
+
+.trend-bar-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(13,15,18,.07);
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+}
+
+.trend-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.trend-bar-fill.green { background: var(--green); }
+.trend-bar-fill.amber { background: var(--amber); }
+.trend-bar-fill.dim { background: rgba(13,15,18,.25); }
+
+/* Intensity spectrum — clean Apple-style.
+   margin-top creates breathing room between Strain bar and Today's Intensity
+   so the section doesn't read as part of the strain bar. */
+.intensity-section {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--divider);
+}
+
+/* Rest-day variant: no gradient, no tick, just a flat copy block. */
+.intensity-section.rest { padding-top: 22px; }
+.intensity-section.rest .intensity-bar-wrap { display: none; }
+
+.intensity-heading {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-bottom: 14px;
+}
+
+.intensity-bar-wrap {
+  position: relative;
+  height: 20px;
+  margin-bottom: 12px;
+}
+
+.intensity-bar {
+  width: 100%;
+  height: 20px;
+  border-radius: 10px;
+  background: linear-gradient(to right, #2CA82F 0%, #F3AD38 60%, #E85D26 100%);
+}
+
+.intensity-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 22%;
+  width: 3px;
+  background: #0D0F12;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.intensity-fade {
+  position: absolute;
+  top: 0;
+  left: 22%;
+  right: 0;
+  bottom: 0;
+  border-radius: 0 10px 10px 0;
+  background: rgba(255,255,255,.52);
+}
+
+.intensity-zone-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--green);
+  letter-spacing: 0.3px;
+}
+
+/* ══════════════════════════
+   SECTION 3 — WEEK STRIP
+══════════════════════════ */
+.week-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.week-header {
+  padding: 28px 40px 20px;
+}
+
+.week-header-top {
+  display: flex;
+  align-items: last baseline;     /* aligns meta + link to 'Base Week 1' baseline (the LAST line of the label group), not 'This Week' above it */
+  gap: 40px;
+  margin-bottom: 14px;
+}
+
+.week-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.week-header-sublabel {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.week-header-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--t0);
+  letter-spacing: 0;
+}
+
+.week-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.week-meta-stat {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+}
+
+.week-meta-stat strong { font-weight: 700; color: var(--t0); }
+.week-meta-stat.green { color: var(--green); font-weight: 600; }
+
+.week-meta-dot {
+  font-size: 13px;
+  color: var(--t2);
+}
+
+.week-view-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--green);
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.week-view-link:hover { opacity: 0.75; }
+
+.week-progress-bar {
+  width: 100%;
+  height: 5px;
+  background: rgba(13,15,18,.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.week-progress-fill {
+  height: 100%;
+  width: 59%;
+  background: var(--green);
+  border-radius: 3px;
+}
+
+.day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.day-col {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+/* Strength badge — matches the training-v4 cell corner pattern.
+   Black circle with yellow 'S' centered. */
+.day-strength {
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--t0);
+  color: #FACC15;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+/* Hero strength callout — sits between the segments table and buttons,
+   visually flags that today's workout has a strength component without
+   competing with the run as the primary focus. */
+.strength-callout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: rgba(13,15,18,.035);
+  border-radius: 12px;
+  margin-top: 16px;
+}
+.strength-callout-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--t0);
+  color: #FACC15;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.strength-callout-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--t1);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.strength-callout-meta {
+  margin-top: 3px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+}
+
+.day-col:first-child { padding-left: 40px; }
+.day-col:last-child  { padding-right: 40px; }
+
+.day-col.today {
+  background: rgba(232,93,38,.04);
+  border-top: 2px solid var(--amber);
+}
+
+.day-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+}
+
+.day-date {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--t0);
+}
+
+.day-date.amber {
+  color: var(--amber);
+}
+
+.day-workout-name {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: var(--t0);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.day-distance {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+}
+
+.day-status-done {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--green);
+  text-transform: uppercase;
+  /* Pin to the bottom of the day-col regardless of how much workout-name
+     text wraps above. All 7 cols share the same row height (grid stretch),
+     so this lines up the DONE labels in a single horizontal row. */
+  margin-top: auto;
+  padding-top: 12px;
+}
+/* Push the bottom element of each col to the bottom edge. CSS auto margins
+   resolve to whichever child comes first in the flex flow, so done cols
+   anchor on DONE, future cols anchor on distance, today's rest col anchors
+   on the dash. All sit at the same y-coordinate across the row. */
+.day-distance, .day-rest {
+  margin-top: auto;
+}
+.day-col:has(.day-status-done) .day-distance,
+.day-col:has(.day-status-done) .day-rest {
+  margin-top: 0;
+}
+
+.day-status-today {
+  display: inline-block;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--amber);
+  background: rgba(212,144,10,.12);
+  padding: 3px 9px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.day-rest {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: rgba(13,15,18,.2);
+  margin-top: 4px;
+}
+
+/* ══════════════════════════
+   MODALS
+══════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13,15,18,.48);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.modal-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+.modal-card {
+  background: var(--card);
+  border-radius: 24px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.22);
+  position: relative;
+  transform: translateY(20px) scale(0.98);
+  transition: transform 0.25s cubic-bezier(.22,.68,0,1.2);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-overlay.active .modal-card {
+  transform: translateY(0) scale(1);
+}
+.modal-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(13,15,18,.07);
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--t1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.modal-close:hover { background: rgba(13,15,18,.12); }
+
+/* — Workout modal — */
+.workout-modal-card { width: 520px; padding: 40px; }
+
+.modal-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.modal-title {
+  font-family: 'Bebas Neue', sans-serif;
+  line-height: 0.86;
+  color: var(--t0);
+  margin-left: -3px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+  /* Default — for 'EASY RUN'-length names */
+  font-size: 88px;
+  letter-spacing: -1px;
+}
+/* Same bucket convention as .hero-title, scaled down for the popup. */
+.modal-title[data-len="xs"] { font-size: 96px; letter-spacing: -1.5px; }
+.modal-title[data-len="sm"] { font-size: 88px; letter-spacing: -1px; }
+.modal-title[data-len="md"] { font-size: 64px; letter-spacing: -0.5px; }
+.modal-title[data-len="lg"] { font-size: 48px; letter-spacing: 0; }
+.modal-title[data-len="xl"] { font-size: 36px; letter-spacing: 0; }
+.modal-stats {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+.modal-stat {
+  flex: 1;
+  background: rgba(13,15,18,.04);
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.modal-stat-val {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--t0);
+}
+.modal-stat-unit {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+  margin-left: 2px;
+}
+.modal-stat-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--t2);
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+.modal-segs {
+  border: 1px solid rgba(13,15,18,.08);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.modal-seg-row {
+  display: grid;
+  grid-template-columns: 100px 60px 70px 1fr;
+  align-items: center;
+  padding: 13px 18px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--t1);
+}
+.modal-seg-row + .modal-seg-row { border-top: 1px solid rgba(13,15,18,.05); }
+.modal-seg-row.main { background: rgba(44,168,47,.05); }
+.modal-seg-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+.modal-seg-row.main .modal-seg-name { color: var(--green); }
+.modal-seg-row.main .modal-seg-pace { color: var(--green); font-weight: 600; }
+
+.modal-intensity-wrap { margin-bottom: 20px; }
+.modal-intensity-lbl {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-bottom: 10px;
+}
+.modal-ibar-wrap {
+  position: relative;
+  height: 12px;
+  margin-bottom: 8px;
+}
+.modal-ibar {
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #2CA82F 0%, #F3AD38 60%, #E85D26 100%);
+}
+.modal-itick {
+  position: absolute;
+  top: -4px; bottom: -4px; left: 22%;
+  width: 2px;
+  background: #0D0F12;
+  border-radius: 1px;
+  transform: translateX(-50%);
+}
+.modal-ifade {
+  position: absolute;
+  top: 0; left: 22%; right: 0; bottom: 0;
+  border-radius: 0 6px 6px 0;
+  background: rgba(255,255,255,.52);
+}
+.modal-zone {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green);
+}
+.modal-coach-note {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--t2);
+  line-height: 1.6;
+  margin-bottom: 32px;
+}
+.modal-actions { display: flex; gap: 12px; }
+.modal-btn-complete {
+  flex: 1;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 15px 24px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.modal-btn-skip {
+  background: transparent;
+  border: 1.5px solid rgba(13,15,18,.2);
+  color: var(--t0);
+  border-radius: 10px;
+  padding: 15px 24px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* — Schedule modal — */
+.schedule-modal-card { width: 860px; padding: 40px; }
+.schedule-modal-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 52px;
+  line-height: 1;
+  color: var(--t0);
+  margin-top: 8px;
+  margin-bottom: 28px;
+}
+.schedule-phase-heading {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--t2);
+  padding: 8px 0 6px;
+  border-bottom: 1px solid rgba(13,15,18,.07);
+  margin-bottom: 4px;
+  margin-top: 24px;
+}
+.schedule-phase-heading:first-child { margin-top: 0; }
+.schedule-week-row {
+  display: grid;
+  grid-template-columns: 72px 72px 64px 1fr 80px;
+  align-items: center;
+  padding: 11px 14px;
+  border-radius: 10px;
+  gap: 8px;
+  cursor: pointer;
+}
+.schedule-week-row:hover { background: rgba(13,15,18,.03); }
+.schedule-week-row.current {
+  background: rgba(44,168,47,.06);
+  border: 1px solid rgba(44,168,47,.14);
+}
+.schedule-week-num {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--t0);
+}
+.schedule-week-date {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t2);
+}
+.schedule-week-mi {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  color: var(--t0);
+  line-height: 1;
+}
+.schedule-week-mi span { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); }
+.schedule-week-desc {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: var(--t1);
+}
+.schedule-week-status {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--green);
+}
+.schedule-week-status.upcoming { color: var(--t2); font-weight: 400; }
+.schedule-week-status.current  { color: var(--amber); }
+
+/* ══════════════════════════
+   STATE CHANGES
+══════════════════════════ */
+.hero-left.skipped .hero-title,
+.hero-left.skipped .stats-row,
+.hero-left.skipped .segments-table { opacity: 0.25; transition: opacity .3s; }
+.hero-left.skipped .btn-primary { opacity: 0.3; pointer-events: none; }
+.hero-left.skipped .btn-ghost { border-color: var(--amber); color: var(--amber); }
+
+.checkin-logged .checkin-slider-thumb { border-color: var(--green); pointer-events: none; }
+.checkin-logged .checkin-btn {
+  background: var(--green);
+  pointer-events: none;
+}
+</style>
+<script src="faff-store.js"></script>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="overview-v4.html">FAFF.RUN</a>
+    <div class="nav-links">
+      <a class="nav-link active" href="overview-v4.html">Overview</a>
+      <a class="nav-link" href="training-v4.html">Training</a>
+      <a class="nav-link" href="races-v4.html">Races</a>
+      <a class="nav-link" href="health-v4.html">Health</a>
+      <a class="nav-link" href="log-v4.html">Log</a>
+      <a class="nav-link" href="profile-v4.html">Profile</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-avatar">DN</div>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- ══════════════════════════════════
+       SECTION 1 — COACH STRIP
+  ══════════════════════════════════ -->
+  <div class="coach-strip">
+    <div class="coach-left">
+      <div class="coach-label">
+        <span class="dot-green"></span>
+        COACH · <span data-today-label>FRI MAY 15</span> · BASE WEEK 1
+      </div>
+      <p class="coach-briefing" id="coach-briefing"></p>
+    </div>
+
+    <div class="coach-right">
+      <div class="checkin-label">Today's Check-In</div>
+      <div class="checkin-sliders">
+        <div class="checkin-slider-row">
+          <span class="checkin-slider-label">Energy</span>
+          <input type="range" class="checkin-range energy" min="1" max="10" value="6"
+            oninput="document.getElementById('val-energy').textContent=this.value">
+          <span class="checkin-slider-val" id="val-energy">6</span>
+        </div>
+        <div class="checkin-slider-row">
+          <span class="checkin-slider-label">Soreness</span>
+          <input type="range" class="checkin-range soreness" min="1" max="10" value="4"
+            oninput="document.getElementById('val-soreness').textContent=this.value">
+          <span class="checkin-slider-val" id="val-soreness">4</span>
+        </div>
+        <div class="checkin-slider-row">
+          <span class="checkin-slider-label">Stress</span>
+          <input type="range" class="checkin-range stress" min="1" max="10" value="2"
+            oninput="document.getElementById('val-stress').textContent=this.value">
+          <span class="checkin-slider-val" id="val-stress">2</span>
+        </div>
+      </div>
+      <button class="checkin-btn">Log Check-In</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       SECTION 2 — HERO CARD
+  ══════════════════════════════════ -->
+  <div class="hero-card">
+
+    <!-- Left column · rendered from FaffStore.todayWorkout() by inline script.
+         Two modes: workout day (title + stats + segments + buttons) and rest day
+         (title + short note). -->
+    <div class="hero-left" id="hero-left"></div>
+
+    <!-- Right column -->
+    <div class="hero-right">
+      <div class="readiness-section">
+        <div class="readiness-header">
+          <span class="readiness-label-text">Readiness</span>
+          <span class="badge-ready">Ready</span>
+        </div>
+
+        <div class="readiness-ring-wrap">
+          <svg width="300" height="300" viewBox="0 0 300 300">
+            <!-- 270° arc centered at 150,150, r=130 -->
+            <!-- full circ=816.8, track=612.6, gap=204.2, dashoffset=-51.05 -->
+            <circle cx="150" cy="150" r="130"
+              fill="none"
+              stroke="rgba(13,15,18,.08)"
+              stroke-width="16"
+              stroke-dasharray="612.61 204.20"
+              stroke-linecap="round"
+              transform="rotate(135 150 150)"
+            />
+            <circle cx="150" cy="150" r="130"
+              fill="none"
+              stroke="#2CA82F"
+              stroke-width="16"
+              stroke-dasharray="539.10 277.70"
+              stroke-linecap="round"
+              transform="rotate(135 150 150)"
+            />
+            <text x="150" y="166" font-family="'Bebas Neue', sans-serif" font-size="96" fill="#0D0F12" text-anchor="middle">88</text>
+            <text x="150" y="188" font-family="'Inter', sans-serif" font-size="13" font-weight="600" fill="rgba(13,15,18,.32)" text-anchor="middle" letter-spacing="1">/ 100</text>
+          </svg>
+        </div>
+
+        <div class="readiness-building">Building</div>
+      </div><!-- /readiness-section -->
+
+      <div class="trend-rows">
+        <div class="trend-row">
+          <div class="trend-row-top">
+            <span class="trend-row-label">Effort</span>
+            <span class="trend-row-value green">+0.25</span>
+          </div>
+          <div class="trend-bar-track"><div class="trend-bar-fill green" style="width:65%"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-row-top">
+            <span class="trend-row-label">Load</span>
+            <span class="trend-row-value green">1.01</span>
+          </div>
+          <div class="trend-bar-track"><div class="trend-bar-fill green" style="width:50%"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-row-top">
+            <span class="trend-row-label">Mileage</span>
+            <span class="trend-row-value green">On plan</span>
+          </div>
+          <div class="trend-bar-track"><div class="trend-bar-fill green" style="width:50%"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-row-top">
+            <span class="trend-row-label">Easy Pace</span>
+            <span class="trend-row-value green">+0.25</span>
+          </div>
+          <div class="trend-bar-track"><div class="trend-bar-fill green" style="width:60%"></div></div>
+        </div>
+        <div class="trend-row">
+          <div class="trend-row-top">
+            <span class="trend-row-label">Strain</span>
+            <span class="trend-row-value amber">−0.25</span>
+          </div>
+          <div class="trend-bar-track"><div class="trend-bar-fill amber" style="width:35%"></div></div>
+        </div>
+      </div>
+
+      <!-- Today's Intensity — rendered by renderHero() / renderIntensity() based
+           on FaffStore.todayWorkout(). On rest days the gradient bar is
+           hidden (.intensity-section.rest) and the copy switches to "Rest day
+           — no intensity". On run days the tick + fade position by type. -->
+      <div class="intensity-section" id="intensity-section">
+        <div class="intensity-heading">Today's Intensity</div>
+        <div class="intensity-bar-wrap">
+          <div class="intensity-bar"></div>
+          <div class="intensity-tick" id="intensity-tick"></div>
+          <div class="intensity-fade" id="intensity-fade"></div>
+        </div>
+        <div class="intensity-zone-name" id="intensity-zone-name">Easy · Zone 2</div>
+        <p class="coach-note-inline" id="intensity-coach-note">Conversational pace throughout — if you can't hold a sentence, slow down. This is where the aerobic engine gets built.</p>
+      </div>
+
+    </div><!-- /hero-right -->
+  </div><!-- /hero-card -->
+
+  <!-- ══════════════════════════════════
+       SECTION 3 — WEEK STRIP
+  ══════════════════════════════════ -->
+  <div class="week-card">
+    <div class="week-header">
+      <div class="week-header-top">
+        <div class="week-label-group">
+          <span class="week-header-sublabel">This Week</span>
+          <span class="week-header-title">Base Week 1</span>
+        </div>
+        <div class="week-meta" id="week-meta"></div>
+        <a class="week-view-link" href="training-v4.html#current-week">View Full Schedule →</a>
+      </div>
+      <div class="week-progress-bar">
+        <div class="week-progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- The 7 day-cols are rendered from FaffStore.currentWeekPlan() by the
+         inline render script at the bottom of the page. -->
+    <div class="day-grid" id="day-grid"></div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════
+     WORKOUT MODAL
+══════════════════════════════════ -->
+<div id="workout-modal" class="modal-overlay">
+  <div class="modal-card workout-modal-card">
+    <button class="modal-close" onclick="closeModal('workout-modal')">✕</button>
+    <div class="modal-eyebrow">Today · Base Week 1</div>
+    <div class="modal-title" data-len="sm">EASY<br>RUN</div>
+    <div class="modal-stats">
+      <div class="modal-stat">
+        <div class="modal-stat-val">5.5<span class="modal-stat-unit">mi</span></div>
+        <div class="modal-stat-label">Distance</div>
+      </div>
+      <div class="modal-stat">
+        <div class="modal-stat-val">9:15<span class="modal-stat-unit">/mi</span></div>
+        <div class="modal-stat-label">Pace</div>
+      </div>
+      <div class="modal-stat">
+        <div class="modal-stat-val">~52<span class="modal-stat-unit">min</span></div>
+        <div class="modal-stat-label">Duration</div>
+      </div>
+      <div class="modal-stat">
+        <div class="modal-stat-val">≤145<span class="modal-stat-unit">bpm</span></div>
+        <div class="modal-stat-label">Heart Rate</div>
+      </div>
+    </div>
+    <div class="modal-segs">
+      <div class="modal-seg-row">
+        <span class="modal-seg-name">Warmup</span>
+        <span>10 min</span><span>1.0 mi</span><span>10:00/mi</span>
+      </div>
+      <div class="modal-seg-row main">
+        <span class="modal-seg-name">Main</span>
+        <span>32 min</span><span>3.5 mi</span><span class="modal-seg-pace">9:09/mi avg</span>
+      </div>
+      <div class="modal-seg-row">
+        <span class="modal-seg-name">Cooldown</span>
+        <span>10 min</span><span>1.0 mi</span><span>10:00/mi</span>
+      </div>
+    </div>
+    <!-- Strength session callout — secondary component of today's workout -->
+    <div class="strength-callout" style="margin-top: 0; margin-bottom: 24px;">
+      <div class="strength-callout-badge">S</div>
+      <div>
+        <div class="strength-callout-title">Plus · Strength Session</div>
+        <div class="strength-callout-meta">30 min · Amp workout · after the run</div>
+      </div>
+    </div>
+    <div class="modal-intensity-wrap">
+      <div class="modal-intensity-lbl">Today's Intensity</div>
+      <div class="modal-ibar-wrap">
+        <div class="modal-ibar"></div>
+        <div class="modal-itick"></div>
+        <div class="modal-ifade"></div>
+      </div>
+      <div class="modal-zone">Easy · Zone 2</div>
+    </div>
+    <p class="modal-coach-note">Conversational pace throughout — if you can't hold a sentence, slow down. This is where the aerobic engine gets built.</p>
+    <div class="modal-actions">
+      <button class="modal-btn-complete" onclick="markComplete()">✓ Mark Complete</button>
+      <button class="modal-btn-skip" onclick="skipFromModal()">Skip Today</button>
+    </div>
+  </div>
+</div>
+
+<!-- (Schedule modal removed — VIEW FULL SCHEDULE now navigates to training-v4.html) -->
+
+<script>
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+  }
+
+  // Close on backdrop click
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+  });
+
+  // Close on ESC
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape')
+      document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+  });
+
+  // LOG CHECK-IN — writes to the central FaffStore so the same
+  // log persists to /health and to any other page reading the store.
+  function applyOverviewCheckInState(checkin) {
+    const btn = document.querySelector('.checkin-btn');
+    const sliders = document.querySelectorAll('.checkin-range');
+    const vals = {
+      energy: document.getElementById('val-energy'),
+      soreness: document.getElementById('val-soreness'),
+      stress: document.getElementById('val-stress'),
+    };
+    if (checkin) {
+      document.querySelector('.coach-right').classList.add('checkin-logged');
+      btn.classList.add('logged');
+      btn.textContent = '✓ Logged';
+      sliders[0].value = checkin.energy;
+      sliders[1].value = checkin.soreness;
+      sliders[2].value = checkin.stress;
+      if (vals.energy)   vals.energy.textContent = checkin.energy;
+      if (vals.soreness) vals.soreness.textContent = checkin.soreness;
+      if (vals.stress)   vals.stress.textContent = checkin.stress;
+      sliders.forEach(r => r.disabled = true);
+    } else {
+      document.querySelector('.coach-right').classList.remove('checkin-logged');
+      btn.classList.remove('logged');
+      btn.textContent = 'Log Check-In';
+      sliders.forEach(r => r.disabled = false);
+    }
+  }
+
+  document.querySelector('.checkin-btn').addEventListener('click', function() {
+    if (this.classList.contains('logged')) return;
+    if (!window.FaffStore) return;
+    const sliders = document.querySelectorAll('.checkin-range');
+    const [energy, soreness, stress] = Array.from(sliders).map(s => parseInt(s.value, 10));
+    FaffStore.logCheckIn({ energy, soreness, stress });
+    // applyOverviewCheckInState fires via the subscribe handler below
+  });
+
+  // On load — reflect any existing check-in for today
+  if (window.FaffStore) {
+    applyOverviewCheckInState(FaffStore.todayCheckIn());
+    FaffStore.subscribe(() => {
+      applyOverviewCheckInState(FaffStore.todayCheckIn());
+    });
+  }
+
+  // ── Coach briefing · day-aware narrative ──────────────────────────
+  function renderCoachBriefing() {
+    if (!window.FaffStore) return;
+    const el = document.getElementById('coach-briefing');
+    if (!el) return;
+    const day = FaffStore.todayWorkout();
+    const ctx = FaffStore.getCurrentWeekContext();
+    const week = ctx.week;
+    const weekNum = ctx.weekNum;
+    const state = FaffStore.getState();
+    const nextA = (state.races.upcoming || [])[0];
+    const daysAway = nextA ? nextA.daysAway : '—';
+    const raceName = nextA ? nextA.name.split(' ').slice(0,3).join(' ') : 'the next race';
+
+    // Find tomorrow's day in the week, if any
+    const todayIdx = week ? week.days.findIndex(d => d.date === state.today) : -1;
+    const tomorrow = (week && todayIdx >= 0 && todayIdx < week.days.length - 1)
+      ? week.days[todayIdx + 1]
+      : null;
+    const tomorrowDesc = tomorrow && !tomorrow.isRest
+      ? ` Tomorrow is ${tomorrow.label.toLowerCase()} at ${tomorrow.distanceMi} mi`
+      : '';
+
+    let text;
+    if (!day || day.isRest) {
+      // Count completed runs in this week (date < today AND not rest)
+      const doneCount = week ? week.days.filter(d => !d.isRest && d.date < state.today).length : 0;
+      const runCount = week ? week.days.filter(d => !d.isRest).length : 0;
+      const tomorrowText = tomorrow
+        ? (tomorrow.isRest
+            ? `Tomorrow is rest; Week ${weekNum} ends quiet.`
+            : `Tomorrow's ${tomorrow.label.toLowerCase()} at ${tomorrow.distanceMi} mi closes Week ${weekNum}.`)
+        : `Week ${weekNum} closes today.`;
+      text = `Good morning, David. <strong>${doneCount} of ${runCount} sessions down</strong>, body absorbing the load. Today is rest — use it. ${tomorrowText} <strong>${daysAway} days to AFC.</strong>`;
+    } else if (day.type === 'long') {
+      text = `Today's the long: <strong>${day.distanceMi} mi at conversational pace</strong>. Don't push the finish — closing Week ${weekNum} on form, not on effort. <strong>${daysAway} days to AFC.</strong>`;
+    } else if (day.type === 'quality') {
+      text = `Today is quality: <strong>${day.label.toLowerCase()}</strong>, ${day.distanceMi} mi total. Earn the pace. Recovery has been clean; the body is ready for the dose. <strong>${daysAway} days to AFC.</strong>`;
+    } else {
+      // Easy / recovery
+      const strengthClause = day.hasStrength ? ' plus a strength session' : '';
+      text = `Today is ${day.distanceMi} ${day.label.toLowerCase()}${strengthClause} — conversational, no grinding.${tomorrowDesc}. <strong>${daysAway} days to AFC. Go get it.</strong>`;
+    }
+    el.innerHTML = text;
+  }
+
+  if (window.FaffStore) {
+    renderCoachBriefing();
+    FaffStore.subscribe(renderCoachBriefing);
+  }
+
+  // ── Hero · render from FaffStore.todayWorkout() ────────────────
+  // Two modes: workout day (title + stats + segments + strength + buttons)
+  // and rest day (title + recovery note). Buttons use event delegation
+  // since they're recreated on every render.
+  function renderHero() {
+    if (!window.FaffStore) return;
+    const host = document.getElementById('hero-left');
+    if (!host) return;
+    const day = FaffStore.todayWorkout();
+    const state = FaffStore.getState();
+    const ctx = FaffStore.getCurrentWeekContext();
+    const phaseLabel = ctx.phase + ' WEEK ' + ctx.phaseWeekNum;
+    const eyebrow = 'TODAY · ' + phaseLabel;
+
+    // Choose data-len bucket from the label length
+    function lenBucket(label) {
+      const n = (label || '').length;
+      if (n <= 6) return 'xs';
+      if (n <= 12) return 'sm';
+      if (n <= 20) return 'md';
+      if (n <= 30) return 'lg';
+      return 'xl';
+    }
+    function esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    if (!day || day.isRest) {
+      // Rest day mode
+      const restLabel = day ? (day.label || 'Rest').toUpperCase() : 'REST';
+      const strengthBlock = day && day.hasStrength
+        ? '<div class="strength-callout" style="margin-top:32px;">' +
+            '<div class="strength-callout-badge">S</div>' +
+            '<div>' +
+              '<div class="strength-callout-title">Plus · Strength Session</div>' +
+              '<div class="strength-callout-meta">30 min · Amp workout</div>' +
+            '</div>' +
+          '</div>'
+        : '';
+      host.innerHTML =
+        '<div class="hero-eyebrow">' + eyebrow + '</div>' +
+        '<div class="hero-title" data-len="' + lenBucket(restLabel) + '">' + esc(restLabel) + '</div>' +
+        '<p style="font-family:\'Inter\',sans-serif; font-size:16px; line-height:1.6; color:var(--t1); margin-top:24px; max-width:540px;">' +
+          'No run on the schedule today. <strong style="color:var(--t0);">Recovery is part of training</strong> — let the body absorb the work from this week and come into Sunday\'s long run fresh.' +
+        '</p>' +
+        strengthBlock;
+      return;
+    }
+
+    // Workout day mode
+    // Compute a rough duration from distance + pace (paceMin is m:ss like "9:15")
+    const pace = day.paceMin || '9:00';
+    const paceParts = pace.split(':');
+    const paceSec = parseInt(paceParts[0],10)*60 + parseInt(paceParts[1]||'0',10);
+    const durSec = Math.round(paceSec * day.distanceMi);
+    const durMin = Math.round(durSec / 60);
+
+    // For Easy runs, also show segments. For quality/long, simpler.
+    const showSegments = day.type === 'easy' || day.type === 'recovery';
+    const segmentsHTML = showSegments
+      ? (function () {
+          const total = day.distanceMi;
+          const wuMi = 1.0, cdMi = 1.0;
+          const mainMi = Math.max(total - wuMi - cdMi, 0);
+          const mainPace = day.paceMin || '9:00';
+          return (
+            '<div class="segments-table">' +
+              '<div class="segment-row">' +
+                '<span class="segment-label">Warmup</span>' +
+                '<span class="segment-dim">10 min</span>' +
+                '<span class="segment-data">' + wuMi.toFixed(1) + ' mi</span>' +
+                '<span class="segment-data">10:00/mi</span>' +
+              '</div>' +
+              '<div class="segment-row main">' +
+                '<span class="segment-label">Main</span>' +
+                '<span class="segment-dim">' + (durMin - 20) + ' min</span>' +
+                '<span class="segment-data">' + mainMi.toFixed(1) + ' mi</span>' +
+                '<span class="segment-data segment-pace">' + mainPace + '/mi avg</span>' +
+              '</div>' +
+              '<div class="segment-row">' +
+                '<span class="segment-label">Cooldown</span>' +
+                '<span class="segment-dim">10 min</span>' +
+                '<span class="segment-data">' + cdMi.toFixed(1) + ' mi</span>' +
+                '<span class="segment-data">10:00/mi</span>' +
+              '</div>' +
+            '</div>'
+          );
+        })()
+      : '';
+
+    const strengthBlock = day.hasStrength
+      ? '<div class="strength-callout">' +
+          '<div class="strength-callout-badge">S</div>' +
+          '<div>' +
+            '<div class="strength-callout-title">Plus · Strength Session</div>' +
+            '<div class="strength-callout-meta">30 min · Amp workout · after the run</div>' +
+          '</div>' +
+        '</div>'
+      : '';
+
+    const titleLabel = (day.label || 'Run').toUpperCase().replace(' + ', ' + '); // keep
+    host.innerHTML =
+      '<div class="hero-eyebrow">' + eyebrow + '</div>' +
+      '<div class="hero-title" data-len="' + lenBucket(titleLabel) + '">' + esc(titleLabel) + '</div>' +
+      '<div class="stats-row">' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">' + day.distanceMi + '</span><span class="stat-unit">mi</span></div><div class="stat-label">Distance</div></div>' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">' + pace + '</span><span class="stat-unit">/mi</span></div><div class="stat-label">Pace</div></div>' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">~' + durMin + '</span><span class="stat-unit">min</span></div><div class="stat-label">Duration</div></div>' +
+        '<div class="stat-pill"><div class="stat-value-row"><span class="stat-value">≤145</span><span class="stat-unit">bpm</span></div><div class="stat-label">Heart Rate</div></div>' +
+      '</div>' +
+      segmentsHTML +
+      strengthBlock +
+      '<div class="hero-buttons">' +
+        '<button class="btn-primary">▶&nbsp;&nbsp;OPEN WORKOUT</button>' +
+        '<button class="btn-ghost">SKIP TODAY</button>' +
+      '</div>';
+  }
+
+  // ── Today's Intensity render ─────────────────────────────────────
+  // Reads FaffStore.todayWorkout() and reconfigures the gradient bar.
+  // Rest days: hides the bar entirely, swaps the zone label and coach copy
+  // to match. Workout days: positions the tick by type (easy ~22%, recovery
+  // ~10%, long ~30%, quality ~70%, race ~85%) and updates the zone label.
+  function renderIntensity() {
+    if (!window.FaffStore) return;
+    const section = document.getElementById('intensity-section');
+    const tick    = document.getElementById('intensity-tick');
+    const fade    = document.getElementById('intensity-fade');
+    const zone    = document.getElementById('intensity-zone-name');
+    const note    = document.getElementById('intensity-coach-note');
+    if (!section || !zone) return;
+    const day = FaffStore.todayWorkout();
+    if (!day || day.isRest) {
+      section.classList.add('rest');
+      zone.textContent = 'Rest day · No intensity';
+      zone.style.color = 'var(--t1)';
+      note.textContent = 'No run scheduled. The intensity scale returns tomorrow when the next workout posts.';
+      return;
+    }
+    section.classList.remove('rest');
+    // Tick position + zone label per workout type
+    const cfg = {
+      recovery: { pos: 10, label: 'Recovery · Zone 1', color: 'var(--green)',  copy: 'Very easy — clearing the legs, not building anything. Effort below conversational.' },
+      easy:     { pos: 22, label: 'Easy · Zone 2',     color: 'var(--green)',  copy: 'Conversational pace throughout — if you can\'t hold a sentence, slow down. This is where the aerobic engine gets built.' },
+      long:     { pos: 30, label: 'Long · Zone 2',     color: 'var(--green)',  copy: 'Aerobic time on feet. Hold conversational pace; the duration is the stimulus, not the speed.' },
+      quality:  { pos: 68, label: 'Threshold · Zone 4',color: 'var(--amber)',  copy: 'Comfortably hard — controlled effort at lactate threshold. You should feel work, not pain.' },
+      race:     { pos: 88, label: 'Race · Zone 4–5',   color: 'var(--orange)', copy: 'Race day. Execute the plan; conserve early, commit late.' },
+    };
+    const c = cfg[day.type] || cfg.easy;
+    tick.style.left = c.pos + '%';
+    fade.style.left = c.pos + '%';
+    zone.textContent = c.label;
+    zone.style.color = c.color;
+    note.textContent = c.copy;
+  }
+
+  // Buttons inside the hero are recreated on each render — use event delegation.
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('#hero-left .btn-primary')) {
+      const m = document.getElementById('workout-modal');
+      if (m) m.classList.add('active');
+    } else if (e.target.closest('#hero-left .btn-ghost')) {
+      const left = document.getElementById('hero-left');
+      const skipped = left.classList.toggle('skipped');
+      const btn = e.target.closest('#hero-left .btn-ghost');
+      btn.textContent = skipped ? '↩ Undo Skip' : 'SKIP TODAY';
+    }
+  });
+
+  if (window.FaffStore) {
+    renderHero();
+    renderIntensity();
+    FaffStore.subscribe(() => { renderHero(); renderIntensity(); });
+  }
+
+  // ── This Week strip · render from FaffStore.currentWeekPlan() ──
+  // Each day-col is a function of plan day + whether it's today.
+  // Rest days render with a dim 'Rest' label and a long dash.
+  function renderDayGrid() {
+    if (!window.FaffStore) return;
+    const grid = document.getElementById('day-grid');
+    if (!grid) return;
+    const week = FaffStore.currentWeekPlan();
+    if (!week) return;
+    const today = FaffStore.getState().today;
+
+    grid.innerHTML = week.days.map(function (d) {
+      const isToday = d.date === today;
+      const isDone  = !isToday && d.date < today && !d.isRest;
+      const dateNum = parseInt(d.date.slice(-2), 10);
+      const colClass = 'day-col' + (isToday ? ' today' : '');
+      const dateClass = 'day-date' + (isToday ? ' amber' : '');
+      const strengthBadge = (d.hasStrength && !isDone) ? '<span class="day-strength" title="Strength training">S</span>' : '';
+      const restMode = d.isRest;
+      // Distance display: when day is completed and we have actual mileage,
+      // show 'actual / plan mi' if they differ; if identical, show single value.
+      // Today and future days show plan only.
+      function distanceText(d) {
+        if (typeof d.actualMi === 'number' && d.actualMi !== d.distanceMi) {
+          return d.actualMi + ' / ' + d.distanceMi + ' mi';
+        }
+        return (d.actualMi != null ? d.actualMi : d.distanceMi) + ' mi';
+      }
+      const distanceBlock = restMode
+        ? '<div class="day-workout-name" style="color:var(--t2);">Rest</div><div class="day-rest">—</div>'
+        : '<div class="day-workout-name">' + escapeHtml(d.label) + '</div><div class="day-distance">' + distanceText(d) + '</div>';
+      const statusBlock = isDone ? '<div class="day-status-done">✓ Done</div>' : '';
+      return (
+        '<div class="' + colClass + '">' +
+          strengthBadge +
+          '<div class="day-name">' + d.dow + '</div>' +
+          '<div class="' + dateClass + '">' + dateNum + '</div>' +
+          distanceBlock +
+          statusBlock +
+        '</div>'
+      );
+    }).join('');
+  }
+  function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ── Week meta line · totals + 'on track for X mi this week' ──────
+  function renderWeekMeta() {
+    if (!window.FaffStore) return;
+    const el = document.getElementById('week-meta');
+    if (!el) return;
+    const week = FaffStore.currentWeekPlan();
+    if (!week) return;
+    const today = FaffStore.getState().today;
+    let doneMi = 0, plannedSoFarMi = 0, doneRuns = 0, totalRuns = 0;
+    week.days.forEach(d => {
+      if (d.isRest) return;
+      totalRuns++;
+      if (d.date < today) {
+        plannedSoFarMi += d.distanceMi || 0;
+        doneMi += (typeof d.actualMi === 'number') ? d.actualMi : (d.distanceMi || 0);
+        doneRuns++;
+      }
+    });
+    const planned = week.plannedMi;
+    // Project: actual rate per planned mile × planned total
+    const rate = plannedSoFarMi > 0 ? (doneMi / plannedSoFarMi) : 1;
+    const projected = Math.round(rate * planned * 10) / 10;
+    const drift = projected - planned;
+    const driftLabel = Math.abs(drift) < 0.5
+      ? 'On track for ' + planned + ' mi this week'
+      : (drift > 0
+          ? 'Trending +' + drift.toFixed(1) + ' mi over plan'
+          : 'Trending ' + drift.toFixed(1) + ' mi under plan');
+
+    el.innerHTML =
+      '<span class="week-meta-stat"><strong>' + doneMi.toFixed(1).replace(/\.0$/,'') + '</strong> / ' + planned + ' mi</span>' +
+      '<span class="week-meta-dot">·</span>' +
+      '<span class="week-meta-stat">' + doneRuns + ' / ' + totalRuns + ' workouts</span>' +
+      '<span class="week-meta-dot">·</span>' +
+      '<span class="week-meta-stat green">' + driftLabel + '</span>';
+  }
+
+  if (window.FaffStore) {
+    renderDayGrid();
+    renderWeekMeta();
+    FaffStore.subscribe(() => { renderDayGrid(); renderWeekMeta(); });
+  }
+
+  // OPEN WORKOUT / SKIP TODAY handlers now live in the event-delegation
+  // listener earlier in this script (the hero buttons are recreated on
+  // every renderHero() call so direct addEventListener wouldn't survive).
+
+  // VIEW FULL SCHEDULE — link navigates to training-v4.html (no modal intercept)
+
+  // Mark complete (from workout modal)
+  function markComplete() {
+    closeModal('workout-modal');
+    document.querySelector('.hero-title').style.color = 'var(--green)';
+    const btn = document.querySelector('.btn-primary');
+    btn.textContent = '✓ Complete';
+    btn.style.background = 'var(--green)';
+    btn.style.pointerEvents = 'none';
+  }
+
+  // Skip from within workout modal
+  function skipFromModal() {
+    closeModal('workout-modal');
+    document.querySelector('.btn-ghost').click();
+  }
+</script>
+<script src="faff-bind.js" defer></script>
+<script src="faff-live.js" defer></script>
+</body>
+</html>

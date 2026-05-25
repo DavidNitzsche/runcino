@@ -21,10 +21,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WEB="$ROOT/web"
+WEB="$ROOT/legacy/web"
 
 if [ ! -d "$WEB/node_modules" ]; then
-  echo "→ web/node_modules missing — skipping pre-push typecheck (run 'cd web && npm install' to enable)"
+  echo "→ legacy/web/node_modules missing — skipping pre-push typecheck (run 'cd legacy/web && npm install' to enable)"
   exit 0
 fi
 

@@ -29,7 +29,7 @@
  * left alone. A zombie already gone is a no-op.
  */
 
-import pg from '../web/node_modules/pg/lib/index.js';
+import pg from '../legacy/web/node_modules/pg/lib/index.js';
 const { Client } = pg;
 
 const APPLY = process.argv.includes('--apply');
@@ -50,7 +50,7 @@ function utcToWallClockZ(utcISO, tz) {
   return `${get('year')}-${get('month')}-${get('day')}T${hh}:${get('minute')}:${get('second')}Z`;
 }
 
-// Same rank as the runtime helper in web/lib/run-dedupe-write.ts
+// Same rank as the runtime helper in legacy/web/lib/run-dedupe-write.ts
 function rank(row) {
   if (row.id > 0) return 3;
   const n = (row.name || '').toLowerCase();

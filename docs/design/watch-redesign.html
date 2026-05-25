@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAFF watch — in-run (locked)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#000; --ink:#fff;
+    --green:#3cff52; --amber:#ffb01f; --red:#ff3b5c; --orange:#ff5f2e; --cyan:#36e0e0;
+    --num:'Anton','Archivo Black',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#161518; color:#e9e6e0; font-family:'Inter',system-ui,sans-serif; padding:48px 28px 70px; -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; align-items:center}
+  .head{max-width:600px; text-align:center; margin-bottom:34px}
+  .kicker{font-weight:800; letter-spacing:.28em; font-size:12px; color:var(--orange); text-transform:uppercase}
+  h1{font-family:var(--num); font-size:52px; line-height:.9; margin:6px 0 10px; text-transform:uppercase}
+  .sub{color:#b9b4ab; font-size:15px; line-height:1.55}
+
+  .watch{width:330px; height:404px; border-radius:68px; background:var(--bg); position:relative; overflow:hidden;
+         box-shadow:0 0 0 11px #1d1d20,0 0 0 13px #2c2c30,0 24px 56px rgba(0,0,0,.55); padding:14px 22px 12px}
+  /* the unremovable system clock — designed in, top-right */
+  .clock{position:absolute; top:15px; right:24px; font-weight:800; font-size:18px; color:#fff; font-variant-numeric:tabular-nums; z-index:2}
+
+  /* left-aligned, tight stack — big numbers, snug but never overlapping */
+  .stack{display:flex; flex-direction:column; height:100%; justify-content:center; align-items:flex-start}
+  .n{font-family:var(--num); line-height:1.0; letter-spacing:0; white-space:nowrap; font-size:96px}
+  .pace{color:var(--green)}   /* live pace — green→amber→red vs target */
+  .tgt{color:#fff}            /* target pace — what to hit */
+  .dist{color:var(--cyan)}    /* total miles */
+  .ctx{color:var(--orange)}   /* rep-left (time or miles) */
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="kicker">In-run face · locked</div>
+    <h1>Left. Huge. Full bleed.</h1>
+    <p class="sub">Four numbers, left-aligned, filling top to bottom. Clock lives in the top-right (it has to) — the first number clears it. Pace · target · miles · rep-left.</p>
+  </div>
+
+  <div class="watch">
+    <div class="clock">10:09</div>
+    <div class="stack">
+      <div class="n pace">6:33</div>
+      <div class="n tgt">6:31</div>
+      <div class="n dist">3.78</div>
+      <div class="n ctx">0:24</div>
+    </div>
+  </div>
+</body>
+</html>

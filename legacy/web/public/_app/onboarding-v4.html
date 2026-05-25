@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>faff.run · Onboarding</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #EEECEA; --card: #FFFFFF;
+  --t0: #0D0F12; --t1: rgba(13,15,18,.55); --t2: rgba(13,15,18,.35); --t3: rgba(13,15,18,.20);
+  --divider: rgba(13,15,18,.08);
+  --green: #2CA82F; --orange: #E85D26; --amber: #D4900A; --blue: #2563EB; --warn: #F43F5E;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+}
+body { background: var(--bg); color: var(--t0); font-family: 'Inter', sans-serif; min-height: 100vh; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; }
+
+/* Nav — minimal during onboarding */
+.navbar { background: var(--bg); }
+.navbar-inner { max-width: 1280px; margin: 0 auto; padding: 0 40px; height: 72px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 3px; line-height: 1; font-style: italic; text-decoration: none; background: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #C73E0B 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-meta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--t2); letter-spacing: 0.3px; }
+
+/* Main onboarding canvas */
+.onb-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 24px 80px;
+}
+
+/* Stepper */
+.stepper {
+  display: flex; align-items: center; gap: 0;
+  max-width: 720px; width: 100%;
+  margin: 24px 0 36px;
+}
+.step-pill {
+  flex: 1;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  position: relative;
+}
+.step-pill + .step-pill { margin-left: 8px; }
+.step-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(13,15,18,.06);
+  color: var(--t2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+}
+.step-pill.active .step-num {
+  background: var(--t0);
+  color: #fff;
+}
+.step-pill.done .step-num {
+  background: var(--green);
+  color: #fff;
+}
+.step-pill.done .step-num::after {
+  content: '✓';
+  position: absolute;
+  left: 16px;
+  font-size: 14px;
+}
+.step-pill.done .step-num-num { display: none; }
+.step-info { display: flex; flex-direction: column; gap: 2px; }
+.step-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px; letter-spacing: 1.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+}
+.step-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; font-weight: 600;
+  color: var(--t1);
+}
+.step-pill.active .step-name { color: var(--t0); }
+
+/* Onboarding card */
+.onb-card {
+  background: var(--card);
+  border-radius: 24px;
+  box-shadow: var(--card-shadow);
+  padding: 48px 56px 40px;
+  max-width: 720px; width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.onb-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #F3AD38 0%, #E85D26 50%, #C73E0B 100%);
+}
+
+.onb-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 2.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.onb-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 56px; line-height: 0.92;
+  letter-spacing: -0.5px;
+  color: var(--t0);
+  margin-bottom: 10px;
+}
+.onb-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px; line-height: 1.55;
+  color: var(--t1);
+  margin-bottom: 36px;
+  max-width: 540px;
+}
+
+/* Sections */
+.step { display: none; }
+.step.active { display: block; }
+
+/* Form fields — same vocabulary as profile modals */
+.form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px; letter-spacing: 1.2px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+}
+.form-input, .form-select {
+  width: 100%;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  padding: 13px 14px;
+  background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent;
+  border-radius: 9px;
+  color: var(--t0);
+  outline: none;
+  transition: border-color .12s, background .12s;
+}
+.form-input:focus { border-color: var(--t1); background: var(--card); }
+.form-input::placeholder { color: var(--t3); }
+.form-help { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 4px; line-height: 1.5; }
+
+/* Pill picker (sex / day / etc) */
+.pill-row { display: grid; gap: 6px; }
+.pill-row.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.pill-row.cols-7 { grid-template-columns: repeat(7, 1fr); }
+.pill {
+  font-family: 'Oswald', sans-serif; font-weight: 600;
+  font-size: 12px; letter-spacing: 1.5px; text-align: center;
+  padding: 12px 0;
+  background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--t1);
+  text-transform: uppercase;
+}
+.pill:hover { background: rgba(13,15,18,.08); color: var(--t0); }
+.pill.selected { background: var(--t0); color: #fff; border-color: var(--t0); }
+
+/* Level cards */
+.level-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.level-card {
+  padding: 16px 18px;
+  background: rgba(13,15,18,.04);
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.level-card:hover { background: rgba(13,15,18,.07); }
+.level-card.selected { background: var(--card); border-color: var(--t0); }
+.level-card-name { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14px; color: var(--t0); }
+.level-card-meta { font-family: 'Inter', sans-serif; font-size: 11px; color: var(--t2); margin-top: 4px; line-height: 1.5; }
+
+/* Step 2 — race goal */
+.goal-skip {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; color: var(--t1);
+  text-align: center;
+  margin-top: 8px;
+}
+.goal-skip a {
+  color: var(--t1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.goal-skip a:hover { color: var(--t0); }
+
+/* Actions row */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--divider);
+}
+.btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px; font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 9px;
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  letter-spacing: 0.3px;
+}
+.btn-back {
+  background: transparent; color: var(--t1);
+  padding: 12px 12px;
+}
+.btn-back:hover { color: var(--t0); }
+.btn-back.invisible { visibility: hidden; }
+.btn-primary {
+  background: var(--t0); color: #fff;
+}
+.btn-primary:hover { background: rgba(13,15,18,.85); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Final summary card on step 3 */
+.summary-card {
+  background: rgba(13,15,18,.03);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 20px 0 0;
+}
+.summary-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px; letter-spacing: 1.5px;
+  color: var(--t2); text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.summary-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px; color: var(--t0); font-weight: 500;
+}
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="nav-logo" href="landing-v4.html">faff.run</a>
+    <span class="nav-meta">Just a few quick details — under 2 minutes.</span>
+  </div>
+</nav>
+
+<div class="onb-wrap">
+
+  <!-- Stepper -->
+  <div class="stepper">
+    <div class="step-pill active" data-step="1">
+      <div class="step-num">1</div>
+      <div class="step-info">
+        <span class="step-label">Step 1</span>
+        <span class="step-name">Identity</span>
+      </div>
+    </div>
+    <div class="step-pill" data-step="2">
+      <div class="step-num">2</div>
+      <div class="step-info">
+        <span class="step-label">Step 2</span>
+        <span class="step-name">Your A-race</span>
+      </div>
+    </div>
+    <div class="step-pill" data-step="3">
+      <div class="step-num">3</div>
+      <div class="step-info">
+        <span class="step-label">Step 3</span>
+        <span class="step-name">Training profile</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="onb-card">
+
+    <!-- ── STEP 1 · Identity ───────────────────────── -->
+    <div class="step active" data-step="1">
+      <div class="onb-eyebrow">Identity</div>
+      <h1 class="onb-title">Who are we coaching?</h1>
+      <p class="onb-sub">Age and sex shape the max-HR estimate and recovery guidance. Location's for time zones and weather context — only the city.</p>
+
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label class="form-label" for="onb-name">Name</label>
+          <input class="form-input" id="onb-name" type="text">
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="onb-location">Location</label>
+          <input class="form-input" id="onb-location" type="text">
+        </div>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label class="form-label" for="onb-age">Age</label>
+          <input class="form-input" id="onb-age" type="number" min="13" max="100">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Sex</label>
+          <div class="pill-row cols-2" id="onb-sex-pills">
+            <div class="pill" data-sex="M">Male</div>
+            <div class="pill" data-sex="F">Female</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-help">All of this is editable later in /profile. Defaults if you skip: age 30, M.</div>
+    </div>
+
+    <!-- ── STEP 2 · A-race ─────────────────────────── -->
+    <div class="step" data-step="2">
+      <div class="onb-eyebrow">Your A-race</div>
+      <h1 class="onb-title">What are you training for?</h1>
+      <p class="onb-sub">Pick the goal race that pulls the plan together. You can add B/C-races later — the coach uses the A-race as the anchor.</p>
+
+      <div class="form-row">
+        <label class="form-label" for="onb-race-name">Race name</label>
+        <input class="form-input" id="onb-race-name" type="text">
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label class="form-label" for="onb-race-date">Race date</label>
+          <input class="form-input" id="onb-race-date" type="date">
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="onb-race-distance">Distance</label>
+          <select class="form-input" id="onb-race-distance">
+            <option value="">— Pick distance —</option>
+            <option value="5K">5K</option>
+            <option value="10K">10K</option>
+            <option value="HM" selected>Half marathon (13.1 mi)</option>
+            <option value="M">Marathon (26.2 mi)</option>
+            <option value="ULTRA">Ultra (50K+)</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="onb-race-goal">Goal finish time · HH:MM:SS</label>
+        <input class="form-input" id="onb-race-goal" type="text">
+        <div class="form-help">Honest is better than ambitious. Coach will sanity-check this against your training data once a few runs land.</div>
+      </div>
+
+      <div class="goal-skip">
+        Don't have a race? <a href="#" onclick="window.skipRace(); return false;">Skip — I'm training for general fitness →</a>
+      </div>
+    </div>
+
+    <!-- ── STEP 3 · Training profile ───────────────── -->
+    <div class="step" data-step="3">
+      <div class="onb-eyebrow">Training profile</div>
+      <h1 class="onb-title">How do you train?</h1>
+      <p class="onb-sub">These four prefs shape your plan. Long-run day is your weekly anchor. Quality days hold threshold + interval work. Rest is sacred. Editable any time.</p>
+
+      <div class="form-row">
+        <label class="form-label">Level</label>
+        <div class="level-grid" id="onb-level-grid">
+          <div class="level-card" data-level="beginner">
+            <div class="level-card-name">Beginner</div>
+            <div class="level-card-meta">10–25 mi/wk peak<br>Just finishing distance</div>
+          </div>
+          <div class="level-card selected" data-level="intermediate">
+            <div class="level-card-name">Intermediate</div>
+            <div class="level-card-meta">25–50 mi/wk peak<br>Raced HM or marathon</div>
+          </div>
+          <div class="level-card" data-level="advanced">
+            <div class="level-card-name">Advanced</div>
+            <div class="level-card-meta">50–70 mi/wk peak<br>Sub-elite mileage</div>
+          </div>
+          <div class="level-card" data-level="elite">
+            <div class="level-card-name">Elite</div>
+            <div class="level-card-meta">70+ mi/wk peak<br>Sub-1:15 HM territory</div>
+          </div>
+        </div>
+        <div class="form-help">Level caps weekly volume and long-run length, and gates which workout types unlock. From the Research/00a-distance-running-training doctrine.</div>
+      </div>
+
+      <div class="form-row" style="margin-top: 8px;">
+        <label class="form-label">Long-run day</label>
+        <div class="pill-row cols-7" id="onb-long-day">
+          <div class="pill" data-day="mon">Mon</div>
+          <div class="pill" data-day="tue">Tue</div>
+          <div class="pill" data-day="wed">Wed</div>
+          <div class="pill" data-day="thu">Thu</div>
+          <div class="pill" data-day="fri">Fri</div>
+          <div class="pill" data-day="sat">Sat</div>
+          <div class="pill selected" data-day="sun">Sun</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Quality days (1–2)</label>
+        <div class="pill-row cols-7" id="onb-quality-days">
+          <div class="pill" data-day="mon">Mon</div>
+          <div class="pill selected" data-day="tue">Tue</div>
+          <div class="pill" data-day="wed">Wed</div>
+          <div class="pill selected" data-day="thu">Thu</div>
+          <div class="pill" data-day="fri">Fri</div>
+          <div class="pill" data-day="sat">Sat</div>
+          <div class="pill" data-day="sun">Sun</div>
+        </div>
+        <div class="form-help">Threshold + interval slots. BASE uses 1, BUILD/PEAK uses 2.</div>
+      </div>
+
+      <div class="form-row">
+        <label class="form-label">Rest day</label>
+        <div class="pill-row cols-7" id="onb-rest-day">
+          <div class="pill" data-day="mon">Mon</div>
+          <div class="pill" data-day="tue">Tue</div>
+          <div class="pill" data-day="wed">Wed</div>
+          <div class="pill" data-day="thu">Thu</div>
+          <div class="pill" data-day="fri">Fri</div>
+          <div class="pill selected" data-day="sat">Sat</div>
+          <div class="pill" data-day="sun">Sun</div>
+        </div>
+        <div class="form-help">Default is the day before the long run — protects long-run quality.</div>
+      </div>
+
+      <!-- Summary preview -->
+      <div class="summary-card">
+        <div class="summary-label">Plan preview</div>
+        <div class="summary-value" id="onb-summary">
+          14-week Intermediate plan · Sun long · Tue/Thu quality · Sat rest
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Actions ──────────────────────────────────── -->
+    <div class="actions">
+      <button class="btn btn-back invisible" id="btn-back" type="button">← Back</button>
+      <button class="btn btn-primary" id="btn-next" type="button">Continue →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Onboarding state (mockup only — real flow POSTs to /api/onboarding) ──
+  const STATE = {
+    step: 1,
+    sex: null,
+    level: 'intermediate',
+    longRunDay: 'sun',
+    qualityDays: ['tue', 'thu'],
+    restDay: 'sat',
+  };
+
+  // Step navigation
+  function gotoStep(n) {
+    STATE.step = n;
+    document.querySelectorAll('.step-pill').forEach((p) => {
+      const s = parseInt(p.dataset.step, 10);
+      p.classList.toggle('active', s === n);
+      p.classList.toggle('done', s < n);
+    });
+    document.querySelectorAll('.step').forEach((s) => {
+      s.classList.toggle('active', parseInt(s.dataset.step, 10) === n);
+    });
+    // Update buttons
+    document.getElementById('btn-back').classList.toggle('invisible', n === 1);
+    const next = document.getElementById('btn-next');
+    next.textContent = n === 3 ? 'Build my plan →' : 'Continue →';
+  }
+
+  // Sex pill picker
+  document.querySelectorAll('#onb-sex-pills .pill').forEach((p) => {
+    p.addEventListener('click', () => {
+      document.querySelectorAll('#onb-sex-pills .pill').forEach((x) => x.classList.remove('selected'));
+      p.classList.add('selected');
+      STATE.sex = p.dataset.sex;
+    });
+  });
+
+  // Level cards
+  document.querySelectorAll('#onb-level-grid .level-card').forEach((c) => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('#onb-level-grid .level-card').forEach((x) => x.classList.remove('selected'));
+      c.classList.add('selected');
+      STATE.level = c.dataset.level;
+      updateSummary();
+    });
+  });
+
+  // Day pill pickers (single-select for long/rest, multi for quality with cap 2)
+  function wireSingleDay(containerId, stateKey) {
+    document.querySelectorAll('#' + containerId + ' .pill').forEach((p) => {
+      p.addEventListener('click', () => {
+        document.querySelectorAll('#' + containerId + ' .pill').forEach((x) => x.classList.remove('selected'));
+        p.classList.add('selected');
+        STATE[stateKey] = p.dataset.day;
+        updateSummary();
+      });
+    });
+  }
+  wireSingleDay('onb-long-day', 'longRunDay');
+  wireSingleDay('onb-rest-day', 'restDay');
+
+  document.querySelectorAll('#onb-quality-days .pill').forEach((p) => {
+    p.addEventListener('click', () => {
+      p.classList.toggle('selected');
+      const selected = document.querySelectorAll('#onb-quality-days .pill.selected');
+      if (selected.length > 2) p.classList.remove('selected');
+      STATE.qualityDays = Array.from(document.querySelectorAll('#onb-quality-days .pill.selected')).map((x) => x.dataset.day);
+      updateSummary();
+    });
+  });
+
+  function fmtDow(d) { return ({mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun'})[d] || d; }
+  function levelLabel(l) { return ({beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced',elite:'Elite'})[l] || 'Intermediate'; }
+  function updateSummary() {
+    const el = document.getElementById('onb-summary');
+    if (!el) return;
+    el.textContent =
+      '14-week ' + levelLabel(STATE.level) + ' plan · ' +
+      fmtDow(STATE.longRunDay) + ' long · ' +
+      STATE.qualityDays.map(fmtDow).join('/') + ' quality · ' +
+      fmtDow(STATE.restDay) + ' rest';
+  }
+  updateSummary();
+
+  // Skip-race option on Step 2
+  window.skipRace = function () {
+    document.getElementById('onb-race-name').value = '';
+    document.getElementById('onb-race-date').value = '';
+    document.getElementById('onb-race-goal').value = '';
+    document.getElementById('onb-race-distance').value = '';
+    gotoStep(3);
+  };
+
+  // Next / Back buttons
+  document.getElementById('btn-next').addEventListener('click', () => {
+    if (STATE.step < 3) {
+      gotoStep(STATE.step + 1);
+    } else {
+      // Final step — would POST to /api/onboarding/complete and redirect.
+      // Mockup just hops to /overview-v4.html.
+      window.location.href = 'overview-v4.html';
+    }
+  });
+  document.getElementById('btn-back').addEventListener('click', () => {
+    if (STATE.step > 1) gotoStep(STATE.step - 1);
+  });
+</script>
+</body>
+</html>

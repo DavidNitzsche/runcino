@@ -1,12 +1,14 @@
 {
   "name": "faff",
-  "version": "0.1.0",
+  "version": "0.2.0-dev",
   "private": true,
-  "description": "faff.run — personal race + training app. Production deploy points at web/ (Next.js); designs/ stays as the canonical visual reference.",
+  "description": "faff.run — personal coaching app. Production currently builds from legacy/web (Next.js) until cutover to web-v2. See docs/coach/mockups/deck-v1-2026-05-25.html for the canonical design system.",
   "scripts": {
-    "build": "cd web && npm install && npm run build",
-    "start": "cd web && npx next start -p ${PORT:-3000} -H 0.0.0.0",
-    "dev": "cd web && npm run dev"
+    "build": "cd legacy/web && npm install && npm run build",
+    "start": "cd legacy/web && npx next start -p ${PORT:-3000} -H 0.0.0.0",
+    "dev": "cd legacy/web && npm run dev",
+    "v2:dev": "cd web-v2 && npm run dev",
+    "v2:build": "cd web-v2 && npm install && npm run build"
   },
   "engines": {
     "node": ">=18"
