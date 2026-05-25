@@ -233,6 +233,43 @@ async function bootstrap(): Promise<void> {
       ALTER TABLE profile
         ADD COLUMN IF NOT EXISTS vo2max_apple_updated_at TIMESTAMPTZ;
     `);
+    // V4 coach layer additions (May 2026).
+    // Height in cm — unlocks cadence research thresholds for this runner
+    // (research-grounded overstriding diagnostic depends on leg length;
+    // see docs/coach/CARD_LIBRARY.md profile_gap entry).
+    await client.query(`
+      ALTER TABLE profile
+        ADD COLUMN IF NOT EXISTS height_cm NUMERIC(5,1)
+        CHECK (height_cm IS NULL OR (height_cm BETWEEN 120 AND 230));
+    `);
+    // known_terms: technical terms the runner has already seen the
+    // fun_fact for. Suppresses repeated explainers across briefings.
+    await client.query(`
+      ALTER TABLE profile
+        ADD COLUMN IF NOT EXISTS known_terms TEXT[] NOT NULL DEFAULT '{}';
+    `);
+    // coach_intent — closed-loop commitments the runner made via cards
+    // ("Lock in 168 cadence for tomorrow"). Next briefing reads this +
+    // the actual run + checks if the intent landed. Watch reads to give
+    // live guidance. See docs/coach/CARD_LIBRARY.md for kinds + payload.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coach_intent (
+        id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id      TEXT NOT NULL,
+        kind         TEXT NOT NULL,
+        payload      JSONB NOT NULL,
+        valid_from   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        valid_until  TIMESTAMPTZ,
+        fulfilled_at TIMESTAMPTZ,
+        outcome      JSONB,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS coach_intent_user_active_idx
+        ON coach_intent (user_id, kind)
+        WHERE fulfilled_at IS NULL;
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS user_prefs (
         user_id        TEXT PRIMARY KEY DEFAULT 'me',
