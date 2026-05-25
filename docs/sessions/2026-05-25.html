@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Session report · 2026-05-25 · v4 wiring</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --dim: #4b505e;
+    --line: rgba(255,255,255,0.08);
+    --card: #11141a;
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --rest:  #008FEC;
+    --learn: #B084FF;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 56px; font-weight: 400; letter-spacing: 0.5px; margin: 0; }
+  .sub { color: var(--mute); margin-top: 8px; font-size: 14px; }
+  h2 { font-family: 'Bebas Neue', sans-serif; font-size: 34px; font-weight: 400; letter-spacing: 0.5px; margin: 56px 0 16px; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 32px 0 12px; }
+  p { color: rgba(246,247,248,0.85); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 16px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: ui-monospace, monospace; }
+  .tldr { background: rgba(62,189,65,0.08); border: 1px solid rgba(62,189,65,0.25); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .tldr h2 { margin: 0 0 12px; font-size: 24px; color: var(--green); }
+  .tldr ol { padding-left: 18px; margin: 0; color: rgba(246,247,248,0.92); font-size: 14.5px; line-height: 1.8; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin: 12px 0; }
+  .card h4 { font-family: 'Bebas Neue', sans-serif; font-size: 20px; font-weight: 400; margin: 0 0 8px; letter-spacing: 0.5px; }
+  .card .commit { font-family: ui-monospace, monospace; font-size: 11px; color: var(--dist); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td { color: rgba(246,247,248,0.85); }
+  td.ok { color: var(--green); }
+  td.warn { color: var(--goal); }
+  td.miss { color: var(--over); }
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
+  .pill.ok { background: rgba(62,189,65,0.18); color: var(--green); }
+  .pill.warn { background: rgba(243,173,56,0.18); color: var(--goal); }
+  .pill.miss { background: rgba(252,77,100,0.18); color: var(--over); }
+  a { color: var(--dist); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  blockquote { border-left: 3px solid var(--green); padding: 8px 18px; margin: 14px 0; color: rgba(246,247,248,0.82); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Session · 2026-05-25</h1>
+  <p class="sub">Overnight build · v4 coach pipeline live on web · /today + /races shipped · iOS deferred · context budget hit</p>
+
+  <div class="tldr">
+    <h2>TL;DR — three things to check this morning</h2>
+    <ol>
+      <li><strong><a href="https://www.faff.run/today">www.faff.run/today</a></strong> — the v4 page rendering live against your real prod data. Coach voice + dynamic cards + interactive +Add height / Lock-in cadence / Got it. /overview is untouched (safety net).</li>
+      <li><strong><a href="https://www.faff.run/races">www.faff.run/races</a></strong> — coach voice + race-domain cards layer at the top of your existing /races page. Same pattern, different surface. The pattern extends.</li>
+      <li><strong>Add your height</strong> — tap +Add on the "Your height" card on /today, enter inches (e.g. 70 for 5'10"). Once saved, the next briefing unlocks the cadence_experiment card with a real target. <strong>This is the most concrete way to test the closed loop tonight.</strong></li>
+    </ol>
+  </div>
+
+  <h2>What shipped</h2>
+
+  <div class="card">
+    <h4>Backend foundation</h4>
+    <p class="commit">8a3ff1c · fix(log)-style commit — backend foundation</p>
+    <ul>
+      <li>Schema migrations (auto-applied on next bootstrap): <code>profile.height_cm</code> NUMERIC(5,1) with 120-230 CHECK; <code>profile.known_terms</code> TEXT[] DEFAULT '{}'; <code>coach_intent</code> table with active-intent index.</li>
+      <li>API endpoints: <code>GET/POST /api/profile/height</code> (cm in/out), <code>GET/POST /api/coach-intent</code> (kinds: cadence_experiment, sleep_focus, fueling_experiment, pace_target; supersedes prior active intent of same kind), <code>GET/POST /api/coach-known-terms</code> (append-only term dismissal).</li>
+      <li>WATCH_NOTES.md created at <code>docs/coach/WATCH_NOTES.md</code> — running doc for watch + coach ideas to capture during other work.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h4>TODAY pipeline (web)</h4>
+    <p class="commit">57b07b9 · server-side state loader + briefing function + /api/today endpoint</p>
+    <ul>
+      <li><code>web/lib/coach/today-state.ts</code> · <code>loadTodayState(userUuid)</code> — typed structured state mirroring the test-daily-briefing.mjs queries. Runner, plan, current/prev week, today's planned + actual, week banked (strava unmerged + workout_completions MAX per day), 7-night sleep + deficit, HRV/RHR, cadence baseline, check-in, next race, derived HRmax/RHR, genuine profile gaps, weight trend, active intents, known terms.</li>
+      <li><code>web/coach/today-briefing.ts</code> · <code>generateTodayBriefing(state)</code> — Claude sonnet-4-5 with the existing daily-briefing.md prompt (cached). Returns <code>{ voice, topics[], state, fromLLM, meta }</code>. <code>filterTopicsForRender()</code> applies suppression rules (cadence_experiment with null target_spm → dropped; profile_gap for non-gap fields → dropped; fun_fact for known_terms → dropped).</li>
+      <li><code>web/app/api/today/route.ts</code> · GET endpoint. Cache via <code>coach_today_cache</code> keyed on (cache_date, latest_activity_id). <code>?fresh=1</code> bypass. Distinct from legacy /api/coach/today (kept for old iOS contract).</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h4>/today React page</h4>
+    <p class="commit">dae52f8 + 9dcd3e2 · React page + client interaction island</p>
+    <ul>
+      <li>New route at <code>/today</code> — does NOT replace /overview. /overview keeps working. Once /today is verified, redirect /overview → /today as a final cut.</li>
+      <li>Server component reads state + runs briefing + renders. Components per card kind: CadenceCard, SleepCard, NextWorkoutCard, ProfileGapCard, FunFactCard, WeightTrendCard, RaceHorizonCard, RecoveryAmberCard.</li>
+      <li>CSS at <code>web/app/today/today-v4.css</code> mirrors the v4 mockup token-for-token (Bebas Neue + Inter, pure-black canvas, watch-face palette).</li>
+      <li>Interactive buttons wired via <code>TodayInteractions.tsx</code> client island using event delegation on [data-action]: Lock in cadence, +Add height (prompt → POST), Got it (dismiss fun_fact), reply chips (post-run RPE). Toasts on success/failure. Card fades on action success.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h4>/races coach layer</h4>
+    <p class="commit">bb215f4 · races coach voice + cards added above existing content</p>
+    <ul>
+      <li>Same model as /today: rich state → LLM call → { voice, topics[] } → typed cards rendered above the existing races content.</li>
+      <li>New prompt at <code>web/coach/prompts/races-overview.md</code> — race-domain focus (multi-race arc, next A-race, calendar-as-a-whole, honest goal call).</li>
+      <li>New state loader at <code>web/lib/coach/races-state.ts</code> — all races sorted, active plan's race, next race, next A-race, recent race, VDOT signal.</li>
+      <li>New briefing function at <code>web/coach/races-briefing.ts</code>.</li>
+      <li>New endpoint at <code>GET /api/races/coach</code> (for iOS to consume too).</li>
+      <li>Card kinds new to /races: <code>race_horizon</code>, <code>race_trajectory</code>, <code>race_calendar_overview</code>, <code>race_retrospective</code>, <code>goal_renegotiation</code> (proposal with inline Accept / Hold / Let me think).</li>
+      <li>Legacy <code>coach-strip</code> is hidden when the v4 layer renders successfully; falls back to legacy prose if the LLM call fails.</li>
+    </ul>
+  </div>
+
+  <h2>What did NOT ship tonight</h2>
+
+  <table>
+    <tr><th>Item</th><th>Status</th><th>Why</th></tr>
+    <tr><td>iOS native v4 TODAY rebuild</td><td><span class="pill miss">Deferred</span></td><td>Existing iOS <code>TodayView.swift</code> is 1221 lines, tightly coupled to <code>/api/overview</code> response shape. Rebuilding it against /api/today + 8 new SwiftUI card components is a substantial multi-hour effort. Better to do this with you in the loop for design QA + TestFlight QA than blind overnight.</td></tr>
+    <tr><td>TestFlight build 58</td><td><span class="pill miss">Not shipped</span></td><td>Tied to the iOS deferral above. <code>scripts/ship-testflight.sh</code> + <code>native/.asc.env</code> are ready when we ship.</td></tr>
+    <tr><td>/training coach layer</td><td><span class="pill miss">Deferred</span></td><td>Same pattern as /races — would take ~30-45 min once we're back at the keyboard. Spec is ready in PHILOSOPHY.md / coach-doc-set.</td></tr>
+    <tr><td>/health coach layer</td><td><span class="pill miss">Deferred</span></td><td>Same as above.</td></tr>
+    <tr><td>/profile shoe coaching</td><td><span class="pill miss">Deferred</span></td><td>Smaller scope per your note ("/profile mostly the guts; coach for shoes specifically"). Needs a new <code>shoe_status</code> card kind + state loader for shoe mileage / retirement / race-suitability.</td></tr>
+    <tr><td>Race detail page proximity adaptation</td><td><span class="pill miss">Deferred</span></td><td>Spec is fully written into <code>NEXT_BUILD.md</code> + tone enum already in race_horizon card. Pattern is clear; needs the work.</td></tr>
+    <tr><td>Validation against PRE-RUN / REST / SKIPPED states</td><td><span class="pill warn">Not run</span></td><td>The LLM pipeline is wired correctly per the prompt's state classifier. We've only validated POST-RUN with real data. Other states should produce reasonable output but unvalidated. Worth running today.</td></tr>
+    <tr><td>VDOT calibration spot-check</td><td><span class="pill warn">Not run</span></td><td>You said it's calibrated; I didn't independently verify. The races-state loader does a coarse VDOT read which feeds the briefing; if it's off, voice will compound the error.</td></tr>
+  </table>
+
+  <h2>Decisions I made on the way</h2>
+
+  <ul>
+    <li><strong>/today as a NEW route, not /overview replacement.</strong> Safety net. Once you confirm /today reads/works correctly, we redirect /overview → /today as a clean cutover.</li>
+    <li><strong>Per-surface API endpoints</strong> (/api/today, /api/races/coach, future /api/training/coach, etc.) rather than one giant /api/overview with a surface param. Cleaner caching, easier to debug, prompts stay focused.</li>
+    <li><strong>Backward-compat the API.</strong> Existing iOS clients reading <code>coachLine: string</code> on /api/overview keep working. New clients read <code>voice</code> + <code>topics[]</code> from /api/today. No breaking changes.</li>
+    <li><strong>Legacy /races coach-strip hidden, not deleted</strong> — falls back if LLM call fails. Once verified stable, can be removed in a cleanup.</li>
+    <li><strong>prompt() for height input</strong> on the +Add affordance — works today, replace with proper inline input / bottom sheet in a follow-up.</li>
+    <li><strong>WATCH_NOTES.md as a living doc</strong> — added as I went; appended a few ideas during the build. Watch session can pull from there.</li>
+  </ul>
+
+  <h2>How to test in the morning</h2>
+
+  <h3>5-minute happy path</h3>
+  <ol style="color: rgba(246,247,248,0.92); font-size: 14.5px; line-height: 1.8;">
+    <li>Open <a href="https://www.faff.run/today">www.faff.run/today</a> on your phone (mobile Safari). Should render the v4 design with coach voice + cards generated from your real prod data.</li>
+    <li>Tap <strong>+Add</strong> on the "Your height" card. Enter your height in inches. Watch for the green toast + page reload.</li>
+    <li>Reload <a href="https://www.faff.run/today?fresh=1">/today?fresh=1</a> — the briefing should now mention cadence specifically (height-unlocked) and possibly emit a cadence_experiment card with a real target SPM.</li>
+    <li>Tap a reply chip (SOLID / TIRED / WRECKED). Should toast + fade siblings.</li>
+    <li>Tap <strong>Got it</strong> on the HRV fun_fact card. Should toast + fade the card. Future briefings won't show HRV explainer until you clear it.</li>
+    <li>Open <a href="https://www.faff.run/races">www.faff.run/races</a>. The dark coach-voice block at the top is the v4 layer; the existing race calendar / hero / PRs are below, untouched.</li>
+  </ol>
+
+  <h3>If something looks wrong</h3>
+  <ul>
+    <li><strong>/today is broken</strong> → /overview still works; deep-link there. To debug: hit <a href="https://www.faff.run/api/today?fresh=1">/api/today?fresh=1</a> directly and check the JSON payload.</li>
+    <li><strong>The coach voice is off</strong> → check <code>web/coach/prompts/daily-briefing.md</code> (the prompt) + <code>web/scripts/test-daily-briefing.mjs</code> (re-run it against current state).</li>
+    <li><strong>A card looks wrong</strong> → check the card-specific component in <code>web/app/today/page.tsx</code> + the schema in <code>docs/coach/CARD_LIBRARY.md</code>.</li>
+    <li><strong>Cache is stale</strong> → add <code>?fresh=1</code> to the URL or the <code>/api/today</code> request to bypass.</li>
+    <li><strong>Want to nuke a card temporarily</strong> → edit <code>filterTopicsForRender()</code> in <code>web/coach/today-briefing.ts</code> to filter that kind. Or edit the prompt to not emit it.</li>
+  </ul>
+
+  <h3>Rollback notes (worst case)</h3>
+  <ul>
+    <li>/today is a new route — deleting <code>web/app/today/</code> + <code>web/lib/coach/today-state.ts</code> + <code>web/coach/today-briefing.ts</code> + <code>web/app/api/today/</code> reverts cleanly. /overview untouched.</li>
+    <li>/races coach layer is additive — to revert, remove the import + RacesCoachLayer JSX block in <code>web/app/races/page.tsx</code>. Existing /races content untouched.</li>
+    <li>Schema migrations are idempotent (CREATE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS). To "undo" the new columns, you'd ALTER TABLE DROP COLUMN — but they're orphan-safe; nothing existing reads them.</li>
+    <li>Last green commit before any v4 wiring: <code>08f0d17</code> (nav icons fix on v4 mockup).</li>
+  </ul>
+
+  <h2>Commit log (this session)</h2>
+
+  <table>
+    <tr><th>Commit</th><th>What</th></tr>
+    <tr><td><code>8a3ff1c</code></td><td>backend foundation — migrations + 3 endpoints + WATCH_NOTES</td></tr>
+    <tr><td><code>57b07b9</code></td><td>today-state + today-briefing + /api/today endpoint</td></tr>
+    <tr><td><code>dae52f8</code></td><td>/today React page rebuild against v4</td></tr>
+    <tr><td><code>9dcd3e2</code></td><td>TodayInteractions client island (button handlers + toasts)</td></tr>
+    <tr><td><code>bb215f4</code></td><td>/races coach voice + cards layer</td></tr>
+    <tr><td><code>(this)</code></td><td>session report</td></tr>
+  </table>
+
+  <h2>Where to pick up next session</h2>
+
+  <p>Priority order, easiest payoff first:</p>
+
+  <ol style="color: rgba(246,247,248,0.92); font-size: 14.5px; line-height: 1.8;">
+    <li><strong>Verify /today on your phone + add your height.</strong> If everything reads right, we have the foundation locked.</li>
+    <li><strong>iOS native v4 rebuild.</strong> Largest user-facing impact for an evening session. Codable types for /api/today payload + TodayV4View.swift + ship to TestFlight. ~2-3 hours with you in the loop for QA.</li>
+    <li><strong>/training coach layer.</strong> Same pattern as /races. ~30-45 min.</li>
+    <li><strong>/health coach layer.</strong> Same pattern. ~30-45 min.</li>
+    <li><strong>/profile shoe coaching.</strong> New <code>shoe_status</code> card kind + state. ~45 min.</li>
+    <li><strong>Race detail page proximity adaptation.</strong> The proximity tone enum already exists; needs the actual surface work. ~2 hours.</li>
+    <li><strong>Replace /overview with /today redirect.</strong> Once /today is fully verified.</li>
+    <li><strong>Coach memory across briefings.</strong> Per <code>NEXT_BUILD.md</code> Phase 3 — the biggest gap right now. Coach is context-free per briefing; doesn't remember what it said yesterday or last week. Real session-of-work.</li>
+  </ol>
+
+  <p style="margin-top: 48px; color: var(--mute); font-size: 13px;">— Session report generated at the end of the 2026-05-25 build. All commits pushed to <code>main</code>. Railway will auto-deploy as it reads new SHAs.</p>
+
+</div>
+</body>
+</html>
