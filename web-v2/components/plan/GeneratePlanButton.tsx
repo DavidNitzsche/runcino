@@ -67,7 +67,7 @@ export function GeneratePlanCTA({ raceSlug, raceName }: Props) {
   );
 }
 
-export function RegeneratePlanButton({ raceSlug }: Props) {
+export function RegeneratePlanButton({ raceSlug }: { raceSlug: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);

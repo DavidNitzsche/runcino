@@ -125,20 +125,29 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
           </div>
         )}
 
-        {/* Post-race section — splits + reflection (P4 will wire actual splits when activity is matched) */}
+        {/* Post-race section — finish time + (eventually) splits */}
         {proximity === 'post-race' && (
           <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px', marginBottom: 16 }}>
               POST-RACE
             </div>
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.6 }}>
-              Splits + actual-vs-plan wire in P4 once the race-day strava_activity is linked.
-              {race.finishTime ? (
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 44, color: 'var(--green)', marginTop: 12 }}>
+            {race.finishTime ? (
+              <>
+                <div style={{ fontFamily: 'var(--f-display)', fontSize: 56, color: race.pb ? 'var(--green)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1 }}>
                   {race.finishTime}
                 </div>
-              ) : null}
-            </div>
+                {race.pb && (
+                  <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', letterSpacing: '1.4px', marginTop: 6 }}>● PERSONAL BEST</div>
+                )}
+                <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', lineHeight: 1.6, marginTop: 18 }}>
+                  Splits + actual-vs-plan show up here once a matching Strava activity is linked to this race.
+                </div>
+              </>
+            ) : (
+              <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.6 }}>
+                Add your finish time on the race card to populate the retrospective.
+              </div>
+            )}
           </div>
         )}
 

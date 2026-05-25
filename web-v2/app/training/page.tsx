@@ -50,7 +50,7 @@ export default async function TrainingPage() {
         {/* Regenerate pill — only when a plan + race both exist */}
         {currentWeek && training.race && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6, marginBottom: -8 }}>
-            <RegeneratePlanButton raceSlug={training.race.slug} raceName={training.race.name} />
+            <RegeneratePlanButton raceSlug={training.race.slug} />
           </div>
         )}
 
