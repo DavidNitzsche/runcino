@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TODAY (web) · v1 · 2026-05-25</title>
+<meta name="viewport" content="width=1440">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --dim: #4b505e;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.04);
+    --card: #11141a;
+    --card-2: #13171f;
+
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --rest:  #008FEC;
+    --learn: #B084FF;
+    --race:  #FF8847;
+
+    --f-display: 'Bebas Neue', 'Inter', sans-serif;
+    --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  html, body { background: #15171c; color: var(--ink); font-family: var(--f-body); margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 36px 32px 96px; }
+
+  /* Mockup header (not the app — the doc header) */
+  .doc-header { margin-bottom: 36px; }
+  .doc-header h1 { font-family: var(--f-display); font-size: 52px; font-weight: 400; letter-spacing: 0.5px; margin: 0; color: var(--ink); }
+  .doc-header .sub { color: var(--mute); font-size: 14px; margin-top: 10px; line-height: 1.6; max-width: 880px; }
+  .doc-header .sub strong { color: var(--green); }
+  .doc-header .meta { color: var(--dim); font-size: 11px; margin-top: 14px; letter-spacing: 0.4px; }
+
+  /* ── The browser frame ── */
+  .browser {
+    background: var(--bg);
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 50px 100px rgba(0,0,0,0.50), 0 16px 32px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
+  }
+  .browser-chrome {
+    height: 38px; background: #0d0f14;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .browser-chrome .dot { width: 12px; height: 12px; border-radius: 50%; background: #2a2e36; }
+  .browser-chrome .url {
+    margin-left: 24px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-family: var(--f-body); font-size: 12px; color: var(--mute);
+    flex: 1; max-width: 480px;
+    letter-spacing: 0.2px;
+  }
+  .browser-chrome .url .host { color: var(--ink); font-weight: 500; }
+
+  /* ── App nav (top of app) ── */
+  .topnav {
+    display: flex; align-items: center; gap: 40px;
+    padding: 20px 40px 0;
+  }
+  .topnav .brand {
+    font-family: var(--f-display);
+    font-size: 28px; font-weight: 400; color: var(--ink);
+    letter-spacing: 1.2px;
+  }
+  .topnav .tabs { display: flex; gap: 28px; flex: 1; }
+  .topnav .tab {
+    font-family: var(--f-display); font-size: 15px; font-weight: 400;
+    color: var(--mute); letter-spacing: 1.4px;
+    padding: 6px 0;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .topnav .tab.active { color: var(--green); border-bottom-color: var(--green); }
+  .topnav .tab:hover:not(.active) { color: var(--ink); }
+  .topnav .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--learn), var(--race));
+    color: #1a0f33; font-family: var(--f-display); font-size: 14px;
+    font-weight: 400; letter-spacing: 0.5px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── Greeting band ── */
+  .greeting {
+    padding: 40px 40px 24px;
+    display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: end;
+  }
+  .greeting .hello {
+    font-family: var(--f-display); font-size: 64px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; line-height: 1;
+  }
+  .greeting .hello .day { color: var(--green); }
+  .greeting .sub {
+    font-family: var(--f-body); font-size: 13px; font-weight: 600;
+    color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase;
+    margin-top: 10px;
+  }
+  .greeting .sub .pip { color: var(--rest); }
+
+  .readiness-block {
+    display: flex; align-items: center; gap: 18px;
+  }
+  .readiness-block .chip-large {
+    width: 64px; height: 64px; position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .readiness-block .chip-large svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .readiness-block .chip-large .v {
+    font-family: var(--f-display); font-size: 26px; font-weight: 400;
+    color: var(--green); letter-spacing: 0.5px;
+  }
+  .readiness-block .label {
+    font-family: var(--f-body); font-size: 10px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase;
+  }
+  .readiness-block .state {
+    font-family: var(--f-display); font-size: 20px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; margin-top: 2px;
+  }
+
+  /* ── Week strip (wider on web) ── */
+  .weekstrip-band {
+    padding: 8px 40px 28px;
+  }
+  .weekstrip-band .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 14px;
+  }
+  .weekstrip-band .label {
+    font-family: var(--f-body); font-size: 10px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase;
+  }
+  .weekstrip-band .total {
+    font-family: var(--f-display); font-size: 20px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px;
+  }
+  .weekstrip-band .total .done { color: var(--green); }
+  .weekstrip-band .total .sep { color: var(--dim); margin: 0 4px; }
+  .weekstrip-band .total .planned { color: var(--mute); }
+  .weekstrip-band .days {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px;
+  }
+  .weekstrip-band .d {
+    background: rgba(255,255,255,0.025);
+    border-radius: 12px;
+    padding: 14px 12px;
+    display: flex; flex-direction: column; gap: 6px;
+    border: 1px solid transparent;
+  }
+  .weekstrip-band .d.today {
+    background: rgba(62,189,65,0.10);
+    border-color: rgba(62,189,65,0.30);
+  }
+  .weekstrip-band .d.rest .label-mi { color: var(--dim); }
+  .weekstrip-band .d.rest .typ { color: var(--dim); }
+  .weekstrip-band .d .dow {
+    font-family: var(--f-body); font-size: 10px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase;
+  }
+  .weekstrip-band .d.today .dow { color: var(--green); }
+  .weekstrip-band .d .label-mi {
+    font-family: var(--f-display); font-size: 30px; font-weight: 400;
+    color: var(--ink); line-height: 1; letter-spacing: 0.5px;
+  }
+  .weekstrip-band .d .typ {
+    font-family: var(--f-body); font-size: 10px; font-weight: 600;
+    color: var(--mute); letter-spacing: 0.8px; text-transform: uppercase;
+  }
+  .weekstrip-band .d.quality .typ { color: var(--goal); }
+  .weekstrip-band .d.long .typ { color: var(--dist); }
+  .weekstrip-band .d.today .typ { color: var(--green); }
+
+  /* ── Body two-column ── */
+  .body-grid {
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 40px;
+    padding: 8px 40px 56px;
+  }
+  @media (max-width: 1200px) { .body-grid { grid-template-columns: 1fr; } }
+
+  /* COACH column */
+  .coach-col {}
+  .coach-col .coach-frame {
+    background: linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 36px 40px;
+  }
+  .coach-col .eyebrow {
+    font-family: var(--f-body); font-size: 11px; font-weight: 700;
+    color: var(--green); letter-spacing: 1.8px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px; margin-bottom: 18px;
+  }
+  .coach-col .eyebrow::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 12px rgba(62,189,65,0.6);
+  }
+  .coach-col .lead {
+    font-family: var(--f-display); font-size: 56px; font-weight: 400;
+    color: var(--ink); line-height: 1.02; letter-spacing: 0.5px;
+    margin: 0 0 22px;
+  }
+  .coach-col p {
+    font-family: var(--f-body); font-size: 17px; line-height: 1.65;
+    color: rgba(246,247,248,0.88);
+    margin: 0 0 14px; letter-spacing: -0.01em;
+  }
+  .coach-col p strong { color: var(--ink); font-weight: 600; }
+  .coach-col .ask {
+    font-family: var(--f-body); font-size: 13px; color: var(--mute);
+    margin: 28px 0 14px; letter-spacing: 0.2px;
+  }
+  .reply { display: flex; gap: 10px; max-width: 440px; }
+  .reply-chip {
+    flex: 1; background: transparent; border: 1px solid var(--line);
+    color: var(--ink); padding: 14px 6px; border-radius: 16px;
+    font-family: var(--f-display); font-size: 20px; font-weight: 400;
+    letter-spacing: 1.4px; cursor: pointer; transition: all .15s;
+  }
+  .reply-chip:hover { background: rgba(255,255,255,0.04); }
+  .reply-chip.solid:hover   { border-color: rgba(62,189,65,0.50); color: var(--green); }
+  .reply-chip.tired:hover   { border-color: rgba(243,173,56,0.50); color: var(--goal); }
+  .reply-chip.wrecked:hover { border-color: rgba(252,77,100,0.50); color: var(--over); }
+
+  /* Below-coach mini stat strip — fills out the wide column */
+  .micro-strip {
+    margin-top: 32px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  }
+  .micro {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px 18px;
+  }
+  .micro .k {
+    font-family: var(--f-body); font-size: 9px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.6px; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .micro .v {
+    font-family: var(--f-display); font-size: 30px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; line-height: 1;
+  }
+  .micro .delta {
+    font-family: var(--f-body); font-size: 11px; font-weight: 600;
+    color: var(--mute); margin-top: 4px;
+  }
+  .micro.warn .v { color: var(--over); }
+  .micro.warn .delta { color: var(--over); }
+  .micro.good .v { color: var(--green); }
+  .micro.tracked .v { color: var(--rest); }
+
+  /* CARDS column */
+  .cards-col { display: flex; flex-direction: column; gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 20px 22px;
+  }
+  .card .eyebrow {
+    font-family: var(--f-body); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.6px; text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .coach-note {
+    font-family: var(--f-body); font-size: 13px; line-height: 1.55;
+    color: rgba(246,247,248,0.85);
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--line-2);
+    display: flex; align-items: flex-start; gap: 9px;
+  }
+  .coach-note::before {
+    content: ''; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--green); margin-top: 7px; flex-shrink: 0;
+  }
+
+  /* UP NEXT (today's run) — hero card */
+  .card.upnext { padding: 24px 26px; }
+  .card.upnext .eyebrow { color: var(--rest); }
+  .card.upnext .row {
+    display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center;
+  }
+  .card.upnext .typ {
+    font-family: var(--f-display); font-size: 38px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.8px; line-height: 1;
+  }
+  .card.upnext .when {
+    font-family: var(--f-body); font-size: 11px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.4px; text-transform: uppercase;
+    margin-top: 8px;
+  }
+  .card.upnext .big {
+    display: flex; align-items: baseline; gap: 6px; color: var(--rest);
+  }
+  .card.upnext .big .v {
+    font-family: var(--f-display); font-size: 80px; font-weight: 400;
+    line-height: 0.95; letter-spacing: 0.5px;
+  }
+  .card.upnext .big .u {
+    font-family: var(--f-body); font-size: 12px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.4px; text-transform: uppercase;
+  }
+
+  /* Yesterday recap — small */
+  .card.yesterday .eyebrow { color: var(--dim); }
+  .card.yesterday .stats {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 6px;
+  }
+  .card.yesterday .s .v {
+    font-family: var(--f-display); font-size: 28px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; line-height: 1;
+  }
+  .card.yesterday .s.dist .v { color: var(--dist); }
+  .card.yesterday .s.hr .v { color: var(--mute); }
+  .card.yesterday .s .u {
+    font-family: var(--f-body); font-size: 9px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.2px; text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .card.yesterday .name {
+    font-family: var(--f-display); font-size: 18px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; margin-bottom: 10px;
+  }
+
+  /* SLEEP card */
+  .card.sleep .eyebrow { color: var(--goal); }
+  .sleep-row { display: flex; align-items: baseline; gap: 14px; margin: 4px 0 14px; }
+  .sleep-row .big { font-family: var(--f-display); font-size: 52px; font-weight: 400; color: var(--goal); letter-spacing: 0.5px; line-height: 1; }
+  .sleep-row .sub { font-family: var(--f-body); font-size: 12px; font-weight: 600; color: var(--mute); letter-spacing: 0.5px; }
+  .sleep-row .sub .v { color: var(--ink); font-weight: 700; }
+  .sleep-bars {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    align-items: end; height: 70px; position: relative; margin: 14px 0 4px;
+  }
+  .sleep-bars .bar {
+    background: var(--goal); border-radius: 3px 3px 0 0; opacity: 0.85;
+    position: relative;
+  }
+  .sleep-bars .bar .h {
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    margin-bottom: 4px; font-family: var(--f-body); font-size: 10px;
+    font-weight: 600; color: var(--mute); white-space: nowrap;
+  }
+  .sleep-target {
+    position: absolute; left: 0; right: 0; height: 0;
+    border-top: 1px dashed rgba(255,255,255,0.20);
+  }
+  .sleep-dows {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    font-family: var(--f-body); font-size: 10px; font-weight: 700;
+    color: var(--dim); letter-spacing: 1px; text-align: center;
+    margin-top: 6px;
+  }
+  .sleep-summary {
+    font-family: var(--f-body); font-size: 12.5px; color: var(--mute);
+    margin-top: 14px;
+  }
+  .sleep-summary .deficit { color: var(--goal); font-weight: 600; }
+
+  /* RHR card */
+  .card.rhr .eyebrow { color: var(--over); }
+  .card.rhr .rhr-row {
+    display: flex; align-items: baseline; gap: 18px; margin-top: 4px;
+  }
+  .card.rhr .now {
+    font-family: var(--f-display); font-size: 56px; font-weight: 400;
+    color: var(--over); letter-spacing: 0.5px; line-height: 1;
+  }
+  .card.rhr .vs {
+    font-family: var(--f-body); font-size: 12px; font-weight: 600; color: var(--mute);
+  }
+  .card.rhr .vs .v { color: var(--ink); font-weight: 700; }
+  .card.rhr .delta-pill {
+    display: inline-block;
+    background: rgba(252,77,100,0.14); color: var(--over);
+    padding: 4px 10px; border-radius: 999px;
+    font-family: var(--f-display); font-size: 12px; letter-spacing: 1px;
+    margin-left: 6px;
+  }
+
+  /* RACE HORIZON */
+  .card.race .eyebrow { color: var(--race); }
+  .card.race .row {
+    display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center;
+  }
+  .card.race .name {
+    font-family: var(--f-display); font-size: 24px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; line-height: 1.1;
+  }
+  .card.race .when {
+    font-family: var(--f-body); font-size: 11px; font-weight: 600;
+    color: var(--mute); letter-spacing: 0.5px; margin-top: 6px;
+  }
+  .card.race .goal-line {
+    font-family: var(--f-body); font-size: 11px; font-weight: 600;
+    color: var(--goal); letter-spacing: 0.5px; margin-top: 4px;
+  }
+  .card.race .big {
+    display: flex; align-items: baseline; gap: 5px; color: var(--race);
+  }
+  .card.race .big .v {
+    font-family: var(--f-display); font-size: 64px; font-weight: 400;
+    line-height: 0.95; letter-spacing: 0.5px;
+  }
+  .card.race .big .u {
+    font-family: var(--f-body); font-size: 12px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.4px; text-transform: uppercase;
+  }
+
+  /* PROFILE GAP */
+  .card.gap {
+    padding: 16px 22px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  }
+  .card.gap .left { flex: 1; min-width: 0; }
+  .card.gap .label {
+    font-family: var(--f-body); font-size: 9px; font-weight: 700;
+    color: var(--over); letter-spacing: 1.6px; text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .card.gap .field {
+    font-family: var(--f-display); font-size: 22px; font-weight: 400;
+    color: var(--ink); letter-spacing: 0.5px; line-height: 1.1;
+  }
+  .card.gap .why {
+    font-family: var(--f-body); font-size: 12.5px; color: var(--mute);
+    margin-top: 4px;
+  }
+  .card.gap .add {
+    background: rgba(252,77,100,0.12); color: var(--over);
+    border: 1px solid rgba(252,77,100,0.25); border-radius: 999px;
+    padding: 9px 16px;
+    font-family: var(--f-display); font-size: 13px; font-weight: 400;
+    letter-spacing: 1px; cursor: pointer; flex-shrink: 0;
+  }
+  .card.gap .add:hover { background: rgba(252,77,100,0.18); }
+
+  /* ── Annotations ── */
+  .notes { padding: 40px 8px 0; }
+  .notes h2 { font-family: var(--f-display); font-size: 36px; font-weight: 400; color: var(--ink); letter-spacing: 0.5px; margin: 0 0 18px; }
+  .notes h3 { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 36px 0 14px; }
+  .notes ul { list-style: none; padding: 0; margin: 0 0 24px; }
+  .notes li { padding: 12px 0; border-bottom: 1px solid var(--line-2); font-size: 13.5px; line-height: 1.55; color: rgba(246,247,248,0.78); }
+  .notes li:last-child { border-bottom: none; }
+  .notes li strong { color: var(--ink); font-weight: 600; display: block; margin-bottom: 3px; }
+  .notes code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .notes .key-shifts { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.20); border-radius: 14px; padding: 18px 22px; margin: 18px 0 32px; }
+  .notes .key-shifts h4 { font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.4px; text-transform: uppercase; margin: 0 0 10px; }
+  .notes .key-shifts ol { padding-left: 18px; margin: 0; font-size: 13px; line-height: 1.7; color: rgba(246,247,248,0.85); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="doc-header">
+    <h1>TODAY · web companion · 2026-05-25</h1>
+    <p class="sub">
+      <strong>The iPhone v4 is locked.</strong> This is the desktop face for the same surface —
+      same identity (Bebas Neue + Inter, watch-face palette), same card primitives, same coach
+      voice — adapted for a 1440px canvas. Coach hero gets the room it deserves on the left;
+      the cards rail stacks on the right so morning context is one glance.
+    </p>
+    <div class="meta">FONTS · BEBAS NEUE + INTER · COLORS · WATCH-FACE PALETTE · DATA · LIVE PROD (DAVID, 2026-05-25)</div>
+
+    <div class="key-shifts" style="max-width: 880px;">
+      <h4>Why a web companion (and what the iPhone doesn't have room for)</h4>
+      <ol>
+        <li><strong>The week strip becomes a real row.</strong> Each day gets distance + type label (EASY, THRESHOLD, LONG, REST). Today is ringed in green.</li>
+        <li><strong>Coach voice goes hero-scale.</strong> 56px Bebas lead, 17px Inter body. On a desk this is the centerpiece — you read the coach before you do anything else.</li>
+        <li><strong>Cards rail stays on the right.</strong> UP NEXT (today's 5.8), yesterday's mile, sleep, RHR (elevated — new flag), race horizon, height gap — all in one column at a glance.</li>
+        <li><strong>Micro stat strip below coach.</strong> Sleep, RHR, cadence, mileage-this-week — the kind of glance bar you want on a desk but skip on a phone.</li>
+        <li><strong>Top nav bar instead of bottom nav.</strong> TODAY · TRAINING · RACES · HEALTH · PROFILE.</li>
+      </ol>
+    </div>
+  </header>
+
+  <div class="browser">
+    <div class="browser-chrome">
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      <div class="url"><span class="host">faff.run</span></div>
+    </div>
+
+    <!-- ── App nav ── -->
+    <div class="topnav">
+      <div class="brand">faff</div>
+      <div class="tabs">
+        <div class="tab active">TODAY</div>
+        <div class="tab">TRAINING</div>
+        <div class="tab">RACES</div>
+        <div class="tab">HEALTH</div>
+        <div class="tab">PROFILE</div>
+      </div>
+      <div class="avatar">DN</div>
+    </div>
+
+    <!-- ── Greeting + readiness ── -->
+    <div class="greeting">
+      <div>
+        <div class="hello">Morning, <span class="day">David.</span></div>
+        <div class="sub">MON · MAY 25 · BASE · <span class="pip">●</span> 83 DAYS TO AFC</div>
+      </div>
+      <div class="readiness-block">
+        <div>
+          <div class="label">READINESS</div>
+          <div class="state">MODERATE</div>
+        </div>
+        <div class="chip-large" title="Readiness 76 — RHR a touch elevated, sleep short">
+          <svg viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="#F3AD38" stroke-width="4"
+              stroke-dasharray="124 163" stroke-linecap="round"/>
+          </svg>
+          <div class="v" style="color:var(--goal);">76</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Week strip ── -->
+    <div class="weekstrip-band">
+      <div class="head">
+        <div class="label">THIS WEEK · BASE</div>
+        <div class="total">
+          <span class="done">0.0</span><span class="sep">/</span><span class="planned">43.8 MI PLANNED</span>
+        </div>
+      </div>
+      <div class="days">
+        <div class="d today">
+          <div class="dow">MON</div>
+          <div class="label-mi">5.8</div>
+          <div class="typ">EASY · TODAY</div>
+        </div>
+        <div class="d quality">
+          <div class="dow">TUE</div>
+          <div class="label-mi">7.9</div>
+          <div class="typ">CRUISE INTERVALS</div>
+        </div>
+        <div class="d">
+          <div class="dow">WED</div>
+          <div class="label-mi">5.8</div>
+          <div class="typ">EASY</div>
+        </div>
+        <div class="d">
+          <div class="dow">THU</div>
+          <div class="label-mi">6.1</div>
+          <div class="typ">EASY</div>
+        </div>
+        <div class="d">
+          <div class="dow">FRI</div>
+          <div class="label-mi">6.1</div>
+          <div class="typ">EASY</div>
+        </div>
+        <div class="d rest">
+          <div class="dow">SAT</div>
+          <div class="label-mi">—</div>
+          <div class="typ">REST</div>
+        </div>
+        <div class="d long">
+          <div class="dow">SUN</div>
+          <div class="label-mi">12.1</div>
+          <div class="typ">LONG</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Body two-column ── -->
+    <div class="body-grid">
+
+      <!-- ── LEFT: COACH ── -->
+      <div class="coach-col">
+        <div class="coach-frame">
+          <div class="eyebrow">COACH</div>
+          <h2 class="lead">A short shake-out and a big week ahead.</h2>
+
+          <p>
+            Yesterday's mile was a nice way to close out last week — easy HR, getting the legs
+            moving without any load. Today we're kicking off a proper volume block:
+            <strong>43.8 miles planned</strong>, anchored by Sunday's 12-miler and tomorrow's
+            cruise intervals.
+          </p>
+
+          <p>
+            You've got an easy <strong>5.8 on the calendar for today</strong>. Think of it as
+            setting the table. We want fresh legs for Tuesday's threshold work, so keep this
+            conversational. If you're feeling yesterday's mile at all (you shouldn't be), dial
+            it back even more.
+          </p>
+
+          <p>
+            Sleep's been running about an hour short all week — <strong>6.7 average against your
+            7.5 target</strong>. That adds up, especially when we're pushing volume. If you can
+            bank an extra 30–45 minutes tonight, you'll feel it tomorrow when the intervals start.
+          </p>
+
+          <p>
+            Your resting HR is sitting at <strong>54 today against a 48 baseline</strong> — not
+            alarm bells, but a flag. Could be the sleep, could be the week-over-week step up.
+            I'll be watching it across today and tomorrow. We're <strong>83 days out from
+            America's Finest City</strong>. Base phase is about building the engine — and this
+            week's mileage is a step up exactly where we want it.
+          </p>
+
+          <div class="ask">How are the legs this morning?</div>
+          <div class="reply">
+            <button class="reply-chip solid">SOLID</button>
+            <button class="reply-chip tired">TIRED</button>
+            <button class="reply-chip wrecked">WRECKED</button>
+          </div>
+        </div>
+
+        <!-- Micro stat strip — desktop-only -->
+        <div class="micro-strip">
+          <div class="micro">
+            <div class="k">SLEEP · 7N AVG</div>
+            <div class="v" style="color:var(--goal);">6.7<span style="font-size:18px;color:var(--mute);"> h</span></div>
+            <div class="delta">−0.8 vs target</div>
+          </div>
+          <div class="micro warn">
+            <div class="k">RESTING HR</div>
+            <div class="v">54<span style="font-size:18px;color:var(--mute);"> bpm</span></div>
+            <div class="delta">+6 vs baseline</div>
+          </div>
+          <div class="micro good">
+            <div class="k">CADENCE · 60D</div>
+            <div class="v">158<span style="font-size:18px;color:var(--mute);"> spm</span></div>
+            <div class="delta">holding baseline</div>
+          </div>
+          <div class="micro tracked">
+            <div class="k">WEEK MILEAGE</div>
+            <div class="v">0.0<span style="font-size:18px;color:var(--mute);"> / 43.8</span></div>
+            <div class="delta">week just starting</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── RIGHT: CARDS RAIL ── -->
+      <div class="cards-col">
+
+        <!-- UP NEXT — today's easy run -->
+        <div class="card upnext">
+          <div class="eyebrow">UP NEXT · TODAY</div>
+          <div class="row">
+            <div>
+              <div class="typ">EASY</div>
+              <div class="when">MON · CONVERSATIONAL</div>
+            </div>
+            <div class="big">
+              <span class="v">5.8</span><span class="u">MI</span>
+            </div>
+          </div>
+          <div class="coach-note">
+            Setting the table for Tuesday. Keep it easy — if anything's residual from yesterday, dial it back further.
+          </div>
+        </div>
+
+        <!-- YESTERDAY — minimal -->
+        <div class="card yesterday">
+          <div class="eyebrow">YESTERDAY · SHAKE-OUT</div>
+          <div class="name">Recovery mile</div>
+          <div class="stats">
+            <div class="s dist"><div class="v">1.0</div><div class="u">miles</div></div>
+            <div class="s hr"><div class="v">130</div><div class="u">avg hr</div></div>
+            <div class="s"><div class="v" style="color:var(--green);">EASY</div><div class="u">effort</div></div>
+          </div>
+          <div class="coach-note">
+            Easy HR, no stress — a perfect close to last week.
+          </div>
+        </div>
+
+        <!-- SLEEP -->
+        <div class="card sleep">
+          <div class="eyebrow">SLEEP · LAST 7 NIGHTS</div>
+          <div class="sleep-row">
+            <span class="big">6.7h</span>
+            <span class="sub">7-NIGHT AVG · last night <span class="v">6.5h</span></span>
+          </div>
+          <div class="sleep-bars">
+            <div class="bar" style="height: 61%;"><span class="h">5.5</span></div>
+            <div class="bar" style="height: 86%;"><span class="h">7.7</span></div>
+            <div class="bar" style="height: 88%;"><span class="h">7.9</span></div>
+            <div class="bar" style="height: 78%;"><span class="h">7.0</span></div>
+            <div class="bar" style="height: 72%;"><span class="h">6.5</span></div>
+            <div class="bar" style="height: 67%;"><span class="h">6.0</span></div>
+            <div class="bar" style="height: 72%;"><span class="h">6.5</span></div>
+            <div class="sleep-target" style="bottom:84%;"></div>
+          </div>
+          <div class="sleep-dows">
+            <span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span>
+          </div>
+          <div class="sleep-summary">
+            <span class="deficit">About 6h of sleep debt this week.</span>
+          </div>
+          <div class="coach-note">
+            You're down about an hour per night. Volume weeks need sleep weeks — bank an extra 30–45 min tonight.
+          </div>
+        </div>
+
+        <!-- RHR (new) -->
+        <div class="card rhr">
+          <div class="eyebrow">RESTING HR · WATCHING</div>
+          <div class="rhr-row">
+            <span class="now">54</span>
+            <span class="vs">14-DAY BASELINE <span class="v">48 bpm</span><span class="delta-pill">+6</span></span>
+          </div>
+          <div class="coach-note">
+            Not a red flag yet, but a yellow one. Could be the sleep, could be the week-over-week jump in volume. I'll keep an eye on it through tomorrow.
+          </div>
+        </div>
+
+        <!-- RACE HORIZON -->
+        <div class="card race">
+          <div class="eyebrow">RACE · BUILDING</div>
+          <div class="row">
+            <div>
+              <div class="name">America's Finest City</div>
+              <div class="when">HALF MARATHON · AUG 16</div>
+              <div class="goal-line">GOAL · 1:30:00</div>
+            </div>
+            <div class="big">
+              <span class="v">83</span><span class="u">DAYS</span>
+            </div>
+          </div>
+          <div class="coach-note">
+            Twelve weeks of runway. Base phase is engine-building — mileage first, sharpness later.
+          </div>
+        </div>
+
+        <!-- PROFILE GAP — height -->
+        <div class="card gap">
+          <div class="left">
+            <div class="label">COACH NEEDS</div>
+            <div class="field">Your height</div>
+            <div class="why">To unlock a cadence target tailored to your leg length</div>
+          </div>
+          <button class="add">+ Add</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Annotations ── -->
+  <div class="notes">
+    <h2>What changes on web vs phone</h2>
+
+    <h3>The hero treatment</h3>
+    <ul>
+      <li>
+        <strong>Coach gets the centerpiece.</strong>
+        On the phone, voice is one of several blocks you scroll through. On a 1440px canvas, voice gets a 56px lead and a soft-green wash frame — it's clearly the first thing you read.
+      </li>
+      <li>
+        <strong>Reply chips stay the same width.</strong>
+        We don't blow them up just because there's room. They're a quick check-in, not a CTA.
+      </li>
+      <li>
+        <strong>Greeting line is new.</strong>
+        Phone gets a tiny date label; desktop gets <em>Morning, David.</em> at 64px. Different physical relationship — desktop is the "starting the day" moment.
+      </li>
+    </ul>
+
+    <h3>The week strip earns more space</h3>
+    <ul>
+      <li>
+        <strong>Each day shows mi + type.</strong>
+        Phone is just the number; web shows EASY / CRUISE INTERVALS / LONG / REST. At a glance you read the shape of the week, not just the volume.
+      </li>
+      <li>
+        <strong>Today is ringed in green.</strong>
+        Same convention as phone; the larger card just makes it more emphatic.
+      </li>
+    </ul>
+
+    <h3>What's new on web (and doesn't make sense on phone)</h3>
+    <ul>
+      <li>
+        <strong>Micro stat strip under coach.</strong>
+        Four small KPIs (sleep, RHR, cadence, week mileage). Each carries a tiny delta — "−0.8 vs target", "+6 vs baseline". A glance bar that doesn't fit on a phone without crowding.
+      </li>
+      <li>
+        <strong>RHR gets its own card.</strong>
+        The LLM mentioned it in the voice ("watching it through today and tomorrow") and the data is real — 54 vs 48 baseline. Web has room to give it a card; phone keeps it inside the coach paragraph.
+      </li>
+    </ul>
+
+    <h3>What stays identical to phone</h3>
+    <ul>
+      <li>Color palette · type system · card primitives · coach voice doctrine</li>
+      <li>Every relevant card carries a coach_note line below its data</li>
+      <li>HRmax + RHR are not <em>asked</em> as profile gaps — derived from health_samples</li>
+      <li>Height gap card stands in for cadence prescription until height is in</li>
+    </ul>
+
+    <h3>State source (live prod data · 2026-05-25)</h3>
+    <ul>
+      <li>Coach voice + topics: Claude sonnet-4-5, 16.6s, real LLM call against state below</li>
+      <li>Latest run: 2026-05-24, 1.0 mi, HR 130 — <code>strava_activities</code></li>
+      <li>Week plan: 43.8mi BASE, easy 5.8 / cruise 7.9 / easy 5.8 / easy 6.1 / easy 6.1 / rest / long 12.1 — <code>plan_workouts</code></li>
+      <li>Sleep 6.7h 7n avg, 6h cumulative deficit vs 7.5 — <code>health_samples</code></li>
+      <li>RHR 54 current vs 48 baseline — <code>health_samples</code> (resting_hr, 14d)</li>
+      <li>Cadence 158 spm 60d baseline — <code>health_samples</code></li>
+      <li>AFC Half, 2026-08-16, goal 1:30:00, 83 days — <code>races</code> + active <code>training_plans</code></li>
+      <li>Profile gap: <code>height_cm</code> still null on <code>profile</code></li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
