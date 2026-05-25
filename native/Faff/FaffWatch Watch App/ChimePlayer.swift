@@ -67,10 +67,13 @@ final class ChimePlayer {
         do {
             let session = AVAudioSession.sharedInstance()
             // .playback ignores silent mode (same as iOS).
-            // .mixWithOthers leaves any playing music alone — the bell
-            // layers on top instead of ducking or pausing it.
+            // .duckOthers briefly dips any playing music while the bell
+            // sounds, then restores. The user reported missing chimes
+            // over their running music with .mixWithOthers — the bell
+            // was getting drowned out. Duck is just a brief 180ms dip
+            // (the bell's full duration) so it never breaks the flow.
             try session.setCategory(.playback, mode: .default,
-                                    options: [.mixWithOthers])
+                                    options: [.duckOthers])
             try session.setActive(true, options: [])
             try engine.start()
             isActive = true

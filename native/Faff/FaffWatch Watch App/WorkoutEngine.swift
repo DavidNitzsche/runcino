@@ -177,6 +177,18 @@ final class WorkoutEngine: ObservableObject {
     /// Distance covered (GPS / tracked), in miles.
     private var coveredMi: Double { tracker?.distanceMi ?? 0 }
 
+    /// Which guardrail row the easy face should show — 0 = HR, 1 = cadence.
+    /// Flips every 60 s. Computed from totalElapsedSec (which the engine
+    /// already publishes every second), not a per-view Timer publisher.
+    ///
+    /// History: the rotation lived as a @State + Timer.publish inside
+    /// EasyFace itself. Every parent re-render (which happens once a
+    /// second when HR / distance update) recreated the publisher AND
+    /// reset its t=0, so 60 s of continuous existence was unreachable
+    /// and the row never flipped. Hoisting the source-of-truth to the
+    /// engine — which has a single stable tick — fixes it.
+    var guardrailIdx: Int { (totalElapsedSec / 60) % 2 }
+
     /// Miles still to run.
     var distanceToGoMi: Double? {
         guard let total = workout.distanceMi else { return nil }
@@ -294,7 +306,14 @@ final class WorkoutEngine: ObservableObject {
         phaseStartMi = coveredMi
         tracker?.start()
         prepDrift()
+        // Start cue · haptic + chime if Sound is on. User reported no beep
+        // at workout start — the chime was wired into flash() (mile splits,
+        // fuel, etc.) but the start haptic only fired the haptic, never
+        // the bell. The "we're rolling" moment deserves an audible mark.
         if let p = currentPhase { Haptics.play(p.haptic) }
+        if UserDefaults.standard.bool(forKey: "audibleAlerts") {
+            ChimePlayer.shared.play()
+        }
         startTimer()
     }
 
@@ -493,21 +512,39 @@ final class WorkoutEngine: ObservableObject {
             }
         }
 
-        // "Almost done" cue · just before a WORK interval ends — haptic +
+        // "Almost done" cue · before a phase / workout ends — haptic +
         // a full-screen heads-up flip ("Almost there") so you don't overrun.
-        // Trigger by distance (~0.03 mi left) on distance reps, else ~3s left.
-        // (Workout only — a race phase boundary is terrain, not a rep end.)
+        // Two trigger types:
+        //   · For a single-phase distance workout (easy / long / steady run)
+        //     the meaningful "end" is the workout target, not the phase. Fire
+        //     at 0.25 mi remaining against workout.distanceMi.
+        //   · For interval REPS (multi-phase + work phase + distance/time
+        //     measured) fire just before that REP ends — same as before.
+        let isSinglePhaseDistanceRun =
+            workout.phases.count == 1 && workout.distanceMi != nil
         let nearEnd: Bool
-        if phase.repUnit == .distance {
+        let endSub: String?
+        if isSinglePhaseDistanceRun, let total = workout.distanceMi {
+            let remaining = max(0, total - coveredMi)
+            nearEnd = remaining > 0 && remaining <= 0.25
+            endSub = nil
+        } else if phase.repUnit == .distance {
             nearEnd = (phaseRemainingMi ?? 1) <= 0.03 && phaseProgress < 1
+            endSub = nil
         } else {
             nearEnd = phaseRemainingSec <= 3 && phaseRemainingSec > 0
+            endSub = "\(phaseRemainingSec)s left"
         }
-        if !isRace, phase.type == .work, !didFireAlmostDone, nearEnd {
+        // For single-phase distance runs we drop the phase.type == .work
+        // gate — an easy long run is encoded as a single "work" phase but
+        // even if that ever changes we still want the heads-up. Races are
+        // out (race phase boundaries are terrain markers, not rep ends).
+        let shouldFire = !isRace && !didFireAlmostDone && nearEnd &&
+            (isSinglePhaseDistanceRun || phase.type == .work)
+        if shouldFire {
             didFireAlmostDone = true
             Haptics.almostDone()
-            let sub = phase.repUnit == .distance ? nil : "\(phaseRemainingSec)s left"
-            flash(.headsUp(title: "Almost there", sub: sub), for: 2.6)
+            flash(.headsUp(title: "Almost there", sub: endSub), for: 2.6)
         }
 
         // MILE SPLIT takeover — at every integer-mile crossing, fire a brief
@@ -525,7 +562,10 @@ final class WorkoutEngine: ObservableObject {
             lastMileElapsedSec = totalElapsedSec
             lastMileIndex = mileIndex
             Haptics.play(.transitionWork)
-            flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 2.5)
+            // 6s so the runner has time to read it on the wrist while
+            // running — 2.5s was gone before the watch came up. Mile
+            // pace is one of the highest-value reads of the run.
+            flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 6.0)
         }
 
         // Distance-anchored gel cue — RACE DAY ONLY. workout.gelsMi[]
@@ -541,8 +581,17 @@ final class WorkoutEngine: ObservableObject {
             }
         }
 
+        // Single-phase distance workouts (easy/long/steady run): the
+        // canonical "done" is the WORKOUT distance, not the phase. This
+        // shields us from a stale or partial payload where the phase
+        // lost repUnit/distanceMi but the workout-level distanceMi is
+        // still correct. User reported: plan 5.8 mi, watch flipped to
+        // overtime at 6.0 mi — that was the time-based fallback firing
+        // late because the runner was faster than the projected pace.
         let finished: Bool
-        if phase.repUnit == .distance, let d = phase.distanceMi {
+        if isSinglePhaseDistanceRun, let total = workout.distanceMi {
+            finished = coveredMi >= total
+        } else if phase.repUnit == .distance, let d = phase.distanceMi {
             finished = phaseCoveredMi >= d
         } else {
             finished = phaseElapsedSec >= phase.durationSec

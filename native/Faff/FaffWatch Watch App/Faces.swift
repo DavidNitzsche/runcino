@@ -93,8 +93,15 @@ struct LiveRaceFace: View {
 }
 
 /// Easy face — live pace (in range) · rotating guardrail (HR ♥ / cadence 🏃) ·
-/// miles-to-go. HR-over-ceiling overrides + holds red on the guardrail row so
-/// the alert can't be missed (and you can't swipe past it like a banner).
+/// distance (counts down to 0 against the planned target; flips to purple
+/// and counts up in overtime). HR-over-ceiling overrides + holds red on the
+/// guardrail row so the alert can't be missed (and you can't swipe past it
+/// like a banner).
+///
+/// The rotation index is driven by the parent (engine.guardrailIdx) instead
+/// of a per-view Timer.publish — the view gets recreated every second when
+/// HR / distance update, which would reset an internal timer's t=0 and
+/// prevent it from ever reaching 60 s.
 struct EasyFace: View {
     let pace: String
     let paceRole: Role
@@ -102,14 +109,15 @@ struct EasyFace: View {
     let hrOver: Bool
     let cadence: String
     let distance: String
-
-    @State private var idx = 0
-    // 60s in production = comfortable read; the prototype used 3s for demo.
-    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    /// 0 = HR row · 1 = cadence row. Engine flips it every 60 s.
+    var guardrailIdx: Int = 0
+    /// Distance row role · .dist (blue) during the plan, .bonus (purple)
+    /// in overtime.
+    var distanceRole: Role = .dist
 
     private var guardrail: NumRow {
         if hrOver { return NumRow(hr, .over, icon: "heart.fill") }
-        return idx == 0
+        return guardrailIdx == 0
             ? NumRow(hr, .neutral, icon: "heart.fill")
             : NumRow(cadence, .neutral, icon: "figure.run")
     }
@@ -117,9 +125,8 @@ struct EasyFace: View {
         NumberFace(rows: [
             NumRow(pace, paceRole),
             guardrail,
-            NumRow(distance, .dist)
+            NumRow(distance, distanceRole)
         ])
-        .onReceive(timer) { _ in if !hrOver { idx = (idx + 1) % 2 } }
     }
 }
 

@@ -86,9 +86,11 @@ struct ActiveWorkoutView: View {
 
     @ViewBuilder
     private var faceRouter: some View {
-        if engine.planComplete {
-            LiveOvertime(engine: engine, tracker: tracker)
-        } else if let phase = engine.currentPhase {
+        // No special LiveOvertime branch — LiveEasy handles its own
+        // overtime state inline (same face, distance row flips to
+        // purple + counts up). Keeping the runner on the same layout
+        // past the plan was the requested behaviour.
+        if let phase = engine.currentPhase {
             if engine.isRace {
                 LiveRace(engine: engine, tracker: tracker, phase: phase)
             } else {
@@ -234,21 +236,32 @@ private struct LiveRace: View {
 /// EASY / long / steady run — single-work-phase session with a target pace.
 /// Pace colour reflects the drift zone; HR row flips red when over the workout's
 /// `hrCeilingBpm`. The guardrail rotates HR ⇄ cadence every 60 s when HR is in
-/// zone (handled inside EasyFace).
+/// zone (driven by engine.guardrailIdx so it survives view recreation).
 ///
-/// Distance row counts DOWN to 0 when the phase is distance-based (a known
-/// total). Counting UP made sense for unbounded "go run" sessions but is
-/// disorienting on a planned long run where the runner wants to see how
-/// much further. Time-based phases (no known end distance) keep the
-/// total-covered read.
+/// Distance row has two states:
+///   · During the plan — counts DOWN from workout.distanceMi to 0, blue (.dist).
+///   · In overtime (planComplete) — counts UP from 0, purple (.bonus).
+///     The face stays the same; only the distance row's number direction +
+///     colour change. User reported wanting to "stay on the same face" past
+///     the plan rather than swap to a different layout.
+///
+/// Uses workout.distanceMi (top-level) as the canonical target, not the
+/// phase's distanceMi, so a stale payload that lost repUnit at the phase
+/// level still does the right thing.
 private struct LiveEasy: View {
     @ObservedObject var engine: WorkoutEngine
     @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
     private var distanceDisplay: String {
-        if phase.repUnit == .distance, let total = phase.distanceMi {
-            let remaining = max(0, total - engine.phaseCoveredMi)
+        if engine.planComplete {
+            // Overtime · keep showing TOTAL covered (now purple).
+            // "I ran 6.2 today" is the meaningful number; the colour
+            // says "and 0.4 of that was bonus past the plan." Less
+            // mental math than showing only the bonus portion.
+            return distText(tracker.distanceMi)
+        }
+        if let remaining = engine.distanceToGoMi {
             return distText(remaining)
         }
         return distText(tracker.distanceMi)
@@ -260,7 +273,9 @@ private struct LiveEasy: View {
             hr:       tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
             hrOver:   engine.hrOverCeiling,
             cadence:  tracker.cadence > 0 ? "\(tracker.cadence)" : "—",
-            distance: distanceDisplay
+            distance: distanceDisplay,
+            guardrailIdx: engine.guardrailIdx,
+            distanceRole: engine.planComplete ? .bonus : .dist
         )
     }
 }
@@ -423,25 +438,9 @@ private struct LiveSteady: View {
     }
 }
 
-/// OVERTIME (plan done · still recording · run free). Distance flips to
-/// .bonus (purple) — the locked grammar's "past the plan" colour — so the
-/// runner sees at a glance that they're banking extra miles, not still in
-/// the prescribed portion. Pace stays neutral (no target), elapsed neutral.
-private struct LiveOvertime: View {
-    @ObservedObject var engine: WorkoutEngine
-    @ObservedObject var tracker: WorkoutTracker
-    var body: some View {
-        SteadyRunFace(
-            livePace: paceText(tracker),
-            paceRole: .neutral,
-            distance: distText(tracker.distanceMi),
-            elapsed:  engine.totalElapsedSec >= 3600
-                ? PaceFormat.hms(engine.totalElapsedSec)
-                : PaceFormat.clock(engine.totalElapsedSec),
-            distanceRole: .bonus
-        )
-    }
-}
+// (LiveOvertime removed — overtime is now handled inline inside LiveEasy,
+// so the runner stays on the same EasyFace layout past the plan with just
+// the distance row flipping to .bonus / counting up. See LiveEasy above.)
 
 // MARK: - SECONDARY STATS (swipe page — elapsed / distance / avg pace / calories)
 
