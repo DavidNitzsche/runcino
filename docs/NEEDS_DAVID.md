@@ -47,17 +47,30 @@ you review, I rebuild.
 
 You said: watch + Apple Health are source of truth, Strava is push-only.
 
-This changes the whole sync model:
-- Currently: web reads strava_activities table populated by Strava webhook
-- New: iOS uploads watch HealthKit workouts → our API writes strava_activities
-- Then: our API pushes the same workout to Strava as a public post
+**Server side is done:**
+- `POST /api/ingest/workout` — iPhone reads a fresh HKWorkout and posts it
+  here. Idempotent on `client_workout_id` (HKWorkout.uuid). Writes into
+  the existing strava_activities table so all readers work unchanged.
+- `POST /api/ingest/health` — batch sleep/HRV/RHR/VO2/weight from
+  HealthKit. Idempotent on (user, type, sample_date, recorded_at).
+- `POST /api/run/manual` — fallback when watch missed it.
 
-**Questions:**
+**Still needed on the iOS side (separate Swift work):**
+- iOS app needs an HKObserverQuery on HKWorkoutType that fires when the
+  watch sends a new HKWorkout. Handler reads splits/HR zones/route then
+  POSTs to /api/ingest/workout.
+- iOS app needs a nightly HKSampleQuery for the past 30 days of sleep,
+  HRV, RHR, VO2, weight. POSTs to /api/ingest/health.
+- Both run in background via WKBackgroundModes: workout-processing.
+
+**Questions for you:**
 - Do you want the Strava post to include coach-voice race recap
-  (post-race), or just the raw HR/pace data + the user's title?
+  (post-race), or just the raw HR/pace data + your title?
 - For non-race runs, just the activity itself with no commentary?
 - Should we keep the existing strava-webhook receiver as a fallback
   for runs not done with the watch (e.g. treadmill on Peloton)?
+- When iOS sends a workout, do you want the previous Strava webhook
+  copy (if any) to take precedence, or always the watch version?
 
 ---
 

@@ -54,11 +54,16 @@ export async function PATCH(req: NextRequest) {
     const existing = (await pool.query(`SELECT meta FROM races WHERE slug = $1`, [body.slug])).rows[0];
     if (!existing) return NextResponse.json({ error: 'race not found' }, { status: 404 });
     const meta = { ...existing.meta };
+    // Editable plain fields
     for (const k of ['name', 'date', 'distance_label', 'priority', 'goal', 'location']) {
       if (body[k] !== undefined) {
         const metaKey = k === 'distance_label' ? 'distanceLabel' : k === 'goal' ? 'goalDisplay' : k;
         meta[metaKey] = body[k];
       }
+    }
+    // Retrospective fields — passed through as-is on the meta blob
+    for (const k of ['finishTime', 'pb', 'retroFelt', 'retroExecution', 'retroNotes', 'avgHrBpm']) {
+      if (body[k] !== undefined) meta[k] = body[k];
     }
     await pool.query(`UPDATE races SET meta = $1 WHERE slug = $2`, [meta, body.slug]);
     await bustBriefingCache(DAVID_USER_ID);

@@ -3,6 +3,7 @@ import { CourseSchematic, PacePlanTable } from '@/components/races/CourseSchemat
 import { RealRouteSvg } from '@/components/races/RealRouteSvg';
 import { DeleteRaceButton, EditRaceButton } from '@/components/races/RaceCrudUI';
 import { GpxUploadButton } from '@/components/races/GpxUploadButton';
+import { RaceRetrospectiveForm } from '@/components/races/RaceRetrospectiveForm';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { loadRacesState } from '@/lib/coach/races-state';
 import { pool } from '@/lib/db/pool';
@@ -125,29 +126,29 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
           </div>
         )}
 
-        {/* Post-race section — finish time + (eventually) splits */}
+        {/* Post-race section — retro form (finish, PB, felt, exec, notes) */}
         {proximity === 'post-race' && (
           <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px', marginBottom: 16 }}>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px', marginBottom: 4 }}>
               POST-RACE
             </div>
-            {race.finishTime ? (
-              <>
+            {race.finishTime && (
+              <div style={{ marginBottom: 12 }}>
                 <div style={{ fontFamily: 'var(--f-display)', fontSize: 56, color: race.pb ? 'var(--green)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1 }}>
                   {race.finishTime}
                 </div>
                 {race.pb && (
                   <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', letterSpacing: '1.4px', marginTop: 6 }}>● PERSONAL BEST</div>
                 )}
-                <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', lineHeight: 1.6, marginTop: 18 }}>
-                  Splits + actual-vs-plan show up here once a matching Strava activity is linked to this race.
-                </div>
-              </>
-            ) : (
-              <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.6 }}>
-                Add your finish time on the race card to populate the retrospective.
               </div>
             )}
+            <RaceRetrospectiveForm slug={slug} existing={{
+              finishTime: race.finishTime ?? null,
+              pb: race.pb ?? null,
+              retroFelt: (race as any).retroFelt ?? null,
+              retroExecution: (race as any).retroExecution ?? null,
+              retroNotes: (race as any).retroNotes ?? null,
+            }} />
           </div>
         )}
 
