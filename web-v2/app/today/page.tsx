@@ -2,6 +2,7 @@ import { TopNav } from '@/components/layout/TopNav';
 import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigger';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { WeekStrip } from '@/components/today/WeekStrip';
+import { TodayPlannedCard } from '@/components/today/TodayPlannedCard';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -28,7 +29,7 @@ export default async function TodayPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'end', marginBottom: 28 }}>
           <div>
             <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 64, lineHeight: 1, margin: 0, letterSpacing: '0.5px' }}>
-              Morning, <span style={{ color: 'var(--green)' }}>{glance?.greetingName ?? 'David'}.</span>
+              {timeOfDayGreeting()}, <span style={{ color: 'var(--green)' }}>{glance?.greetingName ?? 'David'}.</span>
             </h1>
             <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 10 }}>
               {todayLabel(glance?.today)}
@@ -63,18 +64,26 @@ export default async function TodayPage() {
       {/* Two-column desktop / single column mobile. Coach voice loads async. */}
       <div style={{ padding: '0 40px 80px', maxWidth: 1440, margin: '0 auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 32 }} className="today-grid">
-          <div style={{
-            background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
-            border: '1px solid var(--line)',
-            borderRadius: 22,
-            padding: '12px 12px',
-            minHeight: 360,
-          }}>
-            <BriefingLoader surface="today" renderCards={false} />
+          {/* LEFT: today's planned/done card renders INSTANTLY from glance,
+              then coach voice loads async beneath it */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {glance?.weekDays && (
+              <TodayPlannedCard today={glance.today} weekDays={glance.weekDays} />
+            )}
+            <div style={{
+              background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
+              border: '1px solid var(--line)',
+              borderRadius: 22,
+              padding: '12px 12px',
+              minHeight: 280,
+            }}>
+              <BriefingLoader surface="today" renderCards={false} />
+            </div>
           </div>
 
+          {/* RIGHT: cards rail loads async — only the coach's emitted topics
+              (not the today-card duplicate) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Cards rail loads in the same loader (renderCards=true on this side) */}
             <BriefingCardsOnly />
           </div>
         </div>
@@ -111,15 +120,11 @@ export default async function TodayPage() {
   );
 }
 
-// Renders the cards rail (right column) — loaded from the same briefing
-// endpoint but only the topics are displayed here. CoachBlock skipped.
+// Right-rail cards — cards only, no coach voice (that lives in the left column).
+// Shares the in-flight fetch w/ the left column via BriefingLoader's module-level
+// cache, so it's ONE network call.
 function BriefingCardsOnly() {
-  // Just reuse BriefingLoader and ask it to NOT render the coach block.
-  // It will fetch /api/briefing once and React's dedupe means we don't pay
-  // twice (Next caches the fetch in the same render tree). But here we're
-  // in two separate client component trees so we'd fetch twice. Accept
-  // the duplicate for now — solve with SWR or context in P8.
-  return <BriefingLoader surface="today" renderCards={true} />;
+  return <BriefingLoader surface="today" renderCoach={false} renderCards={true} />;
 }
 
 function MicroStat({ k, v, delta, color }: { k: string; v: string; delta: string; color: string }) {
@@ -138,4 +143,13 @@ function todayLabel(iso: string | undefined): string {
   const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   return `${days[d.getUTCDay()]} · ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+function timeOfDayGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 5)  return 'Late night';
+  if (h < 12) return 'Morning';
+  if (h < 17) return 'Afternoon';
+  if (h < 21) return 'Evening';
+  return 'Night';
 }

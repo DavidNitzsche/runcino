@@ -11,20 +11,23 @@
 import Link from 'next/link';
 
 export function NextWorkoutCard({ payload, coach_note }: {
-  payload: { dow: string; type: string; label: string | null; mi: number };
+  payload: { dow?: string; type?: string; label?: string | null; mi?: number };
   coach_note: string | null;
 }) {
+  const dow = String(payload?.dow ?? 'TOMORROW').toUpperCase();
+  const label = String(payload?.label || payload?.type || 'EASY').toUpperCase();
+  const mi = Number(payload?.mi ?? 0);
   return (
     <div className="card">
-      <div className="card-eyebrow" style={{ color: 'var(--rest)' }}>UP NEXT · {payload.dow.toUpperCase()}</div>
+      <div className="card-eyebrow" style={{ color: 'var(--rest)' }}>UP NEXT · {dow}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 18, alignItems: 'center', marginTop: 4 }}>
         <div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', letterSpacing: '0.8px', lineHeight: 1 }}>
-            {(payload.label || payload.type).toUpperCase()}
+            {label}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, color: 'var(--rest)' }}>
-          <span style={{ fontFamily: 'var(--f-display)', fontSize: 60, lineHeight: 0.95, letterSpacing: '0.5px' }}>{payload.mi.toFixed(1)}</span>
+          <span style={{ fontFamily: 'var(--f-display)', fontSize: 60, lineHeight: 0.95, letterSpacing: '0.5px' }}>{mi.toFixed(1)}</span>
           <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>MI</span>
         </div>
       </div>
@@ -34,26 +37,31 @@ export function NextWorkoutCard({ payload, coach_note }: {
 }
 
 export function RaceHorizonCard({ payload, coach_note }: {
-  payload: { race_name: string; race_date: string; days_to_race: number; tone: string; goal: string | null };
+  payload: { race_name?: string; race_date?: string; days_to_race?: number; tone?: string; goal?: string | null };
   coach_note: string | null;
 }) {
   const TONE_LABEL: Record<string, string> = { building: 'BUILDING', sharpening: 'SHARPENING', race_week: 'RACE WEEK' };
+  const name = String(payload?.race_name ?? 'NEXT RACE');
+  const date = payload?.race_date ?? '';
+  const days = Number(payload?.days_to_race ?? 0);
+  const tone = String(payload?.tone ?? 'building');
+  const goal = payload?.goal ?? null;
   return (
     <div className="card">
       <div className="card-eyebrow" style={{ color: 'var(--race)' }}>
-        RACE · {TONE_LABEL[payload.tone] ?? 'BUILDING'}
+        RACE · {TONE_LABEL[tone] ?? 'BUILDING'}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 18, alignItems: 'center', marginTop: 4 }}>
         <div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
-            {payload.race_name}
+            {name}
           </div>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 600, color: 'var(--mute)', letterSpacing: '0.5px', marginTop: 4 }}>
-            {payload.race_date}{payload.goal ? ` · GOAL ${payload.goal}` : ''}
+            {date}{goal ? ` · GOAL ${goal}` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, color: 'var(--race)' }}>
-          <span style={{ fontFamily: 'var(--f-display)', fontSize: 56, lineHeight: 0.95, letterSpacing: '0.5px' }}>{payload.days_to_race}</span>
+          <span style={{ fontFamily: 'var(--f-display)', fontSize: 56, lineHeight: 0.95, letterSpacing: '0.5px' }}>{days}</span>
           <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>DAYS</span>
         </div>
       </div>
@@ -93,23 +101,26 @@ export function ProfileGapCard({ payload }: {
 }
 
 export function SleepDeficitCard({ payload, coach_note }: {
-  payload: { avg_h_7n: number; deficit_h_7n: number; last_night_h: number | null; direction: string };
+  payload: { avg_h_7n?: number; deficit_h_7n?: number; last_night_h?: number | null; direction?: string };
   coach_note: string | null;
 }) {
+  const avg7 = Number(payload?.avg_h_7n ?? 0);
+  const def7 = Number(payload?.deficit_h_7n ?? 0);
+  const last = payload?.last_night_h != null ? Number(payload.last_night_h) : null;
   return (
     <div className="card">
       <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>SLEEP · LAST 7 NIGHTS</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, margin: '4px 0 12px' }}>
         <span style={{ fontFamily: 'var(--f-display)', fontSize: 48, fontWeight: 400, color: 'var(--goal)', letterSpacing: '0.5px', lineHeight: 1 }}>
-          {payload.avg_h_7n.toFixed(1)}h
+          {avg7.toFixed(1)}h
         </span>
         <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 600, color: 'var(--mute)', letterSpacing: '0.5px' }}>
           7-NIGHT AVG
-          {payload.last_night_h != null && <> · last night <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{payload.last_night_h.toFixed(1)}h</span></>}
+          {last != null && <> · last night <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{last.toFixed(1)}h</span></>}
         </span>
       </div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 11.5, color: 'var(--mute)', marginTop: 6 }}>
-        About <span style={{ color: 'var(--goal)', fontWeight: 600 }}>{payload.deficit_h_7n.toFixed(1)}h of sleep debt</span> this week.
+        About <span style={{ color: 'var(--goal)', fontWeight: 600 }}>{def7.toFixed(1)}h of sleep debt</span> this week.
       </div>
       {coach_note && <div className="coach-note">{coach_note}</div>}
     </div>

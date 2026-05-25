@@ -25,9 +25,9 @@ export function RunRecapCard({ payload, coach_note }: {
       <div style={{
         display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 14, marginBottom: 10,
       }}>
-        <Stat value={payload.distance_mi.toFixed(1)} unit="miles" color="var(--dist)" />
-        {payload.pace && <Stat value={payload.pace} unit="avg pace" color="var(--green)" />}
-        {payload.time_moving && <Stat value={payload.time_moving} unit="moving" color="var(--ink)" />}
+        <Stat value={Number(payload.distance_mi ?? 0).toFixed(1)} unit="miles" color="var(--dist)" />
+        {payload.pace && <Stat value={String(payload.pace)} unit="avg pace" color="var(--green)" />}
+        {payload.time_moving && <Stat value={String(payload.time_moving)} unit="moving" color="var(--ink)" />}
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>

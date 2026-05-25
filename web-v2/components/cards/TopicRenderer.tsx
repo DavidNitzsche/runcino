@@ -1,5 +1,6 @@
 import type { Topic } from '@/lib/topics/types';
 import { RunRecapCard } from './RunRecapCard';
+import { CardErrorBoundary } from './CardErrorBoundary';
 import {
   NextWorkoutCard, RaceHorizonCard, ProfileGapCard,
   SleepDeficitCard, WatchListCard, FunFactCard,
@@ -10,6 +11,14 @@ import {
  * Topic kinds not in this switch are silently dropped (forward-compat).
  */
 export function TopicRenderer({ topic }: { topic: Topic }) {
+  return (
+    <CardErrorBoundary label={`${topic.kind} card`}>
+      <TopicRendererInner topic={topic} />
+    </CardErrorBoundary>
+  );
+}
+
+function TopicRendererInner({ topic }: { topic: Topic }) {
   switch (topic.kind) {
     case 'run_recap':
       return <RunRecapCard payload={topic.payload} coach_note={topic.coach_note} />;

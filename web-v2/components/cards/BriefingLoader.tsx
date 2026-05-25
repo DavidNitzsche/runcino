@@ -66,12 +66,14 @@ export function BriefingLoader({
   surface,
   raceSlug,
   onLoad,
+  renderCoach = true,
   renderCards = true,
   askPrompt,
 }: {
   surface: string;
   raceSlug?: string;
   onLoad?: (b: LoadedBriefing) => void;
+  renderCoach?: boolean;
   renderCards?: boolean;
   askPrompt?: string;
 }) {
@@ -101,20 +103,23 @@ export function BriefingLoader({
     return () => { cancelled = true; };
   }, [surface, raceSlug]);
 
-  if (loading) return <CoachLoading />;
-  if (error)   return <CoachError error={error} />;
+  // Loading + error states only show on the coach side; cards stay quiet.
+  if (loading) return renderCoach ? <CoachLoading /> : null;
+  if (error)   return renderCoach ? <CoachError error={error} /> : null;
   if (!briefing) return null;
 
   return (
     <>
-      <CoachBlock
-        lead={briefing.lead}
-        voice={briefing.voice}
-        briefingId={`${briefing._state?.user_id ?? ''}|${briefing._state?.today ?? ''}|${briefing.surface}`}
-        askPrompt={askPrompt ?? askPromptFor(briefing.mode)}
-      />
+      {renderCoach && (
+        <CoachBlock
+          lead={briefing.lead}
+          voice={briefing.voice}
+          briefingId={`${briefing._state?.user_id ?? ''}|${briefing._state?.today ?? ''}|${briefing.surface}`}
+          askPrompt={askPrompt ?? askPromptFor(briefing.mode)}
+        />
+      )}
       {renderCards && briefing.topics.length > 0 && (
-        <div style={{ padding: '4px 24px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ padding: renderCoach ? '4px 24px 24px' : '0', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {briefing.topics.map((t, i) => <TopicRenderer key={i} topic={t} />)}
         </div>
       )}
