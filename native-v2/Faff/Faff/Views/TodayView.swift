@@ -119,6 +119,13 @@ struct TodayView: View {
         // Push the freshly-fetched workout to the watch so the watch picks
         // up plan edits without the user having to relaunch the iPhone app.
         Task { await WatchSync.shared.pushTodayToWatch() }
+
+        // Quiet HK workout import — pulls any HKWorkout that hit the phone
+        // since the last refresh (e.g. a run done in Apple Watch Workouts
+        // app, not Faff). Only runs if Health auth was previously granted;
+        // never prompts here. After import lands, /api/ingest/workout busts
+        // the briefing cache so the next refresh picks up the new run.
+        Task { await HealthKitImporter.shared.importIfConnected(daysBack: 3) }
     }
 
     // MARK: - Subviews

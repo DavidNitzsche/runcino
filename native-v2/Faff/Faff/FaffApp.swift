@@ -18,6 +18,18 @@ struct FaffApp: App {
                 // under Xcode 16+ strict-concurrency checks (build 72).
                 // .task runs inside a MainActor context.
                 .task { WatchSync.shared.start() }
+                // First-launch path: request Health auth once and pull
+                // the last 7 days of HKWorkouts. After auth is granted,
+                // TodayView's quiet importIfConnected handles ongoing
+                // catch-up on every refresh — no further prompts.
+                .task {
+                    let key = "faff.health.connected.v2"
+                    if !UserDefaults.standard.bool(forKey: key) {
+                        await HealthKitImporter.shared.requestAuthAndImport(daysBack: 7)
+                    } else {
+                        await HealthKitImporter.shared.importIfConnected(daysBack: 7)
+                    }
+                }
         }
     }
 }
