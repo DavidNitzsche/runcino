@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Re-audit · 2026-05-26 evening · execution sweep complete</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --card: #11141a;
+    --green: #3EBD41; --goal: #F3AD38; --over: #FC4D64;
+    --dist: #27B4E0; --learn: #B084FF;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 56px; font-weight: 400; margin: 0; letter-spacing: 0.5px; }
+  .sub { color: var(--mute); margin-top: 8px; font-size: 14px; }
+  h2 { font-family: 'Bebas Neue', sans-serif; font-size: 32px; font-weight: 400; margin: 48px 0 14px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 24px 0 8px; }
+  p { color: rgba(246,247,248,0.88); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 14px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.6; font-size: 14px; margin-bottom: 5px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  em { color: rgba(246,247,248,0.95); font-style: italic; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: ui-monospace, monospace; color: var(--dist); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10.5px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td.ok { color: var(--green); font-weight: 600; }
+  td.warn { color: var(--goal); font-weight: 600; }
+  td.miss { color: var(--over); font-weight: 600; }
+  td.info { color: var(--dist); font-weight: 600; }
+  td.mute { color: var(--mute); }
+
+  .summary { background: rgba(62,189,65,0.08); border: 1px solid rgba(62,189,65,0.30); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .summary h2 { margin: 0 0 12px; font-size: 24px; color: var(--green); border: 0; padding: 0; }
+  .summary ol { padding-left: 18px; margin: 8px 0 0; color: rgba(246,247,248,0.92); font-size: 14.5px; line-height: 1.75; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin: 12px 0; }
+  .card h4 { font-family: 'Bebas Neue', sans-serif; font-size: 20px; font-weight: 400; margin: 0 0 6px; letter-spacing: 0.5px; }
+  .card .meta { color: var(--mute); font-size: 11.5px; letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
+
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
+  .pill.ok    { background: rgba(62,189,65,0.18); color: var(--green); }
+  .pill.warn  { background: rgba(243,173,56,0.18); color: var(--goal); }
+  .pill.miss  { background: rgba(252,77,100,0.18); color: var(--over); }
+  .pill.info  { background: rgba(39,180,224,0.18); color: var(--dist); }
+  .pill.defer { background: rgba(176,132,255,0.18); color: var(--learn); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Re-audit · 2026-05-26</h1>
+  <p class="sub">Evening sweep — all P30–P42 tasks closed except where blocked on external credentials. Build 88 shipping.</p>
+
+  <div class="summary">
+    <h2>The big picture</h2>
+    <p>Pre-sweep: 8 open tasks (P30, P32, P34, P35, P37, P38, P39, P42). Post-sweep: <strong>all 8 closed or scoped down to a clearly-bounded deferred follow-up</strong>. Shipping iPhone build 88. Server commits live on Railway as of 5e57f02 → 3eadbb5 chain. No multi-user beta lockout: every endpoint still falls back to the single-user identity, so nothing existing breaks.</p>
+    <ol>
+      <li><strong>P30</strong> iPhone onboarding shell — built (OnboardingSheet)</li>
+      <li><strong>P32</strong> web shoe picker UI — built (select in RunDetailModal → PATCH /api/runs/[id])</li>
+      <li><strong>P34</strong> cross-train slots — built (plan generator reads profile.cross_training_modes)</li>
+      <li><strong>P35</strong> HR phone alert delivery — built (HKObserverQuery + local notifications)</li>
+      <li><strong>P37</strong> Sentry + staging — code scaffolded (DSN-conditional reporter); staging playbook documented</li>
+      <li><strong>P38</strong> structured prescriptions — confirmed already present; adaptation triggers landed earlier</li>
+      <li><strong>P39</strong> auth + OAuth — Sign in with Apple wired end-to-end; Strava OAuth via Safari handoff</li>
+      <li><strong>P42</strong> recovery exclusion — work-only HR/cadence heuristic v1 shipped; phase-accurate v2 logged</li>
+    </ol>
+  </div>
+
+  <h2>Detail by task</h2>
+
+  <div class="card">
+    <div class="meta">P30 · iPhone onboarding shell</div>
+    <h4>Three-step setup sheet on iPhone <span class="pill ok">SHIPPED</span></h4>
+    <ul>
+      <li><code>Views/OnboardingSheet.swift</code> — three step cards: Sign in with Apple → Connect Strava → Connect Apple Health.</li>
+      <li>Entry point: ProfileView "Set up account" / "Connections" action row (label flips on signed-in state).</li>
+      <li>Marks <code>profile.onboarded_at</code> on Done. Each connection writes its timestamp.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="meta">P32 · web shoe picker UI</div>
+    <h4>Shoe assignment on web run-detail <span class="pill ok">SHIPPED</span></h4>
+    <ul>
+      <li><code>RunDetailModal.tsx</code> — &lt;select&gt; populated from <code>/api/shoe</code> (active, non-retired). Change triggers <code>PATCH /api/runs/[id] { shoe_id }</code>.</li>
+      <li>Server: <code>recomputeShoeMileage</code> in <code>/api/runs/[id]</code> route refreshes <code>shoes.mileage</code> from sum of assigned runs — idempotent.</li>
+      <li><code>run-state.ts</code> now exposes <code>shoe_id</code> on <code>RunDetail</code>.</li>
+      <li>Coach <code>getShoes</code> tool already in place — coach can recommend rotation when overdue.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="meta">P34 · cross-training in plan generator</div>
+    <h4>Rest day → cross-train label when opted in <span class="pill ok">SHIPPED</span></h4>
+    <ul>
+      <li><code>lib/plan/generate.ts</code> — reads <code>profile.cross_training_modes</code>. When non-empty, rotates the rest day's <code>sub_label</code> through enabled modes (bike / swim / strength / other) week-by-week.</li>
+      <li>Type stays <code>'rest'</code> so distance + readiness logic isn't affected. Sub_label drives the week-strip display.</li>
+      <li>Coach's <code>getPlanWindow</code> tool sees the new labels automatically.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="meta">P35 · HR ceiling phone alert delivery</div>
+    <h4>HKObserverQuery → local notification on threshold breach <span class="pill ok">SHIPPED</span></h4>
+    <ul>
+      <li><code>HRAlerter.swift</code> — registers HKObserverQuery on heartRate samples. On new data: anchored read of just-arrived samples, peak vs 95% of ceiling threshold, fires <code>UNUserNotificationCenter</code> notification with 90s cooldown.</li>
+      <li>Ceiling derivation: <code>hrmax_observed</code> if set, else <code>lthr × 1.12</code> fallback.</li>
+      <li>Boot path: <code>FaffApp.task</code> calls <code>HRAlerter.shared.start()</code> when <code>enabled</code> is true.</li>
+      <li>Toggle: Settings sheet "HR ceiling alerts on phone" — calls <code>HRAlerter.configure()</code>.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="meta">P37 · Sentry crash reporting + staging</div>
+    <h4>DSN-conditional reporter + staging playbook <span class="pill warn">SCAFFOLDED</span></h4>
+    <ul>
+      <li><code>lib/ops/sentry.ts</code> — <code>reportError(err, ctx)</code> writes to <code>ops_alerts</code> always, plus POSTs to <code>OPS_SENTRY_DSN</code> in Sentry envelope format when env set. No SDK dependency, no install required.</li>
+      <li><code>docs/STAGING.md</code> — Railway service creation playbook + branch flow (already in repo).</li>
+      <li><strong>Blocked on:</strong> creating the Sentry project + Railway staging service. Both need your account access. Code is ready to flip on the moment those env vars land.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="meta">P38 · structured prescriptions</div>
+    <h4>Per-workout phase structure already in place <span class="pill ok">VERIFIED</span></h4>
+    <ul>
+      <li><code>lib/training/prescriptions.ts</code> defines <code>PrescriptionStep</code> with pace_target, hr_target, recovery sub-block, citation. <code>prescriptionFor()</code> returns the full structure per workout type + LTHR + race goal.</li>
+      <li><code>/api/prescription</code> wraps it for the modal.</li>
+      <li>Adaptation triggers (missed_key / RHR spike / sleep crater / volume overshoot) shipped earlier as <code>lib/plan/adapt.ts</code> + GitHub Actions cron at 07:15 UTC.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="meta">P39 · auth + Strava OAuth</div>
+    <h4>Sign in with Apple wired; Strava OAuth via Safari <span class="pill ok">SHIPPED</span></h4>
+    <ul>
+      <li><code>SignInWithAppleView.swift</code> — ASAuthorizationAppleIDButton wrapper. On result, posts identity token to <code>/api/auth/apple</code>, stores returned session token.</li>
+      <li><code>TokenStore.swift</code> — UserDefaults-backed session token cache + Bearer auth header helper. (Keychain when leaving beta.)</li>
+      <li>Strava: <code>API.fetchStravaConnectURL()</code> gets the OAuth URL from <code>/api/auth/strava?action=connect</code>; OnboardingSheet opens it in Safari. Callback at <code>/api/auth/strava?action=callback</code> persists per-user tokens.</li>
+      <li><strong>Soft handoff:</strong> server endpoints still fall through to <code>DEFAULT_USER_ID</code> when no Bearer token — so nothing existing breaks. Multi-user activation = remove that fallback per-endpoint when ready.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="meta">P42 · recovery exclusion from averages</div>
+    <h4>Work-only HR + cadence on RunDetail <span class="pill warn">V1 HEURISTIC</span></h4>
+    <ul>
+      <li><code>run-state.ts</code> — new fields <code>hr_avg_work</code>, <code>cadence_avg_work</code>, <code>work_seconds</code> on <code>RunDetail</code>. <code>computeWorkAverages()</code> matches the day's <code>plan_workouts</code>: on quality types (threshold/tempo/intervals/vo2max/race), drops first split (warmup) + last split (cooldown), averages the middle splits.</li>
+      <li>Modal shows a separate amber card "WORK-PHASE ONLY · WARMUP + COOLDOWN EXCLUDED" with the filtered numbers.</li>
+      <li><strong>Known limitation:</strong> heuristic doesn't account for recovery jogs <em>between</em> intervals (e.g. 3×1mi with 2:00 jogs). True phase matching requires plan_workouts to ship explicit phase structure in jsonb. Logged as P42 v2.</li>
+    </ul>
+  </div>
+
+  <h2>Open items (honest)</h2>
+  <table>
+    <thead><tr><th>Item</th><th>Status</th><th>Why deferred</th></tr></thead>
+    <tbody>
+      <tr><td>Sentry project provisioning</td><td class="warn">SCAFFOLDED</td><td>Code reads <code>OPS_SENTRY_DSN</code> env. Needs you to create a Sentry account, set the env var in Railway.</td></tr>
+      <tr><td>Staging Railway service</td><td class="warn">PLAYBOOK</td><td><code>docs/STAGING.md</code> has the playbook. Needs you to add the Railway service + DNS.</td></tr>
+      <tr><td>Multi-user auth cutover</td><td class="info">SOFT</td><td>Sign in works end-to-end; switching <em>every</em> endpoint to require auth instead of falling through to <code>DEFAULT_USER_ID</code> would lock you out until iPhone re-signs in. Better to flip per-endpoint as you add real second-user.</td></tr>
+      <tr><td>Phase-accurate recovery exclusion</td><td class="info">V2</td><td>Heuristic v1 shipped. v2 requires plan_workouts.notes to be a jsonb with explicit phases — that's a schema + generator change worth doing once.</td></tr>
+      <tr><td>Watch face fixture "Primed · 82"</td><td class="warn">WATCH-AGENT</td><td>Lives in <code>legacy/native/Faff/FaffWatch Watch App/WatchWorkoutModels.swift</code> — owned by the watch agent's branch. Will land when next watch ships.</td></tr>
+      <tr><td>jose JWS signature verify</td><td class="info">FOLLOW-UP</td><td><code>/api/auth/apple</code> does claims-only verify today (issuer + aud + expiry). Production needs real signature verify (install <code>jose</code>, restore JWKS path). Pre-GA blocker; not beta blocker.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Ship status</h2>
+  <ul>
+    <li><strong>iPhone:</strong> build 88 shipping (build 87 had a Swift type error in <code>fetchStravaConnectURL</code> — fixed). Will be VALID in TestFlight ~5 min after upload.</li>
+    <li><strong>Web (Railway):</strong> commit chain through <code>5e57f02</code> live. Migrations 107, 108, 109, 110 applied to prod.</li>
+    <li><strong>Cron jobs:</strong> refresh-briefings (07:05 UTC), run-adaptations (07:15 UTC), enrich-weather (07:30 UTC) — all wired in GitHub Actions.</li>
+  </ul>
+
+  <h2>One re-audit finding worth flagging</h2>
+  <div class="card" style="border-color: rgba(243,173,56,0.35); background: rgba(243,173,56,0.04);">
+    <h4 style="color: var(--goal);">The HRAlerter only fires when the iPhone HK importer is allowed background HR observation</h4>
+    <ul>
+      <li><code>enableBackgroundDelivery(for: heartRate, frequency: .immediate)</code> requires the user to have granted HR read in HealthKit AND keep the app installed. If iOS suspends the background delivery (battery saver, app force-quit), alerts stop firing silently.</li>
+      <li>Mitigation: the SettingsSheet toggle should re-arm on every app foreground. Already wired via <code>FaffApp.task</code>.</li>
+      <li>Watch app's own HR ceiling alert (separate code path) continues regardless — this iPhone alert is the backup, not the primary.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>
