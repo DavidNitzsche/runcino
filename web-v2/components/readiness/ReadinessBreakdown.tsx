@@ -75,7 +75,7 @@ function InputRow({ input }: { input: import('@/lib/coach/readiness').ReadinessI
           {input.observedSub}
         </div>
         {input.meaning && (
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.55)', marginTop: 6, lineHeight: 1.45, maxWidth: 520 }}>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.55)', marginTop: 6, lineHeight: 1.45 }}>
             {input.meaning}
           </div>
         )}

@@ -69,6 +69,12 @@ targets:
         WKApplication: true
         WKWatchOnly: false
         WKCompanionAppBundleIdentifier: run.faff.app
+        # Required: the watch uses HKWorkoutSession + HKWorkoutRouteBuilder
+        # + CLLocationManager. Apple rejects ITMS-90683 without these.
+        NSHealthShareUsageDescription: "Faff reads heart rate, HRV, calories, and workout data from Apple Health to coach your training."
+        NSHealthUpdateUsageDescription: "Faff writes completed workouts to Apple Health so your training history stays in one place."
+        NSLocationWhenInUseUsageDescription: "Faff records your route during workouts so you can see where you ran."
+        NSMotionUsageDescription: "Faff uses motion data to track cadence, stride length, and other running form metrics."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: run.faff.app.watchkitapp

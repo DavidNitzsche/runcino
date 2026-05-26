@@ -6,9 +6,11 @@
 import Foundation
 
 enum API {
-    /// Configure once at app start. Defaults to next.faff.run (staging) in dev,
-    /// www.faff.run after cutover.
-    static var baseURL: URL = URL(string: "https://next.faff.run")!
+    /// Production API base. next.faff.run was the pre-cutover staging
+    /// subdomain — it's no longer routed, which caused build 65/66 to
+    /// land on a 404 HTML page in TestFlight. www.faff.run is the live
+    /// app and verified to return JSON on /api/briefing.
+    static var baseURL: URL = URL(string: "https://www.faff.run")!
 
     enum APIError: Error {
         case invalidURL

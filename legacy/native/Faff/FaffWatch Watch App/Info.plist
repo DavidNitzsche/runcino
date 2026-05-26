@@ -20,6 +20,14 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Faff reads heart rate, HRV, calories, and workout data from Apple Health to coach your training.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Faff writes completed workouts to Apple Health so your training history stays in one place.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Faff records your route during workouts so you can see where you ran.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Faff uses motion data to track cadence, stride length, and other running form metrics.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>WKApplication</key>
