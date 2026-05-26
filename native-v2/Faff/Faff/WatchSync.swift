@@ -144,12 +144,37 @@ extension WatchSync: WCSessionDelegate {
     nonisolated func session(_ session: WCSession,
                              didReceiveUserInfo userInfo: [String: Any] = [:]) {
         // Watch sent a WatchCompletion via transferUserInfo. Persist + retry.
-        if let payload = userInfo["completion"] {
-            if let data = try? JSONSerialization.data(withJSONObject: payload) {
-                Task { @MainActor in
-                    self.enqueue(data)
-                    await self.flushPendingCompletions()
-                }
+        //
+        // CRITICAL: JSONSerialization.data(withJSONObject:) throws Objective-C
+        // NSExceptions (NOT Swift errors) when handed values that aren't valid
+        // JSON. `try?` does NOT catch NSExceptions — they crash the app.
+        // Build 72/73/75 crashed exactly here: the watch ships the completion
+        // as already-encoded JSON `Data` via transferUserInfo, and calling
+        // JSONSerialization.data on a `Data` blob throws NSException →
+        // app launch crash (queued userInfo fires before UI even renders).
+        //
+        // Fix: handle BOTH shapes the watch could send (raw Data OR a
+        // serializable dict), and gate the dict path with isValidJSONObject
+        // so we never feed JSONSerialization something that'd NSException.
+        guard let payload = userInfo["completion"] else { return }
+
+        let resolvedData: Data?
+        if let d = payload as? Data {
+            // Watch sent pre-encoded JSON — use it directly, no re-serialize.
+            resolvedData = d
+        } else if JSONSerialization.isValidJSONObject(payload) {
+            // Watch sent a dict — safe to serialize now that we've checked.
+            resolvedData = try? JSONSerialization.data(withJSONObject: payload)
+        } else {
+            // Anything else: log + drop, never crash the iPhone for this.
+            print("[WatchSync] dropping unserializable completion payload type=\(type(of: payload))")
+            resolvedData = nil
+        }
+
+        if let data = resolvedData {
+            Task { @MainActor in
+                self.enqueue(data)
+                await self.flushPendingCompletions()
             }
         }
     }
@@ -163,7 +188,9 @@ extension WatchSync: WCSessionDelegate {
                 let raw = try await API.fetchWatchTodayRaw()
                 if let obj = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] {
                     var reply: [String: Any] = [:]
-                    if let w = obj["workout"] {
+                    if let w = obj["workout"], JSONSerialization.isValidJSONObject(w) {
+                        // Gate with isValidJSONObject — see didReceiveUserInfo
+                        // comment above for the NSException-vs-try? story.
                         reply["workout"] = (try? JSONSerialization.data(withJSONObject: w)) ?? Data()
                     } else if let msg = obj["message"] as? String {
                         reply["noWorkout"] = msg
