@@ -46,6 +46,13 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Match the watch target's concurrency settings. Without these,
+        # Xcode 16/17's default strict-concurrency rejects FaffApp.init()
+        # → WatchSync.shared (a @MainActor singleton) at runtime, fatal-
+        # crashing on launch. Build 72 hit exactly this.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_STRICT_CONCURRENCY: minimal
+        SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY: NO
     dependencies:
       - target: FaffWatch Watch App
         embed: true

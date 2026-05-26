@@ -7,16 +7,17 @@ import SwiftUI
 
 @main
 struct FaffApp: App {
-    init() {
-        // Wire the WatchConnectivity bridge as soon as the app boots.
-        // Pushes today's workout to the (frozen) watch app on activation.
-        WatchSync.shared.start()
-    }
     var body: some Scene {
         WindowGroup {
             RootTabView()
                 .preferredColorScheme(.dark)
                 .background(Theme.bgPage.ignoresSafeArea())
+                // Wire the WatchConnectivity bridge after the first scene
+                // is up. WatchSync.shared is @MainActor — accessing it
+                // from FaffApp.init() (non-isolated) crashed at runtime
+                // under Xcode 16+ strict-concurrency checks (build 72).
+                // .task runs inside a MainActor context.
+                .task { WatchSync.shared.start() }
         }
     }
 }
