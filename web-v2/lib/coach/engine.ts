@@ -94,8 +94,10 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
     eligible.includes(t.kind as any) && TopicPrereqs[t.kind](state)
   );
 
-  // Server-side enrichment: inject deterministic ids + NUMBERS the LLM can't
-  // be trusted to repeat. The LLM authors voice; values come from state.
+  // Server-side enrichment: inject deterministic IDs + NUMBERS the LLM
+  // can't be trusted to repeat. The LLM authors voice; numeric values
+  // come from state.
+  const DOW_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
   for (const t of validatedTopics) {
     const p = t.payload as any;
     if (t.kind === 'run_recap' && state.latest_activity?.id) {
@@ -104,6 +106,27 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
     if (t.kind === 'sleep_deficit') {
       if (state.sleep7Avg != null) p.avg_h_7n = state.sleep7Avg;
       p.deficit_h_7n = state.sleep7Deficit ?? 0;
+    }
+    if (t.kind === 'next_workout' && state.nextWorkout) {
+      const nw = state.nextWorkout;
+      // Compute DOW from the date so it's correct (LLM was hallucinating).
+      const d = new Date(nw.date + 'T12:00:00Z');
+      const isTomorrow = nw.date === new Date(Date.parse(state.today + 'T12:00:00Z') + 86400000).toISOString().slice(0,10);
+      p.dow = isTomorrow ? 'TOMORROW' : DOW_NAMES[d.getUTCDay()];
+      p.type = nw.type;
+      p.label = nw.label ?? nw.type;
+      p.mi = nw.mi;
+    }
+    if (t.kind === 'race_horizon' && state.nextARace) {
+      const r = state.nextARace;
+      p.race_name = r.name;
+      p.race_date = r.date;
+      p.days_to_race = r.days_to_race;
+      p.goal = r.goal;
+      // Tone from how close we are
+      p.tone = r.days_to_race <= 7 ? 'race_week'
+        : r.days_to_race <= 21 ? 'sharpening'
+        : 'building';
     }
   }
 

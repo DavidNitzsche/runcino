@@ -167,16 +167,51 @@ function BCRaceCard({ race, priority }: { race: RaceRow; priority: 'B' | 'C' }) 
 }
 
 function PastRaceCard({ race }: { race: RaceRow }) {
+  const finish = race.finishTime ?? (race.matchedRun ? '—' : null);
   return (
-    <Link href={`/races/${race.slug}`} className="card" style={{ padding: '14px 16px', display: 'block' }}>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)' }}>{race.name}</div>
-      <div style={{ fontSize: 10, color: 'var(--mute)' }}>{race.date ? formatDate(race.date) : ''}</div>
-      {race.finishTime && (
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: race.pb ? 'var(--green)' : 'var(--ink)', marginTop: 6 }}>
-          {race.finishTime}
+    <Link href={`/races/${race.slug}`} className="card" style={{
+      padding: '16px 18px', display: 'block',
+      background: race.pb ? 'linear-gradient(135deg, rgba(62,189,65,0.06), rgba(62,189,65,0.01))' : 'rgba(255,255,255,0.025)',
+      border: race.pb ? '1px solid rgba(62,189,65,0.30)' : '1px solid var(--line)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {race.name}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.2px', marginTop: 4 }}>
+            {race.date ? formatDate(race.date) : ''}
+            {race.distance_label ? ` · ${race.distance_label.toUpperCase()}` : ''}
+          </div>
+        </div>
+        {race.pb && (
+          <span style={{
+            background: 'rgba(62,189,65,0.18)', color: 'var(--green)',
+            padding: '2px 7px', borderRadius: 4, fontSize: 9, fontWeight: 800, letterSpacing: '1.2px',
+          }}>PB</span>
+        )}
+      </div>
+
+      {finish && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 10 }}>
+          <span style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: race.pb ? 'var(--green)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1 }}>
+            {finish}
+          </span>
+          {race.matchedRun?.pace && (
+            <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '0.5px' }}>
+              {race.matchedRun.pace} /mi
+            </span>
+          )}
         </div>
       )}
-      {race.pb && <div style={{ fontSize: 10, color: 'var(--mute)' }}>PB</div>}
+
+      {race.matchedRun && (
+        <div style={{ display: 'flex', gap: 14, marginTop: 8, fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.5px' }}>
+          {race.matchedRun.avg_hr      != null && <span><span style={{ color: 'rgba(246,247,248,0.55)' }}>HR</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.avg_hr}</span></span>}
+          {race.matchedRun.cadence     != null && <span><span style={{ color: 'rgba(246,247,248,0.55)' }}>CAD</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.cadence}</span></span>}
+          {race.matchedRun.elev_gain_ft!= null && race.matchedRun.elev_gain_ft > 0 && <span><span style={{ color: 'rgba(246,247,248,0.55)' }}>↑</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.elev_gain_ft}ft</span></span>}
+        </div>
+      )}
     </Link>
   );
 }

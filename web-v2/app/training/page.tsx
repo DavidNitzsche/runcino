@@ -38,7 +38,14 @@ export default async function TrainingPage() {
           {training.weekPlanned != null ? ` · ${training.weekPlanned} MI PLANNED` : ''}
         </div>
 
-        <PhaseStrip phases={training.phases} currentPhase={training.currentPhase} />
+        <PhaseStrip
+          phases={training.phases}
+          currentPhase={training.currentPhase}
+          totalWeeks={training.weeks.length}
+          currentWeekIdx={training.currentWeekIdx}
+          raceName={training.race?.name ?? null}
+          daysToRace={training.race?.days_to_race ?? null}
+        />
 
         <PlanArc
           weeks={training.weeks}

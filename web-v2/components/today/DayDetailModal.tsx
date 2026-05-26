@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react';
 import type { GlanceWeekDay } from '@/lib/coach/glance-state';
 import type { RunDetail } from '@/lib/coach/run-state';
+import type { Prescription, PrescriptionStep } from '@/lib/training/prescriptions';
 import { RunDetailTrigger } from '@/components/runs/RunDetailModal';
 
 const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -123,37 +124,115 @@ function CompletedRunBody({ day, detail }: { day: GlanceWeekDay; detail: RunDeta
 }
 
 function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor: string }) {
-  const t = day.plannedType;
-  const target = targetFor(t);
+  const [pres, setPres] = useState<Prescription | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    // We don't yet know the week's planned mileage from glance, so pass
+    // the day's planned mi as a proxy weekly volume (the prescriptions
+    // module scales rep counts off this — close enough for reasonable
+    // bands).
+    const proxyWeekly = Math.max(day.plannedMi * 6, 25);
+    fetch(`/api/prescription?type=${encodeURIComponent(day.plannedType)}&weeklyMi=${proxyWeekly}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (mounted) { setPres(d); setLoading(false); } })
+      .catch(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [day.plannedType, day.plannedMi]);
+
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 14 }}>
+      {/* Hero: distance + headline */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 8 }}>
         <span style={{ fontFamily: 'var(--f-display)', fontSize: 72, color: typeColor, lineHeight: 1, letterSpacing: '0.5px' }}>
           {day.plannedMi.toFixed(day.plannedMi % 1 === 0 ? 0 : 1)}
         </span>
         <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>MI</span>
       </div>
-
-      <div className="card" style={{ background: '#1f2226', padding: '16px 18px', marginBottom: 12 }}>
-        <div className="card-eyebrow" style={{ color: typeColor }}>TARGET</div>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'rgba(246,247,248,0.90)', lineHeight: 1.6, marginTop: 6 }}>
-          {target}
+      {pres?.headline && (
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', letterSpacing: '0.3px', marginBottom: 4 }}>
+          {pres.headline}
         </div>
-      </div>
-
-      <div className="card" style={{ background: '#1f2226', padding: '16px 18px', marginBottom: 12 }}>
-        <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>EXECUTION NOTES</div>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 13.5, color: 'rgba(246,247,248,0.80)', lineHeight: 1.6, marginTop: 6 }}>
-          {notesFor(t)}
+      )}
+      {pres?.why && (
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 13.5, color: 'rgba(246,247,248,0.78)', lineHeight: 1.55, marginBottom: 16, fontStyle: 'italic' }}>
+          {pres.why}
         </div>
-      </div>
+      )}
+
+      {loading && (
+        <div style={{ color: 'var(--mute)', fontSize: 13, padding: '12px 0' }}>Loading prescription…</div>
+      )}
+
+      {/* Structured steps — one card per step (warmup, reps, recovery, cooldown) */}
+      {pres?.steps && pres.steps.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+          {pres.steps.map((step, i) => <StepCard key={i} step={step} accent={typeColor} />)}
+        </div>
+      )}
+
+      {pres?.citation && (
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 10.5, color: 'var(--dim)', letterSpacing: '0.5px', marginTop: 8 }}>
+          Cite: {pres.citation}
+        </div>
+      )}
 
       {day.isToday && (
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginTop: 12, fontStyle: 'italic' }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginTop: 14, fontStyle: 'italic' }}>
           The run will appear here once the watch syncs it back.
         </div>
       )}
     </>
+  );
+}
+
+function StepCard({ step, accent }: { step: PrescriptionStep; accent: string }) {
+  // Build the volume label: "1.5 mi", "3 × 1 mile", "2:00 jog"
+  let volumeLabel: string;
+  if (step.reps != null && step.rep_distance_mi != null) {
+    const repFmt = step.rep_distance_mi < 1
+      ? `${Math.round(step.rep_distance_mi * 1609)} m`
+      : `${step.rep_distance_mi % 1 === 0 ? step.rep_distance_mi : step.rep_distance_mi.toFixed(1)} mi`;
+    volumeLabel = `${step.reps} × ${repFmt}`;
+  } else if (step.reps != null && step.duration) {
+    volumeLabel = `${step.reps} × ${step.duration}`;
+  } else if (step.distance_mi != null) {
+    volumeLabel = `${step.distance_mi % 1 === 0 ? step.distance_mi : step.distance_mi.toFixed(1)} mi`;
+  } else if (step.duration) {
+    volumeLabel = step.duration;
+  } else {
+    volumeLabel = '';
+  }
+
+  return (
+    <div style={{
+      background: '#1f2226', borderRadius: 12, padding: '14px 18px',
+      border: '1px solid rgba(255,255,255,0.05)',
+      borderLeft: `3px solid ${accent}`,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: accent, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+          {step.label}
+        </div>
+        {volumeLabel && (
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
+            {volumeLabel}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, fontFamily: 'var(--f-body)', fontSize: 12.5, marginBottom: 6 }}>
+        {step.pace_target && (
+          <span><span style={{ color: 'var(--mute)' }}>PACE</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.pace_target}</span></span>
+        )}
+        {step.hr_target && (
+          <span><span style={{ color: 'var(--mute)' }}>HR</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.hr_target}</span></span>
+        )}
+      </div>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.55 }}>
+        {step.note}
+      </div>
+    </div>
   );
 }
 
@@ -182,32 +261,6 @@ function UnplannedBody({ day }: { day: GlanceWeekDay }) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
-
-function targetFor(t: string): string {
-  switch (t) {
-    case 'easy':       return 'Easy aerobic — HR in Z1-Z2 (true conversational, you should be able to speak in full sentences). 9:00/mi-ish, drift up in heat is normal.';
-    case 'long':       return 'Long aerobic — HR mostly Z2 with late drift into low Z3. Steady, no surges. Fuel ~45 min in and every 30 after.';
-    case 'tempo':      return 'Tempo — sub-threshold steady, just below the line where breathing becomes labored. Marathon pace or a hair faster.';
-    case 'threshold':  return 'Threshold reps — at LTHR, comfortably hard, controlled. 3×1mi at T-pace with 2:00 jog recoveries is the canonical version.';
-    case 'intervals':  return 'Intervals — at or above LTHR, race-finish effort. 6×800m at I-pace with 90s jog recoveries; even splits from start to finish.';
-    case 'shakeout':   return '2 mi easy plus 4×20s strides. Loosen the legs, fire the system, then go rest.';
-    case 'race':       return 'Race day. Execute the plan. Negative-split if possible — go out controlled, finish strong.';
-    default:           return 'See plan for target pace + HR zone.';
-  }
-}
-
-function notesFor(t: string): string {
-  switch (t) {
-    case 'easy':       return 'The discipline is keeping it easy. Most runners run their easy runs too hard — that\'s the "gray zone" trap that leaves you flat for the workouts that matter. Cap effort, hold form, walk if you have to.';
-    case 'long':       return 'Time on feet > pace. Build the engine. Drift in pace late is fine and expected; drift in form is not.';
-    case 'tempo':      return 'Warm up 1.5mi easy, build into target, hold steady, cool down 1mi. Even effort across the rep, not the first half faster than the second.';
-    case 'threshold':  return 'Warm up 1.5mi. Reps at T-pace (your engine\'s ceiling). Recoveries are honest jogs, not standing. Cool down 1mi.';
-    case 'intervals':  return 'Warm up 1.5mi + 4×20s strides. Hit even splits — rep 6 should match rep 1. Slowing means the pace was too aggressive; drop 2-3s/lap and finish clean.';
-    case 'shakeout':   return 'Day-before-race ritual. Don\'t skip strides — they fire the neuromuscular system without taxing it. Keep total time under 25 minutes.';
-    case 'race':       return 'Hold the plan in the first 5K. Pacing decisions made in the first mile cost you in the last 10K.';
-    default:           return '';
-  }
-}
 
 function BigStat({ v, u, color }: { v: string; u: string; color: string }) {
   return (
