@@ -154,7 +154,7 @@ export async function loadLogState(userId: string, opts?: { limit?: number }): P
         label: isCurrent ? 'THIS WEEK' : `${fmtDay(monday)} → ${fmtDay(sunday)}`,
         totalMi,
         totalDuration: null, // TODO: sum moving times
-        runs: ws.sort((a, b) => a.date.localeCompare(b.date)), // Mon → Sun within the week
+        runs: ws.sort((a, b) => b.date.localeCompare(a.date)), // newest day first within the week
         isCurrent,
       };
     });
