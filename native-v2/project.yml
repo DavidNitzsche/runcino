@@ -46,10 +46,12 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # Match the watch target's concurrency settings. Without these,
-        # Xcode 16/17's default strict-concurrency rejects FaffApp.init()
-        # → WatchSync.shared (a @MainActor singleton) at runtime, fatal-
-        # crashing on launch. Build 72 hit exactly this.
+        # HealthKit entitlement REQUIRED because Info.plist declares
+        # NSHealthShareUsageDescription / NSHealthUpdateUsageDescription.
+        # Without the matching entitlement, iOS kills the app at launch
+        # on real devices. Build 72 and 73 crashed exactly here — sim
+        # didn't reproduce because sim doesn't enforce entitlements.
+        CODE_SIGN_ENTITLEMENTS: Faff/Faff/Faff.entitlements
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         SWIFT_STRICT_CONCURRENCY: minimal
         SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY: NO
@@ -96,6 +98,11 @@ targets:
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         SWIFT_STRICT_CONCURRENCY: minimal
         SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY: NO
+        # HealthKit entitlement REQUIRED — watch uses HKWorkoutSession +
+        # HKWorkoutRouteBuilder. Entitlements file is the canonical one
+        # at legacy/native/Faff/FaffWatch Watch App/FaffWatch Watch App.entitlements
+        # (same dir as the source — symlinked in by ship-testflight-v2.sh).
+        CODE_SIGN_ENTITLEMENTS: Faff/FaffWatch Watch App/FaffWatch Watch App.entitlements
         INFOPLIST_KEY_WKApplication: YES
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: run.faff.app
         INFOPLIST_KEY_CFBundleDisplayName: faff

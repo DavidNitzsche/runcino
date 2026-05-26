@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  HealthKit capability is required because the bundle declares
+	  NSHealthShareUsageDescription / NSHealthUpdateUsageDescription in
+	  Info.plist. Without the entitlement, iOS rejects the app at launch
+	  on real devices (crashed build 72 and 73). The legacy app at
+	  legacy/native/Faff/Faff/Faff.entitlements has the same declaration.
+	-->
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+
+	<!--
+	  Shared app group with the watch app target. The legacy app uses
+	  this for SharedDefaults; the v2 iPhone+watch pair use it the same
+	  way. Bundle ID matches App Store Connect declaration.
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.run.faff.app</string>
+	</array>
+</dict>
+</plist>
