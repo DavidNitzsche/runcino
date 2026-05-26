@@ -91,14 +91,14 @@ export function ShoeEditCard({
     const barColor = shoe.pctUsed >= 80 ? 'var(--over)' : shoe.pctUsed >= 60 ? 'var(--goal)' : 'var(--green)';
     return (
       <button onClick={() => setOpen(true)} className="card" style={{
-        padding: '14px', textAlign: 'left', cursor: 'pointer', display: 'block', width: '100%',
+        padding: '18px', textAlign: 'left', cursor: 'pointer', display: 'block', width: '100%',
       }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', lineHeight: 1.1 }}>{shoe.name}</div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 10 }}>
-          <span style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: barColor }}>{shoe.mileage}</span>
-          <span style={{ fontSize: 10, color: 'var(--mute)' }}>/ {shoe.cap} mi</span>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)', lineHeight: 1.15, letterSpacing: '0.3px' }}>{shoe.name}</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 12 }}>
+          <span style={{ fontFamily: 'var(--f-display)', fontSize: 30, color: barColor, letterSpacing: '0.5px' }}>{shoe.mileage}</span>
+          <span style={{ fontSize: 12, color: 'var(--mute)' }}>/ {shoe.cap} mi</span>
         </div>
-        <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
+        <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 8, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${Math.min(100, shoe.pctUsed)}%`, background: barColor }} />
         </div>
       </button>

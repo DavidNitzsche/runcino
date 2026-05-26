@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { SettingsAvatarTrigger } from '@/components/settings/SettingsModal';
 
 const TABS = [
   { href: '/today',    label: 'TODAY' },
@@ -39,17 +40,7 @@ export function TopNav({ avatarInitials = 'DN' }: { avatarInitials?: string }) {
           );
         })}
       </div>
-      <div
-        style={{
-          width: 36, height: 36, borderRadius: '50%',
-          background: 'linear-gradient(135deg, var(--learn), var(--race))',
-          color: '#1a0f33',
-          fontFamily: 'var(--f-display)', fontSize: 14,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >
-        {avatarInitials}
-      </div>
+      <SettingsAvatarTrigger initials={avatarInitials} />
     </div>
   );
 }

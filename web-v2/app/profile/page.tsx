@@ -19,25 +19,26 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       <TopNav />
       <div style={{ padding: '40px 40px 80px', maxWidth: 1440, margin: '0 auto' }}>
         {/* IDENTITY */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 36 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 28, marginBottom: 44 }}>
           <div style={{
-            width: 96, height: 96, borderRadius: '50%',
+            width: 120, height: 120, borderRadius: '50%',
             background: 'linear-gradient(135deg, var(--learn), var(--race))',
             color: '#1a0f33',
-            fontFamily: 'var(--f-display)', fontSize: 42,
+            fontFamily: 'var(--f-display)', fontSize: 52,
             display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: '1px',
+            flexShrink: 0,
           }}>
             {initials}
           </div>
           <div>
-            <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 56, lineHeight: 1, margin: 0, letterSpacing: '0.5px' }}>
+            <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 72, lineHeight: 0.95, margin: 0, letterSpacing: '0.5px' }}>
               {profile.identity.full_name ?? 'Runner'}
             </h1>
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 8 }}>
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 15, color: 'rgba(246,247,248,0.60)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 12, fontWeight: 600 }}>
               {profile.identity.sex ?? '—'} · {profile.identity.age ?? '—'} · {profile.identity.city ?? '—'}
             </div>
             {profile.nextARace && (
-              <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginTop: 6 }}>
+              <div style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', marginTop: 10 }}>
                 Training for{' '}
                 <span style={{ color: 'var(--race)', fontWeight: 600 }}>
                   {profile.nextARace.name} · {profile.nextARace.days_to_race} days
@@ -90,24 +91,24 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
 
         {/* Live zone table — recomputes from LTHR/MaxHR every render */}
         {profile.physiology.zones && (
-          <div className="card" style={{ marginTop: 14, padding: '18px 22px' }}>
-            <div className="card-eyebrow" style={{ color: 'var(--green)' }}>
+          <div className="card" style={{ marginTop: 14, padding: '22px 26px' }}>
+            <div className="card-eyebrow" style={{ color: 'var(--green)', fontSize: 12 }}>
               HR ZONES · {profile.physiology.zones.method === 'lthr-friel' ? 'LTHR-ANCHORED (FRIEL)' : '%MHR FALLBACK'}
               {' · '}{profile.physiology.zones.anchor.label} {profile.physiology.zones.anchor.bpm}
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10, fontFamily: 'var(--f-body)', fontSize: 13 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12, fontFamily: 'var(--f-body)', fontSize: 14 }}>
               <tbody>
                 {profile.physiology.zones.zones.map((z) => (
                   <tr key={z.idx} style={{ borderBottom: '1px solid var(--line-2)' }}>
-                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-display)', fontSize: 13, color: 'var(--green)', letterSpacing: '0.5px', width: 50 }}>{z.shortLabel}</td>
-                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-display)', fontSize: 14, color: 'var(--ink)', width: 130 }}>{z.label}</td>
-                    <td style={{ padding: '8px 10px', fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--ink)', width: 130 }}>{z.lower}–{z.upper} bpm</td>
-                    <td style={{ padding: '8px 10px', fontSize: 11.5, color: 'var(--mute)', lineHeight: 1.45 }}>{z.purpose}</td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--f-display)', fontSize: 15, color: 'var(--green)', letterSpacing: '0.5px', width: 60 }}>{z.shortLabel}</td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', width: 150 }}>{z.label}</td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--ink)', width: 150, fontWeight: 600 }}>{z.lower}–{z.upper} bpm</td>
+                    <td style={{ padding: '12px 12px', fontSize: 13, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>{z.purpose}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 10, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--mute)', marginTop: 14, lineHeight: 1.55 }}>
               {profile.physiology.lthr_method ? `LTHR source: ${profile.physiology.lthr_method}. ` : ''}
               Re-test LTHR every 6-12 weeks. Cite: <a href="/learn/heart-rate-zones" style={{ color: 'var(--learn)' }}>Research/03 §6</a>.
             </div>
@@ -155,7 +156,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', margin: '24px 0 12px' }}>{children}</div>;
+  return <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, fontWeight: 700, color: 'rgba(246,247,248,0.65)', letterSpacing: '1.6px', textTransform: 'uppercase', margin: '36px 0 14px' }}>{children}</div>;
 }
 function Grid3({ children }: { children: React.ReactNode }) { return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>{children}</div>; }
 function Grid4({ children }: { children: React.ReactNode }) { return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>{children}</div>; }
@@ -163,10 +164,10 @@ function Grid5({ children }: { children: React.ReactNode }) { return <div style=
 
 function FieldCard({ k, v, hint }: { k: string; v: string; hint?: string }) {
   return (
-    <div className="card" style={{ padding: '14px 16px' }}>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 6 }}>{k}</div>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)' }}>{v}</div>
-      {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--green)', marginTop: 4, letterSpacing: '1px' }}>{hint}</div>}
+    <div className="card" style={{ padding: '18px 22px' }}>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>{k}</div>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>{v}</div>
+      {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '1px' }}>{hint}</div>}
     </div>
   );
 }
@@ -180,12 +181,12 @@ function dayShort(d: string): string { return DAY_NAMES[d]?.[1] ?? d; }
 
 function ConnCard({ name, sub, connected }: { name: string; sub: string; connected: boolean }) {
   return (
-    <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div className="card" style={{ padding: '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 18 }}>{name}</div>
-        <div style={{ fontSize: 10, color: 'var(--mute)', marginTop: 2 }}>{sub}</div>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', letterSpacing: '0.3px' }}>{name}</div>
+        <div style={{ fontSize: 12, color: 'var(--mute)', marginTop: 4 }}>{sub}</div>
       </div>
-      <span style={{ color: connected ? 'var(--green)' : 'var(--mute)', fontSize: 11, letterSpacing: '1px' }}>
+      <span style={{ color: connected ? 'var(--green)' : 'var(--mute)', fontSize: 12, letterSpacing: '1.2px', fontWeight: 600 }}>
         ● {connected ? 'CONNECTED' : 'NOT CONNECTED'}
       </span>
     </div>

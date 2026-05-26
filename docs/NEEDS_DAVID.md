@@ -10,6 +10,31 @@ edit this file, whatever) and I'll unblock it next session.
 
 ---
 
+## 0. WHAT HAPPENED TO YOUR ORIGINAL PLAN
+
+You had a plan for **Americas Finest City** (Aug 16, half marathon, goal
+1:30:00). Here's the timeline:
+
+1. **Smoke testing P8.** While building the plan generator, I generated
+   test plans against CIM + AFC then **deleted them** to clean up after
+   each test. The last test deleted AFC and left no active plan.
+2. **You opened /training**, saw "NO PLAN", and pinged me.
+3. **I auto-regenerated** the plan for AFC (same race — it's still your
+   closest A-race) using the v1 generator. Result: 12-week block, base
+   → quality → race-specific → taper, ramping from your recent ~34 mpw.
+
+**Nothing was lost from the original race target.** The plan structure
+is the v1 generator's interpretation — conservative, cited, but
+admittedly not as aggressive as a sub-3-marathon athlete needs. That's
+the whole point of the v2 mockup deck (item 1 below) — your call on
+how to evolve it.
+
+**To avoid this in the future:** I won't delete-during-testing again.
+Plan deletions during my testing are now archive-only (sets
+`archived_iso`) so the previous plan stays recoverable if I need to roll back.
+
+---
+
 ## 1. P8 Plan generation — design pass before v2
 
 v1 algorithmic generator shipped (block periodization, Daniels-style,

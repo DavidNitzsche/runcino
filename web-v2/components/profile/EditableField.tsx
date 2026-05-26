@@ -59,23 +59,23 @@ export function EditableField({
         onClick={() => setEditing(true)}
         className="card"
         style={{
-          padding: '14px 16px',
+          padding: '18px 22px',
           textAlign: 'left',
           cursor: 'pointer',
           display: 'block', width: '100%',
         }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 6 }}>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
             {label}
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 9, color: 'var(--dim)', letterSpacing: '1.2px' }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 11, color: 'rgba(246,247,248,0.50)', letterSpacing: '1.2px' }}>
             EDIT
           </div>
         </div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: currentValue == null ? 'var(--dim)' : 'var(--ink)' }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: currentValue == null ? 'rgba(246,247,248,0.45)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
           {currentValue == null ? '— Add' : `${currentValue}${unitLabel ? ' ' + unitLabel : ''}`}
         </div>
-        {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--green)', marginTop: 4, letterSpacing: '1px' }}>{hint}</div>}
+        {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '1px' }}>{hint}</div>}
       </button>
     );
   }
