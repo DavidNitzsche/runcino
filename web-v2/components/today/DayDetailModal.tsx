@@ -190,24 +190,30 @@ function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor:
 }
 
 function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
-  // Color the step border by EFFORT, not workout type. Easy steps (warmup,
-  // recovery, cooldown, easy build) → purple. Hard steps (reps, tempo,
-  // race, marathon-pace finish, threshold) → gold. Race → race orange.
+  // Color the step border by EFFORT TIER, not workout type. Three tiers
+  // so warmup/cooldown read distinctly from the recovery-inside-REPEAT
+  // block (which lives inside RepeatBlock with purple).
+  //   - warmup, cooldown                       → blue   (var(--rest))
+  //   - easy build, easy run, recovery-between → purple (var(--learn))
+  //   - reps, tempo, threshold, MP finish      → gold   (var(--goal))
+  //   - race                                   → orange (var(--race))
+  //   - rest-only day                          → blue   (var(--rest))
   const label = step.label.toLowerCase();
   const isRest = label.includes('today') && (step.note ?? '').toLowerCase().includes('no running');
-  const isEasy = label.includes('warmup') || label.includes('cooldown') ||
-                 label.includes('recovery') || label.includes('easy');
+  const isWarmupCooldown = label.includes('warmup') || label.includes('cooldown');
+  const isEasy = label.includes('easy') || label.includes('recovery');
   const isRace = label.includes('race');
   const isHard = label.includes('reps') || label.includes('tempo') ||
                  label.includes('threshold') || label.includes('marathon-pace') ||
                  label.includes('finish') || label.includes('strides') ||
                  label.includes('interval');
   const accent =
-    isRest ? 'var(--rest)' :
-    isRace ? 'var(--race)' :
-    isHard ? 'var(--goal)' :
-    isEasy ? 'var(--learn)' :
-             'var(--mute)';
+    isRest           ? 'var(--rest)' :
+    isWarmupCooldown ? 'var(--rest)' :
+    isRace           ? 'var(--race)' :
+    isHard           ? 'var(--goal)' :
+    isEasy           ? 'var(--learn)' :
+                       'var(--mute)';
 
   // Volume label — describes what one rep / the whole step looks like.
   // For repeat blocks with recovery, the volume label shows the EACH unit.

@@ -54,12 +54,17 @@ export interface LoadedBriefing {
   };
 }
 
+// Faff-themed loading copy. The brand IS "faff" — every loading state
+// should sound like the brand voice talking, not a generic spinner.
 const LOADING_MESSAGES = [
-  "Reading your week's runs...",
-  "Checking how you slept...",
-  "Pulling HR and HRV trends...",
-  "Looking at what's next on the plan...",
-  "Putting it all together...",
+  "Having a faff...",
+  "Just a quick faff...",
+  "Faffing on...",
+  "One sec, faffing...",
+  "Crunching the faff...",
+  "Bit of a faff...",
+  "Sorting your faff...",
+  "Faffing the numbers...",
 ];
 
 export function BriefingLoader({
@@ -144,13 +149,13 @@ function CoachLoading() {
         marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8,
       }}>
         <PulseDot />
-        COACH · READING YOUR LATEST
+        COACH · HAVING A FAFF
       </div>
       <h2 style={{
         fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)',
         lineHeight: 1.05, letterSpacing: '0.5px', margin: '0 0 14px',
       }}>
-        Getting you up to date.
+        One sec.
       </h2>
       <p style={{
         fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.6,
@@ -179,7 +184,7 @@ function CoachError({ error }: { error: string }) {
         fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)',
         lineHeight: 1.05, letterSpacing: '0.5px', margin: '0 0 10px',
       }}>
-        Coach is taking a sec.
+        Bit of a faff right now.
       </h2>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.6 }}>
         The numbers are all still here. The voice will catch up. Refresh in a moment, or it'll show up on its own next time.
