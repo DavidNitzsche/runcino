@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App audit · 2026-05-26 · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --dim: #4b505e;
+    --line: rgba(255,255,255,0.08);
+    --card: #11141a;
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --rest:  #008FEC;
+    --learn: #B084FF;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 56px; font-weight: 400; letter-spacing: 0.5px; margin: 0; }
+  .sub { color: var(--mute); margin-top: 8px; font-size: 14px; }
+  h2 { font-family: 'Bebas Neue', sans-serif; font-size: 32px; font-weight: 400; letter-spacing: 0.5px; margin: 56px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 28px 0 10px; }
+  h4 { font-family: 'Bebas Neue', sans-serif; font-size: 20px; font-weight: 400; margin: 0 0 8px; letter-spacing: 0.5px; }
+  p { color: rgba(246,247,248,0.85); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 16px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  em { color: rgba(246,247,248,0.95); font-style: italic; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: ui-monospace, monospace; color: var(--dist); }
+  .tldr { background: rgba(62,189,65,0.08); border: 1px solid rgba(62,189,65,0.25); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .tldr h2 { margin: 0 0 12px; font-size: 24px; color: var(--green); border: 0; padding: 0; }
+  .tldr p { color: rgba(246,247,248,0.92); font-size: 14.5px; }
+  .tldr ol { padding-left: 18px; margin: 8px 0 0; color: rgba(246,247,248,0.92); font-size: 14.5px; line-height: 1.7; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin: 14px 0; }
+  .card .lead { color: var(--mute); font-size: 12.5px; text-transform: uppercase; letter-spacing: 1.4px; font-weight: 700; margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: 'Inter', sans-serif; font-size: 10.5px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td { color: rgba(246,247,248,0.88); }
+  td.ok    { color: var(--green); font-weight: 600; }
+  td.warn  { color: var(--goal);  font-weight: 600; }
+  td.miss  { color: var(--over);  font-weight: 600; }
+  td.info  { color: var(--dist);  font-weight: 600; }
+  td.muted { color: var(--mute); }
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
+  .pill.ok    { background: rgba(62,189,65,0.18); color: var(--green); }
+  .pill.warn  { background: rgba(243,173,56,0.18); color: var(--goal);  }
+  .pill.miss  { background: rgba(252,77,100,0.18); color: var(--over);  }
+  .pill.info  { background: rgba(39,180,224,0.18); color: var(--dist);  }
+  .pill.learn { background: rgba(176,132,255,0.18); color: var(--learn); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .recommend { border: 1px solid rgba(62,189,65,0.35); background: rgba(62,189,65,0.06); border-radius: 14px; padding: 20px 24px; margin: 14px 0; }
+  .recommend h4 { color: var(--green); }
+  .recommend .tag { display: inline-block; background: var(--green); color: #0a0c10; font-weight: 700; padding: 3px 10px; border-radius: 6px; font-size: 11px; letter-spacing: 1px; margin-bottom: 10px; }
+  .bottomline { border: 1px solid var(--line); background: linear-gradient(180deg, rgba(39,180,224,0.05), rgba(39,180,224,0)); border-radius: 14px; padding: 22px 26px; margin: 30px 0 0; }
+  .bottomline h2 { margin: 0 0 10px; font-size: 26px; border: 0; padding: 0; color: var(--dist); }
+  .nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 0; }
+  .nav a { font-size: 11.5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--mute); text-decoration: none; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
+  .nav a:hover { color: var(--ink); border-color: var(--ink); }
+  a { color: var(--dist); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>App audit · 2026-05-26</h1>
+  <p class="sub">Where Faff lives right now · what's working · what's broken · what's planned · what's worth adding · taken while build 77 ships</p>
+
+  <div class="nav">
+    <a href="#tldr">TL;DR</a>
+    <a href="#where">1 · Where</a>
+    <a href="#great">2 · Great</a>
+    <a href="#broken">3 · Broken</a>
+    <a href="#planned">4 · Planned</a>
+    <a href="#add">5 · Could add</a>
+    <a href="#recs">6 · Recs</a>
+    <a href="#ops">7 · Ops</a>
+  </div>
+
+  <div class="tldr" id="tldr">
+    <h2>The TL;DR</h2>
+    <p>Architecture survives close inspection. Coach is honest, data flows from one source, mutations propagate, the daily cron warms the cache, and the watch ↔ iPhone ↔ web ↔ coach loop is real. The gaps are mostly iPhone-side surface coverage (log, run detail, settings, tips) and the v2 plan generator. None block what the app already does.</p>
+    <ol>
+      <li><strong>Build 77</strong> shipped to TestFlight — should clear Apple processing and surface on your phone soon.</li>
+      <li><strong>Runner notes</strong> (the idea you had on your run) — recommend BUILD as P25, half-day. Notes flow into the coach's <code>getRuns</code> tool, no per-note cache bust.</li>
+      <li><strong>Next moves after 77 lands clean:</strong> runner notes → weather enrichment (P15.1, already approved) → iPhone /log + /runs/[id] modal → shoe picker.</li>
+    </ol>
+  </div>
+
+  <h2 id="where">1 · Where things are (live + deployed)</h2>
+
+  <h3>Surfaces</h3>
+  <table>
+    <thead><tr><th>Surface</th><th style="width:90px">Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Web <code>/today</code></td>     <td class="ok">live</td>   <td>Structured workout card, week strip, coach brief, readiness ring, topic cards</td></tr>
+      <tr><td>Web <code>/training</code></td>  <td class="ok">live</td>   <td>Phase context, week-shape voice, plan arc</td></tr>
+      <tr><td>Web <code>/races</code></td>     <td class="ok">live</td>   <td>Season frame, A/B/C, race horizon</td></tr>
+      <tr><td>Web <code>/races/[slug]</code></td><td class="ok">live</td> <td>Course geometry, projection vs goal, race-mode coach</td></tr>
+      <tr><td>Web <code>/health</code></td>    <td class="ok">live</td>   <td>Readiness + HRV/RHR/sleep bars + Learn modals</td></tr>
+      <tr><td>Web <code>/profile</code></td>   <td class="ok">live</td>   <td>Identity, gear, preferences, MaxHR/LTHR edit, gender M/F</td></tr>
+      <tr><td>Web <code>/log</code></td>       <td class="ok">live</td>   <td>All runs chronologically → /runs/[id] modal</td></tr>
+      <tr><td>Web <code>/runs/[id]</code></td> <td class="ok">live</td>   <td>Stats hero, splits, HR zones, form, route polyline</td></tr>
+      <tr><td>Web <code>/tips</code></td>      <td class="ok">live</td>   <td>Form drills, clickable form stats</td></tr>
+      <tr><td>Web <code>/settings</code></td>  <td class="ok">live</td>   <td>Unit toggle, preferences (in modal too)</td></tr>
+      <tr><td>iPhone TODAY</td>                 <td class="ok">build 77</td><td>Structured workout, week strip, day modal, compact coach voice</td></tr>
+      <tr><td>iPhone TRAINING</td>              <td class="ok">build 77</td><td>Week strip + coach voice</td></tr>
+      <tr><td>iPhone HEALTH</td>                <td class="ok">build 77</td><td>Readiness + topic cards</td></tr>
+      <tr><td>iPhone PROFILE</td>               <td class="ok">build 77</td><td>Identity + preferences</td></tr>
+      <tr><td>iPhone RACES</td>                 <td class="ok">build 77</td><td>Season overview</td></tr>
+      <tr><td>Watch</td>                         <td class="ok">build 77</td><td>Full in-run face system, structured workouts, completion writeback</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Backend</h3>
+  <ul>
+    <li><strong>One Postgres database</strong> — <code>training_plans</code>, <code>plan_workouts</code>, <code>strava_activities</code>, <code>profile</code>, <code>races</code>, <code>health_samples</code>, <code>check_ins</code>, <code>coach_intents</code>, <code>briefings</code>, <code>shoes</code>.</li>
+    <li><strong>20 API routes</strong> — briefing, watch/today, plan/week, plan/workout, plan/generate, runs/[id], race, race/gpx, profile, checkin, shoe, settings, ingest/workout, ingest/health, run/manual, watch/workouts/complete, learn/[slug], prescription, overview (410 shim), cron/refresh-briefings.</li>
+    <li><strong>Coach engine</strong> — Anthropic tool-use loop, 10 tools, system prompt is pure orientation + character.</li>
+  </ul>
+
+  <h3>Coach pipeline</h3>
+  <ul>
+    <li>11 mutating endpoints all call <code>bustBriefingCache</code> ✓</li>
+    <li><code>bustBriefingCache</code> fires fire-and-forget warm of <code>today</code> + <code>today:ios</code> + recently-touched surfaces ✓</li>
+    <li><code>/api/cron/refresh-briefings</code> regenerates daily at 00:05 PT via GitHub Actions ✓</li>
+    <li>Day-rollover-on-read staleness check as fallback ✓</li>
+    <li>90%+ of <code>/today</code> opens expected to be cache hits</li>
+  </ul>
+
+  <h3>Cross-agent infrastructure</h3>
+  <ul>
+    <li>Ship lock (<code>mkdir .asc.shipping.lock</code>) prevents iPhone / watch agent collisions</li>
+    <li>Atomic counter reservation in <code>legacy/native/.asc.build</code></li>
+    <li>Single watch source via symlink (<code>native-v2/Faff/FaffWatch Watch App</code> → legacy)</li>
+  </ul>
+
+  <h2 id="great">2 · What's working great</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Tool-use coach with truth contract.</strong> Verified end-to-end: 7–9 tool calls per brief, voice anchored to today, threshold doctrine pulled from <code>/Research/</code>, no hallucinated runs.</li>
+      <li><strong>Per-rep telemetry from watch → coach.</strong> Watch ships <code>WatchCompletion</code> Data, lands in <code>coach_intents</code> + <code>strava_activities</code>, coach's <code>getWorkoutCompletion</code> reads it. Synthetic test confirmed coach can cite per-rep pace consistency + HR drift + cadence lock.</li>
+      <li><strong>Background regen.</strong> Mutations fire async warm. User mostly never waits.</li>
+      <li><strong>Single source of truth across web, iPhone, watch, coach.</strong> Same DB, same endpoints, same tables.</li>
+      <li><strong>Daniels-style structured workouts</strong> propagate cleanly from <code>plan_workouts</code> → web modal + iPhone card + watch payload — same shape everywhere.</li>
+      <li><strong><code>/Research/</code> as the doctrine source.</strong> Coach's <code>getDoctrine</code> tool reads canonical markdown, no general-knowledge filling-in on quality days.</li>
+      <li><strong>Lock + atomic counter</strong> is the right pattern for cross-agent ship arbitration.</li>
+    </ul>
+  </div>
+
+  <h2 id="broken">3 · What's broken or has gaps</h2>
+
+  <h3>iOS surface coverage gap</h3>
+  <p>The iPhone has 5 tabs. The web has 12+ surfaces. Missing on iPhone:</p>
+  <ul>
+    <li><code>/log</code> — no chronological run list</li>
+    <li><code>/runs/[id]</code> — no full run review (past-day taps get the planned workout, not the actual run)</li>
+    <li><code>/races/[slug]</code> — no race detail (only season overview)</li>
+    <li><code>/tips</code> — no form-tips view</li>
+    <li><code>/settings</code> modal — no preferences UI</li>
+    <li><code>/onboarding</code> — no onboarding flow</li>
+    <li><code>/learn/[slug]</code> — no learn-modal context</li>
+  </ul>
+
+  <h3>Other gaps</h3>
+  <table>
+    <thead><tr><th>Gap</th><th>Severity</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Web <code>/onboarding</code> is a stub</td><td class="warn">medium</td><td>Pre-filled by your data; new users would have no flow</td></tr>
+      <tr><td>Manual run entry — iPhone parity missing</td><td class="warn">medium</td><td>Web has <code>POST /api/run/manual</code>. iPhone forces web for backfill</td></tr>
+      <tr><td>Shoe picker / rotation UI</td><td class="warn">medium</td><td>Shoe CRUD exists; no "which shoe on this run"; mileage doesn't auto-bump</td></tr>
+      <tr><td>Race retrospective form — iPhone</td><td class="warn">low</td><td>Web has it; iPhone post-race form missing</td></tr>
+      <tr><td>Legacy <code>/api/overview</code> shim</td><td class="muted">low</td><td>Still a 410 — can be removed once legacy installs are gone</td></tr>
+      <tr><td>Cron secret in 2 places</td><td class="muted">low</td><td>Railway env + GitHub Actions secret. Rotation tax, not a bug</td></tr>
+      <tr><td>iPhone crash log path</td><td class="warn">medium</td><td>Required Xcode Organizer + Apple sign-in. Worth automating</td></tr>
+      <tr><td>Apple processing flakiness</td><td class="muted">low</td><td>Build 76 took 60+ min to surface. Not our bug, but worth knowing</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="planned">4 · Planned but not built</h2>
+  <h3>Current backlog (P15.x + NEEDS_DAVID)</h3>
+  <table>
+    <thead><tr><th>Item</th><th>State</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><strong>P15.1 — Weather enrichment</strong></td><td><span class="pill info">approved</span></td><td>Open-Meteo per-run weather. Temp/humidity/wind at start_local + GPS. ~50 LOC + nightly cron. Coach can flag heat days, hydration, expected pace adjustments.</td></tr>
+      <tr><td><strong>P15.2 — Shoe picker on completed runs</strong></td><td><span class="pill warn">pending</span></td><td>Tap a run → pick shoe → auto-bump mileage. Surfaces to rotation chart on <code>/profile</code>.</td></tr>
+      <tr><td><strong>P15.3 — Coach can recommend shoes</strong></td><td><span class="pill warn">pending</span></td><td>Inject shoe inventory into coach. "Swap to the Vaporfly for the race" / "Pegasus is at 487mi — rotate".</td></tr>
+      <tr><td><strong>P15.4 — Watch payload doc</strong></td><td><span class="pill ok">done</span></td><td><code>docs/WATCH_COMPLETION_PAYLOAD.md</code></td></tr>
+      <tr><td><strong>Plan generation v2</strong></td><td><span class="pill warn">pending</span></td><td>Your A2/B2/C3 answers locked. Volume ramp to known peaks, trigger-based adaptation, structured prescriptions + coach prose WHY. v1 is placeholder per your note.</td></tr>
+      <tr><td><strong>Experience-level volume caps</strong></td><td><span class="pill warn">pending</span></td><td>Beginner / Intermediate / Advanced / Advanced+ + max mileage per tier. Defaults locked, not wired.</td></tr>
+      <tr><td><strong>LTHR calibration from race data</strong></td><td><span class="pill warn">pending</span></td><td>Auto-derive LTHR from half-marathon avg HR. Calculator exists; not auto-applied.</td></tr>
+      <tr><td><strong>Birthday vs age on profile</strong></td><td><span class="pill warn">pending</span></td><td>Switching to birthday storage. Awaiting your birthday.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="add">5 · What we could add (proactive)</h2>
+
+  <div class="recommend">
+    <span class="tag">RECOMMEND · BUILD · P25</span>
+    <h4>Runner notes on completed runs · your idea</h4>
+    <p>Telemetry says you ran 6.2mi at 145bpm. Telemetry can <em>not</em> say the watch was glitchy, the heat was worse than forecast, the legs felt like spaghetti, or that you had a breakthrough mile you want to remember. The runner wants to talk about their run — the coach should listen.</p>
+
+    <h3>Implementation sketch</h3>
+    <ul>
+      <li><strong>Storage:</strong> add <code>note: string</code> to <code>strava_activities.data</code> jsonb (no migration). One text field per run, 0–500 chars.</li>
+      <li><strong>UI:</strong> text field on the run detail modal (web + iPhone). Auto-saves on blur. Placeholder: <em>"Anything the coach should know about this one? Quick notes welcome."</em></li>
+      <li><strong>API:</strong> <code>PATCH /api/runs/[id]</code> accepts <code>{ note: string }</code>.</li>
+      <li><strong>Coach access:</strong> extend <code>getRuns</code> tool to include <code>note</code> per run. Coach absorbs naturally when discussing recent runs.</li>
+      <li><strong>No cache bust on note add.</strong> Per your instinct — notes are <em>context</em>, not events. They flow through on the next natural regen (day rollover, next run logged).</li>
+      <li><strong>Doctrine line</strong> in <code>coach/prompts/index.ts</code> post-run mode: <em>"If the runner left a note (in getRuns output), absorb it into your framing. The note tells you what telemetry can't."</em></li>
+    </ul>
+    <p style="margin-top:6px"><strong>Effort:</strong> ~80 LOC web + ~50 LOC iPhone + 10 LOC tool extension + 3 LOC doctrine. Half a day total.</p>
+  </div>
+
+  <h3>Other proactive adds (loose priority)</h3>
+  <table>
+    <thead><tr><th>Feature</th><th style="width:90px">Effort</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Weather enrichment (P15.1)</td><td>~80 LOC</td><td>Coach can speak to heat / cold / wind that explain pace divergence</td></tr>
+      <tr><td>Shoe picker on runs (P15.2)</td><td>~120 LOC</td><td>Closes shoe-rotation tracking loop</td></tr>
+      <tr><td>Plan adaptation triggers</td><td>~200 LOC</td><td>Auto-rewrite next 7d on missed key + RHR spike (B2 locked)</td></tr>
+      <tr><td>Race week packing list</td><td>~60 LOC</td><td>Surfaces on race-detail in race week mode</td></tr>
+      <tr><td>HRV/RHR/sleep trend charts</td><td>~150 LOC</td><td>Line charts read better than bar charts for trend</td></tr>
+      <tr><td>Strength workout scheduling</td><td>~200 LOC</td><td>Research §07 covers it; not in plan generator</td></tr>
+      <tr><td>Cross-training day</td><td>~60 LOC</td><td>Research §09 — bike/swim slots in plan</td></tr>
+      <tr><td>Auto-VDOT recalc from races</td><td>~30 LOC</td><td>When a new race finishes, recompute VDOT</td></tr>
+      <tr><td>HR ceiling alert on phone</td><td>~40 LOC</td><td>Watch already alerts; phone shows during in-progress runs</td></tr>
+      <tr><td>Strava auto-push toggle</td><td>~100 LOC</td><td>Per your earlier "eventually" note</td></tr>
+      <tr><td>Post-run check-in expanded</td><td>~60 LOC</td><td>Beyond SOLID/TIRED/WRECKED — energy, soreness, mood</td></tr>
+      <tr><td>iPhone /log + /runs/[id] modal</td><td>~250 LOC</td><td>Close iPhone↔web parity for the most-frequent post-run flow</td></tr>
+      <tr><td>iPhone /settings modal</td><td>~100 LOC</td><td>Preferences edit on iPhone</td></tr>
+      <tr><td>iPhone /tips + form drills</td><td>~150 LOC</td><td>Form tips work on web; iPhone version follows</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="recs">6 · Recommendations (priority order)</h2>
+  <div class="grid2">
+    <div class="card">
+      <div class="lead">Do next</div>
+      <ol>
+        <li><strong>Runner notes (your idea)</strong> — half-day, high signal, low risk. Right next move.</li>
+        <li><strong>Weather enrichment (P15.1)</strong> — already approved. Coach + run-detail both benefit.</li>
+        <li><strong>iPhone /log + /runs/[id] modal</strong> — closes parity for "what did I just do?" Without it the iPhone still feels today-only.</li>
+        <li><strong>Shoe picker + auto-mileage (P15.2 + P15.3)</strong> — small; completes gear loop.</li>
+        <li><strong>Plan adaptation triggers (B2)</strong> — bigger swing; needs design discussion before code.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <div class="lead">Park / deprioritize</div>
+      <ul>
+        <li><strong>iPhone race-detail surface</strong> — race-day flow probably surfaces differently (watch-led on race day, iPhone glance only).</li>
+        <li><strong>iPhone onboarding</strong> — only matters if you're adding new beta testers.</li>
+        <li><strong>HR ceiling alert on phone</strong> — watch already handles it; phone duplication is low value.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="ops">7 · Operational health</h2>
+  <table>
+    <thead><tr><th>Check</th><th style="width:90px">State</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Web deploys (Railway, auto on <code>main</code>)</td><td class="ok">healthy</td><td>Auto-push on every commit to main</td></tr>
+      <tr><td>iPhone + watch ship</td><td class="ok">healthy</td><td><code>scripts/ship-testflight-v2.sh</code> with lock + atomic counter</td></tr>
+      <tr><td>GitHub Actions cron — daily warm</td><td class="ok">healthy</td><td>00:05 PT (07:05 UTC)</td></tr>
+      <tr><td>Briefing cache: evict on mutation + warm</td><td class="ok">healthy</td><td>11 mutating endpoints, all covered</td></tr>
+      <tr><td>Coach voice eval suite</td><td class="warn">stale</td><td>Old gold corpus; needs rebuild against current pipeline</td></tr>
+      <tr><td>Alerts (cron / regen / ASC stalls)</td><td class="warn">none</td><td>No alerting today</td></tr>
+      <tr><td>Staging environment</td><td class="warn">none</td><td>Every push goes to <code>www.faff.run</code> directly</td></tr>
+    </tbody>
+  </table>
+
+  <div class="bottomline">
+    <h2>Bottom line</h2>
+    <p>The architecture survives close inspection. Coach is honest, data flows from one source, mutations propagate, the daily cron warms the cache, and the watch ↔ iPhone ↔ web ↔ coach loop is real (verified end-to-end with synthetic post-run data).</p>
+    <p>The gaps are mostly iPhone-side surface coverage (<code>/log</code>, <code>/runs/[id]</code>, <code>/settings</code>, <code>/tips</code>) and the v2 plan generator. None block what the app already does.</p>
+    <p style="margin-bottom:0">Runner-notes is the right next add — solves a real signal gap with low effort and parks the rest of the backlog gracefully.</p>
+  </div>
+
+</div>
+</body>
+</html>
