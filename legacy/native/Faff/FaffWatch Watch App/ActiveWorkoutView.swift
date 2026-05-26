@@ -463,7 +463,9 @@ private struct LiveSteady: View {
             livePace: paceText(tracker),
             paceRole: role,
             distance: distanceDisplay,
-            elapsed:  PaceFormat.clock(engine.totalElapsedSec),
+            elapsed:  engine.totalElapsedSec >= 3600
+                ? PaceFormat.hms(engine.totalElapsedSec)
+                : PaceFormat.clock(engine.totalElapsedSec),
             distanceRole: distanceRole
         )
     }

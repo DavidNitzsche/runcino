@@ -114,7 +114,7 @@ struct WatchFixtureView: View {
             // 1.20 → 0. After 0 (overtime/planComplete), flips to purple
             // and counts UP total covered.
             SteadyRunFace(livePace: "8:14", paceRole: .live,
-                          distance: "0.80", elapsed: "1:09:48")
+                          distance: "0.80", elapsed: "1:09")
         case "cruise-decode-tomorrow":
             // Round-trip smoke test: the exact JSON the web agent says
             // /api/watch/today returns for tomorrow's Cruise Intervals.
@@ -126,7 +126,7 @@ struct WatchFixtureView: View {
             // Cooldown done, planComplete fired — same face but distance
             // row is purple, counting total covered.
             SteadyRunFace(livePace: "9:02", paceRole: .neutral,
-                          distance: "8.10", elapsed: "1:12:30",
+                          distance: "8.10", elapsed: "1:12",
                           distanceRole: .bonus)
         case "race":
             LiveRaceFace(livePace: "8:28", paceRole: .live, phaseTarget: "8:30",

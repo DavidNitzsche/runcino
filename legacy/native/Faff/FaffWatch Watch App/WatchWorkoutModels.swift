@@ -488,12 +488,16 @@ enum PaceFormat {
         return "\(m):\(String(format: "%02d", s))"
     }
 
-    /// "1:34:20" / "3:50" — h:mm:ss for race-length clocks, m:ss under an hour.
+    /// "1:34" / "3:50" / "12:30" — h:mm past an hour, m:ss under. Seconds
+    /// are dropped at the 1-hour mark: nobody scrutinises the seconds digit
+    /// on an in-run elapsed read, and "1:12:30" clips the right edge on the
+    /// Ultra's 208-pt aperture. (Was h:mm:ss; user flagged the clipping
+    /// during the cooldown-overtime audit.)
     static func hms(_ seconds: Int) -> String {
         let h = seconds / 3600
         let m = (seconds % 3600) / 60
         let s = seconds % 60
-        if h > 0 { return "\(h):\(String(format: "%02d", m)):\(String(format: "%02d", s))" }
+        if h > 0 { return "\(h):\(String(format: "%02d", m))" }
         return "\(m):\(String(format: "%02d", s))"
     }
 
