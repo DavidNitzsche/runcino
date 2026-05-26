@@ -431,13 +431,22 @@ async function getWorkoutCompletion(userId: string, input: { workoutId?: string 
   // value column carries the full WatchCompletion JSON the watch agent
   // documented (per-phase actuals + totals). If workoutId is specified we
   // match exactly; otherwise return the most recent.
+  //
+  // Hardening: if a recent intent has status='abandoned' BUT a richer
+  // run exists in strava_activities for the same day (HK / Strava /
+  // manual), the abandoned shell is stale data — the runner actually
+  // finished the workout in a different app. Hide it. The Real Run is
+  // what `getRuns` surfaces; this avoids the coach narrating a phantom
+  // "abandoned" workout on top of a real completion.
   const r = (await pool.query(
     input.workoutId
       ? `SELECT value, ts FROM coach_intents
           WHERE user_id = $1 AND reason = 'watch_completion' AND field = $2
+            AND acknowledged_at IS NULL
           ORDER BY ts DESC LIMIT 1`
       : `SELECT value, ts FROM coach_intents
           WHERE user_id = $1 AND reason = 'watch_completion'
+            AND acknowledged_at IS NULL
           ORDER BY ts DESC LIMIT 1`,
     input.workoutId ? [userId, input.workoutId] : [userId]
   ).catch(() => ({ rows: [] }))).rows[0];
@@ -448,6 +457,27 @@ async function getWorkoutCompletion(userId: string, input: { workoutId?: string 
   } catch {
     return { completion: null, note: 'completion blob unparseable' };
   }
+
+  // Abandoned-shell vs real-completion arbitration.
+  if (payload?.status === 'abandoned' || payload?.status === 'aborted') {
+    const startedAt: string | undefined = payload?.startedAt ?? payload?.startTime;
+    const localDate = startedAt
+      ? new Date(startedAt).toISOString().slice(0, 10)
+      : new Date(r.ts).toISOString().slice(0, 10);
+    const hasReal = (await pool.query(
+      `SELECT 1 FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND NOT (data ? 'mergedIntoId')
+          AND data->>'date' = $2
+          AND (data->>'distanceMi')::numeric > 0.5
+        LIMIT 1`,
+      [userId, localDate]
+    ).catch(() => ({ rowCount: 0 }))).rowCount ?? 0;
+    if (hasReal > 0) {
+      return { completion: null, note: 'watch-app session abandoned, but the runner finished the workout elsewhere — see getRuns for the real completion.' };
+    }
+  }
+
   return { completion: payload, ingested_at: r.ts };
 }
 

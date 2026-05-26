@@ -114,6 +114,29 @@ export async function POST(req: NextRequest) {
       console.error('[ingest/workout] autoMerge warn:', e?.message);
     }
 
+    // P42 hardening — when a rich HKWorkout lands for a date that ALSO
+    // has an "abandoned" watch_completion intent, the runner finished
+    // the workout in a non-Faff app (e.g. Apple Watch Workouts after
+    // the Faff watch app glitched). Mark the abandoned intent as acked
+    // so getWorkoutCompletion stops surfacing it. Without this the coach
+    // narrates a phantom "session cut short" on top of a real completion.
+    try {
+      if (body.date && Number(body.distance_mi) > 0.5) {
+        await pool.query(
+          `UPDATE coach_intents
+              SET acknowledged_at = NOW()
+            WHERE user_id = $1
+              AND reason = 'watch_completion'
+              AND acknowledged_at IS NULL
+              AND ts::date = $2::date
+              AND (value::jsonb->>'status') IN ('abandoned', 'aborted')`,
+          [userId, body.date]
+        );
+      }
+    } catch (e: any) {
+      console.error('[ingest/workout] ack stale watch intent warn:', e?.message);
+    }
+
     // P31 — best-effort weather enrichment on ingest. Needs GPS — uses
     // route_polyline start coords if present, else skip until the nightly
     // cron's batch with whatever lat/lng we infer later. Fire-and-forget.
