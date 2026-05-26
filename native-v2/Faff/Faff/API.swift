@@ -59,6 +59,59 @@ enum API {
         _ = try await URLSession.shared.data(for: req)
     }
 
+    // MARK: - P29 settings + profile fetch
+
+    static func fetchSettings() async throws -> UserSettings? {
+        let url = baseURL.appendingPathComponent("api/settings")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(UserSettings.self, from: data)
+    }
+
+    static func patchSettings(_ patch: [String: Any]) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/settings"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: patch)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+    }
+
+    static func fetchProfile() async throws -> ProfileFields? {
+        let url = baseURL.appendingPathComponent("api/profile")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(ProfileFields.self, from: data)
+    }
+
+    // MARK: - P29 manual run + race retro
+
+    static func submitManualRun(_ body: [String: Any]) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/run/manual"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+    }
+
+    static func submitRaceRetro(slug: String, body: [String: Any]) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var payload = body
+        payload["slug"] = slug
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+    }
+
     /// Fetch today's WatchWorkout shape as raw Data so we can forward it
     /// unchanged to the watch via applicationContext (preserves field shape
     /// exactly — the watch decodes from Data into its own WatchWorkout).
@@ -88,6 +141,26 @@ enum API {
         struct Wrapper: Decodable { let workout: WatchWorkout? }
         let w = try JSONDecoder().decode(Wrapper.self, from: data)
         return w.workout
+    }
+
+    /// Run log (P28). Returns weeks of runs for iPhone /log tab.
+    static func fetchLog(limit: Int = 60) async throws -> LogState? {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/log"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
+        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(LogState.self, from: data)
+    }
+
+    /// Single run detail (P28). Powers RunDetailSheet.
+    static func fetchRunDetail(id: String) async throws -> RunDetail? {
+        let url = baseURL.appendingPathComponent("api/runs/\(id)")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(RunDetail.self, from: data)
     }
 
     /// Real readiness score (P27.2). Replaces the hardcoded "88" placeholder
@@ -154,4 +227,30 @@ struct ReadinessSnapshot: Decodable {
     let label: String?
     // inputs intentionally omitted on the iPhone for now — used by the
     // /health readiness modal on web. iPhone shows just the ring + label.
+}
+
+// MARK: - P29 Settings + Profile
+
+struct UserSettings: Decodable {
+    let units_distance: String?
+    let units_temp: String?
+    let units_pace: String?
+    let long_run_day: String?
+    let rest_day: String?
+    let quality_days: [String]?
+    let briefing_time: String?
+    let push_enabled: Bool?
+}
+
+/// Subset of profile fields the iPhone settings sheet edits. The server
+/// /api/profile returns more — we only decode what we use.
+struct ProfileFields: Decodable {
+    let lthr: Int?
+    let maxhr: Int?
+    let hrmax_observed: Int?
+    let rhr: Int?
+    let height_cm: Double?
+    let gender: String?
+    let experience_level: String?
+    let birthday: String?
 }

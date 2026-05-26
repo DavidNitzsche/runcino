@@ -7,6 +7,8 @@ import SwiftUI
 
 struct ProfileView: View {
     @State private var showHeightSheet = false
+    @State private var showSettingsSheet = false
+    @State private var showManualRunSheet = false
 
     var body: some View {
         ScrollView {
@@ -64,6 +66,18 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, 24)
 
+                // P29 — actions: edit settings + log manual run
+                SectionLabel("ACTIONS")
+                VStack(spacing: 10) {
+                    Button { showSettingsSheet = true } label: {
+                        actionRow(icon: "gearshape.fill", label: "Settings", sub: "Units · zones · profile")
+                    }.buttonStyle(.plain)
+                    Button { showManualRunSheet = true } label: {
+                        actionRow(icon: "plus.circle.fill", label: "Log manual run", sub: "Treadmill / forgot to track")
+                    }.buttonStyle(.plain)
+                }
+                .padding(.horizontal, 24)
+
                 Spacer().frame(height: 40)
             }
         }
@@ -73,6 +87,35 @@ struct ProfileView: View {
                 .presentationDetents([.height(220)])
                 .presentationBackground(Theme.card)
         }
+        .sheet(isPresented: $showSettingsSheet) {
+            SettingsSheet()
+        }
+        .sheet(isPresented: $showManualRunSheet) {
+            ManualRunSheet()
+        }
+    }
+
+    private func actionRow(icon: String, label: String, sub: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Theme.green)
+                .frame(width: 32, height: 32)
+                .background(Theme.green.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.body(14, weight: .semibold)).foregroundStyle(Theme.ink)
+                Text(sub).font(.body(11)).foregroundStyle(Theme.mute)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.mute)
+        }
+        .padding(14)
+        .background(Theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
     }
 }
 

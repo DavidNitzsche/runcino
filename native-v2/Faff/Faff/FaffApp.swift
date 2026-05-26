@@ -41,13 +41,14 @@ struct RootTabView: View {
     @State private var selectedTab: Tab = .today
 
     enum Tab: String, CaseIterable, Identifiable {
-        case today, training, races, health, profile
+        case today, training, log, races, health, profile
         var id: String { rawValue }
         var label: String { rawValue.uppercased() }
         var systemImage: String {
             switch self {
             case .today:    return "house.fill"
             case .training: return "calendar"
+            case .log:      return "list.bullet.rectangle.fill"
             case .races:    return "trophy.fill"
             case .health:   return "heart.fill"
             case .profile:  return "person.fill"
@@ -59,6 +60,7 @@ struct RootTabView: View {
         TabView(selection: $selectedTab) {
             TodayView()    .tabItem { Label("TODAY",    systemImage: Tab.today.systemImage) }    .tag(Tab.today)
             TrainingView() .tabItem { Label("TRAINING", systemImage: Tab.training.systemImage) } .tag(Tab.training)
+            LogView()      .tabItem { Label("LOG",      systemImage: Tab.log.systemImage) }      .tag(Tab.log)
             RacesView()    .tabItem { Label("RACES",    systemImage: Tab.races.systemImage) }    .tag(Tab.races)
             HealthView()   .tabItem { Label("HEALTH",   systemImage: Tab.health.systemImage) }   .tag(Tab.health)
             ProfileView()  .tabItem { Label("PROFILE",  systemImage: Tab.profile.systemImage) }  .tag(Tab.profile)
