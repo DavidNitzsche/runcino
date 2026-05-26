@@ -35,8 +35,10 @@ final class WorkoutEngine: ObservableObject {
         /// Unit (mi vs s) is baked into the value when needed: "10s" reads as
         /// time, "0.25" without an "s" reads as distance.
         case headsUp(value: String)
-        case go(title: String, sub: String?)       // green, entering a work rep
-        case planDone(distance: String, elapsed: String)  // overtime opening
+        /// GO flash at the start of each work rep. Carries the rep label
+        /// + target pace string — no "GO" wordmark on the face anymore;
+        /// these two strings ARE the content.
+        case go(rep: String, target: String)
         case phase(title: String, sub: String?)    // orange, race phase change
         case fuel(index: Int, total: Int)          // GEL · n of m takeover, persistent
         case split(mileNo: Int, paceSec: Int)      // MILE N · m:ss flash, every auto-lap
@@ -710,16 +712,10 @@ final class WorkoutEngine: ObservableObject {
             paceZone = .onTarget
             paceDeltaSPerMi = 0
             Haptics.play(.end)
-            // PlanDoneFace — distinct from GoFace (which fires at each
-            // interval start). "PLAN DONE" headline + the run's banked
-            // distance & elapsed as a stats line. No "keep going or end"
-            // footnote — that decision lives on the Controls page, not
-            // a banner. flash() chimes too when audibleAlerts is on.
-            let dist = String(format: "%.1f mi", coveredMi)
-            let elap = totalElapsedSec >= 3600
-                ? PaceFormat.hms(totalElapsedSec)
-                : PaceFormat.clock(totalElapsedSec)
-            flash(.planDone(distance: dist, elapsed: elap), for: 6)
+            // No takeover face for plan-done — the live face already
+            // signals overtime by flipping the distance row to .bonus
+            // purple + counting up, and Haptics.play(.end) just fired
+            // above. The extra full-screen wordmark flash was clutter.
             return
         }
 
@@ -741,11 +737,13 @@ final class WorkoutEngine: ObservableObject {
                 let sub = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi · hold effort" }
                 flash(.phase(title: p.label, sub: sub), for: 1.8)
             } else if p.type == .work {
-                // Workout: entering a work rep gets a green "Go" flip with
-                // the target (warmup is opened from the countdown, not a flip).
+                // Entering a work rep — brief 1.5 s GO card. Two reads:
+                // which rep ("REP 2 / 4") + target pace ("6:47"). No
+                // "GO" wordmark on the face — the takeover IS the cue.
+                let totalWorks = workout.phases.filter { $0.type == .work }.count
                 let n = workout.phases.prefix(currentIndex + 1).filter { $0.type == .work }.count
-                let sub = p.targetPaceSPerMi.map { "Target \(PaceFormat.mmss($0))/mi" }
-                flash(.go(title: "Go · Int \(n)", sub: sub), for: 1.5)
+                let target = p.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+                flash(.go(rep: "REP \(n) / \(totalWorks)", target: target), for: 1.5)
             }
         }
     }

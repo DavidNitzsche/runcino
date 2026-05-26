@@ -139,7 +139,7 @@ struct ActiveWorkoutView: View {
                 case .cooldown:
                     LiveSteady(engine: engine, tracker: tracker, phase: phase, role: .neutral)
                 case .recovery:
-                    LiveRecovery(engine: engine, phase: phase)
+                    LiveRecovery(engine: engine, tracker: tracker, phase: phase)
                 }
             }
         }
@@ -374,26 +374,15 @@ private struct LiveStrides: View {
 
 private struct LiveRecovery: View {
     @ObservedObject var engine: WorkoutEngine
+    @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
-
-    private var nextTarget: String {
-        engine.nextPhase?.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
-    }
-    /// Next rep's distance ("0.50") or a duration label fallback ("0:30") so the
-    /// runner sees the *next* thing they'll execute against.
-    private var nextDist: String {
-        if let n = engine.nextPhase {
-            if let d = n.distanceMi { return String(format: "%.2f", d) }
-            return PaceFormat.clock(n.durationSec)
-        }
-        return "—"
-    }
 
     var body: some View {
         RestFace(
-            restTimeLeft:   PaceFormat.clock(engine.phaseRemainingSec),
-            nextTargetPace: nextTarget,
-            nextDistance:   nextDist
+            restTimeLeft: PaceFormat.clock(engine.phaseRemainingSec),
+            pace:         paceText(tracker),
+            paceRole:     tracker.paceSPerMi > 0 ? .live : .mute,
+            hr:           tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—"
         )
     }
 }
@@ -403,13 +392,20 @@ private struct LiveWarmup: View {
     @ObservedObject var tracker: WorkoutTracker
     let phase: WatchPhase
 
-    /// Show the distance covered in the warmup so far (matches the locked
-    /// design's "0.4" warmup readout); when there's no GPS yet, fall back to
-    /// elapsed time.
-    private var coveredValue: String {
-        engine.phaseCoveredMi > 0
-            ? String(format: "%.2f", engine.phaseCoveredMi)
-            : PaceFormat.clock(engine.phaseElapsedSec)
+    /// Warmup count-DOWN. Distance-based warmups (the typical case — the
+    /// payload ships `repUnit: distance, distanceMi: 1.8`): tick down from
+    /// the prescribed miles to zero. Time-based warmups: tick down from
+    /// the prescribed seconds to zero.
+    private var remaining: String {
+        if phase.repUnit == .distance, let total = phase.distanceMi {
+            let rem = max(0, total - engine.phaseCoveredMi)
+            return String(format: "%.2f", rem)
+        }
+        let rem = max(0, phase.durationSec - engine.phaseElapsedSec)
+        return PaceFormat.clock(rem)
+    }
+    private var remainingRole: Role {
+        phase.repUnit == .distance ? .dist : .neutral
     }
     private var thenPace: String {
         engine.nextPhase?.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
@@ -424,9 +420,13 @@ private struct LiveWarmup: View {
 
     var body: some View {
         WarmupFace(
-            coveredValue: coveredValue,
-            thenPace:     thenPace,
-            thenDistance: thenDistance
+            pace:           paceText(tracker),
+            paceRole:       tracker.paceSPerMi > 0 ? .live : .mute,
+            hr:             tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
+            remaining:      remaining,
+            remainingRole:  remainingRole,
+            thenPace:       thenPace,
+            thenDistance:   thenDistance
         )
     }
 }
@@ -771,16 +771,8 @@ private struct TransitionFlip: View {
         switch cue {
         case .fuel(let i, let total):
             FuelFace(index: i, total: total)
-        case .go(let t, let s):
-            // Engine's title carries the rep number ("Go · Int 4"); sub
-            // carries the target ("Target 6:31/mi"). GoFace shows "GO" big
-            // with both threaded into the sub line.
-            GoFace(sub: "\(t)\(s.map { " · \($0)" } ?? "")")
-        case .planDone(let dist, let elap):
-            // Distinct from .go — fires once when the runner crosses the
-            // planned distance and overtime opens. Stats line shows what
-            // they just banked.
-            PlanDoneFace(distance: dist, elapsed: elap)
+        case .go(let rep, let target):
+            GoFace(rep: rep, target: target)
         case .split(let n, let paceSec):
             // MILE N · m:ss takeover — the just-banked mile pace, flashed
             // briefly so the runner sees the split without leaving the face.

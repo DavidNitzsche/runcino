@@ -91,7 +91,9 @@ struct WatchFixtureView: View {
                       time: "1:08", paceRange: nil, onStart: {})
         case "cruise-warmup":
             // Phase 0 · WARMUP 1.8 mi — LiveWarmup renders covered + next pace.
-            WarmupFace(coveredValue: "0.40", thenPace: "6:47", thenDistance: "1.00")
+            WarmupFace(pace: "8:18", paceRole: .live, hr: "138",
+                       remaining: "1.40", remainingRole: .dist,
+                       thenPace: "6:47", thenDistance: "1.00")
         case "cruise-rep-mid":
             // Phase 1 · REP 1/4 · 0.45 mi covered — multi-work session routes
             // here. WorkIntervalFace renders pace/target/total/repCounter (mi
@@ -108,7 +110,7 @@ struct WatchFixtureView: View {
         case "cruise-rec":
             // Phase 2 · RECOVERY 1/4 · 2:00 jog · RestFace shows time-left
             // + the NEXT phase (Rep 2 at 6:47 / 1 mi).
-            RestFace(restTimeLeft: "1:32", nextTargetPace: "6:47", nextDistance: "1.00")
+            RestFace(restTimeLeft: "1:32", pace: "9:30", paceRole: .live, hr: "148")
         case "cruise-cooldown":
             // Phase 8 · COOLDOWN 1.2 mi — distance row counts DOWN from
             // 1.20 → 0. After 0 (overtime/planComplete), flips to purple
@@ -133,13 +135,13 @@ struct WatchFixtureView: View {
                          totalDistance: "10.8", goalDelta: "+1:14", goalDeltaRole: .live,
                          phaseSegments: [1, 1, 2, 0, 0, 0])
         case "warmup":
-            WarmupFace(coveredValue: "0.4", thenPace: "6:31", thenDistance: "0.50")
+            WarmupFace(pace: "8:18", paceRole: .live, hr: "138",
+                       remaining: "0.60", remainingRole: .dist,
+                       thenPace: "6:31", thenDistance: "0.50")
         case "recovery", "rest":
-            RestFace(restTimeLeft: "1:30", nextTargetPace: "6:31", nextDistance: "0.50")
+            RestFace(restTimeLeft: "1:30", pace: "9:30", paceRole: .live, hr: "148")
         case "go":
-            GoFace(sub: "Rep 1 · 6:31")
-        case "plandone", "plan-done":
-            PlanDoneFace(distance: "5.8 mi", elapsed: "46:18")
+            GoFace(rep: "REP 2 / 4", target: "6:47")
         case "fuel":
             FuelFace(index: 2, total: 3)
         case "landmark":
@@ -152,7 +154,7 @@ struct WatchFixtureView: View {
             CompleteFace(label: "Threshold", pace: "8:48", distance: "9.6", elapsed: "1:24",
                          onDone: {})
         case "today":
-            TodayDoneFace(distance: "5.8 mi", elapsed: "46:18")
+            TodayDoneFace(pace: "8:14", distance: "5.8", elapsed: "46:18")
         case "calibrate":
             CalibrateFace(mile: 13)
         case "stats":

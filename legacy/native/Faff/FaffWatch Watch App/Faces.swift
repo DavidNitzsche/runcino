@@ -218,47 +218,85 @@ private struct LabelGroup: View {
     }
 }
 
-/// Recovery — REST countdown hero + NEXT rep preview (pace + distance).
+/// Recovery — between-rep jog. Three big number rows in the same locked
+/// grammar as the cooldown face:
+///   · rest time-left (blue/rest, counts down to 0)
+///   · live pace (green when easy, the actionable read)
+///   · HR (♥ icon, white — see it drop as you recover)
+/// No top label, no subtitle, no icon hero. The face is a data card.
 struct RestFace: View {
     let restTimeLeft: String    // "1:30"
-    let nextTargetPace: String  // "6:31"  (next rep's pace)
-    let nextDistance: String    // "0.50"  (next rep's distance / "800m")
+    let pace: String            // live pace · "9:30" / "—:—"
+    let paceRole: Role          // .live in zone, .mute if no GPS yet
+    let hr: String              // live HR · "148" / "—"
     var body: some View {
-        Screen(background: radial(0x06243F)) {
-            GeometryReader { geo in
-                let h = geo.size.height
-                VStack(alignment: .leading, spacing: h * 0.05) {
-                    LabelGroup(label: "Rest", values: [(restTimeLeft, .rest)],
-                               labelSize: h * 0.075, valueSize: h * 0.30)
-                    LabelGroup(label: "Next",
-                               values: [(nextTargetPace, .neutral), (nextDistance, .dist)],
-                               labelSize: h * 0.075, valueSize: h * 0.19)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, h * 0.045)
-            }
-        }
+        // Three big rows. Same grammar as the cooldown face — no top
+        // tag, no subtitle, no big icons. Position carries meaning:
+        //   row 1: rest time-left (blue/rest, counts down)
+        //   row 2: live pace (green when running easy)
+        //   row 3: HR (♥ icon, white)
+        // What's coming next was visible on the rep face before this
+        // rest opened + visible again the moment the rest ends —
+        // duplicating it here was clutter.
+        NumberFace(rows: [
+            NumRow(restTimeLeft, .rest),
+            NumRow(pace,         paceRole),
+            NumRow(hr,           .neutral, icon: "heart.fill")
+        ])
     }
 }
 
-/// Warmup — WARMUP distance/time covered + THEN first effort target + distance.
+/// Warmup — same grammar as the live in-run face. Live pace + HR are the
+/// reads, distance-remaining counts down to 0 so the runner sees how
+/// close they are to the first work rep. Small "THEN 6:47 · 1.00"
+/// subtitle teases the upcoming target.
+///
+/// Previous version showed only "covered" + "next target" — when distance
+/// tracking broke on the user's run, this face fell back to a bare
+/// elapsed-time counter and the user ran 15 minutes blind without HR or
+/// pace visible. The redesign always shows live HR + pace, so if data
+/// stops flowing the runner SEES it stop instead of running into the
+/// first work rep flying.
 struct WarmupFace: View {
-    let coveredValue: String    // "0.4"  miles covered, or "2:15" elapsed
-    let thenPace: String        // "6:31"
-    let thenDistance: String    // "0.50"
+    let pace: String            // live pace · "8:12" / "—:—"
+    let paceRole: Role          // .live / .mute / .over
+    let hr: String              // live HR · "142" / "—"
+    let remaining: String       // distance OR time remaining · "1.40" / "12:30"
+    let remainingRole: Role     // .dist for distance, .neutral for time
+    let thenPace: String        // first work rep target · "6:47"
+    let thenDistance: String    // first work rep distance · "1.00"
     var body: some View {
-        Screen(background: radial(0x06243F)) {
+        Screen {
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(alignment: .leading, spacing: h * 0.05) {
-                    LabelGroup(label: "Warmup", values: [(coveredValue, .rest)],
-                               labelSize: h * 0.075, valueSize: h * 0.30)
-                    LabelGroup(label: "Then",
-                               values: [(thenPace, .neutral), (thenDistance, .dist)],
-                               labelSize: h * 0.075, valueSize: h * 0.19)
+                VStack(alignment: .leading, spacing: 0) {
+                    FaceLabel(text: "WARMUP", color: Faff.mute, size: h * 0.060)
+                        .topTagInset(h)
+                    Spacer(minLength: 0)
+                    BigValue(text: pace, role: paceRole, size: h * 0.18)
+                    Spacer(minLength: 0)
+                    HStack(alignment: .center, spacing: h * 0.030) {
+                        Text(hr)
+                            .font(.custom("HelveticaNeue-Bold", size: h * 0.18))
+                            .foregroundStyle(Faff.ink)
+                            .padding(.vertical, -h * 0.18 * 0.22)
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: h * 0.08, weight: .bold))
+                            .foregroundStyle(Faff.mute)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: 0)
+                    BigValue(text: remaining, role: remainingRole, size: h * 0.18)
+                    Spacer(minLength: 0)
+                    Text("THEN  \(thenPace) · \(thenDistance)")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.055))
+                        .tracking(0.8)
+                        .foregroundStyle(Faff.mute)
+                        .padding(.bottom, h * 0.025)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, h * 0.045)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .padding(.horizontal, h * 0.060)
+                .padding(.bottom, h * 0.060)
             }
         }
     }
@@ -341,64 +379,43 @@ private struct Takeover<Glyph: View>: View {
     }
 }
 
-/// GO — green takeover when a work rep begins.
+/// GO — fires for 1.5 s when a new work rep starts. Replaces the old
+/// big-"GO"-wordmark version: now a data card in the same locked
+/// grammar as every other face. Two big rows give the runner what they
+/// actually need at the start of a rep:
+///   · "REP 2 / 4"   (which rep + how many total)
+///   · target pace   (the number to chase, green)
+/// No "GO" wordmark, no play-arrow glyph — the haptic + the hard fact
+/// that the face just took over IS the "go" signal; the content is the
+/// briefing for the rep about to happen.
 struct GoFace: View {
-    let sub: String     // "Rep 1 · 6:31" / "Hold target"
+    let rep: String      // "REP 2 / 4"
+    let target: String   // "6:47"
     var body: some View {
-        Screen(background: wash(0x0C2A14)) {
+        // NumberFace is the full-screen recipe; FaceLabel sits on TOP of
+        // it (top-leading) baseline-aligned with the OS clock. ZStack +
+        // topTagInset is the same pattern LobbyFace uses for its name tag.
+        ZStack(alignment: .topLeading) {
+            NumberFace(rows: [
+                NumRow(target, .live)
+            ])
             GeometryReader { geo in
                 let h = geo.size.height
-                Takeover(glyph: Image(systemName: "play.fill")
-                            .font(.system(size: h * 0.18))
-                            .foregroundStyle(Faff.live),
-                         big: "GO", bigColor: Faff.live, sub: sub, bigSize: 0.52)
+                FaceLabel(text: rep, color: Faff.live, size: h * 0.075)
+                    .topTagInset(h)
             }
         }
+        .background(wash(0x0C2A14).ignoresSafeArea())
     }
 }
 
-/// PLAN DONE — green takeover the instant the runner crosses the planned
-/// distance. Reusing GoFace here was the confusion source (GO also fires
-/// at each interval rep start). This face owns its own moment:
-///   · check ✓
-///   · "PLAN DONE" headline (two stacked lines, fits at hero size)
-///   · stats line — "5.8 mi · 46:18" — the run banked, ready to remember
-/// No "keep going or end" sub: that decision lives on the Controls page.
-struct PlanDoneFace: View {
-    let distance: String    // "5.8 mi"
-    let elapsed: String     // "46:18" or "1:47:18"
-    var body: some View {
-        Screen(background: wash(0x0C2A14)) {
-            GeometryReader { geo in
-                let h = geo.size.height
-                VStack(spacing: 0) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: h * 0.13, weight: .bold))
-                        .foregroundStyle(Faff.live)
-                        .padding(.bottom, h * 0.02)
-                    Text("PLAN")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.27))
-                        .foregroundStyle(Faff.live)
-                        .tracking(-1)
-                        .padding(.vertical, -h * 0.27 * 0.20)
-                    Text("DONE")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.27))
-                        .foregroundStyle(Faff.live)
-                        .tracking(-1)
-                        .padding(.vertical, -h * 0.27 * 0.20)
-                    Text("\(distance)  ·  \(elapsed)")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
-                        .foregroundStyle(Color(hex: 0xCFD2D8))
-                        .tracking(0.5)
-                        .padding(.top, h * 0.05)
-                }
-                // Perfect-centered — no asymmetric bottom padding.
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, h * 0.06)
-            }
-        }
-    }
-}
+// (PlanDoneFace removed — was a 6 s green takeover when the runner
+// crossed the planned distance. The live face already signals overtime
+// by flipping the distance row to .bonus purple + counting up, and
+// Haptics.play(.end) fires alongside. The extra full-screen flash was
+// noise — runner already knows they're done from the face change. If
+// we want a confirmation later, it should be a smaller toast / a
+// brief mile-split-style flash, not a 6 s wordmark takeover.)
 
 /// HEADS-UP — amber takeover before a phase / workout ends. The value IS
 /// the message: "0.25" (mi) or "10s" (time). Tiny "LEFT" caption under it.
@@ -724,38 +741,29 @@ struct CompleteFace: View {
 
 /// Today complete — post-Done confirmation flash (~1.5 s). One last look
 /// at the run's headline numbers before the watch returns to the home
-/// page. Check ✓ + "NICE WORK" (two lines, hero) + stats caption.
+/// page. Green check on top + 3 big data rows (pace · distance · elapsed)
+/// in the same locked grammar as the cooldown / steady faces — green pace,
+/// blue distance, neutral elapsed. The check is the celebration; the
+/// numbers are the receipt.
 struct TodayDoneFace: View {
-    var distance: String = "—"     // "5.8 mi" / "11.6 mi"
-    var elapsed: String = "—"      // "46:18" / "1:47:18"
+    var pace: String = "—:—"       // "8:14"
+    var distance: String = "—"     // "5.8"
+    var elapsed: String = "—"      // "46:18" / "1:09"
     var body: some View {
-        Screen(background: radial(0x0C2A14)) {
+        // Same overlay pattern as GoFace — NumberFace is full-screen;
+        // ✓ glyph rides on top in the OS-clock-baseline slot.
+        ZStack(alignment: .topLeading) {
+            NumberFace(rows: [
+                NumRow(pace,     .live),
+                NumRow(distance, .dist),
+                NumRow(elapsed,  .neutral)
+            ])
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(spacing: 0) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: h * 0.16, weight: .bold))
-                        .foregroundStyle(Faff.live)
-                        .padding(.bottom, h * 0.025)
-                    Text("NICE")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.24))
-                        .foregroundStyle(Faff.live)
-                        .tracking(-1)
-                        .padding(.vertical, -h * 0.24 * 0.20)
-                    Text("WORK")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.24))
-                        .foregroundStyle(Faff.live)
-                        .tracking(-1)
-                        .padding(.vertical, -h * 0.24 * 0.20)
-                    Text("\(distance)  ·  \(elapsed)")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
-                        .foregroundStyle(Color(hex: 0xCFD2D8))
-                        .tracking(0.5)
-                        .padding(.top, h * 0.05)
-                }
-                // Perfect-centered — no asymmetric bottom padding.
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .padding(.horizontal, h * 0.06)
+                Image(systemName: "checkmark")
+                    .font(.system(size: h * 0.10, weight: .bold))
+                    .foregroundStyle(Faff.live)
+                    .topTagInset(h)
             }
         }
     }
