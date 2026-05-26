@@ -101,6 +101,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   let weekPlanned: number | null = null;
   let phaseLabel: string | null = null;
   let currentWeekDays: CoachState['currentWeekDays'] = [];
+  let todayWorkout: CoachState['todayWorkout'] = null;
   let nextWorkout: CoachState['nextWorkout'] = null;
   let nextARace: CoachState['nextARace'] = null;
 
@@ -139,6 +140,17 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       }));
       weekPlanned = Math.round(currentWeekDays.reduce((s, d) => s + d.mi, 0) * 10) / 10;
       phaseLabel = phases.find((p) => cw.week_idx >= p.start_week_idx && cw.week_idx <= p.end_week_idx)?.label ?? null;
+    }
+
+    // TODAY's workout — must reach the LLM separately from nextWorkout,
+    // otherwise the coach narrates today as a continuation of yesterday
+    // (it sees yesterday's run + tomorrow's plan but nothing about today).
+    const todayRow = workouts.find((w) => w.date_iso === today);
+    if (todayRow) {
+      todayWorkout = {
+        date: todayRow.date_iso, dow: todayRow.dow, type: todayRow.type,
+        mi: Number(todayRow.distance_mi) || 0, label: todayRow.sub_label,
+      };
     }
 
     const upcoming = workouts
@@ -299,6 +311,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     weekPlanned,
     phaseLabel,
     currentWeekDays,
+    todayWorkout,
     nextWorkout,
     nextARace,
     sleep7Avg,

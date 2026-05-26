@@ -66,6 +66,14 @@ export interface CoachState {
     date: string; dow: number; type: string; mi: number; label: string | null;
   }>;
 
+  /** TODAY's planned workout from the active plan. Distinct from
+   *  nextWorkout (which is the next FUTURE day). Without this in state,
+   *  the LLM has no anchor for what today actually is and tends to
+   *  hallucinate today as a continuation of yesterday. */
+  todayWorkout: {
+    date: string; dow: number; type: string; mi: number; label: string | null;
+  } | null;
+
   nextWorkout: {
     date: string; dow: number; type: string; mi: number; label: string | null;
   } | null;
