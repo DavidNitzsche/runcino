@@ -203,12 +203,21 @@ struct WatchWorkout: Codable {
         self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
         self.hrCeilingBpm = try c.decodeIfPresent(Int.self, forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
-        // Re-stamp each phase with its cursor index.
+        // Re-stamp each phase with its cursor index. CRITICAL: pass through
+        // repUnit + distanceMi too — earlier this constructor only carried
+        // the first 7 fields forward, which silently dropped repUnit (→ .time)
+        // and distanceMi (→ nil) on every phase after decode. That's the
+        // bug behind yesterday's 5.8-mi long run overshooting to 6.0: the
+        // engine fell through to time-based finish because the phase's
+        // distanceMi was lost mid-decode. Same bug ate the distance count-
+        // down. Round-trip smoke test in WatchFixtures · cruise-decode-
+        // tomorrow caught it.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         self.phases = raw.enumerated().map { (i, p) in
             WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
                        targetPaceSPerMi: p.targetPaceSPerMi,
-                       tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic)
+                       tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic,
+                       repUnit: p.repUnit, distanceMi: p.distanceMi)
         }
     }
 }

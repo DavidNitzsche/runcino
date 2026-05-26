@@ -115,6 +115,13 @@ struct WatchFixtureView: View {
             // and counts UP total covered.
             SteadyRunFace(livePace: "8:14", paceRole: .live,
                           distance: "0.80", elapsed: "1:09:48")
+        case "cruise-decode-tomorrow":
+            // Round-trip smoke test: the exact JSON the web agent says
+            // /api/watch/today returns for tomorrow's Cruise Intervals.
+            // Decodes through the real WatchWorkout Codable — if anything
+            // drifted we'll see DECODE FAIL with the error, instead of
+            // discovering it mid-rep.
+            CruiseDecodeTestView()
         case "cruise-cooldown-overtime":
             // Cooldown done, planComplete fired — same face but distance
             // row is purple, counting total covered.
@@ -280,3 +287,99 @@ struct WatchFixtureView: View {
 #Preview("Fixture · rep") { WatchFixtureView(face: "rep") }
 #Preview("Fixture · race") { WatchFixtureView(face: "race") }
 #Preview("Fixture · easy-hr-over") { WatchFixtureView(face: "easy-hr-over") }
+
+// MARK: - JSON round-trip smoke test
+//
+// Decodes the exact payload web/api/watch/today returns for tomorrow's
+// Cruise Intervals + renders a pass/fail card. Catches field-name skew,
+// missing-vs-null mismatches, raw-enum drift before they show up at
+// mile 1 on a real run.
+private struct CruiseDecodeTestView: View {
+    private static let payload = """
+{
+  "workoutId": "0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-26",
+  "name": "Cruise Intervals",
+  "summary": "7.9 mi · Threshold · 4 × 1 mile reps",
+  "totalEstimatedMinutes": 58,
+  "phases": [
+    { "type": "warmup",   "label": "Warmup",       "durationSec": 886, "targetPaceSPerMi": 492, "tolerancePaceSPerMi": 25, "haptic": "start",               "repUnit": "distance", "distanceMi": 1.8 },
+    { "type": "work",     "label": "Rep 1/4",      "durationSec": 407, "targetPaceSPerMi": 407, "tolerancePaceSPerMi":  8, "haptic": "transition-work",     "repUnit": "distance", "distanceMi": 1   },
+    { "type": "recovery", "label": "Recovery 1/3", "durationSec": 120, "targetPaceSPerMi": null,"tolerancePaceSPerMi":null,"haptic": "transition-recovery", "repUnit": "time" },
+    { "type": "work",     "label": "Rep 2/4",      "durationSec": 407, "targetPaceSPerMi": 407, "tolerancePaceSPerMi":  8, "haptic": "transition-work",     "repUnit": "distance", "distanceMi": 1   },
+    { "type": "recovery", "label": "Recovery 2/3", "durationSec": 120, "targetPaceSPerMi": null,"tolerancePaceSPerMi":null,"haptic": "transition-recovery", "repUnit": "time" },
+    { "type": "work",     "label": "Rep 3/4",      "durationSec": 407, "targetPaceSPerMi": 407, "tolerancePaceSPerMi":  8, "haptic": "transition-work",     "repUnit": "distance", "distanceMi": 1   },
+    { "type": "recovery", "label": "Recovery 3/3", "durationSec": 120, "targetPaceSPerMi": null,"tolerancePaceSPerMi":null,"haptic": "transition-recovery", "repUnit": "time" },
+    { "type": "work",     "label": "Rep 4/4",      "durationSec": 407, "targetPaceSPerMi": 407, "tolerancePaceSPerMi":  8, "haptic": "transition-work",     "repUnit": "distance", "distanceMi": 1   },
+    { "type": "cooldown", "label": "Cooldown",     "durationSec": 590, "targetPaceSPerMi": 492, "tolerancePaceSPerMi": 25, "haptic": "transition-cooldown", "repUnit": "distance", "distanceMi": 1.2 }
+  ],
+  "completionEndpoint": "https://www.faff.run/api/watch/workouts/complete",
+  "expiresAt": "2026-05-26T23:59:59.000Z",
+  "distanceMi": 7.9,
+  "paceLabel": "T",
+  "isRace": false,
+  "hrCeilingBpm": null,
+  "displayHint": null
+}
+"""
+
+    private struct Result {
+        let ok: Bool
+        let phaseCount: Int
+        let distanceTotal: String
+        let firstRepDistance: String
+        let lastPhaseType: String
+        let error: String?
+    }
+
+    private static let result: Result = {
+        guard let data = payload.data(using: .utf8) else {
+            return Result(ok: false, phaseCount: 0, distanceTotal: "—",
+                          firstRepDistance: "—", lastPhaseType: "—",
+                          error: "UTF8")
+        }
+        do {
+            let w = try JSONDecoder().decode(WatchWorkout.self, from: data)
+            let firstWork = w.phases.first(where: { $0.type == .work })
+            return Result(
+                ok: true,
+                phaseCount: w.phases.count,
+                distanceTotal: w.distanceMi.map { String(format: "%.1f", $0) } ?? "—",
+                firstRepDistance: firstWork?.distanceMi.map { String(format: "%.1f", $0) } ?? "—",
+                lastPhaseType: w.phases.last.map { "\($0.type)" } ?? "—",
+                error: nil)
+        } catch {
+            return Result(ok: false, phaseCount: 0, distanceTotal: "—",
+                          firstRepDistance: "—", lastPhaseType: "—",
+                          error: String(describing: error))
+        }
+    }()
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            VStack(alignment: .leading, spacing: h * 0.025) {
+                Text(Self.result.ok ? "DECODE OK" : "DECODE FAIL")
+                    .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
+                    .foregroundStyle(Self.result.ok ? Faff.live : Faff.over)
+                Group {
+                    Text("phases   \(Self.result.phaseCount) / 9")
+                    Text("total    \(Self.result.distanceTotal) mi")
+                    Text("rep 1    \(Self.result.firstRepDistance) mi")
+                    Text("last     \(Self.result.lastPhaseType)")
+                }
+                .font(.custom("HelveticaNeue-Bold", size: h * 0.055))
+                .foregroundStyle(Color(hex: 0xCFD2D8))
+                if let err = Self.result.error {
+                    Text(err)
+                        .font(.custom("HelveticaNeue", size: h * 0.045))
+                        .foregroundStyle(Faff.over)
+                        .lineLimit(4)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, h * 0.06)
+            .padding(.top, h * 0.05)
+        }
+        .background(Color.black)
+    }
+}
