@@ -347,18 +347,20 @@ async function getHealthSeries(userId: string, input: { daysBack: number }) {
 
 async function getDoctrine(input: { topic: string }) {
   // Doctrine lives in /Research/ as markdown. Map topic -> filename.
+  // Files verified present in repo. When a topic spans multiple files,
+  // pick the one with the workout vocabulary / training-principle anchor.
   const map: Record<string, string> = {
-    'hr-zones': '03-heart-rate-zones.md',
-    'threshold': '07-threshold-and-tempo.md',
-    'intervals': '08-vo2max-intervals.md',
-    'tempo': '07-threshold-and-tempo.md',
-    'easy': '04-easy-runs-z2.md',
-    'long': '05-long-runs.md',
-    'cardiac-drift': '06-cardiac-drift.md',
-    'taper': '10-tapering.md',
-    'base-volume': '02-base-building.md',
-    'vdot': '09-vdot-and-paces.md',
-    'fueling': '11-fueling.md',
+    'hr-zones':       '03-heart-rate-zones.md',
+    'threshold':      '04-workout-vocabulary.md',   // §5 threshold family
+    'intervals':      '04-workout-vocabulary.md',   // VO2max intervals
+    'tempo':          '04-workout-vocabulary.md',   // continuous tempo
+    'easy':           '04-workout-vocabulary.md',   // §2 easy/general aerobic
+    'long':           '04-workout-vocabulary.md',   // long-run family
+    'cardiac-drift':  '03-heart-rate-zones.md',
+    'taper':          '08-pacing-and-race-week.md',
+    'base-volume':    '00a-distance-running-training.md',
+    'vdot':           '01-pace-zones-vdot.md',
+    'fueling':        '18-fueling-products.md',
   };
   const filename = map[input.topic];
   if (!filename) return { topic: input.topic, doctrine: null, note: 'topic not found' };
@@ -368,10 +370,10 @@ async function getDoctrine(input: { topic: string }) {
   }
   try {
     const md = readFileSync(path, 'utf8');
-    // Cap doctrine length to keep token budget sane — return the first ~3KB
-    // (enough for the core principles; the coach can re-call for a different
-    // topic rather than reading a 30KB file).
-    return { topic: input.topic, source: filename, doctrine: md.slice(0, 3000) };
+    // Cap doctrine length to keep token budget sane — first ~5KB. The
+    // coach can re-call for a different topic rather than reading a 30KB
+    // file in one go.
+    return { topic: input.topic, source: `Research/${filename}`, doctrine: md.slice(0, 5000) };
   } catch {
     return { topic: input.topic, doctrine: null, note: 'read failed' };
   }
