@@ -57,7 +57,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric > 0.5
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text >= ($2::date - interval '7 days')::date::text
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) <= $2
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text <= $2::text
       ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC,
                COALESCE(data->>'startLocal','') DESC`,
     [userId, today]

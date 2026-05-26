@@ -53,7 +53,7 @@ export function CoachBlock({
   }
 
   return (
-    <section style={{ padding: '8px 24px 22px', borderTop: '1px solid var(--line-2)', marginTop: 4 }}>
+    <section style={{ padding: '8px 24px 22px' }}>
       <div style={{
         fontFamily: 'var(--f-body)',
         fontSize: 10,

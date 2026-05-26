@@ -136,7 +136,7 @@ function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor:
     // module scales rep counts off this — close enough for reasonable
     // bands).
     const proxyWeekly = Math.max(day.plannedMi * 6, 25);
-    fetch(`/api/prescription?type=${encodeURIComponent(day.plannedType)}&weeklyMi=${proxyWeekly}`)
+    fetch(`/api/prescription?type=${encodeURIComponent(day.plannedType)}&weeklyMi=${proxyWeekly}&targetMi=${day.plannedMi}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (mounted) { setPres(d); setLoading(false); } })
       .catch(() => { if (mounted) setLoading(false); });

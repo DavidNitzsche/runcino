@@ -4,12 +4,21 @@
  */
 import type { PlanWeek } from '@/lib/coach/training-state';
 
+// Phase palette is shared with PhaseStrip — same colors top to bottom so the
+// pills above and the bars below read as one plan, not two coincidentally-
+// stacked widgets.
+//   BASE  = var(--dist)  cyan-blue
+//   BUILD = var(--goal)  amber
+//   PEAK  = var(--over)  red
+//   TAPER = var(--learn) purple
+//   RACE  = var(--race)  orange
 const PHASE_FILL: Record<string, string> = {
-  BASE:  'rgba(39,180,224,0.45)',
-  BUILD: 'rgba(62,189,65,0.55)',
-  PEAK:  'rgba(176,132,255,0.55)',
-  TAPER: 'rgba(243,173,56,0.55)',
-  RACE:  'rgba(255,136,71,0.75)',
+  BASE:           'rgba(39,180,224,0.55)',
+  BUILD:          'rgba(243,173,56,0.55)',
+  'RACE-SPECIFIC':'rgba(243,173,56,0.55)', // legacy generator phase label, treat as BUILD-ish
+  PEAK:           'rgba(252,77,100,0.55)',
+  TAPER:          'rgba(176,132,255,0.60)',
+  RACE:           'rgba(255,136,71,0.85)',
 };
 
 export function PlanArc({

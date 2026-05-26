@@ -122,13 +122,21 @@ export function prescriptionFor(
   type: WorkoutType,
   weeklyMi: number,
   p: ProfileInputs,
+  /** Optional: the plan's target distance for THIS day. When provided,
+   *  the prescription scales its steps to match — so a planned 12.1mi
+   *  long run produces steps that add to 12.1, not the weekly default. */
+  targetMi?: number,
 ): Prescription {
   const pc = paces(p);
   const hr = hrTargets(p);
 
   switch (type) {
     case 'easy': {
-      const total = Math.round(weeklyMi * 0.18 || 5);
+      // Prefer the plan's target distance for this day; fall back to a
+      // weekly-volume-derived estimate when no target is passed.
+      const total = targetMi != null && targetMi > 0
+        ? Math.round(targetMi * 10) / 10
+        : Math.round(weeklyMi * 0.18 || 5);
       return {
         type, total_mi: total,
         headline: 'Easy aerobic',
@@ -146,9 +154,13 @@ export function prescriptionFor(
     }
 
     case 'long': {
-      const total = Math.round(weeklyMi * 0.32 || 12);
-      const mpMi  = Math.round(total * 0.35);
-      const easyMi = total - mpMi;
+      // Use the plan's target distance when present; the day card and the
+      // step breakdown must agree.
+      const total = targetMi != null && targetMi > 0
+        ? Math.round(targetMi * 10) / 10
+        : Math.round(weeklyMi * 0.32 || 12);
+      const mpMi  = Math.round(total * 0.35 * 10) / 10;
+      const easyMi = Math.round((total - mpMi) * 10) / 10;
       const hasMpSegment = weeklyMi >= 35 && pc.marathon;
       const steps: PrescriptionStep[] = hasMpSegment
         ? [
@@ -172,8 +184,17 @@ export function prescriptionFor(
     case 'threshold': {
       const reps = weeklyMi >= 45 ? 4 : weeklyMi >= 35 ? 3 : 2;
       const repMi = 1;
-      const wuMi = 1.5, cdMi = 1;
-      const total = wuMi + reps * repMi + (reps - 1) * 0.3 + cdMi; // ~0.3 mi per recovery
+      const recoveryMi = (reps - 1) * 0.3;
+      const repsBlockMi = reps * repMi + recoveryMi;
+      let wuMi = 1.5, cdMi = 1;
+      // If the plan has a specific target for today, pad warmup + cooldown
+      // (60/40 split) so the prescription totals match the planned distance.
+      if (targetMi != null && targetMi > 0) {
+        const need = Math.max(0, targetMi - repsBlockMi);
+        wuMi = Math.round(need * 0.6 * 10) / 10;
+        cdMi = Math.round(need * 0.4 * 10) / 10;
+      }
+      const total = wuMi + repsBlockMi + cdMi;
       return {
         type, total_mi: Math.round(total * 10) / 10,
         headline: `Threshold · repeat ${reps} times`,
@@ -198,7 +219,12 @@ export function prescriptionFor(
 
     case 'tempo': {
       const tempoMi = weeklyMi >= 45 ? 5 : weeklyMi >= 35 ? 4 : 3;
-      const wuMi = 1.5, cdMi = 1;
+      let wuMi = 1.5, cdMi = 1;
+      if (targetMi != null && targetMi > 0) {
+        const need = Math.max(0, targetMi - tempoMi);
+        wuMi = Math.round(need * 0.6 * 10) / 10;
+        cdMi = Math.round(need * 0.4 * 10) / 10;
+      }
       const total = wuMi + tempoMi + cdMi;
       return {
         type, total_mi: total,
@@ -220,8 +246,15 @@ export function prescriptionFor(
     case 'intervals': {
       const reps = weeklyMi >= 45 ? 6 : 5;
       const repMi = 0.5; // 800m ≈ 0.5mi
-      const wuMi = 1.5, cdMi = 1;
-      const total = wuMi + reps * repMi + (reps - 1) * 0.25 + cdMi;
+      const recoveryMi = (reps - 1) * 0.25;
+      const repsBlockMi = reps * repMi + recoveryMi;
+      let wuMi = 1.5, cdMi = 1;
+      if (targetMi != null && targetMi > 0) {
+        const need = Math.max(0, targetMi - repsBlockMi);
+        wuMi = Math.round(need * 0.6 * 10) / 10;
+        cdMi = Math.round(need * 0.4 * 10) / 10;
+      }
+      const total = wuMi + repsBlockMi + cdMi;
       return {
         type, total_mi: Math.round(total * 10) / 10,
         headline: `Intervals · repeat ${reps} times`,

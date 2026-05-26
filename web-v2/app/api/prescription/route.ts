@@ -36,6 +36,8 @@ export async function GET(req: NextRequest) {
   const typeRaw = (sp.get('type') ?? 'easy').toLowerCase() as WorkoutType;
   const type: WorkoutType = VALID.includes(typeRaw) ? typeRaw : 'easy';
   const weeklyMi = Number(sp.get('weeklyMi')) || 30;
+  const targetMiRaw = sp.get('targetMi');
+  const targetMi = targetMiRaw != null ? Number(targetMiRaw) : undefined;
 
   // Profile: LTHR
   const profRow = (await pool.query(
@@ -61,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   const prescription = prescriptionFor(type, weeklyMi, {
     lthr, goal_seconds, goal_distance_mi,
-  });
+  }, isFinite(targetMi as number) ? (targetMi as number) : undefined);
 
   return NextResponse.json(prescription);
 }
