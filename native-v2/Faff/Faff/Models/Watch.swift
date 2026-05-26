@@ -202,12 +202,17 @@ struct WatchWorkout: Codable {
         self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
         self.hrCeilingBpm = try c.decodeIfPresent(Int.self, forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
-        // Re-stamp each phase with its cursor index.
+        // Re-stamp each phase with its cursor index. Mirror watch agent's
+        // 2026-05-25 fix (e304b82 watch(decode): pass repUnit + distanceMi
+        // through phase re-stamp) — without those fields the iPhone-side
+        // WorkoutTodayCard renderer loses rep distance + can't distinguish
+        // distance vs time reps.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         self.phases = raw.enumerated().map { (i, p) in
             WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
                        targetPaceSPerMi: p.targetPaceSPerMi,
-                       tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic)
+                       tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic,
+                       repUnit: p.repUnit, distanceMi: p.distanceMi)
         }
     }
 }

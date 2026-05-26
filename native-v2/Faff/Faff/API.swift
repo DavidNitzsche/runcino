@@ -20,7 +20,13 @@ enum API {
 
     static func briefing(surface: String, mode: String? = nil) async throws -> Briefing {
         var comps = URLComponents(url: baseURL.appendingPathComponent("api/briefing"), resolvingAgainstBaseURL: false)!
-        var items = [URLQueryItem(name: "surface", value: surface)]
+        // client=ios → server returns paraphrased / shorter voice + fewer
+        // topic cards. The phone has the structured workout card + week
+        // strip leading the screen; the prose only needs to add color.
+        var items = [
+            URLQueryItem(name: "surface", value: surface),
+            URLQueryItem(name: "client", value: "ios"),
+        ]
         if let mode { items.append(URLQueryItem(name: "mode", value: mode)) }
         comps.queryItems = items
 
@@ -64,4 +70,63 @@ enum API {
         }
         return data
     }
+
+    /// Same as fetchWatchTodayRaw but decoded into WatchWorkout so the
+    /// iPhone can render the structured workout card. Optional `date`
+    /// override lets the WorkoutDetailModal preview any day's tile.
+    /// Returns nil on the rest/no-workout branch.
+    static func fetchWatchWorkout(date: String? = nil) async throws -> WatchWorkout? {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/watch/today"),
+            resolvingAgainstBaseURL: false
+        )!
+        if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
+        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        struct Wrapper: Decodable { let workout: WatchWorkout? }
+        let w = try JSONDecoder().decode(Wrapper.self, from: data)
+        return w.workout
+    }
+
+    /// Mon-Sun plan_workouts for the week containing `date` (or today).
+    /// Drives the iPhone WeekStrip.
+    static func fetchPlanWeek(date: String? = nil) async throws -> PlanWeek {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/plan/week"),
+            resolvingAgainstBaseURL: false
+        )!
+        if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
+        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        return try JSONDecoder().decode(PlanWeek.self, from: data)
+    }
+}
+
+// MARK: - PlanWeek wire model
+//
+// Mirrors GET /api/plan/week response. PlanWeek.days[i] is one day in the
+// Mon-Sun strip; today's row carries is_today=true so the week strip can
+// highlight it without re-computing.
+struct PlanWeek: Decodable {
+    let plan_id: String?
+    let week_start_iso: String?
+    let week_end_iso: String?
+    let today_iso: String
+    let days: [PlanDay]
+    let message: String?
+}
+
+struct PlanDay: Decodable, Identifiable {
+    var id: String { date_iso }
+    let date_iso: String
+    let dow: Int
+    let type: String
+    let distance_mi: Double
+    let sub_label: String?
+    let is_today: Bool
+    let is_past: Bool
 }

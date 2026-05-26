@@ -1,80 +1,157 @@
 //
 //  TodayView.swift
-//  P1: full TODAY iPhone with coach voice + cards lane + reply chips.
-//  Mirrors web-v2 /today route.
+//
+//  iPhone TODAY screen — structured workout card + week strip lead;
+//  coach prose follows; topic cards (gels, race horizon, etc.) drop
+//  below. This is the layout fix for "wall of text on the phone."
+//
+//  Also pushes today's workout to the watch on every successful refresh
+//  (not just app start) so the watch picks up plan edits without the
+//  phone being relaunched.
 //
 
 import SwiftUI
 
 struct TodayView: View {
     @State private var briefing: Briefing?
+    @State private var workout: WatchWorkout?
+    @State private var planWeek: PlanWeek?
     @State private var loading = true
     @State private var error: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // App bar
-                HStack(alignment: .firstTextBaseline) {
-                    Text("faff").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
-                    Text(todayLabel()).font(.body(11, weight: .bold)).tracking(1.2)
-                        .foregroundStyle(Theme.mute)
-                    Spacer()
-                    // Readiness chip — wired in P3.3 (§8.3 breakdown loop)
-                    ReadinessChip(value: 88)
-                }
-                .padding(.horizontal, 24).padding(.top, 8)
+                appBar
 
                 if loading {
-                    HStack {
-                        Spacer()
-                        ProgressView().tint(Theme.green)
-                        Spacer()
-                    }.padding(40)
+                    HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }
+                        .padding(40)
                 } else if let error {
                     errorBlock(error)
-                } else if let briefing {
-                    CoachBlock(
-                        lead: briefing.lead,
-                        voice: briefing.voice,
-                        briefingId: "\(briefing.surface)|\(briefing.mode)",
-                        askPrompt: askPrompt(for: briefing.mode),
-                        onCheckIn: { rating in
-                            do {
-                                try await API.checkin(rating: rating.rawValue,
-                                                       briefingId: "\(briefing.surface)|\(briefing.mode)")
-                                // Closed loop: refresh next briefing.
-                                Task { await loadBriefing() }
-                                return true
-                            } catch {
-                                return false
+                } else {
+                    // 1) Today's structured workout — the thing you're about
+                    //    to do. Leads the scroll so it's not buried in prose.
+                    if let workout {
+                        WorkoutTodayCard(workout: workout)
+                    } else if let restMessage = restDayMessage {
+                        restBlock(restMessage)
+                    }
+
+                    // 2) Week strip — tap any tile to preview that day.
+                    if let week = planWeek, !week.days.isEmpty {
+                        WeekStripView(week: week)
+                    }
+
+                    // 3) Coach prose — shorter on iOS via surface=today_ios,
+                    //    drops to second slot now.
+                    if let briefing {
+                        CoachBlock(
+                            lead: briefing.lead,
+                            voice: briefing.voice,
+                            briefingId: "\(briefing.surface)|\(briefing.mode)",
+                            askPrompt: askPrompt(for: briefing.mode),
+                            onCheckIn: { rating in
+                                do {
+                                    try await API.checkin(rating: rating.rawValue,
+                                                           briefingId: "\(briefing.surface)|\(briefing.mode)")
+                                    Task { await loadAll() }
+                                    return true
+                                } catch {
+                                    return false
+                                }
+                            }
+                        )
+
+                        // 4) Topic cards — fueling / race horizon / readiness
+                        //    detail / gap-fill prompts.
+                        VStack(spacing: 10) {
+                            ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
+                                TopicRenderer(topic: topic)
                             }
                         }
-                    )
-
-                    // Cards lane
-                    VStack(spacing: 10) {
-                        ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
-                            TopicRenderer(topic: topic)
-                        }
+                        .padding(.horizontal, 24)
                     }
-                    .padding(.horizontal, 24)
                 }
             }
             .padding(.bottom, 40)
         }
         .background(Theme.bg.ignoresSafeArea())
-        .task { await loadBriefing() }
+        .task { await loadAll() }
+        .refreshable { await loadAll() }
     }
 
-    private func loadBriefing() async {
-        loading = true; defer { loading = false }
-        do {
-            briefing = try await API.briefing(surface: "today")
-            error = nil
-        } catch {
-            self.error = String(describing: error)
+    // MARK: - App bar
+
+    private var appBar: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("faff").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
+            Text(todayLabel()).font(.body(11, weight: .bold)).tracking(1.2)
+                .foregroundStyle(Theme.mute)
+            Spacer()
+            // Readiness ring — wired with real score when /api/readiness ships.
+            ReadinessChip(value: 88)
         }
+        .padding(.horizontal, 24).padding(.top, 8)
+    }
+
+    // MARK: - Load
+
+    /// Fan out the three calls in parallel so the screen paints fast.
+    /// Once the workout JSON is in hand, immediately push it to the watch
+    /// so the watch reflects any plan edit without a phone relaunch.
+    private func loadAll() async {
+        loading = true
+        defer { loading = false }
+        async let bRes = (try? await API.briefing(surface: "today"))
+        async let wRes = (try? await API.fetchWatchWorkout())
+        async let pRes = (try? await API.fetchPlanWeek())
+
+        let b = await bRes
+        let w = await wRes
+        let p = await pRes
+
+        self.briefing = b
+        self.workout = w
+        self.planWeek = p
+        self.error = (b == nil && w == nil && p == nil) ? "Couldn't reach the coach. Pull to refresh." : nil
+
+        // Push the freshly-fetched workout to the watch so the watch picks
+        // up plan edits without the user having to relaunch the iPhone app.
+        Task { await WatchSync.shared.pushTodayToWatch() }
+    }
+
+    // MARK: - Subviews
+
+    private func restBlock(_ msg: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("REST DAY")
+                .font(.body(11, weight: .bold)).tracking(1.6)
+                .foregroundStyle(Theme.learn)
+            Text(msg).font(.body(14)).foregroundStyle(Theme.ink.opacity(0.85)).lineSpacing(2)
+        }
+        .padding(18)
+        .background(Theme.learn.opacity(0.06))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.rCard)
+                .stroke(Theme.learn.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+        .padding(.horizontal, 24)
+    }
+
+    /// Today is a rest day if /api/watch/today returned no workout. We
+    /// surface the message from that endpoint; if it didn't ship one,
+    /// fall back to a sane default.
+    private var restDayMessage: String? {
+        // workout==nil but planWeek loaded successfully and today is in it
+        // and today.type == "rest" → show rest block.
+        guard workout == nil else { return nil }
+        if let today = planWeek?.days.first(where: { $0.is_today }),
+           today.type == "rest" {
+            return "No workout on the calendar today. Recover hard — that's the work."
+        }
+        return nil
     }
 
     private func todayLabel() -> String {

@@ -1,12 +1,17 @@
 //
-//  TrainingView.swift  (P5 — iOS parity for /training)
-//  Coach voice for the current phase + cards lane.
+//  TrainingView.swift
+//
+//  iPhone TRAINING tab — week-by-week schedule. Lead with the structured
+//  week strip (tap any day to preview), then the phase chip + coach
+//  prose. The strip is the answer to "I have no way to see the schedule
+//  on the phone."
 //
 
 import SwiftUI
 
 struct TrainingView: View {
     @State private var briefing: Briefing?
+    @State private var planWeek: PlanWeek?
     @State private var loading = true
 
     var body: some View {
@@ -32,31 +37,46 @@ struct TrainingView: View {
 
                 if loading {
                     HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }.padding(40)
-                } else if let briefing {
-                    CoachBlock(
-                        lead: briefing.lead, voice: briefing.voice,
-                        briefingId: "training|\(briefing.mode)",
-                        askPrompt: "Tracking the plan."
-                    )
-                    VStack(spacing: 10) {
-                        ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
-                            TopicRenderer(topic: topic)
-                        }
-                    }
-                    .padding(.horizontal, 24)
                 } else {
-                    Text("Coach voice pending sync. Pull to refresh.")
-                        .font(.body(13)).foregroundStyle(Theme.mute)
+                    // 1) Week strip — the schedule itself, clickable per day.
+                    if let week = planWeek, !week.days.isEmpty {
+                        WeekStripView(week: week)
+                    }
+
+                    // 2) Coach voice on the phase / training arc.
+                    if let briefing {
+                        CoachBlock(
+                            lead: briefing.lead, voice: briefing.voice,
+                            briefingId: "training|\(briefing.mode)",
+                            askPrompt: "Tracking the plan."
+                        )
+                        VStack(spacing: 10) {
+                            ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
+                                TopicRenderer(topic: topic)
+                            }
+                        }
                         .padding(.horizontal, 24)
+                    } else {
+                        Text("Coach voice pending sync. Pull to refresh.")
+                            .font(.body(13)).foregroundStyle(Theme.mute)
+                            .padding(.horizontal, 24)
+                    }
                 }
             }
             .padding(.bottom, 40)
         }
         .background(Theme.bg.ignoresSafeArea())
-        .task {
-            loading = true; defer { loading = false }
-            briefing = try? await API.briefing(surface: "training")
-        }
+        .task { await loadAll() }
+        .refreshable { await loadAll() }
+    }
+
+    private func loadAll() async {
+        loading = true
+        defer { loading = false }
+        async let bRes = (try? await API.briefing(surface: "training"))
+        async let pRes = (try? await API.fetchPlanWeek())
+        briefing = await bRes
+        planWeek = await pRes
     }
 
     private func phaseColor(_ phase: String) -> Color {
