@@ -1,0 +1,69 @@
+# Daily warm of the coach briefing cache.
+#
+# Why this workflow exists: every iPhone/web /today open should be
+# instant (cache hit). Mutating endpoints already bust + warm the
+# cache, but the day-rollover (PT midnight) isn't tied to any
+# mutation event — without this cron, the first morning open lazily
+# regenerates and the runner waits ~15-20s. This workflow fires the
+# regen ahead of any human read.
+#
+# Schedule: 07:05 UTC daily = 00:05 PT. Picked 5 minutes after
+# midnight to give the server's "today" calc (which uses Date.now()
+# minus 7h) a clean rollover before we trigger.
+#
+# Safety net if this workflow ever misses a day: cache.ts has a
+# read-side staleness check that returns null if cached
+# _state.today != current today. So worst case is one slow morning
+# open — never wrong data.
+#
+# Manual trigger: Actions tab > "Refresh coach briefings" > Run workflow.
+
+name: Refresh coach briefings
+
+on:
+  schedule:
+    # GitHub uses UTC. 07:05 UTC = 00:05 PT (during PDT, which is most of
+    # the year). During PST (Nov-Mar), this fires at 23:05 PT the prior
+    # day — still works because the staleness check carries us through.
+    - cron: '5 7 * * *'
+  workflow_dispatch: {}  # allow manual run from Actions tab
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hit /api/cron/refresh-briefings
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          # POST and capture both status + body. Reject anything non-200.
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            https://www.faff.run/api/cron/refresh-briefings)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body:"
+          echo "$body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Refresh failed with HTTP $status"
+            exit 1
+          fi
+
+          # Surface failed users (if any) as a workflow warning,
+          # but don't fail the whole run — partial success is fine,
+          # the staleness check handles missed users.
+          failed=$(echo "$body" | python3 -c 'import sys,json; d=json.loads(sys.stdin.read()); print(d.get("failed_count", 0))')
+          if [ "$failed" != "0" ]; then
+            echo "::warning::$failed user(s) failed to regenerate — see body above"
+          fi
