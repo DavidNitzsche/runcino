@@ -115,12 +115,14 @@ export async function POST(req: NextRequest) {
     ok: true,
     workoutId: body.workoutId,
     accepted_at: new Date().toISOString(),
-    // Deploy marker — bumped when this endpoint's behavior changes.
-    // Helps the audit harness detect "yes, Railway has my latest code"
-    // without depending on side effects (the strava_activities INSERT
-    // can silently fail; this response field can't).
-    api_version: 'watch-complete/p21-3',
-    strava_write_error: stravaWriteErr,    // null on success — debug field
+    // Deploy marker. Kept (small + harmless) so future audits can detect
+    // when this endpoint's behavior changes without depending on side
+    // effects. Bump the suffix on behavioral changes.
+    api_version: 'watch-complete/p21',
+    // Strava-table write outcome surfaced explicitly: harmless on
+    // success, and on failure tells the watch agent + audit harnesses
+    // exactly what went wrong without log access.
+    strava_write: stravaWriteErr ? { ok: false, error: stravaWriteErr } : { ok: true },
   });
 }
 
