@@ -126,14 +126,16 @@ You said: watch + Apple Health are source of truth, Strava is push-only.
   HRV, RHR, VO2, weight. POSTs to /api/ingest/health.
 - Both run in background via WKBackgroundModes: workout-processing.
 
-**Questions for you:**
-- Do you want the Strava post to include coach-voice race recap
-  (post-race), or just the raw HR/pace data + your title?
-- For non-race runs, just the activity itself with no commentary?
-- Should we keep the existing strava-webhook receiver as a fallback
-  for runs not done with the watch (e.g. treadmill on Peloton)?
-- When iOS sends a workout, do you want the previous Strava webhook
-  copy (if any) to take precedence, or always the watch version?
+**Strava push — current direction (David, 2026-05-25 evening):**
+- For now: NO Strava push. Faff is the destination, not Strava.
+- Eventually: after finishing a run ("faffing the run"), surface an
+  option: PUSH TO STRAVA. With a per-user toggle for AUTO-PUSH.
+- Manual push button lives on the run-detail modal as a small CTA
+  next to the source tag.
+- Auto-push toggle lives in Settings → Integrations.
+
+Implementation note: the webhook receiver is still useful as a pull
+fallback for runs from other watches / treadmills.
 
 ---
 
