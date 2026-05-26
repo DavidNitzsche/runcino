@@ -44,13 +44,6 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
         </tbody>
       </table>
 
-      <div style={{
-        marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.10)',
-        fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.75)', lineHeight: 1.55,
-      }}>
-        Base 70 {breakdown.inputs.map((i) => `${i.weight >= 0 ? '+' : ''}${i.weight}`).join(' ')}{' '}={' '}
-        <span style={{ color, fontWeight: 700 }}>{breakdown.score}</span>
-      </div>
     </div>
   );
 }

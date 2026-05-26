@@ -57,7 +57,7 @@ export function RunDetailTrigger({
   );
 }
 
-function RunDetailModal({ activityId, onClose }: { activityId: string; onClose: () => void }) {
+export function RunDetailModal({ activityId, onClose }: { activityId: string; onClose: () => void }) {
   const [data, setData] = useState<RunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,39 +135,118 @@ function ErrorState({ err }: { err: string }) {
 }
 
 function RunDetailBody({ d }: { d: RunDetail }) {
+  const sourceLabel = d.source === 'watch' ? 'WATCH'
+    : d.source === 'apple_health' ? 'APPLE HEALTH'
+    : d.source === 'manual' ? 'MANUAL ENTRY'
+    : d.source === 'strava' ? 'STRAVA' : d.source.toUpperCase();
+
   return (
     <>
-      <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 36, margin: '4px 0 16px', letterSpacing: '0.5px', lineHeight: 1, color: 'var(--ink)' }}>
-        {d.name ?? `${d.distance_mi.toFixed(1)} MI`}
+      <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 38, margin: '4px 0 6px', letterSpacing: '0.5px', lineHeight: 1, color: 'var(--ink)' }}>
+        {d.name ?? `${d.distance_mi.toFixed(1)} MI ${(d.type ?? 'run').toUpperCase()}`}
       </h2>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 18, fontWeight: 600 }}>
+        {sourceLabel}{d.type ? ` · ${d.type}` : ''}
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
-        <BigStat v={d.distance_mi.toFixed(1)} u="miles" color="var(--dist)" />
+      {/* Hero stats — 4 most important numbers */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+        <BigStat v={d.distance_mi.toFixed(2)} u="miles" color="var(--dist)" />
         {d.pace        && <BigStat v={d.pace}              u="avg pace" color="var(--green)" />}
         {d.time_moving && <BigStat v={d.time_moving}       u="moving"   color="var(--ink)" />}
-        {d.hr_avg != null && <BigStat v={String(d.hr_avg)} u="avg hr"   color="var(--mute)" />}
+        {d.hr_avg != null && <BigStat v={String(d.hr_avg)} u="avg hr"   color="var(--over)" />}
       </div>
 
+      {/* Secondary stats row — what didn't fit above */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+        {d.hr_max != null      && <SmallStat v={String(d.hr_max)}            u="max hr" />}
+        {d.cadence_avg != null && <SmallStat v={String(d.cadence_avg)}       u="cadence" />}
+        {d.elev_gain_ft != null&& <SmallStat v={`${d.elev_gain_ft}`}         u="elev ft" />}
+        {d.avg_speed_mph != null && <SmallStat v={`${d.avg_speed_mph.toFixed(1)}`} u="mph" />}
+        {d.time_elapsed && d.time_elapsed !== d.time_moving && <SmallStat v={d.time_elapsed} u="elapsed" />}
+        {d.temp_f != null      && <SmallStat v={`${Math.round(d.temp_f)}°F`} u={d.temp_f >= 75 ? 'warm' : d.temp_f <= 45 ? 'cold' : 'cool'} />}
+        {d.suffer_score != null&& <SmallStat v={String(d.suffer_score)}      u="suffer" />}
+        {d.kudos != null && d.kudos > 0 && <SmallStat v={String(d.kudos)}    u="kudos" />}
+      </div>
+
+      {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it */}
       {d.splits.length > 0 && (
-        <div className="card" style={{ padding: '16px 18px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--green)' }}>SPLITS · PACE PER MILE</div>
+        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--green)' }}>SPLITS · {d.splits.length} MILES</div>
           <SplitsBars splits={d.splits} />
+          <SplitsTable splits={d.splits} />
         </div>
       )}
 
-      {(d.hrZonePcts.z2 + d.hrZonePcts.z3 + d.hrZonePcts.z4 + d.hrZonePcts.z5) > 0 && (
-        <div className="card" style={{ padding: '16px 18px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>HR · TIME IN ZONE</div>
+      {/* HR Zone breakdown — shows where this run actually landed, plus
+          the user's LTHR zone bands so they can see the relationship */}
+      {(d.hrZonePcts.z1 + d.hrZonePcts.z2 + d.hrZonePcts.z3 + d.hrZonePcts.z4 + d.hrZonePcts.z5) > 0 && (
+        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>
+            HR · TIME IN ZONE
+            {d.hr_zones_from_lthr?.lthr ? <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· LTHR {d.hr_zones_from_lthr.lthr}</span> : null}
+          </div>
           <HRZones pcts={d.hrZonePcts} />
+          {d.hr_zones_from_lthr && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginTop: 12 }}>
+              {d.hr_zones_from_lthr.ranges.map((r) => (
+                <div key={r.label} style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.5px', textAlign: 'center' }}>
+                  <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{r.label}</span> {r.lower}-{r.upper}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-        {d.cadence_avg && <Chip k="CAD" v={String(d.cadence_avg)} />}
-        {d.temp_f != null && <Chip warm>{d.temp_f}° · {d.temp_f >= 75 ? 'warm' : 'cool'}</Chip>}
-        {d.elev_gain_ft != null && <Chip k="GAIN" v={`${d.elev_gain_ft}ft`} />}
-      </div>
+      {/* Route placeholder — shows when there's GPS data, even before we
+          render the actual map */}
+      {d.has_route && (
+        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--dist)' }}>ROUTE</div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55, marginTop: 6 }}>
+            GPS recorded {d.elev_gain_ft != null ? `with ${d.elev_gain_ft}ft of climbing` : ''}.
+            Map render lands in the next iteration.
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+function SmallStat({ v, u }: { v: string; u: string }) {
+  return (
+    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.025)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)', lineHeight: 1, letterSpacing: '0.3px' }}>{v}</div>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 9.5, color: 'var(--mute)', letterSpacing: '1.1px', textTransform: 'uppercase', marginTop: 3 }}>{u}</div>
+    </div>
+  );
+}
+
+function SplitsTable({ splits }: { splits: { mile: number; pace: string | null; hr: number | null; cadence: number | null }[] }) {
+  return (
+    <div style={{ marginTop: 14, maxHeight: 220, overflowY: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--f-body)', fontSize: 12 }}>
+        <thead>
+          <tr style={{ color: 'var(--mute)', fontSize: 9.5, letterSpacing: '1.1px', textTransform: 'uppercase', fontWeight: 700 }}>
+            <th style={{ textAlign: 'left',  padding: '6px 4px', width: 40 }}>MI</th>
+            <th style={{ textAlign: 'left',  padding: '6px 4px' }}>PACE</th>
+            <th style={{ textAlign: 'right', padding: '6px 4px' }}>HR</th>
+            <th style={{ textAlign: 'right', padding: '6px 4px' }}>CAD</th>
+          </tr>
+        </thead>
+        <tbody>
+          {splits.map((s) => (
+            <tr key={s.mile} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+              <td style={{ padding: '7px 4px', fontFamily: 'var(--f-display)', color: 'var(--mute)', fontSize: 13 }}>{s.mile}</td>
+              <td style={{ padding: '7px 4px', fontFamily: 'var(--f-display)', color: 'var(--ink)', fontSize: 13.5 }}>{s.pace ?? '—'}</td>
+              <td style={{ padding: '7px 4px', textAlign: 'right', color: s.hr ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-display)', fontSize: 13 }}>{s.hr ?? '—'}</td>
+              <td style={{ padding: '7px 4px', textAlign: 'right', color: s.cadence ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-display)', fontSize: 13 }}>{s.cadence ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -233,7 +312,9 @@ function HRZones({ pcts }: { pcts: { z1: number; z2: number; z3: number; z4: num
   );
 }
 
-function Chip({ k, v, warm, children }: { k?: string; v?: string; warm?: boolean; children?: React.ReactNode }) {
+// Chip helper kept inline-private — only used by /runs/[id] which still
+// renders its own copy. Marked unused here intentionally.
+function _Chip({ k, v, warm, children }: { k?: string; v?: string; warm?: boolean; children?: React.ReactNode }) {
   return (
     <span style={{
       background: warm ? 'rgba(243,173,56,0.08)' : 'rgba(255,255,255,0.04)',

@@ -64,9 +64,6 @@ export function ReadinessChipTrigger({ breakdown }: { breakdown: RB }) {
               }} aria-label="Close">×</button>
             </div>
             <ReadinessBreakdownView breakdown={breakdown} />
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--dim)', marginTop: 14, letterSpacing: '1px', textTransform: 'uppercase' }}>
-              The same breakdown lives on /health as a permanent section.
-            </div>
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import { SettingsAvatarTrigger } from '@/components/settings/SettingsModal';
 const TABS = [
   { href: '/today',    label: 'TODAY' },
   { href: '/training', label: 'TRAINING' },
+  { href: '/log',      label: 'LOG' },
   { href: '/races',    label: 'RACES' },
   { href: '/health',   label: 'HEALTH' },
   { href: '/profile',  label: 'PROFILE' },

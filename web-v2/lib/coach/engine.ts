@@ -107,12 +107,24 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
     }
   }
 
-  // Drop profile_gap topics with no actionable field — better silent than
-  // a broken card. (LLM occasionally emits empty payloads.)
+  // Drop topics that would duplicate UI we already render elsewhere:
+  //
+  //   - profile_gap with empty field   → would render a broken card
+  //   - run_recap on /today            → TodayPlannedCard already shows
+  //     "DONE · TYPE · X MI" with a link into the run detail modal, and
+  //     the coach voice paragraphs already narrate the run. The recap
+  //     card on the right rail is pure duplication.
   const filtered = validatedTopics.filter((t) => {
     if (t.kind === 'profile_gap') {
       const f = ((t.payload as any)?.field ?? '').trim();
       return f.length > 0;
+    }
+    if (t.kind === 'run_recap' && resolved.surface === 'today') {
+      // If there's a real run today, the left-rail TodayPlannedCard owns
+      // the recap. Suppress the right-rail dup.
+      const todayDate = state.today;
+      const a = state.latest_activity;
+      if (a && a.date === todayDate && a.mi >= 0.5) return false;
     }
     return true;
   });
