@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hidden gaps audit · 2026-05-26 · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08);
+    --card: #11141a;
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --learn: #B084FF;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 56px; font-weight: 400; letter-spacing: 0.5px; margin: 0; }
+  .sub { color: var(--mute); margin-top: 8px; font-size: 14px; }
+  h2 { font-family: 'Bebas Neue', sans-serif; font-size: 32px; font-weight: 400; letter-spacing: 0.5px; margin: 56px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 24px 0 8px; }
+  h4 { font-family: 'Bebas Neue', sans-serif; font-size: 22px; font-weight: 400; margin: 0 0 6px; letter-spacing: 0.5px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  em { color: rgba(246,247,248,0.95); font-style: italic; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: ui-monospace, monospace; color: var(--dist); }
+
+  .lead { background: rgba(252,77,100,0.06); border: 1px solid rgba(252,77,100,0.35); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .lead h2 { margin: 0 0 12px; font-size: 24px; color: var(--over); border: 0; padding: 0; }
+  .lead p { font-size: 14.5px; }
+
+  .gap { border-radius: 14px; padding: 18px 22px; margin: 14px 0; border: 1px solid var(--line); background: var(--card); }
+  .gap.crit { border-color: rgba(252,77,100,0.45); background: rgba(252,77,100,0.04); }
+  .gap.warn { border-color: rgba(243,173,56,0.35); background: rgba(243,173,56,0.03); }
+  .gap.info { border-color: rgba(39,180,224,0.30); background: rgba(39,180,224,0.03); }
+  .gap.ok   { border-color: rgba(62,189,65,0.35);  background: rgba(62,189,65,0.04); }
+  .gap .tag { display: inline-block; font-weight: 700; padding: 3px 10px; border-radius: 6px; font-size: 10.5px; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
+  .gap.crit .tag { background: var(--over);  color: #0a0c10; }
+  .gap.warn .tag { background: var(--goal);  color: #0a0c10; }
+  .gap.info .tag { background: var(--dist);  color: #0a0c10; }
+  .gap.ok   .tag { background: var(--green); color: #0a0c10; }
+  .gap .meta { color: var(--mute); font-size: 11.5px; letter-spacing: 0.6px; margin-top: 8px; }
+
+  .pattern { background: rgba(176,132,255,0.06); border: 1px solid rgba(176,132,255,0.25); border-radius: 10px; padding: 14px 18px; margin: 24px 0; }
+  .pattern h3 { color: var(--learn); margin-top: 0; }
+  .pattern p { font-size: 13.5px; margin: 0 0 8px; }
+  .pattern p:last-child { margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10.5px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td.crit { color: var(--over); font-weight: 600; }
+  td.warn { color: var(--goal); font-weight: 600; }
+  td.ok   { color: var(--green); font-weight: 600; }
+  td.mute { color: var(--mute); }
+
+  .nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+  .nav a { font-size: 11.5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--mute); text-decoration: none; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
+  .nav a:hover { color: var(--ink); border-color: var(--ink); }
+  a { color: var(--dist); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Hidden gaps audit · 2026-05-26</h1>
+  <p class="sub">"What else looks built but isn't?" — found by following each declared capability to its actual implementation.</p>
+
+  <div class="nav">
+    <a href="#summary">Summary</a>
+    <a href="#crit">Critical</a>
+    <a href="#stubs">Stubs</a>
+    <a href="#orphan">Orphans</a>
+    <a href="#pattern">The pattern</a>
+    <a href="#plan">Fix plan</a>
+  </div>
+
+  <div class="lead" id="summary">
+    <h2>The bad news, summarized</h2>
+    <p>I found <strong>11 gaps</strong> beyond the HK workout reader. Three are critical — silently broken or about to break. Four are stubs (fake/hardcoded data masquerading as live). Four are declared-but-orphaned (entitlements / endpoints / fields with no actual code path).</p>
+    <p>The most urgent: <strong>your daily HRV / sleep / RHR sync depends on the LEGACY iPhone app still being installed</strong>. The v2 app has zero HK sample-reader code. If you uninstall legacy, all biometric data stops flowing.</p>
+    <p>Total scope to close all 11: roughly 1.5–2 days. Worth doing in a focused pass.</p>
+  </div>
+
+  <h2 id="crit">Critical gaps · silently broken or about to break</h2>
+
+  <div class="gap crit">
+    <span class="tag">CRITICAL · P27.1</span>
+    <h4>iPhone v2 has zero HealthKit sample reader (HRV / sleep / RHR / VO2 / cadence)</h4>
+    <p>The new <code>HealthKitImporter.swift</code> I just built only reads <strong>HKWorkout</strong>. It does NOT read any biometric samples. All your daily HRV, sleep hours, resting HR, VO2max, wrist temp, cadence baseline — that's flowing exclusively from the legacy iPhone app's <code>HealthKitManager.swift</code>, which posts to <code>/api/ingest/health</code>.</p>
+    <p>If you uninstall the legacy app (or it gets de-authorized for HealthKit), <strong>every readiness calculation goes blind</strong>: no sleep, no HRV trend, no RHR baseline. Coach starts saying "I can't see your readiness data." Probably tomorrow.</p>
+    <p><strong>Evidence:</strong> <code>grep -rn ingestHealthSamples native-v2/</code> → zero matches. <code>grep -rn HKQuantityType native-v2/</code> → only my new file, and only the workout-specific types.</p>
+    <p><strong>Fix:</strong> Port the sample-collection path from <code>legacy/native/Faff/Faff/HealthKitManager.swift</code> (the <code>collectSamples</code> function — lines 201–360 — already pulls every type the backend accepts). Wire to <code>/api/ingest/health</code>. ~150 LOC.</p>
+    <p class="meta">Severity: data quality silently degrades; coach blindness on readiness within a day or two.</p>
+  </div>
+
+  <div class="gap crit">
+    <span class="tag">CRITICAL · P27.2</span>
+    <h4>iPhone calls <code>/api/readiness</code> and <code>/api/watch/readiness</code> — neither endpoint exists</h4>
+    <p>The iPhone code references both endpoints. The server has <strong>no route handler for either</strong>. Requests get a 404 HTML page. Failures are swallowed silently.</p>
+    <p>Visible consequence: the <strong>readiness ring on iPhone TODAY</strong> is <code>ReadinessChip(value: 88)</code> — a literal <code>88</code> hardcoded in Swift. Comment in the code: <em>"Readiness ring — wired with real score when /api/readiness ships."</em></p>
+    <p><strong>Evidence:</strong> <code>ls web-v2/app/api/readiness</code> → no such file. <code>grep -n readiness web-v2/app/api/watch/today/route.ts</code> → zero matches (the watch-today endpoint doesn't return readiness fields either, but the <code>WatchWorkout</code> model expects them and decodes nil).</p>
+    <p><strong>Fix:</strong> Build <code>GET /api/readiness</code> server endpoint that computes the score from <code>health_samples</code> + <code>check_ins</code> (the logic already lives in <code>web-v2/lib/coach/state-loader.ts</code> as <code>getReadiness</code> — wrap it in a route). Wire iPhone <code>ReadinessChip</code> to the real value. ~50 LOC server + 30 LOC iPhone.</p>
+    <p class="meta">Severity: highest-visibility iPhone surface shows a fake number. Coach's "readiness=88" you've been seeing on the phone has never been your real readiness.</p>
+  </div>
+
+  <div class="gap crit">
+    <span class="tag">CRITICAL · P27.3</span>
+    <h4>Duplicate-run merge infrastructure is read-only in v2</h4>
+    <p>Every state-loader in <code>web-v2/lib/coach/</code> filters out runs flagged <code>data.mergedIntoId</code>. That's the de-dupe guard. <strong>But nothing in web-v2 ever WRITES that flag.</strong> The write code lives only in <code>legacy/web/lib/run-merge-overrides.ts</code> and <code>legacy/web/app/api/runs/dedupe-backfill</code>.</p>
+    <p>So today, when a run lands via three paths (Strava webhook + HKWorkout + Faff watch-app), each creates a separate row. None get merged. The coach sees three runs instead of one. The log shows three.</p>
+    <p>This explains your earlier "<em>coach hallucination: watch synced the threshold workout from yesterday</em>" — duplicate ingests with no merge.</p>
+    <p><strong>Evidence:</strong> <code>grep -rn 'mergedIntoId.*=\|jsonb_set.*mergedIntoId' web-v2</code> → zero. The flag is consumed but never produced.</p>
+    <p><strong>Fix:</strong> Port the merge logic from <code>legacy/web/lib/run-merge-overrides.ts</code> to <code>web-v2/lib/runs/merge.ts</code>. Call it from every ingest endpoint (<code>/api/ingest/workout</code>, <code>/api/run/manual</code>, <code>/api/watch/workouts/complete</code>, Strava webhook). Match on <code>(user, start_time ± 60s, distance ± 10%)</code>. ~120 LOC.</p>
+    <p class="meta">Severity: every dual-source run is double-counted today. Affects log totals + coach weekly volume calculations + plan adaptation.</p>
+  </div>
+
+  <h2 id="stubs">Stubs masquerading as features</h2>
+
+  <div class="gap warn">
+    <span class="tag">STUB · P27.4</span>
+    <h4>Web <code>/onboarding</code> partly persists, partly silently drops</h4>
+    <p><code>web-v2/app/onboarding/page.tsx</code> is 34 lines — just the wrapper. The flow is in <code>web-v2/components/onboarding/OnboardingFlow.tsx</code> (247 lines). It saves the race via <code>POST /api/race</code>. But a code comment explicitly says:</p>
+    <p><em>"for now we just don't persist them — no fake CONNECTED bits"</em> — referring to Strava + Apple Health connection statuses.</p>
+    <p>If a new user clicks "Connect Strava" or "Connect Apple Health" in onboarding, <strong>nothing happens server-side</strong>. They proceed thinking it worked.</p>
+    <p><strong>Fix:</strong> Wire real connection-state persistence to <code>profile.strava_connected_at</code> + <code>profile.health_connected_at</code> columns. Either build real OAuth or be honest about the placeholder. ~60 LOC.</p>
+  </div>
+
+  <div class="gap warn">
+    <span class="tag">STUB · P27.5</span>
+    <h4>Watch face decodes <code>readinessScore</code> / <code>readinessLabel</code> — server never sends them</h4>
+    <p>The watch's <code>WatchWorkout</code> model has <code>readinessScore: Int?</code> and <code>readinessLabel: String?</code>. The server endpoint that ships this model (<code>/api/watch/today</code>) doesn't populate either field. Watch decodes them as nil. Falls through to the workout fixture data (literal "Primed" / "82" in the legacy app).</p>
+    <p><strong>Fix:</strong> Same fix as P27.2 — once <code>/api/readiness</code> exists, pipe it into <code>/api/watch/today</code> output. ~10 LOC after readiness endpoint exists.</p>
+  </div>
+
+  <div class="gap warn">
+    <span class="tag">STUB · P27.6</span>
+    <h4>Watch fixture data has hardcoded "Primed · 82" placeholders</h4>
+    <p><code>legacy/native/Faff/FaffWatch Watch App/WatchWorkoutModels.swift</code> line 366 has a fixture: <code>readinessScore: 82, readinessLabel: "Primed"</code>. This shows up if the watch fails to decode a real payload (e.g. server returns no readiness).</p>
+    <p><strong>Fix:</strong> Either remove the fixture default or replace with a "no data" state. The watch shouldn't lie about readiness. ~5 LOC.</p>
+  </div>
+
+  <div class="gap warn">
+    <span class="tag">STUB · P27.7</span>
+    <h4><code>shoes.mileage_mi</code> never auto-increments — even though shoe CRUD works</h4>
+    <p>The <code>strava_activities</code> table has a <code>shoe_id</code> column. <code>/api/shoe</code> supports POST/PATCH/DELETE. Web profile page renders the shoe rotation chart.</p>
+    <p>But <strong>nothing ever writes <code>shoe_id</code> on a run</strong>. No UI to pick a shoe. No auto-assignment. <code>shoes.mileage_mi</code> stays at whatever you typed in when you created the shoe.</p>
+    <p><strong>Fix:</strong> Shoe picker on the run detail modal + auto-bump on save. ~120 LOC. Already P15.2 in the queue.</p>
+  </div>
+
+  <h2 id="orphan">Declared-but-orphaned (entitlements, fields, capabilities without code)</h2>
+
+  <div class="gap info">
+    <span class="tag">ORPHAN · P27.8</span>
+    <h4><code>NSHealthUpdateUsageDescription</code> declares write capability the iPhone never uses</h4>
+    <p>iPhone Info.plist declares "Faff writes completed workouts to Apple Health so your history stays in one place." Native-v2 has zero HK write code — that's the watch's job. App Store reviewers might flag this as misleading.</p>
+    <p><strong>Fix:</strong> Either implement HK workout write-back from iPhone (probably no — watch already does it), or remove the usage string. ~5 LOC.</p>
+  </div>
+
+  <div class="gap info">
+    <span class="tag">ORPHAN · P27.9</span>
+    <h4><code>temp_f</code> field in run data — never populated</h4>
+    <p>The <code>strava_activities.data.tempF</code> field is in the schema and read by the coach via <code>run-state.ts</code>. <strong>Nothing writes it.</strong> All runs have null temp. Coach can never speak to heat.</p>
+    <p><strong>Fix:</strong> Open-Meteo enrichment — P15.1, already approved. ~80 LOC.</p>
+  </div>
+
+  <div class="gap info">
+    <span class="tag">ORPHAN · P27.10</span>
+    <h4>WatchSync <code>authToken</code> TODO — multi-user is a no-op</h4>
+    <p>Comment in <code>WatchSync.swift</code>: <em>"authToken — TODO wire when v2 auth lands (P6). Watch tolerates absence."</em></p>
+    <p>The watch + iPhone identify the user by hardcoded <code>DEFAULT_USER_ID</code> on the server (35 occurrences). No bearer tokens, no sessions, no JWT. <strong>The system is single-user.</strong> Adding a second beta tester today would either mix their data into yours, or require redeploying with their UUID hardcoded.</p>
+    <p>Not necessarily a bug — beta is intentionally single-user. But it's a hard ceiling. Bear in mind before any TestFlight expansion.</p>
+    <p><strong>Fix when needed:</strong> Real auth (Sign in with Apple is cheapest) + JWT + multi-tenant queries. ~400-600 LOC across both clients + server. Defer until needed.</p>
+  </div>
+
+  <div class="gap info">
+    <span class="tag">ORPHAN · P27.11</span>
+    <h4>Strava OAuth wired by env vars — no per-user connection flow</h4>
+    <p>Strava is connected via <code>STRAVA_CLIENT_ID</code> + <code>STRAVA_REFRESH_TOKEN</code> in your <code>.env.local</code>. There's no web OAuth flow, no "Connect Strava" button that actually does anything beyond UI display. The runner-tagged tokens are yours specifically. Onboarding's "Connect Strava" is the same placeholder mentioned above.</p>
+    <p>Same family of finding as P27.10 — single-user shortcut.</p>
+    <p><strong>Fix when needed:</strong> Real Strava OAuth flow (auth URL → callback → store per-user refresh token). ~150 LOC. Defer until multi-user.</p>
+  </div>
+
+  <h2 id="pattern">The pattern — why this happens</h2>
+
+  <div class="pattern">
+    <h3>How "looks built, isn't" got past us</h3>
+    <p>Three causes, in order of frequency:</p>
+    <ol style="padding-left:18px; margin:6px 0 0; line-height:1.7;">
+      <li><strong>The audit checked surfaces, not code paths.</strong> The morning audit confirmed "iPhone TODAY · live" because the screen renders. But the screen rendering a "88" readiness ring isn't the same as readiness actually working. Surface-level audits miss <em>placeholder content</em>.</li>
+      <li><strong>Legacy was the source of truth, never officially deprecated.</strong> When we cut to native-v2, half the iPhone's functionality (HK sample sync, run de-dupe) silently kept flowing from the legacy app because David still had it installed. We never tested with the legacy app uninstalled, so we never noticed.</li>
+      <li><strong>Schema fields outlived their consumers.</strong> <code>mergedIntoId</code>, <code>shoe_id</code>, <code>tempF</code> are all schema columns that ship with read code (state-loader, coach tools) before write code lands. Easy to think the feature exists because there's data structure for it.</li>
+    </ol>
+    <p style="margin-top:10px;"><strong>Going forward:</strong> when an audit says "X is live", the check should be: <em>"trace the data path end-to-end, on the iPhone built today, with legacy uninstalled."</em> Surface-and-grep isn't enough.</p>
+  </div>
+
+  <h2 id="plan">Fix plan</h2>
+
+  <table>
+    <thead><tr><th>Task</th><th>Severity</th><th>Effort</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>P27.1 — Port HK sample reader to native-v2</td><td class="crit">CRITICAL</td><td>~150 LOC</td><td>Stops biometric blindness when legacy is removed. Do FIRST.</td></tr>
+      <tr><td>P27.2 — Build /api/readiness + wire ring</td><td class="crit">CRITICAL</td><td>~80 LOC</td><td>Highest-visibility surface lies. Honest fix is mandatory.</td></tr>
+      <tr><td>P27.3 — Port run-merge logic to v2</td><td class="crit">CRITICAL</td><td>~120 LOC</td><td>Double-counted runs corrupt weekly volume + plan adaptation.</td></tr>
+      <tr><td>P27.4 — Onboarding real connection persistence</td><td class="warn">STUB</td><td>~60 LOC</td><td>Be honest about what connect does or wire it.</td></tr>
+      <tr><td>P27.5 — Pipe readiness into /api/watch/today</td><td class="warn">STUB</td><td>~10 LOC</td><td>Free after P27.2.</td></tr>
+      <tr><td>P27.6 — Remove "Primed · 82" fallback</td><td class="warn">STUB</td><td>~5 LOC</td><td>Don't lie to the watch face.</td></tr>
+      <tr><td>P27.7 — Shoe picker + auto-bump</td><td class="warn">STUB</td><td>~120 LOC</td><td>Already P15.2 — same work.</td></tr>
+      <tr><td>P27.8 — Remove unused HK Update usage string</td><td class="mute">ORPHAN</td><td>~5 LOC</td><td>App Store hygiene.</td></tr>
+      <tr><td>P27.9 — Weather enrichment</td><td class="mute">ORPHAN</td><td>~80 LOC</td><td>Already P15.1 — same work.</td></tr>
+      <tr><td>P27.10 — Multi-user auth + JWT</td><td class="mute">DEFER</td><td>~500 LOC</td><td>Only when adding a second beta user.</td></tr>
+      <tr><td>P27.11 — Per-user Strava OAuth</td><td class="mute">DEFER</td><td>~150 LOC</td><td>Pair with P27.10.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Order of operations</h3>
+  <ol>
+    <li><strong>Now (today/tomorrow):</strong> P27.1 (HK sample reader) + P27.2 (readiness endpoint + iPhone wire) + P27.3 (merge). These close the silent-data-loss + lying-to-user gaps.</li>
+    <li><strong>Next:</strong> P27.4 (onboarding honesty) + P27.5 (free readiness pipe to watch) + P27.6 (remove watch fixture).</li>
+    <li><strong>Bundled with existing P15.x:</strong> P27.7 (shoe picker) = P15.2 + P15.3. P27.9 (weather) = P15.1.</li>
+    <li><strong>Hygiene:</strong> P27.8 (remove unused usage string) — do during next ship.</li>
+    <li><strong>Defer:</strong> P27.10 + P27.11 — only when actually adding multi-user.</li>
+  </ol>
+
+  <h3>What I'm NOT claiming</h3>
+  <ul>
+    <li>This list is exhaustive. Three days from now another "looks built, isn't" will surface — that's the nature of incremental builds with shifting surfaces. The pattern (surfaces audited, code paths not traced) is the real bug.</li>
+    <li>The current state is unusable — it's not. The watch + Strava + DB + coach pipeline all work. But the iPhone has more placeholder masquerade than the audit implied, and the system survives partly because the legacy iPhone app is still installed under the v2 app.</li>
+  </ul>
+
+  <div style="border-top: 1px solid var(--line); margin-top: 40px; padding-top: 16px; color: var(--mute); font-size: 12px;">
+    Audit method: walked from every declared capability (entitlement, Info.plist, API endpoint, schema column, code comment marker) to its actual implementation path. Flagged when the path dead-ends, returns 404, or hardcodes data. Cross-referenced web-v2 against native-v2 against legacy.
+  </div>
+</div>
+</body>
+</html>
