@@ -187,4 +187,42 @@ placeholder.
 
 ---
 
+## 6. Build 69 — iPhone schedule + brief surgery (in-flight tonight)
+
+Your feedback before sleep:
+1. "I have no way to see the schedule, today's workout, details on
+   the iPhone."
+2. "Coach brief on the iPhone is just top-to-bottom wall of text —
+   paraphrase, reorder, or both."
+
+What's in build 69 (TestFlight):
+- **Structured workout card** on TODAY tab: today's prescription
+  inline — warmup (blue), reps (gold) + recovery (purple) folded
+  into a REPEAT N× block, cooldown (blue). Pace targets, distances,
+  tolerances, total time, distance, HR ceiling all visible without
+  reading prose.
+- **Week strip** on both TODAY and TRAINING: Mon-Sun day tiles,
+  today highlighted (green border + "TODAY"), past dimmed. Tap any
+  tile to open the workout-detail sheet for that day.
+- **Workout detail modal**: sheet with full breakdown of any day,
+  using the same color semantics as the web modal.
+- **Brief paraphrase** (server-side): `client=ios` →
+  - lead = ONE sentence ≤12 words
+  - voice = AT MOST 2 lines / 60 words total
+  - no horizon prose unless A-race <28 days
+  - max 2 topic cards
+  - cache key separates iOS from web (won't collide)
+- **Reorder on iPhone**: structured workout card LEADS the screen,
+  week strip next, coach prose drops to slot 3, topic cards last.
+- **Watch sync** now fires on every TODAY refresh (not just app
+  start) — plan edits propagate to the watch without an iPhone
+  relaunch.
+
+Deferred to a follow-up iOS build (P17):
+- /races, /health, /profile, /log iOS surfaces (web has them; iOS
+  doesn't yet)
+- Settings modal access from iOS (gear icon in nav)
+
+---
+
 (updated automatically by Claude as work progresses)
