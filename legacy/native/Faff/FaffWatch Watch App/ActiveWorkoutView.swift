@@ -407,26 +407,14 @@ private struct LiveWarmup: View {
     private var remainingRole: Role {
         phase.repUnit == .distance ? .dist : .neutral
     }
-    private var thenPace: String {
-        engine.nextPhase?.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
-    }
-    private var thenDistance: String {
-        if let n = engine.nextPhase {
-            if let d = n.distanceMi { return String(format: "%.2f", d) }
-            return PaceFormat.clock(n.durationSec)
-        }
-        return "—"
-    }
 
     var body: some View {
         WarmupFace(
-            pace:           paceText(tracker),
-            paceRole:       tracker.paceSPerMi > 0 ? .live : .mute,
-            hr:             tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
-            remaining:      remaining,
-            remainingRole:  remainingRole,
-            thenPace:       thenPace,
-            thenDistance:   thenDistance
+            pace:          paceText(tracker),
+            paceRole:      tracker.paceSPerMi > 0 ? .live : .mute,
+            hr:            tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
+            remaining:     remaining,
+            remainingRole: remainingRole
         )
     }
 }

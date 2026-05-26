@@ -263,40 +263,23 @@ struct WarmupFace: View {
     let hr: String              // live HR · "142" / "—"
     let remaining: String       // distance OR time remaining · "1.40" / "12:30"
     let remainingRole: Role     // .dist for distance, .neutral for time
-    let thenPace: String        // first work rep target · "6:47"
-    let thenDistance: String    // first work rep distance · "1.00"
     var body: some View {
-        Screen {
+        // Same overlay pattern as Today/GO — NumberFace fills the screen
+        // with three big rows (matching cooldown / rest / today exactly),
+        // "WARMUP" tag rides on top in the OS-clock-baseline slot. No
+        // THEN subtitle — the next-rep target was visible in the lobby
+        // and visible again the moment the warmup ends, doesn't need
+        // permanent screen real estate.
+        ZStack(alignment: .topLeading) {
+            NumberFace(rows: [
+                NumRow(pace,      paceRole),
+                NumRow(hr,        .neutral, icon: "heart.fill"),
+                NumRow(remaining, remainingRole)
+            ])
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(alignment: .leading, spacing: 0) {
-                    FaceLabel(text: "WARMUP", color: Faff.mute, size: h * 0.060)
-                        .topTagInset(h)
-                    Spacer(minLength: 0)
-                    BigValue(text: pace, role: paceRole, size: h * 0.18)
-                    Spacer(minLength: 0)
-                    HStack(alignment: .center, spacing: h * 0.030) {
-                        Text(hr)
-                            .font(.custom("HelveticaNeue-Bold", size: h * 0.18))
-                            .foregroundStyle(Faff.ink)
-                            .padding(.vertical, -h * 0.18 * 0.22)
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: h * 0.08, weight: .bold))
-                            .foregroundStyle(Faff.mute)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Spacer(minLength: 0)
-                    BigValue(text: remaining, role: remainingRole, size: h * 0.18)
-                    Spacer(minLength: 0)
-                    Text("THEN  \(thenPace) · \(thenDistance)")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.055))
-                        .tracking(0.8)
-                        .foregroundStyle(Faff.mute)
-                        .padding(.bottom, h * 0.025)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .padding(.horizontal, h * 0.060)
-                .padding(.bottom, h * 0.060)
+                FaceLabel(text: "WARMUP", color: Faff.mute, size: h * 0.060)
+                    .topTagInset(h)
             }
         }
     }
