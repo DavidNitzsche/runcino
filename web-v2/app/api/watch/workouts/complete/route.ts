@@ -81,18 +81,22 @@ export async function POST(req: NextRequest) {
     watchCompletionRef: body.workoutId,
   };
   // Idempotent: same workoutId always overwrites.
-  await pool.query(
-    `DELETE FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND data->>'client_workout_id' = $2`,
-    [userId, body.workoutId]
-  ).catch(() => {});
-  await pool.query(
-    `INSERT INTO strava_activities (user_uuid, data) VALUES ($1, $2)`,
-    [userId, data]
-  ).catch((e) => {
-    console.error('[watch/complete] failed to write strava_activities row:', e);
-  });
+  let stravaWriteErr: string | null = null;
+  try {
+    await pool.query(
+      `DELETE FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND data->>'client_workout_id' = $2`,
+      [userId, body.workoutId]
+    );
+    await pool.query(
+      `INSERT INTO strava_activities (user_uuid, data) VALUES ($1, $2)`,
+      [userId, data]
+    );
+  } catch (e: any) {
+    stravaWriteErr = e?.message ?? String(e);
+    console.error('[watch/complete] strava_activities write failed:', e);
+  }
 
   // Event-driven cache: a workout just finished. Bust so the next /today
   // open generates a fresh post-run brief.
@@ -106,7 +110,8 @@ export async function POST(req: NextRequest) {
     // Helps the audit harness detect "yes, Railway has my latest code"
     // without depending on side effects (the strava_activities INSERT
     // can silently fail; this response field can't).
-    api_version: 'watch-complete/p21-1',
+    api_version: 'watch-complete/p21-2',
+    strava_write_error: stravaWriteErr,    // null on success — debug field
   });
 }
 
