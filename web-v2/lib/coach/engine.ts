@@ -105,16 +105,26 @@ export async function generateBriefing(
 
   // Tool-use loop — coach calls tools until it returns end_turn with prose.
   // Hard cap at 8 iterations to prevent runaways; in practice we expect 3-5.
+  //
+  // tool_choice strategy:
+  //   - First turn: 'any' — model MUST call at least one tool. Without this,
+  //     Sonnet's default 'auto' lets it skip tools entirely and fabricate
+  //     numbers (observed empirically — empty trace + hallucinated runs).
+  //   - Subsequent turns: 'auto' — model can keep calling tools OR end the
+  //     turn with prose once it's read enough.
   let finalContent: Anthropic.ContentBlock[] = [];
   const toolTrace: Array<{ name: string; input: any }> = [];
+  const stopReasons: string[] = [];
   for (let i = 0; i < 8; i++) {
     const resp = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 2400,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       tools: TOOLS,
+      tool_choice: i === 0 ? { type: 'any' } : { type: 'auto' },
       messages,
     });
+    stopReasons.push(resp.stop_reason ?? 'null');
 
     if (resp.stop_reason === 'end_turn' || resp.stop_reason === 'max_tokens') {
       finalContent = resp.content;
@@ -149,7 +159,7 @@ export async function generateBriefing(
   // reading from sources (and not skipping critical reads like getPlanWindow
   // for a pre-run brief). Visible in Railway logs AND attached to the response
   // under _state.toolTrace so the API can be probed directly during iteration.
-  console.log('[coach] tool trace:', JSON.stringify(toolTrace));
+  console.log('[coach] stop_reasons:', stopReasons.join(','), 'tool trace:', JSON.stringify(toolTrace));
 
   const rawText = finalContent
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -263,28 +273,36 @@ function buildOrientationMessage(o: OrientationInput): string {
   lines.push(`TODAY: ${o.today} (${dayOfWeekName(o.today)}). The training week runs Monday→Sunday.`);
   lines.push(`SURFACE: ${o.surface} · MODE: ${o.mode}.`);
   lines.push('');
+  lines.push(`# READ FIRST, COMPOSE SECOND`);
   lines.push(
-    `You have tools to read every data source you need: getProfile, getZones, ` +
-    `getPlanWindow, getRuns, getReadiness, getRaces, getCheckIns, getHealthSeries, getDoctrine. ` +
-    `Call them. Don't guess at values — read them.`,
+    `You have ZERO data about this runner in this message. Every number, ` +
+    `every workout, every day-of-week alignment must come from a tool call. ` +
+    `If you write a number that didn't come from a tool, you fabricated it.`,
   );
   lines.push('');
   lines.push(`# TRUTH CONTRACT`);
   lines.push(
-    `- Only narrate runs that getRuns returns. Never invent "yesterday's threshold" or ` +
-    `"Saturday's long run" — call getRuns and use what it gives you.`,
+    `- Only narrate runs that getRuns returns. Never invent "Sunday's long run" ` +
+    `or "Friday's 7-miler" — call getRuns and use ONLY what it gives you. If ` +
+    `getRuns returns 1 run, you can only mention 1 run.`,
   );
   lines.push(
-    `- Only reference planned sessions that getPlanWindow returns. To know what today's ` +
-    `planned workout is, call getPlanWindow with daysBack=0, daysForward=0.`,
+    `- To know what TODAY's planned session is: getPlanWindow({ daysBack: 0, daysForward: 6 }). ` +
+    `Find the row whose date matches TODAY (above). That row IS today's session. ` +
+    `Don't infer "today must be easy" from yesterday's run.`,
   );
   lines.push(
-    `- Only claim a check-in rating (SOLID/TIRED/WRECKED) appears in getCheckIns. ` +
+    `- Only claim a check-in rating (SOLID/TIRED/WRECKED) that appears in getCheckIns. ` +
     `If empty, do NOT say "you said you were tired" — they didn't say anything.`,
   );
   lines.push(
     `- HR zones, paces, and physiological framing must come from getZones + getDoctrine. ` +
     `Don't invent thresholds.`,
+  );
+  lines.push(
+    `- If today's session type from getPlanWindow is threshold/intervals/tempo/long, ` +
+    `ALSO call getDoctrine({ topic: <type> }) before writing voice. Frame the session ` +
+    `from doctrine, not generic running knowledge.`,
   );
   lines.push('');
   lines.push(`# ELIGIBLE TOPIC KINDS`);

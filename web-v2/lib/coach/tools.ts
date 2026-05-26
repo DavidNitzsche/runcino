@@ -127,6 +127,23 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'getWorkoutCompletion',
+    description:
+      "Read the most recent workout completion payload sent by the watch — " +
+      'per-phase actuals (pace, distance, HR, cadence per warmup/rep/recovery/cooldown), ' +
+      'totals (totalDistanceMi, totalDurationSec, avgHr, maxHr), and the completed flag ' +
+      "per phase. Use this on POST-RUN briefs to analyze pace consistency across reps, " +
+      'HR drift across same-pace reps, plan-vs-actual distance per phase, and form drift ' +
+      '(cadence at start vs end). If workoutId is omitted, returns the latest completion ' +
+      "the runner has logged. If no completion has been logged, returns { completion: null }.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        workoutId: { type: 'string', description: 'specific workoutId to fetch; omit for latest' },
+      },
+    },
+  },
+  {
     name: 'getDoctrine',
     description:
       "Read the research-backed doctrine on a topic, drawn from /Research/. " +
@@ -164,6 +181,7 @@ export async function dispatchTool(
     case 'getRaces':         return getRaces(userId, input);
     case 'getCheckIns':      return getCheckIns(userId, input);
     case 'getHealthSeries':  return getHealthSeries(userId, input);
+    case 'getWorkoutCompletion': return getWorkoutCompletion(userId, input);
     case 'getDoctrine':      return getDoctrine(input);
     default:                 return { error: `unknown tool: ${name}` };
   }
@@ -343,6 +361,31 @@ async function getHealthSeries(userId: string, input: { daysBack: number }) {
     cadenceBaseline: state.cadenceBaseline,
     note: 'For full per-day series, future expansion. Aggregates from loadCoachState today.',
   };
+}
+
+async function getWorkoutCompletion(userId: string, input: { workoutId?: string }) {
+  // Watch completions land in coach_intents as reason='watch_completion' rows.
+  // value column carries the full WatchCompletion JSON the watch agent
+  // documented (per-phase actuals + totals). If workoutId is specified we
+  // match exactly; otherwise return the most recent.
+  const r = (await pool.query(
+    input.workoutId
+      ? `SELECT value, ts FROM coach_intents
+          WHERE user_id = $1 AND reason = 'watch_completion' AND field = $2
+          ORDER BY ts DESC LIMIT 1`
+      : `SELECT value, ts FROM coach_intents
+          WHERE user_id = $1 AND reason = 'watch_completion'
+          ORDER BY ts DESC LIMIT 1`,
+    input.workoutId ? [userId, input.workoutId] : [userId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r) return { completion: null, note: 'no watch completion logged for this runner' };
+  let payload: any = null;
+  try {
+    payload = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+  } catch {
+    return { completion: null, note: 'completion blob unparseable' };
+  }
+  return { completion: payload, ingested_at: r.ts };
 }
 
 async function getDoctrine(input: { topic: string }) {
