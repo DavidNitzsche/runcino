@@ -9,25 +9,7 @@
  */
 
 import Link from 'next/link';
-import { ProfileGapInput } from '@/components/profile/ProfileGapInput';
-
-const GAP_FIELD_LABEL: Record<string, string> = {
-  height_cm:        'Height',
-  birthday:         'Birthday',
-  lthr:             'LTHR (threshold HR)',
-  hrmax_observed:   'Max HR',
-  experience_level: 'Experience level',
-  sex:              'Sex',
-  city:             'City',
-};
-
-const GAP_FIELD_WHY: Record<string, string> = {
-  height_cm:        'Unlocks cadence target (180 spm baseline)',
-  birthday:         'Unlocks age-based recovery + heat adjustments',
-  lthr:             'Primary HR-zone anchor (Friel method)',
-  hrmax_observed:   'Refines zones if LTHR is unknown',
-  experience_level: 'Caps weekly mileage to a safe ceiling',
-};
+import { InlineGapEditor } from '@/components/profile/InlineGapEditor';
 
 export function NextWorkoutCard({ payload, coach_note }: {
   payload: { dow?: string; type?: string; label?: string | null; mi?: number };
@@ -90,14 +72,17 @@ export function RaceHorizonCard({ payload, coach_note }: {
 }
 
 export function ProfileGapCard({ payload }: {
-  payload: { field: string; why: string };
+  payload: { field?: string; why?: string };
 }) {
-  // Use the inline editor — David doesn't want to leave /today to add data.
-  const label = GAP_FIELD_LABEL[payload.field] ?? payload.field;
-  const why = GAP_FIELD_WHY[payload.field] ?? payload.why ?? '';
-  return (
-    <ProfileGapInput field={payload.field} label={label} why={why} />
-  );
+  // Inline editor — David doesn't want to leave /today to add data.
+  // Defensive: if the LLM emits a malformed payload (missing/empty field),
+  // InlineGapEditor falls back to a quiet "edit in profile" link.
+  const field = (payload?.field ?? '').trim();
+  if (!field) {
+    // Nothing actionable. Drop the card silently rather than render junk.
+    return null;
+  }
+  return <InlineGapEditor field={field} fallbackWhy={payload?.why ?? null} />;
 }
 
 export function SleepDeficitCard({ payload, coach_note }: {

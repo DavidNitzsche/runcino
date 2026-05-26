@@ -107,12 +107,22 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
     }
   }
 
+  // Drop profile_gap topics with no actionable field — better silent than
+  // a broken card. (LLM occasionally emits empty payloads.)
+  const filtered = validatedTopics.filter((t) => {
+    if (t.kind === 'profile_gap') {
+      const f = ((t.payload as any)?.field ?? '').trim();
+      return f.length > 0;
+    }
+    return true;
+  });
+
   const response: BriefingResponse = {
     surface: resolved.surface,
     mode: resolved.mode,
     lead: parsed.lead ?? '',
     voice: parsed.voice ?? [],
-    topics: validatedTopics,
+    topics: filtered,
     _state: {
       user_id: userId,
       today: state.today,
