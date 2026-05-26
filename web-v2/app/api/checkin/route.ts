@@ -16,8 +16,21 @@ const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-99
 const VALID_RATINGS = ['solid', 'tired', 'wrecked'] as const;
 type Rating = typeof VALID_RATINGS[number];
 
+interface CheckinBody {
+  rating?: string;
+  briefing_id?: string;
+  surface?: string;
+  note?: string;
+  user_id?: string;
+  // P34 — expanded check-in (all optional)
+  energy?: number;                 // 1-10 self-reported
+  soreness?: string[];             // ["calves", "quads", "hips"...]
+  mood?: 'great' | 'good' | 'flat' | 'low';
+  sleep_quality?: number;          // 1-10
+}
+
 export async function POST(req: NextRequest) {
-  let body: { rating?: string; briefing_id?: string; surface?: string; note?: string; user_id?: string };
+  let body: CheckinBody;
   try {
     body = await req.json();
   } catch {
@@ -32,11 +45,20 @@ export async function POST(req: NextRequest) {
   const userId = body.user_id ?? DAVID_USER_ID;
   const surface = body.surface ?? 'today';
 
+  // P34 — build the optional 'extras' jsonb from any expanded fields.
+  // Stays null if the caller only sent rating/note (back-compat).
+  const extras: Record<string, any> = {};
+  if (body.energy != null) extras.energy = body.energy;
+  if (Array.isArray(body.soreness) && body.soreness.length > 0) extras.soreness = body.soreness;
+  if (body.mood) extras.mood = body.mood;
+  if (body.sleep_quality != null) extras.sleep_quality = body.sleep_quality;
+  const extrasJson = Object.keys(extras).length > 0 ? JSON.stringify(extras) : null;
+
   try {
     await pool.query(
-      `INSERT INTO check_ins (user_id, rating, briefing_id, surface, note, ts)
-       VALUES ($1, $2, $3, $4, $5, now())`,
-      [userId, rating, body.briefing_id ?? null, surface, body.note ?? null]
+      `INSERT INTO check_ins (user_id, rating, briefing_id, surface, note, ts, extras)
+       VALUES ($1, $2, $3, $4, $5, now(), $6::jsonb)`,
+      [userId, rating, body.briefing_id ?? null, surface, body.note ?? null, extrasJson]
     );
   } catch (err: any) {
     // If check_ins table is missing, fail loudly so the operator runs the

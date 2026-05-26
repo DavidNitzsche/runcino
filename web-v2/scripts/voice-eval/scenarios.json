@@ -1,0 +1,97 @@
+{
+  "version": "v2-tool-use",
+  "scenarios": [
+    {
+      "id": "post-quality-tempo",
+      "label": "Post-run, ran tempo at target HR/pace",
+      "surface": "today",
+      "mode": "post-run",
+      "must_call_tools": ["getRuns", "getWorkoutCompletion"],
+      "must_cite": ["actual pace", "actual HR"],
+      "must_avoid": ["Strava", "yesterday's", "perfect run"],
+      "voice_traits": ["direct", "data-anchored", "no flattery"]
+    },
+    {
+      "id": "post-quality-missed",
+      "label": "Post-run, threshold reps below target",
+      "surface": "today",
+      "mode": "post-run",
+      "must_call_tools": ["getRuns", "getWorkoutCompletion", "getDoctrine"],
+      "must_cite": ["specific rep number"],
+      "must_avoid": ["good effort", "no big deal"],
+      "voice_traits": ["honest about gap", "doctrine-anchored fix"]
+    },
+    {
+      "id": "post-easy",
+      "label": "Post easy run, normal day",
+      "surface": "today",
+      "mode": "post-run",
+      "must_call_tools": ["getRuns"],
+      "must_avoid": ["killed it", "crushed it"],
+      "voice_traits": ["brief", "neutral"]
+    },
+    {
+      "id": "pre-run-quality",
+      "label": "Pre-run, threshold workout on the calendar",
+      "surface": "today",
+      "mode": "pre-run",
+      "must_call_tools": ["getPlanWindow", "getReadiness"],
+      "must_cite": ["target HR or pace", "rep structure"],
+      "voice_traits": ["primed", "specific"]
+    },
+    {
+      "id": "rest-day",
+      "label": "Rest day, no workout scheduled",
+      "surface": "today",
+      "mode": "rest-day",
+      "must_call_tools": ["getPlanWindow", "getReadiness"],
+      "must_avoid": ["go for an easy", "ramp up"],
+      "voice_traits": ["recovery emphasis"]
+    },
+    {
+      "id": "sleep-crater",
+      "label": "Sleep < 5h, scheduled threshold workout",
+      "surface": "today",
+      "mode": "pre-run",
+      "must_call_tools": ["getReadiness", "getHealthSeries", "getPlanWindow"],
+      "must_cite": ["sleep hours"],
+      "voice_traits": ["override threshold", "suggest easy"]
+    },
+    {
+      "id": "race-week",
+      "label": "Race week (T-5), A race upcoming",
+      "surface": "today",
+      "mode": "race-week",
+      "must_call_tools": ["getRaces", "getPlanWindow"],
+      "must_cite": ["days until race"],
+      "must_avoid": ["test workout", "new volume"],
+      "voice_traits": ["taper-aware", "no new stimulus"]
+    },
+    {
+      "id": "race-day",
+      "label": "Race day morning",
+      "surface": "today",
+      "mode": "race-day",
+      "must_call_tools": ["getRaces", "getReadiness"],
+      "voice_traits": ["focused", "execution-oriented"]
+    },
+    {
+      "id": "watch-completion-cruise",
+      "label": "Post-run, watch synced cruise intervals",
+      "surface": "today",
+      "mode": "post-run",
+      "must_call_tools": ["getWorkoutCompletion", "getRuns"],
+      "must_cite": ["per-rep pace"],
+      "voice_traits": ["per-rep awareness"]
+    },
+    {
+      "id": "no-data",
+      "label": "Fresh install, no plan, no runs",
+      "surface": "today",
+      "mode": "free-running",
+      "must_call_tools": ["getProfile", "getPlanWindow"],
+      "voice_traits": ["honest about gap", "no fabrication"],
+      "must_avoid": ["your last run", "your plan says"]
+    }
+  ]
+}

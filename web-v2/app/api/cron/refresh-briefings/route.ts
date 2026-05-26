@@ -32,6 +32,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { generateBriefing } from '@/lib/coach/engine';
+import { raiseAlert } from '@/lib/ops/alerts';
 
 // LLM regens are slow — give it room.
 export const maxDuration = 300;
@@ -94,6 +95,17 @@ export async function POST(req: NextRequest) {
   }
 
   const failed = results.filter((r) => r.today !== 'ok' || r.today_ios !== 'ok');
+  if (failed.length > 0) {
+    // P37 — surface regen failures through the alerts pipeline. Severity
+    // bumps to 'error' if more than half failed; otherwise 'warn'.
+    void raiseAlert({
+      kind: 'regen_fail',
+      severity: failed.length > results.length / 2 ? 'error' : 'warn',
+      message: `Briefing refresh: ${failed.length}/${results.length} users failed`,
+      metadata: { failed_users: failed.map((f) => f.user_id) },
+      source: 'cron/refresh-briefings',
+    }).catch(() => {});
+  }
   return NextResponse.json({
     ok: failed.length === 0,
     users: activeUserIds.length,

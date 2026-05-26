@@ -46,6 +46,27 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Map common race-distance labels to miles. Used for VDOT + LTHR calibrate. */
+function distanceMiFromLabel(label: string | undefined): number | null {
+  if (!label) return null;
+  const s = String(label).toLowerCase().trim();
+  if (s === 'marathon'      || s === '26.2') return 26.2;
+  if (s === 'half marathon' || s === 'half' || s === '13.1') return 13.1094;
+  if (s === '10k')   return 6.21371;
+  if (s === '5k')    return 3.10686;
+  if (s === '15k')   return 9.32057;
+  if (s === '10mi'   || s === '10 mile') return 10.0;
+  if (s === '20mi'   || s === '20 mile') return 20.0;
+  // Fallback: try parse number suffixed with 'mi' / 'km'
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*(mi|km|k)?$/);
+  if (m) {
+    const n = parseFloat(m[1]);
+    if (!m[2] || m[2] === 'mi') return n;
+    if (m[2] === 'km' || m[2] === 'k') return n / 1.609344;
+  }
+  return null;
+}
+
 export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
@@ -66,6 +87,50 @@ export async function PATCH(req: NextRequest) {
       if (body[k] !== undefined) meta[k] = body[k];
     }
     await pool.query(`UPDATE races SET meta = $1 WHERE slug = $2`, [meta, body.slug]);
+
+    // P33 — auto-calibrate LTHR + VDOT from race retro when both finish
+    // time and avg HR are set. Best-effort: failures don't block save.
+    const userId = body.user_id ?? DAVID_USER_ID;
+    if (meta.finishTime && meta.avgHrBpm && distanceMiFromLabel(meta.distanceLabel) != null) {
+      try {
+        const distanceMi = distanceMiFromLabel(meta.distanceLabel)!;
+        const { parseRaceTime, vdotFromRace } = await import('@/lib/training/vdot');
+        const { calibrateLthr } = await import('@/lib/training/lthr');
+        const secs = parseRaceTime(String(meta.finishTime));
+        const hr = Number(meta.avgHrBpm);
+        // VDOT
+        if (secs && meta.priority !== 'C') {
+          const v = vdotFromRace(secs, distanceMi);
+          if (v != null) {
+            // No vdot column on profile — coach_intent tells the next
+            // briefing about the new estimate.
+            await pool.query(
+              `INSERT INTO coach_intents (user_id, reason, field, value)
+               VALUES ($1, 'vdot_auto_recalc', 'vdot', $2)`,
+              [userId, String(v)]
+            );
+          }
+        }
+        // LTHR
+        const cal = calibrateLthr(distanceMi, hr);
+        if (cal) {
+          await pool.query(
+            `UPDATE profile
+                SET lthr = $1, lthr_method = $2, lthr_set_at = NOW()
+              WHERE user_uuid = $3`,
+            [cal.lthr, cal.method, userId]
+          );
+          await pool.query(
+            `INSERT INTO coach_intents (user_id, reason, field, value)
+             VALUES ($1, 'lthr_auto_calibrated', 'lthr', $2)`,
+            [userId, `${cal.lthr} (${cal.method})`]
+          );
+        }
+      } catch (e: any) {
+        console.error('[race PATCH] auto-calibrate warn:', e?.message);
+      }
+    }
+
     await bustBriefingCache(DAVID_USER_ID);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
