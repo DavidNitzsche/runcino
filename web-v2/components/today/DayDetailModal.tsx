@@ -209,13 +209,15 @@ function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
     isEasy ? 'var(--learn)' :
              'var(--mute)';
 
-  // Build the volume label
+  // Volume label — describes what one rep / the whole step looks like.
+  // For repeat blocks with recovery, the volume label shows the EACH unit.
   let volumeLabel: string;
+  const isRepeatBlock = step.recovery != null && step.reps != null;
   if (step.reps != null && step.rep_distance_mi != null) {
     const repFmt = step.rep_distance_mi < 1
       ? `${Math.round(step.rep_distance_mi * 1609)} m`
       : `${step.rep_distance_mi % 1 === 0 ? step.rep_distance_mi : step.rep_distance_mi.toFixed(1)} mi`;
-    volumeLabel = `${step.reps} × ${repFmt}`;
+    volumeLabel = isRepeatBlock ? `each: ${repFmt}` : `${step.reps} × ${repFmt}`;
   } else if (step.reps != null && step.duration) {
     volumeLabel = `${step.reps} × ${step.duration}`;
   } else if (step.distance_mi != null) {
@@ -233,7 +235,7 @@ function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
       borderLeft: `3px solid ${accent}`,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: accent, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: accent, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
           {step.label}
         </div>
         {volumeLabel && (
@@ -253,6 +255,31 @@ function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.55 }}>
         {step.note}
       </div>
+
+      {/* Recovery sub-block — folded inside the repeat card so reps + rest
+          read as a single rhythm instead of two disconnected steps. */}
+      {step.recovery && (
+        <div style={{
+          marginTop: 12, paddingTop: 12, borderTop: '1px dashed rgba(255,255,255,0.08)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+            <span style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: 'var(--learn)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+              RECOVERY BETWEEN
+            </span>
+            <span style={{ fontFamily: 'var(--f-display)', fontSize: 15, color: 'var(--ink)' }}>
+              {step.recovery.duration}
+            </span>
+          </div>
+          {step.recovery.pace_target && (
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginBottom: 4 }}>
+              PACE <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.recovery.pace_target}</span>
+            </div>
+          )}
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.66)', lineHeight: 1.55 }}>
+            {step.recovery.note}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

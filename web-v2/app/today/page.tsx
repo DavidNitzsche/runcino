@@ -3,7 +3,6 @@ import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigge
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { WeekStrip } from '@/components/today/WeekStrip';
 import { TodayPlannedCard } from '@/components/today/TodayPlannedCard';
-import { ManualRunButton } from '@/components/today/ManualRunButton';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -71,9 +70,6 @@ export default async function TodayPage() {
             {glance?.weekDays && (
               <TodayPlannedCard today={glance.today} weekDays={glance.weekDays} />
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <ManualRunButton />
-            </div>
             <div style={{
               background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
               border: '1px solid var(--line)',

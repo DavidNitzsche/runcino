@@ -1,11 +1,26 @@
 /**
  * TodayPlannedCard — first thing visible on /today, render INSTANTLY from
- * glance state. No LLM, no waiting. Shows whichever applies:
+ * glance state. No LLM, no waiting.
  *
- *   - Logged run today (strava activity) → "YOUR RUN" card, links to /runs/[id]
- *   - Plan workout today, not yet run    → "TODAY · TYPE · X MI"
- *   - Rest day                            → "REST DAY · recover hard"
- *   - Nothing scheduled                   → quiet placeholder
+ * CANONICAL RUN-DISPLAY RULES (P15.9):
+ *   - Today's COMPLETED run renders here on the left as the small
+ *     "DONE · TYPE · X MI" pill. The same data is reachable via the
+ *     SPLITS → trigger which opens the run detail modal.
+ *   - There is NO duplicate run card on the right rail of /today. The
+ *     run_recap topic is server-side suppressed when today's run is
+ *     logged (see engine.ts).
+ *   - The run detail modal is the SINGLE place all run details live —
+ *     reachable from this card, from any /today week-strip day tile,
+ *     and from any row on /log.
+ *   - The modal skeleton is always the same: stats hero, secondary
+ *     stats, HR time-in-zone, splits, form, route. Missing data is
+ *     hidden, never shown as a placeholder card.
+ *
+ * Variants on this card:
+ *   - Ran today              → DONE pill with SPLITS → modal trigger
+ *   - Plan workout, not run  → "TODAY · TYPE · X MI" hero
+ *   - Rest day               → "REST IS THE WORK TODAY"
+ *   - Nothing scheduled      → quiet placeholder
  */
 import type { GlanceWeekDay } from '@/lib/coach/glance-state';
 import { RunDetailTrigger } from '@/components/runs/RunDetailModal';

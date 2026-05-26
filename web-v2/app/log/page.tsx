@@ -7,6 +7,7 @@
  */
 import { TopNav } from '@/components/layout/TopNav';
 import { LogTable } from '@/components/log/LogTable';
+import { ManualRunButton } from '@/components/today/ManualRunButton';
 import { loadLogState } from '@/lib/coach/log-state';
 
 export const dynamic = 'force-dynamic';
@@ -29,8 +30,11 @@ export default async function LogPage() {
               {log.totalRuns} RUNS · {log.totalMi.toFixed(0)} MILES · CHRONOLOGICAL
             </div>
           </div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--dim)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>
-            ALL SOURCES · WATCH · MANUAL · STRAVA · APPLE HEALTH
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+            <ManualRunButton />
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--dim)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>
+              ALL SOURCES · WATCH · STRAVA · APPLE HEALTH · MANUAL
+            </div>
           </div>
         </div>
 

@@ -103,7 +103,11 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
                   <tr key={z.idx} style={{ borderBottom: '1px solid var(--line-2)' }}>
                     <td style={{ padding: '12px 12px', fontFamily: 'var(--f-display)', fontSize: 15, color: 'var(--green)', letterSpacing: '0.5px', width: 60 }}>{z.shortLabel}</td>
                     <td style={{ padding: '12px 12px', fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', width: 150 }}>{z.label}</td>
-                    <td style={{ padding: '12px 12px', fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--ink)', width: 150, fontWeight: 600 }}>{z.lower}–{z.upper} bpm</td>
+                    <td style={{ padding: '12px 12px', fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--ink)', width: 150, fontWeight: 600 }}>
+                      {z.idx === 1 ? `< ${z.upper} bpm`
+                        : z.idx === 5 ? `> ${z.lower} bpm`
+                        : `${z.lower}–${z.upper} bpm`}
+                    </td>
                     <td style={{ padding: '12px 12px', fontSize: 13, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>{z.purpose}</td>
                   </tr>
                 ))}

@@ -29,6 +29,15 @@ export interface PrescriptionStep {
   pace_target?: string;   // "6:48 /mi" or "9:00-9:15 /mi"
   hr_target?: string;     // "156-162 bpm (Z4)"
   note: string;           // execution instruction
+
+  // When this step is a REPEAT block (intervals/threshold reps), the work
+  // segment + recovery are folded into one card. The top-level pace/hr/
+  // distance describe the WORK rep; recovery describes the rest.
+  recovery?: {
+    duration: string;       // "2:00"
+    pace_target?: string;   // "easy jog"
+    note: string;
+  };
 }
 
 export interface Prescription {
@@ -93,7 +102,13 @@ function hrTargets(p: ProfileInputs) {
   if (!z) return null;
   const get = (idx: number) => {
     const zz = z.zones.find((x) => x.idx === idx);
-    return zz ? `${zz.lower}-${zz.upper} bpm (${zz.shortLabel} ${zz.label})` : null;
+    if (!zz) return null;
+    // Z1 has no meaningful lower bound (no one runs at 0 bpm) — show "< upper"
+    // Z5 has no meaningful upper bound (no one's max is hardcoded here) — show "> lower"
+    // Everything else: lower-upper range
+    if (zz.idx === 1) return `< ${zz.upper} bpm (${zz.shortLabel} ${zz.label})`;
+    if (zz.idx === 5) return `> ${zz.lower} bpm (${zz.shortLabel} ${zz.label})`;
+    return `${zz.lower}–${zz.upper} bpm (${zz.shortLabel} ${zz.label})`;
   };
   return {
     z1: get(1), z2: get(2), z3: get(3), z4: get(4), z5: get(5),
@@ -161,18 +176,20 @@ export function prescriptionFor(
       const total = wuMi + reps * repMi + (reps - 1) * 0.3 + cdMi; // ~0.3 mi per recovery
       return {
         type, total_mi: Math.round(total * 10) / 10,
-        headline: `Threshold · ${reps} × 1 mile reps`,
+        headline: `Threshold · repeat ${reps} times`,
         why: 'Lift the lactate threshold — the engine\'s ceiling. The pace you could hold for an hour.',
         citation: 'Research/04 §intervals-and-threshold',
         zones: hr?.table,
         steps: [
           { label: 'Warmup', distance_mi: wuMi, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
             note: 'Start easy, build into rep pace in the last 0.25 mi.' },
-          { label: 'Reps', reps, rep_distance_mi: repMi, pace_target: pc.threshold ?? 'comfortably hard',
+          { label: `Repeat ${reps}×`, reps, rep_distance_mi: repMi,
+            pace_target: pc.threshold ?? 'comfortably hard',
             hr_target: hr?.z4 ?? 'Z4 — just below threshold',
-            note: 'Each mile at the same pace — rep 1 must match rep 4. If you can\'t hold pace on the last rep, the pace was too aggressive (drop 3-5s/mi next time).' },
-          { label: 'Recovery between reps', duration: '2:00', pace_target: 'easy jog',
-            note: 'Honest jog, not standing. Heart rate drops 15-20 bpm but doesn\'t fully recover.' },
+            note: 'Each mile at the same pace — rep 1 must match rep ' + reps + '. If you can\'t hold pace on the last rep, the pace was too aggressive (drop 3-5s/mi next time).',
+            recovery: { duration: '2:00', pace_target: 'easy jog',
+              note: 'Honest jog between reps, not standing. HR drops 15-20 bpm but doesn\'t fully recover. Skip the recovery after the final rep — straight into cooldown.' },
+          },
           { label: 'Cooldown', distance_mi: cdMi, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
             note: 'Loosen the legs. Don\'t skip — it shortens recovery for tomorrow.' },
         ],
@@ -207,18 +224,20 @@ export function prescriptionFor(
       const total = wuMi + reps * repMi + (reps - 1) * 0.25 + cdMi;
       return {
         type, total_mi: Math.round(total * 10) / 10,
-        headline: `Intervals · ${reps} × 800m`,
+        headline: `Intervals · repeat ${reps} times`,
         why: 'VO2 max — the engine\'s peak output. Short reps at race-finish effort.',
         citation: 'Research/04 §intervals',
         zones: hr?.table,
         steps: [
           { label: 'Warmup', distance_mi: wuMi, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
             note: 'Easy + 4 × 20s strides at the end to fire the system.' },
-          { label: 'Reps', reps, rep_distance_mi: repMi, pace_target: pc.interval ?? 'hard, controlled',
+          { label: `Repeat ${reps}×`, reps, rep_distance_mi: repMi,
+            pace_target: pc.interval ?? 'hard, controlled',
             hr_target: hr?.z5 ?? 'Z5 — at or above threshold',
-            note: 'Even splits from rep 1 to rep ' + reps + '. Hit the target on rep 1 — don\'t go out faster expecting to fade. If you can\'t hold pace on the last rep, drop 2-3 sec/rep next time.' },
-          { label: 'Recovery between reps', duration: '1:30', pace_target: 'easy jog',
-            note: 'Short recovery is the point — incomplete rest is what drives the adaptation.' },
+            note: 'Even splits from rep 1 to rep ' + reps + '. Hit the target on rep 1 — don\'t go out faster expecting to fade. If you can\'t hold pace on the last rep, drop 2-3 sec/rep next time.',
+            recovery: { duration: '1:30', pace_target: 'easy jog',
+              note: 'Short recovery is the point — incomplete rest is what drives the adaptation. Skip after the final rep — go straight into cooldown.' },
+          },
           { label: 'Cooldown', distance_mi: cdMi, pace_target: pc.easy ?? 'easy',
             note: 'Walk first if needed, then jog easy.' },
         ],

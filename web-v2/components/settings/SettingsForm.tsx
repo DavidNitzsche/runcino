@@ -139,15 +139,22 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 function Picker<T extends string>({ value, options, labels, onChange }: { value: T; options: T[]; labels?: string[]; onChange: (v: T) => void }) {
   return (
     <div style={{ display: 'flex', gap: 4 }}>
-      {options.map((o, i) => (
-        <button key={o} onClick={() => onChange(o)} style={{
-          background: o === value ? 'rgba(62,189,65,0.18)' : 'transparent',
-          border: `1px solid ${o === value ? 'var(--green)' : 'var(--line)'}`,
-          color: o === value ? 'var(--green)' : 'var(--mute)',
-          padding: '4px 10px', borderRadius: 6,
-          fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
-        }}>{(labels?.[i] ?? o).toUpperCase()}</button>
-      ))}
+      {options.map((o, i) => {
+        const selected = o === value;
+        return (
+          <button key={o} onClick={() => onChange(o)} style={{
+            // Selected: solid green fill + dark ink (high contrast).
+            // Unselected: subtle bg + clearer body ink so it reads as a button.
+            background: selected ? 'var(--green)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${selected ? 'var(--green)' : 'rgba(255,255,255,0.12)'}`,
+            color: selected ? '#0a0a0c' : 'rgba(246,247,248,0.82)',
+            padding: '7px 14px', borderRadius: 7,
+            fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+            fontWeight: selected ? 700 : 500,
+            cursor: 'pointer', transition: 'all .12s',
+          }}>{(labels?.[i] ?? o).toUpperCase()}</button>
+        );
+      })}
     </div>
   );
 }
