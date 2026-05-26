@@ -180,12 +180,6 @@ function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor:
         </div>
       )}
 
-      {pres?.citation && (
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 10.5, color: 'var(--dim)', letterSpacing: '0.5px', marginTop: 8 }}>
-          Cite: {pres.citation}
-        </div>
-      )}
-
       {day.isToday && (
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginTop: 14, fontStyle: 'italic' }}>
           The run will appear here once the watch syncs it back.

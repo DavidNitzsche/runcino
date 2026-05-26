@@ -129,22 +129,7 @@ function ArticleBody({ d }: { d: Article }) {
           {p}
         </p>
       ))}
-      {d.citations_json?.length > 0 && (
-        <>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'rgba(246,247,248,0.55)', letterSpacing: '1.4px', textTransform: 'uppercase', fontWeight: 700, marginTop: 22, marginBottom: 10 }}>
-            WHAT THE RESEARCH SAYS
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {d.citations_json.map((c, i) => (
-              <div key={i} style={{ borderLeft: '2px solid var(--learn)', paddingLeft: 12, fontSize: 13, lineHeight: 1.55, color: 'rgba(246,247,248,0.85)' }}>
-                <span style={{ color: 'var(--learn)', fontWeight: 600 }}>{c.author}, {c.year} →</span>{' '}
-                {c.title}
-                {c.journal ? <span style={{ color: 'var(--mute)' }}>{' '}({c.journal})</span> : null}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      {/* Citations intentionally not displayed — see seed.ts for source list */}
     </>
   );
 }

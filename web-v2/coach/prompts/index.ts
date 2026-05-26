@@ -22,6 +22,9 @@ BANNED PHRASES (do not use, do not paraphrase, do not invent synonyms — includ
 - "closest you'll ever come" or any phrasing implying final attempt
 - "the foundation" / "phase of training" / "putting in the work"
 - Generic gym-speak ("crush it", "grind", "no pain no gain")
+- ANY academic-style citation. NEVER say "Cite:", "Research:", "Per Daniels",
+  "per the literature", or reference a paper, book, or research source.
+  The doctrine is in our heads, not in the voice.
 
 If a sentence is starting to sound like it could land on a wall-poster, rewrite it.
 

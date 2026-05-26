@@ -115,7 +115,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
             </table>
             <div style={{ fontSize: 12.5, color: 'var(--mute)', marginTop: 14, lineHeight: 1.55 }}>
               {profile.physiology.lthr_method ? `LTHR source: ${profile.physiology.lthr_method}. ` : ''}
-              Re-test LTHR every 6-12 weeks. Cite: <a href="/learn/heart-rate-zones" style={{ color: 'var(--learn)' }}>Research/03 §6</a>.
+              Re-test LTHR every 6-12 weeks for the most accurate zones.
             </div>
           </div>
         )}
