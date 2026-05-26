@@ -69,8 +69,14 @@ export async function POST(req: NextRequest) {
       );
       if ((r.rowCount ?? 0) > 0) inserted++; else skipped++;
     } catch (err: any) {
-      console.error('[ingest/health] sample failed:', s, err.message);
-      errors++;
+      // Postgres unique-constraint violation = the row exists from a
+      // prior sync. That's idempotent dedup, not an error.
+      if (err?.code === '23505' || /duplicate key/i.test(err?.message ?? '')) {
+        skipped++;
+      } else {
+        console.error('[ingest/health] sample failed:', s, err.message);
+        errors++;
+      }
     }
   }
 
