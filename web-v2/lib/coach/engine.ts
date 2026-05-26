@@ -231,29 +231,30 @@ function buildUserMessage(
     for (const rr of state.recentRuns) {
       lines.push(`  ${rr.date} (${dayOfWeekName(rr.date)}): ${rr.mi.toFixed(1)}mi · ${rr.type ?? 'run'} · pace ${rr.pace ?? '—'} · HR ${rr.hr ?? '—'}${rr.name ? ' · "' + rr.name + '"' : ''}`);
     }
-    lines.push('  ↳ TRUTH CONTRACT: Only mention runs above. Do not invent "yesterday\'s threshold" or "Saturday\'s long run" unless it appears in this list. If you want to discuss the upcoming workout, use NEXT WORKOUT below.');
+    lines.push('  ↳ TRUTH CONTRACT: Only mention runs above. Do not invent "yesterday\'s threshold" or "Saturday\'s long run" unless it appears in this list. If you want to discuss planned sessions, use THIS WEEK\'S PLAN below.');
   } else {
     lines.push('');
     lines.push('RECENT RUNS: NONE in the last 7 days. Do not say the runner "completed" or "ran" anything — they haven\'t logged a run.');
   }
   lines.push(`WEEK: ${state.weekDone}mi done / ${state.weekPlanned ?? '?'}mi planned${state.phaseLabel ? ' · phase ' + state.phaseLabel : ''}`);
 
-  // TODAY'S PLANNED WORKOUT — fact, not instruction. The LLM needs to
-  // SEE today's prescribed session as a state input so it doesn't bridge
-  // yesterday + tomorrow and infer "today must be easy." Voice + framing
-  // for quality vs easy days is the doctrine's job (coach/prompts/*),
-  // not this state dump.
-  if (state.todayWorkout) {
-    const t = state.todayWorkout;
-    lines.push(`TODAY'S WORKOUT: ${t.date} (${dayOfWeekName(t.date)}) ${t.type} ${t.mi}mi${t.label ? ' · ' + t.label : ''}`);
-  } else {
-    lines.push(`TODAY'S WORKOUT: nothing scheduled.`);
+  // PLAN — the full Mon→Sun week of planned sessions, as data. The coach
+  // reads this, finds today's row by matching state.today, and reasons
+  // about what's done / what's now / what's coming itself. We don't
+  // pre-label "TODAY'S WORKOUT" or "NEXT WORKOUT" — those would be us
+  // doing the coach's job. (state.currentWeekDays is already loaded by
+  // state-loader; it just wasn't reaching the prompt before.)
+  if (state.currentWeekDays && state.currentWeekDays.length > 0) {
+    lines.push('');
+    lines.push(`THIS WEEK'S PLAN (Mon→Sun):`);
+    for (const d of state.currentWeekDays) {
+      const dow = dayOfWeekName(d.date);
+      const miStr = d.type === 'rest' || d.mi === 0 ? 'rest' : `${d.mi}mi`;
+      const labelStr = d.label ? ` · ${d.label}` : '';
+      lines.push(`  ${d.date} (${dow}): ${d.type} · ${miStr}${labelStr}`);
+    }
   }
 
-  if (state.nextWorkout) {
-    const n = state.nextWorkout;
-    lines.push(`NEXT WORKOUT: ${n.date} (${dayOfWeekName(n.date)}) ${n.type} ${n.mi}mi${n.label ? ' · ' + n.label : ''}`);
-  }
   if (state.nextARace) {
     // Include explicit date AND month name so the LLM can't mis-narrate it.
     const monthName = MONTH_NAMES[new Date(state.nextARace.date + 'T12:00:00Z').getUTCMonth()];

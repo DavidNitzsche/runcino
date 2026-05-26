@@ -31,12 +31,12 @@ export function signatureOf(state: CoachState, raceSlug?: string, compact?: bool
     last_checkin_ts: state.recentCheckIns[0]?.ts ?? null,
     profile_hash: createHash('sha1').update(JSON.stringify(state.profile ?? {})).digest('hex').slice(0, 12),
     pending_intents: state.pendingIntents.length,
-    // INCLUDE today's planned workout in the signature so the voice
-    // regenerates when the plan changes (e.g. a swap) AND so old briefings
-    // narrating yesterday's view never get re-served when today's workout
-    // shape changes.
-    today_workout: state.todayWorkout ? `${state.todayWorkout.date}|${state.todayWorkout.type}|${state.todayWorkout.mi}` : null,
-    next_workout: state.nextWorkout ? `${state.nextWorkout.date}|${state.nextWorkout.type}|${state.nextWorkout.mi}` : null,
+    // INCLUDE the whole plan week in the signature — any swap, type
+    // change, distance change to ANY day in the week regenerates voice.
+    // (Replaces the prior today_workout + next_workout single-row hashes,
+    // which only captured changes to those two specific rows.)
+    week_plan: (state.currentWeekDays ?? [])
+      .map((d) => `${d.date}|${d.type}|${d.mi}`).join(','),
     race_slug: raceSlug ?? null,
     // iOS compact mode produces a different voice than web — keep cache buckets separate.
     compact: compact ? 1 : 0,
