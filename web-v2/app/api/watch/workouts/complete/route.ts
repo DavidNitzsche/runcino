@@ -19,6 +19,7 @@
  * Payload spec: docs/WATCH_COMPLETION_PAYLOAD.md
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
 
@@ -80,7 +81,15 @@ export async function POST(req: NextRequest) {
     // that wants the structured detail.
     watchCompletionRef: body.workoutId,
   };
-  // Idempotent: same workoutId always overwrites.
+  // strava_activities.id is bigint NOT NULL with no default. The legacy
+  // shape uses Strava's numeric activity id; watch-side activities have
+  // no Strava id, so we generate a stable bigint deterministically from
+  // the workoutId. Negative numbers are reserved for synthetic sources
+  // (matches the existing apple_health pattern), keeping our keyspace
+  // disjoint from Strava's positive numeric ids. Idempotent: same
+  // workoutId → same id, so re-POSTing overwrites.
+  const stableId = -stableBigintFromString(body.workoutId);
+
   let stravaWriteErr: string | null = null;
   try {
     await pool.query(
@@ -90,8 +99,8 @@ export async function POST(req: NextRequest) {
       [userId, body.workoutId]
     );
     await pool.query(
-      `INSERT INTO strava_activities (user_uuid, data) VALUES ($1, $2)`,
-      [userId, data]
+      `INSERT INTO strava_activities (id, user_uuid, data) VALUES ($1, $2, $3)`,
+      [stableId, userId, data]
     );
   } catch (e: any) {
     stravaWriteErr = e?.message ?? String(e);
@@ -110,7 +119,7 @@ export async function POST(req: NextRequest) {
     // Helps the audit harness detect "yes, Railway has my latest code"
     // without depending on side effects (the strava_activities INSERT
     // can silently fail; this response field can't).
-    api_version: 'watch-complete/p21-2',
+    api_version: 'watch-complete/p21-3',
     strava_write_error: stravaWriteErr,    // null on success — debug field
   });
 }
@@ -131,6 +140,14 @@ function formatPace(secPerMi: number): string {
   const m = Math.floor(secPerMi / 60);
   const s = secPerMi % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Stable, positive bigint derived from a string (first 12 hex chars of
+ *  SHA-1 → unsigned int, capped well under 2^48 so the negation stays
+ *  inside the bigint range). Same input → same number. */
+function stableBigintFromString(s: string): number {
+  const hex = createHash('sha1').update(s).digest('hex').slice(0, 12);
+  return parseInt(hex, 16);
 }
 
 /** Derive a mile-by-mile splits array from the structured WatchCompletionPhase[].
