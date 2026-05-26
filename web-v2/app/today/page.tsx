@@ -38,13 +38,7 @@ export default async function TodayPage() {
             </div>
           </div>
           {glance?.readiness && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-              <div>
-                <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase' }}>READINESS</div>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', marginTop: 2 }}>{glance.readiness.label}</div>
-              </div>
-              <ReadinessChipTrigger breakdown={glance.readiness} />
-            </div>
+            <ReadinessChipTrigger breakdown={glance.readiness} />
           )}
         </div>
 

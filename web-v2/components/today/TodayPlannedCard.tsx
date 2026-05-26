@@ -59,8 +59,10 @@ export function TodayPlannedCard({ today, weekDays }: {
           </div>
           <div style={{ marginLeft: 'auto' }}>
             <RunDetailTrigger
-              activityId={todayDay.activityId}
-              label="SPLITS →"
+              // Use real id if we have it, else synthetic "YYYY-MM-DD-mi.mi"
+              // — loadRunDetail resolves both.
+              activityId={todayDay.activityId ?? `${todayDay.date}-${todayDay.doneMi.toFixed(2)}`}
+              label="TAP FOR DETAILS →"
               style={{ marginTop: 0, fontFamily: 'var(--f-display)', fontSize: 12, color: 'var(--green)', letterSpacing: '1.2px' }}
             />
           </div>

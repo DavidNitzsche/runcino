@@ -167,10 +167,16 @@ function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor:
         <div style={{ color: 'var(--mute)', fontSize: 13, padding: '12px 0' }}>Loading prescription…</div>
       )}
 
-      {/* Structured steps — one card per step (warmup, reps, recovery, cooldown) */}
+      {/* Structured steps — one card per step (warmup, reps, recovery, cooldown).
+          Repeat blocks (step.recovery present) render as a section header
+          ("REPEAT 4×") plus two separate boxes underneath: gold reps box +
+          purple recovery box. */}
       {pres?.steps && pres.steps.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-          {pres.steps.map((step, i) => <StepCard key={i} step={step} />)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+          {pres.steps.map((step, i) => step.recovery
+            ? <RepeatBlock key={i} step={step} />
+            : <StepCard key={i} step={step} />
+          )}
         </div>
       )}
 
@@ -256,30 +262,100 @@ function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
         {step.note}
       </div>
 
-      {/* Recovery sub-block — folded inside the repeat card so reps + rest
-          read as a single rhythm instead of two disconnected steps. */}
-      {step.recovery && (
+    </div>
+  );
+}
+
+/** Repeat block — "REPEAT N×" header (no box) + a hard-effort box for the
+ *  reps + an easy-effort box for the recovery. Replaces the single-card-with-
+ *  dashed-divider that read as all one color. */
+function RepeatBlock({ step }: { step: PrescriptionStep }) {
+  if (!step.recovery || step.reps == null) return <StepCard step={step} />;
+
+  // Volume label for the reps line ("4 × 1 mi" or similar)
+  const repFmt = step.rep_distance_mi != null
+    ? (step.rep_distance_mi < 1
+        ? `${Math.round(step.rep_distance_mi * 1609)} m`
+        : `${step.rep_distance_mi % 1 === 0 ? step.rep_distance_mi : step.rep_distance_mi.toFixed(1)} mi`)
+    : (step.duration ?? '');
+  const repsVolume = `${step.reps} × ${repFmt}`;
+
+  // Race vs threshold/intervals — race gets race-orange, default gold.
+  const isRace = step.label.toLowerCase().includes('race');
+  const repsAccent = isRace ? 'var(--race)' : 'var(--goal)';
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      {/* Section header — floats above the boxes, no box around it */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        padding: '0 4px 8px', marginBottom: 2,
+      }}>
         <div style={{
-          marginTop: 12, paddingTop: 12, borderTop: '1px dashed rgba(255,255,255,0.08)',
+          fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)',
+          letterSpacing: '0.5px',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-            <span style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: 'var(--learn)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
-              RECOVERY BETWEEN
-            </span>
-            <span style={{ fontFamily: 'var(--f-display)', fontSize: 15, color: 'var(--ink)' }}>
-              {step.recovery.duration}
-            </span>
+          {step.label.toUpperCase()}
+        </div>
+        <div style={{
+          fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)',
+          letterSpacing: '1.2px', fontWeight: 700, textTransform: 'uppercase',
+        }}>
+          {repsVolume} + {step.recovery.duration} rest
+        </div>
+      </div>
+
+      {/* Reps box — hard effort accent (gold/race-orange) */}
+      <div style={{
+        background: '#1f2226', borderRadius: 12, padding: '14px 18px',
+        border: '1px solid rgba(255,255,255,0.05)',
+        borderLeft: `3px solid ${repsAccent}`,
+        marginBottom: 6,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: repsAccent, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+            REP · EACH
           </div>
-          {step.recovery.pace_target && (
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginBottom: 4 }}>
-              PACE <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.recovery.pace_target}</span>
-            </div>
-          )}
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.66)', lineHeight: 1.55 }}>
-            {step.recovery.note}
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
+            {repFmt}
           </div>
         </div>
-      )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, fontFamily: 'var(--f-body)', fontSize: 12.5, marginBottom: 6 }}>
+          {step.pace_target && (
+            <span><span style={{ color: 'var(--mute)' }}>PACE</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.pace_target}</span></span>
+          )}
+          {step.hr_target && (
+            <span><span style={{ color: 'var(--mute)' }}>HR</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.hr_target}</span></span>
+          )}
+        </div>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.55 }}>
+          {step.note}
+        </div>
+      </div>
+
+      {/* Recovery box — easy effort accent (purple) */}
+      <div style={{
+        background: '#1f2226', borderRadius: 12, padding: '14px 18px',
+        border: '1px solid rgba(255,255,255,0.05)',
+        borderLeft: '3px solid var(--learn)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--learn)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+            RECOVERY BETWEEN
+          </div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
+            {step.recovery.duration}
+          </div>
+        </div>
+        {step.recovery.pace_target && (
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, marginBottom: 6 }}>
+            <span style={{ color: 'var(--mute)' }}>PACE</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.recovery.pace_target}</span>
+          </div>
+        )}
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.55 }}>
+          {step.recovery.note}
+        </div>
+      </div>
     </div>
   );
 }

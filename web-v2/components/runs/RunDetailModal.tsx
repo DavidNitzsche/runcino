@@ -24,20 +24,10 @@ export function RunDetailTrigger({
 }) {
   const [open, setOpen] = useState(false);
 
-  if (!activityId) {
-    // No id yet (e.g. watch-synced run not yet linked to a Strava activity).
-    // Show a muted hint instead of a dead link.
-    return (
-      <span style={{
-        display: 'inline-block', marginTop: 12,
-        fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--dim)',
-        letterSpacing: '0.3px', fontStyle: 'italic',
-        ...style,
-      }}>
-        Splits + route appear once the run finishes syncing.
-      </span>
-    );
-  }
+  // No id at all → render nothing (the surrounding card still shows the
+  // basic stats). We don't show a "syncing" hint because the modal
+  // resolves synthetic date-distance ids — most run sources work.
+  if (!activityId) return null;
 
   return (
     <>

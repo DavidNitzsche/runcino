@@ -197,7 +197,7 @@ export function prescriptionFor(
       const total = wuMi + repsBlockMi + cdMi;
       return {
         type, total_mi: Math.round(total * 10) / 10,
-        headline: `Threshold · repeat ${reps} times`,
+        headline: `Threshold · ${reps} × 1 mile reps`,
         why: 'Lift the lactate threshold — the engine\'s ceiling. The pace you could hold for an hour.',
         citation: 'Research/04 §intervals-and-threshold',
         zones: hr?.table,
@@ -257,7 +257,7 @@ export function prescriptionFor(
       const total = wuMi + repsBlockMi + cdMi;
       return {
         type, total_mi: Math.round(total * 10) / 10,
-        headline: `Intervals · repeat ${reps} times`,
+        headline: `Intervals · ${reps} × 800m`,
         why: 'VO2 max — the engine\'s peak output. Short reps at race-finish effort.',
         citation: 'Research/04 §intervals',
         zones: hr?.table,
