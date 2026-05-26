@@ -23,6 +23,8 @@ export async function GET(req: NextRequest) {
   const surfaceParam = (params.get('surface') ?? 'today') as Surface;
   const userId = params.get('user_id') ?? DAVID_USER_ID;
   const raceSlug = params.get('race') ?? undefined;
+  // client=ios → paraphrased / compact voice. iPhone app sends this; web doesn't.
+  const compact = params.get('client') === 'ios';
 
   if (!VALID_SURFACES.includes(surfaceParam)) {
     return NextResponse.json({ error: `Invalid surface: ${surfaceParam}` }, { status: 400 });
@@ -34,7 +36,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const briefing = await generateBriefing(userId, surfaceParam, raceSlug);
+    const briefing = await generateBriefing(userId, surfaceParam, raceSlug, compact);
     return NextResponse.json(briefing);
   } catch (err: any) {
     return NextResponse.json({

@@ -24,7 +24,7 @@ export interface CachedBriefing {
   _state: any;
 }
 
-export function signatureOf(state: CoachState, raceSlug?: string): string {
+export function signatureOf(state: CoachState, raceSlug?: string, compact?: boolean): string {
   const inputs = {
     today: state.today,
     latest_activity: state.latest_activity?.id ?? null,
@@ -33,6 +33,8 @@ export function signatureOf(state: CoachState, raceSlug?: string): string {
     pending_intents: state.pendingIntents.length,
     next_workout: state.nextWorkout ? `${state.nextWorkout.date}|${state.nextWorkout.type}|${state.nextWorkout.mi}` : null,
     race_slug: raceSlug ?? null,
+    // iOS compact mode produces a different voice than web — keep cache buckets separate.
+    compact: compact ? 1 : 0,
   };
   return createHash('sha1').update(JSON.stringify(inputs)).digest('hex').slice(0, 16);
 }

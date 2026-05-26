@@ -46,13 +46,21 @@ export interface BriefingResponse {
   };
 }
 
-export async function generateBriefing(userId: string, surface: Surface, raceSlug?: string): Promise<BriefingResponse> {
+export async function generateBriefing(
+  userId: string,
+  surface: Surface,
+  raceSlug?: string,
+  /** When true, generate a paraphrased mobile-friendly voice (shorter lead,
+   *  fewer voice lines, no horizon prose unless A-race < 4 weeks). Plumbed
+   *  from /api/briefing?client=ios. */
+  compact?: boolean,
+): Promise<BriefingResponse> {
   const state = await loadCoachState(userId);
   const resolved = resolveMode(surface, state, raceSlug);
   const eligible = eligibleKinds(state, resolved.candidateTopics);
 
   // Cache layer — read first. Voice only regenerates when state inputs change.
-  const sig = signatureOf(state, raceSlug);
+  const sig = signatureOf(state, raceSlug, compact);
   const cached = await readCachedBriefing(userId, surface, sig);
   if (cached) {
     return {
@@ -70,7 +78,7 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
   }
 
   const systemPrompt = promptFor(resolved.surface, resolved.mode);
-  const userMessage = buildUserMessage(state, resolved, eligible);
+  const userMessage = buildUserMessage(state, resolved, eligible, compact);
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
@@ -183,7 +191,12 @@ export async function generateBriefing(userId: string, surface: Surface, raceSlu
   return response;
 }
 
-function buildUserMessage(state: CoachState, resolved: ReturnType<typeof resolveMode>, eligible: string[]): string {
+function buildUserMessage(
+  state: CoachState,
+  resolved: ReturnType<typeof resolveMode>,
+  eligible: string[],
+  compact?: boolean,
+): string {
   const lines: string[] = [];
   lines.push(`RUNNER: ${state.profile?.full_name ?? 'David'}.`);
   lines.push(`TODAY: ${state.today} (${dayOfWeekName(state.today)}).`);
@@ -269,6 +282,20 @@ function buildUserMessage(state: CoachState, resolved: ReturnType<typeof resolve
   lines.push('');
   lines.push(`# YOUR JOB`);
   lines.push(`Coach voice for this surface + mode per the prompt above. Return strict JSON: {lead, voice: string[], topics: Topic[]}. NO markdown fences.`);
+
+  if (compact) {
+    // iOS / mobile — the runner is reading on a small screen and the
+    // structured workout card + week strip already lead the page. Keep
+    // the prose tight; don't repeat what those surfaces show.
+    lines.push('');
+    lines.push(`# MOBILE BREVITY RULES (compact=true)`);
+    lines.push(`- The phone screen ALREADY shows: today's structured workout (warmup → reps → cooldown with paces), the week strip, and the readiness ring. Don't restate that scaffolding.`);
+    lines.push(`- \`lead\`: ONE sentence max. 12 words max. The "what's the move today" hook, nothing else.`);
+    lines.push(`- \`voice\`: AT MOST 2 lines, each 1–2 short sentences. Total voice = under 60 words. Treat it like a text from your coach, not an email.`);
+    lines.push(`- Skip preamble ("Good morning!" / "Today is..."). Drop in mid-thought.`);
+    lines.push(`- Skip the horizon prose ("21 weeks out") UNLESS the A-race is < 28 days away.`);
+    lines.push(`- Topics: emit AT MOST 2 cards. Prioritise fueling > race_horizon > coach_needs. Drop anything else for this mobile pass.`);
+  }
   return lines.join('\n');
 }
 
