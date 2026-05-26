@@ -8,6 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { parseGPX } from '@/lib/race/gpx-parser';
+import { bustBriefingCache } from '@/lib/coach/cache';
+
+const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 export const maxDuration = 30;
 
@@ -51,6 +54,9 @@ export async function POST(req: NextRequest) {
     if (updated.rowCount === 0) {
       return NextResponse.json({ error: 'race not found' }, { status: 404 });
     }
+    // Race-detail and races-page coaches frame the season; a fresh course
+    // changes the elevation/grade context. Bust + warm.
+    await bustBriefingCache(DAVID_USER_ID);
     return NextResponse.json({
       ok: true,
       slug,
