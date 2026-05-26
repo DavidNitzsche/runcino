@@ -263,25 +263,20 @@ struct WarmupFace: View {
     let hr: String              // live HR · "142" / "—"
     let remaining: String       // distance OR time remaining · "1.40" / "12:30"
     let remainingRole: Role     // .dist for distance, .neutral for time
+    let upNext: String?         // "1.0 mi · 6:47" — first work-rep brief, optional
     var body: some View {
-        // Same overlay pattern as Today/GO — NumberFace fills the screen
-        // with three big rows (matching cooldown / rest / today exactly),
-        // "WARMUP" tag rides on top in the OS-clock-baseline slot. No
-        // THEN subtitle — the next-rep target was visible in the lobby
-        // and visible again the moment the warmup ends, doesn't need
-        // permanent screen real estate.
-        ZStack(alignment: .topLeading) {
-            NumberFace(rows: [
+        // All four elements (top tag, three number rows, bottom subtitle)
+        // ride the SAME `H * leadF` offset inside NumberFace, so they
+        // align by construction — no hand-tuned padding values to drift.
+        NumberFace(
+            rows: [
                 NumRow(pace,      paceRole),
                 NumRow(hr,        .neutral, icon: "heart.fill"),
                 NumRow(remaining, remainingRole)
-            ])
-            GeometryReader { geo in
-                let h = geo.size.height
-                FaceLabel(text: "WARMUP", color: Faff.mute, size: h * 0.060)
-                    .topTagInset(h)
-            }
-        }
+            ],
+            topLabel: "WARMUP",
+            bottomLabel: upNext
+        )
     }
 }
 
@@ -375,20 +370,15 @@ struct GoFace: View {
     let rep: String      // "REP 2 / 4"
     let target: String   // "6:47"
     var body: some View {
-        // NumberFace is the full-screen recipe; FaceLabel sits on TOP of
-        // it (top-leading) baseline-aligned with the OS clock. ZStack +
-        // topTagInset is the same pattern LobbyFace uses for its name tag.
-        ZStack(alignment: .topLeading) {
-            NumberFace(rows: [
-                NumRow(target, .live)
-            ])
-            GeometryReader { geo in
-                let h = geo.size.height
-                FaceLabel(text: rep, color: Faff.live, size: h * 0.075)
-                    .topTagInset(h)
-            }
-        }
-        .background(wash(0x0C2A14).ignoresSafeArea())
+        // Top tag + target both ride the same NumberFace leadF — no
+        // hand-tuned padding. The green wash rides as the face's
+        // background.
+        NumberFace(
+            rows: [NumRow(target, .live)],
+            topLabel: rep,
+            topLabelColor: Faff.live,
+            faceBackground: Color(hex: 0x0C2A14)
+        )
     }
 }
 
@@ -733,22 +723,17 @@ struct TodayDoneFace: View {
     var distance: String = "—"     // "5.8"
     var elapsed: String = "—"      // "46:18" / "1:09"
     var body: some View {
-        // Same overlay pattern as GoFace — NumberFace is full-screen;
-        // ✓ glyph rides on top in the OS-clock-baseline slot.
-        ZStack(alignment: .topLeading) {
-            NumberFace(rows: [
+        // ✓ icon in the top slot + three rows in locked grammar. All
+        // ride NumberFace's leadF — same construction-time alignment.
+        NumberFace(
+            rows: [
                 NumRow(pace,     .live),
                 NumRow(distance, .dist),
                 NumRow(elapsed,  .neutral)
-            ])
-            GeometryReader { geo in
-                let h = geo.size.height
-                Image(systemName: "checkmark")
-                    .font(.system(size: h * 0.10, weight: .bold))
-                    .foregroundStyle(Faff.live)
-                    .topTagInset(h)
-            }
-        }
+            ],
+            topIcon: "checkmark",
+            topIconColor: Faff.live
+        )
     }
 }
 

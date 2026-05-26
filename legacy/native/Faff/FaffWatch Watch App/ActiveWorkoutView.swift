@@ -407,6 +407,18 @@ private struct LiveWarmup: View {
     private var remainingRole: Role {
         phase.repUnit == .distance ? .dist : .neutral
     }
+    /// "1.0 mi · 6:47" briefing for the first work rep — appears as a
+    /// small muted subtitle at the bottom of the warmup face. Computed
+    /// from engine.nextPhase; nil when there's no next phase (rare —
+    /// usually the warmup is followed by a rep).
+    private var upNext: String? {
+        guard let n = engine.nextPhase else { return nil }
+        let dist: String
+        if let d = n.distanceMi { dist = "\(String(format: "%.1f", d)) mi" }
+        else { dist = PaceFormat.clock(n.durationSec) }
+        let pace = n.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+        return "\(dist)  ·  \(pace)"
+    }
 
     var body: some View {
         WarmupFace(
@@ -414,7 +426,8 @@ private struct LiveWarmup: View {
             paceRole:      tracker.paceSPerMi > 0 ? .live : .mute,
             hr:            tracker.heartRate > 0 ? "\(tracker.heartRate)" : "—",
             remaining:     remaining,
-            remainingRole: remainingRole
+            remainingRole: remainingRole,
+            upNext:        upNext
         )
     }
 }

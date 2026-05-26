@@ -116,19 +116,109 @@ extension View {
 struct NumberFace: View {
     let rows: [NumRow]
     var strip: Strip? = nil
+    /// Optional small label at the top of the face (OS-clock-baseline slot).
+    /// Renders in HelveticaNeue-Bold (same font as the digits) so its leading
+    /// edge aligns perfectly with the number column — DIFFERENT from
+    /// `FaceLabel` which uses the system font and has slightly different
+    /// internal leading. Hand-tuned padding overlays kept landing visibly
+    /// off; baking the label into the same offset pipeline as the rows is
+    /// the correct fix.
+    var topLabel: String? = nil
+    var topLabelColor: Color = Faff.mute
+    /// Optional SF Symbol that takes the top slot INSTEAD of a text label
+    /// (e.g. ✓ on the post-Done face). Sized + positioned identically.
+    var topIcon: String? = nil
+    var topIconColor: Color = Faff.live
+    /// Optional small label at the bottom of the face (above bezel safety).
+    /// Same alignment + font as topLabel.
+    var bottomLabel: String? = nil
+    /// Background color for the face. Defaults to black; override for
+    /// washed takeovers (GoFace = green wash, etc).
+    var faceBackground: Color = .black
 
-    // recipe constants — calibrated against TestFlight hardware (corner radius
-    // crops content within ~9% of the rounded corners). Sim screenshots are
-    // flat-rectangular and hide the clip; hardware reveals it. Bumped strip-
-    // bottom safety so the progress capsules stay clear of the curve.
-    private let topF: CGFloat = 0.060         // 6% from top — clears upper bezel curve
-    private let gapRatio: CGFloat = 0.15      // inter-line gap as a fraction of glyph height
-    private let capRatio: CGFloat = 0.73      // HelveticaNeue-Bold cap-height ÷ point-size
-    private let cropK: CGFloat = 0.22         // line-box crop so element ≈ glyph
-    private let leadF: CGFloat = 0.060        // 6% left inset — left edge of digits clears bezel
-    private let stripBottomF: CGFloat = 0.075 // 7.5% bottom safety — strip can't be curve-clipped
+    // ═══════════════════════════════════════════════════════════════════
+    // LAYOUT RULES — every face built on NumberFace obeys these.
+    // Change a rule here and the WHOLE face recomputes. Stop nudging.
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// TOP MARGIN · empty space from screen top to top label cap.
+    /// Locked: 0.050 puts the top label baseline on the OS clock's
+    /// baseline (the system clock occupies the status-bar zone above
+    /// this and "absorbs" the perceived top whitespace).
+    private let TOP_MARGIN: CGFloat = 0.050
+
+    /// BOTTOM MARGIN · empty space from bottom label cap-bottom to screen
+    /// bottom. BIGGER than TOP_MARGIN because the bottom has no status
+    /// bar to absorb whitespace — what you see is what you get. The
+    /// extra margin gives the bottom label the same VISUAL breathing
+    /// room as the top label has (where the status bar provides it).
+    ///
+    /// Value 0.147 is the rules-consistent calibration: at this margin
+    /// the height-bound row size equals the width-bound row size (the
+    /// top row's clock-clearance cap). That makes the `max(0, …)`
+    /// centering offset evaluate to zero, so every consecutive pair of
+    /// lines — top label↔row 0, row↔row, row N↔bottom label — sits at
+    /// exactly LINE_GAP. Smaller values (e.g. 0.090) re-introduce a
+    /// centering pad that silently inflates the top-label↔row 0 gap
+    /// well above LINE_GAP, breaking rule #3. Larger values shrink the
+    /// big rows below the width cap, breaking rule #5.
+    private let BOTTOM_MARGIN: CGFloat = 0.147
+
+    /// LINE GAP · vertical gap between ANY two consecutive lines, measured
+    /// cap-bottom to cap-top. Same value whether the lines are two big
+    /// rows, a label-to-row, or a row-to-label. ONE gap rule.
+    private let LINE_GAP: CGFloat = 0.030
+
+    /// LEFT ALIGNMENT · visible left edge of every line lands at this X
+    /// fraction of H. Each element's bounding-box offset is computed via
+    /// `firstCharLSB(...)` so different first characters all visually
+    /// align at this column.
+    private let leadF: CGFloat = 0.060
+
+    /// LABEL FONT FRACTION · top + bottom labels are this fraction of H.
+    /// Big rows derive their size from the available data band.
+    private let LABEL_FONT: CGFloat = 0.080
+
+    /// HelveticaNeue-Bold cap-height ÷ point-size. Used to convert between
+    /// font point size and visible cap height.
+    private let capRatio: CGFloat = 0.73
+
+    /// Crop factor — Text's line-box is taller than the cap. cropK pulls
+    /// it back so element bounds ≈ visible cap bounds.
+    private let cropK: CGFloat = 0.22
+
+    /// Bottom safety reserved for the progress strip when present.
+    private let stripBottomF: CGFloat = 0.075
     private let stripBarF: CGFloat = 0.027
-    private let clockClearF: CGFloat = 0.70   // top row must end left of here (system clock lives right of it)
+
+    /// Top row width cap so it ends left of the OS clock (top-right).
+    private let clockClearF: CGFloat = 0.70
+
+    /// Left-side bearing of the FIRST character of a string, as a fraction
+    /// of the font size. HelveticaNeue-Bold: digits / letters / punctuation
+    /// each have their own visual ink offset inside the glyph's bounding
+    /// box. To align visible left edges across rows we subtract this from
+    /// each row's offset.x — so the BOUNDING BOX of a row starting with
+    /// "8" sits slightly LEFT of a row starting with "1", but their
+    /// VISIBLE ink edges land at the same X.
+    ///
+    /// This is the rule-of-law system: `H * leadF` is the canonical
+    /// visible-left-edge X of every face. Bounding-box offsets are
+    /// derived from it via this table. No per-row hand-tuning.
+    static func firstCharLSB(_ s: String, fontSize: CGFloat) -> CGFloat {
+        guard let c = s.first else { return 0 }
+        let fraction: CGFloat
+        switch c {
+        case "1":                      fraction = 0.00  // narrow stem at left edge
+        case "0", "6", "8", "9":       fraction = 0.06  // round bowls inset
+        case "2", "3", "5":            fraction = 0.05
+        case "4", "7":                 fraction = 0.04
+        case "W", "M", "N":            fraction = 0.02
+        case "—", "–":                 fraction = 0.00  // dashes start at origin
+        default:                       fraction = 0.04
+        }
+        return fraction * fontSize
+    }
 
     // rough per-glyph advance (em) for HelveticaNeue-Bold, to clear the clock
     // without measuring. CRITICAL: em-dash (—) and en-dash (–) are 1.0em /
@@ -155,31 +245,107 @@ struct NumberFace: View {
             let H = geo.size.height
             let W = geo.size.width
             let hasStrip = strip != nil
-            // strip faces fill above the strip; strip-less faces use a symmetric band so the centered group is screen-centered
-            let bottomLimit: CGFloat = hasStrip ? (1 - stripBottomF - stripBarF - 0.028) : (1 - topF)
-            let n = CGFloat(rows.count)
-            let span = bottomLimit - topF
-            // 1) font that would fill the height
-            let heightG = span / (n + gapRatio * (n - 1))
+            let hasBottomLabel = bottomLabel != nil
+            let hasTopLabel = (topLabel != nil) || (topIcon != nil)
+            let bigN = CGFloat(rows.count)
+
+            // ── Derive ALL positions from the layout rules above ─────────
+            // (TOP_MARGIN, BOTTOM_MARGIN, LINE_GAP, LABEL_FONT, leadF)
+            // No magic numbers in this block. Want to change the look?
+            // Edit a rule at the top of NumberFace and recompile — the
+            // whole face recomputes.
+            let labelCap = LABEL_FONT * capRatio
+
+            // Top label sits at TOP_MARGIN with cap-bottom at TOP_MARGIN +
+            // labelCap. Data band starts LINE_GAP below the label cap-bottom.
+            let topLabelTop: CGFloat = TOP_MARGIN
+            let bandTop: CGFloat = hasTopLabel
+                ? (topLabelTop + labelCap + LINE_GAP)
+                : 0.060   // bare default when no top label
+            // Bottom label cap-bottom is at (1 - BOTTOM_MARGIN). Its cap-top
+            // is one cap above that. Data band ends LINE_GAP above the
+            // label cap-top.
+            let bottomLabelTop: CGFloat = 1 - BOTTOM_MARGIN - labelCap
+            let bandBottom: CGFloat = hasStrip
+                ? (1 - stripBottomF - stripBarF - 0.028)
+                : (hasBottomLabel ? (bottomLabelTop - LINE_GAP) : (1 - 0.060))
+            let span = bandBottom - bandTop
+
+            // Big rows fill the band: N caps + (N-1) gaps = span.
+            // → glyphF = (span - (N-1) * LINE_GAP) / N.
+            let heightG = (span - LINE_GAP * (bigN - 1)) / bigN
             let heightF = (heightG / capRatio) * H
-            // 2) cap so the TOP row clears the clock (top-right)
+
+            // Width cap so the TOP row clears the OS clock (top-right).
             let clearance = clockClearF * W - H * leadF
             let topEm = NumberFace.emWidth(rows.first?.text ?? "")
             let widthF = topEm > 0 ? clearance / topEm : heightF
             let F = max(1, min(heightF, widthF))
-            // 3) keep the locked tight spacing; vertically center the group in the band
+
+            // After possibly being width-capped, recompute glyph height +
+            // pitch. Pitch = cap height + LINE_GAP. ONE inter-line spacing
+            // rule across all rows AND the bottom label.
             let glyphF = (capRatio * F) / H
-            let pitchF = glyphF * (1 + gapRatio)
-            let groupSpan = CGFloat(n - 1) * pitchF + glyphF
-            // center the group; nudge up by ~6% of a glyph to correct the digits' low ink-bias in the box
-            let startF = topF + max(0, (bottomLimit - topF - groupSpan) / 2 - glyphF * 0.06)
+            let pitchF = glyphF + LINE_GAP
+            let groupSpan = (bigN - 1) * pitchF + glyphF
+            // Center the row group inside the data band (small symmetric
+            // padding if the width cap shrunk the rows).
+            let startF = bandTop + max(0, (span - groupSpan) / 2)
+            // ── Locked rule: one leadF, applied identically to every
+            // element on the face. Labels share HelveticaNeue-Bold with
+            // the digits (NOT FaceLabel's system font, NOT the
+            // .tracking() spread that throws off the leading edge).
+            // Smaller text + same font + same offset = same metric
+            // origin. The font's own bearing decides what shows where;
+            // we don't fight it with per-element nudges.
             ZStack(alignment: .topLeading) {
-                Color.black
+                faceBackground
+                // Top label (or icon) — baseline-aligned with the OS clock.
+                // y: 0.067 puts text TOP at ~17pt on Ultra, baseline at
+                // ~28pt — matches the system clock's baseline (top-right).
+                // ── Rule of law: every visible left edge lands at H * leadF.
+                // Each element's bounding-box offset.x is `H * leadF -
+                // firstCharLSB(...)` so the visible ink edge ends up at
+                // exactly H * leadF regardless of which character starts
+                // the row. No per-element nudging.
+                let alignmentX = H * leadF
+                let labelSize = H * LABEL_FONT
+                if let topIcon {
+                    Image(systemName: topIcon)
+                        .font(.system(size: labelSize, weight: .bold))
+                        .foregroundStyle(topIconColor)
+                        .padding(.vertical, -labelSize * cropK)
+                        .fixedSize()
+                        .offset(x: alignmentX, y: H * topLabelTop)
+                } else if let topLabel {
+                    let lsb = NumberFace.firstCharLSB(topLabel.uppercased(), fontSize: labelSize)
+                    Text(topLabel.uppercased())
+                        .font(.custom("HelveticaNeue-Bold", size: labelSize))
+                        .foregroundStyle(topLabelColor)
+                        .padding(.vertical, -labelSize * cropK)
+                        .fixedSize()
+                        .offset(x: alignmentX - lsb, y: H * topLabelTop)
+                }
+                // Big number rows — each compensates for its own first-char LSB.
                 ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
+                    let lsb = NumberFace.firstCharLSB(r.text, fontSize: F)
                     rowContent(r, F)
                         .padding(.vertical, -F * cropK)
                         .fixedSize()
-                        .offset(x: H * leadF, y: H * (startF + CGFloat(i) * pitchF))
+                        .offset(x: alignmentX - lsb, y: H * (startF + CGFloat(i) * pitchF))
+                }
+                // Bottom label — same LSB-aligned rule as every other line.
+                // Negative vertical padding crops SwiftUI's Text line box
+                // down to the cap height, so .offset positions the visible
+                // cap top — symmetric with the top label and big rows.
+                if let bottomLabel {
+                    let lsb = NumberFace.firstCharLSB(bottomLabel.uppercased(), fontSize: labelSize)
+                    Text(bottomLabel.uppercased())
+                        .font(.custom("HelveticaNeue-Bold", size: labelSize))
+                        .foregroundStyle(Faff.mute)
+                        .padding(.vertical, -labelSize * cropK)
+                        .fixedSize()
+                        .offset(x: alignmentX - lsb, y: H * bottomLabelTop)
                 }
                 if let strip {
                     strip

@@ -92,7 +92,8 @@ struct WatchFixtureView: View {
         case "cruise-warmup":
             // Phase 0 · WARMUP 1.8 mi — LiveWarmup renders covered + next pace.
             WarmupFace(pace: "8:18", paceRole: .live, hr: "138",
-                       remaining: "1.40", remainingRole: .dist)
+                       remaining: "2.55", remainingRole: .dist,
+                       upNext: "1.0 mi  ·  6:47")
         case "cruise-rep-mid":
             // Phase 1 · REP 1/4 · 0.45 mi covered — multi-work session routes
             // here. WorkIntervalFace renders pace/target/total/repCounter (mi
@@ -135,7 +136,8 @@ struct WatchFixtureView: View {
                          phaseSegments: [1, 1, 2, 0, 0, 0])
         case "warmup":
             WarmupFace(pace: "8:18", paceRole: .live, hr: "138",
-                       remaining: "0.60", remainingRole: .dist)
+                       remaining: "0.60", remainingRole: .dist,
+                       upNext: "0.5 mi  ·  6:31")
         case "recovery", "rest":
             RestFace(restTimeLeft: "1:30", pace: "9:30", paceRole: .live, hr: "148")
         case "go":
