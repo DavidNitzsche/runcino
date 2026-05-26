@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
+import { autoMergeForDate } from '@/lib/runs/merge';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -105,6 +106,16 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     stravaWriteErr = e?.message ?? String(e);
     console.error('[watch/complete] strava_activities write failed:', e);
+  }
+
+  // P27.3 — auto-merge dupes for the workout's date. Watch-completion
+  // often arrives alongside a HKWorkout import for the same run; this
+  // ensures only the richer row is visible to the coach + log.
+  try {
+    const date = body.date ?? body.dateLocal ?? new Date().toISOString().slice(0, 10);
+    await autoMergeForDate(userId, date);
+  } catch (e: any) {
+    console.error('[watch/complete] autoMerge warn:', e?.message);
   }
 
   // Event-driven cache: a workout just finished. Bust so the next /today

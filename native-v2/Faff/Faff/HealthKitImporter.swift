@@ -49,7 +49,12 @@ final class HealthKitImporter: ObservableObject {
 
     /// HK types we read. Empty share set — Faff never writes from the phone
     /// (the watch app handles workout write-back to HK).
+    ///
+    /// Two groups: workout types (for HKWorkout import) and daily-vitals
+    /// types (for /api/ingest/health sample push). Both prompts merge
+    /// into one auth dialog since they're submitted together.
     nonisolated private static let readTypes: Set<HKObjectType> = [
+        // Workout types
         HKObjectType.workoutType(),
         HKSeriesType.workoutRoute(),
         HKQuantityType(.heartRate),
@@ -60,6 +65,18 @@ final class HealthKitImporter: ObservableObject {
         HKQuantityType(.runningGroundContactTime),
         HKQuantityType(.stepCount),
         HKQuantityType(.activeEnergyBurned),
+        // Daily vitals (P27.1) — readiness inputs
+        HKQuantityType(.restingHeartRate),
+        HKQuantityType(.heartRateVariabilitySDNN),
+        HKQuantityType(.vo2Max),
+        HKQuantityType(.respiratoryRate),
+        HKQuantityType(.appleSleepingWristTemperature),
+        HKQuantityType(.oxygenSaturation),
+        HKQuantityType(.heartRateRecoveryOneMinute),
+        HKQuantityType(.bodyMass),
+        HKQuantityType(.bodyFatPercentage),
+        HKQuantityType(.leanBodyMass),
+        HKCategoryType(.sleepAnalysis),
     ]
 
     // MARK: - Top-level entry points
@@ -96,27 +113,42 @@ final class HealthKitImporter: ObservableObject {
 
     private func importRecent(daysBack: Int) async {
         status = .importing
+
+        // 1) Workouts → /api/ingest/workout
+        var workoutOk = 0, workoutFail = 0
         let workouts = await fetchRunWorkouts(daysBack: daysBack)
-        if workouts.isEmpty {
-            status = .done
-            lastMessage = "No new runs to import."
-            lastImportedAt = Date()
-            return
-        }
-        var ok = 0
-        var failed = 0
         for w in workouts {
             do {
                 let payload = await buildPayload(for: w)
                 try await postWorkout(payload: payload)
-                ok += 1
+                workoutOk += 1
             } catch {
-                failed += 1
-                print("[HKImporter] ingest failed for workout \(w.uuid): \(error)")
+                workoutFail += 1
+                print("[HKImporter] workout ingest failed \(w.uuid): \(error)")
             }
         }
-        status = failed == 0 ? .done : .error
-        lastMessage = "Imported \(ok) of \(workouts.count) runs."
+
+        // 2) Daily vitals → /api/ingest/health  (P27.1)
+        // Pulls HRV / sleep / RHR / VO2 / respiration / wrist temp /
+        // body mass / fat / lean mass / HR recovery / SpO2. Idempotent —
+        // server dedupes on (user, type, date, recorded_at).
+        var sampleOk = 0, sampleFail = 0
+        let samples = await collectVitalSamples(daysBack: daysBack)
+        if !samples.isEmpty {
+            do {
+                try await postHealthSamples(samples)
+                sampleOk = samples.count
+            } catch {
+                sampleFail = samples.count
+                print("[HKImporter] sample ingest failed: \(error)")
+            }
+        }
+
+        let anyOk = workoutOk + sampleOk
+        let anyFail = workoutFail + sampleFail
+        status = anyFail == 0 ? .done : .error
+        lastMessage = "\(workoutOk) runs · \(sampleOk) vitals" +
+            (anyFail > 0 ? " · \(anyFail) failed" : "")
         lastImportedAt = Date()
     }
 
@@ -318,7 +350,199 @@ final class HealthKitImporter: ObservableObject {
         return result
     }
 
-    // MARK: - POST
+    // MARK: - Daily vitals (P27.1)
+
+    /// One sample as the /api/ingest/health endpoint expects.
+    private struct VitalSample: Encodable {
+        let sample_type: String
+        let value: Double
+        let sample_date: String     // yyyy-MM-dd in PT
+        let recorded_at: String     // ISO 8601 UTC
+    }
+
+    /// Read the last `daysBack` days of every vital + body-comp metric
+    /// the backend accepts. Each type uses the right aggregation (daily
+    /// avg / max / sum) and gets posted as one sample per day.
+    private nonisolated func collectVitalSamples(daysBack: Int) async -> [VitalSample] {
+        var out: [VitalSample] = []
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        let ms  = HKUnit.secondUnit(with: .milli)
+
+        // resting_hr — daily avg
+        for (d, stat) in await dailyStats(HKQuantityType(.restingHeartRate), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "resting_hr", value: q.doubleValue(for: bpm).rounded(),
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // max_hr — daily peak
+        for (d, stat) in await dailyStats(HKQuantityType(.heartRate), options: .discreteMax, days: daysBack) {
+            if let q = stat.maximumQuantity() {
+                out.append(VitalSample(sample_type: "max_hr", value: q.doubleValue(for: bpm).rounded(),
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // hrv (SDNN) — daily avg, ms
+        for (d, stat) in await dailyStats(HKQuantityType(.heartRateVariabilitySDNN), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "hrv", value: q.doubleValue(for: ms).rounded(),
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // vo2_max — most recent reading per day
+        for (d, stat) in await dailyStats(HKQuantityType(.vo2Max), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                let unit = HKUnit(from: "ml/kg*min")
+                out.append(VitalSample(sample_type: "vo2_max", value: (q.doubleValue(for: unit) * 10).rounded() / 10,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // respiratory_rate — daily avg
+        for (d, stat) in await dailyStats(HKQuantityType(.respiratoryRate), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "respiratory_rate", value: q.doubleValue(for: bpm).rounded(),
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // wrist_temp — overnight deviation, °C
+        for (d, stat) in await dailyStats(HKQuantityType(.appleSleepingWristTemperature), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "wrist_temp", value: (q.doubleValue(for: .degreeCelsius()) * 10).rounded() / 10,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // spo2 — daily avg %
+        for (d, stat) in await dailyStats(HKQuantityType(.oxygenSaturation), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "spo2", value: (q.doubleValue(for: .percent()) * 1000).rounded() / 10,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // hr_recovery (1-min) — daily avg
+        for (d, stat) in await dailyStats(HKQuantityType(.heartRateRecoveryOneMinute), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "hr_recovery", value: q.doubleValue(for: bpm).rounded(),
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // body_mass — daily latest, kg
+        for (d, stat) in await dailyStats(HKQuantityType(.bodyMass), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "body_mass", value: (q.doubleValue(for: .gramUnit(with: .kilo)) * 10).rounded() / 10,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // body_fat_pct
+        for (d, stat) in await dailyStats(HKQuantityType(.bodyFatPercentage), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "body_fat_pct", value: (q.doubleValue(for: .percent()) * 1000).rounded() / 10,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // lean_mass
+        for (d, stat) in await dailyStats(HKQuantityType(.leanBodyMass), options: .discreteAverage, days: daysBack) {
+            if let q = stat.averageQuantity() {
+                out.append(VitalSample(sample_type: "lean_mass", value: (q.doubleValue(for: .gramUnit(with: .kilo)) * 10).rounded() / 10,
+                                       sample_date: isoDay(d), recorded_at: isoUTC(d)))
+            }
+        }
+        // sleep_hours — sum of asleepCore/Deep/REM across the night, in hours
+        for (d, hours) in await dailySleepHours(daysBack: daysBack) {
+            out.append(VitalSample(sample_type: "sleep_hours", value: (hours * 10).rounded() / 10,
+                                   sample_date: isoDay(d), recorded_at: isoUTC(d)))
+        }
+        return out
+    }
+
+    /// HKStatisticsCollectionQuery wrapper — daily stat for one type, last N days.
+    private nonisolated func dailyStats(_ type: HKQuantityType, options: HKStatisticsOptions, days: Int) async -> [(Date, HKStatistics)] {
+        let anchor = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.date(byAdding: .day, value: -days, to: anchor) ?? anchor
+        return await withCheckedContinuation { (cont: CheckedContinuation<[(Date, HKStatistics)], Never>) in
+            let q = HKStatisticsCollectionQuery(
+                quantityType: type,
+                quantitySamplePredicate: HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate),
+                options: options,
+                anchorDate: anchor,
+                intervalComponents: DateComponents(day: 1)
+            )
+            q.initialResultsHandler = { _, results, _ in
+                var out: [(Date, HKStatistics)] = []
+                results?.enumerateStatistics(from: start, to: Date()) { stats, _ in
+                    out.append((stats.startDate, stats))
+                }
+                cont.resume(returning: out)
+            }
+            store.execute(q)
+        }
+    }
+
+    /// Asleep duration per night (asleepCore + asleepDeep + asleepREM) in hours.
+    private nonisolated func dailySleepHours(daysBack: Int) async -> [(Date, Double)] {
+        let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
+        let pred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        let samples: [HKCategorySample] = await withCheckedContinuation { cont in
+            let q = HKSampleQuery(sampleType: HKCategoryType(.sleepAnalysis), predicate: pred,
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                cont.resume(returning: (samples as? [HKCategorySample]) ?? [])
+            }
+            store.execute(q)
+        }
+        // Group by sleep-end date (the "morning of" date).
+        var byDate: [String: Double] = [:]
+        let cal = Calendar.current
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "America/Los_Angeles")
+        for s in samples {
+            let val = s.value
+            // asleepCore=3, asleepDeep=4, asleepREM=5, asleep (legacy)=1
+            guard val == HKCategoryValueSleepAnalysis.asleepCore.rawValue
+                || val == HKCategoryValueSleepAnalysis.asleepDeep.rawValue
+                || val == HKCategoryValueSleepAnalysis.asleepREM.rawValue
+                || val == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
+            else { continue }
+            let key = f.string(from: s.endDate)
+            byDate[key, default: 0] += s.endDate.timeIntervalSince(s.startDate) / 3600.0
+        }
+        return byDate.compactMap { (k, hrs) in
+            guard let d = f.date(from: k) else { return nil }
+            return (cal.startOfDay(for: d), hrs)
+        }
+    }
+
+    private nonisolated func isoDay(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "America/Los_Angeles")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: d)
+    }
+    private nonisolated func isoUTC(_ d: Date) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f.string(from: d)
+    }
+
+    private func postHealthSamples(_ samples: [VitalSample]) async throws {
+        let url = API.baseURL.appendingPathComponent("api/ingest/health")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "samples": try samples.map { sample throws -> [String: Any] in
+                let d = try JSONEncoder().encode(sample)
+                return try JSONSerialization.jsonObject(with: d) as? [String: Any] ?? [:]
+            }
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let bodyStr = String(data: data, encoding: .utf8) ?? "<unreadable>"
+            print("[HKImporter] POST /api/ingest/health \((resp as? HTTPURLResponse)?.statusCode ?? -1): \(bodyStr)")
+            throw API.APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+    }
+
+    // MARK: - POST workout
 
     private func postWorkout(payload: [String: Any]) async throws {
         let url = API.baseURL.appendingPathComponent("api/ingest/workout")

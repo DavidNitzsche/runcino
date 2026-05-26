@@ -12,17 +12,20 @@ struct FaffApp: App {
             RootTabView()
                 .preferredColorScheme(.dark)
                 .background(Theme.bgPage.ignoresSafeArea())
-                // Wire the WatchConnectivity bridge after the first scene
-                // is up. WatchSync.shared is @MainActor — accessing it
-                // from FaffApp.init() (non-isolated) crashed at runtime
-                // under Xcode 16+ strict-concurrency checks (build 72).
-                // .task runs inside a MainActor context.
-                .task { WatchSync.shared.start() }
-                // First-launch path: request Health auth once and pull
-                // the last 7 days of HKWorkouts. After auth is granted,
-                // TodayView's quiet importIfConnected handles ongoing
-                // catch-up on every refresh — no further prompts.
+                // Wire the WatchConnectivity bridge + kick the HealthKit
+                // importer in ONE .task — build 78 had two stacked .task
+                // modifiers and SwiftUI silently dropped the second one
+                // (the HK side), so no permission prompt and no import
+                // ever fired. One .task block, sequential setup.
+                //
+                // WatchSync.shared is @MainActor; .task already runs in
+                // a MainActor context, so direct .start() is safe.
                 .task {
+                    WatchSync.shared.start()
+
+                    // First open: prompt for Health auth + initial 7-day
+                    // pull (workouts + samples). On subsequent opens:
+                    // quiet re-sync, never prompts.
                     let key = "faff.health.connected.v2"
                     if !UserDefaults.standard.bool(forKey: key) {
                         await HealthKitImporter.shared.requestAuthAndImport(daysBack: 7)

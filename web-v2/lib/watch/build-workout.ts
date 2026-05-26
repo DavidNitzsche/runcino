@@ -399,5 +399,19 @@ export async function buildWatchToday(
     displayHint: wo.type === 'long' ? 'hr' : null,
   };
 
+  // P27.5 — populate readiness on the watch payload. Before this the
+  // model declared readinessScore/Label fields but the server never
+  // sent them, so the watch face fell through to a hardcoded fixture.
+  try {
+    const { loadCoachState } = await import('@/lib/coach/state-loader');
+    const { computeReadiness } = await import('@/lib/coach/readiness');
+    const state = await loadCoachState(userId);
+    const r = computeReadiness(state);
+    workout.readinessScore = r.score ?? null;
+    workout.readinessLabel = r.label ?? r.band ?? null;
+  } catch {
+    /* don't fail the watch payload over readiness — best effort only */
+  }
+
   return { workout };
 }

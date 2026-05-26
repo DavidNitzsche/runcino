@@ -36,6 +36,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
+import { autoMergeForDate } from '@/lib/runs/merge';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -95,6 +96,15 @@ export async function POST(req: NextRequest) {
        VALUES ($1, $2)`,
       [userId, data]
     );
+
+    // P27.3 — auto-merge dupes for this date. If a hollow watch row + a
+    // rich HKWorkout row both exist for the same start time, this marks
+    // the hollow one's data.mergedIntoId so the coach sees one run.
+    try {
+      await autoMergeForDate(userId, body.date);
+    } catch (e: any) {
+      console.error('[ingest/workout] autoMerge warn:', e?.message);
+    }
 
     await bustBriefingCache(userId);
     return NextResponse.json({ ok: true, id: slug });

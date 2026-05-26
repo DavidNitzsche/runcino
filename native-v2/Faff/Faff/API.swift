@@ -90,6 +90,18 @@ enum API {
         return w.workout
     }
 
+    /// Real readiness score (P27.2). Replaces the hardcoded "88" placeholder
+    /// that lived in TodayView. Returns nil when the server can't compute
+    /// one (no health data yet) — UI degrades to a "?" instead of lying.
+    static func fetchReadiness() async throws -> ReadinessSnapshot? {
+        let url = baseURL.appendingPathComponent("api/readiness")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(ReadinessSnapshot.self, from: data)
+    }
+
     /// Mon-Sun plan_workouts for the week containing `date` (or today).
     /// Drives the iPhone WeekStrip.
     static func fetchPlanWeek(date: String? = nil) async throws -> PlanWeek {
@@ -129,4 +141,17 @@ struct PlanDay: Decodable, Identifiable {
     let sub_label: String?
     let is_today: Bool
     let is_past: Bool
+}
+
+// MARK: - Readiness (P27.2)
+//
+// /api/readiness returns null score when there's not enough data yet
+// (e.g. fresh install before HK has synced). UI must degrade gracefully —
+// don't lie with a placeholder number.
+struct ReadinessSnapshot: Decodable {
+    let score: Int?
+    let band: String?
+    let label: String?
+    // inputs intentionally omitted on the iPhone for now — used by the
+    // /health readiness modal on web. iPhone shows just the ring + label.
 }

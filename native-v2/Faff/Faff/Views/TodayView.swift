@@ -18,11 +18,22 @@ struct TodayView: View {
     @State private var planWeek: PlanWeek?
     @State private var loading = true
     @State private var error: String?
+    /// Observable HK importer — surfaces auth status + last sync result.
+    /// Without this, a silent HK failure (no permission, empty result,
+    /// network error) would be invisible. Visible status = debuggable.
+    @StateObject private var hk = HealthKitImporter.shared
+    @State private var readiness: ReadinessSnapshot?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 appBar
+
+                // HK importer status strip — only shows when not idle.
+                // Lets David see auth state + sync results in one glance
+                // instead of having to dig into the Health app or wait
+                // for runs to appear in /log.
+                healthStatusStrip
 
                 if loading {
                     HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }
@@ -81,6 +92,48 @@ struct TodayView: View {
         .refreshable { await loadAll() }
     }
 
+    // MARK: - Health status strip
+    //
+    // Shows the HK importer's current state so silent failures (no auth,
+    // empty pull, network error) are visible. Tap to force a re-sync.
+
+    @ViewBuilder
+    private var healthStatusStrip: some View {
+        if hk.status != .idle {
+            let (label, color) = healthStatusLabel
+            HStack(spacing: 10) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(label)
+                    .font(.body(11, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(color)
+                Spacer()
+                Button {
+                    Task { await hk.importIfConnected(daysBack: 7) }
+                } label: {
+                    Text("SYNC")
+                        .font(.body(10, weight: .bold)).tracking(1.2)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Theme.ink.opacity(0.06))
+                        .clipShape(Capsule())
+                        .foregroundStyle(Theme.mute)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, -4)
+        }
+    }
+
+    private var healthStatusLabel: (String, Color) {
+        switch hk.status {
+        case .idle:       return ("HEALTH · IDLE",        Theme.mute)
+        case .requesting: return ("HEALTH · ASKING",      Theme.goal)
+        case .importing:  return ("HEALTH · IMPORTING",   Theme.dist)
+        case .done:       return ("HEALTH · \(hk.lastMessage ?? "SYNCED")", Theme.green)
+        case .error:      return ("HEALTH · \(hk.lastMessage ?? "ERROR")",  Theme.over)
+        }
+    }
+
     // MARK: - App bar
 
     private var appBar: some View {
@@ -89,8 +142,10 @@ struct TodayView: View {
             Text(todayLabel()).font(.body(11, weight: .bold)).tracking(1.2)
                 .foregroundStyle(Theme.mute)
             Spacer()
-            // Readiness ring — wired with real score when /api/readiness ships.
-            ReadinessChip(value: 88)
+            // Readiness ring — pulls real score from /api/readiness (P27.2).
+            // Falls through to "?" if the server can't compute one (no HK
+            // data yet). No more hardcoded 88.
+            ReadinessChip(score: readiness?.score)
         }
         .padding(.horizontal, 24).padding(.top, 8)
     }
@@ -106,14 +161,17 @@ struct TodayView: View {
         async let bRes = (try? await API.briefing(surface: "today"))
         async let wRes = (try? await API.fetchWatchWorkout())
         async let pRes = (try? await API.fetchPlanWeek())
+        async let rRes = (try? await API.fetchReadiness())
 
         let b = await bRes
         let w = await wRes
         let p = await pRes
+        let r = await rRes
 
         self.briefing = b
         self.workout = w
         self.planWeek = p
+        self.readiness = r ?? nil
         self.error = (b == nil && w == nil && p == nil) ? "Couldn't reach the coach. Pull to refresh." : nil
 
         // Push the freshly-fetched workout to the watch so the watch picks
@@ -192,16 +250,31 @@ struct TodayView: View {
 }
 
 private struct ReadinessChip: View {
-    let value: Int
+    /// Optional — nil when /api/readiness can't compute a score yet
+    /// (fresh install, no HK data). Renders "?" instead of lying with
+    /// a fixed placeholder.
+    let score: Int?
     var body: some View {
         ZStack {
             Circle().stroke(Color.white.opacity(0.08), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: CGFloat(value) / 100)
-                .stroke(Theme.green, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            Text("\(value)").font(.display(16)).foregroundStyle(Theme.green)
+            if let score {
+                Circle()
+                    .trim(from: 0, to: CGFloat(score) / 100)
+                    .stroke(color(for: score), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text("\(score)").font(.display(16)).foregroundStyle(color(for: score))
+            } else {
+                Text("?").font(.display(16)).foregroundStyle(Theme.mute)
+            }
         }
         .frame(width: 44, height: 44)
+    }
+
+    /// Color matches the band the server returns:
+    /// ≥75 green (Primed) · 60-74 amber (Hold easy) · <60 red (Back off).
+    private func color(for s: Int) -> Color {
+        if s >= 75 { return Theme.green }
+        if s >= 60 { return Theme.goal }
+        return Theme.over
     }
 }

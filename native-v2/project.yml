@@ -37,8 +37,10 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: faff
         ITSAppUsesNonExemptEncryption: false
+        # READ ONLY on the iPhone — the watch does HK writes, not the phone.
+        # P27.8 removed NSHealthUpdateUsageDescription so we don't ask for a
+        # capability we never use (App Store hygiene).
         NSHealthShareUsageDescription: "Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan."
-        NSHealthUpdateUsageDescription: "Faff writes completed workouts to Apple Health so your history stays in one place."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: run.faff.app

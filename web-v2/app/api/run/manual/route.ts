@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
+import { autoMergeForDate } from '@/lib/runs/merge';
 import { randomBytes } from 'crypto';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
@@ -55,6 +56,10 @@ export async function POST(req: NextRequest) {
       `INSERT INTO strava_activities (user_uuid, data) VALUES ($1, $2)`,
       [userId, data]
     );
+    // P27.3 — auto-merge: a manual entry typically backfills something
+    // that wasn't captured by watch/Strava, but if it overlaps we want
+    // the manual row to lose to the richer source.
+    try { await autoMergeForDate(userId, body.date); } catch {}
     await bustBriefingCache(userId);
     return NextResponse.json({ ok: true, id: slug });
   } catch (err: any) {
