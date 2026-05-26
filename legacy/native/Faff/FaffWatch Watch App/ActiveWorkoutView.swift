@@ -439,12 +439,32 @@ private struct LiveSteady: View {
     /// `.neutral` for cooldown / unstructured stretches where there's no chase.
     let role: Role
 
+    /// Distance row — same dual-mode treatment as LiveEasy:
+    ///   · Distance-based phase (cooldown w/ phase.distanceMi): counts DOWN
+    ///     from the phase target (1.2 → 0), blue.
+    ///   · Overtime (planComplete fired, runner kept going past plan): counts
+    ///     UP total covered, purple.
+    ///   · Otherwise (Just Run, no target): counts UP total covered, blue.
+    private var distanceDisplay: String {
+        if engine.planComplete {
+            return distText(tracker.distanceMi)
+        }
+        if let remaining = engine.phaseRemainingMi {
+            return distText(remaining)
+        }
+        return distText(tracker.distanceMi)
+    }
+    private var distanceRole: Role {
+        engine.planComplete ? .bonus : .dist
+    }
+
     var body: some View {
         SteadyRunFace(
             livePace: paceText(tracker),
             paceRole: role,
-            distance: distText(tracker.distanceMi),
-            elapsed:  PaceFormat.clock(engine.totalElapsedSec)
+            distance: distanceDisplay,
+            elapsed:  PaceFormat.clock(engine.totalElapsedSec),
+            distanceRole: distanceRole
         )
     }
 }

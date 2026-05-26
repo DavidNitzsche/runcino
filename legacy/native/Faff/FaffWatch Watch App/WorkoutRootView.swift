@@ -147,8 +147,14 @@ struct WorkoutRootView: View {
     /// shape — so the faces + state machine are fully exercisable.
     private static var simulatorWorkout: WatchWorkout? {
         #if targetEnvironment(simulator)
-        // Launch with -race to exercise the race-day faces (watch-app.html §F).
-        return ProcessInfo.processInfo.arguments.contains("-race") ? .sampleRace : .sample
+        let args = ProcessInfo.processInfo.arguments
+        // -race  → race-day faces (watch-app.html §F)
+        // -cruise → 4 × 1 mile threshold reps with mixed distance/time phases,
+        //          to verify the engine + face router consume the new
+        //          structured-workout payload correctly.
+        if args.contains("-race") { return .sampleRace }
+        if args.contains("-cruise") { return .sampleCruise }
+        return .sample
         #else
         return nil
         #endif

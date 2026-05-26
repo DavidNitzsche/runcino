@@ -347,6 +347,78 @@ extension WatchWorkout {
         )
     }
 
+    /// Cruise Intervals · 4 × 1 mile reps — the structured workout the
+    /// iOS app shows in the "Threshold · 4 × 1 MILE REPS" card. Mirrors
+    /// what /api/watch/today will emit for that day:
+    ///   · Warmup     1.8 mi @ easy (~ 8:12/mi)            · distance
+    ///   · Rep 1      1.0 mi @ T-pace 6:47/mi              · distance
+    ///   · Recovery 1 2:00     easy jog                    · time
+    ///   · Rep 2      1.0 mi @ T-pace                      · distance
+    ///   · Recovery 2 2:00                                  · time
+    ///   · Rep 3      1.0 mi @ T-pace                      · distance
+    ///   · Recovery 3 2:00                                  · time
+    ///   · Rep 4      1.0 mi @ T-pace (no recovery after)  · distance
+    ///   · Cooldown   1.2 mi @ easy                        · distance
+    ///   = 7.0 work + ~0.6 jog = ~7.9 mi total
+    /// Used to verify the engine + face router consume mixed distance/time
+    /// reps correctly + advance through a 9-phase workout end to end.
+    static var sampleCruise: WatchWorkout {
+        var phases: [WatchPhase] = []
+        var idx = 0
+        func addDist(_ type: WatchPhaseType, _ label: String, mi: Double,
+                     target: Int?, tol: Int?, durationSec: Int, haptic: WatchHaptic) {
+            phases.append(WatchPhase(
+                index: idx, type: type, label: label,
+                durationSec: durationSec,
+                targetPaceSPerMi: target, tolerancePaceSPerMi: tol,
+                haptic: haptic, repUnit: .distance, distanceMi: mi))
+            idx += 1
+        }
+        func addTime(_ type: WatchPhaseType, _ label: String, sec: Int,
+                     target: Int?, tol: Int?, haptic: WatchHaptic) {
+            phases.append(WatchPhase(
+                index: idx, type: type, label: label,
+                durationSec: sec,
+                targetPaceSPerMi: target, tolerancePaceSPerMi: tol,
+                haptic: haptic, repUnit: .time, distanceMi: nil))
+            idx += 1
+        }
+
+        // Warmup — 1.8 mi at easy pace (~8:12/mi midpoint of 7:47-8:37 band).
+        addDist(.warmup, "Warmup", mi: 1.8,
+                target: 492, tol: 25, durationSec: 885,
+                haptic: .start)
+        // 4 work reps + 3 recoveries (no recovery after rep 4 — straight to CD).
+        for n in 1...4 {
+            addDist(.work, "Rep \(n)/4", mi: 1.0,
+                    target: 407, tol: 8, durationSec: 407,
+                    haptic: .transitionWork)
+            if n < 4 {
+                addTime(.recovery, "Recovery \(n)/4", sec: 120,
+                        target: 540, tol: 30, haptic: .transitionRecovery)
+            }
+        }
+        // Cooldown — 1.2 mi easy.
+        addDist(.cooldown, "Cooldown", mi: 1.2,
+                target: 492, tol: 25, durationSec: 590,
+                haptic: .transitionCooldown)
+
+        let total = phases.reduce(0) { $0 + $1.durationSec }
+        return WatchWorkout(
+            workoutId: "sample-cruise-intervals",
+            name: "CRUISE INTERVALS",
+            summary: "Threshold · 4 × 1 mile reps",
+            totalEstimatedMinutes: total / 60,
+            phases: phases,
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2099-01-01T00:00:00Z",
+            readinessScore: 78,
+            readinessLabel: "Primed",
+            distanceMi: 7.9,
+            paceLabel: "T"
+        )
+    }
+
     /// A point-to-point race fed to the same engine (watch-app.html §F):
     /// a flat list of terrain-aware course phases, each with its own even-
     /// effort target pace, plus gel markers. Drives the race faces in the

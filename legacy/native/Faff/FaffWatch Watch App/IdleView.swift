@@ -36,16 +36,14 @@ struct IdleView: View {
         }
     }
 
-    /// "EASY" / "5×7" / "BIG SUR" — short identity tag. Falls back to the
-    /// raw workout name; we expand single-letter zone codes ("T" → "THRESHOLD")
-    /// only when the *name* itself is one letter.
+    /// Lobby tag: "TODAY" for any planned workout, the race name for races.
+    /// Workouts don't need their full label here ("CRUISE INTERVALS" runs
+    /// straight into the OS clock); the iOS card already named it, and the
+    /// runner knows what's on tap. Races keep their name so "BIG SUR" still
+    /// reads at the start line.
     private var tagText: String {
-        let n = workout.name.uppercased()
-        // If the name is one of the bare zone codes (older payloads), expand it.
-        if n.count == 1, ["E", "M", "T", "I", "R"].contains(n) {
-            return Self.expandZone(n).uppercased()
-        }
-        return n
+        if workout.isRace { return workout.name.uppercased() }
+        return "TODAY"
     }
 
     /// Distance: race miles take 1 decimal ("26.2"), workout miles same ("5.8").
@@ -94,18 +92,6 @@ struct IdleView: View {
         return "\(PaceFormat.mmss(lo))-\(PaceFormat.mmss(hi))"
     }
 
-    /// "T" → "Threshold", "E" → "Easy", etc. Older payloads occasionally name
-    /// a workout with the bare zone code; the lobby reads better with the word.
-    private static func expandZone(_ code: String) -> String {
-        switch code.uppercased() {
-        case "E": return "Easy"
-        case "M": return "Marathon"
-        case "T": return "Threshold"
-        case "I": return "Intervals"
-        case "R": return "Strides"
-        default:  return code
-        }
-    }
 }
 
 #Preview { IdleView(workout: .sample) { } }

@@ -79,6 +79,48 @@ struct WatchFixtureView: View {
             WorkIntervalFace(livePace: "6:33", paceRole: .live, targetPace: "6:31",
                              totalDistance: "3.78", repCounter: "0:24",
                              stripStates: [1, 1, 1, 2, 0, 0])
+        // ── Cruise Intervals (4 × 1 mi) audit fixtures ────────────────────
+        // Each renders the .sampleCruise workout frozen at a specific phase
+        // index so we can verify the right face shows for every phase
+        // without driving the workout in real time.
+        case "cruise-lobby":
+            // "TODAY" instead of "CRUISE INTERVALS" — workout name was
+            // colliding with the OS clock + the iOS card already names it.
+            // Race lobbies keep their name (BIG SUR etc).
+            LobbyFace(name: "TODAY", distance: "7.9", pace: "6:47",
+                      time: "1:08", paceRange: nil, onStart: {})
+        case "cruise-warmup":
+            // Phase 0 · WARMUP 1.8 mi — LiveWarmup renders covered + next pace.
+            WarmupFace(coveredValue: "0.40", thenPace: "6:47", thenDistance: "1.00")
+        case "cruise-rep-mid":
+            // Phase 1 · REP 1/4 · 0.45 mi covered — multi-work session routes
+            // here. WorkIntervalFace renders pace/target/total/repCounter (mi
+            // remaining) + a strip showing 4 work cells.
+            WorkIntervalFace(livePace: "6:45", paceRole: .live, targetPace: "6:47",
+                             totalDistance: "2.25", repCounter: "0.55",
+                             stripStates: [2, 0, 0, 0])
+        case "cruise-rep-end":
+            // Phase 1 · REP 1/4 · 0.97 mi covered — about to fire the static
+            // "0.03 LEFT" heads-up flash.
+            WorkIntervalFace(livePace: "6:45", paceRole: .live, targetPace: "6:47",
+                             totalDistance: "2.77", repCounter: "0.03",
+                             stripStates: [2, 0, 0, 0])
+        case "cruise-rec":
+            // Phase 2 · RECOVERY 1/4 · 2:00 jog · RestFace shows time-left
+            // + the NEXT phase (Rep 2 at 6:47 / 1 mi).
+            RestFace(restTimeLeft: "1:32", nextTargetPace: "6:47", nextDistance: "1.00")
+        case "cruise-cooldown":
+            // Phase 8 · COOLDOWN 1.2 mi — distance row counts DOWN from
+            // 1.20 → 0. After 0 (overtime/planComplete), flips to purple
+            // and counts UP total covered.
+            SteadyRunFace(livePace: "8:14", paceRole: .live,
+                          distance: "0.80", elapsed: "1:09:48")
+        case "cruise-cooldown-overtime":
+            // Cooldown done, planComplete fired — same face but distance
+            // row is purple, counting total covered.
+            SteadyRunFace(livePace: "9:02", paceRole: .neutral,
+                          distance: "8.10", elapsed: "1:12:30",
+                          distanceRole: .bonus)
         case "race":
             LiveRaceFace(livePace: "8:28", paceRole: .live, phaseTarget: "8:30",
                          totalDistance: "10.8", goalDelta: "+1:14", goalDeltaRole: .live,
