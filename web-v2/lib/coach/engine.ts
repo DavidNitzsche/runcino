@@ -236,39 +236,23 @@ function buildUserMessage(
     lines.push('');
     lines.push('RECENT RUNS: NONE in the last 7 days. Do not say the runner "completed" or "ran" anything — they haven\'t logged a run.');
   }
-  // Week-position context — block "today is the start of the week"
-  // hallucinations when today is mid-week.
-  const todayDowName = dayOfWeekName(state.today);
-  const isMonday = todayDowName === 'Monday';
   lines.push(`WEEK: ${state.weekDone}mi done / ${state.weekPlanned ?? '?'}mi planned${state.phaseLabel ? ' · phase ' + state.phaseLabel : ''}`);
-  lines.push(`WEEK POSITION: today is ${todayDowName}. The training week runs Monday→Sunday.${isMonday ? ' Today IS the start of the week.' : ' The week STARTED on Monday — today is NOT the start of the week. Do not say "start of the week" or "fresh week starts today" unless today is Monday.'}`);
 
-  // TODAY'S PLANNED WORKOUT — must be loud and clear so the LLM doesn't
-  // narrate today as a continuation of yesterday's easy day.
+  // TODAY'S PLANNED WORKOUT — fact, not instruction. The LLM needs to
+  // SEE today's prescribed session as a state input so it doesn't bridge
+  // yesterday + tomorrow and infer "today must be easy." Voice + framing
+  // for quality vs easy days is the doctrine's job (coach/prompts/*),
+  // not this state dump.
   if (state.todayWorkout) {
     const t = state.todayWorkout;
-    const typeStr = t.type.toUpperCase();
-    const isQuality = ['threshold','intervals','tempo','race'].includes(t.type);
-    const isEasy = ['easy','long','shakeout','recovery'].includes(t.type);
-    lines.push('');
-    lines.push(`🎯 TODAY'S WORKOUT (THIS IS WHAT YOU MUST NARRATE):`);
-    lines.push(`  ${t.date} · ${typeStr} · ${t.mi}mi${t.label ? ' · ' + t.label : ''}`);
-    if (isQuality) {
-      lines.push(`  ↳ TYPE: QUALITY SESSION. This is NOT an easy day. Do NOT say "easy", "Z1-Z2", "no urgency", "just log the miles", "base mile". The runner is doing threshold/interval/tempo work today. Talk about pace targets, effort, what the session is for.`);
-    } else if (isEasy) {
-      lines.push(`  ↳ TYPE: AEROBIC / EASY day. Z1-Z2 framing is appropriate.`);
-    }
-    if (t.type === 'rest') {
-      lines.push(`  ↳ TYPE: REST day. No miles today.`);
-    }
+    lines.push(`TODAY'S WORKOUT: ${t.date} (${dayOfWeekName(t.date)}) ${t.type} ${t.mi}mi${t.label ? ' · ' + t.label : ''}`);
   } else {
-    lines.push('');
-    lines.push(`TODAY'S WORKOUT: nothing on the plan today (rest / off-plan day).`);
+    lines.push(`TODAY'S WORKOUT: nothing scheduled.`);
   }
 
   if (state.nextWorkout) {
     const n = state.nextWorkout;
-    lines.push(`NEXT WORKOUT (FUTURE, not today): ${n.date} (${dayOfWeekName(n.date)}) ${n.type} ${n.mi}mi${n.label ? ' · ' + n.label : ''}`);
+    lines.push(`NEXT WORKOUT: ${n.date} (${dayOfWeekName(n.date)}) ${n.type} ${n.mi}mi${n.label ? ' · ' + n.label : ''}`);
   }
   if (state.nextARace) {
     // Include explicit date AND month name so the LLM can't mis-narrate it.
