@@ -172,17 +172,21 @@ export async function dispatchTool(
   userId: string,
   input: Record<string, any>,
 ): Promise<unknown> {
+  // Anthropic tool input arrives as untyped Record. Each handler has its
+  // own schema but we cast through `any` at the boundary — validation
+  // happens in the schema the SDK enforces against `input_schema`.
+  const i = input as any;
   switch (name) {
     case 'getProfile':       return getProfile(userId);
     case 'getZones':         return getZones(userId);
-    case 'getPlanWindow':    return getPlanWindow(userId, input);
-    case 'getRuns':          return getRuns(userId, input);
+    case 'getPlanWindow':    return getPlanWindow(userId, i);
+    case 'getRuns':          return getRuns(userId, i);
     case 'getReadiness':     return getReadiness(userId);
-    case 'getRaces':         return getRaces(userId, input);
-    case 'getCheckIns':      return getCheckIns(userId, input);
-    case 'getHealthSeries':  return getHealthSeries(userId, input);
-    case 'getWorkoutCompletion': return getWorkoutCompletion(userId, input);
-    case 'getDoctrine':      return getDoctrine(input);
+    case 'getRaces':         return getRaces(userId, i);
+    case 'getCheckIns':      return getCheckIns(userId, i);
+    case 'getHealthSeries':  return getHealthSeries(userId, i);
+    case 'getWorkoutCompletion': return getWorkoutCompletion(userId, i);
+    case 'getDoctrine':      return getDoctrine(i);
     default:                 return { error: `unknown tool: ${name}` };
   }
 }

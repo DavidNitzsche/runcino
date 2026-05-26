@@ -179,7 +179,11 @@ export async function generateBriefing(
   // to write a number into a card payload, we overwrite from state here so
   // the UI is correct by construction.
   for (const t of validatedTopics) {
-    const p = (t.payload ??= {}) as any;
+    // Topic payloads are populated server-side; LLM emits { kind, coach_note }.
+    // The Topic union has typed payloads per kind, but server is the source
+    // of truth for those fields, so cast through any here.
+    if ((t as any).payload == null) (t as any).payload = {};
+    const p = (t as any).payload;
     if (t.kind === 'run_recap' && state.latest_activity?.id) {
       p.activity_id = state.latest_activity.id;
     }
