@@ -207,6 +207,22 @@ function buildUserMessage(state: CoachState, resolved: ReturnType<typeof resolve
     const a = state.latest_activity;
     lines.push(`LATEST RUN (${a.date} = ${dayOfWeekName(a.date)}): ${a.mi.toFixed(1)}mi · pace ${a.pace ?? '—'} · HR ${a.hr ?? '—'} · cad ${a.cadence ?? '—'}${a.name ? ' · "' + a.name + '"' : ''}`);
   }
+
+  // RECENT RUNS (last 7 days) — used to ANCHOR the coach to facts.
+  // The LLM has a strong tendency to invent "yesterday's threshold workout"
+  // or "your run two days ago" when it has no data. Listing every recent
+  // run explicitly + a hard prompt rule blocks that hallucination.
+  if (state.recentRuns && state.recentRuns.length > 0) {
+    lines.push('');
+    lines.push(`RECENT RUNS (last 7 days · ${state.recentRuns.length} total). DO NOT reference any run not in this list. If the runner didn't run on a given day, don't speculate that they did.`);
+    for (const rr of state.recentRuns) {
+      lines.push(`  ${rr.date} (${dayOfWeekName(rr.date)}): ${rr.mi.toFixed(1)}mi · ${rr.type ?? 'run'} · pace ${rr.pace ?? '—'} · HR ${rr.hr ?? '—'}${rr.name ? ' · "' + rr.name + '"' : ''}`);
+    }
+    lines.push('  ↳ TRUTH CONTRACT: Only mention runs above. Do not invent "yesterday\'s threshold" or "Saturday\'s long run" unless it appears in this list. If you want to discuss the upcoming workout, use NEXT WORKOUT below.');
+  } else {
+    lines.push('');
+    lines.push('RECENT RUNS: NONE in the last 7 days. Do not say the runner "completed" or "ran" anything — they haven\'t logged a run.');
+  }
   lines.push(`WEEK: ${state.weekDone}mi done / ${state.weekPlanned ?? '?'}mi planned${state.phaseLabel ? ' · phase ' + state.phaseLabel : ''}`);
   if (state.nextWorkout) {
     const n = state.nextWorkout;

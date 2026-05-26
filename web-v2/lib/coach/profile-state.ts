@@ -5,6 +5,7 @@
 import { pool } from '@/lib/db/pool';
 import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
+import { bestRecentVdot, parseRaceTime } from '@/lib/training/vdot';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
@@ -168,16 +169,81 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   // Preferences (settings) — real values, not hardcoded
   const preferences = await loadSettings(userId).catch(() => DEFAULT_PREFS);
 
-  // VDOT — try to derive from a recent PB. Fallback: from max_hr/RHR via simple HRR estimate
-  // (real VDOT calculator lives in lib/training/daniels.ts; profile shows nothing if no race PB).
-  const vdotRow = (await pool.query(
-    `SELECT meta FROM races
+  // VDOT — compute from the best race in the last 6 months.
+  // Only A/B priority races count (skip C and custom flags like
+  // 'hilly-excluded'). Auto-matches each race to its actual completed
+  // run in the runs table to get finish time (race meta doesn't persist
+  // it).
+  const raceRows = (await pool.query(
+    `SELECT slug, meta FROM races
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND meta->>'finishTime' IS NOT NULL
-      ORDER BY (meta->>'date') DESC NULLS LAST LIMIT 1`,
-    [userId]
-  ).catch(() => ({ rows: [] }))).rows[0];
-  const vdot: number | null = vdotRow?.meta?.vdot ? Number(vdotRow.meta.vdot) : null;
+        AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
+        AND (meta->>'date')::date < $2::date
+        AND meta->>'priority' IN ('A', 'B')`,
+    [userId, today]
+  ).catch(() => ({ rows: [] }))).rows;
+
+  // For VDOT, also need to match each race to its run for finish time.
+  const earliestDate = raceRows.length
+    ? raceRows.reduce((min: string, r: any) => {
+        const d = r.meta?.date ?? '';
+        return (!min || d < min) ? d : min;
+      }, '')
+    : null;
+  const candidateRuns = earliestDate ? (await pool.query(
+    `SELECT data FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
+        AND (data->>'distanceMi')::numeric > 2.5
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) <= $3`,
+    [userId, earliestDate, today]
+  ).catch(() => ({ rows: [] }))).rows : [];
+
+  function distFromLabel(label: string | null | undefined): number | null {
+    const l = String(label ?? '').toLowerCase();
+    if (l.includes('marathon') && !l.includes('half')) return 26.2;
+    if (l.includes('half') || l.includes('21k'))  return 13.1;
+    if (l.includes('10k')) return 6.2;
+    if (l.includes('5k')) return 3.1;
+    return null;
+  }
+
+  const raceCandidates = raceRows.map((r: any) => {
+    const m = r.meta ?? {};
+    const distMi = m.distanceMi ? Number(m.distanceMi) : distFromLabel(m.distanceLabel);
+    // First try meta.finishTime, then match a run by date+distance
+    let finishSec = parseRaceTime(m.finishTime);
+    if (!finishSec && distMi && m.date) {
+      let bestMatch: any = null;
+      let bestScore = Infinity;
+      for (const c of candidateRuns) {
+        const d = c.data;
+        const day = d.date || (d.startLocal ?? '').slice(0, 10);
+        if (!day) continue;
+        const dayDelta = Math.abs((Date.parse(day + 'T12:00:00Z') - Date.parse(m.date + 'T12:00:00Z')) / 86400000);
+        if (dayDelta > 1) continue;
+        const mi = Number(d.distanceMi);
+        const miDelta = Math.abs(mi - distMi);
+        if (miDelta > 2.0) continue;
+        const score = dayDelta * 10 + miDelta;
+        if (score < bestScore) { bestMatch = d; bestScore = score; }
+      }
+      if (bestMatch) {
+        finishSec = Number(bestMatch.movingTimeS) || Number(bestMatch.elapsedTimeS) || null;
+      }
+    }
+    return {
+      slug: r.slug,
+      name: m.name ?? r.slug,
+      date: m.date ?? '',
+      priority: (m.priority ?? null) as 'A'|'B'|'C'|null,
+      distance_mi: distMi,
+      finish_seconds: finishSec,
+    };
+  });
+  const { best: bestVdot } = bestRecentVdot(raceCandidates, today, 180);
+  const vdot: number | null = bestVdot?.vdot ?? null;
 
   // === LTHR + true MaxHR ===
   // Prefer user-entered values; fall back to derived-from-race if we have race meta.

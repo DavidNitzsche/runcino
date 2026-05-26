@@ -49,6 +49,46 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       }
     : null;
 
+  // RECENT RUNS (last 7 days, deduped, all sources) — fed into coach
+  // prompt to prevent hallucination about runs that didn't happen.
+  const recentRows = (await pool.query(
+    `SELECT data FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
+        AND (data->>'distanceMi')::numeric > 0.5
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text >= ($2::date - interval '7 days')::date::text
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) <= $2
+      ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC,
+               COALESCE(data->>'startLocal','') DESC`,
+    [userId, today]
+  )).rows;
+  // Dedupe: same date + similar distance → keep richest source
+  const SOURCE_RANK: Record<string, number> = { strava: 4, watch: 3, manual: 2, apple_health: 1 };
+  const byKey = new Map<string, any>();
+  for (const row of recentRows) {
+    const d = row.data;
+    const date = d.date || (d.startLocal ?? '').slice(0, 10);
+    const mi = Number(d.distanceMi);
+    if (!date || !isFinite(mi)) continue;
+    const k = `${date}-${Math.round(mi * 20) / 20}`;
+    const cur = byKey.get(k);
+    const newRank = SOURCE_RANK[d.source ?? 'strava'] ?? 0;
+    const curRank = cur ? (SOURCE_RANK[cur.source ?? 'strava'] ?? 0) : -1;
+    if (newRank > curRank) byKey.set(k, d);
+  }
+  const recentRuns = [...byKey.values()]
+    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+    .slice(0, 10)
+    .map((d) => ({
+      date: d.date || (d.startLocal ?? '').slice(0, 10),
+      type: d.type ?? null,
+      mi: Number(d.distanceMi) || 0,
+      pace: d.avgPaceMinPerMi || (d.paceSPerMi ? `${Math.floor(d.paceSPerMi / 60)}:${String(Math.round(d.paceSPerMi % 60)).padStart(2, '0')}` : null),
+      hr: Number(d.avgHr) || null,
+      name: d.name ?? null,
+      source: d.source ?? null,
+    }));
+
   // CURRENT WEEK from plan
   const plan = (await pool.query(
     `SELECT id, race_id
@@ -254,6 +294,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       experience_level: profile.experience_level ?? null,
     } : null,
     latest_activity,
+    recentRuns,
     weekDone,
     weekPlanned,
     phaseLabel,

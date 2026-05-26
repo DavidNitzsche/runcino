@@ -30,6 +30,26 @@ export function SettingsAvatarTrigger({ initials = 'DN' }: { initials?: string }
   );
 }
 
+/** Inline "EDIT →" link trigger — used in section headers + anywhere else
+ *  we want to pop the settings modal without an avatar. */
+export function SettingsLinkTrigger({ children = 'EDIT →' }: { children?: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+          color: 'var(--learn)', fontFamily: 'var(--f-body)',
+          fontSize: 'inherit', fontWeight: 'inherit', letterSpacing: 'inherit',
+        }}>
+        {children}
+      </button>
+      {open && <SettingsModal onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 function SettingsModal({ onClose }: { onClose: () => void }) {
   const [data, setData] = useState<UserSettings | null>(null);
   const [error, setError] = useState<string | null>(null);

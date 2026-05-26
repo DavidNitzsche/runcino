@@ -204,6 +204,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     today, user_id: userId,
     profile: prof ?? null,
     latest_activity: null,
+    recentRuns: [],
     weekDone, weekPlanned, phaseLabel, currentWeekDays: [],
     nextWorkout: null,
     nextARace: nextARaceName && daysToARace != null

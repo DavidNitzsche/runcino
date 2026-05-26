@@ -2,6 +2,7 @@ import { TopNav } from '@/components/layout/TopNav';
 import { ProfileGapInput } from '@/components/profile/ProfileGapInput';
 import { EditableField } from '@/components/profile/EditableField';
 import { AddShoeButton, ShoeEditCard } from '@/components/profile/ShoeCrudUI';
+import { SettingsLinkTrigger } from '@/components/settings/SettingsModal';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
         <SectionLabel>PERSONAL</SectionLabel>
         <Grid4>
           <FieldCard k="NAME" v={profile.identity.full_name ?? '—'} />
-          <EditableField field="sex"  label="Sex"  kind="select" options={['Male','Female','Other']} currentValue={profile.identity.sex} />
+          <EditableField field="sex"  label="Gender"  kind="select" options={['Male','Female']} currentValue={profile.identity.sex} />
           <EditableField
             field="birthday" label="Birthday" kind="text"
             currentValue={profile.identity.birthday}
@@ -86,7 +87,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
             currentValue={profile.physiology.max_hr} unitLabel="bpm"
           />
           <FieldCard k="RESTING HR" v={profile.physiology.rhr != null ? `${profile.physiology.rhr} bpm` : '—'} hint={profile.physiology.rhr ? '60-DAY MEAN' : 'PENDING'} />
-          <FieldCard k="VDOT" v={profile.physiology.vdot != null ? String(profile.physiology.vdot) : '—'} hint={profile.physiology.vdot != null ? 'FROM RACE PB' : 'NEEDS A RACE FINISH'} />
+          <FieldCard k="VDOT" v={profile.physiology.vdot != null ? String(profile.physiology.vdot) : '—'} hint={profile.physiology.vdot != null ? 'BEST RACE · 6 MO' : 'NEEDS A RACE FINISH'} />
         </Grid4>
 
         {/* Live zone table — recomputes from LTHR/MaxHR every render */}
@@ -130,8 +131,8 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <ConnCard name="Apple Watch"  sub={profile.connections.appleWatch.note}  connected={profile.connections.appleWatch.connected} />
         </Grid3>
 
-        {/* PREFERENCES — from user_settings (edit on /settings) */}
-        <SectionLabel>PREFERENCES · <a href="/settings" style={{ color: 'var(--learn)', textDecoration: 'none', letterSpacing: '1.4px' }}>EDIT →</a></SectionLabel>
+        {/* PREFERENCES — from user_settings (edit via settings modal) */}
+        <SectionLabel>PREFERENCES · <SettingsLinkTrigger>EDIT →</SettingsLinkTrigger></SectionLabel>
         <Grid4>
           <FieldCard k="LONG RUN DAY" v={dayLabel(profile.preferences.long_run_day)} />
           <FieldCard k="QUALITY DAYS" v={profile.preferences.quality_days.map(dayShort).join(' · ') || '—'} />

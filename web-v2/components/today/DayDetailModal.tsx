@@ -170,7 +170,7 @@ function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor:
       {/* Structured steps — one card per step (warmup, reps, recovery, cooldown) */}
       {pres?.steps && pres.steps.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-          {pres.steps.map((step, i) => <StepCard key={i} step={step} accent={typeColor} />)}
+          {pres.steps.map((step, i) => <StepCard key={i} step={step} />)}
         </div>
       )}
 
@@ -189,8 +189,27 @@ function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor:
   );
 }
 
-function StepCard({ step, accent }: { step: PrescriptionStep; accent: string }) {
-  // Build the volume label: "1.5 mi", "3 × 1 mile", "2:00 jog"
+function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
+  // Color the step border by EFFORT, not workout type. Easy steps (warmup,
+  // recovery, cooldown, easy build) → purple. Hard steps (reps, tempo,
+  // race, marathon-pace finish, threshold) → gold. Race → race orange.
+  const label = step.label.toLowerCase();
+  const isRest = label.includes('today') && (step.note ?? '').toLowerCase().includes('no running');
+  const isEasy = label.includes('warmup') || label.includes('cooldown') ||
+                 label.includes('recovery') || label.includes('easy');
+  const isRace = label.includes('race');
+  const isHard = label.includes('reps') || label.includes('tempo') ||
+                 label.includes('threshold') || label.includes('marathon-pace') ||
+                 label.includes('finish') || label.includes('strides') ||
+                 label.includes('interval');
+  const accent =
+    isRest ? 'var(--rest)' :
+    isRace ? 'var(--race)' :
+    isHard ? 'var(--goal)' :
+    isEasy ? 'var(--learn)' :
+             'var(--mute)';
+
+  // Build the volume label
   let volumeLabel: string;
   if (step.reps != null && step.rep_distance_mi != null) {
     const repFmt = step.rep_distance_mi < 1

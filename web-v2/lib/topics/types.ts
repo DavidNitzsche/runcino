@@ -47,6 +47,18 @@ export interface CoachState {
     name: string | null;
   } | null;
 
+  // Last 7 days of runs — used to PREVENT coach hallucination. The LLM may
+  // ONLY reference runs that appear here.
+  recentRuns: Array<{
+    date: string;
+    type: string | null;
+    mi: number;
+    pace: string | null;
+    hr: number | null;
+    name: string | null;
+    source: string | null;
+  }>;
+
   weekDone: number;
   weekPlanned: number | null;
   phaseLabel: string | null;
