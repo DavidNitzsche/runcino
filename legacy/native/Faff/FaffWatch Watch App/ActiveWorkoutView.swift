@@ -459,6 +459,14 @@ private struct LiveSteady: View {
         engine.planComplete ? .bonus : .dist
     }
 
+    /// Top label depends on context — overtime (past the plan), cooldown
+    /// (planned cooldown phase), or steady/easy (anything else).
+    private var topLabel: String {
+        if engine.planComplete { return "OVERTIME" }
+        if phase.type == .cooldown { return "COOL DOWN" }
+        return "STEADY"
+    }
+
     var body: some View {
         SteadyRunFace(
             livePace: paceText(tracker),
@@ -467,7 +475,8 @@ private struct LiveSteady: View {
             elapsed:  engine.totalElapsedSec >= 3600
                 ? PaceFormat.hms(engine.totalElapsedSec)
                 : PaceFormat.clock(engine.totalElapsedSec),
-            distanceRole: distanceRole
+            distanceRole: distanceRole,
+            topLabel: topLabel
         )
     }
 }

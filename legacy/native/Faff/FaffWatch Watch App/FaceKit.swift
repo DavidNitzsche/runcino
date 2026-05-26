@@ -115,7 +115,6 @@ extension View {
 
 struct NumberFace: View {
     let rows: [NumRow]
-    var strip: Strip? = nil
     /// Optional small label at the top of the face (OS-clock-baseline slot).
     /// Renders in HelveticaNeue-Bold (same font as the digits) so its leading
     /// edge aligns perfectly with the number column — DIFFERENT from
@@ -132,6 +131,9 @@ struct NumberFace: View {
     /// Optional small label at the bottom of the face (above bezel safety).
     /// Same alignment + font as topLabel.
     var bottomLabel: String? = nil
+    /// Optional bottom progress strip (reps / phases). Replaces the
+    /// symmetric bottom margin when present.
+    var strip: Strip? = nil
     /// Background color for the face. Defaults to black; override for
     /// washed takeovers (GoFace = green wash, etc).
     var faceBackground: Color = .black
@@ -301,62 +303,81 @@ struct NumberFace: View {
             let nRows = rows.count
             let nLabels = (hasTopLabel ? 1 : 0) + (hasBottomLabel ? 1 : 0)
 
-            // Width cap on the top row (clears the OS clock at top-right).
-            let clearance = clockClearF * W - H * leadF
-            let topEm = NumberFace.emWidth(rows.first?.text ?? "")
-            let widthF = topEm > 0 ? clearance / topEm : .greatestFiniteMagnitude
-            let glyphF_widthMax = (capRatio * widthF) / H
-
-            // Cap by what fits in the stack with gap ≥ 0 (anchored mode only;
-            // centered mode doesn't have a fixed stack constraint).
-            let stackBottom: CGFloat = hasStrip
-                ? (1 - stripBottomF - stripBarF - 0.028)
-                : (1 - TOP_MARGIN)
-            let stackTop: CGFloat = TOP_MARGIN
-            let stackAvailable = stackBottom - stackTop
-            let labelsTotal = CGFloat(nLabels) * labelCap
-            let glyphF_fitMax: CGFloat = nRows > 0
-                ? (stackAvailable - labelsTotal) / CGFloat(nRows)
-                : 0
-            let glyphF = max(0, min(glyphF_widthMax, glyphF_fitMax))
-            let F = (glyphF / capRatio) * H
-
             // Big numbers ALWAYS use the canonical gap. Locked by David:
             // "big numbers always need the approved line spacing. always.
             // we will NEVER space things out this wide. EVER." (2026-05-26)
+            // Glyph size FLEXES vertically so the canonical gap can be
+            // preserved while bottom margin stays symmetric to top.
             //
             // (A) hasTopLabel → ANCHORED. Top label cap-top at TOP_MARGIN
-            //     (rides clock baseline). Rows + optional bottom label
-            //     flow downward with CANONICAL_GAP between every pair.
-            //     Bottom margin is whatever's left — DO NOT force
-            //     symmetry that would inflate the gap.
+            //     (rides clock baseline). Big rows below the clock zone
+            //     get full-screen width — they don't need to clear the
+            //     OS clock since they're already below it. glyphF flexes
+            //     to fill: 2·TOP_MARGIN + labels + N·glyphF + nGaps·gap = 1
+            //     so bottom margin = top margin by construction.
             //
-            // (B) !hasTopLabel → CENTERED. Same canonical gap, row
-            //     group floats in the available area (above strip if
-            //     present).
+            // (B) !hasTopLabel → CENTERED. The top row sits at the top
+            //     of the screen and competes with the OS clock at top-
+            //     right, so it MUST use the clock-clear width cap. The
+            //     row group is centered in the available area (above
+            //     strip if present).
             //
-            // Centered group geometry
+            // The labelsTotal value is used in both branches.
+            let labelsTotal = CGFloat(nLabels) * labelCap
+            let nLines = nLabels + nRows
+            let nGaps = max(nLines - 1, 0)
+            let usedByGaps = CGFloat(nGaps) * CANONICAL_GAP
+
+            // Width cap depends on whether the top line is a small label
+            // (rows below clock) or the top row itself (competes with
+            // clock at top-right).
+            let widthAvailable: CGFloat = hasTopLabel
+                ? (W - 2 * H * leadF)            // full screen minus bezel margins
+                : (clockClearF * W - H * leadF)  // clear OS clock at top-right
+            let topEm = NumberFace.emWidth(rows.first?.text ?? "")
+            let widthF = topEm > 0 ? widthAvailable / topEm : .greatestFiniteMagnitude
+            let glyphF_widthMax = (capRatio * widthF) / H
+
+            // Vertical fit. Anchored: fill stack from TOP_MARGIN to
+            // (1 - TOP_MARGIN). Centered: fit row group in available
+            // area above any strip.
             let centeredAreaBottom: CGFloat = hasStrip
                 ? (1 - stripBottomF - stripBarF - 0.028)
                 : 1
-            let interRowGapsCount = max(nRows - 1, 0)
-            let bottomLabelGapCount = hasBottomLabel ? 1 : 0
-            let groupHeight = CGFloat(nRows) * glyphF
-                + CGFloat(interRowGapsCount + bottomLabelGapCount) * CANONICAL_GAP
-                + (hasBottomLabel ? labelCap : 0)
-            let centeredFirstRowTop = max(0, (centeredAreaBottom - groupHeight) / 2)
+            let glyphF_fitMax: CGFloat = {
+                guard nRows > 0 else { return 0 }
+                if hasTopLabel {
+                    // Anchored: fill from TOP_MARGIN to the bottom edge.
+                    // Bottom edge = strip-top when a strip is present,
+                    // else the symmetric (1 - TOP_MARGIN) line.
+                    let bottomEdge: CGFloat = hasStrip
+                        ? centeredAreaBottom
+                        : (1 - TOP_MARGIN)
+                    return (bottomEdge - TOP_MARGIN - labelsTotal - usedByGaps) / CGFloat(nRows)
+                } else {
+                    return (centeredAreaBottom - labelsTotal - usedByGaps) / CGFloat(nRows)
+                }
+            }()
+            let glyphF = max(0, min(glyphF_widthMax, glyphF_fitMax))
+            let F = (glyphF / capRatio) * H
 
-            // Gap is the canonical value in BOTH modes — the inter-line
-            // rhythm is the same regardless of whether there's a top
-            // anchor or not.
+            // Gap is the canonical value in BOTH modes.
             let gap: CGFloat = CANONICAL_GAP
-            let firstRowTop: CGFloat = hasTopLabel
-                ? (TOP_MARGIN + labelCap + gap)
-                : centeredFirstRowTop
+
+            // Row group position. Anchored: pinned below top label.
+            // Centered: floats vertically in the available area.
+            let firstRowTop: CGFloat = {
+                if hasTopLabel {
+                    return TOP_MARGIN + labelCap + gap
+                } else {
+                    let groupHeight = CGFloat(nRows) * glyphF
+                        + CGFloat(nGaps) * gap
+                        + (hasBottomLabel ? labelCap : 0)
+                    return max(0, (centeredAreaBottom - groupHeight) / 2)
+                }
+            }()
             let pitchF = glyphF + gap
-            // Bottom label (if any) sits one gap below the last row in
-            // BOTH modes — the position is purely a function of where
-            // the row group ends.
+            // Bottom label (if any) sits one gap below the last row.
             let bottomLabelTop: CGFloat = firstRowTop + CGFloat(nRows) * pitchF
             let topLabelTop: CGFloat = TOP_MARGIN
             let startF = firstRowTop

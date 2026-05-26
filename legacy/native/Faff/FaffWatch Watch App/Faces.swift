@@ -53,6 +53,15 @@ struct WorkIntervalFace: View {
     let totalDistance: String   // "3.78"
     let repCounter: String      // "0:24" (time left) or "0.30" (miles left)
     let stripStates: [Int]      // [1,1,1,2,0,0] per session segment
+    /// "REP 2/4" style label. Computed from stripStates by default so
+    /// callers don't have to do it.
+    var topLabel: String? = nil
+
+    private var derivedLabel: String {
+        if let t = topLabel { return t }
+        let nowIdx = stripStates.firstIndex(where: { $0 == 2 }) ?? 0
+        return "REP \(nowIdx + 1)/\(stripStates.count)"
+    }
 
     var body: some View {
         NumberFace(
@@ -62,6 +71,7 @@ struct WorkIntervalFace: View {
                 NumRow(totalDistance, .dist),
                 NumRow(repCounter,    .neutral)
             ],
+            topLabel: derivedLabel,
             strip: Strip(states: stripStates)
         )
     }
@@ -77,6 +87,15 @@ struct LiveRaceFace: View {
     let goalDelta: String       // "+1:14" / "-0:42"
     let goalDeltaRole: Role     // .live / .over (or .neutral until banked)
     let phaseSegments: [Int]    // 0 empty, 1 done, 2 now
+    /// Optional phase name override ("OPENER", "BUILD", "FINISH", etc.).
+    /// Defaults to "PHASE n/m" computed from segments.
+    var topLabel: String? = nil
+
+    private var derivedLabel: String {
+        if let t = topLabel { return t }
+        let nowIdx = phaseSegments.firstIndex(where: { $0 == 2 }) ?? 0
+        return "PHASE \(nowIdx + 1)/\(phaseSegments.count)"
+    }
 
     var body: some View {
         NumberFace(
@@ -86,6 +105,8 @@ struct LiveRaceFace: View {
                 NumRow(totalDistance, .dist),
                 NumRow(goalDelta,     goalDeltaRole)
             ],
+            topLabel: derivedLabel,
+            topLabelColor: Faff.goal,
             strip: Strip(states: phaseSegments,
                          doneColor: Faff.goal, nowColor: Faff.goal)
         )
@@ -114,6 +135,9 @@ struct EasyFace: View {
     /// Distance row role · .dist (blue) during the plan, .bonus (purple)
     /// in overtime.
     var distanceRole: Role = .dist
+    /// Top tag (rides the OS clock baseline). Defaults to "EASY";
+    /// callers can pass a context-specific string ("EASY · MAF", etc.).
+    var topLabel: String = "EASY"
 
     private var guardrail: NumRow {
         if hrOver { return NumRow(hr, .over, icon: "heart.fill") }
@@ -122,11 +146,14 @@ struct EasyFace: View {
             : NumRow(cadence, .neutral, icon: "figure.run")
     }
     var body: some View {
-        NumberFace(rows: [
-            NumRow(pace, paceRole),
-            guardrail,
-            NumRow(distance, distanceRole)
-        ])
+        NumberFace(
+            rows: [
+                NumRow(pace, paceRole),
+                guardrail,
+                NumRow(distance, distanceRole)
+            ],
+            topLabel: topLabel
+        )
     }
 }
 
@@ -137,13 +164,17 @@ struct ProgressionFace: View {
     let stepTarget: String
     let totalDistance: String
     let toNextStep: String      // miles or m:ss until the next step
+    var topLabel: String = "PROGRESSION"
     var body: some View {
-        NumberFace(rows: [
-            NumRow(livePace,      paceRole),
-            NumRow(stepTarget,    .neutral),
-            NumRow(totalDistance, .dist),
-            NumRow(toNextStep,    .neutral)
-        ])
+        NumberFace(
+            rows: [
+                NumRow(livePace,      paceRole),
+                NumRow(stepTarget,    .neutral),
+                NumRow(totalDistance, .dist),
+                NumRow(toNextStep,    .neutral)
+            ],
+            topLabel: topLabel
+        )
     }
 }
 
@@ -154,12 +185,16 @@ struct HRFace: View {
     let hr: String
     let hrRole: Role            // .live in zone, .over above ceiling, .neutral otherwise
     let distance: String
+    var topLabel: String = "MAF"
     var body: some View {
-        NumberFace(rows: [
-            NumRow(pace,     .neutral),
-            NumRow(hr,       hrRole, icon: "heart.fill"),
-            NumRow(distance, .dist)
-        ])
+        NumberFace(
+            rows: [
+                NumRow(pace,     .neutral),
+                NumRow(hr,       hrRole, icon: "heart.fill"),
+                NumRow(distance, .dist)
+            ],
+            topLabel: topLabel
+        )
     }
 }
 
@@ -168,12 +203,16 @@ struct StridesFace: View {
     let livePace: String
     let burstCountdown: String
     let stripStates: [Int]
+    var topLabel: String = "STRIDES"
     var body: some View {
-        NumberFace(rows: [
-            NumRow(livePace,        .live),
-            NumRow(burstCountdown,  .neutral)
-        ],
-                   strip: Strip(states: stripStates))
+        NumberFace(
+            rows: [
+                NumRow(livePace,        .live),
+                NumRow(burstCountdown,  .neutral)
+            ],
+            topLabel: topLabel,
+            strip: Strip(states: stripStates)
+        )
     }
 }
 
@@ -189,12 +228,20 @@ struct SteadyRunFace: View {
     let distance: String
     let elapsed: String
     var distanceRole: Role = .dist
+    /// Required by the locked layout: each rendering context names what
+    /// the screen IS — "STEADY" for the steady-run case, "COOL DOWN"
+    /// for cooldown, "OVERTIME" for past-plan time, "WARMUP" if used
+    /// for warmup, etc.
+    let topLabel: String
     var body: some View {
-        NumberFace(rows: [
-            NumRow(livePace, paceRole),
-            NumRow(distance, distanceRole),
-            NumRow(elapsed,  .neutral)
-        ])
+        NumberFace(
+            rows: [
+                NumRow(livePace, paceRole),
+                NumRow(distance, distanceRole),
+                NumRow(elapsed,  .neutral)
+            ],
+            topLabel: topLabel
+        )
     }
 }
 

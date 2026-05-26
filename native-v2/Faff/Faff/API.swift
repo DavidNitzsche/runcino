@@ -59,6 +59,63 @@ enum API {
         _ = try await URLSession.shared.data(for: req)
     }
 
+    // MARK: - P39 auth — Sign in with Apple
+
+    struct AppleSignInResponse: Decodable {
+        let ok: Bool
+        let token: String?
+        let expires_at: String?
+        let user_uuid: String?
+        let error: String?
+    }
+
+    /// POST /api/auth/apple with the identity_token + user from
+    /// ASAuthorizationAppleIDProvider. Returns the server's opaque session
+    /// token that the client persists in keychain and sends as Bearer.
+    static func signInWithApple(
+        identityToken: String,
+        appleUserId: String,
+        email: String?,
+        fullName: PersonNameComponents?
+    ) async throws -> AppleSignInResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/apple"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "identity_token": identityToken,
+            "user": appleUserId,
+        ]
+        if let email { body["email"] = email }
+        if let name = fullName {
+            var nm: [String: String] = [:]
+            if let g = name.givenName { nm["givenName"] = g }
+            if let f = name.familyName { nm["familyName"] = f }
+            if !nm.isEmpty { body["full_name"] = nm }
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return try JSONDecoder().decode(AppleSignInResponse.self, from: data)
+    }
+
+    // MARK: - P39 Strava OAuth
+
+    struct StravaConnectURLResponse: Decodable {
+        let url: String
+    }
+
+    /// Get the URL to open in Safari for Strava OAuth. The callback lands
+    /// on /api/auth/strava?action=callback which writes the tokens.
+    static func fetchStravaConnectURL() async throws -> URL? {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/auth/strava"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "action", value: "connect")]
+        let (data, _) = try await URLSession.shared.data(from: comps.url!)
+        let r = try? JSONDecoder().decode(StravaConnectURLResponse.self, from: data)
+        return r?.url.flatMap { URL(string: $0) } ?? nil
+    }
+
     // MARK: - P29 settings + profile fetch
 
     static func fetchSettings() async throws -> UserSettings? {

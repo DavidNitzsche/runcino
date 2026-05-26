@@ -196,6 +196,16 @@ struct SettingsSheet: View {
             profilePatch["strava_auto_push"] = stravaAutoPush
             profilePatch["phone_hr_alerts"] = phoneHrAlerts
 
+            // P35 — activate / deactivate the phone-side HR alert
+            // observer right now. Ceiling = hrmax_observed if set, else
+            // fallback to a percentage of the visible LTHR field.
+            let ceiling: Int? = {
+                if let m = Int(maxHr) { return m }
+                if let l = Int(lthr) { return Int(Double(l) * 1.12) }
+                return nil
+            }()
+            HRAlerter.shared.configure(enabled: phoneHrAlerts, ceiling: ceiling)
+
             if !profilePatch.isEmpty {
                 try await API.updateProfile(profilePatch)
             }

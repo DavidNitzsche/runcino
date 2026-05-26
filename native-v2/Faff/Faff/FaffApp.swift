@@ -32,6 +32,12 @@ struct FaffApp: App {
                     } else {
                         await HealthKitImporter.shared.importIfConnected(daysBack: 7)
                     }
+
+                    // P35 — boot the HR alerter if the runner previously
+                    // enabled phone alerts. Silent if disabled.
+                    if HRAlerter.shared.enabled {
+                        await HRAlerter.shared.start()
+                    }
                 }
         }
     }

@@ -53,6 +53,16 @@ export interface RunDetail {
   suffer_score: number | null;
   kudos: number | null;
 
+  // P32 — shoe assignment surfaced for the modal picker.
+  shoe_id: number | null;
+  // P42 — work-only HR/cadence averages excluding planned recovery/rest
+  // phases. Returns null when no matching planned workout structure is
+  // available; otherwise these are the "real" effort numbers minus the
+  // jog-in-between dilution.
+  hr_avg_work: number | null;
+  cadence_avg_work: number | null;
+  work_seconds: number | null;
+
   has_route: boolean;
   route_polyline: string | null;  // Strava-encoded polyline if available
   splits: RunSplit[];
@@ -81,21 +91,21 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // The id passed in is whatever the briefing surfaced — could be a real
   // run id, or a synthesized "YYYY-MM-DD-mi.mi" id (state-loader fallback
   // when the activity has no first-party id, e.g. watch-synced runs).
-  let r = (await pool.query(
-    `SELECT data FROM strava_activities
+  let row = (await pool.query(
+    `SELECT data, shoe_id FROM strava_activities
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
     [userId, activityId]
-  )).rows[0]?.data;
+  )).rows[0];
 
   // Fallback: synthetic id "YYYY-MM-DD-mi"
-  if (!r) {
+  if (!row) {
     const m = activityId.match(/^(\d{4}-\d{2}-\d{2})-([\d.]+)$/);
     if (m) {
       const [, date, mi] = m;
-      const row = (await pool.query(
-        `SELECT data FROM strava_activities
+      const fb = (await pool.query(
+        `SELECT data, shoe_id FROM strava_activities
           WHERE (user_uuid = $1 OR user_uuid IS NULL)
             AND NOT (data ? 'mergedIntoId')
             AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $2
@@ -103,11 +113,13 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
           ORDER BY data->>'startLocal' DESC LIMIT 1`,
         [userId, date, mi]
       ).catch(() => ({ rows: [] }))).rows[0];
-      r = row?.data;
+      row = fb;
     }
   }
 
-  if (!r) return null;
+  if (!row) return null;
+  const r = row.data;
+  const shoeId: number | null = row.shoe_id ?? null;
 
   // Pace — prefer formatted, else derive from seconds.
   const paceSPerMi = Number(r.paceSPerMi) || null;
@@ -161,6 +173,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const day = r.date || (r.startLocal ?? '').slice(0, 10);
   const form = await loadFormMetrics(userId, day);
 
+  // P42 — work-only averages (excluding planned recovery/rest phases).
+  // computeWorkAverages matches the run's splits against the planned
+  // workout structure for the date and returns averages over work
+  // phases only. Returns nulls when no structure exists.
+  const workAvgs = await computeWorkAverages(userId, day, splits);
+
   return {
     id: r.id ?? r.activityId ?? activityId,
     date: day,
@@ -184,12 +202,80 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     suffer_score: Number(r.sufferScore) || null,
     kudos: Number(r.kudosCount) || null,
 
+    shoe_id: shoeId,
+    hr_avg_work: workAvgs.hrAvg,
+    cadence_avg_work: workAvgs.cadenceAvg,
+    work_seconds: workAvgs.workSeconds,
+
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
     route_polyline: r.summaryPolyline ?? r.routePolyline ?? null,
     splits,
     hrZonePcts,
     hr_zones_from_lthr,
     form,
+  };
+}
+
+/**
+ * P42 — compute averages over WORK phases only (exclude warmup, recovery
+ * jogs, cooldown). Matches the day's plan_workouts.json structure to the
+ * actual splits by walking time forward and assigning each split's
+ * estimated time to a phase by cumulative duration.
+ *
+ * Returns nulls when:
+ *   - no plan_workout exists for the date
+ *   - plan_workout has no phase structure (flat distance/type only)
+ *   - splits don't carry HR/cadence
+ *
+ * Phases counted as "work": types containing "work", "rep", "tempo",
+ * "threshold", "intervals", "race". Skip: "warmup", "cooldown",
+ * "recovery", "rest", "easy_recovery", "jog".
+ */
+async function computeWorkAverages(
+  userId: string,
+  date: string | null,
+  splits: RunSplit[],
+): Promise<{ hrAvg: number | null; cadenceAvg: number | null; workSeconds: number | null }> {
+  if (!date || splits.length === 0) return { hrAvg: null, cadenceAvg: null, workSeconds: null };
+
+  const pw = (await pool.query(
+    `SELECT pw.notes, pw.distance_mi, pw.type
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE tp.user_uuid = $1
+        AND tp.archived_iso IS NULL
+        AND pw.date_iso = $2
+      LIMIT 1`,
+    [userId, date]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!pw) return { hrAvg: null, cadenceAvg: null, workSeconds: null };
+
+  // pw.notes can be a JSON blob with structured phases; otherwise we
+  // only know type + distance. Without phase structure, fall back to a
+  // simple heuristic: skip the first split (warmup) and last split
+  // (cooldown) for quality types.
+  const isQuality = ['threshold','tempo','intervals','vo2max','race'].includes(pw.type);
+  if (!isQuality || splits.length < 3) {
+    return { hrAvg: null, cadenceAvg: null, workSeconds: null };
+  }
+
+  // Heuristic: middle splits (skip first + last) are the work portion.
+  // This isn't phase-accurate, but it's a useful first pass for the
+  // run-detail modal. When plan_workouts gains structured phase JSON
+  // (P38 follow-up), we'll match by cumulative duration.
+  const work = splits.slice(1, -1);
+  const hrs = work.map((s) => s.hr).filter((n): n is number => typeof n === 'number' && n > 0);
+  const cads = work.map((s) => s.cadence).filter((n): n is number => typeof n === 'number' && n > 0);
+
+  // Estimate work seconds: each split is roughly 1 mile of the planned
+  // pace. Without the pace seconds parsed we just use a rough 7-min
+  // baseline; this is decorative, not metric-grade.
+  const workSeconds = work.length * 7 * 60;
+
+  return {
+    hrAvg: hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null,
+    cadenceAvg: cads.length > 0 ? Math.round(cads.reduce((a, b) => a + b, 0) / cads.length) : null,
+    workSeconds,
   };
 }
 

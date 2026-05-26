@@ -116,7 +116,8 @@ struct WatchFixtureView: View {
             // 1.20 → 0. After 0 (overtime/planComplete), flips to purple
             // and counts UP total covered.
             SteadyRunFace(livePace: "8:14", paceRole: .live,
-                          distance: "0.80", elapsed: "1:09")
+                          distance: "0.80", elapsed: "1:09",
+                          topLabel: "COOL DOWN")
         case "cruise-decode-tomorrow":
             // Round-trip smoke test: the exact JSON the web agent says
             // /api/watch/today returns for tomorrow's Cruise Intervals.
@@ -129,7 +130,8 @@ struct WatchFixtureView: View {
             // row is purple, counting total covered.
             SteadyRunFace(livePace: "9:02", paceRole: .neutral,
                           distance: "8.10", elapsed: "1:12",
-                          distanceRole: .bonus)
+                          distanceRole: .bonus,
+                          topLabel: "OVERTIME")
         case "race":
             LiveRaceFace(livePace: "8:28", paceRole: .live, phaseTarget: "8:30",
                          totalDistance: "10.8", goalDelta: "+1:14", goalDeltaRole: .live,
@@ -270,13 +272,15 @@ struct WatchFixtureView: View {
             StridesFace(livePace: "5:30", burstCountdown: "0:14",
                         stripStates: [1, 1, 1, 2, 0, 0])
         case "steady":
-            SteadyRunFace(livePace: "8:55", paceRole: .live, distance: "9.6", elapsed: "1:25")
+            SteadyRunFace(livePace: "8:55", paceRole: .live, distance: "9.6", elapsed: "1:25",
+                          topLabel: "STEADY")
         case "overtime":
             // Plan done at 11.6, runner has banked 0.4 more — total 12.0,
             // distance row in purple (Faff.bonus) per the locked grammar.
             SteadyRunFace(livePace: "9:02", paceRole: .neutral,
                           distance: "12.0", elapsed: "1:47:18",
-                          distanceRole: .bonus)
+                          distanceRole: .bonus,
+                          topLabel: "OVERTIME")
         default:
             // Default fixture: rep-work face — the canonical reference.
             WorkIntervalFace(livePace: "6:33", paceRole: .live, targetPace: "6:31",

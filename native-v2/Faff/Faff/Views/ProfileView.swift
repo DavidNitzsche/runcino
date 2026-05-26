@@ -9,6 +9,8 @@ struct ProfileView: View {
     @State private var showHeightSheet = false
     @State private var showSettingsSheet = false
     @State private var showManualRunSheet = false
+    @State private var showOnboardingSheet = false
+    @StateObject private var tokenStore = TokenStore.shared
 
     var body: some View {
         ScrollView {
@@ -66,7 +68,7 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, 24)
 
-                // P29 — actions: edit settings + log manual run
+                // P29 — actions: edit settings + log manual run + onboarding
                 SectionLabel("ACTIONS")
                 VStack(spacing: 10) {
                     Button { showSettingsSheet = true } label: {
@@ -74,6 +76,13 @@ struct ProfileView: View {
                     }.buttonStyle(.plain)
                     Button { showManualRunSheet = true } label: {
                         actionRow(icon: "plus.circle.fill", label: "Log manual run", sub: "Treadmill / forgot to track")
+                    }.buttonStyle(.plain)
+                    Button { showOnboardingSheet = true } label: {
+                        actionRow(
+                            icon: tokenStore.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.plus",
+                            label: tokenStore.isSignedIn ? "Connections" : "Set up account",
+                            sub: tokenStore.isSignedIn ? "Sign-in · Strava · Apple Health" : "Sign in + connect your data"
+                        )
                     }.buttonStyle(.plain)
                 }
                 .padding(.horizontal, 24)
@@ -92,6 +101,9 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showManualRunSheet) {
             ManualRunSheet()
+        }
+        .sheet(isPresented: $showOnboardingSheet) {
+            OnboardingSheet()
         }
     }
 

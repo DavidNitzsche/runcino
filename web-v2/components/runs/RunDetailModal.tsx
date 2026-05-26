@@ -53,6 +53,7 @@ export function RunDetailModal({ activityId, onClose }: { activityId: string; on
   const [data, setData] = useState<RunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [shoes, setShoes] = useState<any[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -60,8 +61,30 @@ export function RunDetailModal({ activityId, onClose }: { activityId: string; on
       .then((r) => r.ok ? r.json() : r.json().then((e) => { throw new Error(e.error ?? 'failed'); }))
       .then((d) => { if (mounted) { setData(d); setLoading(false); } })
       .catch((e) => { if (mounted) { setError(e.message ?? String(e)); setLoading(false); } });
+    // P32 — fetch shoes for the picker (active only)
+    fetch('/api/shoe')
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (mounted && j?.shoes) setShoes(j.shoes.filter((s: any) => !s.retired)); })
+      .catch(() => {});
     return () => { mounted = false; };
   }, [activityId]);
+
+  /** Update run.shoe_id via PATCH /api/runs/[id]. Optimistic — the server
+   *  recomputes shoes.mileage on success, refresh of /profile reflects it. */
+  async function pickShoe(shoeId: number | null) {
+    if (!data) return;
+    setData({ ...data, shoe_id: shoeId });
+    try {
+      await fetch(`/api/runs/${encodeURIComponent(activityId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shoe_id: shoeId }),
+      });
+    } catch {
+      // best-effort; we don't roll back the optimistic update — the server
+      // is the source of truth and a refresh will reconcile if it failed.
+    }
+  }
 
   // Close on Escape
   useEffect(() => {
@@ -98,7 +121,7 @@ export function RunDetailModal({ activityId, onClose }: { activityId: string; on
 
         {loading && <Skeleton />}
         {error && <ErrorState err={error} />}
-        {data && <RunDetailBody d={data} />}
+        {data && <RunDetailBody d={data} shoes={shoes} onPickShoe={pickShoe} />}
       </div>
     </div>
   );
@@ -126,7 +149,7 @@ function ErrorState({ err }: { err: string }) {
   );
 }
 
-function RunDetailBody({ d }: { d: RunDetail }) {
+function RunDetailBody({ d, shoes, onPickShoe }: { d: RunDetail; shoes: any[]; onPickShoe: (id: number | null) => void }) {
   const sourceLabel = d.source === 'watch' ? 'WATCH'
     : d.source === 'apple_health' ? 'APPLE HEALTH'
     : d.source === 'manual' ? 'MANUAL ENTRY'
@@ -160,6 +183,51 @@ function RunDetailBody({ d }: { d: RunDetail }) {
         {d.suffer_score != null&& <SmallStat v={String(d.suffer_score)}      u="suffer" />}
         {d.kudos != null && d.kudos > 0 && <SmallStat v={String(d.kudos)}    u="kudos" />}
       </div>
+
+      {/* P42 — work-only averages when a planned quality workout matches.
+          Shows alongside the all-in numbers so the runner sees the "real"
+          effort filter out recovery jogs. */}
+      {(d.hr_avg_work != null || d.cadence_avg_work != null) && (
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: 'rgba(243,173,56,0.05)', border: '1px solid rgba(243,173,56,0.20)' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--goal)', marginBottom: 6 }}>WORK-PHASE ONLY · WARMUP + COOLDOWN EXCLUDED</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {d.hr_avg_work != null && <SmallStat v={String(d.hr_avg_work)} u="avg hr" />}
+            {d.cadence_avg_work != null && <SmallStat v={String(d.cadence_avg_work)} u="cadence" />}
+            {d.work_seconds != null && <SmallStat v={`${Math.round(d.work_seconds / 60)}m`} u="work" />}
+          </div>
+        </div>
+      )}
+
+      {/* P32 — shoe picker. Pick the active shoe used; server bumps mileage. */}
+      {shoes.length > 0 && (
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: '#1f2226' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--green)', marginBottom: 8 }}>SHOES</div>
+          <select
+            value={d.shoe_id ?? ''}
+            onChange={(e) => onPickShoe(e.target.value ? Number(e.target.value) : null)}
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              color: 'var(--ink)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
+              padding: '8px 12px',
+              fontFamily: 'var(--f-body)',
+              fontSize: 13,
+              width: '100%',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="">— No shoe assigned —</option>
+            {shoes.map((s: any) => (
+              <option key={s.id} value={s.id}>
+                {[s.brand, s.model].filter(Boolean).join(' ')}
+                {s.mileage != null ? ` · ${Math.round(s.mileage)}mi` : ''}
+                {s.mileage_cap ? ` / ${s.mileage_cap}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it */}
       {d.splits.length > 0 && (

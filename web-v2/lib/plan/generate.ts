@@ -412,6 +412,17 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   const restDow     = dayKeyToDow((prefs?.rest_day ?? 'sat') as DayKey);
   const qualityDows = (prefs?.quality_days ?? ['tue', 'thu']).map((d) => dayKeyToDow(d as DayKey));
 
+  // P34 — cross-training opt-in. If the runner has cross_training_modes
+  // set on profile (bike/swim/strength/other), we tag the rest day's
+  // sub_label so the plan shows the activity instead of just "REST".
+  // (Type stays 'rest' so distance + readiness logic don't break.)
+  const ctRow = (await pool.query(
+    `SELECT cross_training_modes FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const crossModes: string[] = Array.isArray(ctRow?.cross_training_modes)
+    ? ctRow.cross_training_modes : [];
+
   // 3. Determine week count + block sizes
   // The plan starts on the Monday of "this week", ends on the week containing race day.
   const startMonday = mondayOf(today());
@@ -451,6 +462,22 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       raceDow,
       raceDistanceMi,
     });
+    // P34 — relabel the rest day with cross-training activity when opted
+    // in. Rotates through enabled modes across weeks so the runner gets
+    // variety (bike one week, swim the next, etc.). Strength gets one
+    // dedicated day every other week when it's in the mix.
+    if (crossModes.length > 0) {
+      const restDay = days.find((d) => d.type === 'rest' && d.distanceMi === 0);
+      if (restDay) {
+        const mode = crossModes[wi % crossModes.length];
+        const subLabel = mode === 'strength' ? 'STRENGTH'
+          : mode === 'bike' ? 'BIKE 45-60 MIN'
+          : mode === 'swim' ? 'SWIM 30-40 MIN'
+          : 'CROSS-TRAIN';
+        restDay.subLabel = subLabel;
+        restDay.notes = `Cross-training: ${mode}. Easy effort. Not a run replacement — keeps the engine humming on a non-impact day.`;
+      }
+    }
     weeks.push({ startISO: weekStart, phase: phaseLabel, days, isRaceWeek });
     phaseWkRemaining--;
   }
