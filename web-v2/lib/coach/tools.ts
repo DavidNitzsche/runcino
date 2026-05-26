@@ -144,6 +144,15 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'getShoes',
+    description:
+      'List the runner\'s shoes with current mileage and any retirement target. ' +
+      'Each shoe shows current cumulative miles, retirement target, and remaining ' +
+      'life. Use this when planning a race-day shoe pick or warning about ' +
+      'overdue rotations.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'getDoctrine',
     description:
       "Read the research-backed doctrine on a topic, drawn from /Research/. " +
@@ -187,6 +196,7 @@ export async function dispatchTool(
     case 'getHealthSeries':  return getHealthSeries(userId, i);
     case 'getWorkoutCompletion': return getWorkoutCompletion(userId, i);
     case 'getDoctrine':      return getDoctrine(i);
+    case 'getShoes':         return getShoes(userId);  // P32 / P15.3
     default:                 return { error: `unknown tool: ${name}` };
   }
 }
@@ -278,17 +288,66 @@ async function getRuns(userId: string, input: { daysBack: number; limit?: number
   )).rows;
   return {
     today,
-    runs: r.map((row: any) => ({
-      id: row.data?.id ?? null,
-      date: row.data?.date,
-      mi: Number(row.data?.distance_mi) || 0,
-      pace: row.data?.pace ?? null,
-      hr: row.data?.hr ?? null,
-      cadence: row.data?.cadence ?? null,
-      type: row.data?.type ?? null,
-      name: row.data?.name ?? null,
-      source: row.data?.source ?? 'strava',
-    })),
+    runs: r.map((row: any) => {
+      const w = row.data?.weather;
+      return {
+        id: row.data?.id ?? null,
+        date: row.data?.date,
+        mi: Number(row.data?.distance_mi) || 0,
+        pace: row.data?.pace ?? null,
+        hr: row.data?.hr ?? null,
+        cadence: row.data?.cadence ?? null,
+        type: row.data?.type ?? null,
+        name: row.data?.name ?? null,
+        source: row.data?.source ?? 'strava',
+        // P31 — weather, when enriched. Coach uses these to speak to
+        // heat / cold / wind that explain pace divergence vs target.
+        weather: w ? {
+          temp_f: w.temp_f ?? null,
+          humidity_pct: w.humidity_pct ?? null,
+          wind_mph: w.wind_mph ?? null,
+          conditions: w.conditions ?? null,
+        } : null,
+      };
+    }),
+  };
+}
+
+async function getShoes(userId: string) {
+  // P32 — shoe inventory + current mileage for the coach. Auto-bumped
+  // by the recompute-on-PATCH path on /api/runs/[id].
+  const rows = (await pool.query(
+    `SELECT id, brand, model, color, run_types,
+            mileage::numeric AS mileage_mi,
+            mileage_cap::numeric AS retirement_mi,
+            COALESCE(retired, false) AS retired,
+            COALESCE(preferred, false) AS preferred,
+            notes
+       FROM shoes
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      ORDER BY retired ASC, preferred DESC, mileage DESC NULLS LAST`,
+    [userId]
+  )).rows;
+  return {
+    shoes: rows.map((s: any) => {
+      const cur = Number(s.mileage_mi) || 0;
+      const target = Number(s.retirement_mi) || 0;
+      return {
+        id: s.id,
+        name: [s.brand, s.model].filter(Boolean).join(' '),
+        brand: s.brand,
+        model: s.model,
+        color: s.color,
+        run_types: s.run_types ?? [],
+        preferred: Boolean(s.preferred),
+        retired: Boolean(s.retired),
+        mileage_mi: Math.round(cur * 10) / 10,
+        retirement_mi: target || null,
+        remaining_mi: target > 0 ? Math.max(0, Math.round((target - cur) * 10) / 10) : null,
+        overdue: target > 0 && cur >= target,
+        notes: s.notes ?? null,
+      };
+    }),
   };
 }
 

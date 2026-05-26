@@ -37,6 +37,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
+import { fetchRunWeather } from '@/lib/weather/openmeteo';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -106,6 +107,33 @@ export async function POST(req: NextRequest) {
       console.error('[ingest/workout] autoMerge warn:', e?.message);
     }
 
+    // P31 — best-effort weather enrichment on ingest. Needs GPS — uses
+    // route_polyline start coords if present, else skip until the nightly
+    // cron's batch with whatever lat/lng we infer later. Fire-and-forget.
+    if (body.route_polyline) {
+      try {
+        const firstPair = decodePolylineFirst(body.route_polyline);
+        if (firstPair) {
+          const w = await fetchRunWeather(firstPair[0], firstPair[1], data.startLocal);
+          if (w) {
+            (data as any).weather = w;
+            (data as any).tempF = w.temp_f ?? (data as any).tempF;
+            // Re-write with weather. INSERT happened just above with the
+            // pre-weather data; UPDATE the row we just wrote.
+            await pool.query(
+              `UPDATE strava_activities
+                  SET data = $1, weather_enriched_at = NOW()
+                WHERE (user_uuid = $2 OR user_uuid IS NULL)
+                  AND data->>'client_workout_id' = $3`,
+              [data, userId, body.client_workout_id]
+            );
+          }
+        }
+      } catch (e: any) {
+        console.error('[ingest/workout] weather enrich warn:', e?.message);
+      }
+    }
+
     await bustBriefingCache(userId);
     return NextResponse.json({ ok: true, id: slug });
   } catch (err: any) {
@@ -124,4 +152,27 @@ function deriveAvgPace(b: any): string | null {
   if (!b.duration_sec || !b.distance_mi) return null;
   const sPerMi = Math.round(Number(b.duration_sec) / Number(b.distance_mi));
   return formatMmSs(sPerMi);
+}
+
+/** Decode just the first lat,lng pair from a Google polyline (precision 5). */
+function decodePolylineFirst(s: string): [number, number] | null {
+  if (!s || s.length < 2) return null;
+  let index = 0;
+  let lat = 0, lng = 0;
+  const decodeOne = (): number => {
+    let shift = 0, result = 0;
+    while (index < s.length) {
+      const b = s.charCodeAt(index) - 63;
+      index++;
+      result |= (b & 0x1f) << shift;
+      if (b < 0x20) break;
+      shift += 5;
+    }
+    return (result & 1) !== 0 ? ~(result >> 1) : (result >> 1);
+  };
+  try {
+    lat = decodeOne();
+    lng = decodeOne();
+    return [lat / 1e5, lng / 1e5];
+  } catch { return null; }
 }

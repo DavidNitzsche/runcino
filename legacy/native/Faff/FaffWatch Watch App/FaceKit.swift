@@ -141,33 +141,28 @@ struct NumberFace: View {
     // Change a rule here and the WHOLE face recomputes. Stop nudging.
     // ═══════════════════════════════════════════════════════════════════
 
-    /// TOP MARGIN · empty space from screen top to top label cap.
-    /// Locked: 0.050 puts the top label baseline on the OS clock's
-    /// baseline (the system clock occupies the status-bar zone above
-    /// this and "absorbs" the perceived top whitespace).
+    /// SAFE MARGIN · empty space at BOTH the top and the bottom of the
+    /// face. Same value at both ends — strict symmetry.
+    /// · TOP: distance from screen top to top-most line's cap-top.
+    /// · BOTTOM: distance from bottom-most line's cap-bottom to screen
+    ///   bottom.
+    /// Locked at 0.050: this is the value at which a small top label
+    /// (e.g. WARMUP, REP n/m) shares a baseline with the watchOS system
+    /// clock at top-right. Don't use two separate top/bottom values —
+    /// the symmetry IS the rule (David, 2026-05-26).
     private let TOP_MARGIN: CGFloat = 0.050
 
-    /// BOTTOM MARGIN · empty space from bottom label cap-bottom to screen
-    /// bottom. BIGGER than TOP_MARGIN because the bottom has no status
-    /// bar to absorb whitespace — what you see is what you get. The
-    /// extra margin gives the bottom label the same VISUAL breathing
-    /// room as the top label has (where the status bar provides it).
-    ///
-    /// Value 0.147 is the rules-consistent calibration: at this margin
-    /// the height-bound row size equals the width-bound row size (the
-    /// top row's clock-clearance cap). That makes the `max(0, …)`
-    /// centering offset evaluate to zero, so every consecutive pair of
-    /// lines — top label↔row 0, row↔row, row N↔bottom label — sits at
-    /// exactly LINE_GAP. Smaller values (e.g. 0.090) re-introduce a
-    /// centering pad that silently inflates the top-label↔row 0 gap
-    /// well above LINE_GAP, breaking rule #3. Larger values shrink the
-    /// big rows below the width cap, breaking rule #5.
-    private let BOTTOM_MARGIN: CGFloat = 0.147
+    /// Bottom margin is identical to top margin — kept as a derived
+    /// alias so the call sites read clearly. NEVER set this to a
+    /// different value than TOP_MARGIN.
+    private var BOTTOM_MARGIN: CGFloat { TOP_MARGIN }
 
-    /// LINE GAP · vertical gap between ANY two consecutive lines, measured
-    /// cap-bottom to cap-top. Same value whether the lines are two big
-    /// rows, a label-to-row, or a row-to-label. ONE gap rule.
-    private let LINE_GAP: CGFloat = 0.030
+    /// LINE GAP is DERIVED, not constant. Big rows expand/contract so
+    /// that the gap between every consecutive pair of lines (top
+    /// label↔row 0, row↔row, row N↔bottom label) is exactly equal,
+    /// filling whatever stack remains after small labels + big rows
+    /// have been laid out. Solve once per face from the layout
+    /// equation in `body`. Do not reintroduce a LINE_GAP constant.
 
     /// LEFT ALIGNMENT · visible left edge of every line lands at this X
     /// fraction of H. Each element's bounding-box offset is computed via
@@ -245,52 +240,65 @@ struct NumberFace: View {
             let H = geo.size.height
             let W = geo.size.width
             let hasStrip = strip != nil
-            let hasBottomLabel = bottomLabel != nil
+            let hasBottomLabel = bottomLabel != nil && !hasStrip
             let hasTopLabel = (topLabel != nil) || (topIcon != nil)
-            let bigN = CGFloat(rows.count)
 
-            // ── Derive ALL positions from the layout rules above ─────────
-            // (TOP_MARGIN, BOTTOM_MARGIN, LINE_GAP, LABEL_FONT, leadF)
-            // No magic numbers in this block. Want to change the look?
-            // Edit a rule at the top of NumberFace and recompile — the
-            // whole face recomputes.
+            // ── Solve the layout equation ────────────────────────────────
+            //   2·TOP_MARGIN + nLabels·labelCap + nRows·glyphF + nGaps·gap = 1
+            // · TOP_MARGIN locked (small top label sits on OS clock baseline).
+            // · BOTTOM_MARGIN = TOP_MARGIN — strict symmetry, both edges.
+            // · labelCap fixed (small labels never resize).
+            // · glyphF maximized subject to width-cap (top row clears OS
+            //   clock at top-right).
+            // · gap is DERIVED to be equal between every consecutive pair of
+            //   lines — top-label↔row 0, row↔row, row N↔bottom-label.
+            // Strip mode: the bottom label & symmetric bottom margin are
+            // replaced by the strip's reserved band.
             let labelCap = LABEL_FONT * capRatio
+            let nRows = rows.count
+            let nLabels = (hasTopLabel ? 1 : 0) + (hasBottomLabel ? 1 : 0)
+            let nLines = nLabels + nRows
+            let nGaps = max(nLines - 1, 0)
 
-            // Top label sits at TOP_MARGIN with cap-bottom at TOP_MARGIN +
-            // labelCap. Data band starts LINE_GAP below the label cap-bottom.
-            let topLabelTop: CGFloat = TOP_MARGIN
-            let bandTop: CGFloat = hasTopLabel
-                ? (topLabelTop + labelCap + LINE_GAP)
-                : 0.060   // bare default when no top label
-            // Bottom label cap-bottom is at (1 - BOTTOM_MARGIN). Its cap-top
-            // is one cap above that. Data band ends LINE_GAP above the
-            // label cap-top.
-            let bottomLabelTop: CGFloat = 1 - BOTTOM_MARGIN - labelCap
-            let bandBottom: CGFloat = hasStrip
+            // Stack runs from y = TOP_MARGIN (top-most line cap-top) down
+            // to y = 1 - TOP_MARGIN (bottom-most line cap-bottom). Strip
+            // mode replaces the lower symmetric region.
+            let stackTop: CGFloat = TOP_MARGIN
+            let stackBottom: CGFloat = hasStrip
                 ? (1 - stripBottomF - stripBarF - 0.028)
-                : (hasBottomLabel ? (bottomLabelTop - LINE_GAP) : (1 - 0.060))
-            let span = bandBottom - bandTop
+                : (1 - TOP_MARGIN)
+            let stackAvailable = stackBottom - stackTop
+            let labelsTotal = CGFloat(nLabels) * labelCap
 
-            // Big rows fill the band: N caps + (N-1) gaps = span.
-            // → glyphF = (span - (N-1) * LINE_GAP) / N.
-            let heightG = (span - LINE_GAP * (bigN - 1)) / bigN
-            let heightF = (heightG / capRatio) * H
-
-            // Width cap so the TOP row clears the OS clock (top-right).
+            // Width cap on the top row (so it ends left of the OS clock).
             let clearance = clockClearF * W - H * leadF
             let topEm = NumberFace.emWidth(rows.first?.text ?? "")
-            let widthF = topEm > 0 ? clearance / topEm : heightF
-            let F = max(1, min(heightF, widthF))
+            let widthF = topEm > 0 ? clearance / topEm : .greatestFiniteMagnitude
+            let glyphF_widthMax = (capRatio * widthF) / H
 
-            // After possibly being width-capped, recompute glyph height +
-            // pitch. Pitch = cap height + LINE_GAP. ONE inter-line spacing
-            // rule across all rows AND the bottom label.
-            let glyphF = (capRatio * F) / H
-            let pitchF = glyphF + LINE_GAP
-            let groupSpan = (bigN - 1) * pitchF + glyphF
-            // Center the row group inside the data band (small symmetric
-            // padding if the width cap shrunk the rows).
-            let startF = bandTop + max(0, (span - groupSpan) / 2)
+            // Cap by what fits in the stack with gap ≥ 0.
+            let glyphF_fitMax: CGFloat = nRows > 0
+                ? (stackAvailable - labelsTotal) / CGFloat(nRows)
+                : 0
+            let glyphF = max(0, min(glyphF_widthMax, glyphF_fitMax))
+            let F = (glyphF / capRatio) * H
+
+            // gap = (remaining stack) ÷ (number of gaps). Equal everywhere.
+            let usedByRows = CGFloat(nRows) * glyphF
+            let gap: CGFloat = nGaps > 0
+                ? max(0, (stackAvailable - labelsTotal - usedByRows) / CGFloat(nGaps))
+                : 0
+
+            // Line positions (cap-top y, as fraction of H).
+            let topLabelTop: CGFloat = TOP_MARGIN
+            let firstRowTop: CGFloat = hasTopLabel
+                ? (TOP_MARGIN + labelCap + gap)
+                : TOP_MARGIN
+            let bottomLabelTop: CGFloat = 1 - TOP_MARGIN - labelCap
+            // Kept for the rendering code below (which previously referenced
+            // these names from the centered-band model).
+            let startF = firstRowTop
+            let pitchF = glyphF + gap
             // ── Locked rule: one leadF, applied identically to every
             // element on the face. Labels share HelveticaNeue-Bold with
             // the digits (NOT FaceLabel's system font, NOT the
@@ -338,7 +346,9 @@ struct NumberFace: View {
                 // Negative vertical padding crops SwiftUI's Text line box
                 // down to the cap height, so .offset positions the visible
                 // cap top — symmetric with the top label and big rows.
-                if let bottomLabel {
+                // Suppressed when a strip is present (strip replaces the
+                // bottom symmetric region).
+                if let bottomLabel, !hasStrip {
                     let lsb = NumberFace.firstCharLSB(bottomLabel.uppercased(), fontSize: labelSize)
                     Text(bottomLabel.uppercased())
                         .font(.custom("HelveticaNeue-Bold", size: labelSize))

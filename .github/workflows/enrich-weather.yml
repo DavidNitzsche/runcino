@@ -1,0 +1,41 @@
+# Nightly weather enrichment for recent un-enriched runs.
+#
+# Why: /api/ingest/workout tries to enrich on insert when there's a route
+# polyline, but Strava-webhook runs sometimes land without a polyline
+# until Strava finishes processing. This catches them after the fact.
+#
+# Schedule: 07:30 UTC = 00:30 PT (after the briefing-refresh cron at
+# 07:05 UTC, so the next briefing reads enriched data).
+
+name: Enrich weather
+
+on:
+  schedule:
+    - cron: '30 7 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/enrich-weather
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            https://www.faff.run/api/cron/enrich-weather)
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+          echo "Status: $status"
+          echo "Body: $body"
+          if [ "$status" != "200" ]; then
+            echo "::error::Enrich failed with HTTP $status"
+            exit 1
+          fi

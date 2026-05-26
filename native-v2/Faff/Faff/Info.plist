@@ -25,7 +25,7 @@
 	<key>NSHealthShareUsageDescription</key>
 	<string>Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Faff writes completed workouts to Apple Health so your history stays in one place.</string>
+	<string>Faff Watch writes completed workouts to Apple Health so your training history stays in one place.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
