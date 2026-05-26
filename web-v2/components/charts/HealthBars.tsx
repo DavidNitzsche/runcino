@@ -28,13 +28,17 @@ export function BarChart({
     );
   }
 
-  // SVG layout — leave room on the left for the y-axis label.
+  // SVG layout — leave room on the left for the y-axis label, and on the
+  // right for the BASE label that anchors at the right edge.
   const W = 320;
-  const PAD_L = 32;      // y-axis label column
-  const PAD_R = 4;
+  const PAD_L = 34;      // y-axis label column
+  const PAD_R = 48;      // room for "BASE 165bpm" label
   const plotW = W - PAD_L - PAD_R;
-  const slot  = plotW / Math.max(series.length, 1);
-  const barW  = Math.max(2, slot - 2);
+  const rawSlot = plotW / Math.max(series.length, 1);
+  // Cap bar width so 4-point series don't render as fat blocks.
+  const MAX_BAR_W = 22;
+  const slot  = rawSlot;
+  const barW  = Math.max(2, Math.min(MAX_BAR_W, slot - 2));
   const range = max - min || 1;
 
   const yFor = (v: number) => height - Math.max(0, Math.min(1, (v - min) / range)) * (height - 6);
@@ -43,8 +47,9 @@ export function BarChart({
   const xText = xLabel ?? `${series.length}D AGO → TODAY`;
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${height + 4}`} style={{ width: '100%', height: height + 4, display: 'block' }}>
+    <div style={{ overflow: 'hidden', width: '100%' }}>
+      <svg viewBox={`0 0 ${W} ${height + 4}`} preserveAspectRatio="xMidYMid meet"
+           style={{ width: '100%', height: 'auto', maxHeight: height + 4, display: 'block' }}>
         {/* Y-axis range labels */}
         <text x={PAD_L - 4} y={10} fontSize={9} fill="rgba(255,255,255,0.42)" textAnchor="end" fontFamily="var(--f-body)">
           {max}{unit}
@@ -57,7 +62,7 @@ export function BarChart({
         <line x1={PAD_L} y1={0.5} x2={W - PAD_R} y2={0.5} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
         <line x1={PAD_L} y1={height - 0.5} x2={W - PAD_R} y2={height - 0.5} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
 
-        {/* Baseline dashed line + label */}
+        {/* Baseline dashed line + label (label lives in the right-pad gutter) */}
         {baseline != null && baseline >= min && baseline <= max && (
           <>
             <line
@@ -66,10 +71,10 @@ export function BarChart({
               stroke="rgba(255,255,255,0.22)" strokeWidth={1} strokeDasharray="3 4"
             />
             <text
-              x={W - PAD_R - 2} y={yFor(baseline) - 3}
-              fontSize={8.5} fill="rgba(255,255,255,0.5)" textAnchor="end" fontFamily="var(--f-body)" letterSpacing="0.4"
+              x={W - PAD_R + 4} y={yFor(baseline) + 3}
+              fontSize={9} fill="rgba(255,255,255,0.55)" textAnchor="start" fontFamily="var(--f-body)" letterSpacing="0.4"
             >
-              BASE {baseline}{unit}
+              base {baseline}{unit}
             </text>
           </>
         )}
@@ -96,6 +101,7 @@ export function BarChart({
       <div style={{
         display: 'flex', justifyContent: 'space-between',
         paddingLeft: (PAD_L / W) * 100 + '%',
+        paddingRight: (PAD_R / W) * 100 + '%',
         marginTop: 4,
         fontFamily: 'var(--f-body)', fontSize: 9, letterSpacing: '1.2px',
         color: 'rgba(255,255,255,0.42)',

@@ -116,6 +116,9 @@ export function BriefingLoader({
           voice={briefing.voice}
           briefingId={`${briefing._state?.user_id ?? ''}|${briefing._state?.today ?? ''}|${briefing.surface}`}
           askPrompt={askPrompt ?? askPromptFor(briefing.mode)}
+          // Check-in chips ONLY on /today, and only in modes where it makes
+          // sense as a check-in moment. Other surfaces are read-only voice.
+          showCheckin={surface === 'today' && CHECKIN_MODES.has(briefing.mode)}
         />
       )}
       {renderCards && briefing.topics.length > 0 && (
@@ -227,6 +230,9 @@ function SkeletonBars() {
     </>
   );
 }
+
+// Modes where a check-in prompt makes sense on /today.
+const CHECKIN_MODES = new Set(['post-run', 'pre-run', 'rest-day']);
 
 function askPromptFor(mode: string): string {
   switch (mode) {

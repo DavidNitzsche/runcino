@@ -80,6 +80,8 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     return { date: d.toISOString().slice(0, 10), dow: d.getUTCDay() };
   });
 
+  // Plan-aware fields (only populated when plan exists)
+  let planByDate = new Map<string, any>();
   if (plan) {
     const weeks = (await pool.query(
       `SELECT id::text AS id, week_idx, week_start_iso FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
@@ -107,55 +109,50 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
         nextARaceName = race.meta?.name ?? null;
       }
     }
-
-    // Plan workouts for this week
     const planRows = (await pool.query(
       `SELECT date_iso, dow, type, distance_mi, sub_label FROM plan_workouts
         WHERE plan_id = $1 AND date_iso BETWEEN $2::text AND $3::text`,
       [plan.id, weekDates[0].date, weekDates[6].date]
     )).rows;
-    const planByDate = new Map<string, any>(planRows.map((r: any) => [r.date_iso, r]));
-
-    // Strava activities (actuals) — one per day (largest distance if multiple)
-    const stravaRows = (await pool.query(
-      `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
-              data->>'id' AS activity_id,
-              SUM((data->>'distanceMi')::numeric) AS mi
-         FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text
-        GROUP BY day, activity_id`,
-      [userId, weekDates[0].date, weekDates[6].date]
-    )).rows;
-    // Aggregate to one entry per day, keep one activity id (the longest)
-    const actualByDate = new Map<string, { mi: number; id: string | null }>();
-    for (const r of stravaRows) {
-      const cur = actualByDate.get(r.day) ?? { mi: 0, id: null };
-      cur.mi += Number(r.mi);
-      if (cur.id == null || Number(r.mi) >= cur.mi - Number(r.mi)) cur.id = r.activity_id ?? cur.id;
-      actualByDate.set(r.day, cur);
-    }
-
-    weekDays = weekDates.map(({ date, dow }) => {
-      const planRow = planByDate.get(date);
-      const actual = actualByDate.get(date);
-      return {
-        date, dow,
-        plannedMi: planRow ? Number(planRow.distance_mi) || 0 : 0,
-        plannedType: planRow?.type ?? 'rest',
-        plannedLabel: planRow?.sub_label ?? null,
-        doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
-        activityId: actual?.id ?? null,
-        isToday: date === today,
-        isPast: date < today,
-      };
-    });
-  } else {
-    weekDays = weekDates.map(({ date, dow }) => ({
-      date, dow, plannedMi: 0, plannedType: 'rest', plannedLabel: null,
-      doneMi: 0, activityId: null, isToday: date === today, isPast: date < today,
-    }));
+    planByDate = new Map<string, any>(planRows.map((r: any) => [r.date_iso, r]));
   }
+
+  // Strava actuals — ALWAYS loaded, with or without an active plan, so the
+  // week strip + TodayPlannedCard always show real runs.
+  const stravaRows = (await pool.query(
+    `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
+            data->>'id' AS activity_id,
+            SUM((data->>'distanceMi')::numeric) AS mi
+       FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text
+      GROUP BY day, activity_id`,
+    [userId, weekDates[0].date, weekDates[6].date]
+  )).rows;
+  const actualByDate = new Map<string, { mi: number; id: string | null }>();
+  for (const r of stravaRows) {
+    const cur = actualByDate.get(r.day) ?? { mi: 0, id: null };
+    cur.mi += Number(r.mi);
+    if (cur.id == null || Number(r.mi) >= cur.mi - Number(r.mi)) cur.id = r.activity_id ?? cur.id;
+    actualByDate.set(r.day, cur);
+  }
+
+  weekDays = weekDates.map(({ date, dow }) => {
+    const planRow = planByDate.get(date);
+    const actual = actualByDate.get(date);
+    return {
+      date, dow,
+      plannedMi: planRow ? Number(planRow.distance_mi) || 0 : 0,
+      // When no plan, default to a neutral "—" type (NOT "rest") so the
+      // TodayPlannedCard doesn't mislabel a run-day as a rest day.
+      plannedType: planRow?.type ?? (plan ? 'rest' : 'unplanned'),
+      plannedLabel: planRow?.sub_label ?? null,
+      doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
+      activityId: actual?.id ?? null,
+      isToday: date === today,
+      isPast: date < today,
+    };
+  });
 
   // Week done — sum from weekDays we already loaded
   const weekDone = Math.round(weekDays.reduce((s, d) => s + d.doneMi, 0) * 10) / 10;

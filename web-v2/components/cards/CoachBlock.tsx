@@ -12,11 +12,13 @@ export function CoachBlock({
   voice,
   briefingId,
   askPrompt = 'How did the run feel?',
+  showCheckin = true,
 }: {
   lead?: string;
   voice: string[];
   briefingId?: string;
   askPrompt?: string;
+  showCheckin?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<'solid' | 'tired' | 'wrecked' | null>(null);
@@ -114,6 +116,7 @@ export function CoachBlock({
         </p>
       )}
 
+      {showCheckin && (
       <div style={{
         fontFamily: 'var(--f-body)',
         fontSize: 12,
@@ -124,7 +127,9 @@ export function CoachBlock({
       }}>
         {askPrompt}
       </div>
+      )}
 
+      {showCheckin && (
       <div style={{ display: 'flex', gap: 8 }}>
         {(['solid', 'tired', 'wrecked'] as const).map((r) => {
           const isSelected = selected === r;
@@ -159,6 +164,7 @@ export function CoachBlock({
           );
         })}
       </div>
+      )}
     </section>
   );
 }

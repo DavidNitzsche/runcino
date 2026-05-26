@@ -132,6 +132,34 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     }
   }
 
+  // Fallback: if NO plan but the user has an upcoming A-race, still surface
+  // it so the coach doesn't think we're "in free-running mode" when the
+  // runner has anchored races. This is the source-of-truth for nextARace
+  // when between plans.
+  if (!nextARace) {
+    const fallbackRace = (await pool.query(
+      `SELECT slug, meta FROM races
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND meta->>'priority' = 'A'
+          AND (meta->>'date')::date >= $2::date
+        ORDER BY (meta->>'date') ASC LIMIT 1`,
+      [userId, today]
+    ).catch(() => ({ rows: [] }))).rows[0];
+    if (fallbackRace) {
+      const date = fallbackRace.meta?.date;
+      const days_to_race = Math.round(
+        (Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000
+      );
+      nextARace = {
+        slug: fallbackRace.slug,
+        name: fallbackRace.meta?.name,
+        date,
+        goal: fallbackRace.meta?.goalDisplay ?? null,
+        days_to_race,
+      };
+    }
+  }
+
   // WEEK DONE (strava sum from Monday → today)
   const monday = (() => {
     const d = new Date(today + 'T12:00:00Z');

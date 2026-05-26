@@ -33,10 +33,10 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
         fontFamily: 'var(--f-body)', fontSize: 13,
       }}>
         <thead>
-          <tr style={{ fontSize: 9, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
-            <th style={{ textAlign: 'left',   padding: '0 12px 6px 12px' }}>INPUT</th>
-            <th style={{ textAlign: 'left',   padding: '0 12px 6px 12px' }}>YOUR VALUE</th>
-            <th style={{ textAlign: 'right',  padding: '0 12px 6px 12px' }}>EFFECT</th>
+          <tr style={{ fontSize: 10, fontWeight: 700, color: 'rgba(246,247,248,0.50)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+            <th style={{ textAlign: 'left',   padding: '0 16px 8px 16px' }}>INPUT</th>
+            <th style={{ textAlign: 'left',   padding: '0 16px 8px 16px' }}>YOUR VALUE</th>
+            <th style={{ textAlign: 'right',  padding: '0 16px 8px 16px' }}>EFFECT</th>
           </tr>
         </thead>
         <tbody>
@@ -45,8 +45,8 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
       </table>
 
       <div style={{
-        marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--line-2)',
-        fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', lineHeight: 1.55,
+        marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.10)',
+        fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.75)', lineHeight: 1.55,
       }}>
         Base 70 {breakdown.inputs.map((i) => `${i.weight >= 0 ? '+' : ''}${i.weight}`).join(' ')}{' '}={' '}
         <span style={{ color, fontWeight: 700 }}>{breakdown.score}</span>
@@ -63,34 +63,34 @@ function InputRow({ input }: { input: import('@/lib/coach/readiness').ReadinessI
   const [labelPart, sharePart] = input.label.split(' · ');
 
   return (
-    <tr style={{ background: 'rgba(255,255,255,0.025)' }}>
+    <tr style={{ background: 'rgba(255,255,255,0.06)' }}>
       <td style={{
-        padding: '12px 14px', borderRadius: '8px 0 0 8px',
-        color: 'var(--ink)', fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '0.5px',
+        padding: '14px 16px', borderRadius: '8px 0 0 8px',
+        color: 'var(--ink)', fontFamily: 'var(--f-display)', fontSize: 15, letterSpacing: '0.5px',
         width: 1, whiteSpace: 'nowrap',
       }}>
         {labelPart}
         {sharePart && (
-          <span style={{ marginLeft: 8, color: 'var(--dim)', fontFamily: 'var(--f-body)', fontSize: 11, letterSpacing: '1px' }}>
+          <span style={{ marginLeft: 8, color: 'rgba(246,247,248,0.55)', fontFamily: 'var(--f-body)', fontSize: 11, letterSpacing: '1px' }}>
             ({sharePart})
           </span>
         )}
       </td>
-      <td style={{ padding: '12px 14px', color: 'var(--ink)' }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16 }}>{input.observedV}</div>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 2 }}>
+      <td style={{ padding: '14px 16px', color: 'var(--ink)' }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: '#ffffff' }}>{input.observedV}</div>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.65)', marginTop: 3 }}>
           {input.observedSub}
         </div>
       </td>
       <td style={{
-        padding: '12px 14px', textAlign: 'right', borderRadius: '0 8px 8px 0', width: 1, whiteSpace: 'nowrap',
+        padding: '14px 16px', textAlign: 'right', borderRadius: '0 8px 8px 0', width: 1, whiteSpace: 'nowrap',
       }}>
         <span style={{
           display: 'inline-block',
-          background: wBg,
+          background: input.weight > 0 ? 'rgba(62,189,65,0.22)' : input.weight < 0 ? 'rgba(252,77,100,0.22)' : 'rgba(255,255,255,0.10)',
           color: wColor,
-          padding: '4px 10px', borderRadius: 999,
-          fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '0.5px',
+          padding: '5px 12px', borderRadius: 999,
+          fontFamily: 'var(--f-display)', fontSize: 15, letterSpacing: '0.5px', fontWeight: 600,
         }}>
           {input.weight > 0 ? `+${input.weight}` : input.weight === 0 ? '0' : input.weight}
         </span>

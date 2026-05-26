@@ -2,6 +2,7 @@ import { TopNav } from '@/components/layout/TopNav';
 import { BarChart } from '@/components/charts/HealthBars';
 import { ReadinessBreakdownView } from '@/components/readiness/ReadinessBreakdown';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
+import { LearnCardTrigger } from '@/components/learn/LearnModal';
 import { loadHealthState, type HealthState } from '@/lib/coach/health-state';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
@@ -90,20 +91,20 @@ export default async function HealthPage() {
           />
         </Grid2>
 
-        {/* Explainer cards from the deck (P4 unlocks /learn/ destinations) */}
+        {/* Explainer cards open the article as a modal — never leave /health */}
         <SectionLabel>LEARN · WHY THESE METRICS</SectionLabel>
         <Grid3>
-          <ExplainerCard
+          <LearnCardTrigger
             term="HRV · WHAT + WHY"
             body="The time variation between heartbeats, measured overnight. Higher HRV means your nervous system is recovered and ready for hard training. It's one of the best early-warning signals we have for overtraining."
             slug="hrv"
           />
-          <ExplainerCard
+          <LearnCardTrigger
             term="RHR · WHAT + WHY"
             body="Resting heart rate trends downward as aerobic fitness improves — and elevates 3-5 bpm during volume jumps, illness brewing, or sleep deficit. A sustained 5+ bpm bump that doesn't resolve in a few days is the flag."
             slug="rhr"
           />
-          <ExplainerCard
+          <LearnCardTrigger
             term="VO2 MAX · WHAT + WHY"
             body="The peak oxygen your body can use per minute. The single best lab predictor of endurance ceiling. Apple's estimate isn't lab-grade but it's directionally honest — month-over-month moves are real."
             slug="vo2-max"
@@ -166,28 +167,6 @@ function TrendCard({ title, titleColor, value, valueColor, sub, chart }: { title
       </div>
       {chart}
     </div>
-  );
-}
-
-function ExplainerCard({ term, body, slug }: { term: string; body: string; slug: string }) {
-  return (
-    <a href={`/learn/${slug}`} className="card" style={{
-      display: 'block', padding: '18px 20px',
-      background: 'rgba(176,132,255,0.04)', border: '1px solid rgba(176,132,255,0.18)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{
-          width: 18, height: 18, borderRadius: '50%', background: 'var(--learn)', color: '#1a0f33',
-          fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 800,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>ⓘ</span>
-        <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--learn)', letterSpacing: '1.2px' }}>{term}</span>
-      </div>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.85)', lineHeight: 1.55, margin: '4px 0 8px' }}>
-        {body}
-      </div>
-      <span style={{ fontFamily: 'var(--f-body)', fontSize: 10.5, fontWeight: 600, color: 'var(--learn)', letterSpacing: '0.5px' }}>Read the research →</span>
-    </a>
   );
 }
 
