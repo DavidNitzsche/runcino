@@ -231,14 +231,69 @@ final class HealthKitImporter: ObservableObject {
         // Active energy → just for context; backend doesn't store it.
         // Elev gain comes from route + locations; we'll add it in route handling.
 
-        // Per-mile splits from HKWorkoutRoute (if present).
+        // Per-mile splits from HKWorkoutRoute (if present). Enriches each
+        // split with HR + cadence by querying HKQuantitySamples in the
+        // split's time window — the route alone has only GPS, so per-
+        // split HR/cadence aren't there for free.
         if let route = await routeLocations(for: w),
            let splits = perMileSplits(locations: route) {
-            payload["splits"] = splits.splits.map { ["mile": $0.mile, "pace": $0.pace, "elev_ft": $0.elevDeltaFt] as [String: Any] }
+            var enrichedSplits: [[String: Any]] = []
+            for s in splits.splits {
+                var split: [String: Any] = [
+                    "mile": s.mile,
+                    "pace": s.pace,
+                    "elev_ft": s.elevDeltaFt,
+                ]
+                if let hr = await avgHRInWindow(start: s.startTime, end: s.endTime) {
+                    split["hr"] = Int(hr.rounded())
+                }
+                if let cad = await cadenceInWindow(start: s.startTime, end: s.endTime) {
+                    split["cadence"] = Int(cad.rounded())
+                }
+                enrichedSplits.append(split)
+            }
+            payload["splits"] = enrichedSplits
             if splits.elevGainFt > 0 { payload["elev_gain_ft"] = splits.elevGainFt }
             if let poly = splits.polyline { payload["route_polyline"] = poly }
         }
         return payload
+    }
+
+    /// HR average across a time window — used to fill per-split HR
+    /// (HKWorkout-level stats give a workout-wide average; we want
+    /// per-mile granularity).
+    private nonisolated func avgHRInWindow(start: Date, end: Date) async -> Double? {
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        return await withCheckedContinuation { (cont: CheckedContinuation<Double?, Never>) in
+            let pred = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+            let q = HKStatisticsQuery(
+                quantityType: HKQuantityType(.heartRate),
+                quantitySamplePredicate: pred,
+                options: .discreteAverage
+            ) { _, stats, _ in
+                cont.resume(returning: stats?.averageQuantity()?.doubleValue(for: bpm))
+            }
+            store.execute(q)
+        }
+    }
+
+    /// Cadence (spm) across a time window — steps / minutes.
+    private nonisolated func cadenceInWindow(start: Date, end: Date) async -> Double? {
+        let pred = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let stepsRes: Double? = await withCheckedContinuation { (cont: CheckedContinuation<Double?, Never>) in
+            let q = HKStatisticsQuery(
+                quantityType: HKQuantityType(.stepCount),
+                quantitySamplePredicate: pred,
+                options: .cumulativeSum
+            ) { _, stats, _ in
+                cont.resume(returning: stats?.sumQuantity()?.doubleValue(for: .count()))
+            }
+            store.execute(q)
+        }
+        guard let steps = stepsRes else { return nil }
+        let mins = end.timeIntervalSince(start) / 60.0
+        guard mins > 0 else { return nil }
+        return steps / mins
     }
 
     // MARK: - GPS / route
@@ -271,13 +326,21 @@ final class HealthKitImporter: ObservableObject {
     }
 
     private struct SplitsResult {
-        struct Split { let mile: Int; let pace: String; let elevDeltaFt: Int }
+        struct Split {
+            let mile: Int
+            let pace: String
+            let elevDeltaFt: Int
+            let startTime: Date     // for per-split HR/cadence query (P40 enrichment)
+            let endTime: Date
+        }
         let splits: [Split]
         let elevGainFt: Int
         let polyline: String?
     }
 
     /// Walk locations, accumulate per-mile splits + total elevation gain.
+    /// Includes start/end timestamps per split so we can later query HR +
+    /// cadence samples in that window (the route alone has only GPS).
     private nonisolated func perMileSplits(locations rawLocs: [CLLocation]) -> SplitsResult? {
         let locs = rawLocs
             .filter { $0.horizontalAccuracy >= 0 && $0.horizontalAccuracy <= 50 }
@@ -304,7 +367,13 @@ final class HealthKitImporter: ObservableObject {
                 if secs >= 120 && secs <= 3600 {
                     let pace = "\(secs / 60):\(String(format: "%02d", secs % 60))"
                     let elevFt = Int(((locs[i].altitude - mileStartElev) * 3.28084).rounded())
-                    splits.append(.init(mile: mileNo, pace: pace, elevDeltaFt: elevFt))
+                    splits.append(.init(
+                        mile: mileNo,
+                        pace: pace,
+                        elevDeltaFt: elevFt,
+                        startTime: mileStartTime,
+                        endTime: locs[i].timestamp
+                    ))
                 }
                 mileNo += 1
                 mileStartTime = locs[i].timestamp

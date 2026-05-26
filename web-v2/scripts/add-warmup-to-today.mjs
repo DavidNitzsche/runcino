@@ -63,11 +63,18 @@ const warmupSplit = {
 };
 const existingSplits = Array.isArray(row.data.splits) ? row.data.splits : [];
 
+function mmss(s) {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
 const patch = {
   ...row.data,
   distanceMi: newDist,
   durationSec: newDur,
   movingSec: newMov,
+  movingTimeS: newMov,            // legacy alias readers use
+  timeMoving: mmss(newMov),       // formatted string the modal renders
   avgPaceMinPerMi: newAvgPace,
   splits: [warmupSplit, ...existingSplits],
   warmupAddedManually: true,

@@ -86,6 +86,15 @@ enum API {
         return try? JSONDecoder().decode(ProfileFields.self, from: data)
     }
 
+    // MARK: - P40 race detail
+
+    static func fetchRaceDetail(slug: String) async throws -> RaceDetailResponse? {
+        let url = baseURL.appendingPathComponent("api/race/\(slug)")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(RaceDetailResponse.self, from: data)
+    }
+
     // MARK: - P32 shoe assignment
 
     static func fetchShoes() async throws -> ShoesResponse? {

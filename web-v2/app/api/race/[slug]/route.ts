@@ -1,0 +1,45 @@
+/**
+ * GET /api/race/[slug]
+ *
+ * P40 — JSON race detail for the iPhone RaceDetailSheet. Mirrors what
+ * web /races/[slug] composes server-side: race meta + course geometry +
+ * derived proximity mode.
+ */
+import { NextResponse } from 'next/server';
+import { pool } from '@/lib/db/pool';
+import { loadRacesState } from '@/lib/coach/races-state';
+
+const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  try {
+    const races = await loadRacesState(DAVID_USER_ID);
+    const race = [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs, ...races.past]
+      .find((r: any) => r?.slug === slug);
+    if (!race) return NextResponse.json({ error: 'race not found' }, { status: 404 });
+
+    const geoRow = await pool.query(
+      `SELECT course_geometry, course_source FROM races WHERE slug = $1`,
+      [slug]
+    ).catch(() => ({ rows: [] }));
+    const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
+    const courseSource = geoRow.rows[0]?.course_source ?? null;
+
+    const proximity = (race as any).days < 0 ? 'post-race'
+      : (race as any).days <= 7 ? 'race-week'
+      : (race as any).days <= 60 ? 'sharpening'
+      : 'building';
+
+    return NextResponse.json({
+      race,
+      proximity,
+      course_geometry: courseGeometry,
+      course_source: courseSource,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });
+  }
+}

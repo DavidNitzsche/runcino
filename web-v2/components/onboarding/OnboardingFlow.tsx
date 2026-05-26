@@ -44,8 +44,25 @@ export function OnboardingFlow() {
           if (!r.ok) throw new Error('Could not save race');
         }
 
-        // 2. (Connection state is best stored when real OAuth lands;
-        //     for now we just don't persist them — no fake CONNECTED bits)
+        // 2. Persist real connection state + onboarding completion stamp.
+        //    Strava → real OAuth flow (/api/auth/strava); the "Strava"
+        //    button on this screen now redirects there for connection.
+        //    Apple Health → optimistic stamp (HealthKit auth happens on
+        //    the iPhone; this just records that the runner clicked
+        //    "Connect" in onboarding, so the coach can fall back to
+        //    "still waiting on Apple Health" if no samples arrive).
+        const profilePatch: Record<string, any> = {
+          onboarded_at: new Date().toISOString(),
+        };
+        if (appleConnected) profilePatch.health_connected_at = new Date().toISOString();
+        if (stravaConnected) profilePatch.strava_connected_at = new Date().toISOString();
+        if (Object.keys(profilePatch).length > 0) {
+          await fetch('/api/profile', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profilePatch),
+          }).catch(() => { /* non-fatal — coach will gap-prompt next briefing */ });
+        }
 
         // Route the user home.
         router.push('/today');

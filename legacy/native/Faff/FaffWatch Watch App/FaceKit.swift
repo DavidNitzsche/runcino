@@ -160,8 +160,21 @@ struct NumberFace: View {
     /// bottom-most line's cap-bottom is at (1 - TOP_MARGIN), so the
     /// pixel distance from the bottom of the bottom line to the screen
     /// bottom edge equals the pixel distance from the screen top edge
-    /// to the cap-top of the top line.
+    /// to the cap-top of the top line. (Applies to faces WITH a top
+    /// label — bare-rows faces use centered layout, see below.)
     private var BOTTOM_MARGIN: CGFloat { TOP_MARGIN }
+
+    /// CANONICAL_GAP · the inter-line gap value produced by the reference
+    /// 5-line warmup-shape layout (top label + 3 rows + bottom label,
+    /// width-bound rows on watchOS aspect). Faces WITHOUT a top label
+    /// use this CONSTANT gap and CENTER the row group vertically — so
+    /// the visual rhythm matches the warmup canonical, and the group
+    /// floats in the available stack rather than being anchored to the
+    /// (absent) clock baseline. Locked in by David on 2026-05-26.
+    private var CANONICAL_GAP: CGFloat {
+        let refGlyph: CGFloat = 0.189  // width-bound glyph fraction on watchOS aspect (~0.818)
+        return (1 - 2 * TOP_MARGIN - 2 * (LABEL_FONT * capRatio) - 3 * refGlyph) / 4
+    }
 
     /// LINE GAP is DERIVED, not constant. Big rows expand/contract so
     /// that the gap between every consecutive pair of lines (top
@@ -185,8 +198,24 @@ struct NumberFace: View {
     private let capRatio: CGFloat = 0.73
 
     /// Crop factor — Text's line-box is taller than the cap. cropK pulls
-    /// it back so element bounds ≈ visible cap bounds.
+    /// it back so element bounds ≈ visible cap bounds. The residual
+    /// (cap-top doesn't land EXACTLY at offset.y) is captured by K_SMALL
+    /// and K_BIG below, and pre-compensated in the offset.
     private let cropK: CGFloat = 0.22
+
+    /// Cap-top residual offset, as a fraction of font size, AFTER the
+    /// `.padding(.vertical, -size * cropK).fixedSize()` shrink. Empirically
+    /// measured by pixel-counting on watchOS Ultra 3 sim (49mm, 422×514)
+    /// against `cruise-warmup` fixture, build 78:
+    ///   · label at size 41.12 (= LABEL_FONT · H) → residual = 1.3 px →  K_SMALL = 0.0316
+    ///   · big row at size 133.6 (width-bound)   → residual = 5.8 px →  K_BIG   = 0.0434
+    /// SwiftUI's negative-padding crop doesn't scale linearly with font
+    /// size (line-height + leading metrics behave differently for small
+    /// vs. large faces), so two calibration constants are required. The
+    /// offset code subtracts `size · K_*` so the VISIBLE cap-top lands
+    /// at the math-computed Y.
+    static let K_SMALL: CGFloat = 0.0316
+    static let K_BIG:   CGFloat = 0.0434
 
     /// Bottom safety reserved for the progress strip when present.
     private let stripBottomF: CGFloat = 0.075
@@ -250,68 +279,97 @@ struct NumberFace: View {
             let hasTopLabel = (topLabel != nil) || (topIcon != nil)
 
             // ── Solve the layout equation ────────────────────────────────
-            //   2·TOP_MARGIN + nLabels·labelCap + nRows·glyphF + nGaps·gap = 1
-            // · TOP_MARGIN locked (small top label sits on OS clock baseline).
-            // · BOTTOM_MARGIN = TOP_MARGIN — strict symmetry, both edges.
-            // · labelCap fixed (small labels never resize).
-            // · glyphF maximized subject to width-cap (top row clears OS
-            //   clock at top-right).
-            // · gap is DERIVED to be equal between every consecutive pair of
-            //   lines — top-label↔row 0, row↔row, row N↔bottom-label.
-            // Strip mode: the bottom label & symmetric bottom margin are
-            // replaced by the strip's reserved band.
+            // Two branches:
+            //
+            // (A) hasTopLabel = true → ANCHORED layout.
+            //     Top label cap-top at TOP_MARGIN (rides OS clock
+            //     baseline). Bottom label cap-bot at 1-TOP_MARGIN.
+            //     glyphF max under width cap. gap DERIVED from
+            //     2·TOP_MARGIN + nLabels·labelCap + nRows·glyphF + nGaps·gap = 1
+            //     so it equals LINE_GAP everywhere — top-label↔row 0,
+            //     row↔row, row N↔bottom-label.
+            //
+            // (B) hasTopLabel = false → CENTERED layout.
+            //     No clock-baseline anchor. Use CANONICAL_GAP (the gap
+            //     value the warmup-canonical face produces). Center the
+            //     row group vertically in the available stack (above
+            //     the strip if present). Visual rhythm matches the
+            //     anchored faces, position is symmetric.
+            //
+            // Strip replaces the bottom symmetric region in both modes.
             let labelCap = LABEL_FONT * capRatio
             let nRows = rows.count
             let nLabels = (hasTopLabel ? 1 : 0) + (hasBottomLabel ? 1 : 0)
-            let nLines = nLabels + nRows
-            let nGaps = max(nLines - 1, 0)
 
-            // Stack runs from y = TOP_MARGIN (top-most line cap-top) down
-            // to y = 1 - TOP_MARGIN (bottom-most line cap-bottom). Strip
-            // mode replaces the lower symmetric region.
-            let stackTop: CGFloat = TOP_MARGIN
-            let stackBottom: CGFloat = hasStrip
-                ? (1 - stripBottomF - stripBarF - 0.028)
-                : (1 - TOP_MARGIN)
-            let stackAvailable = stackBottom - stackTop
-            let labelsTotal = CGFloat(nLabels) * labelCap
-
-            // Width cap on the top row (so it ends left of the OS clock).
+            // Width cap on the top row (clears the OS clock at top-right).
             let clearance = clockClearF * W - H * leadF
             let topEm = NumberFace.emWidth(rows.first?.text ?? "")
             let widthF = topEm > 0 ? clearance / topEm : .greatestFiniteMagnitude
             let glyphF_widthMax = (capRatio * widthF) / H
 
-            // Cap by what fits in the stack with gap ≥ 0.
+            // Cap by what fits in the stack with gap ≥ 0 (anchored mode only;
+            // centered mode doesn't have a fixed stack constraint).
+            let stackBottom: CGFloat = hasStrip
+                ? (1 - stripBottomF - stripBarF - 0.028)
+                : (1 - TOP_MARGIN)
+            let stackTop: CGFloat = TOP_MARGIN
+            let stackAvailable = stackBottom - stackTop
+            let labelsTotal = CGFloat(nLabels) * labelCap
             let glyphF_fitMax: CGFloat = nRows > 0
                 ? (stackAvailable - labelsTotal) / CGFloat(nRows)
                 : 0
             let glyphF = max(0, min(glyphF_widthMax, glyphF_fitMax))
             let F = (glyphF / capRatio) * H
 
-            // gap = (remaining stack) ÷ (number of gaps). Equal everywhere.
-            let usedByRows = CGFloat(nRows) * glyphF
-            let gap: CGFloat = nGaps > 0
-                ? max(0, (stackAvailable - labelsTotal - usedByRows) / CGFloat(nGaps))
-                : 0
+            // Big numbers ALWAYS use the canonical gap. Locked by David:
+            // "big numbers always need the approved line spacing. always.
+            // we will NEVER space things out this wide. EVER." (2026-05-26)
+            //
+            // (A) hasTopLabel → ANCHORED. Top label cap-top at TOP_MARGIN
+            //     (rides clock baseline). Rows + optional bottom label
+            //     flow downward with CANONICAL_GAP between every pair.
+            //     Bottom margin is whatever's left — DO NOT force
+            //     symmetry that would inflate the gap.
+            //
+            // (B) !hasTopLabel → CENTERED. Same canonical gap, row
+            //     group floats in the available area (above strip if
+            //     present).
+            //
+            // Centered group geometry
+            let centeredAreaBottom: CGFloat = hasStrip
+                ? (1 - stripBottomF - stripBarF - 0.028)
+                : 1
+            let interRowGapsCount = max(nRows - 1, 0)
+            let bottomLabelGapCount = hasBottomLabel ? 1 : 0
+            let groupHeight = CGFloat(nRows) * glyphF
+                + CGFloat(interRowGapsCount + bottomLabelGapCount) * CANONICAL_GAP
+                + (hasBottomLabel ? labelCap : 0)
+            let centeredFirstRowTop = max(0, (centeredAreaBottom - groupHeight) / 2)
 
-            // Line positions (cap-top y, as fraction of H).
-            let topLabelTop: CGFloat = TOP_MARGIN
+            // Gap is the canonical value in BOTH modes — the inter-line
+            // rhythm is the same regardless of whether there's a top
+            // anchor or not.
+            let gap: CGFloat = CANONICAL_GAP
             let firstRowTop: CGFloat = hasTopLabel
                 ? (TOP_MARGIN + labelCap + gap)
-                : TOP_MARGIN
-            let bottomLabelTop: CGFloat = 1 - TOP_MARGIN - labelCap
-            // Kept for the rendering code below (which previously referenced
-            // these names from the centered-band model).
-            let startF = firstRowTop
+                : centeredFirstRowTop
             let pitchF = glyphF + gap
-            // ── Pixel-precise positioning via cap-top alignment guides.
-            // Each text element ties its `.top` alignment to its
-            // cap-top, so `.offset(y: Y * H)` lands the cap-top exactly
-            // at Y * H. No padding/cropK fudge factor — the old
-            // negative-vertical-padding workaround under-compensated for
-            // big text (5–6 px off) and over-compensated for small text
-            // (1 px off), which is why gaps and margins drifted.
+            // Bottom label (if any) sits one gap below the last row in
+            // BOTH modes — the position is purely a function of where
+            // the row group ends.
+            let bottomLabelTop: CGFloat = firstRowTop + CGFloat(nRows) * pitchF
+            let topLabelTop: CGFloat = TOP_MARGIN
+            let startF = firstRowTop
+            // ── Pixel-precise positioning via cropK + per-element
+            // capCorrection. The negative vertical padding shrinks the
+            // text's layout box to ≈ cap height, but the resulting
+            // .offset(y:) lands the cap-top at `Y + capCorrection(size)`,
+            // not at Y. capCorrection grows with font size (1.3 px at
+            // labelSize, 5.8 px at width-bound big rows). Pre-compensate
+            // the offset so the VISIBLE cap-top lands exactly at the
+            // math-computed Y — that's what makes gaps + margins line
+            // up to the pixel.
+            //
             // Horizontal: each line's bounding-box x is `H * leadF -
             // firstCharLSB(...)`, so visible ink edges land at the same
             // column regardless of which character starts the row.
@@ -319,37 +377,39 @@ struct NumberFace: View {
                 faceBackground
                 let alignmentX = H * leadF
                 let labelSize = H * LABEL_FONT
+                let labelCorrection = labelSize * Self.K_SMALL
+                let rowCorrection = F * Self.K_BIG
                 if let topIcon {
                     Image(systemName: topIcon)
                         .font(.system(size: labelSize, weight: .bold))
                         .foregroundStyle(topIconColor)
+                        .padding(.vertical, -labelSize * cropK)
                         .fixedSize()
-                        .alignmentGuide(.top) { d in d[VerticalAlignment.center] - labelSize * capRatio * 0.5 }
-                        .offset(x: alignmentX, y: H * topLabelTop)
+                        .offset(x: alignmentX, y: H * topLabelTop - labelCorrection)
                 } else if let topLabel {
                     let lsb = NumberFace.firstCharLSB(topLabel.uppercased(), fontSize: labelSize)
                     Text(topLabel.uppercased())
                         .font(.custom("HelveticaNeue-Bold", size: labelSize))
                         .foregroundStyle(topLabelColor)
+                        .padding(.vertical, -labelSize * cropK)
                         .fixedSize()
-                        .alignmentGuide(.top) { d in d[.firstTextBaseline] - labelSize * capRatio }
-                        .offset(x: alignmentX - lsb, y: H * topLabelTop)
+                        .offset(x: alignmentX - lsb, y: H * topLabelTop - labelCorrection)
                 }
                 ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
                     let lsb = NumberFace.firstCharLSB(r.text, fontSize: F)
                     rowContent(r, F)
+                        .padding(.vertical, -F * cropK)
                         .fixedSize()
-                        .alignmentGuide(.top) { d in d[.firstTextBaseline] - F * capRatio }
-                        .offset(x: alignmentX - lsb, y: H * (startF + CGFloat(i) * pitchF))
+                        .offset(x: alignmentX - lsb, y: H * (startF + CGFloat(i) * pitchF) - rowCorrection)
                 }
                 if let bottomLabel, !hasStrip {
                     let lsb = NumberFace.firstCharLSB(bottomLabel.uppercased(), fontSize: labelSize)
                     Text(bottomLabel.uppercased())
                         .font(.custom("HelveticaNeue-Bold", size: labelSize))
                         .foregroundStyle(Faff.mute)
+                        .padding(.vertical, -labelSize * cropK)
                         .fixedSize()
-                        .alignmentGuide(.top) { d in d[.firstTextBaseline] - labelSize * capRatio }
-                        .offset(x: alignmentX - lsb, y: H * bottomLabelTop)
+                        .offset(x: alignmentX - lsb, y: H * bottomLabelTop - labelCorrection)
                 }
                 if let strip {
                     strip

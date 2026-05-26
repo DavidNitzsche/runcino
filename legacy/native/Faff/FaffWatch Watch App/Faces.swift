@@ -230,19 +230,23 @@ struct RestFace: View {
     let paceRole: Role          // .live in zone, .mute if no GPS yet
     let hr: String              // live HR · "148" / "—"
     var body: some View {
-        // Three big rows. Same grammar as the cooldown face — no top
-        // tag, no subtitle, no big icons. Position carries meaning:
+        // Top tag "REST" rides the OS clock baseline (anchored layout),
+        // then three big rows below it filling the rest of the screen:
         //   row 1: rest time-left (blue/rest, counts down)
         //   row 2: live pace (green when running easy)
         //   row 3: HR (♥ icon, white)
-        // What's coming next was visible on the rep face before this
-        // rest opened + visible again the moment the rest ends —
-        // duplicating it here was clutter.
-        NumberFace(rows: [
-            NumRow(restTimeLeft, .rest),
-            NumRow(pace,         paceRole),
-            NumRow(hr,           .neutral, icon: "heart.fill")
-        ])
+        // The label anchors the face to a meaningful caption AND pulls
+        // the row group out of the dead-centered "what is this screen?"
+        // ambiguity.
+        NumberFace(
+            rows: [
+                NumRow(restTimeLeft, .rest),
+                NumRow(pace,         paceRole),
+                NumRow(hr,           .neutral, icon: "heart.fill")
+            ],
+            topLabel: "REST",
+            topLabelColor: Faff.rest
+        )
     }
 }
 
