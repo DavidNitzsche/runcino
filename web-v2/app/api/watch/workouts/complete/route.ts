@@ -102,6 +102,11 @@ export async function POST(req: NextRequest) {
     ok: true,
     workoutId: body.workoutId,
     accepted_at: new Date().toISOString(),
+    // Deploy marker — bumped when this endpoint's behavior changes.
+    // Helps the audit harness detect "yes, Railway has my latest code"
+    // without depending on side effects (the strava_activities INSERT
+    // can silently fail; this response field can't).
+    api_version: 'watch-complete/p21-1',
   });
 }
 
