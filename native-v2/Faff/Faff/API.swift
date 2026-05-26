@@ -113,7 +113,8 @@ enum API {
         comps.queryItems = [URLQueryItem(name: "action", value: "connect")]
         let (data, _) = try await URLSession.shared.data(from: comps.url!)
         let r = try? JSONDecoder().decode(StravaConnectURLResponse.self, from: data)
-        return r?.url.flatMap { URL(string: $0) } ?? nil
+        guard let urlStr = r?.url else { return nil }
+        return URL(string: urlStr)
     }
 
     // MARK: - P29 settings + profile fetch
