@@ -124,6 +124,16 @@ final class WorkoutEngine: ObservableObject {
     /// `completed` flips to false when the user ends a phase early.
     private var results: [WatchCompletionPhase] = []
 
+    /// Per-phase running aggregates — sampled once per tick (1 Hz) from the
+    /// tracker. recordCurrentPhase() turns these into true averages on phase
+    /// end (true average HR over the rep, peak HR, average cadence, etc).
+    /// Reset on every advance() and at workout start.
+    private var phaseHrSum: Int = 0
+    private var phaseHrCount: Int = 0
+    private var phaseHrMax: Int = 0
+    private var phaseCadSum: Int = 0
+    private var phaseCadCount: Int = 0
+
     init(workout: WatchWorkout) {
         self.workout = workout
     }
@@ -319,6 +329,8 @@ final class WorkoutEngine: ObservableObject {
         workoutStart = .now
         phaseStart = .now
         phaseStartMi = coveredMi
+        phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
+        phaseCadSum = 0; phaseCadCount = 0
         tracker?.start()
         prepDrift()
         // Start cue · haptic + chime if Sound is on. User reported no beep
@@ -487,6 +499,18 @@ final class WorkoutEngine: ObservableObject {
 
         phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
         totalElapsedSec = bankedSec + phaseElapsedSec
+
+        // Sample per-phase aggregates from the tracker once per tick (1 Hz).
+        // recordCurrentPhase() turns these into true averages on phase end.
+        if let hr = tracker?.heartRate, hr > 0 {
+            phaseHrSum += hr
+            phaseHrCount += 1
+            phaseHrMax = max(phaseHrMax, hr)
+        }
+        if let cad = tracker?.cadence, cad > 0 {
+            phaseCadSum += cad
+            phaseCadCount += 1
+        }
 
         // HR-ceiling alert (easy/Z2/heat). When the plan ships a ceiling and
         // live HR exceeds it, flip the flag; the Easy face owns the visual
@@ -680,6 +704,8 @@ final class WorkoutEngine: ObservableObject {
             phaseStart = .now
             phaseElapsedSec = 0
             didFireAlmostDone = false
+            phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
+            phaseCadSum = 0; phaseCadCount = 0
             driftEval = nil
             paceZone = .onTarget
             paceDeltaSPerMi = 0
@@ -703,6 +729,9 @@ final class WorkoutEngine: ObservableObject {
         phaseElapsedSec = 0
         totalElapsedSec = bankedSec
         didFireAlmostDone = false
+        // Reset per-phase aggregates so the next rep starts clean.
+        phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
+        phaseCadSum = 0; phaseCadCount = 0
         prepDrift()
         if let p = currentPhase {
             Haptics.play(p.haptic)
@@ -724,16 +753,34 @@ final class WorkoutEngine: ObservableObject {
     private func recordCurrentPhase(completed: Bool) {
         guard let p = currentPhase else { return }
         let actual = Int(Date.now.timeIntervalSince(phaseStart))
-        let pace = tracker?.paceSPerMi ?? 0
-        let hr = tracker?.heartRate ?? 0
+        // True averages from the per-tick samples, not the instantaneous
+        // snapshot at the moment the phase ended.
+        let distMi = phaseCoveredMi
+        let avgPace: Int? = {
+            // Average pace = total seconds / total miles for the phase.
+            // Need at least ~30 m of distance to avoid garbage from a phase
+            // that barely got any GPS lock (e.g. recoveries).
+            guard distMi > 0.02, actual > 0 else { return nil }
+            return Int((Double(actual) / distMi).rounded())
+        }()
+        let avgHr: Int? = phaseHrCount > 0
+            ? Int((Double(phaseHrSum) / Double(phaseHrCount)).rounded())
+            : nil
+        let maxHr: Int? = phaseHrMax > 0 ? phaseHrMax : nil
+        let avgCad: Int? = phaseCadCount > 0
+            ? Int((Double(phaseCadSum) / Double(phaseCadCount)).rounded())
+            : nil
         results.append(WatchCompletionPhase(
             index: p.index,
             type: p.type.rawValue,
             label: p.label,
             targetPaceSPerMi: p.targetPaceSPerMi,
-            actualPaceSPerMi: pace > 0 ? pace : nil,
+            actualPaceSPerMi: avgPace,
             actualDurationSec: actual,
-            avgHr: hr > 0 ? hr : nil,
+            actualDistanceMi: distMi > 0 ? (distMi * 100).rounded() / 100 : nil,
+            avgHr: avgHr,
+            maxHr: maxHr,
+            avgCadence: avgCad,
             completed: completed
         ))
     }

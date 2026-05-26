@@ -229,9 +229,23 @@ struct WatchCompletionPhase: Encodable {
     let type: String
     let label: String
     let targetPaceSPerMi: Int?
+    /// TRUE per-rep average pace, computed from actualDistanceMi / actualDurationSec
+    /// at phase end (not a snapshot of the instantaneous reading the moment
+    /// the rep finished — which was the old behaviour and overstated by
+    /// however much the runner kicked at the line).
     let actualPaceSPerMi: Int?
     let actualDurationSec: Int
+    /// GPS-tracked distance covered DURING this phase. For a 1-mile rep this
+    /// reads the watch's actual measurement (e.g. 1.02 mi) — separate from
+    /// the planned phase.distanceMi which says 1.0.
+    let actualDistanceMi: Double?
+    /// True average HR across the phase (sum of every per-second sample
+    /// divided by count), not the snapshot at phase end.
     let avgHr: Int?
+    /// Peak HR observed during this phase.
+    let maxHr: Int?
+    /// Average cadence (steps/min) across the phase.
+    let avgCadence: Int?
     let completed: Bool
 }
 
