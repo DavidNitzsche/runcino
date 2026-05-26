@@ -36,6 +36,10 @@ export interface CachedBriefing {
   _state: any;
 }
 
+function todayPT(): string {
+  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+}
+
 export async function readCachedBriefing(userId: string, key: CacheKey): Promise<CachedBriefing | null> {
   try {
     const r = (await pool.query(
@@ -45,7 +49,15 @@ export async function readCachedBriefing(userId: string, key: CacheKey): Promise
       [userId, key]
     )).rows[0];
     if (!r) return null;
-    return r.payload as CachedBriefing;
+    const payload = r.payload as CachedBriefing;
+    // Day-rollover invalidation: a briefing whose embedded today != now is
+    // stale by definition (TODAY moved underneath it). Treat as miss so
+    // the engine regenerates against the new day. Cheaper than running a
+    // midnight cron + survives if a cron ever misses.
+    if (payload?._state?.today && payload._state.today !== todayPT()) {
+      return null;
+    }
+    return payload;
   } catch {
     return null;
   }
