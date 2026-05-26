@@ -74,6 +74,11 @@ function InputRow({ input }: { input: import('@/lib/coach/readiness').ReadinessI
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.65)', marginTop: 3 }}>
           {input.observedSub}
         </div>
+        {input.meaning && (
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.55)', marginTop: 6, lineHeight: 1.45, maxWidth: 520 }}>
+            {input.meaning}
+          </div>
+        )}
       </td>
       <td style={{
         padding: '14px 16px', textAlign: 'right', borderRadius: '0 8px 8px 0', width: 1, whiteSpace: 'nowrap',

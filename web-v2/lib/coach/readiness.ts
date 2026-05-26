@@ -26,6 +26,7 @@ export interface ReadinessInput {
   weight: number;         // contribution (signed)
   observedV: string;      // '6.7h' / '71ms' / etc
   observedSub: string;    // 'vs 7.5h target' / '+27%' / etc
+  meaning: string;        // one-sentence interpretation of YOUR value
 }
 
 const BASELINE = 70;
@@ -38,16 +39,25 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
   if (state.sleep7Avg != null) {
     const target = 7.5;
     const delta = state.sleep7Avg - target;
+    const debt = Math.max(0, -delta * 7); // approx weekly debt
     // ±2 per 0.25h, clamp ±15
     const w = Math.max(-15, Math.min(8, Math.round(delta / 0.25 * 2)));
     score += w;
+    const meaning = delta >= 0
+      ? `You're at or above the 7.5h target. Strong recovery foundation.`
+      : debt >= 7
+        ? `Roughly ${debt.toFixed(0)}h of sleep debt across the week. Recovery cost compounds.`
+        : debt >= 3
+          ? `About ${debt.toFixed(0)}h short for the week. Watch for fatigue creep.`
+          : `Just under target — a few hours short, but nothing concerning.`;
     inputs.push({
       key: 'sleep', label: 'SLEEP · 25%', weight: w,
       observedV: `${state.sleep7Avg.toFixed(1)}h`,
       observedSub: delta >= 0 ? `+${delta.toFixed(1)}h vs target` : `${delta.toFixed(1)}h vs target`,
+      meaning,
     });
   } else {
-    inputs.push({ key: 'sleep', label: 'SLEEP · 25%', weight: 0, observedV: '—', observedSub: 'no data' });
+    inputs.push({ key: 'sleep', label: 'SLEEP · 25%', weight: 0, observedV: '—', observedSub: 'no data', meaning: 'No sleep data yet — wear the watch overnight.' });
   }
 
   // HRV (25%)
@@ -55,28 +65,45 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const pct = ((state.hrvCurrent - state.hrvBaseline) / state.hrvBaseline) * 100;
     const w = Math.max(-15, Math.min(15, Math.round(pct / 2)));
     score += w;
+    const meaning = pct >= 15
+      ? `Well above your baseline — nervous system fully recovered. Green light for hard work.`
+      : pct >= 5
+        ? `Above baseline — recovered, ready to go.`
+        : pct >= -5
+          ? `At baseline — neutral signal.`
+          : pct >= -15
+            ? `Below baseline — could be stress, sleep, or accumulating load. Watch tomorrow.`
+            : `Well below baseline — pull back today and check rest.`;
     inputs.push({
       key: 'hrv', label: 'HRV · 25%', weight: w,
       observedV: `${state.hrvCurrent}ms`,
       observedSub: `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}% vs baseline`,
+      meaning,
     });
   } else {
-    inputs.push({ key: 'hrv', label: 'HRV · 25%', weight: 0, observedV: '—', observedSub: 'no data' });
+    inputs.push({ key: 'hrv', label: 'HRV · 25%', weight: 0, observedV: '—', observedSub: 'no data', meaning: 'No HRV data yet — needs a few overnights of watch wear.' });
   }
 
   // RHR (20%)
   if (state.rhrCurrent != null && state.rhrBaseline != null) {
     const delta = state.rhrCurrent - state.rhrBaseline;
-    // −2 per bpm above, +1 per bpm below, clamp ±10
     const w = Math.max(-10, Math.min(5, delta > 0 ? -delta * 2 : -delta));
     score += w;
+    const meaning = delta <= -2
+      ? `Below your baseline — sign of strong fitness adaptation.`
+      : delta <= 1
+        ? `At baseline — typical resting cardio.`
+        : delta <= 4
+          ? `A few beats above baseline — could be sleep deficit, dehydration, or a volume bump. Single-day rise is fine; watch for a streak.`
+          : `Notably elevated — sleep, illness brewing, dehydration, or overreach. If it stays up 3+ days, ease the load.`;
     inputs.push({
       key: 'rhr', label: 'RHR · 20%', weight: w,
       observedV: `${state.rhrCurrent}`,
       observedSub: `${delta >= 0 ? '+' : ''}${delta} bpm vs baseline`,
+      meaning,
     });
   } else {
-    inputs.push({ key: 'rhr', label: 'RHR · 20%', weight: 0, observedV: '—', observedSub: 'no data' });
+    inputs.push({ key: 'rhr', label: 'RHR · 20%', weight: 0, observedV: '—', observedSub: 'no data', meaning: 'No resting HR data yet.' });
   }
 
   // SUBJECTIVE (15%) — last 2 check-ins
@@ -85,17 +112,32 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const map = { solid: 3, tired: -3, wrecked: -8 } as const;
     const w = recent.reduce((s, c) => s + (map[c.rating] ?? 0), 0);
     score += w;
+    const ratings = recent.map((c) => c.rating);
+    const allSolid = ratings.every((r) => r === 'solid');
+    const anyWrecked = ratings.some((r) => r === 'wrecked');
+    const meaning = anyWrecked
+      ? `A WRECKED check-in is a real signal — coach should ease the next session.`
+      : allSolid && ratings.length >= 2
+        ? `Back-to-back SOLID feel — you're absorbing the work.`
+        : ratings.includes('tired')
+          ? `TIRED in recent check-ins — fatigue accumulating, watch volume.`
+          : `Subjective reads steady.`;
     inputs.push({
       key: 'subjective', label: 'CHECK-IN · 15%', weight: w,
-      observedV: recent.map((c) => c.rating.toUpperCase()).join(' · '),
+      observedV: ratings.map((r) => r.toUpperCase()).join(' · '),
       observedSub: `last ${recent.length} check-in${recent.length === 1 ? '' : 's'}`,
+      meaning,
     });
   } else {
-    inputs.push({ key: 'subjective', label: 'CHECK-IN · 15%', weight: 0, observedV: '—', observedSub: 'no rating yet' });
+    inputs.push({ key: 'subjective', label: 'CHECK-IN · 15%', weight: 0, observedV: '—', observedSub: 'no rating yet', meaning: 'No subjective rating yet today — coach defaults to neutral.' });
   }
 
-  // LOAD (15%) — A:C ratio. Not loaded into state yet (P4.b adds it); pass-through 0 for now.
-  inputs.push({ key: 'load', label: 'LOAD · 15%', weight: 0, observedV: '—', observedSub: 'A:C ratio pending' });
+  // LOAD (15%) — A:C ratio. Not loaded into state yet; pass-through 0.
+  inputs.push({
+    key: 'load', label: 'LOAD · 15%', weight: 0, observedV: '—',
+    observedSub: 'A:C ratio pending',
+    meaning: 'Acute:Chronic load ratio needs 28 days of running to compute. Lands once we have a fuller history.',
+  });
 
   score = Math.max(0, Math.min(100, score));
   const band = score > 85 ? 'sharp'

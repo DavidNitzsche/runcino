@@ -285,14 +285,18 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
   const repsAccent = isRace ? 'var(--race)' : 'var(--goal)';
 
   return (
-    <div style={{ marginTop: 4 }}>
+    <div style={{
+      // Vertical breathing room around the whole REPEAT group so it reads as
+      // a contained sub-section between warmup + cooldown.
+      marginTop: 14, marginBottom: 14,
+    }}>
       {/* Section header — floats above the boxes, no box around it */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        padding: '0 4px 8px', marginBottom: 2,
+        padding: '0 4px 10px', marginBottom: 2,
       }}>
         <div style={{
-          fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)',
+          fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)',
           letterSpacing: '0.5px',
         }}>
           {step.label.toUpperCase()}
@@ -305,12 +309,16 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
         </div>
       </div>
 
+      {/* Indented child group — rep + recovery boxes pulled in so they
+          visually nest under the REPEAT header. */}
+      <div style={{ marginLeft: 14, paddingLeft: 4, borderLeft: '1px dashed rgba(255,255,255,0.10)' }}>
       {/* Reps box — hard effort accent (gold/race-orange) */}
       <div style={{
         background: '#1f2226', borderRadius: 12, padding: '14px 18px',
         border: '1px solid rgba(255,255,255,0.05)',
         borderLeft: `3px solid ${repsAccent}`,
-        marginBottom: 6,
+        marginBottom: 8,
+        marginLeft: 6,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: repsAccent, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
@@ -338,6 +346,7 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
         background: '#1f2226', borderRadius: 12, padding: '14px 18px',
         border: '1px solid rgba(255,255,255,0.05)',
         borderLeft: '3px solid var(--learn)',
+        marginLeft: 6,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--learn)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
@@ -356,6 +365,7 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
           {step.recovery.note}
         </div>
       </div>
+      </div>{/* /indented child group */}
     </div>
   );
 }
