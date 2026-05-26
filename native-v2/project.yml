@@ -37,10 +37,14 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         CFBundleDisplayName: faff
         ITSAppUsesNonExemptEncryption: false
-        # READ ONLY on the iPhone — the watch does HK writes, not the phone.
-        # P27.8 removed NSHealthUpdateUsageDescription so we don't ask for a
-        # capability we never use (App Store hygiene).
+        # READ ONLY on the iPhone (the watch does HK writes), but Apple
+        # validates Info.plist against the HealthKit ENTITLEMENT, not
+        # against code-path usage — both strings must exist or the upload
+        # gets ITMS-90683 ("missing purpose string"). P27.8 attempted to
+        # drop the Update string for hygiene; build 79 upload was rejected.
+        # Restoring with an honest "watch-only" framing.
         NSHealthShareUsageDescription: "Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan."
+        NSHealthUpdateUsageDescription: "Faff Watch writes completed workouts to Apple Health so your training history stays in one place."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: run.faff.app
