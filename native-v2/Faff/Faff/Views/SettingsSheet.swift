@@ -24,6 +24,10 @@ struct SettingsSheet: View {
     @State private var heightCm: String = ""
     @State private var gender: String = ""
     @State private var experienceLevel: String = ""
+    @State private var crossBike: Bool = false
+    @State private var crossSwim: Bool = false
+    @State private var crossStrength: Bool = false
+    @State private var crossOther: Bool = false
 
     @State private var loading = true
     @State private var saving = false
@@ -98,6 +102,16 @@ struct SettingsSheet: View {
                     }
                 }
 
+                Section("Cross-training") {
+                    Text("Pick what you'd like the plan to include alongside running.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.mute)
+                    Toggle("Bike",     isOn: $crossBike)
+                    Toggle("Swim",     isOn: $crossSwim)
+                    Toggle("Strength", isOn: $crossStrength)
+                    Toggle("Other",    isOn: $crossOther)
+                }
+
                 if let error {
                     Section { Text(error).foregroundStyle(Theme.over) }
                 }
@@ -135,6 +149,11 @@ struct SettingsSheet: View {
             heightCm = p.height_cm.map { String(Int($0)) } ?? ""
             gender = p.gender ?? ""
             experienceLevel = p.experience_level ?? ""
+            let modes = Set(p.cross_training_modes ?? [])
+            crossBike = modes.contains("bike")
+            crossSwim = modes.contains("swim")
+            crossStrength = modes.contains("strength")
+            crossOther = modes.contains("other")
         }
     }
 
@@ -154,6 +173,15 @@ struct SettingsSheet: View {
             if let n = Int(heightCm) { profilePatch["height_cm"] = n }
             if !gender.isEmpty { profilePatch["gender"] = gender }
             if !experienceLevel.isEmpty { profilePatch["experience_level"] = experienceLevel }
+            // Cross-training modes — always send the array (server treats
+            // empty array as "off", non-empty as "I cross-train in these").
+            var modes: [String] = []
+            if crossBike { modes.append("bike") }
+            if crossSwim { modes.append("swim") }
+            if crossStrength { modes.append("strength") }
+            if crossOther { modes.append("other") }
+            profilePatch["cross_training_modes"] = modes
+
             if !profilePatch.isEmpty {
                 try await API.updateProfile(profilePatch)
             }

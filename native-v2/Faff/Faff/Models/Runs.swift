@@ -100,3 +100,23 @@ struct RunForm: Decodable {
     let respiratory_rate: Double?
     let spo2_pct: Double?
 }
+
+// MARK: - P32 shoes
+
+struct ShoesResponse: Decodable {
+    let shoes: [Shoe]?
+}
+
+struct Shoe: Decodable, Identifiable {
+    let id: Int
+    let brand: String?
+    let model: String?
+    let color: String?
+    let mileage: Double?
+    let mileage_cap: Double?
+    let retired: Bool?
+    let preferred: Bool?
+    let notes: String?
+
+    var displayName: String { [brand, model].compactMap { $0 }.joined(separator: " ") }
+}

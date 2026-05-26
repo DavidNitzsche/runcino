@@ -13,6 +13,9 @@ struct RunDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var detail: RunDetail?
     @State private var loading = true
+    @State private var shoes: [Shoe] = []
+    @State private var assignedShoeId: Int?
+    @State private var showShoePicker = false
 
     var body: some View {
         NavigationStack {
@@ -24,6 +27,7 @@ struct RunDetailSheet: View {
                     } else if let d = detail {
                         hero(d)
                         statRow(d)
+                        shoeRow()
                         if !d.splits.isEmpty { splitsBlock(d.splits) }
                         hrZonesBlock(d)
                         if hasAnyForm(d.form) { formBlock(d.form) }
@@ -246,9 +250,127 @@ struct RunDetailSheet: View {
         }
     }
 
+    // MARK: - P32 shoe picker
+
+    @ViewBuilder
+    private func shoeRow() -> some View {
+        Button { showShoePicker = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "shoe.2.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.green)
+                    .frame(width: 28, height: 28)
+                    .background(Theme.green.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SHOES").font(.body(9, weight: .bold)).tracking(1.2).foregroundStyle(Theme.mute)
+                    Text(currentShoeLabel())
+                        .font(.body(13, weight: .semibold))
+                        .foregroundStyle(assignedShoeId == nil ? Theme.mute : Theme.ink)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.mute)
+            }
+            .padding(14)
+            .background(Theme.card)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 24)
+        .sheet(isPresented: $showShoePicker) {
+            ShoePickerSheet(shoes: shoes, assigned: assignedShoeId) { id in
+                Task { await assignShoe(id) }
+                showShoePicker = false
+            }
+        }
+    }
+
+    private func currentShoeLabel() -> String {
+        if let id = assignedShoeId, let s = shoes.first(where: { $0.id == id }) {
+            return s.displayName
+        }
+        return "Tap to assign"
+    }
+
+    private func assignShoe(_ shoeId: Int?) async {
+        do {
+            try await API.assignShoeToRun(runId: runId, shoeId: shoeId)
+            assignedShoeId = shoeId
+        } catch {
+            print("[ShoePicker] assign failed: \(error)")
+        }
+    }
+
     private func load() async {
         defer { loading = false }
         self.detail = try? await API.fetchRunDetail(id: runId)
+        if let s = try? await API.fetchShoes()?.shoes {
+            self.shoes = s.filter { !($0.retired ?? false) }
+        }
+        // TODO: server doesn't yet return assigned shoe_id on RunDetail.
+        // Coach + log views will pick it up via the recomputed mileage.
+        // Future patch: extend RunDetail with shoe_id.
+    }
+}
+
+// MARK: - Shoe picker sheet
+
+private struct ShoePickerSheet: View {
+    let shoes: [Shoe]
+    let assigned: Int?
+    let onPick: (Int?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button { onPick(nil) } label: {
+                        HStack {
+                            Text("None — clear assignment")
+                            Spacer()
+                            if assigned == nil {
+                                Image(systemName: "checkmark").foregroundStyle(Theme.green)
+                            }
+                        }
+                    }
+                }
+                Section("Active") {
+                    ForEach(shoes) { s in
+                        Button { onPick(s.id) } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(s.displayName).foregroundStyle(Theme.ink)
+                                    Text(mileageLine(s)).font(.body(11)).foregroundStyle(Theme.mute)
+                                }
+                                Spacer()
+                                if assigned == s.id {
+                                    Image(systemName: "checkmark").foregroundStyle(Theme.green)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Pick shoes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func mileageLine(_ s: Shoe) -> String {
+        let cur = s.mileage ?? 0
+        if let cap = s.mileage_cap, cap > 0 {
+            let remain = max(0, cap - cur)
+            return String(format: "%.0f mi · %.0f remaining", cur, remain)
+        }
+        return String(format: "%.0f mi", cur)
     }
 }
 

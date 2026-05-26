@@ -86,6 +86,27 @@ enum API {
         return try? JSONDecoder().decode(ProfileFields.self, from: data)
     }
 
+    // MARK: - P32 shoe assignment
+
+    static func fetchShoes() async throws -> ShoesResponse? {
+        let url = baseURL.appendingPathComponent("api/shoe")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(ShoesResponse.self, from: data)
+    }
+
+    static func assignShoeToRun(runId: String, shoeId: Int?) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/runs/\(runId)"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["shoe_id": shoeId as Any]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+    }
+
     // MARK: - P29 manual run + race retro
 
     static func submitManualRun(_ body: [String: Any]) async throws {
@@ -253,4 +274,8 @@ struct ProfileFields: Decodable {
     let gender: String?
     let experience_level: String?
     let birthday: String?
+    let cross_training_modes: [String]?
+    let strava_connected_at: String?
+    let health_connected_at: String?
+    let onboarded_at: String?
 }
