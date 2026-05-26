@@ -46,6 +46,11 @@ export interface BriefingResponse {
     nextARaceName: string | null;
     daysToARace: number | null;
     readiness: ReadinessBreakdown;
+    /** Tool calls the coach made while composing this briefing.
+     *  Used to verify the coach is actually reading via tools, not
+     *  free-wheeling. Survives the cache so probing /api/briefing shows
+     *  what it called last time. */
+    toolTrace?: Array<{ name: string; input: any }>;
   };
 }
 
@@ -101,6 +106,7 @@ export async function generateBriefing(
   // Tool-use loop — coach calls tools until it returns end_turn with prose.
   // Hard cap at 8 iterations to prevent runaways; in practice we expect 3-5.
   let finalContent: Anthropic.ContentBlock[] = [];
+  const toolTrace: Array<{ name: string; input: any }> = [];
   for (let i = 0; i < 8; i++) {
     const resp = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
@@ -120,6 +126,7 @@ export async function generateBriefing(
       const toolUseBlocks = resp.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
       const results = await Promise.all(
         toolUseBlocks.map(async (b) => {
+          toolTrace.push({ name: b.name, input: b.input });
           try {
             const out = await dispatchTool(b.name, userId, b.input as any);
             return { type: 'tool_result' as const, tool_use_id: b.id, content: JSON.stringify(out) };
@@ -137,6 +144,12 @@ export async function generateBriefing(
     finalContent = resp.content;
     break;
   }
+
+  // Trace tool usage to server logs so we can verify the coach is actually
+  // reading from sources (and not skipping critical reads like getPlanWindow
+  // for a pre-run brief). Visible in Railway logs AND attached to the response
+  // under _state.toolTrace so the API can be probed directly during iteration.
+  console.log('[coach] tool trace:', JSON.stringify(toolTrace));
 
   const rawText = finalContent
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -221,6 +234,7 @@ export async function generateBriefing(
       nextARaceName: state.nextARace?.name ?? null,
       daysToARace: state.nextARace?.days_to_race ?? null,
       readiness: computeReadiness(state),
+      toolTrace,
     },
   };
 
