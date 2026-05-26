@@ -1,24 +1,28 @@
 /**
- * Coach engine — the briefing pipeline.
+ * Coach engine — Anthropic tool-use loop.
  *
- *   1. Load state (state-loader)
- *   2. Resolve surface + mode + candidate topics (router)
- *   3. Filter candidates by prereqs (truth contract — no hallucination)
- *   4. Call Claude with the per-surface prompt + state + eligible topics
- *   5. Validate the response against the topic schemas
- *   6. Return { lead, voice, topics }
+ * The coach DOES NOT receive pre-extracted facts in the user message.
+ * The user message contains only ORIENTATION (who, when, what surface,
+ * which topic kinds are eligible). The coach calls tools to read data
+ * from the runner's sources (plan, runs, profile, zones, races, etc.)
+ * and composes voice from results.
  *
- * Cache key: (user, date, latest_activity_id, latest_checkin_id, profile_hash).
- * Cache writes happen at the route handler boundary, not here.
+ * After the LLM responds with prose, the server populates ALL numeric
+ * topic fields from the same data sources. The LLM never writes a number
+ * into a UI card.
+ *
+ * Cache is event-driven (not signature-hashed) — briefings are pre-built
+ * on triggers (day rollover, run ingest, check-in, profile edit, plan
+ * swap, race edit) and read forever until the next bust.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { loadCoachState } from './state-loader';
 import { resolveMode, type Surface } from './router';
-import { TopicPrereqs, eligibleKinds, type Topic, type CoachState } from '@/lib/topics/types';
+import { TopicPrereqs, eligibleKinds, type Topic } from '@/lib/topics/types';
 import { promptFor } from '@/coach/prompts';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
-import { signatureOf, readCachedBriefing, writeCachedBriefing } from './cache';
-import { computeZones, zonesAsPromptText } from '@/lib/training/zones';
+import { readCachedBriefing, writeCachedBriefing } from './cache';
+import { TOOLS, dispatchTool } from './tools';
 
 export interface BriefingResponse {
   surface: Surface;
@@ -31,7 +35,6 @@ export interface BriefingResponse {
     today: string;
     candidateKinds: string[];
     eligibleKinds: string[];
-    // Glance metrics — used by web-companion MicroStatStrip and watch glance.
     weekDone: number;
     weekPlanned: number | null;
     phaseLabel: string | null;
@@ -46,68 +49,114 @@ export interface BriefingResponse {
   };
 }
 
+const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function dayOfWeekName(iso: string): string {
+  return DOW_NAMES[new Date(iso + 'T12:00:00Z').getUTCDay()];
+}
+
 export async function generateBriefing(
   userId: string,
   surface: Surface,
   raceSlug?: string,
-  /** When true, generate a paraphrased mobile-friendly voice (shorter lead,
-   *  fewer voice lines, no horizon prose unless A-race < 4 weeks). Plumbed
-   *  from /api/briefing?client=ios. */
   compact?: boolean,
 ): Promise<BriefingResponse> {
+  // State-loader still runs to: (a) resolve mode + eligible topics,
+  // (b) compute readiness for the response envelope, (c) populate
+  // numeric topic fields after the LLM is done. The COACH never sees
+  // any of state directly — it reads via tools.
   const state = await loadCoachState(userId);
   const resolved = resolveMode(surface, state, raceSlug);
   const eligible = eligibleKinds(state, resolved.candidateTopics);
 
-  // Cache layer — read first. Voice only regenerates when state inputs change.
-  const sig = signatureOf(state, raceSlug, compact);
-  const cached = await readCachedBriefing(userId, surface, sig);
+  // Event-driven cache: if a briefing exists for (user, surface, client),
+  // return it. Mutating endpoints call bustBriefingCache to invalidate.
+  const cacheKey = compact ? `${surface}:ios` : surface;
+  const cached = await readCachedBriefing(userId, cacheKey);
   if (cached) {
     return {
-      surface: cached.surface,
-      mode: cached.mode,
-      lead: cached.lead,
-      voice: cached.voice,
-      topics: cached.topics,
+      ...(cached as any),
       _state: {
-        ...cached._state,
-        // Always re-compute readiness from fresh state (cheap, no LLM)
+        ...(cached as any)._state,
         readiness: computeReadiness(state),
       },
     };
   }
 
-  const systemPrompt = promptFor(resolved.surface, resolved.mode);
-  const userMessage = buildUserMessage(state, resolved, eligible, compact);
-
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const resp = await client.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
-    max_tokens: 1800,
-    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: userMessage }],
+  // Build the system prompt + tool-use loop
+  const systemPrompt = systemPromptFor(resolved.surface, resolved.mode, compact);
+  const orientationMessage = buildOrientationMessage({
+    runner: state.profile?.full_name ?? 'David',
+    today: state.today,
+    surface: resolved.surface,
+    mode: resolved.mode,
+    eligibleKinds: eligible,
+    compact,
   });
 
-  const raw = resp.content
-    .filter((b: any) => b.type === 'text')
-    .map((b: any) => b.text)
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: orientationMessage },
+  ];
+
+  // Tool-use loop — coach calls tools until it returns end_turn with prose.
+  // Hard cap at 8 iterations to prevent runaways; in practice we expect 3-5.
+  let finalContent: Anthropic.ContentBlock[] = [];
+  for (let i = 0; i < 8; i++) {
+    const resp = await client.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 2400,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+      tools: TOOLS,
+      messages,
+    });
+
+    if (resp.stop_reason === 'end_turn' || resp.stop_reason === 'max_tokens') {
+      finalContent = resp.content;
+      break;
+    }
+
+    if (resp.stop_reason === 'tool_use') {
+      // Dispatch every tool_use block in this turn, append results, loop.
+      const toolUseBlocks = resp.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+      const results = await Promise.all(
+        toolUseBlocks.map(async (b) => {
+          try {
+            const out = await dispatchTool(b.name, userId, b.input as any);
+            return { type: 'tool_result' as const, tool_use_id: b.id, content: JSON.stringify(out) };
+          } catch (e: any) {
+            return { type: 'tool_result' as const, tool_use_id: b.id, content: JSON.stringify({ error: e.message ?? String(e) }), is_error: true };
+          }
+        })
+      );
+      messages.push({ role: 'assistant', content: resp.content });
+      messages.push({ role: 'user', content: results });
+      continue;
+    }
+
+    // Unknown stop reason — keep what we got and break.
+    finalContent = resp.content;
+    break;
+  }
+
+  const rawText = finalContent
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
     .join('\n')
     .trim();
 
-  const parsed = parseLLMOutput(raw);
+  const parsed = parseLLMOutput(rawText);
 
-  // Belt + suspenders: even if the LLM emits a topic kind we didn't shortlist,
-  // drop it. This is the second line of the truth-contract defense.
+  // Validate topics against eligibility + prereqs (truth-contract belt).
   const validatedTopics: Topic[] = (parsed.topics ?? []).filter((t: Topic) =>
-    eligible.includes(t.kind as any) && TopicPrereqs[t.kind](state)
+    eligible.includes(t.kind as any) && TopicPrereqs[t.kind]?.(state)
   );
 
-  // Server-side enrichment: inject deterministic IDs + NUMBERS the LLM
-  // can't be trusted to repeat. The LLM authors voice; numeric values
-  // come from state.
-  const DOW_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+  // Server-side topic enrichment — populate ALL numeric/structural fields
+  // from state. The LLM only authors `coach_note` (prose). Even if it tried
+  // to write a number into a card payload, we overwrite from state here so
+  // the UI is correct by construction.
   for (const t of validatedTopics) {
-    const p = t.payload as any;
+    const p = (t.payload ??= {}) as any;
     if (t.kind === 'run_recap' && state.latest_activity?.id) {
       p.activity_id = state.latest_activity.id;
     }
@@ -117,10 +166,10 @@ export async function generateBriefing(
     }
     if (t.kind === 'next_workout' && state.nextWorkout) {
       const nw = state.nextWorkout;
-      // Compute DOW from the date so it's correct (LLM was hallucinating).
       const d = new Date(nw.date + 'T12:00:00Z');
-      const isTomorrow = nw.date === new Date(Date.parse(state.today + 'T12:00:00Z') + 86400000).toISOString().slice(0,10);
-      p.dow = isTomorrow ? 'TOMORROW' : DOW_NAMES[d.getUTCDay()];
+      const tomorrowIso = new Date(Date.parse(state.today + 'T12:00:00Z') + 86400000).toISOString().slice(0, 10);
+      const isTomorrow = nw.date === tomorrowIso;
+      p.dow = isTomorrow ? 'TOMORROW' : DOW_NAMES[d.getUTCDay()].toUpperCase();
       p.type = nw.type;
       p.label = nw.label ?? nw.type;
       p.mi = nw.mi;
@@ -131,31 +180,21 @@ export async function generateBriefing(
       p.race_date = r.date;
       p.days_to_race = r.days_to_race;
       p.goal = r.goal;
-      // Tone from how close we are
       p.tone = r.days_to_race <= 7 ? 'race_week'
-        : r.days_to_race <= 21 ? 'sharpening'
-        : 'building';
+        : r.days_to_race <= 21 ? 'sharpening' : 'building';
     }
   }
 
-  // Drop topics that would duplicate UI we already render elsewhere:
-  //
-  //   - profile_gap with empty field   → would render a broken card
-  //   - run_recap on /today            → TodayPlannedCard already shows
-  //     "DONE · TYPE · X MI" with a link into the run detail modal, and
-  //     the coach voice paragraphs already narrate the run. The recap
-  //     card on the right rail is pure duplication.
+  // Drop topics that would duplicate other surfaces (run_recap on /today
+  // when today's run is already shown on the left rail, etc.)
   const filtered = validatedTopics.filter((t) => {
     if (t.kind === 'profile_gap') {
       const f = ((t.payload as any)?.field ?? '').trim();
       return f.length > 0;
     }
     if (t.kind === 'run_recap' && resolved.surface === 'today') {
-      // If there's a real run today, the left-rail TodayPlannedCard owns
-      // the recap. Suppress the right-rail dup.
-      const todayDate = state.today;
       const a = state.latest_activity;
-      if (a && a.date === todayDate && a.mi >= 0.5) return false;
+      if (a && a.date === state.today && a.mi >= 0.5) return false;
     }
     return true;
   });
@@ -185,148 +224,97 @@ export async function generateBriefing(
     },
   };
 
-  // Persist to cache so the next request with same signature is instant.
-  await writeCachedBriefing(userId, surface, sig, resolved.mode, response as any);
-
+  await writeCachedBriefing(userId, cacheKey, resolved.mode, response as any);
   return response;
 }
 
-function buildUserMessage(
-  state: CoachState,
-  resolved: ReturnType<typeof resolveMode>,
-  eligible: string[],
-  compact?: boolean,
-): string {
+// ── Orientation-only user message ───────────────────────────────────────
+//
+// This is the ONLY thing the coach gets at the start. No facts, no values,
+// no pre-extracted "TODAY'S WORKOUT" or "RECENT RUNS" dumps. The coach
+// uses TOOLS to read those.
+
+interface OrientationInput {
+  runner: string;
+  today: string;
+  surface: Surface;
+  mode: string;
+  eligibleKinds: string[];
+  compact?: boolean;
+}
+
+function buildOrientationMessage(o: OrientationInput): string {
   const lines: string[] = [];
-  lines.push(`RUNNER: ${state.profile?.full_name ?? 'David'}.`);
-  lines.push(`TODAY: ${state.today} (${dayOfWeekName(state.today)}).`);
-  lines.push(`SURFACE: ${resolved.surface} · MODE: ${resolved.mode}.`);
+  lines.push(`RUNNER: ${o.runner}.`);
+  lines.push(`TODAY: ${o.today} (${dayOfWeekName(o.today)}). The training week runs Monday→Sunday.`);
+  lines.push(`SURFACE: ${o.surface} · MODE: ${o.mode}.`);
   lines.push('');
-
-  // HR ZONES — use LTHR-anchored (Friel) when available; %MHR fallback otherwise.
-  // This is the foundation for the coach reasoning about effort correctly.
-  // Cite: Research/03-heart-rate-zones.md §6.
-  const zones = computeZones({ lthr: state.profile?.lthr ?? null, maxHr: state.profile?.hrmax ?? null });
-  if (zones) {
-    lines.push(zonesAsPromptText(zones));
-    lines.push('');
-  }
-  if (state.profile?.experience_level) {
-    lines.push(`EXPERIENCE: ${state.profile.experience_level.replace('_', '+')} — calibrate volume expectations accordingly.`);
-    lines.push('');
-  }
-
-  if (state.latest_activity) {
-    const a = state.latest_activity;
-    lines.push(`LATEST RUN (${a.date} = ${dayOfWeekName(a.date)}): ${a.mi.toFixed(1)}mi · pace ${a.pace ?? '—'} · HR ${a.hr ?? '—'} · cad ${a.cadence ?? '—'}${a.name ? ' · "' + a.name + '"' : ''}`);
-  }
-
-  // RECENT RUNS (last 7 days) — used to ANCHOR the coach to facts.
-  // The LLM has a strong tendency to invent "yesterday's threshold workout"
-  // or "your run two days ago" when it has no data. Listing every recent
-  // run explicitly + a hard prompt rule blocks that hallucination.
-  if (state.recentRuns && state.recentRuns.length > 0) {
-    lines.push('');
-    lines.push(`RECENT RUNS (last 7 days · ${state.recentRuns.length} total). DO NOT reference any run not in this list. If the runner didn't run on a given day, don't speculate that they did.`);
-    for (const rr of state.recentRuns) {
-      lines.push(`  ${rr.date} (${dayOfWeekName(rr.date)}): ${rr.mi.toFixed(1)}mi · ${rr.type ?? 'run'} · pace ${rr.pace ?? '—'} · HR ${rr.hr ?? '—'}${rr.name ? ' · "' + rr.name + '"' : ''}`);
-    }
-    lines.push('  ↳ TRUTH CONTRACT: Only mention runs above. Do not invent "yesterday\'s threshold" or "Saturday\'s long run" unless it appears in this list. If you want to discuss planned sessions, use THIS WEEK\'S PLAN below.');
-  } else {
-    lines.push('');
-    lines.push('RECENT RUNS: NONE in the last 7 days. Do not say the runner "completed" or "ran" anything — they haven\'t logged a run.');
-  }
-  lines.push(`WEEK: ${state.weekDone}mi done / ${state.weekPlanned ?? '?'}mi planned${state.phaseLabel ? ' · phase ' + state.phaseLabel : ''}`);
-
-  // PLAN — the full Mon→Sun week of planned sessions, as data. The coach
-  // reads this, finds today's row by matching state.today, and reasons
-  // about what's done / what's now / what's coming itself. We don't
-  // pre-label "TODAY'S WORKOUT" or "NEXT WORKOUT" — those would be us
-  // doing the coach's job. (state.currentWeekDays is already loaded by
-  // state-loader; it just wasn't reaching the prompt before.)
-  if (state.currentWeekDays && state.currentWeekDays.length > 0) {
-    lines.push('');
-    lines.push(`THIS WEEK'S PLAN (Mon→Sun):`);
-    for (const d of state.currentWeekDays) {
-      const dow = dayOfWeekName(d.date);
-      const miStr = d.type === 'rest' || d.mi === 0 ? 'rest' : `${d.mi}mi`;
-      const labelStr = d.label ? ` · ${d.label}` : '';
-      lines.push(`  ${d.date} (${dow}): ${d.type} · ${miStr}${labelStr}`);
-    }
-  }
-
-  if (state.nextARace) {
-    // Include explicit date AND month name so the LLM can't mis-narrate it.
-    const monthName = MONTH_NAMES[new Date(state.nextARace.date + 'T12:00:00Z').getUTCMonth()];
-    lines.push(`A-RACE: ${state.nextARace.name} on ${state.nextARace.date} (${monthName} ${new Date(state.nextARace.date + 'T12:00:00Z').getUTCDate()}) — ${state.nextARace.days_to_race} days away · goal ${state.nextARace.goal ?? '—'}`);
-    lines.push(`  ↳ Use ${monthName} in any month references. Do NOT invent a different month.`);
-  }
-  lines.push(`SLEEP: 7n avg ${state.sleep7Avg ?? '—'}h · deficit ${state.sleep7Deficit}h`);
-  if (state.rhrCurrent != null) {
-    const delta = state.rhrBaseline != null ? state.rhrCurrent - state.rhrBaseline : null;
-    lines.push(`RHR: current ${state.rhrCurrent} · baseline ${state.rhrBaseline ?? '—'}${delta != null ? ' · delta ' + (delta >= 0 ? '+' : '') + delta : ''}`);
-  }
-  if (state.hrvCurrent != null) {
-    lines.push(`HRV: current ${state.hrvCurrent}ms · 30d baseline ${state.hrvBaseline ?? '—'}`);
-  }
-  lines.push(`CADENCE: 60d baseline ${state.cadenceBaseline ?? '—'} spm`);
+  lines.push(
+    `You have tools to read every data source you need: getProfile, getZones, ` +
+    `getPlanWindow, getRuns, getReadiness, getRaces, getCheckIns, getHealthSeries, getDoctrine. ` +
+    `Call them. Don't guess at values — read them.`,
+  );
   lines.push('');
-  lines.push(`PROFILE FIELDS:`);
-  lines.push(`  height_cm: ${state.profile?.height_cm ?? 'MISSING'}`);
+  lines.push(`# TRUTH CONTRACT`);
+  lines.push(
+    `- Only narrate runs that getRuns returns. Never invent "yesterday's threshold" or ` +
+    `"Saturday's long run" — call getRuns and use what it gives you.`,
+  );
+  lines.push(
+    `- Only reference planned sessions that getPlanWindow returns. To know what today's ` +
+    `planned workout is, call getPlanWindow with daysBack=0, daysForward=0.`,
+  );
+  lines.push(
+    `- Only claim a check-in rating (SOLID/TIRED/WRECKED) appears in getCheckIns. ` +
+    `If empty, do NOT say "you said you were tired" — they didn't say anything.`,
+  );
+  lines.push(
+    `- HR zones, paces, and physiological framing must come from getZones + getDoctrine. ` +
+    `Don't invent thresholds.`,
+  );
   lines.push('');
-  if (state.pendingIntents.length) {
-    lines.push(`PENDING INTENTS (acknowledge ONCE in voice, then move on):`);
-    for (const i of state.pendingIntents) {
-      lines.push(`  · ${i.reason}: ${i.field} = ${i.value}`);
-    }
-    lines.push('');
-  }
-  if (state.recentCheckIns.length) {
-    lines.push(`RECENT CHECK-INS (runner's own rating — do NOT make these up if none exist):`);
-    for (const c of state.recentCheckIns.slice(0, 3)) {
-      lines.push(`  · ${c.ts} → ${c.rating.toUpperCase()}`);
-    }
-    lines.push('');
-  } else {
-    lines.push(`RECENT CHECK-INS: none. The runner has NOT tapped SOLID/TIRED/WRECKED today or this week. Do NOT claim they did.`);
-    lines.push('');
-  }
-  lines.push(`ELIGIBLE TOPIC KINDS (prereqs met — emit ONLY these as cards):`);
-  lines.push(`  ${eligible.join(', ')}`);
+  lines.push(`# ELIGIBLE TOPIC KINDS`);
+  lines.push(`Emit ONLY these as cards (others are dropped): ${o.eligibleKinds.join(', ') || '(none)'}`);
   lines.push('');
-  lines.push(`# YOUR JOB`);
-  lines.push(`Coach voice for this surface + mode per the prompt above. Return strict JSON: {lead, voice: string[], topics: Topic[]}. NO markdown fences.`);
+  lines.push(`# OUTPUT`);
+  lines.push(
+    `Return strict JSON in your final message (after any tool calls): ` +
+    `{lead, voice: string[], topics: Topic[]}. NO markdown fences. ` +
+    `Topics carry { kind, coach_note } only — the server populates numeric fields ` +
+    `from the same sources you read from. Don't bother writing dates, miles, days_away ` +
+    `into payloads; they're overwritten.`,
+  );
 
-  if (compact) {
-    // iOS / mobile — the runner is reading on a small screen and the
-    // structured workout card + week strip already lead the page. Keep
-    // the prose tight; don't repeat what those surfaces show.
+  if (o.compact) {
     lines.push('');
-    lines.push(`# MOBILE BREVITY RULES (compact=true)`);
-    lines.push(`- The phone screen ALREADY shows: today's structured workout (warmup → reps → cooldown with paces), the week strip, and the readiness ring. Don't restate that scaffolding.`);
-    lines.push(`- \`lead\`: ONE sentence max. 12 words max. The "what's the move today" hook, nothing else.`);
-    lines.push(`- \`voice\`: AT MOST 2 lines, each 1–2 short sentences. Total voice = under 60 words. Treat it like a text from your coach, not an email.`);
-    lines.push(`- Skip preamble ("Good morning!" / "Today is..."). Drop in mid-thought.`);
-    lines.push(`- Skip the horizon prose ("21 weeks out") UNLESS the A-race is < 28 days away.`);
-    lines.push(`- Topics: emit AT MOST 2 cards. Prioritise fueling > race_horizon > coach_needs. Drop anything else for this mobile pass.`);
+    lines.push(`# MOBILE BREVITY`);
+    lines.push(
+      `- lead: ONE sentence, ≤12 words.\n` +
+      `- voice: ≤2 lines, total ≤60 words. Drop in mid-thought; no "Good morning."\n` +
+      `- Topics: ≤2 cards.`,
+    );
   }
+
   return lines.join('\n');
 }
 
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DOW_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-function dayOfWeekName(iso: string): string {
-  return DOW_NAMES[new Date(iso + 'T12:00:00Z').getUTCDay()];
+// ── System prompt — surface/mode doctrine + voice character ─────────────
+
+function systemPromptFor(surface: Surface, mode: string, _compact?: boolean): string {
+  // Delegate to existing doctrine; downstream prompts/index.ts has the
+  // voice + per-mode rules. We're not stuffing data here either.
+  return promptFor(surface, mode);
 }
 
+// ── JSON parsing (final assistant text) ─────────────────────────────────
+
 function parseLLMOutput(raw: string): { lead?: string; voice?: string[]; topics?: Topic[] } {
-  // Strip code fences if present.
   let s = raw;
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) s = fence[1].trim();
   else {
     const first = raw.indexOf('{');
-    const last  = raw.lastIndexOf('}');
+    const last = raw.lastIndexOf('}');
     if (first >= 0 && last > first) s = raw.slice(first, last + 1);
   }
   try { return JSON.parse(s); } catch { return {}; }

@@ -1,22 +1,34 @@
 /**
  * cache.ts — briefing cache backed by Postgres (table: briefings).
  *
- * Signature is computed from state inputs that SHOULD change the voice:
- *   today date · latest_activity_id · count(check-ins in last 7d) · profile_hash · race_signature
+ * EVENT-DRIVEN. Briefings are pre-built on triggers (day rollover, run
+ * ingest, check-in, profile edit, plan swap, race edit) and read forever
+ * until the next mutating endpoint calls bustBriefingCache().
  *
- * Engine reads cache first; only calls LLM on miss. Mutating endpoints
- * (checkin, profile, race, shoe, workout-swap) call bustBriefingCache()
- * which deletes rows for the user — next /api/briefing call regenerates.
+ * No signature hashing — that was a fallback for "any state change should
+ * regenerate." With comprehensive event-bust coverage (see audit
+ * P17.6), the events ARE the invalidation, and the briefing is just the
+ * latest one written.
+ *
+ * Schema note: the existing `briefings` table has a `signature` column.
+ * We keep it for backward compatibility but write a fixed sentinel so
+ * the (user_id, surface, signature) unique key collapses to (user_id,
+ * surface). When migrations next pass, drop the column.
  */
-import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
-import type { CoachState, Topic } from '@/lib/topics/types';
-import type { Surface } from './router';
+import type { Topic } from '@/lib/topics/types';
 
-const TTL_MS = 24 * 3600 * 1000;  // hard ceiling — stale data > 24h regenerates
+// Fixed sentinel — old `signature` column is no longer used as an input
+// hash; collapses the unique key to (user_id, surface_key).
+const SIGNATURE_SENTINEL = 'event-driven';
+
+// The cache key is the surface, optionally suffixed with `:ios` for the
+// compact-voice variant. We pass it as a string so the engine controls
+// the bucket name.
+export type CacheKey = string;
 
 export interface CachedBriefing {
-  surface: Surface;
+  surface: string;
   mode: string;
   lead: string;
   voice: string[];
@@ -24,64 +36,51 @@ export interface CachedBriefing {
   _state: any;
 }
 
-export function signatureOf(state: CoachState, raceSlug?: string, compact?: boolean): string {
-  const inputs = {
-    today: state.today,
-    latest_activity: state.latest_activity?.id ?? null,
-    last_checkin_ts: state.recentCheckIns[0]?.ts ?? null,
-    profile_hash: createHash('sha1').update(JSON.stringify(state.profile ?? {})).digest('hex').slice(0, 12),
-    pending_intents: state.pendingIntents.length,
-    // INCLUDE the whole plan week in the signature — any swap, type
-    // change, distance change to ANY day in the week regenerates voice.
-    // (Replaces the prior today_workout + next_workout single-row hashes,
-    // which only captured changes to those two specific rows.)
-    week_plan: (state.currentWeekDays ?? [])
-      .map((d) => `${d.date}|${d.type}|${d.mi}`).join(','),
-    race_slug: raceSlug ?? null,
-    // iOS compact mode produces a different voice than web — keep cache buckets separate.
-    compact: compact ? 1 : 0,
-  };
-  return createHash('sha1').update(JSON.stringify(inputs)).digest('hex').slice(0, 16);
-}
-
-export async function readCachedBriefing(userId: string, surface: Surface, signature: string): Promise<CachedBriefing | null> {
+export async function readCachedBriefing(userId: string, key: CacheKey): Promise<CachedBriefing | null> {
   try {
     const r = (await pool.query(
-      `SELECT payload, generated_at FROM briefings
-        WHERE user_id = $1 AND surface = $2 AND signature = $3
+      `SELECT payload FROM briefings
+        WHERE user_id = $1 AND surface = $2
         ORDER BY generated_at DESC LIMIT 1`,
-      [userId, surface, signature]
+      [userId, key]
     )).rows[0];
     if (!r) return null;
-    if (Date.now() - new Date(r.generated_at).getTime() > TTL_MS) return null;
     return r.payload as CachedBriefing;
   } catch {
     return null;
   }
 }
 
-export async function writeCachedBriefing(userId: string, surface: Surface, signature: string, mode: string, payload: CachedBriefing): Promise<void> {
+export async function writeCachedBriefing(
+  userId: string,
+  key: CacheKey,
+  mode: string,
+  payload: CachedBriefing,
+): Promise<void> {
   try {
     await pool.query(
       `INSERT INTO briefings (user_id, surface, mode, signature, payload)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, surface, signature)
        DO UPDATE SET payload = EXCLUDED.payload, generated_at = now(), mode = EXCLUDED.mode`,
-      [userId, surface, mode, signature, payload]
+      [userId, key, mode, SIGNATURE_SENTINEL, payload]
     );
   } catch {
-    // Cache write failure is non-fatal — engine still returned the live result.
+    // non-fatal — engine still returned the live result.
   }
 }
 
 /**
- * Bust the cache for a user. Called from mutating endpoints whenever something
- * changes that should produce a fresh voice on next briefing fetch.
+ * Bust the cache for a user. Called from EVERY mutating endpoint so the
+ * next /api/briefing fetch regenerates voice with fresh tool reads.
+ *
+ * Cache-bust is the ONLY invalidation now — there's no signature/TTL
+ * safety net. Events must be exhaustive (audit P17.6).
  */
-export async function bustBriefingCache(userId: string, surface?: Surface): Promise<void> {
+export async function bustBriefingCache(userId: string, key?: CacheKey): Promise<void> {
   try {
-    if (surface) {
-      await pool.query(`DELETE FROM briefings WHERE user_id = $1 AND surface = $2`, [userId, surface]);
+    if (key) {
+      await pool.query(`DELETE FROM briefings WHERE user_id = $1 AND surface = $2`, [userId, key]);
     } else {
       await pool.query(`DELETE FROM briefings WHERE user_id = $1`, [userId]);
     }
