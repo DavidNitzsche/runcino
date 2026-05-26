@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Mint a session.
-  const userAgent = req.headers.get('user-agent') ?? null;
+  const userAgent = req.headers.get('user-agent') ?? undefined;
   const sess = await createSession(userUuid, { kind: 'apple', userAgent });
   return NextResponse.json({
     ok: true,
