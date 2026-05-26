@@ -141,20 +141,26 @@ struct NumberFace: View {
     // Change a rule here and the WHOLE face recomputes. Stop nudging.
     // ═══════════════════════════════════════════════════════════════════
 
-    /// SAFE MARGIN · empty space at BOTH the top and the bottom of the
-    /// face. Same value at both ends — strict symmetry.
-    /// · TOP: distance from screen top to top-most line's cap-top.
-    /// · BOTTOM: distance from bottom-most line's cap-bottom to screen
-    ///   bottom.
-    /// Locked at 0.050: this is the value at which a small top label
-    /// (e.g. WARMUP, REP n/m) shares a baseline with the watchOS system
-    /// clock at top-right. Don't use two separate top/bottom values —
-    /// the symmetry IS the rule (David, 2026-05-26).
-    private let TOP_MARGIN: CGFloat = 0.050
+    /// OS CLOCK BASELINE · y-fraction (of screen H) at which the watchOS
+    /// system clock's baseline sits — the cap-bottom of the digits at
+    /// top-right. Calibrated by pixel-measuring `xcrun simctl io
+    /// screenshot` against the live clock on Apple Watch Ultra 3 (49mm,
+    /// 422×514). The clock font / status-bar geometry scales similarly
+    /// on the other watch sizes (≈ ±2 px) so a single constant is fine.
+    /// Update this if Apple changes the status-bar metrics.
+    private let CLOCK_BASELINE: CGFloat = 0.1323
 
-    /// Bottom margin is identical to top margin — kept as a derived
-    /// alias so the call sites read clearly. NEVER set this to a
-    /// different value than TOP_MARGIN.
+    /// TOP MARGIN · derived. The small top label's CAP-TOP lands here so
+    /// its cap-bottom (= baseline for digits and other non-descending
+    /// glyphs) lands exactly on the OS clock baseline. NOT a free
+    /// parameter — set CLOCK_BASELINE or LABEL_FONT to change it.
+    private var TOP_MARGIN: CGFloat { CLOCK_BASELINE - LABEL_FONT * capRatio }
+
+    /// BOTTOM MARGIN · identical to TOP_MARGIN, strict symmetry. The
+    /// bottom-most line's cap-bottom is at (1 - TOP_MARGIN), so the
+    /// pixel distance from the bottom of the bottom line to the screen
+    /// bottom edge equals the pixel distance from the screen top edge
+    /// to the cap-top of the top line.
     private var BOTTOM_MARGIN: CGFloat { TOP_MARGIN }
 
     /// LINE GAP is DERIVED, not constant. Big rows expand/contract so
@@ -299,62 +305,50 @@ struct NumberFace: View {
             // these names from the centered-band model).
             let startF = firstRowTop
             let pitchF = glyphF + gap
-            // ── Locked rule: one leadF, applied identically to every
-            // element on the face. Labels share HelveticaNeue-Bold with
-            // the digits (NOT FaceLabel's system font, NOT the
-            // .tracking() spread that throws off the leading edge).
-            // Smaller text + same font + same offset = same metric
-            // origin. The font's own bearing decides what shows where;
-            // we don't fight it with per-element nudges.
+            // ── Pixel-precise positioning via cap-top alignment guides.
+            // Each text element ties its `.top` alignment to its
+            // cap-top, so `.offset(y: Y * H)` lands the cap-top exactly
+            // at Y * H. No padding/cropK fudge factor — the old
+            // negative-vertical-padding workaround under-compensated for
+            // big text (5–6 px off) and over-compensated for small text
+            // (1 px off), which is why gaps and margins drifted.
+            // Horizontal: each line's bounding-box x is `H * leadF -
+            // firstCharLSB(...)`, so visible ink edges land at the same
+            // column regardless of which character starts the row.
             ZStack(alignment: .topLeading) {
                 faceBackground
-                // Top label (or icon) — baseline-aligned with the OS clock.
-                // y: 0.067 puts text TOP at ~17pt on Ultra, baseline at
-                // ~28pt — matches the system clock's baseline (top-right).
-                // ── Rule of law: every visible left edge lands at H * leadF.
-                // Each element's bounding-box offset.x is `H * leadF -
-                // firstCharLSB(...)` so the visible ink edge ends up at
-                // exactly H * leadF regardless of which character starts
-                // the row. No per-element nudging.
                 let alignmentX = H * leadF
                 let labelSize = H * LABEL_FONT
                 if let topIcon {
                     Image(systemName: topIcon)
                         .font(.system(size: labelSize, weight: .bold))
                         .foregroundStyle(topIconColor)
-                        .padding(.vertical, -labelSize * cropK)
                         .fixedSize()
+                        .alignmentGuide(.top) { d in d[VerticalAlignment.center] - labelSize * capRatio * 0.5 }
                         .offset(x: alignmentX, y: H * topLabelTop)
                 } else if let topLabel {
                     let lsb = NumberFace.firstCharLSB(topLabel.uppercased(), fontSize: labelSize)
                     Text(topLabel.uppercased())
                         .font(.custom("HelveticaNeue-Bold", size: labelSize))
                         .foregroundStyle(topLabelColor)
-                        .padding(.vertical, -labelSize * cropK)
                         .fixedSize()
+                        .alignmentGuide(.top) { d in d[.firstTextBaseline] - labelSize * capRatio }
                         .offset(x: alignmentX - lsb, y: H * topLabelTop)
                 }
-                // Big number rows — each compensates for its own first-char LSB.
                 ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
                     let lsb = NumberFace.firstCharLSB(r.text, fontSize: F)
                     rowContent(r, F)
-                        .padding(.vertical, -F * cropK)
                         .fixedSize()
+                        .alignmentGuide(.top) { d in d[.firstTextBaseline] - F * capRatio }
                         .offset(x: alignmentX - lsb, y: H * (startF + CGFloat(i) * pitchF))
                 }
-                // Bottom label — same LSB-aligned rule as every other line.
-                // Negative vertical padding crops SwiftUI's Text line box
-                // down to the cap height, so .offset positions the visible
-                // cap top — symmetric with the top label and big rows.
-                // Suppressed when a strip is present (strip replaces the
-                // bottom symmetric region).
                 if let bottomLabel, !hasStrip {
                     let lsb = NumberFace.firstCharLSB(bottomLabel.uppercased(), fontSize: labelSize)
                     Text(bottomLabel.uppercased())
                         .font(.custom("HelveticaNeue-Bold", size: labelSize))
                         .foregroundStyle(Faff.mute)
-                        .padding(.vertical, -labelSize * cropK)
                         .fixedSize()
+                        .alignmentGuide(.top) { d in d[.firstTextBaseline] - labelSize * capRatio }
                         .offset(x: alignmentX - lsb, y: H * bottomLabelTop)
                 }
                 if let strip {

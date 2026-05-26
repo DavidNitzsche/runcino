@@ -28,6 +28,8 @@ struct SettingsSheet: View {
     @State private var crossSwim: Bool = false
     @State private var crossStrength: Bool = false
     @State private var crossOther: Bool = false
+    @State private var stravaAutoPush: Bool = false
+    @State private var phoneHrAlerts: Bool = false
 
     @State private var loading = true
     @State private var saving = false
@@ -112,6 +114,14 @@ struct SettingsSheet: View {
                     Toggle("Other",    isOn: $crossOther)
                 }
 
+                Section("Notifications + sync") {
+                    Toggle("Push runs to Strava", isOn: $stravaAutoPush)
+                    Toggle("HR ceiling alerts on phone", isOn: $phoneHrAlerts)
+                    Text("HR alerts buzz the phone during workouts when HR exceeds the prescribed ceiling. Watch already alerts; phone is a backup.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.mute)
+                }
+
                 if let error {
                     Section { Text(error).foregroundStyle(Theme.over) }
                 }
@@ -154,6 +164,8 @@ struct SettingsSheet: View {
             crossSwim = modes.contains("swim")
             crossStrength = modes.contains("strength")
             crossOther = modes.contains("other")
+            stravaAutoPush = p.strava_auto_push ?? false
+            phoneHrAlerts = p.phone_hr_alerts ?? false
         }
     }
 
@@ -181,6 +193,8 @@ struct SettingsSheet: View {
             if crossStrength { modes.append("strength") }
             if crossOther { modes.append("other") }
             profilePatch["cross_training_modes"] = modes
+            profilePatch["strava_auto_push"] = stravaAutoPush
+            profilePatch["phone_hr_alerts"] = phoneHrAlerts
 
             if !profilePatch.isEmpty {
                 try await API.updateProfile(profilePatch)

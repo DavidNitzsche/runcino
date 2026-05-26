@@ -278,4 +278,6 @@ struct ProfileFields: Decodable {
     let strava_connected_at: String?
     let health_connected_at: String?
     let onboarded_at: String?
+    let strava_auto_push: Bool?
+    let phone_hr_alerts: Bool?
 }

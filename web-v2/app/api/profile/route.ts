@@ -21,6 +21,8 @@ const ALLOWED = new Set([
   'strava_connected_at', 'health_connected_at', 'onboarded_at', 'notification_token',
   // P34 — cross-training opt-in.
   'cross_training_modes',
+  // P35 — per-user toggles.
+  'strava_auto_push', 'phone_hr_alerts',
 ]);
 
 // When LTHR is set manually, also stamp lthr_set_at + lthr_method.
