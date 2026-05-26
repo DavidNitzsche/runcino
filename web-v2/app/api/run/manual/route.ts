@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -52,9 +52,19 @@ export async function POST(req: NextRequest) {
   };
 
   try {
+    // Stable negative bigint id from client_workout_id so the INSERT
+    // satisfies NOT NULL and re-imports stay idempotent. Same scheme as
+    // /api/ingest/workout (see that file for rationale).
+    const digest = createHash('sha256').update(clientId).digest();
+    let n = 0n;
+    for (let i = 0; i < 8; i++) n = (n << 8n) | BigInt(digest[i]);
+    n = n & 0x000fffffffffffffn;
+    const stableId = (-n).toString();
+
     await pool.query(
-      `INSERT INTO strava_activities (user_uuid, data) VALUES ($1, $2)`,
-      [userId, data]
+      `INSERT INTO strava_activities (id, user_uuid, data)
+       VALUES ($1::bigint, $2, $3)`,
+      [stableId, userId, data]
     );
     // P27.3 — auto-merge: a manual entry typically backfills something
     // that wasn't captured by watch/Strava, but if it overlaps we want

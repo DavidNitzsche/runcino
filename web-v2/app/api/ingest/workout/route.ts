@@ -34,6 +34,7 @@
  * cache so the next /today render sees the new run.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
@@ -86,6 +87,12 @@ export async function POST(req: NextRequest) {
     // strava_activities doesn't have a unique key on jsonb fields, so we
     // delete-then-insert under the synthetic slug to keep at most one row
     // per client_workout_id.
+    //
+    // FIX: the `id` column is BIGINT NOT NULL with no sequence default
+    // (it's legacy: Strava activity ids landed there pre-cutover).
+    // Build a stable BIGINT id from a hash of client_workout_id so the
+    // INSERT doesn't violate NOT NULL and re-imports stay idempotent.
+    const stableId = bigIntIdFromString(body.client_workout_id);
     await pool.query(
       `DELETE FROM strava_activities
         WHERE (user_uuid = $1 OR user_uuid IS NULL)
@@ -93,9 +100,9 @@ export async function POST(req: NextRequest) {
       [userId, body.client_workout_id]
     );
     await pool.query(
-      `INSERT INTO strava_activities (user_uuid, data)
-       VALUES ($1, $2)`,
-      [userId, data]
+      `INSERT INTO strava_activities (id, user_uuid, data)
+       VALUES ($1::bigint, $2, $3)`,
+      [stableId, userId, data]
     );
 
     // P27.3 — auto-merge dupes for this date. If a hollow watch row + a
@@ -152,6 +159,25 @@ function deriveAvgPace(b: any): string | null {
   if (!b.duration_sec || !b.distance_mi) return null;
   const sPerMi = Math.round(Number(b.duration_sec) / Number(b.distance_mi));
   return formatMmSs(sPerMi);
+}
+
+/**
+ * Build a stable, negative BIGINT id from a client-supplied stable
+ * identifier (HKWorkout.uuid). We pick negative because legacy Strava
+ * activity ids are positive — keeping HK + manual ids in the negative
+ * half avoids collision risk forever.
+ *
+ * Hash the input to 8 bytes (SHA-256, lower half), interpret as signed,
+ * negate the positive sign bit. JS Number can't hold 64-bit ints
+ * losslessly past 2^53; we cap at 53 bits to stay safe, then negate.
+ */
+function bigIntIdFromString(s: string): string {
+  const digest = createHash('sha256').update(s).digest();
+  // Take first 8 bytes, mask to 52 bits (stays under Number.MAX_SAFE_INTEGER), negate.
+  let n = 0n;
+  for (let i = 0; i < 8; i++) n = (n << 8n) | BigInt(digest[i]);
+  n = n & 0x000fffffffffffffn;   // 52 bits
+  return (-n).toString();
 }
 
 /** Decode just the first lat,lng pair from a Google polyline (precision 5). */
