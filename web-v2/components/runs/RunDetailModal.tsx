@@ -12,6 +12,7 @@
 import { useState, useEffect } from 'react';
 import type { RunDetail } from '@/lib/coach/run-state';
 import { RouteSparkline } from './RouteSparkline';
+import { FormStatButton } from './FormTipModal';
 
 export function RunDetailTrigger({
   activityId,
@@ -194,19 +195,21 @@ function RunDetailBody({ d }: { d: RunDetail }) {
       )}
 
       {/* Form metrics — cadence, ground contact, stride length, vert ratio.
-          Pulled from health_samples for the run's date (Apple Watch). */}
+          Pulled from health_samples for the run's date (Apple Watch).
+          Each tile is clickable → opens a FormTipModal with definition,
+          target bands, and drills when flagged. */}
       {hasFormData(d) && (
         <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--learn)' }}>FORM · APPLE WATCH</div>
+          <div className="card-eyebrow" style={{ color: 'var(--learn)' }}>FORM · APPLE WATCH · TAP A TILE</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 10 }}>
-            {d.cadence_avg            != null && <FormStat v={String(d.cadence_avg)}                    u="cadence spm"      hint={cadenceHint(d.cadence_avg)} />}
-            {d.form.ground_contact_ms != null && <FormStat v={String(d.form.ground_contact_ms)}         u="ground contact ms" hint={gctHint(d.form.ground_contact_ms)} />}
-            {d.form.stride_length_m   != null && <FormStat v={d.form.stride_length_m.toFixed(2)}        u="stride length m"  hint="" />}
-            {d.form.vertical_oscillation_cm != null && <FormStat v={d.form.vertical_oscillation_cm.toFixed(1)} u="vert. osc. cm" hint={voHint(d.form.vertical_oscillation_cm)} />}
-            {d.form.vertical_ratio_pct != null && <FormStat v={d.form.vertical_ratio_pct.toFixed(1) + '%'} u="vert. ratio"  hint={vrHint(d.form.vertical_ratio_pct)} />}
-            {d.form.run_power_w        != null && <FormStat v={String(d.form.run_power_w)}              u="power watts"      hint="" />}
-            {d.form.spo2_pct           != null && <FormStat v={d.form.spo2_pct.toFixed(1) + '%'}        u="SpO₂"             hint="" />}
-            {d.form.respiratory_rate   != null && <FormStat v={d.form.respiratory_rate.toFixed(0)}      u="breaths/min"      hint="" />}
+            {d.cadence_avg            != null && <FormStatButton metricKey="cadence_spm"             value={String(d.cadence_avg)}                    unit=""    label="cadence spm"       hint={cadenceHint(d.cadence_avg)} />}
+            {d.form.ground_contact_ms != null && <FormStatButton metricKey="ground_contact_ms"       value={String(d.form.ground_contact_ms)}         unit=""    label="ground contact ms"  hint={gctHint(d.form.ground_contact_ms)} />}
+            {d.form.stride_length_m   != null && <FormStatButton metricKey="stride_length_m"         value={d.form.stride_length_m.toFixed(2)}        unit=""    label="stride length m"    hint="" />}
+            {d.form.vertical_oscillation_cm != null && <FormStatButton metricKey="vertical_oscillation_cm" value={d.form.vertical_oscillation_cm.toFixed(1)} unit="" label="vert. osc. cm"   hint={voHint(d.form.vertical_oscillation_cm)} />}
+            {d.form.vertical_ratio_pct != null && <FormStatButton metricKey="vertical_ratio_pct"    value={d.form.vertical_ratio_pct.toFixed(1)}     unit="%"   label="vert. ratio"        hint={vrHint(d.form.vertical_ratio_pct)} />}
+            {d.form.run_power_w        != null && <FormStatButton metricKey="run_power_w"            value={String(d.form.run_power_w)}              unit=""    label="power watts"        hint="" />}
+            {d.form.spo2_pct           != null && <FormStatButton metricKey="spo2_pct"               value={d.form.spo2_pct.toFixed(1)}              unit="%"   label="SpO₂"               hint="" />}
+            {d.form.respiratory_rate   != null && <FormStatButton metricKey="respiratory_rate"       value={d.form.respiratory_rate.toFixed(0)}      unit=""    label="breaths/min"        hint="" />}
           </div>
         </div>
       )}
