@@ -88,6 +88,12 @@ export async function writeCachedBriefing(
  *
  * Cache-bust is the ONLY invalidation now — there's no signature/TTL
  * safety net. Events must be exhaustive (audit P17.6).
+ *
+ * After busting, kicks off a BACKGROUND regeneration of the most-used
+ * surfaces (today + today:ios) so the next /today open is instant rather
+ * than a 15-20s LLM wait. Fire-and-forget — the caller (mutating endpoint)
+ * is not blocked. Failures are swallowed: the day-rollover-on-read
+ * staleness check + lazy regen on next fetch are the safety net.
  */
 export async function bustBriefingCache(userId: string, key?: CacheKey): Promise<void> {
   try {
@@ -98,5 +104,57 @@ export async function bustBriefingCache(userId: string, key?: CacheKey): Promise
     }
   } catch {
     // non-fatal
+  }
+
+  // Fire background regen. Non-blocking. The mutating endpoint already
+  // returned to the caller before this Promise even starts the LLM call.
+  void warmBriefingsAfterBust(userId);
+}
+
+/**
+ * Background warm — regenerate the surfaces the user actually opens.
+ *
+ * Today + today:ios are always warmed (every runner reads them daily).
+ * Other surfaces (training/races/etc.) are warmed only if they have a
+ * cached entry from within the last 14 days for this user — no point
+ * burning LLM cycles on surfaces the runner never visits.
+ *
+ * Concurrent regens of the same surface are fine: writeCachedBriefing
+ * does an upsert, latest-write-wins.
+ */
+async function warmBriefingsAfterBust(userId: string): Promise<void> {
+  try {
+    // Dynamic import to dodge the circular dep (engine.ts imports from cache.ts).
+    const { generateBriefing } = await import('./engine');
+
+    // Always warm today (web + iOS variant).
+    const targets: Array<{ surface: 'today' | 'training' | 'races' | 'health' | 'profile'; compact?: boolean }> = [
+      { surface: 'today' },
+      { surface: 'today', compact: true },
+    ];
+
+    // Optionally warm other surfaces if the user has touched them recently.
+    const recent = (await pool.query(
+      `SELECT DISTINCT surface FROM briefings
+        WHERE user_id = $1
+          AND generated_at >= NOW() - interval '14 days'
+          AND surface IN ('training', 'races', 'health', 'profile')`,
+      [userId]
+    ).catch(() => ({ rows: [] }))).rows;
+    for (const r of recent) {
+      const s = r.surface as 'training' | 'races' | 'health' | 'profile';
+      targets.push({ surface: s });
+    }
+
+    console.log(`[cache] warming ${targets.length} briefing(s) for ${userId}`);
+    // Fire all in parallel. Each generateBriefing call writes to cache on success.
+    await Promise.all(targets.map((t) =>
+      generateBriefing(userId, t.surface, undefined, t.compact).catch((e) => {
+        console.error(`[cache] warm failed surface=${t.surface}${t.compact ? ':ios' : ''}:`, e?.message ?? e);
+      })
+    ));
+    console.log(`[cache] warm done for ${userId}`);
+  } catch (e: any) {
+    console.error('[cache] warmBriefingsAfterBust crashed:', e?.message ?? e);
   }
 }
