@@ -11,6 +11,7 @@
 
 import { useState, useEffect } from 'react';
 import type { RunDetail } from '@/lib/coach/run-state';
+import { RouteSparkline } from './RouteSparkline';
 
 export function RunDetailTrigger({
   activityId,
@@ -183,7 +184,7 @@ function RunDetailBody({ d }: { d: RunDetail }) {
       {(d.hrZonePcts.z1 + d.hrZonePcts.z2 + d.hrZonePcts.z3 + d.hrZonePcts.z4 + d.hrZonePcts.z5) > 0 && (
         <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
           <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>
-            HR · TIME IN ZONE
+            TIME IN HR ZONE · WHERE THIS RUN LANDED
             {d.hr_zones_from_lthr?.lthr ? <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· LTHR {d.hr_zones_from_lthr.lthr}</span> : null}
           </div>
           <HRZones pcts={d.hrZonePcts} />
@@ -196,22 +197,137 @@ function RunDetailBody({ d }: { d: RunDetail }) {
               ))}
             </div>
           )}
+          <div style={{ marginTop: 10, fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>
+            {hrInterpretation(d.hrZonePcts, d.type)}
+          </div>
         </div>
       )}
 
-      {/* Route placeholder — shows when there's GPS data, even before we
-          render the actual map */}
+      {/* Form metrics — cadence, ground contact, stride length, vert ratio.
+          Pulled from health_samples for the run's date (Apple Watch). */}
+      {hasFormData(d) && (
+        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--learn)' }}>FORM · APPLE WATCH</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 10 }}>
+            {d.cadence_avg            != null && <FormStat v={String(d.cadence_avg)}                    u="cadence spm"      hint={cadenceHint(d.cadence_avg)} />}
+            {d.form.ground_contact_ms != null && <FormStat v={String(d.form.ground_contact_ms)}         u="ground contact ms" hint={gctHint(d.form.ground_contact_ms)} />}
+            {d.form.stride_length_m   != null && <FormStat v={d.form.stride_length_m.toFixed(2)}        u="stride length m"  hint="" />}
+            {d.form.vertical_oscillation_cm != null && <FormStat v={d.form.vertical_oscillation_cm.toFixed(1)} u="vert. osc. cm" hint={voHint(d.form.vertical_oscillation_cm)} />}
+            {d.form.vertical_ratio_pct != null && <FormStat v={d.form.vertical_ratio_pct.toFixed(1) + '%'} u="vert. ratio"  hint={vrHint(d.form.vertical_ratio_pct)} />}
+            {d.form.run_power_w        != null && <FormStat v={String(d.form.run_power_w)}              u="power watts"      hint="" />}
+            {d.form.spo2_pct           != null && <FormStat v={d.form.spo2_pct.toFixed(1) + '%'}        u="SpO₂"             hint="" />}
+            {d.form.respiratory_rate   != null && <FormStat v={d.form.respiratory_rate.toFixed(0)}      u="breaths/min"      hint="" />}
+          </div>
+        </div>
+      )}
+
+      {/* Route — render the actual polyline as an SVG sparkline when we
+          have it (Strava-encoded). Falls back to a stat-only note. */}
       {d.has_route && (
         <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--dist)' }}>ROUTE</div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55, marginTop: 6 }}>
-            GPS recorded {d.elev_gain_ft != null ? `with ${d.elev_gain_ft}ft of climbing` : ''}.
-            Map render lands in the next iteration.
+          <div className="card-eyebrow" style={{ color: 'var(--dist)' }}>
+            ROUTE
+            {d.elev_gain_ft != null && d.elev_gain_ft > 0 && (
+              <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· {d.elev_gain_ft}ft climbed</span>
+            )}
           </div>
+          {d.route_polyline ? (
+            <>
+              <div style={{ marginTop: 10, marginLeft: -8, marginRight: -8 }}>
+                <RouteSparkline polyline={d.route_polyline} height={220} />
+              </div>
+              <div style={{ display: 'flex', gap: 14, marginTop: 6, fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.5px' }}>
+                <span><span style={{ color: 'var(--green)' }}>●</span> start</span>
+                <span><span style={{ color: 'var(--race)' }}>●</span> finish</span>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55, marginTop: 6 }}>
+              GPS recorded but polyline not stored on this activity.
+            </div>
+          )}
         </div>
       )}
     </>
   );
+}
+
+function FormStat({ v, u, hint }: { v: string; u: string; hint: string }) {
+  return (
+    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.025)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', lineHeight: 1, letterSpacing: '0.3px' }}>{v}</div>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 9.5, color: 'var(--mute)', letterSpacing: '1.1px', textTransform: 'uppercase', marginTop: 4 }}>{u}</div>
+      {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--learn)', marginTop: 4, fontStyle: 'italic' }}>{hint}</div>}
+    </div>
+  );
+}
+
+function hasFormData(d: RunDetail): boolean {
+  const f = d.form;
+  return (d.cadence_avg ?? f.cadence_spm) != null
+    || f.ground_contact_ms != null
+    || f.stride_length_m != null
+    || f.vertical_oscillation_cm != null
+    || f.vertical_ratio_pct != null
+    || f.run_power_w != null
+    || f.respiratory_rate != null
+    || f.spo2_pct != null;
+}
+
+function cadenceHint(c: number): string {
+  if (c >= 175) return 'high — efficient turnover';
+  if (c >= 165) return 'optimal range (170-180 target)';
+  if (c >= 155) return 'fine, room to lift';
+  return 'low — try shorter, quicker steps';
+}
+
+function gctHint(ms: number): string {
+  if (ms <= 220) return 'fast — elite range';
+  if (ms <= 260) return 'good — efficient ground contact';
+  return 'longer contact — overstriding flag';
+}
+
+function voHint(cm: number): string {
+  if (cm <= 7) return 'low bounce — efficient';
+  if (cm <= 9) return 'good range';
+  return 'high bounce — energy leak';
+}
+
+function vrHint(pct: number): string {
+  if (pct <= 6.5) return 'elite efficiency';
+  if (pct <= 8.5) return 'good';
+  return 'room to reduce bounce';
+}
+
+function hrInterpretation(p: { z1: number; z2: number; z3: number; z4: number; z5: number }, runType: string | null): string {
+  const z1 = p.z1, z2 = p.z2, z3 = p.z3, z4 = p.z4, z5 = p.z5;
+  const easyZones = z1 + z2;
+  const aerobic = z2 + z3;
+  const hard = z4 + z5;
+
+  // Easy run interpretations
+  if (runType === 'easy') {
+    if (z1 >= 75) return 'Mostly Z1 recovery — true easy, maybe a touch slow. That\'s right for the day after hard work.';
+    if (easyZones >= 80) return 'Discipline win — kept it in the easy band. This is what easy is supposed to feel like.';
+    if (z3 + z4 >= 30) return 'Drifted into Z3+ for a chunk — easy days were meant to be easier. Lock effort next time.';
+    return `${easyZones}% Z1+Z2 is right where an easy run should land.`;
+  }
+  // Threshold / tempo
+  if (runType === 'threshold' || runType === 'tempo') {
+    if (z4 + z5 >= 35) return `${z4 + z5}% above LT — solid threshold work.`;
+    if (hard >= 20) return 'Partial threshold execution — reps probably needed more pace or less recovery.';
+    return 'Mostly aerobic for a quality day — check the splits, target pace may have been too soft.';
+  }
+  // Long run
+  if (runType === 'long') {
+    if (aerobic >= 70 && z4 < 10) return 'Aerobic long run — engine work without the cost. Right call.';
+    if (z3 >= 30) return 'Drift into Z3 late is normal on a long run. As long as form held.';
+    return `${aerobic}% in Z2-Z3 — that\'s a long-run profile.`;
+  }
+  // Race / generic
+  if (hard >= 40) return `${hard}% above LT — race effort or hard quality.`;
+  if (easyZones >= 70) return 'Aerobic-dominant — recovery or true easy.';
+  return `Mostly Z${z3 >= z2 ? '3' : '2'} — steady aerobic territory.`;
 }
 
 function SmallStat({ v, u }: { v: string; u: string }) {

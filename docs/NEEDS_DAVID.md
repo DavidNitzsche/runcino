@@ -27,6 +27,22 @@ I (Claude) overwrote it during P8 smoke-testing → my v1 regen.
   will become the **starting point** for v2 adaptation work —
   v2 won't replace it, it'll evolve from it.
 
+## 0.25. WEATHER ENRICHMENT — needs an API choice
+
+Run detail modal would benefit from per-run weather (temperature,
+humidity, wind, conditions). We don't have a weather provider wired
+yet. Options:
+- **Open-Meteo** (free, historical, no API key required) — easiest
+- **Visual Crossing** (free tier 1000/day, very rich historical)
+- **WeatherAPI.com** (free tier 1M/month)
+
+**Recommendation:** Open-Meteo. Free, no key, historical good to
+the hour. I can wire it for past-run lookup (by start_local + GPS
+start coords if available) on your green light. ~50 LOC + a
+nightly enrichment cron.
+
+---
+
 ## 0.5. YOUR P8 v2 ANSWERS (locked in)
 
 From `docs/plan-generation-mockup-2026-05-25.html`:

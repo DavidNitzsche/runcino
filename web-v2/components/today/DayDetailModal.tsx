@@ -56,6 +56,8 @@ export function DayDetailModal({ day, onClose }: Props) {
     : day.plannedType === 'tempo'     ? 'var(--goal)'
     : day.plannedType === 'threshold' ? 'var(--goal)'
     : day.plannedType === 'intervals' ? 'var(--goal)'
+    : day.plannedType === 'easy'      ? 'var(--learn)'  // distinct from long/quality/rest
+    : day.plannedType === 'shakeout'  ? 'var(--learn)'
     :                                   'var(--mute)';
   const typeLabel = ran     ? 'COMPLETED'
     : isRest                ? 'REST DAY'

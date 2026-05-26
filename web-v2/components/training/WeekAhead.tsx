@@ -21,16 +21,19 @@ function DayCell({ day, today, planId }: { day: PlanWeek['days'][number]; today:
   const isQuality = QUALITY.has(day.type);
   const isLong = day.type === 'long';
   const isRace = day.type === 'race';
+  const isEasy = day.type === 'easy' || day.type === 'shakeout';
   const ran = day.doneMi > 0 && day.activityId;
   const tgt = targetFor(day.type, day.mi, day.label);
 
   const typLabel = isRest && !ran ? 'REST'
     : (day.label ? day.label.toUpperCase() : day.type.toUpperCase());
   const dowName = DOW_NAMES[day.dow] ?? '';
+  // EASY now has its own color (purple) instead of falling through to dim mute.
   const typColor = isToday ? 'var(--green)'
     : isQuality ? 'var(--goal)'
     : isLong    ? 'var(--dist)'
     : isRace    ? 'var(--race)'
+    : isEasy    ? 'var(--learn)'
                 : 'var(--mute)';
 
   const tile = (

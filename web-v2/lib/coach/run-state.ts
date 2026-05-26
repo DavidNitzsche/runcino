@@ -17,6 +17,19 @@ export interface RunSplit {
   elev_change_ft: number | null;
 }
 
+export interface RunForm {
+  // Apple Watch form-metric set, cross-referenced from health_samples for
+  // the run's date. Cadence here can override the activity's stale value.
+  cadence_spm: number | null;
+  ground_contact_ms: number | null;
+  stride_length_m: number | null;
+  vertical_oscillation_cm: number | null;
+  vertical_ratio_pct: number | null;
+  run_power_w: number | null;
+  respiratory_rate: number | null;
+  spo2_pct: number | null;
+}
+
 export interface RunDetail {
   id: string;
   date: string;
@@ -41,9 +54,11 @@ export interface RunDetail {
   kudos: number | null;
 
   has_route: boolean;
+  route_polyline: string | null;  // Strava-encoded polyline if available
   splits: RunSplit[];
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
   hr_zones_from_lthr: { lthr: number | null; ranges: { label: string; lower: number; upper: number }[] } | null;
+  form: RunForm;                  // Apple Watch form metrics for that day
 }
 
 function fmtPace(s: number | null): string | null {
@@ -140,9 +155,15 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     ranges: zoneTable.zones.map((z) => ({ label: z.shortLabel, lower: z.lower, upper: z.upper })),
   } : null;
 
+  // Cross-reference health_samples for the day to enrich form metrics.
+  // Watch runs ship lean payloads; HealthKit holds cadence, ground contact,
+  // vertical oscillation/ratio, stride length, run power, etc.
+  const day = r.date || (r.startLocal ?? '').slice(0, 10);
+  const form = await loadFormMetrics(userId, day);
+
   return {
     id: r.id ?? r.activityId ?? activityId,
-    date: r.date || (r.startLocal ?? '').slice(0, 10),
+    date: day,
     start_local: r.startLocal ?? null,
     name: r.name ?? null,
     source: r.source ?? 'strava',
@@ -156,16 +177,56 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
 
     hr_avg: Number(r.avgHr) || null,
     hr_max: Number(r.maxHr) || null,
-    cadence_avg: Number(r.avgCadence) || null,
+    // Prefer activity-supplied cadence; fall back to the day's HealthKit cadence.
+    cadence_avg: Number(r.avgCadence) || form.cadence_spm,
     elev_gain_ft: Number(r.elevGainFt) || null,
     temp_f: Number(r.tempF) || null,
     suffer_score: Number(r.sufferScore) || null,
     kudos: Number(r.kudosCount) || null,
 
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
+    route_polyline: r.summaryPolyline ?? r.routePolyline ?? null,
     splits,
     hrZonePcts,
     hr_zones_from_lthr,
+    form,
+  };
+}
+
+async function loadFormMetrics(userId: string, date: string | null): Promise<RunForm> {
+  const empty: RunForm = {
+    cadence_spm: null, ground_contact_ms: null, stride_length_m: null,
+    vertical_oscillation_cm: null, vertical_ratio_pct: null,
+    run_power_w: null, respiratory_rate: null, spo2_pct: null,
+  };
+  if (!date) return empty;
+
+  const rows = (await pool.query(
+    `SELECT sample_type, AVG(value)::numeric AS avg
+       FROM health_samples
+      WHERE user_id = $1
+        AND sample_date = $2::date
+        AND sample_type IN (
+          'cadence','ground_contact_time','stride_length',
+          'vertical_oscillation','vertical_ratio','run_power',
+          'respiratory_rate','spo2'
+        )
+      GROUP BY sample_type`,
+    [userId, date]
+  ).catch(() => ({ rows: [] }))).rows;
+
+  const byType = new Map<string, number>();
+  for (const r of rows) byType.set(r.sample_type, Number(r.avg));
+
+  return {
+    cadence_spm:             byType.has('cadence')              ? Math.round(byType.get('cadence')!)                 : null,
+    ground_contact_ms:       byType.has('ground_contact_time')  ? Math.round(byType.get('ground_contact_time')!)     : null,
+    stride_length_m:         byType.has('stride_length')        ? +(byType.get('stride_length')!).toFixed(2)         : null,
+    vertical_oscillation_cm: byType.has('vertical_oscillation') ? +(byType.get('vertical_oscillation')!).toFixed(1)  : null,
+    vertical_ratio_pct:      byType.has('vertical_ratio')       ? +(byType.get('vertical_ratio')!).toFixed(1)        : null,
+    run_power_w:             byType.has('run_power')            ? Math.round(byType.get('run_power')!)               : null,
+    respiratory_rate:        byType.has('respiratory_rate')     ? +(byType.get('respiratory_rate')!).toFixed(1)      : null,
+    spo2_pct:                byType.has('spo2')                 ? +(byType.get('spo2')!).toFixed(1)                  : null,
   };
 }
 

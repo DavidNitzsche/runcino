@@ -62,10 +62,15 @@ function DayTile({ day, onClick }: { day: GlanceWeekDay; onClick: () => void }) 
     : isUnplanned ? '—'
     : (day.plannedLabel ?? day.plannedType).toUpperCase().slice(0, 10);
 
+  // EASY days used to fall through to a dim gray — they looked hidden
+  // against LONG (blue) and QUALITY (gold). Now EASY = purple (learn),
+  // distinct from every other workout type.
+  const isEasy = day.plannedType === 'easy' || day.plannedType === 'shakeout';
   const dotColor = ran ? 'var(--green)'
     : isRace      ? 'var(--race)'
     : isQuality   ? 'var(--goal)'
     : isLong      ? 'var(--dist)'
+    : isEasy      ? 'var(--learn)'
     : isRest      ? 'transparent'
     :               'rgba(255,255,255,0.20)';
 
