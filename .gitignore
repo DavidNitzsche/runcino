@@ -30,3 +30,6 @@ npm-debug.log*
 
 # App Store Connect upload secrets (issuer id + key path)
 native/.asc.env
+
+# Cross-agent ship lock (atomic mkdir; ship-testflight*.sh)
+.asc.shipping.lock/

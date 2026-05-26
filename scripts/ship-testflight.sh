@@ -20,6 +20,48 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$ROOT/legacy/native/.asc.env"
 BUILD_FILE="$ROOT/legacy/native/.asc.build"
+LOCK_DIR="$ROOT/.asc.shipping.lock"  # shared with ship-testflight-v2.sh
+STALE_LOCK_SEC=$((45 * 60))
+
+# Cross-agent ship lock — same convention as ship-testflight-v2.sh.
+# See that file for the full rationale. tl;dr: mkdir is atomic; counter
+# is read+bumped inside the lock so no two shipments collide on a build
+# number; trap EXIT/INT/TERM releases the lock.
+acquire_lock() {
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    :
+  else
+    if [ -f "$LOCK_DIR/meta" ]; then
+      local held_at agent_id age
+      held_at=$(awk -F= '/^held_at=/{print $2}' "$LOCK_DIR/meta" 2>/dev/null || echo "")
+      agent_id=$(awk -F= '/^agent_id=/{print $2}' "$LOCK_DIR/meta" 2>/dev/null || echo "")
+      age=$(( $(date +%s) - $(date -j -f "%Y-%m-%dT%H:%M:%S%z" "${held_at%%Z}+0000" "+%s" 2>/dev/null || echo 0) ))
+      if [ "$age" -gt "$STALE_LOCK_SEC" ] && [ "$age" -lt 99999999 ]; then
+        echo "→ stale lock from $agent_id ($((age/60)) min ago) — clearing"
+        rm -rf "$LOCK_DIR"
+        mkdir "$LOCK_DIR"
+      else
+        echo "ERROR: another ship in progress (lock $LOCK_DIR)" >&2
+        echo "  Held since: $held_at by $agent_id" >&2
+        echo "  If sure they died (>45 min): rm -rf $LOCK_DIR" >&2
+        exit 2
+      fi
+    else
+      echo "ERROR: $LOCK_DIR exists w/o metadata — manual cleanup needed" >&2
+      exit 2
+    fi
+  fi
+  {
+    echo "held_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "agent_id=${AGENT_ID:-$(whoami)@$(hostname -s)}"
+    echo "pid=$$"
+    echo "script=$0"
+    echo "git_commit=$(cd "$ROOT" && git rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "git_branch=$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  } > "$LOCK_DIR/meta"
+  trap 'rm -rf "$LOCK_DIR"' EXIT INT TERM
+  echo "→ acquired ship lock: $LOCK_DIR"
+}
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "ERROR: missing $ENV_FILE" >&2
@@ -33,7 +75,20 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-BUILD="${1:-$(cat "$BUILD_FILE" 2>/dev/null || echo 1)}"
+acquire_lock
+
+# Reserve build number INSIDE the lock so concurrent shippers can't collide.
+if [ -n "${1:-}" ]; then
+  BUILD="$1"
+  CURRENT_NEXT=$(cat "$BUILD_FILE" 2>/dev/null || echo 1)
+  if [ "$BUILD" -ge "$CURRENT_NEXT" ]; then
+    echo "$((BUILD + 1))" > "$BUILD_FILE"
+  fi
+else
+  BUILD=$(cat "$BUILD_FILE" 2>/dev/null || echo 1)
+  echo "$((BUILD + 1))" > "$BUILD_FILE"
+fi
+echo "→ reserved build $BUILD (next available: $(cat "$BUILD_FILE"))"
 echo "→ Shipping Faff build $BUILD to TestFlight (team $ASC_TEAM_ID)…"
 
 rm -rf /tmp/Faff.xcarchive /tmp/FaffExport
@@ -66,8 +121,9 @@ echo "→ Uploading to TestFlight…"
 xcrun altool --upload-app -f /tmp/FaffExport/Faff.ipa -t ios \
   --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 
-echo "$((BUILD + 1))" > "$BUILD_FILE"
-echo "✓ Uploaded build $BUILD. legacy/native/.asc.build bumped to $((BUILD + 1)) — commit it."
+# Counter was reserved+bumped inside the lock at script start. File now
+# holds the NEXT available number. Commit it.
+echo "✓ Uploaded build $BUILD. Counter is at $(cat "$BUILD_FILE") — commit asc.build."
 
 # Wait for processing, then clear export compliance + distribute to the
 # internal beta group so it's actually installable (not just "uploaded").
