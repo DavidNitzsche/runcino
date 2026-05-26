@@ -144,7 +144,6 @@ final class HealthKitImporter: ObservableObject {
             }
         }
 
-        let anyOk = workoutOk + sampleOk
         let anyFail = workoutFail + sampleFail
         status = anyFail == 0 ? .done : .error
         lastMessage = "\(workoutOk) runs · \(sampleOk) vitals" +
@@ -564,8 +563,11 @@ final class HealthKitImporter: ObservableObject {
 
 /// HKWorkoutRouteQuery batches CLLocations across multiple callbacks. Box
 /// accumulates them; HK calls the handler serially so unchecked-Sendable is
-/// safe here.
+/// safe here. `nonisolated init` lets us instantiate from non-MainActor
+/// contexts (the workout-route worker is nonisolated; project default is
+/// MainActor isolation).
 private final class RouteBox: @unchecked Sendable {
     var locs: [CLLocation] = []
     var done = false
+    nonisolated init() {}
 }

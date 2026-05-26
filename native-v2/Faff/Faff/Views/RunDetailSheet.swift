@@ -66,37 +66,27 @@ struct RunDetailSheet: View {
 
     // MARK: - Stat row (distance · time · pace · HR · cadence · elev)
 
+    private struct StatKV { let key: String; let value: String }
+
+    private func buildStats(_ d: RunDetail) -> [StatKV] {
+        var out: [StatKV] = []
+        out.append(.init(key: "DIST", value: String(format: "%.2f mi", d.distance_mi)))
+        out.append(.init(key: "TIME", value: d.time_moving ?? "—"))
+        out.append(.init(key: "PACE", value: d.pace ?? "—"))
+        out.append(.init(key: "HR AVG", value: d.hr_avg.map { "\($0) bpm" } ?? "—"))
+        out.append(.init(key: "HR MAX", value: d.hr_max.map { "\($0) bpm" } ?? "—"))
+        out.append(.init(key: "CAD", value: d.cadence_avg.map { String($0) } ?? "—"))
+        out.append(.init(key: "ELEV", value: d.elev_gain_ft.map { "\($0) ft" } ?? "—"))
+        out.append(.init(key: "TEMP", value: d.temp_f.map { String(format: "%.0f°F", $0) } ?? "—"))
+        return out
+    }
+
     private func statRow(_ d: RunDetail) -> some View {
-        let cols = [
-            ("DIST", String(format: "%.2f mi", d.distance_mi)),
-            ("TIME", d.time_moving ?? "—"),
-            ("PACE", d.pace ?? "—"),
-            ("HR AVG", d.hr_avg.map { "\($0) bpm" } ?? "—"),
-            ("HR MAX", d.hr_max.map { "\($0) bpm" } ?? "—"),
-            ("CAD",  d.cadence_avg.map { "\($0)" } ?? "—"),
-            ("ELEV", d.elev_gain_ft.map { "\($0) ft" } ?? "—"),
-            ("TEMP", d.temp_f.map { String(format: "%.0f°F", $0) } ?? "—"),
-        ]
-        let rows = stride(from: 0, to: cols.count, by: 4).map { i in
-            Array(cols[i..<min(i+4, cols.count)])
-        }
+        let stats = buildStats(d)
         return VStack(alignment: .leading, spacing: 14) {
-            ForEach(0..<rows.count, id: \.self) { ri in
-                HStack(spacing: 14) {
-                    ForEach(0..<rows[ri].count, id: \.self) { ci in
-                        let (k, v) = rows[ri][ci]
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(k).font(.body(9, weight: .bold)).tracking(1.2).foregroundStyle(Theme.mute)
-                            Text(v).font(.body(14, weight: .semibold)).foregroundStyle(Theme.ink)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if rows[ri].count < 4 {
-                        ForEach(0..<(4 - rows[ri].count), id: \.self) { _ in
-                            Color.clear.frame(maxWidth: .infinity)
-                        }
-                    }
-                }
+            statRowSlice(Array(stats.prefix(4)))
+            if stats.count > 4 {
+                statRowSlice(Array(stats.suffix(from: 4)))
             }
         }
         .padding(16)
@@ -104,6 +94,25 @@ struct RunDetailSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
         .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
         .padding(.horizontal, 24)
+    }
+
+    private func statRowSlice(_ stats: [StatKV]) -> some View {
+        HStack(spacing: 14) {
+            ForEach(0..<stats.count, id: \.self) { i in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(stats[i].key)
+                        .font(.body(9, weight: .bold)).tracking(1.2)
+                        .foregroundStyle(Theme.mute)
+                    Text(stats[i].value)
+                        .font(.body(14, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ForEach(0..<max(0, 4 - stats.count), id: \.self) { _ in
+                Color.clear.frame(maxWidth: .infinity)
+            }
+        }
     }
 
     // MARK: - Splits
