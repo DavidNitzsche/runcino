@@ -74,6 +74,13 @@ export async function POST(req: NextRequest) {
     avgHr: body.avg_hr_bpm ?? null,
     maxHr: body.max_hr_bpm ?? null,
     avgCadence: body.avg_cadence_spm ?? null,
+    // #180 — running form metrics direct from HK. avg_power_w + avg_vert_osc_cm
+    // are what the coach's getRuns surface reads; the rest are stored for the
+    // run detail modal's FORM tile.
+    avgPowerW: body.avg_power_w ?? null,
+    avgVertOscCm: body.avg_vert_osc_cm ?? null,
+    avgStrideLengthM: body.avg_stride_length_m ?? null,
+    avgGctMs: body.avg_gct_ms ?? null,
     elevGainFt: body.elev_gain_ft ?? null,
     tempF: body.temp_f ?? null,
     splits: Array.isArray(body.splits) ? body.splits : [],

@@ -228,8 +228,32 @@ final class HealthKitImporter: ObservableObject {
             let mins = w.duration / 60.0
             if mins > 0 { payload["avg_cadence_spm"] = Int((steps / mins).rounded()) }
         }
-        // Active energy → just for context; backend doesn't store it.
-        // Elev gain comes from route + locations; we'll add it in route handling.
+
+        // #180 — running form metrics from HealthKit. When a Faff watch
+        // session glitches and only the HKWorkout shell exists, these
+        // averages still ship so the coach reads non-null avgPowerW +
+        // avgVertOscCm via getRuns — no manual patch needed.
+        //
+        // HKWorkout.statistics() with .discreteAverage gives the workout-
+        // wide mean, computed over the per-sample series HealthKit
+        // collected during the run. Units pulled straight from HKUnit;
+        // server expects floats.
+        let wattsUnit = HKUnit.watt()
+        let cmUnit    = HKUnit.meterUnit(with: .centi)
+        let mUnit     = HKUnit.meter()
+        let msUnit    = HKUnit.secondUnit(with: .milli)
+        if let pw = await statAvg(workout: w, type: HKQuantityType(.runningPower), unit: wattsUnit) {
+            payload["avg_power_w"] = (pw * 10).rounded() / 10
+        }
+        if let vo = await statAvg(workout: w, type: HKQuantityType(.runningVerticalOscillation), unit: cmUnit) {
+            payload["avg_vert_osc_cm"] = (vo * 10).rounded() / 10
+        }
+        if let sl = await statAvg(workout: w, type: HKQuantityType(.runningStrideLength), unit: mUnit) {
+            payload["avg_stride_length_m"] = (sl * 100).rounded() / 100
+        }
+        if let gct = await statAvg(workout: w, type: HKQuantityType(.runningGroundContactTime), unit: msUnit) {
+            payload["avg_gct_ms"] = Int(gct.rounded())
+        }
 
         // Per-mile splits from HKWorkoutRoute (if present). Enriches each
         // split with HR + cadence by querying HKQuantitySamples in the
@@ -257,6 +281,31 @@ final class HealthKitImporter: ObservableObject {
             if let poly = splits.polyline { payload["route_polyline"] = poly }
         }
         return payload
+    }
+
+    /// Average of any quantity type across a whole HKWorkout.
+    /// #180 — used to pull running power, vertical oscillation, stride
+    /// length, ground contact time. Falls through to nil when HealthKit
+    /// hasn't collected the metric (older watch, third-party recorder).
+    private nonisolated func statAvg(workout: HKWorkout, type: HKQuantityType, unit: HKUnit) async -> Double? {
+        // Some metrics aren't in HKWorkout.statistics() — query the raw
+        // samples filtered to the workout's time window. Same predicate
+        // shape HealthKit recommends for cross-referencing.
+        let pred = HKQuery.predicateForSamples(
+            withStart: workout.startDate,
+            end: workout.endDate,
+            options: .strictStartDate
+        )
+        return await withCheckedContinuation { (cont: CheckedContinuation<Double?, Never>) in
+            let q = HKStatisticsQuery(
+                quantityType: type,
+                quantitySamplePredicate: pred,
+                options: .discreteAverage
+            ) { _, stats, _ in
+                cont.resume(returning: stats?.averageQuantity()?.doubleValue(for: unit))
+            }
+            store.execute(q)
+        }
     }
 
     /// HR average across a time window — used to fill per-split HR

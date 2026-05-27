@@ -386,6 +386,8 @@ async function getRuns(userId: string, input: { daysBack: number; limit?: number
         avgCadence: d.avgCadence ?? d.cadence ?? null,
         avgPowerW: d.avgPowerW ?? null,           // running power (HK)
         avgVertOscCm: d.avgVertOscCm ?? null,     // vertical oscillation (HK)
+        avgStrideLengthM: d.avgStrideLengthM ?? null,  // stride length (HK)
+        avgGctMs: d.avgGctMs ?? null,             // ground contact time (HK)
         elevGainFt: d.elevGainFt ?? null,
         movingTime: d.timeMoving ?? d.movingTime ?? null,
         type: d.type ?? null,
