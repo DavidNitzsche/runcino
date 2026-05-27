@@ -506,28 +506,24 @@ struct FuelFace: View {
     let index: Int      // 1-based gel number
     let total: Int      // total gels in this run
     var body: some View {
-        Screen(background: wash(0x3A2B08)) {
-            GeometryReader { geo in
-                let h = geo.size.height
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    Text("GEL")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.34))
-                        .foregroundStyle(Faff.goal)
-                        .padding(.vertical, -h * 0.34 * 0.22)
-                    Text("\(index) of \(total)")
-                        .font(.custom("HelveticaNeue-Bold", size: h * 0.22))
-                        .foregroundStyle(Faff.goal)
-                        .padding(.vertical, -h * 0.22 * 0.22)
-                        .padding(.top, h * 0.025)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.compact.down")
-                        .font(.system(size: h * 0.085, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xCFD2D8).opacity(0.55))
-                        .padding(.bottom, h * 0.035)
-                        .allowsHitTesting(false)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        // Converted to NumberFace: top tag "FUEL" rides the OS clock
+        // baseline, single big "N OF M" row beneath. Amber wash + a
+        // dismiss chevron overlay flag this as a "swipe down to ack"
+        // persistent takeover.
+        GeometryReader { geo in
+            let h = geo.size.height
+            ZStack(alignment: .bottom) {
+                NumberFace(
+                    rows: [NumRow("\(index) OF \(total)", .goal)],
+                    topLabel: "FUEL",
+                    topLabelColor: Faff.goal,
+                    faceBackground: Color(hex: 0x3A2B08)
+                )
+                Image(systemName: "chevron.compact.down")
+                    .font(.system(size: h * 0.085, weight: .bold))
+                    .foregroundStyle(Color(hex: 0xCFD2D8).opacity(0.55))
+                    .padding(.bottom, h * 0.035)
+                    .allowsHitTesting(false)
             }
         }
     }
@@ -649,72 +645,44 @@ struct LobbyFace: View {
     var onStart: () -> Void = {}
 
     var body: some View {
-        Screen {
+        // Converted to NumberFace: workout-name tag rides the OS clock
+        // baseline, three big data rows below (distance · pace · time),
+        // START button overlays the bottom reservation slot.
+        //
+        // `paceRange` is rendered as a small bottom-label subtitle when
+        // present (e.g. "8:29-8:59" for easy runs with a tolerance band).
+        // Removes the old VStack+Spacer cascade for the strict locked
+        // grammar.
+        ZStack(alignment: .bottom) {
+            NumberFace(
+                rows: [
+                    NumRow(distance, .dist),
+                    NumRow(pace,     .live),
+                    NumRow(time,     .neutral, icon: showTimeIcon ? "clock" : nil)
+                ],
+                topLabel: name.uppercased(),
+                bottomLabel: paceRange,
+                bottomReservation: 0.20    // START button area
+            )
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(alignment: .leading, spacing: 0) {
-                    // Tag — workout name (small, muted, top-left). Baseline-
-                    // aligned with the OS clock via topTagInset.
-                    FaceLabel(text: name, color: Faff.mute, size: h * 0.06)
-                        .topTagInset(h)
-                    Spacer(minLength: 0)
-                    // Three data rows, equal-sized. Locked colour grammar:
-                    // distance always blue, pace always green-when-on-target,
-                    // time/duration neutral white. No labels — position +
-                    // colour carry meaning, same as the in-run faces.
-                    BigValue(text: distance, role: .dist,    size: h * 0.19)
-                    Spacer(minLength: 0)
-                    BigValue(text: pace,     role: .live,    size: h * 0.19)
-                    // Pace range subtitle — only renders for runs with a
-                    // tolerance band. Sits in the natural gap between pace
-                    // and time rows so the 3-big-number cadence isn't broken.
-                    if let paceRange {
-                        Text(paceRange)
-                            .font(.custom("HelveticaNeue-Bold", size: h * 0.050))
-                            .tracking(0.8)
-                            .foregroundStyle(Faff.mute)
-                            .padding(.top, h * 0.005)
+                Button(action: onStart) {
+                    HStack(spacing: h * 0.030) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: h * 0.055, weight: .bold))
+                        Text("START")
+                            .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                            .tracking(2)
                     }
-                    Spacer(minLength: 0)
-                    // Time row — number + small clock icon. The bare integer
-                    // "61" is ambiguous on its own (could be HR, calories,
-                    // anything); the clock glyph identifies it as a duration.
-                    // Matches the in-run pattern: HR has ♥, cadence has 🏃.
-                    // Races (h:mm-formatted goal) can opt out by passing
-                    // `showTimeIcon: false`. Icon is vertically centered on
-                    // the digit row — baseline-align made the clock sit on
-                    // the digit's baseline, which read as "dropped low."
-                    HStack(alignment: .center, spacing: h * 0.030) {
-                        Text(time)
-                            .font(.custom("HelveticaNeue-Bold", size: h * 0.19))
-                            .foregroundStyle(Faff.ink)
-                            .padding(.vertical, -h * 0.19 * 0.22)
-                        if showTimeIcon {
-                            Image(systemName: "clock")
-                                .font(.system(size: h * 0.08, weight: .bold))
-                                .foregroundStyle(Faff.mute)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Spacer(minLength: 0)
-                    // START — the only action on the screen.
-                    Button(action: onStart) {
-                        HStack(spacing: h * 0.035) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: h * 0.065, weight: .bold))
-                            Text("START")
-                                .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
-                                .tracking(2)
-                        }
-                        .foregroundStyle(Color(hex: 0x06210C))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, h * 0.030)
-                        .background(Capsule().fill(Faff.live))
-                    }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(Color(hex: 0x06210C))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, h * 0.022)
+                    .background(Capsule().fill(Faff.live))
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, h * 0.075)
-                .padding(.bottom, h * 0.085)         // clear bottom bezel curve
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, h * 0.020)
             }
         }
     }
@@ -732,32 +700,35 @@ struct CompleteFace: View {
     let elapsed: String     // "1:24"
     var onDone: () -> Void = {}
     var body: some View {
-        Screen(background: radial(0x0C2A14)) {
+        // Converted to NumberFace: workout-type tag rides the OS clock
+        // baseline (green for completion), three big data rows flex
+        // vertically below it. Done button overlays at the bottom; the
+        // big rows reserve clearance for it via the strip slot.
+        ZStack(alignment: .bottom) {
+            NumberFace(
+                rows: [
+                    NumRow(pace,     .live),
+                    NumRow(distance, .dist),
+                    NumRow(elapsed,  .neutral)
+                ],
+                topLabel: label.uppercased(),
+                topLabelColor: Faff.live,
+                bottomReservation: 0.20,   // Done button area
+                faceBackground: Color(hex: 0x0C2A14)
+            )
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(alignment: .leading, spacing: 0) {
-                    // Type label at the top, baseline-aligned with the OS
-                    // clock (via topTagInset, not centred with the values).
-                    FaceLabel(text: label, color: Faff.live, size: h * 0.06)
-                        .topTagInset(h)
-                    // Three big rows centred in whatever's left.
-                    VStack(alignment: .leading, spacing: h * 0.012) {
-                        BigValue(text: pace,     role: .live,    size: h * 0.18)
-                        BigValue(text: distance, role: .dist,    size: h * 0.18)
-                        BigValue(text: elapsed,  role: .neutral, size: h * 0.18)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    Button(action: onDone) {
-                        Text("Done")
-                            .font(.custom("HelveticaNeue-Bold", size: h * 0.12))
-                            .foregroundStyle(Color(hex: 0x06210C))
-                            .frame(maxWidth: .infinity).padding(.vertical, h * 0.022)
-                            .background(Capsule().fill(Faff.live))
-                    }
-                    .buttonStyle(.plain)
+                Button(action: onDone) {
+                    Text("Done")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                        .foregroundStyle(Color(hex: 0x06210C))
+                        .frame(maxWidth: .infinity).padding(.vertical, h * 0.016)
+                        .background(Capsule().fill(Faff.live))
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, h * 0.075)
-                .padding(.bottom, h * 0.085)         // clear bottom bezel curve
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, h * 0.020)
             }
         }
     }

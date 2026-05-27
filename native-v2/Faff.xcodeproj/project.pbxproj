@@ -29,6 +29,7 @@
 		6A351129DEF28BDCC340851C /* BebasNeue-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */; };
 		78BE7ECCED15871BBF72C293 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9677E0A1ECD5D37DF62A4A2D /* LogView.swift */; };
 		7A0F250BA4DA7F45225E8030 /* Races.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174FE8C6F00184359AC974B6 /* Races.swift */; };
+		7BC2FF48DEFE1F45B1C0CE54 /* OnboardingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5D5ED665838309219AD56F /* OnboardingSheet.swift */; };
 		82E76F98D8A2E62E46456CDB /* Faces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7666ED48810586C430FE7E27 /* Faces.swift */; };
 		831522736DD104E914590A01 /* CoachBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03B7740393796CCA0A47FB2D /* CoachBlock.swift */; };
 		83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600BF38DD79CB8A08592B03 /* Theme.swift */; };
@@ -54,11 +55,14 @@
 		C5A08D2FCA35C23EFDCDE646 /* Inter-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 351D312A1924397E8D738EDB /* Inter-Bold.ttf */; };
 		CBF05C82C08D2CAD384C3008 /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A82679266351BEBAFB330F1 /* ActiveWorkoutView.swift */; };
 		CC79EC5599C304CD302E7F20 /* WorkoutTodayCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A75240B39D24E8190EC4C880 /* WorkoutTodayCard.swift */; };
+		D4E3F4875BAFEC6F6D5FDCC7 /* HRAlerter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EABD5D3321534861E82F02 /* HRAlerter.swift */; };
 		D908A1389B777A23A0CA7339 /* TipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C00B92B3DBCA7E7A9A07AC4 /* TipsView.swift */; };
 		DB53ACA1DBB39F46EB32303C /* Oswald-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0CDBF2DFC432A591DA62EDEF /* Oswald-SemiBold.ttf */; };
+		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
 		E74344DC5CD6D34D4FEF1A80 /* RacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 266E02CD612D7BE0F5CEB511 /* RacesView.swift */; };
+		EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */; };
 		ED3DBAEF3FFB60390FE0317B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */; };
 		EF763AF01134F55FCCAA076C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B7BC29B2BF1F273F9E653AEB /* Assets.xcassets */; };
 		F10578E3E4954277E122B955 /* RaceDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 298DAD36E044D8E8C6B60826 /* RaceDetailSheet.swift */; };
@@ -118,6 +122,7 @@
 		3C2B62D9179AAC7D41426156 /* FaffApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffApp.swift; sourceTree = "<group>"; };
 		47B01231CF6EA2F9487242FC /* WorkoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngine.swift; sourceTree = "<group>"; };
 		48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
+		4A5D5ED665838309219AD56F /* OnboardingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSheet.swift; sourceTree = "<group>"; };
 		4E27550579AE4BDFA95531DD /* Fonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fonts.swift; sourceTree = "<group>"; };
 		543E63FDFDB141572ACDDD5A /* RunDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDetailSheet.swift; sourceTree = "<group>"; };
 		590886F21D4DD966A37DE610 /* ReadinessGlanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessGlanceView.swift; sourceTree = "<group>"; };
@@ -131,6 +136,7 @@
 		79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "FaffWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		79F2EC545B990808978B44F0 /* WatchFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFixtures.swift; sourceTree = "<group>"; };
 		7AB076FD4BB8D790F2DB9B79 /* FaceKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceKit.swift; sourceTree = "<group>"; };
+		80D79010E6307A7B819FD164 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		83A717EF5F371482C8448495 /* LearnModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnModal.swift; sourceTree = "<group>"; };
 		87DEABD97368BE1C69024791 /* ChimePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChimePlayer.swift; sourceTree = "<group>"; };
 		8B2D7420891F1F0024E3D933 /* PhoneSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSync.swift; sourceTree = "<group>"; };
@@ -143,10 +149,12 @@
 		9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
 		A75240B39D24E8190EC4C880 /* WorkoutTodayCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTodayCard.swift; sourceTree = "<group>"; };
+		B4EABD5D3321534861E82F02 /* HRAlerter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRAlerter.swift; sourceTree = "<group>"; };
 		B6BF22DF1BD412FB1CA83446 /* Faff.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Faff.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7BC29B2BF1F273F9E653AEB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BFA85E15978E6315D144D85E /* MIGRATION_PLAN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MIGRATION_PLAN.md; sourceTree = "<group>"; };
 		C1D23DD51213DA16F555FCAA /* ResponsiveFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponsiveFace.swift; sourceTree = "<group>"; };
+		C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInWithAppleView.swift; sourceTree = "<group>"; };
 		C81CA1D7127B12E871854210 /* TrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingView.swift; sourceTree = "<group>"; };
 		CD71B88D7D0751ABFACD1479 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
@@ -180,6 +188,7 @@
 				FBCEB932B2D6CD7DB54198CE /* Cards.swift */,
 				03B7740393796CCA0A47FB2D /* CoachBlock.swift */,
 				83A717EF5F371482C8448495 /* LearnModal.swift */,
+				C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */,
 				2C3A0E7CA5A4C1C815A9A537 /* TopicRenderer.swift */,
 				6BC6A9D72C1DC3E28C1C3B43 /* WeekStripView.swift */,
 				09428CF254263C8C9CBEF5F4 /* WorkoutDetailModal.swift */,
@@ -249,6 +258,7 @@
 				A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */,
 				9677E0A1ECD5D37DF62A4A2D /* LogView.swift */,
 				9B93FB86D5FABEE9E86847A5 /* ManualRunSheet.swift */,
+				4A5D5ED665838309219AD56F /* OnboardingSheet.swift */,
 				F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */,
 				298DAD36E044D8E8C6B60826 /* RaceDetailSheet.swift */,
 				266E02CD612D7BE0F5CEB511 /* RacesView.swift */,
@@ -279,8 +289,10 @@
 				3C2B62D9179AAC7D41426156 /* FaffApp.swift */,
 				4E27550579AE4BDFA95531DD /* Fonts.swift */,
 				6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */,
+				B4EABD5D3321534861E82F02 /* HRAlerter.swift */,
 				0743519D766EECA60297B74F /* Info.plist */,
 				2600BF38DD79CB8A08592B03 /* Theme.swift */,
+				80D79010E6307A7B819FD164 /* TokenStore.swift */,
 				5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */,
 				88951A9181D51E114B2B4F0F /* Components */,
 				573E715F6A22233F18DAF594 /* Models */,
@@ -442,11 +454,13 @@
 				831522736DD104E914590A01 /* CoachBlock.swift in Sources */,
 				30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */,
 				661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */,
+				D4E3F4875BAFEC6F6D5FDCC7 /* HRAlerter.swift in Sources */,
 				ACA6645F1B466A2A24E43209 /* HealthKitImporter.swift in Sources */,
 				A9540BA3268DA8CC72864FA3 /* HealthView.swift in Sources */,
 				3C045C65BD1D2DBD11B163D1 /* LearnModal.swift in Sources */,
 				78BE7ECCED15871BBF72C293 /* LogView.swift in Sources */,
 				2B8E6FC6F23A1D61F284D762 /* ManualRunSheet.swift in Sources */,
+				7BC2FF48DEFE1F45B1C0CE54 /* OnboardingSheet.swift in Sources */,
 				21BAA9938430A3B59A7DA1FF /* ProfileView.swift in Sources */,
 				F10578E3E4954277E122B955 /* RaceDetailSheet.swift in Sources */,
 				7A0F250BA4DA7F45225E8030 /* Races.swift in Sources */,
@@ -454,10 +468,12 @@
 				5AA14774A3E133CF375A5822 /* RunDetailSheet.swift in Sources */,
 				3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */,
 				A5B9A0DEFC127A3E05C434F2 /* SettingsSheet.swift in Sources */,
+				EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */,
 				83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */,
 				49DD1311332CCD7EC88681EC /* Tips.swift in Sources */,
 				D908A1389B777A23A0CA7339 /* TipsView.swift in Sources */,
 				A4B00D17F9CD81D6D57E75E3 /* TodayView.swift in Sources */,
+				E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */,
 				FCBC071AD54DF36F1AA6DD5A /* TopicRenderer.swift in Sources */,
 				063930F921E1B26E274CC6A1 /* TrainingView.swift in Sources */,
 				BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */,

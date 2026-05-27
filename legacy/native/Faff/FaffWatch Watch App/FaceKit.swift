@@ -134,6 +134,12 @@ struct NumberFace: View {
     /// Optional bottom progress strip (reps / phases). Replaces the
     /// symmetric bottom margin when present.
     var strip: Strip? = nil
+    /// Override the bottom reservation (as a fraction of H) when the
+    /// face overlays a button or other custom bottom widget — the
+    /// content above flexes to clear this area. When nil, the strip
+    /// computes its own reservation; without a strip, the symmetric
+    /// bottom margin is used.
+    var bottomReservation: CGFloat? = nil
     /// Background color for the face. Defaults to black; override for
     /// washed takeovers (GoFace = green wash, etc).
     var faceBackground: Color = .black
@@ -334,23 +340,34 @@ struct NumberFace: View {
             let widthAvailable: CGFloat = hasTopLabel
                 ? (W - 2 * H * leadF)            // full screen minus bezel margins
                 : (clockClearF * W - H * leadF)  // clear OS clock at top-right
-            let topEm = NumberFace.emWidth(rows.first?.text ?? "")
-            let widthF = topEm > 0 ? widthAvailable / topEm : .greatestFiniteMagnitude
+            // Cap by the WIDEST row across the face — not just the first.
+            // A row like "1:47:18" (h:mm:ss, 3.4 em) is far wider than
+            // "9:02" (m:ss, 1.98 em); sizing on row 0 alone makes the
+            // wider rows overflow the screen. Icons add ~0.58 em (icon +
+            // HStack spacing per `rowContent`).
+            let maxEm: CGFloat = rows.map { row in
+                NumberFace.emWidth(row.text) + (row.icon != nil ? 0.58 : 0)
+            }.max() ?? 0
+            let widthF = maxEm > 0 ? widthAvailable / maxEm : .greatestFiniteMagnitude
             let glyphF_widthMax = (capRatio * widthF) / H
 
             // Vertical fit. Anchored: fill stack from TOP_MARGIN to
             // (1 - TOP_MARGIN). Centered: fit row group in available
             // area above any strip.
-            let centeredAreaBottom: CGFloat = hasStrip
-                ? (1 - stripBottomF - stripBarF - 0.028)
-                : 1
+            // bottomReservation > strip > symmetric bottom (caller-provided
+            // button overlay area gets priority).
+            let centeredAreaBottom: CGFloat = {
+                if let r = bottomReservation { return 1 - r }
+                if hasStrip { return 1 - stripBottomF - stripBarF - 0.028 }
+                return 1
+            }()
             let glyphF_fitMax: CGFloat = {
                 guard nRows > 0 else { return 0 }
                 if hasTopLabel {
                     // Anchored: fill from TOP_MARGIN to the bottom edge.
-                    // Bottom edge = strip-top when a strip is present,
-                    // else the symmetric (1 - TOP_MARGIN) line.
-                    let bottomEdge: CGFloat = hasStrip
+                    // Bottom edge = strip-top / button-reservation-top
+                    // when present, else the symmetric (1 - TOP_MARGIN) line.
+                    let bottomEdge: CGFloat = (hasStrip || bottomReservation != nil)
                         ? centeredAreaBottom
                         : (1 - TOP_MARGIN)
                     return (bottomEdge - TOP_MARGIN - labelsTotal - usedByGaps) / CGFloat(nRows)

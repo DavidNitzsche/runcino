@@ -23,6 +23,7 @@ import { promptFor } from '@/coach/prompts';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { readCachedBriefing, writeCachedBriefing } from './cache';
 import { TOOLS, dispatchTool } from './tools';
+import { emptyUsage, addRound, recordUsage } from './usage';
 
 export interface BriefingResponse {
   surface: Surface;
@@ -112,18 +113,22 @@ export async function generateBriefing(
   //     numbers (observed empirically — empty trace + hallucinated runs).
   //   - Subsequent turns: 'auto' — model can keep calling tools OR end the
   //     turn with prose once it's read enough.
+  const model = 'claude-sonnet-4-5-20250929';
+  const usageAcc = emptyUsage();
   let finalContent: Anthropic.ContentBlock[] = [];
   const toolTrace: Array<{ name: string; input: any }> = [];
   const stopReasons: string[] = [];
   for (let i = 0; i < 8; i++) {
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model,
       max_tokens: 2400,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       tools: TOOLS,
       tool_choice: i === 0 ? { type: 'any' } : { type: 'auto' },
       messages,
     });
+    // P43 — accumulate token usage for spend tracking
+    addRound(usageAcc, resp.usage);
     stopReasons.push(resp.stop_reason ?? 'null');
 
     if (resp.stop_reason === 'end_turn' || resp.stop_reason === 'max_tokens') {
@@ -253,6 +258,18 @@ export async function generateBriefing(
   };
 
   await writeCachedBriefing(userId, cacheKey, resolved.mode, response as any);
+
+  // P43 — log token usage + cost. Fire-and-forget; don't block the
+  // briefing on the insert. recordUsage swallows its own errors.
+  void recordUsage({
+    userId,
+    surface,
+    mode: resolved.mode,
+    compact,
+    model,
+    usage: usageAcc,
+  });
+
   return response;
 }
 
