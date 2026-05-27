@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Run-detail modal · redesign directions · 2026-05-27</title>
+<style>
+  :root{
+    --bg:#0a0c10; --card:#11141a; --card2:#161a20;
+    --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+    --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+    --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+    --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#06080b;color:var(--ink);
+    font-family:'HelveticaNeue', 'Helvetica Neue', Helvetica, system-ui, sans-serif;}
+  .page{max-width:1340px;margin:0 auto;padding:48px 32px 120px}
+  h1{font-family:'HelveticaNeue-Bold',sans-serif;font-size:48px;letter-spacing:0.5px;margin:0 0 8px}
+  .subtitle{font-size:13px;color:var(--mute);letter-spacing:1.4px;text-transform:uppercase;margin-bottom:48px}
+  .lede{font-size:14px;line-height:1.55;color:rgba(246,247,248,0.78);margin-bottom:48px;max-width:780px}
+  .lede strong{color:var(--ink)}
+  .section-label{font-size:11px;letter-spacing:1.6px;font-weight:700;color:var(--mute);
+    text-transform:uppercase;margin:64px 0 16px;padding-top:24px;border-top:1px solid var(--line)}
+  .section-label .pill{background:rgba(62,189,65,0.15);color:var(--green);padding:3px 9px;border-radius:99px;
+    margin-left:10px;font-size:9px;letter-spacing:1.2px}
+  .ann{font-size:13px;color:var(--mute);max-width:780px;line-height:1.55;margin-bottom:18px}
+
+  /* Modal shells — all look like the prod modal */
+  .modal{background:#181a1d;border:1px solid var(--line);border-radius:20px;
+    box-shadow:0 24px 60px rgba(0,0,0,0.55);padding:28px 32px;max-width:1100px;width:100%}
+  .header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px}
+  .eyebrow{font-size:11px;color:var(--green);letter-spacing:1.6px;font-weight:700;text-transform:uppercase}
+  h2.title{font-family:'HelveticaNeue-Bold',sans-serif;font-size:38px;letter-spacing:0.5px;line-height:1;margin:8px 0 4px}
+  .date{font-size:12px;color:var(--mute);letter-spacing:1.2px}
+  .close{background:transparent;border:none;color:var(--mute);font-size:26px;cursor:pointer;line-height:1}
+
+  .card{background:#1f2226;border-radius:14px;padding:18px 20px;border:1px solid var(--line2)}
+  .card-eyebrow{font-size:10px;letter-spacing:1.6px;font-weight:700;color:var(--mute);text-transform:uppercase;margin-bottom:10px}
+
+  /* BigStat */
+  .bigstat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .bigstat{background:rgba(255,255,255,0.025);border-radius:12px;padding:14px 16px}
+  .bigstat .v{font-family:'HelveticaNeue-Bold',sans-serif;font-size:28px;letter-spacing:0.3px;line-height:1.1}
+  .bigstat .u{font-size:10px;color:var(--mute);letter-spacing:1.4px;text-transform:uppercase;margin-top:6px;font-weight:600}
+
+  /* shared */
+  .row{display:flex;gap:14px;align-items:center}
+  .muted{color:var(--mute)}
+  .small{font-size:11px}
+
+  /* ────────────────────────────────────────────────────────────────────
+     DIRECTION A — STORY HERO
+     Lead with a one-line coach summary + a "did you hit it" checklist.
+     Tells the runner the story before the data. Drill-downs below.
+     ──────────────────────────────────────────────────────────────────── */
+  .a-headline{font-family:'HelveticaNeue-Bold',sans-serif;font-size:64px;letter-spacing:0.2px;line-height:1.05;margin:4px 0 14px}
+  .a-headline .num{color:var(--ink)}
+  .a-headline .unit{font-size:18px;color:var(--mute);letter-spacing:1.6px;margin-left:6px;text-transform:uppercase;font-family:'HelveticaNeue',sans-serif;font-weight:600}
+  .a-story{font-size:17px;color:rgba(246,247,248,0.86);line-height:1.55;margin-bottom:22px;max-width:760px}
+  .a-story em{color:var(--green);font-style:normal;font-weight:600}
+  .a-meta{display:flex;gap:20px;font-size:11px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:24px;font-weight:600}
+  .a-meta span strong{color:var(--ink);font-weight:700;font-size:13px;margin-right:4px}
+
+  .checklist{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:18px}
+  .check-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#1f2226;border-radius:10px;border:1px solid var(--line2)}
+  .check-mark{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+  .check-mark.ok{background:rgba(62,189,65,0.18);color:var(--green)}
+  .check-mark.warn{background:rgba(243,173,56,0.18);color:var(--goal)}
+  .check-mark.info{background:rgba(39,180,224,0.18);color:var(--dist)}
+  .check-body{flex:1}
+  .check-label{font-size:11px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;font-weight:600}
+  .check-detail{font-size:14px;color:var(--ink);margin-top:2px}
+  .check-detail .delta{color:var(--mute);font-size:12px;margin-left:6px}
+
+  /* HR zone rows — used by multiple directions */
+  .hr-zone-row{display:grid;grid-template-columns:32px 64px 1fr 44px;align-items:center;gap:10px;margin-bottom:6px}
+  .hr-zone-row .zlabel{font-size:11px;font-weight:700;letter-spacing:0.4px}
+  .hr-zone-row .zrange{font-size:10px;color:var(--mute);letter-spacing:0.3px}
+  .hr-zone-row .zbar{position:relative;height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden}
+  .hr-zone-row .zfill{position:absolute;inset:0;border-radius:4px;height:100%}
+  .hr-zone-row .zpct{font-size:11px;font-weight:600;text-align:right;color:var(--ink)}
+  .hr-zone-row.inactive{opacity:0.35}
+
+  .a-bottom-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;margin-top:18px}
+  .form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .form-tile{background:rgba(255,255,255,0.025);border-radius:8px;padding:10px 12px;text-align:center}
+  .form-tile .v{font-family:'HelveticaNeue-Bold',sans-serif;font-size:18px;color:var(--ink)}
+  .form-tile .l{font-size:9px;color:var(--mute);letter-spacing:1.0px;margin-top:4px;text-transform:uppercase;font-weight:600}
+  .route-placeholder{height:200px;background:linear-gradient(135deg, rgba(39,180,224,0.08), rgba(176,132,255,0.08));border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--mute);font-size:11px;letter-spacing:1.4px;text-transform:uppercase}
+
+  /* ────────────────────────────────────────────────────────────────────
+     DIRECTION B — COACH'S SHEET
+     One big compact unit, everything inline. No card-stacking. Reads
+     like a workout summary printout.
+     ──────────────────────────────────────────────────────────────────── */
+  .b-sheet{background:#1c1f24;border-radius:14px;padding:24px 28px;border:1px solid var(--line2)}
+  .b-headline-row{display:flex;align-items:baseline;gap:20px;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:18px}
+  .b-headline{font-family:'HelveticaNeue-Bold',sans-serif;font-size:36px;letter-spacing:0.3px;line-height:1}
+  .b-tagline{font-size:13px;color:var(--mute)}
+  .b-stat-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:18px}
+  .b-stat{padding:0 14px;border-right:1px solid var(--line2)}
+  .b-stat:last-child{border-right:none}
+  .b-stat .v{font-family:'HelveticaNeue-Bold',sans-serif;font-size:22px;line-height:1.05}
+  .b-stat .l{font-size:10px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;margin-top:5px;font-weight:600}
+  .b-section{margin-bottom:20px}
+  .b-section-label{font-size:10px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:8px}
+  .b-pva-table{width:100%;border-collapse:collapse;font-size:13px}
+  .b-pva-table th{text-align:left;font-size:9px;color:var(--mute);letter-spacing:1.2px;font-weight:600;text-transform:uppercase;padding:6px 12px 6px 0}
+  .b-pva-table td{padding:6px 12px 6px 0;color:var(--ink)}
+  .b-pva-table td.muted{color:var(--mute);font-size:11px}
+  .b-two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+
+  /* ────────────────────────────────────────────────────────────────────
+     DIRECTION C — SCOREBOARD
+     Three huge center-aligned numbers + pass/fail "score" indicators.
+     ──────────────────────────────────────────────────────────────────── */
+  .c-scoreboard{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;text-align:center;padding:20px 0 28px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  .c-score-cell{padding:0 20px;border-right:1px solid var(--line2)}
+  .c-score-cell:last-child{border-right:none}
+  .c-score-v{font-family:'HelveticaNeue-Bold',sans-serif;font-size:54px;line-height:1;letter-spacing:0.2px}
+  .c-score-l{font-size:10px;color:var(--mute);letter-spacing:2px;text-transform:uppercase;margin-top:8px;font-weight:600}
+  .c-judges{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:22px}
+  .c-judge{padding:14px 16px;background:#1f2226;border-radius:10px;display:flex;align-items:center;gap:12px}
+  .c-judge-dot{width:12px;height:12px;border-radius:50%}
+  .c-judge.pass .c-judge-dot{background:var(--green);box-shadow:0 0 12px rgba(62,189,65,0.45)}
+  .c-judge.warn .c-judge-dot{background:var(--goal);box-shadow:0 0 12px rgba(243,173,56,0.45)}
+  .c-judge.fail .c-judge-dot{background:var(--over);box-shadow:0 0 12px rgba(252,77,100,0.45)}
+  .c-judge-text{font-size:13px}
+  .c-judge-text strong{color:var(--ink);font-weight:600}
+  .c-judge-text span{color:var(--mute);font-size:11px;margin-left:6px}
+
+  /* ────────────────────────────────────────────────────────────────────
+     DIRECTION D — MAGAZINE
+     Editorial top, pull quote, 2-column body.
+     ──────────────────────────────────────────────────────────────────── */
+  .d-eyebrow{font-size:10px;letter-spacing:2px;color:var(--green);font-weight:700;text-transform:uppercase;margin-bottom:10px}
+  .d-headline{font-family:'HelveticaNeue-Bold',sans-serif;font-size:42px;letter-spacing:0.3px;line-height:1.1;max-width:740px;margin-bottom:14px}
+  .d-byline{font-size:12px;color:var(--mute);letter-spacing:1.2px;text-transform:uppercase;font-weight:600;margin-bottom:24px}
+  .d-pullquote{border-left:3px solid var(--green);padding:10px 0 10px 18px;margin:18px 0 22px;font-size:20px;color:rgba(246,247,248,0.85);line-height:1.45;max-width:680px;font-style:italic;font-weight:300}
+  .d-body-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:24px}
+  .d-stat-list{display:grid;gap:14px}
+  .d-stat-row{display:grid;grid-template-columns:84px 1fr 80px;align-items:baseline;gap:14px;padding-bottom:12px;border-bottom:1px solid var(--line2)}
+  .d-stat-row .label{font-size:10px;color:var(--mute);letter-spacing:1.3px;font-weight:600;text-transform:uppercase}
+  .d-stat-row .value{font-family:'HelveticaNeue-Bold',sans-serif;font-size:20px}
+  .d-stat-row .judge{font-size:10px;color:var(--mute);letter-spacing:1px;text-align:right;text-transform:uppercase;font-weight:600}
+  .d-stat-row .judge.ok{color:var(--green)}
+  .d-stat-row .judge.warn{color:var(--goal)}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Run-detail · redesign mockups</h1>
+  <div class="subtitle">4 directions · 2026-05-27 · pick one + I rebuild for real</div>
+
+  <div class="lede">
+    All four use the same Wednesday easy run — <strong>5.86 mi at 8:25/mi pace</strong>, target 8:12, 49:22 moving, avg HR 140 (100% Z2: 138–144), cadence 169. The current build dumps 6 cards of mostly-duplicate data at you. Each of these directions answers David's "data heavy / not organized / I don't know what I'm looking at" by leading with the <em>story</em> of the run and treating raw data as drill-down, not headline. Real production will reuse Theme tokens — these are visual sketches.
+  </div>
+
+  <!-- ──────────────────────────────────────────────────────────────────
+       DIRECTION A — STORY HERO
+       ────────────────────────────────────────────────────────────────── -->
+  <div class="section-label">Direction A · STORY HERO <span class="pill">most "Faff voice"</span></div>
+  <div class="ann">
+    Lead with a one-sentence narrative of what happened, then a "did you hit it" checklist (4 things you wanted, ✓ or ⓘ each). Bottom row has the HR zone breakdown alongside form metrics + route — secondary detail, smaller real estate. <strong>What it answers:</strong> "did the run go well?" before "here are 47 numbers."
+  </div>
+  <div class="modal">
+    <div class="header">
+      <div>
+        <div class="eyebrow">EASY · COMPLETED · TODAY</div>
+        <div class="a-meta" style="margin-top:14px;margin-bottom:0">
+          <span><strong>Wednesday</strong> MAY 27</span>
+          <span><strong>Z2</strong> Aerobic</span>
+          <span><strong>1.71</strong> ACWR · build</span>
+        </div>
+      </div>
+      <button class="close">×</button>
+    </div>
+
+    <div class="a-headline">
+      <span class="num">5.86</span><span class="unit">mi</span>
+      <span style="color:var(--dim);margin:0 14px">·</span>
+      <span class="num">8:25</span><span class="unit">/mi</span>
+      <span style="color:var(--dim);margin:0 14px">·</span>
+      <span class="num">49:22</span><span class="unit">moving</span>
+    </div>
+    <div class="a-story">
+      Easy 5.8 in pure Z2. Pace ran 13 seconds soft of the 8:12 target but HR was the story — <em>locked at 140 the whole way, mid-Z2</em>, exactly where aerobic days should live. Cadence held 169, nine steps above your norm. Body asked you to dial back the pace and you listened.
+    </div>
+
+    <div class="card-eyebrow" style="margin-bottom:10px">DID YOU HIT IT</div>
+    <div class="checklist">
+      <div class="check-row">
+        <div class="check-mark ok">✓</div>
+        <div class="check-body">
+          <div class="check-label">Distance</div>
+          <div class="check-detail">5.86 mi <span class="delta">vs 5.80 planned · +0.06</span></div>
+        </div>
+      </div>
+      <div class="check-row">
+        <div class="check-mark ok">✓</div>
+        <div class="check-body">
+          <div class="check-label">Easy zone</div>
+          <div class="check-detail">100% in Z2 <span class="delta">target Z1–Z2</span></div>
+        </div>
+      </div>
+      <div class="check-row">
+        <div class="check-mark info">ⓘ</div>
+        <div class="check-body">
+          <div class="check-label">Pace</div>
+          <div class="check-detail">8:25/mi <span class="delta">vs 8:12 target · –13s</span></div>
+        </div>
+      </div>
+      <div class="check-row">
+        <div class="check-mark ok">✓</div>
+        <div class="check-body">
+          <div class="check-label">Cadence</div>
+          <div class="check-detail">169 spm <span class="delta">norm 160 · +9</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="a-bottom-grid">
+      <div class="card">
+        <div class="card-eyebrow">HEART RATE · TIME IN ZONE · LTHR 162</div>
+        <div class="hr-zone-row inactive">
+          <div class="zlabel" style="color:var(--rest)">Z1</div>
+          <div class="zrange">0–138</div>
+          <div class="zbar"><div class="zfill" style="background:var(--rest);width:0%"></div></div>
+          <div class="zpct">0%</div>
+        </div>
+        <div class="hr-zone-row">
+          <div class="zlabel" style="color:var(--green)">Z2</div>
+          <div class="zrange">138–144</div>
+          <div class="zbar"><div class="zfill" style="background:var(--green);width:100%"></div></div>
+          <div class="zpct">100%</div>
+        </div>
+        <div class="hr-zone-row inactive">
+          <div class="zlabel" style="color:var(--goal)">Z3</div>
+          <div class="zrange">146–152</div>
+          <div class="zbar"><div class="zfill" style="background:var(--goal);width:0%"></div></div>
+          <div class="zpct">0%</div>
+        </div>
+        <div class="hr-zone-row inactive">
+          <div class="zlabel" style="color:var(--over)">Z4</div>
+          <div class="zrange">154–160</div>
+          <div class="zbar"><div class="zfill" style="background:var(--over);width:0%"></div></div>
+          <div class="zpct">0%</div>
+        </div>
+        <div class="hr-zone-row inactive">
+          <div class="zlabel" style="color:var(--over)">Z5</div>
+          <div class="zrange">162–178</div>
+          <div class="zbar"><div class="zfill" style="background:var(--over);width:0%"></div></div>
+          <div class="zpct">0%</div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:rgba(246,247,248,0.72);line-height:1.5">
+          Aerobic-dominant — exactly where easy days should live.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">FORM · APPLE WATCH</div>
+        <div class="form-grid">
+          <div class="form-tile"><div class="v">169</div><div class="l">cadence spm</div></div>
+          <div class="form-tile"><div class="v">243</div><div class="l">ground contact</div></div>
+          <div class="form-tile"><div class="v">1.21</div><div class="l">stride m</div></div>
+          <div class="form-tile"><div class="v">7.4</div><div class="l">vert osc cm</div></div>
+        </div>
+        <div class="route-placeholder" style="margin-top:14px">ROUTE · SVG SPARKLINE · 5.86 MI</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────────────────
+       DIRECTION B — COACH'S SHEET
+       ────────────────────────────────────────────────────────────────── -->
+  <div class="section-label">Direction B · COACH'S SHEET <span class="pill" style="background:rgba(243,173,56,0.15);color:var(--goal)">most info-dense</span></div>
+  <div class="ann">
+    A single big compact card. No card-stacking, no eyebrow noise. Reads like a printed workout summary from a track coach. Headline + tagline up top, 6-stat strip below, plan-vs-actual as a flat inline table, HR zones + form in a two-column footer. <strong>What it answers:</strong> "show me everything but make it ONE thing to read."
+  </div>
+  <div class="modal" style="padding:32px 36px">
+    <div class="header">
+      <div>
+        <div class="eyebrow" style="color:var(--green)">EASY · COMPLETED · WED MAY 27</div>
+      </div>
+      <button class="close">×</button>
+    </div>
+
+    <div class="b-sheet">
+      <div class="b-headline-row">
+        <div>
+          <div class="b-headline">5.86 mi · 8:25/mi</div>
+          <div class="b-tagline">Easy aerobic · 49:22 moving · 100% Z2 · cadence 169</div>
+        </div>
+      </div>
+
+      <div class="b-stat-strip">
+        <div class="b-stat"><div class="v">5.86</div><div class="l">miles</div></div>
+        <div class="b-stat"><div class="v">8:25</div><div class="l">avg pace</div></div>
+        <div class="b-stat"><div class="v">49:22</div><div class="l">moving</div></div>
+        <div class="b-stat"><div class="v">140</div><div class="l">avg hr</div></div>
+        <div class="b-stat"><div class="v">153</div><div class="l">max hr</div></div>
+        <div class="b-stat"><div class="v">169</div><div class="l">cadence</div></div>
+      </div>
+
+      <div class="b-section">
+        <div class="b-section-label">Plan vs Actual</div>
+        <table class="b-pva-table">
+          <thead>
+            <tr><th>METRIC</th><th>TARGET</th><th>ACTUAL</th><th>DELTA</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Distance</td><td>5.80 mi</td><td>5.86 mi</td><td style="color:var(--green)">+0.06</td></tr>
+            <tr><td>Pace</td><td>8:12 /mi</td><td>8:25 /mi</td><td style="color:var(--goal)">–13s</td></tr>
+            <tr><td>HR ceiling</td><td>≤ 144 bpm</td><td>140 avg · 153 peak</td><td style="color:var(--green)">held</td></tr>
+            <tr><td>Easy zone</td><td>Z1–Z2</td><td>100% Z2</td><td style="color:var(--green)">on target</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="b-two-col">
+        <div class="b-section">
+          <div class="b-section-label">Heart rate · time in zone · LTHR 162</div>
+          <div class="hr-zone-row inactive">
+            <div class="zlabel" style="color:var(--rest)">Z1</div><div class="zrange">0–138</div>
+            <div class="zbar"><div class="zfill" style="background:var(--rest);width:0%"></div></div><div class="zpct">0%</div>
+          </div>
+          <div class="hr-zone-row">
+            <div class="zlabel" style="color:var(--green)">Z2</div><div class="zrange">138–144</div>
+            <div class="zbar"><div class="zfill" style="background:var(--green);width:100%"></div></div><div class="zpct">100%</div>
+          </div>
+          <div class="hr-zone-row inactive">
+            <div class="zlabel" style="color:var(--goal)">Z3</div><div class="zrange">146–152</div>
+            <div class="zbar"><div class="zfill" style="background:var(--goal);width:0%"></div></div><div class="zpct">0%</div>
+          </div>
+          <div class="hr-zone-row inactive">
+            <div class="zlabel" style="color:var(--over)">Z4</div><div class="zrange">154–160</div>
+            <div class="zbar"><div class="zfill" style="background:var(--over);width:0%"></div></div><div class="zpct">0%</div>
+          </div>
+          <div class="hr-zone-row inactive">
+            <div class="zlabel" style="color:var(--over)">Z5</div><div class="zrange">162–178</div>
+            <div class="zbar"><div class="zfill" style="background:var(--over);width:0%"></div></div><div class="zpct">0%</div>
+          </div>
+        </div>
+        <div class="b-section">
+          <div class="b-section-label">Form · Apple Watch</div>
+          <div class="form-grid" style="grid-template-columns:repeat(2,1fr)">
+            <div class="form-tile"><div class="v">169</div><div class="l">cadence spm</div></div>
+            <div class="form-tile"><div class="v">243</div><div class="l">ground contact ms</div></div>
+            <div class="form-tile"><div class="v">1.21</div><div class="l">stride length m</div></div>
+            <div class="form-tile"><div class="v">7.4</div><div class="l">vert osc cm</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="b-section" style="margin-bottom:0">
+        <div class="b-section-label">Route · 5.86 mi · 142 ft climbed</div>
+        <div class="route-placeholder" style="height:160px">ROUTE · SVG SPARKLINE</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────────────────
+       DIRECTION C — SCOREBOARD
+       ────────────────────────────────────────────────────────────────── -->
+  <div class="section-label">Direction C · SCOREBOARD <span class="pill" style="background:rgba(176,132,255,0.15);color:var(--learn)">most glanceable</span></div>
+  <div class="ann">
+    Three huge center-aligned numbers (distance · pace · time) take the whole top — instant read at any distance. Below, three "judge dots" (green/amber/red) call out whether you hit the plan on the things that mattered. Then HR zones + form + route in compact rows. <strong>What it answers:</strong> "did I pass or fail?" in 1 second, then "here's why" if I want.
+  </div>
+  <div class="modal">
+    <div class="header">
+      <div>
+        <div class="eyebrow">COMPLETED · TODAY</div>
+        <h2 class="title">Wednesday · Easy 5.8</h2>
+        <div class="date">MAY 27, 2026</div>
+      </div>
+      <button class="close">×</button>
+    </div>
+
+    <div class="c-scoreboard">
+      <div class="c-score-cell">
+        <div class="c-score-v" style="color:var(--dist)">5.86</div>
+        <div class="c-score-l">MILES</div>
+      </div>
+      <div class="c-score-cell">
+        <div class="c-score-v" style="color:var(--ink)">8:25</div>
+        <div class="c-score-l">PACE /mi</div>
+      </div>
+      <div class="c-score-cell">
+        <div class="c-score-v" style="color:var(--ink)">49:22</div>
+        <div class="c-score-l">MOVING</div>
+      </div>
+    </div>
+
+    <div class="card-eyebrow" style="margin-bottom:10px">SCORECARD · DID YOU HIT IT</div>
+    <div class="c-judges">
+      <div class="c-judge pass">
+        <div class="c-judge-dot"></div>
+        <div class="c-judge-text"><strong>HR · easy zone</strong><br><span>100% in Z2 — exactly the plan</span></div>
+      </div>
+      <div class="c-judge warn">
+        <div class="c-judge-dot"></div>
+        <div class="c-judge-text"><strong>Pace · 13s soft</strong><br><span>8:25 vs 8:12 target</span></div>
+      </div>
+      <div class="c-judge pass">
+        <div class="c-judge-dot"></div>
+        <div class="c-judge-text"><strong>Cadence · +9 vs norm</strong><br><span>169 spm holding strong</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-eyebrow">HEART RATE · TIME IN ZONE · LTHR 162</div>
+      <div class="hr-zone-row inactive">
+        <div class="zlabel" style="color:var(--rest)">Z1</div><div class="zrange">0–138</div>
+        <div class="zbar"><div class="zfill" style="background:var(--rest);width:0%"></div></div><div class="zpct">0%</div>
+      </div>
+      <div class="hr-zone-row">
+        <div class="zlabel" style="color:var(--green)">Z2</div><div class="zrange">138–144</div>
+        <div class="zbar"><div class="zfill" style="background:var(--green);width:100%"></div></div><div class="zpct">100%</div>
+      </div>
+      <div class="hr-zone-row inactive">
+        <div class="zlabel" style="color:var(--goal)">Z3</div><div class="zrange">146–152</div>
+        <div class="zbar"><div class="zfill" style="background:var(--goal);width:0%"></div></div><div class="zpct">0%</div>
+      </div>
+      <div class="hr-zone-row inactive">
+        <div class="zlabel" style="color:var(--over)">Z4</div><div class="zrange">154–160</div>
+        <div class="zbar"><div class="zfill" style="background:var(--over);width:0%"></div></div><div class="zpct">0%</div>
+      </div>
+      <div class="hr-zone-row inactive">
+        <div class="zlabel" style="color:var(--over)">Z5</div><div class="zrange">162–178</div>
+        <div class="zbar"><div class="zfill" style="background:var(--over);width:0%"></div></div><div class="zpct">0%</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card">
+        <div class="card-eyebrow">FORM</div>
+        <div class="form-grid">
+          <div class="form-tile"><div class="v">169</div><div class="l">cad spm</div></div>
+          <div class="form-tile"><div class="v">243</div><div class="l">gct ms</div></div>
+          <div class="form-tile"><div class="v">1.21</div><div class="l">stride m</div></div>
+          <div class="form-tile"><div class="v">7.4</div><div class="l">vert cm</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-eyebrow">ROUTE · 142 ft climbed</div>
+        <div class="route-placeholder" style="height:120px">SPARKLINE</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────────────────
+       DIRECTION D — MAGAZINE
+       ────────────────────────────────────────────────────────────────── -->
+  <div class="section-label">Direction D · MAGAZINE <span class="pill" style="background:rgba(255,136,71,0.15);color:var(--race)">most editorial</span></div>
+  <div class="ann">
+    Editorial layout. Eyebrow + big headline + byline (date · type · phase). A pull-quote of the most interesting thing about this run. Then a two-column body: structured stat list on the left, route + form on the right. <strong>What it answers:</strong> the run as a story you'd read in Runner's World, not a database printout.
+  </div>
+  <div class="modal" style="padding:36px 40px">
+    <div class="header" style="margin-bottom:8px">
+      <div>
+        <div class="d-eyebrow">RUN RECAP · COMPLETED</div>
+      </div>
+      <button class="close">×</button>
+    </div>
+
+    <h2 class="d-headline">An easy 5.8 in pure Z2 — pace ran soft but HR was the story.</h2>
+    <div class="d-byline">WED · MAY 27 · EASY · BASE PHASE · 49:22 MOVING</div>
+
+    <div class="d-pullquote">
+      "Locked at 140 the whole way. Mid-Z2, exactly where aerobic days should live."
+    </div>
+
+    <div class="d-body-grid">
+      <div>
+        <div class="card-eyebrow" style="margin-bottom:14px">THE NUMBERS</div>
+        <div class="d-stat-list">
+          <div class="d-stat-row">
+            <div class="label">Distance</div>
+            <div class="value">5.86 mi</div>
+            <div class="judge ok">+0.06 vs plan</div>
+          </div>
+          <div class="d-stat-row">
+            <div class="label">Pace</div>
+            <div class="value">8:25 /mi</div>
+            <div class="judge warn">–13s vs target</div>
+          </div>
+          <div class="d-stat-row">
+            <div class="label">Avg HR</div>
+            <div class="value">140 bpm</div>
+            <div class="judge ok">below 144 ceiling</div>
+          </div>
+          <div class="d-stat-row">
+            <div class="label">Cadence</div>
+            <div class="value">169 spm</div>
+            <div class="judge ok">+9 vs norm</div>
+          </div>
+          <div class="d-stat-row">
+            <div class="label">Max HR</div>
+            <div class="value">153 bpm</div>
+            <div class="judge">peak Z2</div>
+          </div>
+          <div class="d-stat-row">
+            <div class="label">Elevation</div>
+            <div class="value">142 ft</div>
+            <div class="judge">climbed</div>
+          </div>
+        </div>
+
+        <div class="card-eyebrow" style="margin-top:24px;margin-bottom:10px">HEART RATE · LTHR 162</div>
+        <div class="hr-zone-row">
+          <div class="zlabel" style="color:var(--green)">Z2</div><div class="zrange">138–144</div>
+          <div class="zbar"><div class="zfill" style="background:var(--green);width:100%"></div></div><div class="zpct">100%</div>
+        </div>
+        <div class="hr-zone-row inactive">
+          <div class="zlabel" style="color:var(--goal)">Z3+</div><div class="zrange">≥ 146</div>
+          <div class="zbar"><div class="zfill" style="background:var(--goal);width:0%"></div></div><div class="zpct">0%</div>
+        </div>
+        <div style="font-size:11px;color:var(--mute);margin-top:8px;line-height:1.55">
+          Z1 / Z4 / Z5 all 0% — collapsed for brevity, full breakdown on tap.
+        </div>
+      </div>
+
+      <div>
+        <div class="card-eyebrow" style="margin-bottom:14px">ROUTE</div>
+        <div class="route-placeholder" style="height:260px">ROUTE · SVG SPARKLINE</div>
+
+        <div class="card-eyebrow" style="margin-top:24px;margin-bottom:10px">FORM · APPLE WATCH</div>
+        <div class="form-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="form-tile"><div class="v">169</div><div class="l">cadence spm</div></div>
+          <div class="form-tile"><div class="v">243</div><div class="l">ground contact ms</div></div>
+          <div class="form-tile"><div class="v">1.21</div><div class="l">stride length m</div></div>
+          <div class="form-tile"><div class="v">7.4</div><div class="l">vert osc cm</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ──────────────────────────────────────────────────────────────────
+       PICKER ROW
+       ────────────────────────────────────────────────────────────────── -->
+  <div class="section-label" style="border-top:none;margin-top:80px">How to pick</div>
+  <div class="ann">
+    Each direction trades a different way:
+    <ul style="margin-top:10px;line-height:1.85;color:rgba(246,247,248,0.78)">
+      <li><strong style="color:var(--green)">A · Story Hero</strong> — narrative-first, most "Faff voice." Best if you want the run to feel coached, not measured. Trade: hides raw splits behind the checklist.</li>
+      <li><strong style="color:var(--goal)">B · Coach's Sheet</strong> — info-dense, single card, table-based. Best if you want everything visible at once with zero scrolling games. Trade: less emotional, more spreadsheet.</li>
+      <li><strong style="color:var(--learn)">C · Scoreboard</strong> — glanceable, pass/fail dots. Best if you want a 1-second read of "how did it go." Trade: less context per metric.</li>
+      <li><strong style="color:var(--race)">D · Magazine</strong> — editorial, pull-quote, two columns. Best if the run-detail moment should feel like reading about your run. Trade: takes more vertical space than B or C.</li>
+    </ul>
+    <p style="margin-top:18px;color:rgba(246,247,248,0.78)">
+      Pick one (or a hybrid — "A's hero with C's scorecard") and I'll rebuild RunDetailBody to match for real, with all the live data wired through.
+    </p>
+  </div>
+</div>
+</body>
+</html>
