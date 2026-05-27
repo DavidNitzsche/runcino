@@ -106,8 +106,15 @@ export async function readCachedBriefing(userId: string, key: CacheKey): Promise
     // PROMPT_VERSION above), every cached brief written against the old
     // prompt is wrong by definition. Treat as miss; the engine
     // regenerates against the new prompt on the next request.
+    //
+    // 2026-05-27: removed the `storedVersion &&` short-circuit. Briefs
+    // written before prompt-versioning was introduced have NO version
+    // stamp — the old guard let them live forever, so every doctrine
+    // bump for the past week (v2→v8) silently skipped any user whose
+    // last brief predated v2. Treat missing-or-mismatched the same:
+    // both are stale.
     const storedVersion = (payload as any)?._state?.promptVersion;
-    if (storedVersion && storedVersion !== PROMPT_VERSION) {
+    if (storedVersion !== PROMPT_VERSION) {
       return null;
     }
     return payload;
