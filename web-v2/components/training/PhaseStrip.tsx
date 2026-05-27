@@ -3,14 +3,31 @@
  * plus a stats row underneath (total weeks, current week, days to race,
  * peak volume). Mirrors §3 deck spec for TRAINING.
  *
- * Row 1: phase pills (BASE · BUILD · PEAK · TAPER · RACE)
+ * Row 1: phase pills (BASE · BUILD · PEAK · TAPER · RACE) — every pill is
+ *        filled with its phase accent (matching the volume-arc bars below),
+ *        current phase is ringed. Pill widths are proportional to week count
+ *        so the BASE→BUILD→PEAK→TAPER→RACE color transitions line up with
+ *        where bar colors change in the volume arc directly underneath.
  * Row 2: "13 WEEKS · BUILDING TO {race}" left, "83D LEFT" right
  *
- * Total height stays under 80px so it doesn't dominate the viewport.
+ * The inner pill row is inset 24px left/right to match the volume-arc card's
+ * internal padding — keeps the phase boundaries pixel-aligned with the bar
+ * grid below, so you can read the strip + arc as one coordinated widget.
  */
 import type { PlanPhase } from '@/lib/coach/training-state';
 
 const PHASE_ORDER = ['BASE', 'BUILD', 'PEAK', 'TAPER', 'RACE'] as const;
+
+// Pill fills — matched to PlanArc's PHASE_FILL palette so the top strip
+// and the bars below read as one continuous color story. Slightly higher
+// opacity than the bars because the pills are smaller and need to read.
+const PHASE_FILL: Record<string, string> = {
+  BASE:  'rgba(39,180,224,0.55)',
+  BUILD: 'rgba(243,173,56,0.55)',
+  PEAK:  'rgba(252,77,100,0.55)',
+  TAPER: 'rgba(176,132,255,0.60)',
+  RACE:  'rgba(255,136,71,0.85)',
+};
 
 export function PhaseStrip({
   phases, currentPhase, totalWeeks, currentWeekIdx,
@@ -37,12 +54,15 @@ export function PhaseStrip({
 
   return (
     <div style={{ marginBottom: 18 }}>
-      {/* Row 1: secondary info — total weeks · building to RACE / days left */}
+      {/* Row 1: secondary info — total weeks · building to RACE / days left.
+          Inset to match the volume-arc card padding so the labels and the
+          phase pills sit over the same horizontal extent as the bars below. */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
         fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700,
         letterSpacing: '1.6px', textTransform: 'uppercase',
         marginBottom: 8,
+        padding: '0 24px',
       }}>
         <span style={{ color: 'var(--mute)' }}>
           {totalWeeks ? `${totalWeeks} WEEKS` : ''}
@@ -53,11 +73,16 @@ export function PhaseStrip({
         </span>
       </div>
 
-      {/* Row 2: phase pills (width-proportional) */}
+      {/* Row 2: phase pills — width-proportional to phase week counts so
+          the segment boundaries line up with where bar colors change in the
+          volume-arc grid below. Every phase is filled with its accent (not
+          just current) so the runner sees the full BASE→BUILD→PEAK→TAPER→
+          RACE color story at a glance. Inset 24px to match volume-arc
+          card padding. */}
       <div style={{
         display: 'flex', gap: 4,
         background: 'rgba(255,255,255,0.02)',
-        borderRadius: 10, padding: 4,
+        borderRadius: 10, padding: '4px 24px',
       }}>
         {PHASE_ORDER.map((label, i) => {
           const phase = byLabel.get(label);
@@ -65,61 +90,45 @@ export function PhaseStrip({
           const isPast = current
             ? PHASE_ORDER.indexOf(label) < PHASE_ORDER.indexOf(current as typeof PHASE_ORDER[number])
             : false;
-          const isTaper = label === 'TAPER';
-          const isRace  = label === 'RACE';
-
-          const accent = isTaper ? 'var(--learn)'
-            : isRace  ? 'var(--race)'
-            : label === 'BUILD' ? 'var(--goal)'
-            : label === 'PEAK'  ? 'var(--over)'
-            :                     'var(--dist)'; // BASE
 
           const weeks = phase ? phase.endWeekIdx - phase.startWeekIdx + 1 : 0;
           const weekInPhase = isCurrent && phase && currentWeekIdx != null
             ? currentWeekIdx - phase.startWeekIdx + 1
             : null;
 
-          // Visual:
-          //   - current → solid accent bg, dark ink
-          //   - past    → muted accent w/ strikethrough effect (dim line through)
-          //   - future  → faint accent border, dim label
-          const bg = isCurrent
-            ? accent
-            : isPast
-            ? 'rgba(255,255,255,0.025)'
-            : `${rgbaOf(accent)}10`; // very faint tint of accent
-          const borderColor = isCurrent
-            ? accent
-            : isPast
-            ? 'rgba(255,255,255,0.06)'
-            : `${rgbaOf(accent)}30`;
-          const fg = isCurrent
-            ? darkInkFor(accent)
-            : isPast
-            ? 'var(--dim)'
-            : accent;
+          // Fill: every phase gets its accent color (matches the volume-arc
+          // bars below). Past phases dim slightly to read as "done"; current
+          // gets a light outline + tighter ink. Future phases sit at the
+          // standard fill — same as the future bars in the arc below.
+          const fill = PHASE_FILL[label] ?? PHASE_FILL.BASE;
+          const opacity = isPast ? 0.45 : 1;
+          // Ink color reads cleanly on every accent — they're all saturated
+          // mid-tones. Taper's purple needs a slightly different ink.
+          const ink = label === 'TAPER' ? '#1a0f33' : '#0e1014';
 
           return (
             <div key={label} style={{
               flex: segWidths[i] / totalSegWeight,
               padding: '8px 10px',
               borderRadius: 7,
-              background: bg,
-              border: `1px solid ${borderColor}`,
+              background: fill,
+              opacity,
+              outline: isCurrent ? '2px solid var(--ink)' : 'none',
+              outlineOffset: isCurrent ? '-1px' : undefined,
               minHeight: 46,
               display: 'flex', flexDirection: 'column', justifyContent: 'center',
               overflow: 'hidden',
             }}>
               <div style={{
-                fontFamily: 'var(--f-display)', fontSize: 12, color: fg,
-                letterSpacing: '1.4px', lineHeight: 1, fontWeight: 600,
+                fontFamily: 'var(--f-display)', fontSize: 12, color: ink,
+                letterSpacing: '1.4px', lineHeight: 1, fontWeight: 700,
               }}>
                 {label}
               </div>
               <div style={{
                 fontFamily: 'var(--f-body)', fontSize: 9.5, letterSpacing: '0.5px',
-                color: isCurrent ? darkInkFor(accent) : 'var(--dim)',
-                marginTop: 4, lineHeight: 1, opacity: isCurrent ? 0.78 : 1,
+                color: ink, opacity: 0.78,
+                marginTop: 4, lineHeight: 1, fontWeight: 600,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {weeks > 0 ? `${weeks} WK` : '—'}
@@ -133,23 +142,3 @@ export function PhaseStrip({
   );
 }
 
-// Helpers ---------------------------------------------------------------
-
-// Map CSS var color → rgba prefix so we can build "var(--green)10" → "rgba(62,189,65,0.06)"
-// fallback. Inline so we don't lift design tokens out of CSS just for this.
-function rgbaOf(cssVar: string): string {
-  const palette: Record<string, string> = {
-    'var(--dist)':  'rgba(39,180,224,',  // BASE blue
-    'var(--goal)':  'rgba(243,173,56,',  // BUILD amber
-    'var(--over)':  'rgba(252,77,100,',  // PEAK red
-    'var(--learn)': 'rgba(176,132,255,', // TAPER purple
-    'var(--race)':  'rgba(255,136,71,',  // RACE orange
-  };
-  return palette[cssVar] ?? 'rgba(255,255,255,';
-}
-
-// Choose a dark ink color that reads well on the bright accent background.
-function darkInkFor(cssVar: string): string {
-  // All our accents are saturated mid-tones; #0e1014 reads cleanly on each.
-  return cssVar === 'var(--learn)' ? '#1a0f33' : '#0e1014';
-}
