@@ -56,6 +56,11 @@ export interface BriefingResponse {
     todayRunId: string | null;
     /** Tool calls the coach made while composing this briefing. */
     toolTrace?: Array<{ name: string; input: any }>;
+    /** Prompt version stamp — see lib/coach/cache.ts PROMPT_VERSION.
+     *  Cache.readCachedBriefing compares this to the current version
+     *  and treats a mismatch as a miss, so prompt-doctrine changes
+     *  invalidate everyone's stale briefs without per-user busts. */
+    promptVersion?: string;
   };
 }
 

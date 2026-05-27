@@ -79,7 +79,11 @@ export interface CoachState {
   } | null;
 
   nextARace: {
-    slug: string; name: string; date: string; goal: string | null;
+    // Race name may be null — race rows in the DB don't enforce a name
+    // and the shared loadNextARace returns the raw value. 2026-05-27
+    // build fix: aligning the field nullability with the source of
+    // truth instead of breaking the type round-trip in state-loader.
+    slug: string; name: string | null; date: string; goal: string | null;
     days_to_race: number;
   } | null;
 
