@@ -92,6 +92,150 @@
       "must_call_tools": ["getProfile", "getPlanWindow"],
       "voice_traits": ["honest about gap", "no fabrication"],
       "must_avoid": ["your last run", "your plan says"]
+    },
+
+    {
+      "id": "training-base-steady",
+      "label": "Training BASE phase, week 3 of 8, steady miles",
+      "surface": "training",
+      "mode": "base",
+      "must_call_tools": ["getPlanWindow", "getRuns", "getCheckIns", "getReadiness"],
+      "must_cite": ["weekly mileage", "phase position"],
+      "must_avoid": ["this morning", "tonight", "today's session", "yesterday", "an hour ago"],
+      "voice_traits": ["time-stable", "phase-anchored", "plan-as-story"]
+    },
+    {
+      "id": "training-build-tired-streak",
+      "label": "Training BUILD phase with recent TIRED check-ins",
+      "surface": "training",
+      "mode": "build",
+      "must_call_tools": ["getPlanWindow", "getRuns", "getCheckIns"],
+      "must_cite": ["check-in trend", "soften the week"],
+      "must_avoid": ["push through", "harden up", "this morning", "yesterday"],
+      "voice_traits": ["acknowledges fatigue", "names the signal", "softens the prescription"]
+    },
+    {
+      "id": "training-taper",
+      "label": "Training TAPER, T-10 to A-race",
+      "surface": "training",
+      "mode": "taper",
+      "must_call_tools": ["getPlanWindow", "getRaces"],
+      "must_cite": ["volume reduction", "intensity preserved"],
+      "must_avoid": ["add miles", "test workout", "new stimulus", "this morning", "yesterday"],
+      "voice_traits": ["calm", "trust-the-build", "no new ideas"]
+    },
+
+    {
+      "id": "races-season-frame",
+      "label": "Races page, building toward A-race ~12 weeks out",
+      "surface": "races",
+      "mode": "building",
+      "must_call_tools": ["getRaces"],
+      "must_cite": ["A-race name", "B-race role"],
+      "must_avoid": ["this morning", "tonight", "yesterday", "today's session"],
+      "voice_traits": ["time-stable", "season-as-arc", "doesn't recap each race"]
+    },
+    {
+      "id": "races-race-week",
+      "label": "Races page, A-race within 7 days",
+      "surface": "races",
+      "mode": "race-week",
+      "must_call_tools": ["getRaces"],
+      "must_cite": ["days to race", "goal"],
+      "must_avoid": ["add a session", "test pace", "this morning", "yesterday"],
+      "voice_traits": ["calm + ready", "no volume math"]
+    },
+
+    {
+      "id": "race-detail-building",
+      "label": "Race detail page, A-race 75 days out",
+      "surface": "race-detail",
+      "mode": "building",
+      "must_call_tools": ["getRaces"],
+      "must_cite": ["projection vs goal", "where the gap closes"],
+      "must_avoid": ["weather", "fueling plan", "specific pacing", "this morning", "yesterday"],
+      "voice_traits": ["too-far-out framing", "no race-week minutiae"]
+    },
+    {
+      "id": "race-detail-race-week",
+      "label": "Race detail page, A-race within 7 days",
+      "surface": "race-detail",
+      "mode": "race-week",
+      "must_call_tools": ["getRaces"],
+      "must_cite": ["pacing plan in plain terms"],
+      "must_avoid": ["add miles", "new training stimulus", "yesterday's run"],
+      "voice_traits": ["trust-the-build", "execution-focused"]
+    },
+    {
+      "id": "race-detail-post-race",
+      "label": "Race detail page, finished + missed goal by 90s",
+      "surface": "race-detail",
+      "mode": "post-race",
+      "must_call_tools": ["getRaces", "getRuns"],
+      "must_cite": ["finish time", "splits shape"],
+      "must_avoid": ["closest you'll ever come", "final attempt", "this morning"],
+      "voice_traits": ["honest about gap", "two carries forward not five", "door open to what's next"]
+    },
+
+    {
+      "id": "health-steady",
+      "label": "Health page, all pillars green",
+      "surface": "health",
+      "mode": "steady",
+      "must_call_tools": ["getHealthSeries", "getCheckIns", "getReadiness"],
+      "must_avoid": ["this morning", "tonight", "yesterday", "today's run"],
+      "voice_traits": ["time-stable", "describes-trends-not-events", "no workout prescription"]
+    },
+    {
+      "id": "health-watch-amber-rhr",
+      "label": "Health page, RHR creeping over 60d baseline",
+      "surface": "health",
+      "mode": "watch-amber",
+      "must_call_tools": ["getHealthSeries", "getReadiness"],
+      "must_cite": ["RHR current", "RHR baseline"],
+      "must_avoid": ["this morning", "yesterday", "today's session", "X percent above"],
+      "voice_traits": ["names-one-signal", "one-actionable-lever", "calm-not-fearmonger"]
+    },
+    {
+      "id": "health-watch-red-converged",
+      "label": "Health page, sleep crater AND RHR +9 sustained",
+      "surface": "health",
+      "mode": "watch-red",
+      "must_call_tools": ["getHealthSeries", "getReadiness", "getCheckIns"],
+      "must_cite": ["both signal numbers"],
+      "must_avoid": ["watch tomorrow", "this morning", "yesterday", "soft-pedal"],
+      "voice_traits": ["unambiguous", "back-off-prescription", "names-convergence"]
+    },
+
+    {
+      "id": "health-no-checkin",
+      "label": "Health page, no check-in today + all pillars OK",
+      "surface": "health",
+      "mode": "steady",
+      "must_call_tools": ["getCheckIns", "getHealthSeries"],
+      "must_avoid": ["this morning's check-in", "the readiness board agrees", "TIRED", "SOLID", "WRECKED"],
+      "voice_traits": ["no-fabrication", "skips-check-in-talk-when-empty"]
+    },
+
+    {
+      "id": "profile-identity",
+      "label": "Profile page, full anchors set",
+      "surface": "profile",
+      "mode": "identity",
+      "must_call_tools": ["getProfile", "getRaces", "getPlanWindow"],
+      "must_cite": ["A-race name OR days away"],
+      "must_avoid": ["this morning", "yesterday", "today's session", "workout"],
+      "voice_traits": ["time-stable", "identity-framing", "non-prescriptive"]
+    },
+    {
+      "id": "profile-gap-lthr",
+      "label": "Profile page, LTHR untested > 12 weeks",
+      "surface": "profile",
+      "mode": "identity",
+      "must_call_tools": ["getProfile"],
+      "must_cite": ["LTHR re-test prompt"],
+      "must_avoid": ["this morning", "yesterday", "today's session"],
+      "voice_traits": ["names-one-gap", "no-workout-talk"]
     }
   ]
 }

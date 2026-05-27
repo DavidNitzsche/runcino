@@ -8,6 +8,40 @@
  *   - Demands strict JSON output
  */
 
+// ── Time-stability block ────────────────────────────────────────────────
+// Non-TODAY surfaces (training, races, race-detail, health, profile) cache
+// up to 24 hours. The briefing the runner reads at 9pm tonight was likely
+// written this morning. Voice must remain accurate across that window.
+//
+// Rule for ALL non-TODAY prompts: write in TIMELESS framing. Don't use
+// "this morning", "yesterday's run", "today's session", "tonight". Use
+// "this week", "the past week", "the build phase", "the season frame".
+// The TODAY surface is the place for time-acute voice; everywhere else
+// must hold up after a night of sleep.
+//
+// Embedded as a separate const so it can be appended ONLY to the long-
+// shelf-life surfaces. TODAY explicitly OMITS it (today/post-run uses
+// "the run that just ended" and that's correct on that surface).
+export const TIME_STABILITY = `# TIME-STABLE FRAMING (this surface caches up to 24 hours)
+This briefing may be read up to 24 hours after it's written. Voice must
+hold up. Do NOT use:
+- "this morning", "tonight", "this afternoon"
+- "today's run", "today's session", "tomorrow's session"
+- "yesterday" (refers to a specific calendar day that may be wrong by
+  the time the runner reads)
+- "an hour ago", "earlier" (acute markers that age poorly)
+
+INSTEAD use timeless framing:
+- "this week", "the past week", "this block"
+- "the last run", "recent quality work", "the most recent session"
+- "the build phase", "the season frame"
+- "the next A-race", "going into race week"
+
+If you must reference a specific date, use the actual date the tool
+returned (e.g. "Tue 2026-05-26") not a relative term. Dates don't age;
+"yesterday" does.
+`;
+
 export const VOICE_DOCTRINE_TEXT = '# Voice';
 // IMPORTANT: this doctrine text is read by the LLM as both rule AND example.
 // Em-dashes in the rule text leak into the output (the model mimics the style
@@ -244,6 +278,8 @@ function trainingPrompt(phaseLabel: string, phaseGuidance: string): string {
 
 ${VOICE_DOCTRINE}
 
+${TIME_STABILITY}
+
 # Required reads before composing
 1. getPlanWindow({ daysBack: 0, daysForward: 13 }): this week + next.
 2. getRuns({ daysBack: 14 }): two weeks of actuals to ground "deltas".
@@ -269,6 +305,8 @@ const RACES_CURRENT = `You are the coach on the RACES page · season-overview mo
 
 ${VOICE_DOCTRINE}
 
+${TIME_STABILITY}
+
 # What you talk about
 - The A-race as the season's frame ("everything from now to RACE points at GOAL")
 - Where B-races fit (tune-ups, time-trial data, pacing practice, NOT the goal)
@@ -282,6 +320,8 @@ const RACES_RACE_WEEK = `You are the coach on the RACES page · A-RACE WEEK mode
 
 ${VOICE_DOCTRINE}
 
+${TIME_STABILITY}
+
 # What you talk about
 - The race is here. Page reorients to it.
 - Two short shakeouts before race day. Saturday off.
@@ -293,6 +333,8 @@ const RACE_DETAIL_BUILDING = `You are the coach on the RACE DETAIL page · BUILD
 
 ${VOICE_DOCTRINE}
 
+${TIME_STABILITY}
+
 # What you talk about
 - Projection vs goal (real number, real distance)
 - Where the gap closes (which phase, which sessions)
@@ -300,9 +342,12 @@ ${VOICE_DOCTRINE}
 - Too far out to talk weather, fueling, or specific pacing. DON'T.
 Length: 2 short paragraphs.`;
 
-const RACE_DETAIL_SHARPENING = `You are the coach on the RACE DETAIL page · SHARPENING mode (30-60 days).
+const RACE_DETAIL_SHARPENING_HEADER = `You are the coach on the RACE DETAIL page · SHARPENING mode (30-60 days).`;
+const RACE_DETAIL_SHARPENING = `${RACE_DETAIL_SHARPENING_HEADER}
 
 ${VOICE_DOCTRINE}
+
+${TIME_STABILITY}
 
 # What you talk about
 - Projection has tightened, share both number and confidence interval
@@ -315,6 +360,8 @@ const RACE_DETAIL_RACE_WEEK = `You are the coach on the RACE DETAIL page · RACE
 
 ${VOICE_DOCTRINE}
 
+${TIME_STABILITY}
+
 # What you talk about
 - "Trust the build", work is done
 - Pacing plan in plain terms (a few segments, not a 13-row table)
@@ -325,6 +372,8 @@ Length: 2-3 short paragraphs.`;
 const RACE_DETAIL_POST_RACE = `You are the coach on the RACE DETAIL page · POST-RACE mode.
 
 ${VOICE_DOCTRINE}
+
+${TIME_STABILITY}
 
 # What you talk about
 - The finish time + PR delta. Both matter.
@@ -346,6 +395,8 @@ Length: 3-4 short paragraphs.`;
 const HEALTH_BASE = `You are the coach on the HEALTH page.
 
 ${VOICE_DOCTRINE}
+
+${TIME_STABILITY}
 
 # Orientation, health trends, not today's session
 This surface frames the runner's underlying state: sleep, RHR, HRV, weight,
@@ -407,6 +458,8 @@ NEVER soft-pedal a red watch. NEVER end with "watch tomorrow", end with
 const PROFILE_IDENTITY = `You are the coach on the PROFILE page.
 
 ${VOICE_DOCTRINE}
+
+${TIME_STABILITY}
 
 # Orientation, identity, anchors, gear
 This surface answers "who is this runner and how is their training set up?"
