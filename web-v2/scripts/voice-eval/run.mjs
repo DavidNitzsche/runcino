@@ -51,8 +51,23 @@ for (const sc of scenarios.scenarios) {
     continue;
   }
 
-  const voice = String(body.voice ?? '');
+  // Voice may be an array of paragraphs or a single string — normalize.
+  const voice = Array.isArray(body.voice)
+    ? body.voice.join('\n')
+    : String(body.voice ?? '');
+  // Tool trace is in _state.toolTrace (engine.ts populates it on every call).
+  const toolTrace = Array.isArray(body?._state?.toolTrace) ? body._state.toolTrace : [];
+  const toolsCalled = new Set(toolTrace.map((t) => t.name));
   const failures = [];
+
+  // must_call_tools: every tool listed MUST appear in the trace. Catches
+  // hallucination at the SOURCE (coach skipped reading the data it claims
+  // to know). Hard failure.
+  for (const tool of sc.must_call_tools ?? []) {
+    if (!toolsCalled.has(tool)) {
+      failures.push(`missing tool call: ${tool}()`);
+    }
+  }
 
   // must_avoid: voice should not contain banned phrases
   for (const phrase of sc.must_avoid ?? []) {
@@ -68,6 +83,12 @@ for (const sc of scenarios.scenarios) {
       // soft — flag as warning, not fail
       failures.push(`missed cite: "${cite}" (soft)`);
     }
+  }
+
+  // Cross-surface punctuation rule (em-dash / en-dash). Coach voice
+  // doctrine bans these app-wide; eval enforces.
+  if (voice.includes('—') || voice.includes('–')) {
+    failures.push('em-dash or en-dash in voice (banned by punctuation doctrine)');
   }
 
   // length sanity

@@ -11,6 +11,9 @@ struct ProfileView: View {
     @State private var showManualRunSheet = false
     @State private var showOnboardingSheet = false
     @StateObject private var tokenStore = TokenStore.shared
+    // 2026-05-27 iPhone parity audit: profile surface had no coach voice
+    // despite web having it. Wire identity-mode brief here.
+    @State private var briefing: Briefing?
 
     var body: some View {
         ScrollView {
@@ -32,6 +35,17 @@ struct ProfileView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 24).padding(.top, 24)
+
+                // Coach identity-mode voice. Renders when ready, hidden
+                // when nil so /profile loads without waiting on it.
+                if let briefing {
+                    CoachBlock(
+                        lead: briefing.lead,
+                        voice: briefing.voice,
+                        briefingId: "profile|\(briefing.mode)",
+                        askPrompt: nil
+                    )
+                }
 
                 // PERSONAL — including gap input
                 SectionLabel("PERSONAL")
@@ -94,7 +108,13 @@ struct ProfileView: View {
         // Warm settings + profile in the background as soon as /profile
         // mounts. SettingsSheet seeds its @State synchronously from the
         // cache when opened — kills the visible "Loading…" flash.
-        .task { await SettingsCache.shared.warm() }
+        .task {
+            await SettingsCache.shared.warm()
+            // Coach brief loads in parallel; UI shows the page immediately
+            // and the brief snaps in when ready (existing pattern from
+            // TodayView/TrainingView).
+            briefing = try? await API.briefing(surface: "profile")
+        }
         .sheet(isPresented: $showHeightSheet) {
             HeightInputSheet(onSave: { showHeightSheet = false })
                 .presentationDetents([.height(220)])

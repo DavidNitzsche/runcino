@@ -249,32 +249,6 @@ struct TodayView: View {
     }
 }
 
-private struct ReadinessChip: View {
-    /// Optional — nil when /api/readiness can't compute a score yet
-    /// (fresh install, no HK data). Renders "?" instead of lying with
-    /// a fixed placeholder.
-    let score: Int?
-    var body: some View {
-        ZStack {
-            Circle().stroke(Color.white.opacity(0.08), lineWidth: 3)
-            if let score {
-                Circle()
-                    .trim(from: 0, to: CGFloat(score) / 100)
-                    .stroke(color(for: score), style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text("\(score)").font(.display(16)).foregroundStyle(color(for: score))
-            } else {
-                Text("?").font(.display(16)).foregroundStyle(Theme.mute)
-            }
-        }
-        .frame(width: 44, height: 44)
-    }
-
-    /// Color matches the band the server returns:
-    /// ≥75 green (Primed) · 60-74 amber (Hold easy) · <60 red (Back off).
-    private func color(for s: Int) -> Color {
-        if s >= 75 { return Theme.green }
-        if s >= 60 { return Theme.goal }
-        return Theme.over
-    }
-}
+// ReadinessChip extracted to Components/ReadinessRing.swift for reuse on
+// /health and elsewhere. Use ReadinessRing(score:size:.chip) here.
+private typealias ReadinessChip = ReadinessRing

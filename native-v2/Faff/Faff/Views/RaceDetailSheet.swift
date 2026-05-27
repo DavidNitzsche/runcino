@@ -24,6 +24,11 @@ struct RaceDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var data: RaceDetailResponse?
     @State private var loading: Bool
+    /// Proximity-adaptive coach brief. Mode is computed from days_to_race
+    /// (matching web's /races/[slug]) and passed to /api/briefing so the
+    /// voice frames the race correctly (building / sharpening / race-week
+    /// / post-race).
+    @State private var briefing: Briefing?
 
     var body: some View {
         NavigationStack {
@@ -34,6 +39,17 @@ struct RaceDetailSheet: View {
                     } else if let d = data {
                         hero(d.race, proximity: d.proximity)
                         stats(d.race)
+                        // Coach voice slots in between stats and the
+                        // proximity-keyed structural block. Hidden if the
+                        // brief hasn't loaded yet so the page paints fast.
+                        if let briefing {
+                            CoachBlock(
+                                lead: briefing.lead,
+                                voice: briefing.voice,
+                                briefingId: "race-detail|\(briefing.mode)|\(slug)",
+                                askPrompt: nil
+                            )
+                        }
                         proximityBlock(d.proximity, race: d.race)
                         if d.race.priority == "A" {
                             packingNote()
@@ -54,9 +70,29 @@ struct RaceDetailSheet: View {
             }
         }
         .task {
-            // Skip the fetch when prefetched — parent already warmed it.
+            // Skip the race-detail fetch when prefetched, but always
+            // attempt to load the proximity-adaptive coach brief once
+            // we know the days_to_race.
             if prefetched == nil { await load() }
+            await loadBrief()
         }
+    }
+
+    /// Compute the surface mode from days_to_race, matching web's
+    /// resolveRaceDetail() in lib/coach/router.ts.
+    private func raceDetailMode(daysToRace: Int?) -> String {
+        guard let d = daysToRace else { return "building" }
+        if d < 0 { return "post-race" }
+        if d <= 7 { return "race-week" }
+        if d <= 60 { return "sharpening" }
+        return "building"
+    }
+
+    /// Fetch proximity-adaptive coach brief for this race.
+    private func loadBrief() async {
+        let days = data?.race.days
+        let mode = raceDetailMode(daysToRace: days)
+        briefing = try? await API.briefing(surface: "race-detail", mode: mode)
     }
 
     private func hero(_ r: RaceDetail, proximity: String) -> some View {
