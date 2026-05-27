@@ -135,7 +135,12 @@ export function CoachBlock({
           <PostRunCheckinChips
             workoutType={workoutType ?? null}
             runId={runId ?? null}
-            onSubmitted={() => router.refresh()}
+            // P-CHECKIN-REPLY 2026-05-27: no router.refresh on submit.
+            // The chip component renders its own inline reply from the
+            // /api/checkin response. Refreshing the whole page used to
+            // wipe the brief and show the "Faffing on..." skeleton for
+            // 15-20s — David flagged it as a reset. Now the brief
+            // stays intact and the reply lives inline.
           />
         </div>
       )}

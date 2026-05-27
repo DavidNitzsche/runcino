@@ -56,6 +56,10 @@ export function PostRunCheckinChips({
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // P-CHECKIN-REPLY 2026-05-27: slim inline reply from the coach,
+  // returned by POST /api/checkin. Renders below the chips in place
+  // of the old generic green "Got it" stub.
+  const [coachReply, setCoachReply] = useState<string | null>(null);
 
   // Recovery / shakeout sub-types skip the execution row.
   const showExec = kind !== 'recovery';
@@ -79,8 +83,15 @@ export function PostRunCheckinChips({
         }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const payload = await r.json().catch(() => ({}));
+      setCoachReply(payload?.coach_reply ?? null);
       setSent(true);
-      onSubmitted?.();
+      // P-CHECKIN-REPLY 2026-05-27: intentionally NOT calling onSubmitted.
+      // The old contract was "tell the parent to router.refresh and
+      // regenerate the whole brief," which felt like a reset. The new
+      // contract is: the reply renders inline, the brief stays as-is,
+      // and the next natural regen (day rollover / run ingest) folds
+      // the check-in in normally.
     } catch (e: any) {
       setError(e?.message ?? 'check-in failed');
     } finally {
@@ -93,9 +104,34 @@ export function PostRunCheckinChips({
       <div style={{
         padding: '14px 16px', borderRadius: 12,
         background: 'rgba(62,189,65,0.08)', border: '1px solid rgba(62,189,65,0.22)',
-        fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--green)',
+        display: 'flex', flexDirection: 'column', gap: 8,
       }}>
-        Got it — coach will fold this into the next briefing.
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          fontFamily: 'var(--f-label)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '1.4px', color: 'var(--green)',
+        }}>
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+            <path d="M2 5.5l2.5 2.5L9 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          COACH HEARD YOU
+        </div>
+        {coachReply ? (
+          <p style={{
+            margin: 0,
+            fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.55,
+            color: 'rgba(246,247,248,0.92)',
+          }}>
+            {coachReply}
+          </p>
+        ) : (
+          <p style={{
+            margin: 0,
+            fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--green)',
+          }}>
+            Got it. Coach will fold this into tomorrow's brief.
+          </p>
+        )}
       </div>
     );
   }

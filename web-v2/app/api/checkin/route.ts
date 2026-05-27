@@ -9,8 +9,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-import { generateBriefing } from '@/lib/coach/engine';
+import { generateCheckinReply } from '@/lib/coach/checkin-reply';
+import { loadCoachState } from '@/lib/coach/state-loader';
+import { readCachedBriefing } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const VALID_RATINGS = ['solid', 'tired', 'wrecked'] as const;
@@ -129,15 +130,18 @@ export async function POST(req: NextRequest) {
   if (body.run_id) extras.run_id = body.run_id;
   const extrasJson = Object.keys(extras).length > 0 ? JSON.stringify(extras) : null;
 
+  // Insert the check-in. We need the id back so we can patch in the
+  // coach_reply once the slim LLM call returns.
+  let insertedId: string | null = null;
   try {
-    await pool.query(
+    const r = await pool.query(
       `INSERT INTO check_ins (user_id, rating, briefing_id, surface, note, ts, extras)
-       VALUES ($1, $2, $3, $4, $5, now(), $6::jsonb)`,
+       VALUES ($1, $2, $3, $4, $5, now(), $6::jsonb)
+       RETURNING id`,
       [userId, rating, body.briefing_id ?? null, surface, body.note ?? null, extrasJson]
     );
+    insertedId = String(r.rows[0]?.id ?? '');
   } catch (err: any) {
-    // If check_ins table is missing, fail loudly so the operator runs the
-    // migration. We do NOT silently swallow this — that would break the loop.
     return NextResponse.json({
       error: 'check-in insert failed',
       detail: err.message,
@@ -145,15 +149,60 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 
-  // Bust cache so the next briefing fetch sees the new check-in.
-  // Fire-and-forget regen for the surface they're on — by the time the user
-  // navigates back, the new voice is cached and ready.
-  await bustBriefingCacheForEvent(userId, 'check_in');
-  void generateBriefing(userId, (surface as any) ?? 'today').catch(() => {});
+  // P-CHECKIN-REPLY 2026-05-27: removed the full-brief cache bust +
+  // background regen. Submitting a check-in now generates an inline
+  // 1-2 sentence reply from the coach instead of trashing the morning
+  // brief and waiting 15-20s for a full LLM regen. The next natural
+  // regen (day rollover, run ingest) folds the check-in into the
+  // morning voice normally.
+  let coachReply: string | null = null;
+  try {
+    const state = await loadCoachState(userId);
+    const cached = await readCachedBriefing(userId, 'today').catch(() => null);
+    coachReply = await generateCheckinReply({
+      runner: state.profile?.full_name?.split(' ')[0] ?? 'David',
+      today: state.today,
+      todayWorkout: state.todayWorkout ? {
+        type: state.todayWorkout.type,
+        mi: state.todayWorkout.mi,
+        label: state.todayWorkout.label,
+      } : null,
+      checkIn: {
+        kind: body.kind ?? 'post_run',
+        workout_kind: body.workout_kind ?? null,
+        execution: body.execution ?? null,
+        body: body.body ?? null,
+        niggle: body.niggle ?? null,
+      },
+      todayBriefLead: (cached as any)?.lead ?? null,
+    });
+  } catch (e: any) {
+    // Reply generation is non-fatal — the check-in is already saved.
+    // The runner sees a generic ack and the next brief still absorbs
+    // the row.
+    console.error('[checkin-reply] failed:', e?.message ?? e);
+    coachReply = null;
+  }
+
+  // Persist the reply onto the check-in row so a page refresh can show
+  // it again, and so the next brief regen can see "what we said last time."
+  if (coachReply && insertedId) {
+    try {
+      await pool.query(
+        `UPDATE check_ins
+            SET extras = COALESCE(extras, '{}'::jsonb) || jsonb_build_object('coach_reply', $1::text)
+          WHERE id = $2`,
+        [coachReply, insertedId]
+      );
+    } catch (e: any) {
+      console.error('[checkin] failed to persist reply:', e?.message ?? e);
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     rating,
+    coach_reply: coachReply,
     recorded_at: new Date().toISOString(),
   });
 }
