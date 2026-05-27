@@ -238,12 +238,32 @@ export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: stri
       padding: '22px 24px',
       display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px' }}>WEEK AHEAD</div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--mute)', letterSpacing: '0.5px' }}>
-          {week.plannedMi} MI
-        </div>
-      </div>
+      {(() => {
+        // 2026-05-27 P-DOCTRINE-WEEK-OVER mirror: show projected (done +
+        // remaining planned), not just the original planned total, so
+        // the header matches what the coach voice says elsewhere.
+        const projected = week.days.reduce((sum, d) => {
+          const useActual = d.doneMi > 0 && d.activityId;
+          return sum + (useActual ? d.doneMi : d.mi);
+        }, 0);
+        const done = week.days.reduce((sum, d) => sum + (d.doneMi > 0 ? d.doneMi : 0), 0);
+        const overPlanBy = Math.round((projected - week.plannedMi) * 10) / 10;
+        return (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px' }}>WEEK AHEAD</div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+              <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--mute)', letterSpacing: '0.5px' }}>
+                {done.toFixed(1)} / {projected.toFixed(1)} MI
+              </div>
+              {Math.abs(overPlanBy) >= 3 && (
+                <div style={{ fontSize: 10, color: 'var(--mute)', fontWeight: 600, letterSpacing: '0.5px' }}>
+                  ({overPlanBy > 0 ? '+' : ''}{overPlanBy.toFixed(1)} vs {week.plannedMi.toFixed(1)} planned)
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, flex: 1 }}>
         {week.days.map((d) => (

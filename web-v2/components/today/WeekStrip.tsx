@@ -77,16 +77,48 @@ export function WeekStrip({ days, weekDone, weekPlanned, phaseLabel }: {
 
   return (
     <div style={{ padding: '4px 24px 14px' }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', marginBottom: 12,
-        fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700, color: 'var(--mute)',
-        letterSpacing: '1.6px', textTransform: 'uppercase',
-      }}>
-        <span>THIS WEEK{phaseLabel ? ` · ${phaseLabel}` : ''}</span>
-        <span style={{ color: 'var(--green)' }}>
-          {weekDone.toFixed(1)} / {weekPlanned ?? '?'} MI
-        </span>
-      </div>
+      {(() => {
+        // P-DOCTRINE-WEEK-OVER 2026-05-27 — header denominator was the
+        // ORIGINAL planned total (e.g. 43.8). Coach voice says
+        // "tracking for 50.1" (done + remaining planned). Two
+        // numbers on the same screen = the runner has to reconcile
+        // them. Compute the projected total from days[] (actual for
+        // past + today-if-ran, planned for the rest) and use that
+        // as the denominator instead. Renders "25.8 / 50.1 MI"
+        // matching what the coach is saying.
+        const projected = days.reduce((sum, d) => {
+          const useActual = d.doneMi >= 0.5 && d.activityId;
+          return sum + (useActual ? d.doneMi : d.plannedMi);
+        }, 0);
+        const overPlanBy = weekPlanned != null
+          ? Math.round((projected - weekPlanned) * 10) / 10
+          : 0;
+        return (
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12,
+            fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700, color: 'var(--mute)',
+            letterSpacing: '1.6px', textTransform: 'uppercase',
+          }}>
+            <span>THIS WEEK{phaseLabel ? ` · ${phaseLabel}` : ''}</span>
+            <span style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <span style={{ color: 'var(--green)' }}>
+                {weekDone.toFixed(1)} / {projected.toFixed(1)} MI
+              </span>
+              {/* When projected materially differs from the original plan,
+                  show the original number small so the runner can see
+                  the trajectory without reading the coach voice. */}
+              {weekPlanned != null && Math.abs(overPlanBy) >= 3 && (
+                <span style={{
+                  fontSize: 9, color: 'var(--mute)', fontWeight: 600, letterSpacing: '1px',
+                  textTransform: 'none',
+                }}>
+                  ({overPlanBy > 0 ? '+' : ''}{overPlanBy.toFixed(1)} vs {weekPlanned.toFixed(1)} planned)
+                </span>
+              )}
+            </span>
+          </div>
+        );
+      })()}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
         {days.map((d) => <DayTile key={d.date} day={d} onClick={() => setOpenDay(d)} />)}
       </div>
