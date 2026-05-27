@@ -10,6 +10,11 @@ struct ProfileView: View {
     @State private var showSettingsSheet = false
     @State private var showManualRunSheet = false
     @State private var showOnboardingSheet = false
+    // 2026-05-27 nav restructure: Log + Tips dropped out of the tab
+    // bar (Today/Training/Races/Health/Profile = 5 primary). They live
+    // here now as actions that push a sheet.
+    @State private var showLogSheet = false
+    @State private var showTipsSheet = false
     @StateObject private var tokenStore = TokenStore.shared
     // 2026-05-27 iPhone parity audit: profile surface had no coach voice
     // despite web having it. Wire identity-mode brief here.
@@ -115,8 +120,17 @@ struct ProfileView: View {
                 .padding(.horizontal, 24)
 
                 // P29 — actions: edit settings + log manual run + onboarding
+                // 2026-05-27: added Run log + Form tips here so the two
+                // surfaces that dropped out of the tab bar are still one
+                // tap away.
                 SectionLabel("ACTIONS")
                 VStack(spacing: 10) {
+                    Button { showLogSheet = true } label: {
+                        actionRow(icon: "list.bullet.rectangle.fill", label: "Run log", sub: "Every run, chronologically")
+                    }.buttonStyle(.plain)
+                    Button { showTipsSheet = true } label: {
+                        actionRow(icon: "lightbulb.fill", label: "Form tips", sub: "Cadence · vertical osc · ground contact")
+                    }.buttonStyle(.plain)
                     Button { showSettingsSheet = true } label: {
                         actionRow(icon: "gearshape.fill", label: "Settings", sub: "Units · zones · profile")
                     }.buttonStyle(.plain)
@@ -163,6 +177,16 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showOnboardingSheet) {
                 OnboardingSheet()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showLogSheet) {
+                LogView()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showTipsSheet) {
+                TipsView()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }

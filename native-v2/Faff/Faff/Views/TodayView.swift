@@ -15,12 +15,12 @@ import SwiftUI
 struct TodayView: View {
     @State private var briefing: Briefing?
     @State private var workout: WatchWorkout?
+    /// Kept for the rest-day-message fallback (loadAll still pulls the
+    /// plan to know if today is a planned rest day). UI no longer shows
+    /// the week strip on this surface — Training owns the multi-day
+    /// view now.
     @State private var planWeek: PlanWeek?
     @State private var error: String?
-    /// Observable HK importer — surfaces auth status + last sync result.
-    /// Without this, a silent HK failure (no permission, empty result,
-    /// network error) would be invisible. Visible status = debuggable.
-    @StateObject private var hk = HealthKitImporter.shared
     @State private var readiness: ReadinessSnapshot?
 
     var body: some View {
@@ -36,16 +36,13 @@ struct TodayView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 0)
 
-                    // HK importer status strip — only shows when not idle.
-                    // Lets David see auth state + sync results in one glance
-                    // instead of having to dig into the Health app or wait
-                    // for runs to appear in /log.
-                    healthStatusStrip
-
-                    // No page-blocking spinner. Each section renders the
-                // instant its data lands; until then it shows nothing
-                // (or a matched-shape skeleton for the coach slot).
-                // Inspired by web /today's BriefingLoader pattern.
+                    // 2026-05-27 restructure: TODAY is now PURE today.
+                    // The healthStatusStrip ("HEALTH · IMPORTING / SYNCED 3
+                    // runs · 31 vitals") was leaking backend state to the
+                    // user — "should just work" instead. The WeekStripView
+                    // also moved out of here: David said "TODAY should be
+                    // a pure today tab with todays run and coach" — the
+                    // multi-day plan view lives on the TRAINING tab now.
 
                 if let error {
                     errorBlock(error)
@@ -60,13 +57,7 @@ struct TodayView: View {
                         .transition(.opacity)
                 }
 
-                // 2) Week strip — tap any tile to preview that day.
-                if let week = planWeek, !week.days.isEmpty {
-                    WeekStripView(week: week)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                // 3) Coach prose slot — skeleton while loading, snaps in
+                // 2) Coach prose slot — skeleton while loading, snaps in
                 //    when the brief arrives. Never blocks the screen.
                 CoachSlot(
                     briefing: briefing,
@@ -85,7 +76,7 @@ struct TodayView: View {
                     }
                 )
 
-                // 4) Topic cards — fueling / race horizon / readiness
+                // 3) Topic cards — fueling / race horizon / readiness
                 //    detail / gap-fill prompts.
                     if let briefing, !briefing.topics.isEmpty {
                         VStack(spacing: 10) {
@@ -99,7 +90,6 @@ struct TodayView: View {
                 }
                 .padding(.bottom, 40)
                 .animation(.spring(response: 0.45, dampingFraction: 0.85), value: workout?.workoutId)
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: planWeek?.days.count)
                 .animation(.spring(response: 0.45, dampingFraction: 0.85), value: briefing?.lead)
             }
             .background(Theme.bg.ignoresSafeArea())
@@ -120,47 +110,10 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Health status strip
-    //
-    // Shows the HK importer's current state so silent failures (no auth,
-    // empty pull, network error) are visible. Tap to force a re-sync.
-
-    @ViewBuilder
-    private var healthStatusStrip: some View {
-        if hk.status != .idle {
-            let (label, color) = healthStatusLabel
-            HStack(spacing: 10) {
-                Circle().fill(color).frame(width: 7, height: 7)
-                Text(label)
-                    .font(.body(11, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(color)
-                Spacer()
-                Button {
-                    Task { await hk.importIfConnected(daysBack: 7) }
-                } label: {
-                    Text("SYNC")
-                        .font(.label(10)).tracking(1.2)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Theme.ink.opacity(0.06))
-                        .clipShape(Capsule())
-                        .foregroundStyle(Theme.mute)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, -4)
-        }
-    }
-
-    private var healthStatusLabel: (String, Color) {
-        switch hk.status {
-        case .idle:       return ("HEALTH · IDLE",        Theme.mute)
-        case .requesting: return ("HEALTH · ASKING",      Theme.goal)
-        case .importing:  return ("HEALTH · IMPORTING",   Theme.dist)
-        case .done:       return ("HEALTH · \(hk.lastMessage ?? "SYNCED")", Theme.green)
-        case .error:      return ("HEALTH · \(hk.lastMessage ?? "ERROR")",  Theme.over)
-        }
-    }
+    // Health status strip removed 2026-05-27: David said "We dont want
+    // to see behind the scenes / the backend. It should all just work."
+    // HK import still runs silently via FaffApp.scenePhase observer +
+    // the loadAll() background task below; user just doesn't see chatter.
 
     // App bar removed in iPhone-rebuild — replaced by NavigationStack
     // large title + ReadinessRing in the toolbar's topBarTrailing slot.

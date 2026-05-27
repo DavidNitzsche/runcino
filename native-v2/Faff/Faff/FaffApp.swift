@@ -70,20 +70,19 @@ struct RootTabView: View {
     @State private var selectedTab: Tab = .today
 
     enum Tab: String, CaseIterable, Identifiable {
-        case today, training, log, races, health, tips, profile
+        // 2026-05-27: dropped to 5 tabs (iOS max without an auto-"More")
+        // after David asked to promote Health and demote Log. Log + Tips
+        // now live as actions inside ProfileView so they're still one
+        // tap away from anywhere.
+        case today, training, races, health, profile
         var id: String { rawValue }
-        // Title Case for tab labels matches iOS convention (Apple's
-        // own apps: Today, Library, Search). The uppercase "TODAY"
-        // labels read web-y, not native.
         var label: String { rawValue.capitalized }
         var systemImage: String {
             switch self {
             case .today:    return "house.fill"
             case .training: return "calendar"
-            case .log:      return "list.bullet.rectangle.fill"
             case .races:    return "trophy.fill"
             case .health:   return "heart.fill"
-            case .tips:     return "lightbulb.fill"
             case .profile:  return "person.fill"
             }
         }
@@ -93,10 +92,8 @@ struct RootTabView: View {
         TabView(selection: $selectedTab) {
             TodayView()    .tabItem { Label("Today",    systemImage: Tab.today.systemImage) }    .tag(Tab.today)
             TrainingView() .tabItem { Label("Training", systemImage: Tab.training.systemImage) } .tag(Tab.training)
-            LogView()      .tabItem { Label("Log",      systemImage: Tab.log.systemImage) }      .tag(Tab.log)
             RacesView()    .tabItem { Label("Races",    systemImage: Tab.races.systemImage) }    .tag(Tab.races)
             HealthView()   .tabItem { Label("Health",   systemImage: Tab.health.systemImage) }   .tag(Tab.health)
-            TipsView()     .tabItem { Label("Tips",     systemImage: Tab.tips.systemImage) }     .tag(Tab.tips)
             ProfileView()  .tabItem { Label("Profile",  systemImage: Tab.profile.systemImage) }  .tag(Tab.profile)
         }
         .tint(Theme.green)

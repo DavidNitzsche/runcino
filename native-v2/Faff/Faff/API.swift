@@ -292,6 +292,15 @@ enum API {
         return try? JSONDecoder().decode(TrainingState.self, from: data)
     }
 
+    /// /api/health/state — 30-day trends + summary + watch-mode for
+    /// every health metric the iPhone /health tab renders.
+    static func fetchHealthState() async throws -> HealthState? {
+        let url = baseURL.appendingPathComponent("api/health/state")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(HealthState.self, from: data)
+    }
+
     /// Mon-Sun plan_workouts for the week containing `date` (or today).
     /// Drives the iPhone WeekStrip.
     static func fetchPlanWeek(date: String? = nil) async throws -> PlanWeek {
@@ -490,6 +499,47 @@ struct TrainingNextQuality: Decodable {
     let type: String
     let label: String?
     let mi: Double
+}
+
+// MARK: - HealthState (iPhone /health)
+//
+// Mirrors web-v2/lib/coach/health-state.ts. 30-day daily series for
+// each metric so the iPhone can draw a sparkline next to the current
+// value + delta, plus a summary block.
+
+struct HealthState: Decodable {
+    let today: String
+    let sleepSeries: [HealthDayHours]
+    let rhrSeries: [HealthDayBpm]
+    let hrvSeries: [HealthDayMs]
+    let weightSeries: [HealthDayLb]
+    let sleep: SleepSummary
+    let rhr: RhrSummary
+    let hrv: HrvSummary
+    let weight: WeightSummary
+    let cadence: CadenceSummary
+    let vo2: Vo2Summary
+    let watchMode: String              // 'steady' / 'watch-amber' / 'watch-red' / 'green'
+    let watchItems: [WatchItem]
+}
+
+struct HealthDayHours: Decodable { let date: String; let hours: Double }
+struct HealthDayBpm:   Decodable { let date: String; let bpm: Int }
+struct HealthDayMs:    Decodable { let date: String; let ms: Int }
+struct HealthDayLb:    Decodable { let date: String; let lb: Double }
+
+struct SleepSummary:   Decodable { let avg7n: Double?; let avg30n: Double?; let deficit7: Double }
+struct RhrSummary:     Decodable { let current: Int?; let baseline: Int?; let delta: Int? }
+struct HrvSummary:     Decodable { let current: Int?; let baseline: Int?; let pctAboveBaseline: Double? }
+struct WeightSummary:  Decodable { let current: Double?; let delta30: Double? }
+struct CadenceSummary: Decodable { let baseline: Int? }
+struct Vo2Summary:     Decodable { let current: Double? }
+
+struct WatchItem: Decodable, Identifiable {
+    let label: String
+    let status: String      // 'amber' / 'red'
+    let note: String
+    var id: String { label + status }
 }
 
 // MARK: - Race list (iPhone /races)

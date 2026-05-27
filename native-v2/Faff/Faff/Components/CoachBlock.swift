@@ -33,8 +33,15 @@ struct CoachBlock: View {
             }
 
             if let lead {
+                // 2026-05-27 fix: longer headlines were getting truncated
+                // ("Sleep debt and load spike fighting each...") because
+                // the .display font defaulted to one-line. fixedSize on
+                // vertical lets it wrap to as many lines as needed; no
+                // lineLimit clamp anywhere on the headline.
                 Text(lead).font(.display(32)).tracking(0.5)
                     .foregroundStyle(Theme.ink).lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
             }
 
             ForEach(Array(voice.enumerated()), id: \.offset) { _, paragraph in
