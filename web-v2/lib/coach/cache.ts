@@ -35,7 +35,13 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        hrCeilingBpm; TODAY_PRE_RUN prompt instructs LLM to use that
 //        instead of avgHrEasy baseline. Old briefs say "135 or below"
 //        when the watch says "144" — they have to go.
-export const PROMPT_VERSION = 'v2-hr-ceiling-doctrine';
+//   v3 → 2026-05-27 phantom check-in fix: readiness inputs now date-
+//        stamp each check-in ("TIRED (3d ago)" instead of bare "TIRED"),
+//        observedSub explicitly says "none today" when no rating
+//        landed; prompt forbids "this morning's check-in" unless a
+//        check-in is dated today. Old briefs claim "this morning's
+//        check-in was TIRED" when David never tapped a chip today.
+export const PROMPT_VERSION = 'v3-checkin-date-stamps';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls

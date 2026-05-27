@@ -108,8 +108,29 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     inputs.push({ key: 'rhr', label: 'RHR · 20%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No resting HR data yet.' });
   }
 
-  // SUBJECTIVE (15%) — last 2 check-ins
-  const recent = state.recentCheckIns.slice(0, 2);
+  // SUBJECTIVE (15%) — last 2 check-ins, date-labeled.
+  //
+  // 2026-05-27: coach was framing check-ins from days ago as "this
+  // morning's check-in." Root cause: this slice handed the LLM the
+  // last 2 ratings (pulled from a 7-day window in state-loader) with
+  // no date context — observedSub was just "last 2 check-ins". The
+  // LLM, seeing "TIRED" in a readiness card labeled "today," assumed
+  // it was today's. Fix: stamp each check-in with how many days ago
+  // it was, surface those labels in observedSub, and let the meaning
+  // string explicitly call out staleness when nothing landed today.
+  const todayIso = (state.today ?? new Date().toISOString().slice(0, 10));
+  const recent = state.recentCheckIns.slice(0, 2).map((c) => {
+    const checkInDay = new Date(c.ts).toISOString().slice(0, 10);
+    const daysAgo = Math.max(0, Math.round(
+      (Date.parse(todayIso + 'T12:00:00Z') -
+       Date.parse(checkInDay + 'T12:00:00Z')) / 86400000
+    ));
+    const dateLabel = daysAgo === 0 ? 'today'
+                    : daysAgo === 1 ? 'yesterday'
+                    : `${daysAgo}d ago`;
+    return { ...c, daysAgo, dateLabel };
+  });
+  const hasToday = recent.some((c) => c.daysAgo === 0);
   if (recent.length > 0) {
     const map = { solid: 3, tired: -3, wrecked: -8 } as const;
     const w = recent.reduce((s, c) => s + (map[c.rating] ?? 0), 0);
@@ -117,17 +138,26 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const ratings = recent.map((c) => c.rating);
     const allSolid = ratings.every((r) => r === 'solid');
     const anyWrecked = ratings.some((r) => r === 'wrecked');
-    const meaning = anyWrecked
+    const baseMeaning = anyWrecked
       ? `A WRECKED check-in is a real signal. Coach should ease the next session.`
       : allSolid && ratings.length >= 2
         ? `Back-to-back SOLID feel. You're absorbing the work.`
         : ratings.includes('tired')
           ? `TIRED in recent check-ins. Fatigue accumulating, watch volume.`
           : `Subjective reads steady.`;
+    // When nothing landed today, prepend a hard "no check-in today"
+    // note so the LLM can't frame the most-recent rating as today's.
+    const meaning = hasToday
+      ? baseMeaning
+      : `No check-in today (most recent: ${recent[0].dateLabel}). ` + baseMeaning;
     inputs.push({
       key: 'subjective', label: 'CHECK-IN · 15%', weight: w,
-      observedV: ratings.map((r) => r.toUpperCase()).join(' · '),
-      observedSub: `last ${recent.length} check-in${recent.length === 1 ? '' : 's'}`,
+      observedV: recent
+        .map((c) => `${c.rating.toUpperCase()} (${c.dateLabel})`)
+        .join(' · '),
+      observedSub: hasToday
+        ? `last ${recent.length} check-in${recent.length === 1 ? '' : 's'}`
+        : `last check-in ${recent[0].dateLabel} — none today`,
       meaning,
     });
   } else {
