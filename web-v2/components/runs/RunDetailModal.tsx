@@ -80,30 +80,35 @@ export function RunDetailModal({
   prefetchedData?: RunDetail | null;
   prefetchedShoes?: any[] | null;
 }) {
+  // 2026-05-27: shoes now come embedded in the RunDetail response, so
+  // the modal needs only ONE round-trip (down from two). Initial shoe
+  // list pulls from prefetchedShoes (LogTable warm-up path) → falls
+  // back to detail.shoes once the fetch lands → falls back to empty.
   const [data, setData] = useState<RunDetail | null>(prefetchedData ?? null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(prefetchedData == null);
-  const [shoes, setShoes] = useState<any[]>(prefetchedShoes ?? []);
+  const [shoes, setShoes] = useState<any[]>(prefetchedShoes ?? prefetchedData?.shoes ?? []);
 
   useEffect(() => {
-    // Pre-fetched path — skip the fetch entirely. Updates from prop
-    // changes (e.g. user re-opens modal after navigating).
     if (prefetchedData) {
       setData(prefetchedData);
       setLoading(false);
-      if (prefetchedShoes) setShoes(prefetchedShoes);
+      // Trust prefetched shoes when explicitly supplied (LogTable batch
+      // path), else use the inline list from the detail payload.
+      setShoes(prefetchedShoes ?? prefetchedData.shoes ?? []);
       return;
     }
     let mounted = true;
     fetch(`/api/runs/${encodeURIComponent(activityId)}`)
       .then((r) => r.ok ? r.json() : r.json().then((e) => { throw new Error(e.error ?? 'failed'); }))
-      .then((d) => { if (mounted) { setData(d); setLoading(false); } })
+      .then((d: RunDetail) => {
+        if (!mounted) return;
+        setData(d);
+        setLoading(false);
+        // Server now bundles shoes inline — no second round-trip needed.
+        if (Array.isArray(d.shoes)) setShoes(d.shoes);
+      })
       .catch((e) => { if (mounted) { setError(e.message ?? String(e)); setLoading(false); } });
-    // P32 — fetch shoes for the picker (active only)
-    fetch('/api/shoe')
-      .then((r) => r.ok ? r.json() : null)
-      .then((j) => { if (mounted && j?.shoes) setShoes(j.shoes.filter((s: any) => !s.retired)); })
-      .catch(() => {});
     return () => { mounted = false; };
   }, [activityId, prefetchedData, prefetchedShoes]);
 

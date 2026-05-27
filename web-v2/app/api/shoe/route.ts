@@ -1,16 +1,61 @@
 /**
  * /api/shoe
+ *   GET                                                                     list
  *   POST   { brand, model, color?, run_types?, mileage_cap? }              create
  *   PATCH  { id, mileage?, mileage_cap?, run_types?, retired?, preferred? } update
  *   DELETE { id }                                                            delete
  *
  * Writes to shoes table. Idempotent on id for PATCH/DELETE.
+ *
+ * Audit 2026-05-27: GET was missing. fetch('/api/shoe') silently 405'd,
+ * so the shoe picker on RunDetailModal has been empty since launch and
+ * the iPhone LogView shoe prefetch returned nothing. Adding GET here +
+ * embedding shoes in /api/runs/[id] fixes both paths.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCache } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+
+export async function GET() {
+  // Shape mirrors getShoes() in lib/coach/tools.ts so the coach + UI
+  // share the same field set. Ordered preferred-first then by mileage
+  // descending so the main shoe appears at the top of the picker.
+  // Retired shoes included so /profile can show them; the picker filters
+  // them client-side.
+  const rows = (await pool.query(
+    `SELECT id, brand, model, color, color2, run_types,
+            mileage::numeric AS mileage,
+            mileage_cap::numeric AS mileage_cap,
+            COALESCE(retired, false) AS retired,
+            COALESCE(preferred, false) AS preferred,
+            notes
+       FROM shoes
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      ORDER BY retired ASC, preferred DESC, mileage DESC NULLS LAST`,
+    [DAVID_USER_ID]
+  ).catch(() => ({ rows: [] }))).rows;
+  return NextResponse.json({
+    shoes: rows.map((s: any) => ({
+      id: s.id,
+      brand: s.brand,
+      model: s.model,
+      color: s.color,
+      color2: s.color2,
+      run_types: s.run_types ?? [],
+      mileage: s.mileage == null ? null : Number(s.mileage),
+      mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
+      retired: Boolean(s.retired),
+      preferred: Boolean(s.preferred),
+      notes: s.notes,
+    })),
+  }, {
+    // Shoes change only on POST/PATCH/DELETE; short window means cache
+    // hits absorb common reads while edits still propagate within ~2min.
+    headers: { 'Cache-Control': 'private, max-age=120, stale-while-revalidate=30' },
+  });
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);

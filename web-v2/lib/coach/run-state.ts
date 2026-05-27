@@ -41,6 +41,22 @@ export interface PhaseBreakdown {
   status: 'on' | 'fast' | 'slow' | null;
 }
 
+/** Shoe entry surfaced inline on the run detail so the picker doesn't
+ *  need a second round-trip on modal open. Shape mirrors GET /api/shoe. */
+export interface RunDetailShoe {
+  id: number;
+  brand: string;
+  model: string;
+  color: string | null;
+  color2: string | null;
+  run_types: string[];
+  mileage: number | null;
+  mileage_cap: number | null;
+  retired: boolean;
+  preferred: boolean;
+  notes: string | null;
+}
+
 export interface RunForm {
   // Apple Watch form-metric set, cross-referenced from health_samples for
   // the run's date. Cadence here can override the activity's stale value.
@@ -79,6 +95,11 @@ export interface RunDetail {
 
   // P32 — shoe assignment surfaced for the modal picker.
   shoe_id: number | null;
+  // Audit 2026-05-27: shoe inventory embedded inline so RunDetailModal
+  // can render the picker without a second round-trip to /api/shoe.
+  // Filtered to non-retired entries (the picker rule) but the modal can
+  // still display the assigned shoe by id regardless.
+  shoes: RunDetailShoe[];
   // P42 — work-only averages excluding planned recovery/rest phases.
   // Returns null when no matching planned workout structure is available;
   // otherwise these are the "real" effort numbers minus the jog-in-between
@@ -221,6 +242,35 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // exclude).
   const workAvgs = await computeWorkAverages(userId, day, splits, phaseBreakdown);
 
+  // Inline shoe inventory — same query as GET /api/shoe but bundled here
+  // so the modal opens with no second round-trip.
+  const shoesRows = (await pool.query(
+    `SELECT id, brand, model, color, color2, run_types,
+            mileage::numeric AS mileage,
+            mileage_cap::numeric AS mileage_cap,
+            COALESCE(retired, false) AS retired,
+            COALESCE(preferred, false) AS preferred,
+            notes
+       FROM shoes
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND COALESCE(retired, false) = false
+      ORDER BY preferred DESC, mileage DESC NULLS LAST`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows;
+  const shoes: RunDetailShoe[] = shoesRows.map((s: any) => ({
+    id: s.id,
+    brand: s.brand,
+    model: s.model,
+    color: s.color,
+    color2: s.color2,
+    run_types: s.run_types ?? [],
+    mileage: s.mileage == null ? null : Number(s.mileage),
+    mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
+    retired: Boolean(s.retired),
+    preferred: Boolean(s.preferred),
+    notes: s.notes,
+  }));
+
   return {
     id: r.id ?? r.activityId ?? activityId,
     date: day,
@@ -245,6 +295,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     kudos: Number(r.kudosCount) || null,
 
     shoe_id: shoeId,
+    shoes,
     pace_work: workAvgs.pace,
     pace_work_s_per_mi: workAvgs.paceSPerMi,
     hr_avg_work: workAvgs.hrAvg,
