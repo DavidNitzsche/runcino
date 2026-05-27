@@ -162,22 +162,22 @@ function MicroStat({ k, v, delta, color }: { k: string; v: string; delta: string
   );
 }
 
-/** Big "7.6 MI DONE" headline. Display-only; run details open from the
- *  week-strip day cards below — single source of click-through. */
+/** Big workout-name headline (e.g. "CRUISE INTERVALS · DONE").
+ *  Display-only; run details open from the week-strip day cards below. */
 function HeadlineMileage({ headline }: { headline: ReturnType<typeof heroHeadline> }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'baseline', gap: 14,
+      display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap',
       lineHeight: 0.98,
     }}>
       <span style={{
-        fontFamily: 'var(--f-display)', fontSize: 56, fontWeight: 800,
-        color: headline.numColor, letterSpacing: '0.2px',
+        fontFamily: 'var(--f-display)', fontSize: 48, fontWeight: 800,
+        color: headline.numColor, letterSpacing: '0.4px',
       }}>{headline.num}</span>
       {headline.post && (
         <span style={{
-          fontFamily: 'var(--f-display)', fontSize: 28, fontWeight: 700,
-          color: headline.postColor, letterSpacing: '0.3px',
+          fontFamily: 'var(--f-display)', fontSize: 26, fontWeight: 700,
+          color: headline.postColor, letterSpacing: '0.5px',
         }}>{headline.post}</span>
       )}
     </div>
@@ -197,37 +197,76 @@ function heroBreadcrumb(glance: any): { before: string; race: string | null } {
   return { before, race };
 }
 
-/** Build the big mileage headline. State-aware. */
+/** Build the workout-name headline. State-aware.
+ *
+ *  Headline = WORKOUT NAME in its type accent color
+ *           + " · DONE" / " · TODAY" / " · REST DAY" suffix
+ *
+ *  Colors per type:
+ *    easy / shakeout → purple (--learn)
+ *    threshold / intervals / tempo / vo2max → amber (--goal)
+ *    long → blue (--dist)
+ *    race → orange (--race)
+ *    rest → rest blue (--rest)
+ *
+ *  The suffix (DONE/TODAY/etc) carries the green completion signal
+ *  separately from the workout type color.
+ */
 function heroHeadline(
   todayCell: any,
   daysToRace: number | null | undefined,
 ): { num: string; post: string; numColor: string; postColor: string } {
   if (daysToRace === 0) {
-    return { num: 'RACE', post: 'DAY', numColor: 'var(--race)', postColor: 'var(--mute)' };
+    return { num: 'RACE DAY', post: '', numColor: 'var(--race)', postColor: 'var(--mute)' };
   }
   if (!todayCell) {
     return { num: '—', post: '', numColor: 'var(--dim)', postColor: 'var(--mute)' };
   }
   const ran = todayCell.doneMi >= 0.5;
+  const t = String(todayCell.plannedType ?? '').toLowerCase();
+  const isRest = t === 'rest' || todayCell.plannedMi === 0;
+
+  if (isRest && !ran) {
+    return { num: 'REST DAY', post: '', numColor: 'var(--rest)', postColor: 'var(--mute)' };
+  }
+
+  const name = workoutName(todayCell);
+  const color = typeAccent(t);
+
   if (ran) {
-    return {
-      num: todayCell.doneMi.toFixed(todayCell.doneMi % 1 === 0 ? 0 : 1),
-      post: 'MI · DONE',
-      numColor: 'var(--green)',
-      postColor: 'var(--mute)',
-    };
+    return { num: name, post: '· DONE', numColor: color, postColor: 'var(--green)' };
   }
-  if (todayCell.plannedType === 'rest' || todayCell.plannedMi === 0) {
-    return { num: 'REST', post: 'DAY', numColor: 'var(--rest)', postColor: 'var(--mute)' };
+  return { num: name, post: '· TODAY', numColor: color, postColor: 'var(--mute)' };
+}
+
+/** Pull the human-readable workout name from a glance day cell.
+ *  Prefers the plannedLabel (e.g. "Cruise Intervals") when set, falls
+ *  back to a friendly version of the type enum. */
+function workoutName(cell: any): string {
+  const label = (cell.plannedLabel ?? '').toString().trim();
+  if (label) return label.toUpperCase();
+  const t = String(cell.plannedType ?? '').toLowerCase();
+  switch (t) {
+    case 'easy':       return 'EASY RUN';
+    case 'shakeout':   return 'SHAKEOUT';
+    case 'long':       return 'LONG RUN';
+    case 'threshold':  return 'THRESHOLD';
+    case 'tempo':      return 'TEMPO';
+    case 'intervals':  return 'INTERVALS';
+    case 'vo2max':     return 'VO2 MAX';
+    case 'race':       return 'RACE';
+    case 'progression':return 'PROGRESSION';
+    default:           return t ? t.toUpperCase() : 'RUN';
   }
-  // Pre-run, planned
-  const t = (todayCell.plannedType ?? '').toUpperCase();
-  return {
-    num: todayCell.plannedMi.toFixed(todayCell.plannedMi % 1 === 0 ? 0 : 1),
-    post: `MI · ${t}`,
-    numColor: 'var(--ink)',
-    postColor: 'var(--mute)',
-  };
+}
+
+function typeAccent(t: string): string {
+  if (t === 'easy' || t === 'shakeout') return 'var(--learn)';
+  if (['threshold', 'tempo', 'intervals', 'vo2max'].includes(t)) return 'var(--goal)';
+  if (t === 'long' || t === 'progression') return 'var(--dist)';
+  if (t === 'race') return 'var(--race)';
+  if (t === 'rest') return 'var(--rest)';
+  return 'var(--ink)';
 }
 
 /** Build the one-line plain-English coach summary that sits under the headline.
