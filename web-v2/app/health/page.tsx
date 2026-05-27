@@ -62,14 +62,16 @@ export default async function HealthPage() {
             title="SLEEP · 30 DAYS" titleColor="var(--goal)"
             value={health.sleep.avg7n != null ? `${health.sleep.avg7n.toFixed(1)}h` : '—'}
             valueColor="var(--goal)"
-            sub={`7-NIGHT AVG · 30D avg ${health.sleep.avg30n ?? '—'}h · −${(7.5 - (health.sleep.avg7n ?? 7.5)).toFixed(1)} vs target`}
+            narrative={sleepNarrative(health.sleep.avg7n)}
+            sub={`7-NIGHT AVG · 30D avg ${health.sleep.avg30n ?? '—'}h · target 7.5h`}
             chart={<BarChart series={health.sleepSeries.map((d) => d.hours)} min={4} max={10} color="#F3AD38" unit="h" baseline={7.5} />}
           />
           <TrendCard
             title="RESTING HR · 60 DAYS" titleColor="var(--over)"
             value={health.rhr.current != null ? `${health.rhr.current}` : '—'}
             valueColor={health.rhr.delta != null && health.rhr.delta >= 5 ? 'var(--over)' : 'var(--green)'}
-            sub={`CURRENT BPM · baseline ${health.rhr.baseline ?? '—'} · ${health.rhr.delta != null ? (health.rhr.delta >= 0 ? `+${health.rhr.delta}` : `${health.rhr.delta}`) : '—'}`}
+            narrative={rhrNarrative(health.rhr.delta)}
+            sub={`CURRENT BPM · baseline ${health.rhr.baseline ?? '—'} · 60-day window`}
             chart={<BarChart series={health.rhrSeries.map((d) => d.bpm)} min={40} max={70} color="#FC4D64" unit="bpm" baseline={health.rhr.baseline ?? undefined} xLabel="60D AGO → TODAY" />}
           />
         </Grid2>
@@ -79,13 +81,15 @@ export default async function HealthPage() {
             title="HRV · NIGHTLY" titleColor="var(--green)"
             value={health.hrv.current != null ? `${health.hrv.current} ms` : '—'}
             valueColor="var(--green)"
-            sub={`baseline ${health.hrv.baseline ?? '—'} ms${health.hrv.pctAboveBaseline != null ? ` · +${health.hrv.pctAboveBaseline}%` : ''}`}
+            narrative={hrvNarrative(health.hrv.pctAboveBaseline)}
+            sub={`baseline ${health.hrv.baseline ?? '—'} ms`}
             chart={<BarChart series={health.hrvSeries.map((d) => d.ms)} min={30} max={100} color="#3EBD41" unit="ms" baseline={health.hrv.baseline ?? undefined} />}
           />
           <TrendCard
             title="WEIGHT · 30 DAYS" titleColor="var(--dist)"
             value={health.weight.current != null ? `${health.weight.current.toFixed(1)} lb` : '—'}
             valueColor="var(--ink)"
+            narrative={weightNarrative(health.weight.delta30)}
             sub={`${health.weight.delta30 != null ? (health.weight.delta30 >= 0 ? `+${health.weight.delta30}` : `${health.weight.delta30}`) : '—'} lb vs 30d ago`}
             chart={<BarChart series={health.weightSeries.map((d) => d.lb)} min={170} max={200} color="#27B4E0" unit="lb" />}
           />
@@ -157,14 +161,70 @@ function WatchListBox({ items }: { items: HealthState['watchItems'] }) {
   );
 }
 
-function TrendCard({ title, titleColor, value, valueColor, sub, chart }: { title: string; titleColor: string; value: string; valueColor: string; sub: string; chart: React.ReactNode }) {
+/**
+ * TrendCard (#156 redesign) — big + bold + insight-led.
+ *
+ * Old: 180px-tall card, 42pt stat, tiny chart strip, dense 3-layer
+ * supporting text. Half-empty + wireframe.
+ *
+ * New: hero number bumped to 96pt Bebas (matches race detail headline scale).
+ * Chart breathes in the lower half. One bold trend sentence below the hero
+ * is the actual insight. Mid-grey "sub" line stays for precision specs.
+ */
+function TrendCard({
+  title, titleColor, value, valueColor, sub, narrative, chart,
+}: {
+  title: string;
+  titleColor: string;
+  value: string;
+  valueColor: string;
+  sub: string;
+  /** One bold trend sentence — "Sleep debt has grown 3 nights running" etc. */
+  narrative?: string;
+  chart: React.ReactNode;
+}) {
   return (
-    <div className="card" style={{ padding: '20px 24px' }}>
-      <div className="card-eyebrow" style={{ color: titleColor }}>{title}</div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, margin: '6px 0 14px' }}>
-        <span style={{ fontFamily: 'var(--f-display)', fontSize: 42, color: valueColor, letterSpacing: '0.5px' }}>{value}</span>
-        <span style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', letterSpacing: '0.5px' }}>{sub}</span>
+    <div className="card" style={{ padding: '24px 28px', minHeight: 320 }}>
+      <div className="card-eyebrow" style={{ color: titleColor, marginBottom: 12 }}>{title}</div>
+
+      {/* Hero number — proper editorial scale, matches race-detail hero */}
+      <div style={{
+        fontFamily: 'var(--f-display)',
+        fontSize: 96,
+        color: valueColor,
+        letterSpacing: '0.5px',
+        lineHeight: 0.95,
+        marginBottom: 8,
+      }}>
+        {value}
       </div>
+
+      {/* Trend insight (when provided) — the punchline */}
+      {narrative && (
+        <div style={{
+          fontFamily: 'var(--f-body)',
+          fontSize: 15,
+          fontWeight: 600,
+          color: 'var(--ink)',
+          lineHeight: 1.4,
+          marginBottom: 6,
+        }}>
+          {narrative}
+        </div>
+      )}
+
+      {/* Sub line — precision specs (baseline, delta, period) */}
+      <div style={{
+        fontFamily: 'var(--f-body)',
+        fontSize: 12,
+        color: 'var(--mute)',
+        letterSpacing: '0.4px',
+        marginBottom: 18,
+        lineHeight: 1.4,
+      }}>
+        {sub}
+      </div>
+
       {chart}
     </div>
   );
@@ -178,4 +238,44 @@ function Grid3({ children }: { children: React.ReactNode }) {
 }
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', margin: '24px 0 12px' }}>{children}</div>;
+}
+
+/**
+ * Narrative builders (#156). One bold sentence per metric — the actual
+ * coaching insight. These are deterministic plain-English summaries; the
+ * coach voice on /today still does the full prose, but every dashboard
+ * card stands alone with a useful sentence.
+ */
+function sleepNarrative(avg7n: number | null | undefined): string {
+  if (avg7n == null) return 'Need 7+ nights of sleep data before this gets useful.';
+  const debt = +(7.5 - avg7n).toFixed(1);
+  if (debt >= 1.5) return `${(debt * 7).toFixed(0)}h short of target for the week — watch for fatigue creep.`;
+  if (debt >= 0.5) return `Mildly short of target — recoverable with one solid night.`;
+  if (debt <= -0.3) return `Sleeping above target. Recovery's on your side this week.`;
+  return `Sitting right at the target line. Hold it.`;
+}
+
+function rhrNarrative(delta: number | null | undefined): string {
+  if (delta == null) return 'Resting HR baseline still forming — needs more data.';
+  if (delta >= 5) return `+${delta} bpm above baseline — stress, sleep, or accumulating load. Watch tomorrow.`;
+  if (delta >= 2) return `Slightly elevated — typical mid-week, but flag it if it doesn't settle.`;
+  if (delta <= -2) return `Below baseline — strong recovery signal.`;
+  return `At baseline — typical resting cardio.`;
+}
+
+function hrvNarrative(pctAboveBaseline: number | null | undefined): string {
+  if (pctAboveBaseline == null) return 'HRV trend forming — needs more nights of data.';
+  if (pctAboveBaseline >= 5) return `+${pctAboveBaseline}% above baseline — fresh recovery, you can press today.`;
+  if (pctAboveBaseline >= -3) return `Within normal nightly variance — system's stable.`;
+  if (pctAboveBaseline >= -10) return `${pctAboveBaseline}% below baseline — could be stress, sleep, or accumulating load. Watch tomorrow.`;
+  return `${pctAboveBaseline}% below baseline — strong signal to back off if it persists.`;
+}
+
+function weightNarrative(delta30: number | null | undefined): string {
+  if (delta30 == null) return 'Need at least two weighings 30 days apart to read the trend.';
+  if (Math.abs(delta30) < 0.5) return 'Stable over the last month — no flags.';
+  if (delta30 <= -3) return `Down ${Math.abs(delta30).toFixed(1)} lb in 30 days — make sure fueling's keeping up with training load.`;
+  if (delta30 <= -1) return `Trending down — gradual, in range for a training block.`;
+  if (delta30 >= 3) return `Up ${delta30.toFixed(1)} lb in 30 days — track whether it's deliberate.`;
+  return `Up slightly over the month.`;
 }

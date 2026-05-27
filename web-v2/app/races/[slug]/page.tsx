@@ -1,5 +1,9 @@
 import { TopNav } from '@/components/layout/TopNav';
 import { CourseSchematic, PacePlanTable } from '@/components/races/CourseSchematic';
+import { PacePlanElevation } from '@/components/races/PacePlanElevation';
+import {
+  BuildingProgressCard, RaceWeekChecklist, RaceWeekCountdown,
+} from '@/components/races/PhaseAwareBlocks';
 import { RealRouteSvg } from '@/components/races/RealRouteSvg';
 import { DeleteRaceButton, EditRaceButton } from '@/components/races/RaceCrudUI';
 import { GpxUploadButton } from '@/components/races/GpxUploadButton';
@@ -100,6 +104,21 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
           <BriefingLoader surface="race-detail" raceSlug={slug} renderCards={false} />
         </div>
 
+        {/* #154 phase-aware blocks — only render for matching proximity */}
+        {proximity === 'building' && (
+          <BuildingProgressCard
+            daysToRace={race.days}
+            peakMi={null}
+            currentWeekMi={null}
+          />
+        )}
+        {proximity === 'race-week' && (
+          <>
+            <RaceWeekCountdown daysToRace={race.days} raceDate={race.date ?? null} />
+            <RaceWeekChecklist slug={slug} daysToRace={race.days} />
+          </>
+        )}
+
         {/* Course + pace plan — present at all proximities except deep post-race */}
         {proximity !== 'post-race' && (
           <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
@@ -121,14 +140,15 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
               />
               <GpxUploadButton slug={slug} alreadyAttached={!!courseGeometry} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 18 }}>
-              <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 12 }}>
-                {courseGeometry ? <RealRouteSvg geometry={courseGeometry} /> : <CourseSchematic />}
-              </div>
-              <div>
-                <PacePlanTable goalLabel={race.goal ?? undefined} />
-              </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 12, marginBottom: 14 }}>
+              {courseGeometry ? <RealRouteSvg geometry={courseGeometry} /> : <CourseSchematic />}
             </div>
+            {/* P47 — elevation-overlay pace plan replaces the old side table. */}
+            <PacePlanElevation
+              geometry={courseGeometry}
+              distanceMi={courseGeometry?.distance_mi ?? (race.distance_label?.toLowerCase().includes('half') ? 13.1 : race.distance_label?.toLowerCase().includes('marathon') ? 26.2 : 13.1)}
+              goalLabel={race.goal ?? undefined}
+            />
           </div>
         )}
 

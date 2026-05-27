@@ -2,12 +2,24 @@
  * ReadinessBreakdown — §8.3 surface. Same component on /today chip
  * tap-through AND on /health as a permanent section.
  *
- * Redesigned: each input row is a 3-column tile (LABEL · VALUE · WEIGHT-CHIP).
- * Weight chip clearly distinguishes "this input's contribution" from "the
- * observed value" — earlier version had both numbers fighting for the same
- * column position which was hard to read.
+ * #155 redesign — table → story rows.
+ *
+ * Old: 3-column table (INPUT · YOUR VALUE · EFFECT). Spreadsheet feel.
+ *   - INPUT column dimmest in row (should be loudest)
+ *   - VALUE column stacked three competing pieces (number / delta / sentence)
+ *   - EFFECT pill isolated on right — couldn't scan top-down
+ *
+ * New: 5 vertical story rows, each one self-contained:
+ *   - 3px accent strip on the LEFT colored by effect (red drag / green lift / grey neutral)
+ *   - eyebrow with input name + weight share ("SLEEP · 25%")
+ *   - headline ("6.7h — about 6h short for the week")
+ *   - narrative sentence (the actual insight, large + bright)
+ *   - +/- chip in the top-right corner as secondary precision
+ *
+ * Scan the left edge → see the shape of why the readiness number is what
+ * it is. Read each row → understand each input in plain English.
  */
-import type { ReadinessBreakdown as RB } from '@/lib/coach/readiness';
+import type { ReadinessBreakdown as RB, ReadinessInput } from '@/lib/coach/readiness';
 
 export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdown: RB; compact?: boolean }) {
   const color = breakdown.band === 'sharp'      ? 'var(--green)'
@@ -28,71 +40,94 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
         </div>
       )}
 
-      <table style={{
-        width: '100%', borderCollapse: 'separate', borderSpacing: '0 6px',
-        fontFamily: 'var(--f-body)', fontSize: 13,
-      }}>
-        <thead>
-          <tr style={{ fontSize: 10, fontWeight: 700, color: 'rgba(246,247,248,0.50)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
-            <th style={{ textAlign: 'left',   padding: '0 16px 8px 16px' }}>INPUT</th>
-            <th style={{ textAlign: 'left',   padding: '0 16px 8px 16px' }}>YOUR VALUE</th>
-            <th style={{ textAlign: 'right',  padding: '0 16px 8px 16px' }}>EFFECT</th>
-          </tr>
-        </thead>
-        <tbody>
-          {breakdown.inputs.map((inp) => <InputRow key={inp.key} input={inp} />)}
-        </tbody>
-      </table>
-
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {breakdown.inputs.map((inp) => <StoryRow key={inp.key} input={inp} />)}
+      </div>
     </div>
   );
 }
 
-function InputRow({ input }: { input: import('@/lib/coach/readiness').ReadinessInput }) {
-  const wColor = input.weight > 0 ? 'var(--green)' : input.weight < 0 ? 'var(--over)' : 'var(--mute)';
-  const wBg    = input.weight > 0 ? 'rgba(62,189,65,0.12)' : input.weight < 0 ? 'rgba(252,77,100,0.12)' : 'rgba(255,255,255,0.04)';
+function StoryRow({ input }: { input: ReadinessInput }) {
+  // Accent strip colors by effect — scan vertically to see the shape.
+  const stripColor = input.weight > 0 ? 'var(--green)'
+    : input.weight < 0 ? 'var(--over)'
+                       : 'rgba(255,255,255,0.08)';
+  const chipBg = input.weight > 0 ? 'rgba(62,189,65,0.16)'
+    : input.weight < 0 ? 'rgba(252,77,100,0.16)'
+                       : 'rgba(255,255,255,0.08)';
+  const chipColor = input.weight > 0 ? 'var(--green)'
+    : input.weight < 0 ? 'var(--over)'
+                       : 'var(--mute)';
 
-  // Split "SLEEP · 25%" into label + weight-share for cleaner columns.
+  // Label may be "SLEEP · 25%" — split for cleaner formatting.
   const [labelPart, sharePart] = input.label.split(' · ');
 
+  // Decide what the headline is. Prefer the rich "value — sub" pattern when
+  // both pieces exist; otherwise the observed value is the headline.
+  const headline = input.observedSub
+    ? `${input.observedV} — ${input.observedSub.replace(/^[+-]?[\d.]+\s*\w+\s*/, '')}`.trim()
+    : String(input.observedV);
+
   return (
-    <tr style={{ background: 'rgba(255,255,255,0.06)' }}>
-      <td style={{
-        padding: '14px 16px', borderRadius: '8px 0 0 8px',
-        color: 'var(--ink)', fontFamily: 'var(--f-label)', fontSize: 15, letterSpacing: '0.5px',
-        width: 1, whiteSpace: 'nowrap',
+    <div style={{
+      display: 'flex',
+      background: 'rgba(255,255,255,0.025)',
+      borderRadius: 10,
+      overflow: 'hidden',
+      border: '1px solid rgba(255,255,255,0.05)',
+    }}>
+      {/* Left accent strip */}
+      <div style={{
+        width: 4, background: stripColor, flexShrink: 0,
+      }} />
+
+      {/* Content */}
+      <div style={{
+        flex: 1, minWidth: 0,
+        padding: '14px 16px',
+        display: 'flex', flexDirection: 'column', gap: 6,
       }}>
-        {labelPart}
-        {sharePart && (
-          <span style={{ marginLeft: 8, color: 'rgba(246,247,248,0.55)', fontFamily: 'var(--f-body)', fontSize: 11, letterSpacing: '1px' }}>
-            ({sharePart})
+        {/* Eyebrow: input name + weight share */}
+        <div style={{
+          fontFamily: 'var(--f-label)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--mute)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span>
+            {labelPart}
+            {sharePart && (
+              <span style={{ marginLeft: 8, color: 'var(--dim)' }}>· {sharePart}</span>
+            )}
           </span>
-        )}
-      </td>
-      <td style={{ padding: '14px 16px', color: 'var(--ink)' }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: '#ffffff' }}>{input.observedV}</div>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.65)', marginTop: 3 }}>
-          {input.observedSub}
+          {/* Effect chip */}
+          <span style={{
+            background: chipBg, color: chipColor,
+            padding: '3px 10px', borderRadius: 999,
+            fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '0.8px', fontWeight: 700,
+          }}>
+            {input.weight > 0 ? `+${input.weight}` : input.weight === 0 ? '0' : input.weight}
+          </span>
         </div>
+
+        {/* Headline: value + delta in one line */}
+        <div style={{
+          fontFamily: 'var(--f-body)', fontSize: 14, fontWeight: 600,
+          color: 'var(--ink)', lineHeight: 1.3,
+        }}>
+          {headline}
+        </div>
+
+        {/* Narrative — the actual insight, the largest typographic element */}
         {input.meaning && (
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.55)', marginTop: 6, lineHeight: 1.45 }}>
+          <div style={{
+            fontFamily: 'var(--f-body)', fontSize: 14,
+            color: 'rgba(246,247,248,0.85)', lineHeight: 1.5,
+            marginTop: 2,
+          }}>
             {input.meaning}
           </div>
         )}
-      </td>
-      <td style={{
-        padding: '14px 16px', textAlign: 'right', borderRadius: '0 8px 8px 0', width: 1, whiteSpace: 'nowrap',
-      }}>
-        <span style={{
-          display: 'inline-block',
-          background: input.weight > 0 ? 'rgba(62,189,65,0.22)' : input.weight < 0 ? 'rgba(252,77,100,0.22)' : 'rgba(255,255,255,0.10)',
-          color: wColor,
-          padding: '5px 12px', borderRadius: 999,
-          fontFamily: 'var(--f-label)', fontSize: 15, letterSpacing: '0.5px', fontWeight: 600,
-        }}>
-          {input.weight > 0 ? `+${input.weight}` : input.weight === 0 ? '0' : input.weight}
-        </span>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }

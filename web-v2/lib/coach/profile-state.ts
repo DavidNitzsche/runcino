@@ -31,7 +31,7 @@ export interface ProfileState {
     lthr_set_at: string | null;      // ISO timestamp
     zones: ZoneTable | null;         // computed zones (LTHR-based if available, else %MHR)
   };
-  shoes: { id: string; name: string; brand: string; model: string; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean }[];
+  shoes: { id: string; name: string; brand: string; model: string; color: string | null; notes: string | null; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean }[];
   nextARace: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
   connections: {
     strava:       { connected: boolean; lastSync: string | null; note: string };
@@ -98,7 +98,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
 
   // Shoes
   const shoes = (await pool.query(
-    `SELECT id, brand, model, color, run_types, mileage, mileage_cap, retired, preferred
+    `SELECT id, brand, model, color, notes, run_types, mileage, mileage_cap, retired, preferred
        FROM shoes
       WHERE user_uuid = $1 OR user_uuid IS NULL
       ORDER BY id`,
@@ -110,6 +110,8 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       id: String(s.id),
       name: `${s.brand} ${s.model}`,
       brand: s.brand, model: s.model,
+      color: s.color ?? null,
+      notes: s.notes ?? null,
       runTypes: s.run_types ?? [],
       mileage: Math.round(m),
       cap, pctUsed: Math.round((m / cap) * 100),
