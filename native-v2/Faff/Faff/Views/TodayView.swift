@@ -112,7 +112,7 @@ struct TodayView: View {
                     Task { await hk.importIfConnected(daysBack: 7) }
                 } label: {
                     Text("SYNC")
-                        .font(.body(10, weight: .bold)).tracking(1.2)
+                        .font(.label(10)).tracking(1.2)
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Theme.ink.opacity(0.06))
                         .clipShape(Capsule())
@@ -139,7 +139,7 @@ struct TodayView: View {
     private var appBar: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("faff").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
-            Text(todayLabel()).font(.body(11, weight: .bold)).tracking(1.2)
+            Text(todayLabel()).font(.label(11)).tracking(1.2)
                 .foregroundStyle(Theme.mute)
             Spacer()
             // Readiness ring — pulls real score from /api/readiness (P27.2).
@@ -191,7 +191,7 @@ struct TodayView: View {
     private func restBlock(_ msg: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("REST DAY")
-                .font(.body(11, weight: .bold)).tracking(1.6)
+                .font(.label(11)).tracking(1.6)
                 .foregroundStyle(Theme.learn)
             Text(msg).font(.body(14)).foregroundStyle(Theme.ink.opacity(0.85)).lineSpacing(2)
         }
@@ -237,7 +237,7 @@ struct TodayView: View {
 
     private func errorBlock(_ msg: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("BRIEFING ERROR").font(.body(9, weight: .bold)).tracking(1.6)
+            Text("BRIEFING ERROR").font(.label(9)).tracking(1.6)
                 .foregroundStyle(Theme.over)
             Text(msg).font(.body(12)).foregroundStyle(Theme.ink.opacity(0.85)).lineSpacing(2)
         }

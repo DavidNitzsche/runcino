@@ -63,7 +63,7 @@ struct LogView: View {
 
     private func stat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.body(10, weight: .bold)).tracking(1.4).foregroundStyle(Theme.mute)
+            Text(label).font(.label(10)).tracking(1.4).foregroundStyle(Theme.mute)
             Text(value).font(.display(22)).foregroundStyle(Theme.ink)
         }
     }
@@ -72,7 +72,7 @@ struct LogView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(w.label)
-                    .font(.body(10, weight: .bold)).tracking(1.4)
+                    .font(.label(10)).tracking(1.4)
                     .foregroundStyle(w.isCurrent ? Theme.green : Theme.mute)
                 Spacer()
                 if w.totalMi > 0 {
@@ -110,7 +110,7 @@ struct LogView: View {
                     Text(run.date).font(.body(10)).foregroundStyle(Theme.mute)
                     if let t = run.type {
                         Text(t.uppercased())
-                            .font(.body(9, weight: .bold)).tracking(1.0)
+                            .font(.label(9)).tracking(1.0)
                             .foregroundStyle(colorForType(t))
                     }
                 }
@@ -146,7 +146,7 @@ struct LogView: View {
 
     private func errorBlock(_ msg: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("LOG ERROR").font(.body(9, weight: .bold)).tracking(1.6)
+            Text("LOG ERROR").font(.label(9)).tracking(1.6)
                 .foregroundStyle(Theme.over)
             Text(msg).font(.body(12)).foregroundStyle(Theme.ink.opacity(0.85)).lineSpacing(2)
         }

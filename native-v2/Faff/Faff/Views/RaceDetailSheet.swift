@@ -48,13 +48,13 @@ struct RaceDetailSheet: View {
             HStack(spacing: 8) {
                 if let p = r.priority {
                     Text(p)
-                        .font(.body(10, weight: .bold)).tracking(1.2)
+                        .font(.label(10)).tracking(1.2)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Capsule().fill(colorForPriority(p).opacity(0.18)))
                         .foregroundStyle(colorForPriority(p))
                 }
                 Text(proximityLabel(proximity))
-                    .font(.body(10, weight: .bold)).tracking(1.4)
+                    .font(.label(10)).tracking(1.4)
                     .foregroundStyle(Theme.race)
             }
             Text(r.name).font(.display(36)).foregroundStyle(Theme.ink)
@@ -81,7 +81,7 @@ struct RaceDetailSheet: View {
 
     private func statBox(_ k: String, _ v: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(k).font(.body(9, weight: .bold)).tracking(1.2).foregroundStyle(Theme.mute)
+            Text(k).font(.label(9)).tracking(1.2).foregroundStyle(Theme.mute)
             Text(v).font(.body(14, weight: .semibold)).foregroundStyle(Theme.ink)
         }
         .padding(10)
@@ -93,7 +93,7 @@ struct RaceDetailSheet: View {
 
     private func proximityBlock(_ p: String, race: RaceDetail) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("WHAT THIS MEANS").font(.body(10, weight: .bold)).tracking(1.4)
+            Text("WHAT THIS MEANS").font(.label(10)).tracking(1.4)
                 .foregroundStyle(Theme.mute)
             Text(proximityCopy(p, race))
                 .font(.body(13))
@@ -106,7 +106,7 @@ struct RaceDetailSheet: View {
     private func packingNote() -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("PACKING LIST")
-                .font(.body(10, weight: .bold)).tracking(1.4)
+                .font(.label(10)).tracking(1.4)
                 .foregroundStyle(Theme.goal)
             Text("Race-week packing surfaces on the web /races/[slug] page. The full list lives in your race details — shoes, gels, race-day plan, weather-adapted layers.")
                 .font(.body(12))

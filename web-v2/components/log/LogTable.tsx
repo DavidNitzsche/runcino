@@ -134,8 +134,10 @@ function RunRow({ run, onOpen }: { run: LogRun; onOpen: (id: string) => void }) 
 function Stat({ v, u, big, color }: { v: string; u: string; big?: boolean; color?: string }) {
   return (
     <div style={{ textAlign: 'right' }}>
+      {/* big=true (≥18) → Bebas display; big=false (<18) → HelveticaNeue label.
+       *  Stays within typography rule (#159). */}
       <div style={{
-        fontFamily: 'var(--f-display)',
+        fontFamily: big ? 'var(--f-display)' : 'var(--f-label)',
         fontSize: big ? 24 : 17,
         color: color ?? 'var(--ink)',
         letterSpacing: '0.3px', lineHeight: 1,

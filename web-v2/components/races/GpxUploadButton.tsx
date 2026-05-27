@@ -50,7 +50,7 @@ export function GpxUploadButton({ slug, alreadyAttached }: { slug: string; alrea
           border: `1px solid ${alreadyAttached ? 'var(--line)' : 'rgba(62,189,65,0.30)'}`,
           color: alreadyAttached ? 'var(--mute)' : 'var(--green)',
           padding: '8px 14px', borderRadius: 8,
-          fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+          fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
           cursor: pending ? 'default' : 'pointer', opacity: pending ? 0.6 : 1,
         }}>
         {pending ? 'UPLOADING…' : alreadyAttached ? '+ REPLACE COURSE GPX' : '+ COURSE GPX'}

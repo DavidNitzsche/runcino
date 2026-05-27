@@ -29,7 +29,7 @@ export function TopNav({ avatarInitials = 'DN' }: { avatarInitials?: string }) {
               key={tab.href}
               href={tab.href}
               style={{
-                fontFamily: 'var(--f-display)',
+                fontFamily: 'var(--f-label)',
                 fontSize: 15,
                 color: active ? 'var(--green)' : 'var(--mute)',
                 letterSpacing: '1.4px',

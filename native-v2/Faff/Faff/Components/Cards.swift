@@ -23,7 +23,7 @@ struct CardEyebrow: View {
     let text: String
     let color: Color
     var body: some View {
-        Text(text).font(.body(9, weight: .bold)).tracking(1.6)
+        Text(text).font(.label(9)).tracking(1.6)
             .foregroundStyle(color)
             .padding(.bottom, 8)
     }
@@ -50,7 +50,7 @@ struct RunRecapCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Text("YOUR RUN").font(.body(9, weight: .bold)).tracking(1.6)
+                Text("YOUR RUN").font(.label(9)).tracking(1.6)
                     .foregroundStyle(Theme.mute)
                 Text("COMPLETED")
                     .font(.body(9, weight: .heavy)).tracking(1.2)
@@ -107,7 +107,7 @@ struct NextWorkoutCard: View {
                 Spacer()
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
                     Text(String(format: "%.1f", mi)).font(.display(60))
-                    Text("MI").font(.body(11, weight: .bold)).tracking(1.2).foregroundStyle(Theme.mute)
+                    Text("MI").font(.label(11)).tracking(1.2).foregroundStyle(Theme.mute)
                 }
                 .foregroundStyle(Theme.rest)
             }
@@ -135,7 +135,7 @@ struct RaceHorizonCard: View {
                 Spacer()
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
                     Text("\(daysToRace)").font(.display(56))
-                    Text("DAYS").font(.body(11, weight: .bold)).tracking(1.2).foregroundStyle(Theme.mute)
+                    Text("DAYS").font(.label(11)).tracking(1.2).foregroundStyle(Theme.mute)
                 }
                 .foregroundStyle(Theme.race)
             }
@@ -151,7 +151,7 @@ struct ProfileGapCard: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("COACH NEEDS").font(.body(9, weight: .bold)).tracking(1.6).foregroundStyle(Theme.over)
+                Text("COACH NEEDS").font(.label(9)).tracking(1.6).foregroundStyle(Theme.over)
                 Text(field == "height_cm" ? "Your height" : field)
                     .font(.display(19)).tracking(0.5).foregroundStyle(Theme.ink)
                 Text(why).font(.body(11.5)).foregroundStyle(Theme.mute)
@@ -234,7 +234,7 @@ struct FunFactCard: View {
                 Text("ⓘ").font(.body(11, weight: .heavy))
                     .foregroundStyle(Color(white: 0.1))
                     .padding(4).background(Theme.learn).clipShape(Circle())
-                Text(term.uppercased()).font(.body(11, weight: .bold)).tracking(1.2).foregroundStyle(Theme.learn)
+                Text(term.uppercased()).font(.label(11)).tracking(1.2).foregroundStyle(Theme.learn)
             }
             Text(self.text).font(.body(13)).foregroundStyle(Theme.ink.opacity(0.82)).lineSpacing(3)
             // Link to /learn/<slug> when reader ships in P4.

@@ -197,7 +197,7 @@ function CoachError({ error }: { error: string }) {
       <button onClick={() => router.refresh()} style={{
         marginTop: 14, background: 'transparent', border: '1px solid var(--line)', color: 'var(--mute)',
         padding: '8px 14px', borderRadius: 8,
-        fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px', cursor: 'pointer',
+        fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px', cursor: 'pointer',
       }}>
         TRY AGAIN
       </button>

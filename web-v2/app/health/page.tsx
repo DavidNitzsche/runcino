@@ -147,7 +147,7 @@ function WatchListBox({ items }: { items: HealthState['watchItems'] }) {
           <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.status === 'red' ? 'var(--over)' : 'var(--goal)', marginTop: 6, flexShrink: 0 }} />
             <div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>{item.label}</div>
+              <div style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)' }}>{item.label}</div>
               <div style={{ fontSize: 11.5, color: 'var(--mute)', lineHeight: 1.55, marginTop: 4 }}>{item.note}</div>
             </div>
           </div>

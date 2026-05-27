@@ -90,7 +90,7 @@ function ARaceHero({ race }: { race: RaceRow }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
         <div>
-          <span style={{ display: 'inline-block', fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px', padding: '3px 8px', borderRadius: 4, background: 'rgba(255,136,71,0.18)', color: 'var(--race)' }}>A · GOAL RACE</span>
+          <span style={{ display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', padding: '3px 8px', borderRadius: 4, background: 'rgba(255,136,71,0.18)', color: 'var(--race)' }}>A · GOAL RACE</span>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 56, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1, marginTop: 14 }}>
             {race.name}
           </div>
@@ -132,7 +132,7 @@ function SecondaryARace({ race }: { race: RaceRow }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <span style={{ display: 'inline-block', fontFamily: 'var(--f-display)', fontSize: 10, letterSpacing: '1px', padding: '2px 7px', borderRadius: 4, background: 'rgba(255,136,71,0.18)', color: 'var(--race)' }}>A</span>
+          <span style={{ display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 10, letterSpacing: '1px', padding: '2px 7px', borderRadius: 4, background: 'rgba(255,136,71,0.18)', color: 'var(--race)' }}>A</span>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', marginTop: 8, letterSpacing: '0.5px' }}>{race.name}</div>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
             {race.distance_label ?? ''} {race.date ? `· ${formatDate(race.date)}` : ''}{race.goal ? ` · goal ${race.goal}` : ''}
@@ -154,7 +154,7 @@ function BCRaceCard({ race, priority }: { race: RaceRow; priority: 'B' | 'C' }) 
     <Link href={`/races/${race.slug}`} className="card" style={{ display: 'block' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <span style={{ display: 'inline-block', fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px', padding: '3px 8px', borderRadius: 4, background: bg, color }}>{priority}</span>
+          <span style={{ display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', padding: '3px 8px', borderRadius: 4, background: bg, color }}>{priority}</span>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', marginTop: 8 }}>{race.name}</div>
           <div style={{ fontSize: 10, color: 'var(--mute)', marginTop: 4 }}>
             {race.distance_label ?? '—'}{race.date ? ` · ${formatDate(race.date)}` : ''}
@@ -176,7 +176,7 @@ function PastRaceCard({ race }: { race: RaceRow }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontFamily: 'var(--f-label)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {race.name}
           </div>
           <div style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.2px', marginTop: 4 }}>

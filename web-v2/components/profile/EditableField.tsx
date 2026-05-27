@@ -68,7 +68,7 @@ export function EditableField({
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
             {label}
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 11, color: 'rgba(246,247,248,0.50)', letterSpacing: '1.2px' }}>
+          <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, color: 'rgba(246,247,248,0.50)', letterSpacing: '1.2px' }}>
             EDIT
           </div>
         </div>
@@ -110,14 +110,14 @@ export function EditableField({
       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
         <button onClick={save} disabled={pending || !value} style={{
           background: 'var(--green)', color: '#001', border: 'none', borderRadius: 6,
-          padding: '6px 12px', fontFamily: 'var(--f-display)', fontSize: 11,
+          padding: '6px 12px', fontFamily: 'var(--f-label)', fontSize: 11,
           letterSpacing: '1px', cursor: pending || !value ? 'default' : 'pointer',
           opacity: !value ? 0.5 : 1,
         }}>{pending ? '…' : 'SAVE'}</button>
         <button onClick={() => { setEditing(false); setErr(null); setValue(String(currentValue ?? '')); }}
           style={{
             background: 'transparent', border: '1px solid var(--line)', color: 'var(--mute)',
-            borderRadius: 6, padding: '6px 10px', fontFamily: 'var(--f-display)', fontSize: 11,
+            borderRadius: 6, padding: '6px 10px', fontFamily: 'var(--f-label)', fontSize: 11,
             letterSpacing: '1px', cursor: 'pointer',
           }}>CANCEL</button>
       </div>

@@ -49,7 +49,7 @@ export function ManualRunButton() {
       <button
         onClick={() => setOpen(true)}
         style={{
-          fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1.2px',
+          fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1.2px',
           color: 'var(--mute)', background: 'transparent',
           border: '1px dashed var(--line)', borderRadius: 999,
           padding: '6px 14px', cursor: 'pointer',
@@ -83,7 +83,7 @@ export function ManualRunButton() {
         <button onClick={submit} disabled={pending || !mi}
           style={{
             background: 'var(--green)', color: '#001', border: 'none', borderRadius: 8,
-            padding: '8px 16px', fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1.2px',
+            padding: '8px 16px', fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1.2px',
             cursor: pending || !mi ? 'default' : 'pointer', opacity: !mi ? 0.5 : 1,
           }}>
           {pending ? 'SAVING…' : 'SAVE RUN'}
@@ -91,7 +91,7 @@ export function ManualRunButton() {
         <button onClick={reset}
           style={{
             background: 'transparent', color: 'var(--mute)', border: '1px solid var(--line)',
-            borderRadius: 8, padding: '8px 14px', fontFamily: 'var(--f-display)', fontSize: 11,
+            borderRadius: 8, padding: '8px 14px', fontFamily: 'var(--f-label)', fontSize: 11,
             letterSpacing: '1.2px', cursor: 'pointer',
           }}>
           CANCEL
@@ -111,7 +111,7 @@ function LabeledInput({ label, value, onChange, type = 'text', placeholder }: { 
         onChange={(e) => onChange(e.target.value)}
         style={{
           background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', borderRadius: 6,
-          color: 'var(--ink)', fontFamily: 'var(--f-display)', fontSize: 14, padding: '6px 10px',
+          color: 'var(--ink)', fontFamily: 'var(--f-label)', fontSize: 14, padding: '6px 10px',
         }}
       />
     </label>

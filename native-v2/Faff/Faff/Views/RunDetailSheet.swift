@@ -64,7 +64,7 @@ struct RunDetailSheet: View {
     private func hero(_ d: RunDetail) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text((d.type ?? "RUN").uppercased())
-                .font(.body(10, weight: .bold)).tracking(1.4)
+                .font(.label(10)).tracking(1.4)
                 .foregroundStyle(Theme.green)
             Text(d.name ?? "Run")
                 .font(.display(34))
@@ -111,7 +111,7 @@ struct RunDetailSheet: View {
             ForEach(0..<stats.count, id: \.self) { i in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stats[i].key)
-                        .font(.body(9, weight: .bold)).tracking(1.2)
+                        .font(.label(9)).tracking(1.2)
                         .foregroundStyle(Theme.mute)
                     Text(stats[i].value)
                         .font(.body(14, weight: .semibold))
@@ -134,7 +134,7 @@ struct RunDetailSheet: View {
     private func workAveragesBlock(_ d: RunDetail) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("WORK-PHASE AVERAGES · RECOVERIES EXCLUDED")
-                .font(.body(9, weight: .bold)).tracking(1.2).foregroundStyle(Theme.goal)
+                .font(.label(9)).tracking(1.2).foregroundStyle(Theme.goal)
                 .padding(.horizontal, 24)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
@@ -169,7 +169,7 @@ struct RunDetailSheet: View {
 
     private func workStat(key: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(key).font(.body(9, weight: .bold)).tracking(1.0).foregroundStyle(Theme.mute)
+            Text(key).font(.label(9)).tracking(1.0).foregroundStyle(Theme.mute)
             Text(value).font(.body(14, weight: .semibold)).foregroundStyle(Theme.ink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -180,7 +180,7 @@ struct RunDetailSheet: View {
     private func phaseBreakdownBlock(_ phases: [PhaseBreakdown]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("BREAKDOWN · PLAN vs ACTUAL")
-                .font(.body(10, weight: .bold)).tracking(1.4).foregroundStyle(Theme.goal)
+                .font(.label(10)).tracking(1.4).foregroundStyle(Theme.goal)
                 .padding(.horizontal, 24)
             VStack(spacing: 0) {
                 ForEach(phases) { p in
@@ -237,7 +237,7 @@ struct RunDetailSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(p.type.uppercased())
-                        .font(.body(8, weight: .bold)).tracking(1.0)
+                        .font(.label(8)).tracking(1.0)
                         .foregroundStyle(typeBadgeColor)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Theme.bg.opacity(0.5))
@@ -251,24 +251,24 @@ struct RunDetailSheet: View {
             }
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: 1) {
-                Text("TARGET").font(.body(8, weight: .bold)).tracking(0.8).foregroundStyle(Theme.mute)
+                Text("TARGET").font(.label(8)).tracking(0.8).foregroundStyle(Theme.mute)
                 Text(targetText).font(.body(12, weight: .semibold)).foregroundStyle(Theme.mute)
             }
             .frame(width: 64, alignment: .trailing)
             VStack(alignment: .trailing, spacing: 1) {
-                Text("ACTUAL").font(.body(8, weight: .bold)).tracking(0.8).foregroundStyle(Theme.mute)
+                Text("ACTUAL").font(.label(8)).tracking(0.8).foregroundStyle(Theme.mute)
                 Text(actualText).font(.body(12, weight: .semibold)).foregroundStyle(Theme.ink)
             }
             .frame(width: 64, alignment: .trailing)
             VStack(alignment: .trailing, spacing: 1) {
-                Text("HR").font(.body(8, weight: .bold)).tracking(0.8).foregroundStyle(Theme.mute)
+                Text("HR").font(.label(8)).tracking(0.8).foregroundStyle(Theme.mute)
                 Text(p.avg_hr.map { String($0) } ?? "—")
                     .font(.body(12, weight: .semibold))
                     .foregroundStyle(p.avg_hr != nil ? Theme.ink : Theme.mute)
             }
             .frame(width: 42, alignment: .trailing)
             Text(statusLabel)
-                .font(.body(9, weight: .bold)).tracking(0.8)
+                .font(.label(9)).tracking(0.8)
                 .foregroundStyle(statusColor)
                 .frame(width: 38, alignment: .trailing)
         }
@@ -288,7 +288,7 @@ struct RunDetailSheet: View {
     private func splitsBlock(_ splits: [RunSplit]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("SPLITS")
-                .font(.body(10, weight: .bold)).tracking(1.4).foregroundStyle(Theme.mute)
+                .font(.label(10)).tracking(1.4).foregroundStyle(Theme.mute)
                 .padding(.horizontal, 24)
             VStack(spacing: 0) {
                 ForEach(splits) { s in
@@ -327,7 +327,7 @@ struct RunDetailSheet: View {
         ]
         return VStack(alignment: .leading, spacing: 8) {
             Text("HR ZONES")
-                .font(.body(10, weight: .bold)).tracking(1.4).foregroundStyle(Theme.mute)
+                .font(.label(10)).tracking(1.4).foregroundStyle(Theme.mute)
                 .padding(.horizontal, 24)
             GeometryReader { geo in
                 HStack(spacing: 2) {
@@ -372,7 +372,7 @@ struct RunDetailSheet: View {
         ]
         return VStack(alignment: .leading, spacing: 8) {
             Text("FORM")
-                .font(.body(10, weight: .bold)).tracking(1.4).foregroundStyle(Theme.mute)
+                .font(.label(10)).tracking(1.4).foregroundStyle(Theme.mute)
                 .padding(.horizontal, 24)
             VStack(spacing: 10) {
                 ForEach(0..<2) { row in
@@ -382,7 +382,7 @@ struct RunDetailSheet: View {
                             if i < cols.count {
                                 let (k, v) = cols[i]
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(k).font(.body(9, weight: .bold)).tracking(1.0).foregroundStyle(Theme.mute)
+                                    Text(k).font(.label(9)).tracking(1.0).foregroundStyle(Theme.mute)
                                     Text(v).font(.body(13, weight: .semibold)).foregroundStyle(Theme.ink)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -404,7 +404,7 @@ struct RunDetailSheet: View {
     private func routeBlock(_ polyline: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ROUTE")
-                .font(.body(10, weight: .bold)).tracking(1.4).foregroundStyle(Theme.mute)
+                .font(.label(10)).tracking(1.4).foregroundStyle(Theme.mute)
                 .padding(.horizontal, 24)
             // Sparkline-style decoded polyline. Decoding is best-effort
             // and matches the web /runs/[id] approach (no MapKit).
@@ -427,7 +427,7 @@ struct RunDetailSheet: View {
                     .background(Theme.green.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("SHOES").font(.body(9, weight: .bold)).tracking(1.2).foregroundStyle(Theme.mute)
+                    Text("SHOES").font(.label(9)).tracking(1.2).foregroundStyle(Theme.mute)
                     Text(currentShoeLabel())
                         .font(.body(13, weight: .semibold))
                         .foregroundStyle(assignedShoeId == nil ? Theme.mute : Theme.ink)

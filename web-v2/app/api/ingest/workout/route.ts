@@ -212,6 +212,25 @@ export async function POST(req: NextRequest) {
     }
 
     await bustBriefingCache(userId);
+
+    // #161 — auto-push to Strava when the toggle is on. Fire-and-forget;
+    // failures land in strava_pushes for retry. The push itself is
+    // idempotent on run_id so a re-ingest won't double-upload.
+    try {
+      const autoPushRow = (await pool.query(
+        `SELECT strava_auto_push FROM profile WHERE user_uuid = $1`,
+        [userId]
+      )).rows[0];
+      if (autoPushRow?.strava_auto_push) {
+        const { pushRunToStrava } = await import('@/lib/strava/push');
+        void pushRunToStrava(userId, slug).catch((e) => {
+          console.error('[ingest/workout] auto-push failed:', e?.message);
+        });
+      }
+    } catch (e: any) {
+      console.error('[ingest/workout] auto-push prefs read failed:', e?.message);
+    }
+
     return NextResponse.json({ ok: true, id: slug });
   } catch (err: any) {
     console.error('[ingest/workout] error:', err);

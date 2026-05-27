@@ -40,7 +40,7 @@ export function AddRaceButton() {
       <button onClick={() => setOpen(true)} style={{
         background: 'var(--green)', color: '#001', border: 'none',
         padding: '10px 18px', borderRadius: 8,
-        fontFamily: 'var(--f-display)', fontSize: 13, letterSpacing: '1.2px',
+        fontFamily: 'var(--f-label)', fontSize: 13, letterSpacing: '1.2px',
         cursor: 'pointer',
       }}>+ ADD RACE</button>
     );
@@ -113,7 +113,7 @@ export function EditRaceButton({ slug, current }: {
       <button onClick={() => setOpen(true)} style={{
         background: 'transparent', border: '1px solid var(--line)', color: 'var(--mute)',
         padding: '8px 14px', borderRadius: 8,
-        fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px', cursor: 'pointer',
+        fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1px', cursor: 'pointer',
       }}>EDIT RACE</button>
     );
   }
@@ -165,7 +165,7 @@ export function DeleteRaceButton({ slug }: { slug: string }) {
       <button onClick={() => setConfirming(true)} style={{
         background: 'transparent', color: 'var(--mute)', border: '1px solid var(--line)',
         padding: '8px 14px', borderRadius: 8,
-        fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px', cursor: 'pointer',
+        fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1px', cursor: 'pointer',
       }}>DELETE RACE</button>
     );
   }
@@ -176,7 +176,7 @@ export function DeleteRaceButton({ slug }: { slug: string }) {
       <button onClick={del} disabled={pending} style={{
         background: 'var(--over)', color: '#fff', border: 'none',
         padding: '8px 14px', borderRadius: 8,
-        fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px', cursor: 'pointer',
+        fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1px', cursor: 'pointer',
       }}>{pending ? 'DELETING…' : 'YES, DELETE'}</button>
       <button onClick={() => setConfirming(false)} style={secondaryBtn()}>CANCEL</button>
     </div>
@@ -194,7 +194,7 @@ function primaryBtn(saving: boolean): React.CSSProperties {
   return {
     background: 'var(--green)', color: '#001', border: 'none',
     padding: '8px 16px', borderRadius: 8,
-    fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+    fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
     cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1,
   };
 }
@@ -202,6 +202,6 @@ function secondaryBtn(): React.CSSProperties {
   return {
     background: 'transparent', color: 'var(--mute)', border: '1px solid var(--line)',
     padding: '8px 14px', borderRadius: 8,
-    fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px', cursor: 'pointer',
+    fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px', cursor: 'pointer',
   };
 }

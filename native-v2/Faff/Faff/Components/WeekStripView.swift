@@ -23,7 +23,7 @@ struct WeekStripView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("THIS WEEK")
-                    .font(.body(10, weight: .bold))
+                    .font(.label(10))
                     .tracking(1.6)
                     .foregroundStyle(Theme.mute)
                 Spacer()
@@ -72,7 +72,7 @@ private struct DayTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(dayLabel)
-                .font(.body(10, weight: .bold))
+                .font(.label(10))
                 .tracking(1.4)
                 .foregroundStyle(labelColor)
             Text(day.type == "rest" ? "REST" : String(format: "%.1f", day.distance_mi))
@@ -80,7 +80,7 @@ private struct DayTile: View {
                 .foregroundStyle(numberColor)
             if day.type != "rest" {
                 Text(day.type.uppercased())
-                    .font(.body(9, weight: .bold))
+                    .font(.label(9))
                     .tracking(1.2)
                     .foregroundStyle(typeColor.opacity(0.85))
             } else {

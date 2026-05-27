@@ -492,9 +492,9 @@ function PhaseBreakdownTable({ phases }: { phases: PhaseBreakdown[] }) {
                     </div>
                   )}
                 </td>
-                <td style={{ padding: '8px 4px', textAlign: 'right', fontFamily: 'var(--f-display)', color: 'var(--mute)', fontSize: 13 }}>{targetCell}</td>
-                <td style={{ padding: '8px 4px', textAlign: 'right', fontFamily: 'var(--f-display)', color: 'var(--ink)', fontSize: 13.5 }}>{actualCell}</td>
-                <td style={{ padding: '8px 4px', textAlign: 'right', color: p.avg_hr ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-display)', fontSize: 13 }}>
+                <td style={{ padding: '8px 4px', textAlign: 'right', fontFamily: 'var(--f-label)', color: 'var(--mute)', fontSize: 13 }}>{targetCell}</td>
+                <td style={{ padding: '8px 4px', textAlign: 'right', fontFamily: 'var(--f-label)', color: 'var(--ink)', fontSize: 13.5 }}>{actualCell}</td>
+                <td style={{ padding: '8px 4px', textAlign: 'right', color: p.avg_hr ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-label)', fontSize: 13 }}>
                   {p.avg_hr ?? '—'}
                 </td>
                 <td style={{ padding: '8px 4px', textAlign: 'right' }}>
@@ -527,10 +527,10 @@ function SplitsTable({ splits }: { splits: { mile: number; pace: string | null; 
         <tbody>
           {splits.map((s) => (
             <tr key={s.mile} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-              <td style={{ padding: '7px 4px', fontFamily: 'var(--f-display)', color: 'var(--mute)', fontSize: 13 }}>{s.mile}</td>
-              <td style={{ padding: '7px 4px', fontFamily: 'var(--f-display)', color: 'var(--ink)', fontSize: 13.5 }}>{s.pace ?? '—'}</td>
-              <td style={{ padding: '7px 4px', textAlign: 'right', color: s.hr ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-display)', fontSize: 13 }}>{s.hr ?? '—'}</td>
-              <td style={{ padding: '7px 4px', textAlign: 'right', color: s.cadence ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-display)', fontSize: 13 }}>{s.cadence ?? '—'}</td>
+              <td style={{ padding: '7px 4px', fontFamily: 'var(--f-label)', color: 'var(--mute)', fontSize: 13 }}>{s.mile}</td>
+              <td style={{ padding: '7px 4px', fontFamily: 'var(--f-label)', color: 'var(--ink)', fontSize: 13.5 }}>{s.pace ?? '—'}</td>
+              <td style={{ padding: '7px 4px', textAlign: 'right', color: s.hr ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-label)', fontSize: 13 }}>{s.hr ?? '—'}</td>
+              <td style={{ padding: '7px 4px', textAlign: 'right', color: s.cadence ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-label)', fontSize: 13 }}>{s.cadence ?? '—'}</td>
             </tr>
           ))}
         </tbody>

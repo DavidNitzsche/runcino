@@ -143,14 +143,14 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
       )}
 
       {/* What it is + why it matters */}
-      <h3 style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 6px' }}>
+      <h3 style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 6px' }}>
         What it is
       </h3>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'rgba(246,247,248,0.85)', lineHeight: 1.6, margin: '0 0 12px' }}>
         {tip.whatItIs}
       </p>
 
-      <h3 style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 6px' }}>
+      <h3 style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 6px' }}>
         Why it matters
       </h3>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'rgba(246,247,248,0.85)', lineHeight: 1.6, margin: '0 0 12px' }}>
@@ -158,7 +158,7 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
       </p>
 
       {/* Bands table */}
-      <h3 style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 8px' }}>
+      <h3 style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 8px' }}>
         Where it lands
       </h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
@@ -175,7 +175,7 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
             <span style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: bandToCss(b.band), letterSpacing: '1.2px', fontWeight: 700, textTransform: 'uppercase' }}>
               {b.band}
             </span>
-            <span style={{ fontFamily: 'var(--f-display)', fontSize: 13, color: 'var(--ink)' }}>
+            <span style={{ fontFamily: 'var(--f-label)', fontSize: 13, color: 'var(--ink)' }}>
               {b.range}
             </span>
             <span style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>
@@ -188,7 +188,7 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
       {/* Drills — only meaningful when band is fine/flag */}
       {(!userBand || userBand.band === 'fine' || userBand.band === 'flag') && tip.drillsWhenFlagged.length > 0 && (
         <>
-          <h3 style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--goal)', letterSpacing: '0.3px', margin: '20px 0 8px' }}>
+          <h3 style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--goal)', letterSpacing: '0.3px', margin: '20px 0 8px' }}>
             What to do about it
           </h3>
           <ol style={{ paddingLeft: 22, margin: 0, fontFamily: 'var(--f-body)', fontSize: 14, color: 'rgba(246,247,248,0.85)', lineHeight: 1.65 }}>

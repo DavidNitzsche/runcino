@@ -55,7 +55,7 @@ export function DoneRunBar({ activityId, label }: { activityId: string; label: s
         </span>
         <span style={{
           marginLeft: 'auto',
-          fontFamily: 'var(--f-display)', fontSize: 12,
+          fontFamily: 'var(--f-label)', fontSize: 12,
           color: 'var(--green)', letterSpacing: '1.2px',
         }}>
           TAP FOR DETAILS →

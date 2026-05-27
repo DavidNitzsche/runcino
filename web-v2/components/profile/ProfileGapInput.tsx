@@ -70,7 +70,7 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
         <span style={{
           background: 'var(--goal)', color: '#1a1300',
           border: 'none', borderRadius: 999,
-          padding: '7px 14px', fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px', fontWeight: 700,
+          padding: '7px 14px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1px', fontWeight: 700,
         }}>+ ADD</span>
       </button>
     );
@@ -106,7 +106,7 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
                 border: `1px solid ${unit === u ? 'var(--green)' : 'var(--line)'}`,
                 color: unit === u ? 'var(--green)' : 'var(--mute)',
                 borderRadius: 6, padding: '4px 10px',
-                fontFamily: 'var(--f-display)', fontSize: 10, letterSpacing: '1px',
+                fontFamily: 'var(--f-label)', fontSize: 10, letterSpacing: '1px',
                 cursor: 'pointer',
               }}>{u.toUpperCase()}</button>
           ))}
@@ -118,7 +118,7 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
           disabled={pending || !value}
           style={{
             background: 'var(--green)', color: '#001', border: 'none', borderRadius: 8,
-            padding: '8px 16px', fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1.2px',
+            padding: '8px 16px', fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1.2px',
             cursor: pending || !value ? 'default' : 'pointer', opacity: !value ? 0.5 : 1,
           }}>
           {pending ? 'SAVING…' : 'SAVE'}
@@ -126,7 +126,7 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
         <button onClick={() => { setOpen(false); setValue(''); setAck(null); }}
           style={{
             background: 'transparent', color: 'var(--mute)', border: '1px solid var(--line)',
-            borderRadius: 8, padding: '8px 14px', fontFamily: 'var(--f-display)', fontSize: 11,
+            borderRadius: 8, padding: '8px 14px', fontFamily: 'var(--f-label)', fontSize: 11,
             letterSpacing: '1.2px', cursor: 'pointer',
           }}>
           CANCEL

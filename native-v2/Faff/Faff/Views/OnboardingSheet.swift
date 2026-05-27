@@ -124,7 +124,7 @@ struct OnboardingSheet: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("LET'S SET YOU UP.")
-                .font(.body(10, weight: .bold)).tracking(1.6)
+                .font(.label(10)).tracking(1.6)
                 .foregroundStyle(Theme.green)
             Text("Welcome to faff.")
                 .font(.display(36)).foregroundStyle(Theme.ink)

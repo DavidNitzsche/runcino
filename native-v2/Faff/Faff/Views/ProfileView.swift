@@ -27,7 +27,7 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("David Nitzsche").font(.display(36)).tracking(0.5).foregroundStyle(Theme.ink)
                         Text("MALE · 40 · LOS ANGELES, CA")
-                            .font(.body(11, weight: .bold)).tracking(1.4).foregroundStyle(Theme.mute)
+                            .font(.label(11)).tracking(1.4).foregroundStyle(Theme.mute)
                     }
                     Spacer()
                 }
@@ -135,7 +135,7 @@ private struct SectionLabel: View {
     let text: String
     init(_ t: String) { self.text = t }
     var body: some View {
-        Text(text).font(.body(11, weight: .bold)).tracking(1.6)
+        Text(text).font(.label(11)).tracking(1.6)
             .foregroundStyle(Theme.mute)
             .padding(.horizontal, 24)
     }
@@ -145,10 +145,10 @@ private struct Field: View {
     let k: String; let v: String; var hint: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(k).font(.body(9, weight: .bold)).tracking(1.4).foregroundStyle(Theme.mute)
+            Text(k).font(.label(9)).tracking(1.4).foregroundStyle(Theme.mute)
             Text(v).font(.display(20)).tracking(0.5).foregroundStyle(Theme.ink)
             if let hint {
-                Text(hint).font(.body(9)).tracking(1).foregroundStyle(Theme.green)
+                Text(hint).font(.label(9)).tracking(1).foregroundStyle(Theme.green)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -170,7 +170,7 @@ private struct ConnRow: View {
             Spacer()
             HStack(spacing: 6) {
                 Circle().fill(Theme.green).frame(width: 6, height: 6)
-                Text("CONNECTED").font(.body(10)).tracking(1).foregroundStyle(Theme.green)
+                Text("CONNECTED").font(.label(10)).tracking(1).foregroundStyle(Theme.green)
             }
         }
         .padding(14)
@@ -192,7 +192,7 @@ private struct HeightInputSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("ADD YOUR HEIGHT").font(.body(11, weight: .bold)).tracking(1.6).foregroundStyle(Theme.mute)
+            Text("ADD YOUR HEIGHT").font(.label(11)).tracking(1.6).foregroundStyle(Theme.mute)
             HStack(spacing: 10) {
                 TextField("e.g. 180", text: $value)
                     .keyboardType(.decimalPad)

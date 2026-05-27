@@ -3,6 +3,7 @@ import { CourseSchematic, PacePlanTable } from '@/components/races/CourseSchemat
 import { RealRouteSvg } from '@/components/races/RealRouteSvg';
 import { DeleteRaceButton, EditRaceButton } from '@/components/races/RaceCrudUI';
 import { GpxUploadButton } from '@/components/races/GpxUploadButton';
+import { GpxFinderButton } from '@/components/races/GpxFinderButton';
 import { RaceRetrospectiveForm } from '@/components/races/RaceRetrospectiveForm';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { loadRacesState } from '@/lib/coach/races-state';
@@ -61,7 +62,7 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
             <span style={{
-              display: 'inline-block', fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px',
+              display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px',
               padding: '3px 8px', borderRadius: 4,
               background: isA ? 'rgba(255,136,71,0.18)' : 'rgba(243,173,56,0.18)',
               color: isA ? 'var(--race)' : 'var(--goal)',
@@ -112,7 +113,12 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
                   : '13.1 MI · SCHEMATIC · GPX PENDING'}
               </div>
             </div>
-            <div style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <GpxFinderButton
+                slug={slug}
+                raceName={race.name}
+                distanceMi={courseGeometry?.distance_mi ?? (race.distance_label?.toLowerCase().includes('half') ? 13.1 : race.distance_label?.toLowerCase().includes('marathon') ? 26.2 : null)}
+              />
               <GpxUploadButton slug={slug} alreadyAttached={!!courseGeometry} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 18 }}>
@@ -154,7 +160,7 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
 
         {/* Footer actions */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 32, paddingTop: 18, borderTop: '1px solid var(--line-2)', gap: 12 }}>
-          <a href="/races" style={{ color: 'var(--mute)', fontFamily: 'var(--f-display)', fontSize: 13, letterSpacing: '1.2px' }}>← BACK TO RACES</a>
+          <a href="/races" style={{ color: 'var(--mute)', fontFamily: 'var(--f-label)', fontSize: 13, letterSpacing: '1.2px' }}>← BACK TO RACES</a>
           <div style={{ display: 'flex', gap: 8 }}>
             <EditRaceButton slug={slug} current={{
               name: race.name,

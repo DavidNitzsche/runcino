@@ -91,9 +91,9 @@ export function PacePlanTable({ goalLabel }: { goalLabel?: string }) {
 function Row({ mi, note, pace, pacecolor = 'var(--ink)' }: { mi: string; note: string; pace: string; pacecolor?: string }) {
   return (
     <>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: pacecolor }}>{mi}</div>
+      <div style={{ fontFamily: 'var(--f-label)', fontSize: 14, color: pacecolor }}>{mi}</div>
       <div style={{ color: 'var(--mute)' }}>{note}</div>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: pacecolor, textAlign: 'right' }}>{pace}</div>
+      <div style={{ fontFamily: 'var(--f-label)', fontSize: 14, color: pacecolor, textAlign: 'right' }}>{pace}</div>
     </>
   );
 }

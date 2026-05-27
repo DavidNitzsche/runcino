@@ -129,7 +129,7 @@ export function WatchListCard({ payload }: {
               marginTop: 6, flexShrink: 0,
             }} />
             <div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: 'var(--ink)' }}>{item.label}</div>
+              <div style={{ fontFamily: 'var(--f-label)', fontSize: 14, color: 'var(--ink)' }}>{item.label}</div>
               <div style={{ fontFamily: 'var(--f-body)', fontSize: 11.5, color: 'var(--mute)', lineHeight: 1.55, marginTop: 2 }}>
                 {item.note}
               </div>

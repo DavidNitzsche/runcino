@@ -35,7 +35,7 @@ export function AddShoeButton() {
       <button onClick={() => setOpen(true)} style={{
         background: 'rgba(62,189,65,0.10)', color: 'var(--green)',
         border: '1px solid rgba(62,189,65,0.30)', borderRadius: 8,
-        padding: '8px 14px', fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+        padding: '8px 14px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
         cursor: 'pointer',
       }}>+ ADD SHOE</button>
     );
@@ -107,7 +107,7 @@ export function ShoeEditCard({
 
   return (
     <div className="card" style={{ padding: '14px', border: '1px solid var(--green)', background: 'rgba(62,189,65,0.04)' }}>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: 'var(--ink)', marginBottom: 8 }}>{shoe.name}</div>
+      <div style={{ fontFamily: 'var(--f-label)', fontSize: 14, color: 'var(--ink)', marginBottom: 8 }}>{shoe.name}</div>
       <label style={{ display: 'block', fontSize: 9, color: 'var(--mute)', letterSpacing: '1.2px', marginBottom: 4 }}>MILEAGE</label>
       <input type="number" value={mileage} onChange={(e) => setMileage(e.target.value)} style={{ ...inputStyle(), width: '100%' }} />
       <label style={{ display: 'block', fontSize: 9, color: 'var(--mute)', letterSpacing: '1.2px', marginTop: 8, marginBottom: 4 }}>CAP</label>
@@ -118,7 +118,7 @@ export function ShoeEditCard({
           style={primaryBtn(pending)}>SAVE</button>
         <button onClick={() => save({ retired: true })} disabled={pending} style={{
           background: 'transparent', color: 'var(--over)', border: '1px solid var(--over)',
-          borderRadius: 6, padding: '6px 10px', fontFamily: 'var(--f-display)', fontSize: 10,
+          borderRadius: 6, padding: '6px 10px', fontFamily: 'var(--f-label)', fontSize: 10,
           letterSpacing: '1px', cursor: 'pointer',
         }}>RETIRE</button>
         <button onClick={() => { setOpen(false); setErr(null); }} style={secondaryBtn()}>×</button>
@@ -137,14 +137,14 @@ function inputStyle(): React.CSSProperties {
 function primaryBtn(pending: boolean): React.CSSProperties {
   return {
     background: 'var(--green)', color: '#001', border: 'none', borderRadius: 6,
-    padding: '6px 12px', fontFamily: 'var(--f-display)', fontSize: 11,
+    padding: '6px 12px', fontFamily: 'var(--f-label)', fontSize: 11,
     letterSpacing: '1px', cursor: pending ? 'default' : 'pointer', opacity: pending ? 0.6 : 1,
   };
 }
 function secondaryBtn(): React.CSSProperties {
   return {
     background: 'transparent', color: 'var(--mute)', border: '1px solid var(--line)',
-    borderRadius: 6, padding: '6px 10px', fontFamily: 'var(--f-display)', fontSize: 11,
+    borderRadius: 6, padding: '6px 10px', fontFamily: 'var(--f-label)', fontSize: 11,
     letterSpacing: '1px', cursor: 'pointer',
   };
 }

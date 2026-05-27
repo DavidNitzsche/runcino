@@ -39,7 +39,7 @@ export function TipsList() {
                 </div>
               </div>
               <span style={{
-                fontFamily: 'var(--f-display)', fontSize: 11, color: 'var(--learn)',
+                fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--learn)',
                 letterSpacing: '1.2px', flexShrink: 0, marginLeft: 14,
               }}>
                 READ →

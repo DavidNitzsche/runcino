@@ -100,13 +100,13 @@ export function WorkoutSwapButton({
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button onClick={save} disabled={pending} style={{
                 background: 'var(--green)', color: '#001', border: 'none', borderRadius: 8,
-                padding: '8px 16px', fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+                padding: '8px 16px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
                 cursor: pending ? 'default' : 'pointer', opacity: pending ? 0.6 : 1,
               }}>{pending ? 'SAVING…' : 'SAVE'}</button>
               <button onClick={() => setOpen(false)} style={{
                 background: 'transparent', color: 'var(--mute)', border: '1px solid var(--line)',
                 borderRadius: 8, padding: '8px 14px',
-                fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px', cursor: 'pointer',
+                fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px', cursor: 'pointer',
               }}>CANCEL</button>
             </div>
           </div>

@@ -26,7 +26,7 @@ struct LearnModal: View {
                         VStack(alignment: .leading, spacing: 4) {
                             if let eyebrow = a.eyebrow {
                                 Text(eyebrow.uppercased())
-                                    .font(.body(10, weight: .bold)).tracking(1.6)
+                                    .font(.label(10)).tracking(1.6)
                                     .foregroundStyle(Theme.learn)
                             }
                             Text(a.title).font(.display(34)).foregroundStyle(Theme.ink)
@@ -94,7 +94,7 @@ struct LearnModal: View {
         switch block {
         case .h2(let t):
             Text(t.uppercased())
-                .font(.body(11, weight: .bold)).tracking(1.4)
+                .font(.label(11)).tracking(1.4)
                 .foregroundStyle(Theme.green)
                 .padding(.top, 6)
         case .p(let t):

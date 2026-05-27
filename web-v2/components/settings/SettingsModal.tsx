@@ -20,7 +20,7 @@ export function SettingsAvatarTrigger({ initials = 'DN' }: { initials?: string }
           width: 36, height: 36, borderRadius: '50%',
           background: 'linear-gradient(135deg, var(--learn), var(--race))',
           color: '#1a0f33', border: 'none', cursor: 'pointer',
-          fontFamily: 'var(--f-display)', fontSize: 14,
+          fontFamily: 'var(--f-label)', fontSize: 14,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
         {initials}

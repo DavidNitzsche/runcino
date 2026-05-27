@@ -20,7 +20,7 @@ struct TipsView: View {
                 .padding(.horizontal, 24).padding(.top, 8)
 
                 Text("FORM · WHAT IT MEANS · WHAT TO DO")
-                    .font(.body(10, weight: .bold)).tracking(1.4)
+                    .font(.label(10)).tracking(1.4)
                     .foregroundStyle(Theme.mute)
                     .padding(.horizontal, 24)
 
@@ -57,7 +57,7 @@ struct TipsView: View {
                 Text(tip.title).font(.display(22)).foregroundStyle(Theme.ink)
                 Spacer()
                 Text("READ →")
-                    .font(.body(10, weight: .bold)).tracking(1.2)
+                    .font(.label(10)).tracking(1.2)
                     .foregroundStyle(Theme.learn)
             }
             Text(tip.one_liner)
@@ -105,7 +105,7 @@ struct FormTipDetailSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("FORM TIP")
-                            .font(.body(10, weight: .bold)).tracking(1.6)
+                            .font(.label(10)).tracking(1.6)
                             .foregroundStyle(Theme.learn)
                         Text(tip.title)
                             .font(.display(34)).foregroundStyle(Theme.ink)
@@ -121,7 +121,7 @@ struct FormTipDetailSheet: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("BANDS")
-                            .font(.body(10, weight: .bold)).tracking(1.4)
+                            .font(.label(10)).tracking(1.4)
                             .foregroundStyle(Theme.mute)
                         VStack(spacing: 8) {
                             ForEach(tip.bands) { b in
@@ -134,7 +134,7 @@ struct FormTipDetailSheet: View {
                     if !tip.drills_when_flagged.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("WHAT TO DO IF FLAGGED")
-                                .font(.body(10, weight: .bold)).tracking(1.4)
+                                .font(.label(10)).tracking(1.4)
                                 .foregroundStyle(Theme.goal)
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(tip.drills_when_flagged, id: \.self) { d in
@@ -163,7 +163,7 @@ struct FormTipDetailSheet: View {
 
     private func section(_ label: String, _ body: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(label).font(.body(10, weight: .bold)).tracking(1.4)
+            Text(label).font(.label(10)).tracking(1.4)
                 .foregroundStyle(Theme.mute)
             Text(body).font(.body(14))
                 .foregroundStyle(Theme.ink.opacity(0.9))

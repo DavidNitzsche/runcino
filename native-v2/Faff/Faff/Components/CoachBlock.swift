@@ -25,7 +25,7 @@ struct CoachBlock: View {
             HStack(spacing: 8) {
                 Circle().fill(Theme.green).frame(width: 6, height: 6)
                     .shadow(color: Theme.green.opacity(0.6), radius: 6)
-                Text("COACH").font(.body(10, weight: .bold)).tracking(1.6)
+                Text("COACH").font(.label(10)).tracking(1.6)
                     .foregroundStyle(Theme.green)
             }
 

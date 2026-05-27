@@ -245,7 +245,7 @@ function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
           {step.label}
         </div>
         {volumeLabel && (
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
+          <div style={{ fontFamily: 'var(--f-label)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
             {volumeLabel}
           </div>
         )}
@@ -324,7 +324,7 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: repsAccent, letterSpacing: '1.4px', textTransform: 'uppercase' }}>
             REP · EACH
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
+          <div style={{ fontFamily: 'var(--f-label)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
             {repFmt}
           </div>
         </div>
@@ -352,7 +352,7 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--learn)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
             RECOVERY BETWEEN
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
+          <div style={{ fontFamily: 'var(--f-label)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px' }}>
             {step.recovery.duration}
           </div>
         </div>

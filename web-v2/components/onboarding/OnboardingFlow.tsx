@@ -113,7 +113,7 @@ export function OnboardingFlow() {
                     border: `1px solid ${goalDistance === d ? 'var(--green)' : 'var(--line)'}`,
                     color: goalDistance === d ? 'var(--green)' : 'var(--ink)',
                     padding: '10px 18px', borderRadius: 8,
-                    fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '1.2px',
+                    fontFamily: 'var(--f-label)', fontSize: 14, letterSpacing: '1.2px',
                     cursor: 'pointer',
                   }}>
                   {d.toUpperCase()}
@@ -233,7 +233,7 @@ function NavBtns({ onBack, onNext, onSkip, canAdvance, nextLabel = 'CONTINUE', s
         <button onClick={onBack} style={{
           background: 'transparent', border: '1px solid var(--line)', color: 'var(--mute)',
           padding: '10px 18px', borderRadius: 8,
-          fontFamily: 'var(--f-display)', fontSize: 13, letterSpacing: '1.2px', cursor: 'pointer',
+          fontFamily: 'var(--f-label)', fontSize: 13, letterSpacing: '1.2px', cursor: 'pointer',
         }}>BACK</button>
       )}
       {skipLabel && onSkip && (
@@ -247,7 +247,7 @@ function NavBtns({ onBack, onNext, onSkip, canAdvance, nextLabel = 'CONTINUE', s
       <button onClick={onNext} disabled={!canAdvance} style={{
         background: 'var(--green)', color: '#001', border: 'none',
         padding: '10px 20px', borderRadius: 8,
-        fontFamily: 'var(--f-display)', fontSize: 13, letterSpacing: '1.2px',
+        fontFamily: 'var(--f-label)', fontSize: 13, letterSpacing: '1.2px',
         cursor: canAdvance ? 'pointer' : 'default', opacity: canAdvance ? 1 : 0.5,
       }}>{nextLabel}</button>
     </div>

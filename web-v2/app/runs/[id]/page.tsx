@@ -14,7 +14,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
       <main>
         <TopNav />
         <div style={{ padding: '40px 40px', maxWidth: 1440 }}>
-          <a href="/today" style={{ color: 'var(--mute)', fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '1.2px' }}>← BACK</a>
+          <a href="/today" style={{ color: 'var(--mute)', fontFamily: 'var(--f-label)', fontSize: 14, letterSpacing: '1.2px' }}>← BACK</a>
           <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 56, marginTop: 20 }}>Run not found</h1>
           <p style={{ color: 'var(--mute)' }}>id: {id}</p>
         </div>
@@ -26,7 +26,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
     <main>
       <TopNav />
       <div style={{ padding: '40px 40px 80px', maxWidth: 1100, margin: '0 auto' }}>
-        <a href="/today" style={{ color: 'var(--mute)', fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '1.2px' }}>← BACK</a>
+        <a href="/today" style={{ color: 'var(--mute)', fontFamily: 'var(--f-label)', fontSize: 14, letterSpacing: '1.2px' }}>← BACK</a>
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 20 }}>
           {run.date}
         </div>

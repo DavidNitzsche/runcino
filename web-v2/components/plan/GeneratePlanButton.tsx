@@ -52,7 +52,7 @@ export function GeneratePlanCTA({ raceSlug, raceName }: Props) {
           background: busy || pending ? 'rgba(62,189,65,0.18)' : 'var(--green)',
           color: busy || pending ? 'var(--green)' : '#0a0a0a',
           border: 'none', borderRadius: 8,
-          fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '1.2px',
+          fontFamily: 'var(--f-label)', fontSize: 14, letterSpacing: '1.2px',
           cursor: busy || pending ? 'wait' : 'pointer',
         }}
       >
@@ -108,7 +108,7 @@ export function RegeneratePlanButton({ raceSlug }: { raceSlug: string }) {
         style={{
           padding: '5px 11px', background: 'var(--over)', color: 'white',
           border: 'none', borderRadius: 999,
-          fontFamily: 'var(--f-display)', fontSize: 10, letterSpacing: '1.2px', cursor: 'pointer',
+          fontFamily: 'var(--f-label)', fontSize: 10, letterSpacing: '1.2px', cursor: 'pointer',
         }}>
         {busy || pending ? '…' : 'CONFIRM · OVERWRITES PLAN'}
       </button>

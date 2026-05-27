@@ -22,7 +22,7 @@ struct TrainingView: View {
                     Spacer()
                     if let mode = briefing?.mode {
                         Text(mode.uppercased())
-                            .font(.body(10, weight: .bold)).tracking(1.4)
+                            .font(.label(10)).tracking(1.4)
                             .foregroundStyle(phaseColor(mode))
                             .padding(.horizontal, 10).padding(.vertical, 4)
                             .background(phaseColor(mode).opacity(0.12))

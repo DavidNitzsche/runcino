@@ -50,7 +50,7 @@ struct WorkoutTodayCard: View {
                 Spacer()
                 if let paceLabel = workout.paceLabel, !paceLabel.isEmpty {
                     Text(paceLabel)
-                        .font(.body(11, weight: .bold))
+                        .font(.label(11))
                         .tracking(1.4)
                         .foregroundStyle(paceLabelColor(for: paceLabel))
                         .padding(.horizontal, 10).padding(.vertical, 4)
@@ -99,7 +99,7 @@ struct WorkoutTodayCard: View {
 
     private func footerStat(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.body(9, weight: .bold)).tracking(1.4)
+            Text(label).font(.label(9)).tracking(1.4)
                 .foregroundStyle(Theme.mute)
             Text(value).font(.display(15)).foregroundStyle(Theme.ink)
         }
@@ -185,7 +185,7 @@ private struct PhaseRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(phase.label.uppercased())
-                        .font(.body(11, weight: .bold))
+                        .font(.label(11))
                         .tracking(1.2)
                         .foregroundStyle(accent)
                     Spacer()
@@ -247,7 +247,7 @@ private struct RepeatBlock: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text("REPEAT \(reps)×")
-                    .font(.body(11, weight: .bold))
+                    .font(.label(11))
                     .tracking(1.4)
                     .foregroundStyle(Theme.ink.opacity(0.62))
                 Spacer()
@@ -256,7 +256,7 @@ private struct RepeatBlock: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("REP")
-                        .font(.body(11, weight: .bold))
+                        .font(.label(11))
                         .tracking(1.2)
                         .foregroundStyle(Theme.goal)
                     Spacer()
@@ -290,7 +290,7 @@ private struct RepeatBlock: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
                         Text("RECOVERY")
-                            .font(.body(11, weight: .bold))
+                            .font(.label(11))
                             .tracking(1.2)
                             .foregroundStyle(Theme.learn)
                         Spacer()

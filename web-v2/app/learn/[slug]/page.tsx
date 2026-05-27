@@ -31,7 +31,7 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
       <main>
         <TopNav />
         <div style={{ padding: '40px 40px', maxWidth: 880, margin: '0 auto' }}>
-          <a href="/health" style={{ color: 'var(--mute)', fontFamily: 'var(--f-display)', fontSize: 14 }}>← BACK</a>
+          <a href="/health" style={{ color: 'var(--mute)', fontFamily: 'var(--f-label)', fontSize: 14 }}>← BACK</a>
           <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 56, marginTop: 20 }}>Article not found</h1>
           <p style={{ color: 'var(--mute)' }}>Slug: {slug}</p>
         </div>
@@ -43,7 +43,7 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
     <main>
       <TopNav />
       <div style={{ padding: '40px 40px 80px', maxWidth: 720, margin: '0 auto' }}>
-        <a href="/health" style={{ color: 'var(--mute)', fontFamily: 'var(--f-display)', fontSize: 14, letterSpacing: '1.2px' }}>← BACK</a>
+        <a href="/health" style={{ color: 'var(--mute)', fontFamily: 'var(--f-label)', fontSize: 14, letterSpacing: '1.2px' }}>← BACK</a>
         <div style={{ color: 'var(--learn)', fontSize: 11, letterSpacing: '1.6px', textTransform: 'uppercase', fontWeight: 700, marginTop: 20 }}>
           LEARN{article.eyebrow ? ` · ${article.eyebrow}` : ''}
         </div>
@@ -66,7 +66,7 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {article.related_slugs.map((s) => (
-                <a key={s} href={`/learn/${s}`} className="card" style={{ padding: '10px 16px', fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1px', color: 'var(--learn)' }}>
+                <a key={s} href={`/learn/${s}`} className="card" style={{ padding: '10px 16px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1px', color: 'var(--learn)' }}>
                   {s.replace(/-/g, ' ').toUpperCase()} →
                 </a>
               ))}

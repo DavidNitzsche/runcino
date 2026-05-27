@@ -86,7 +86,7 @@ export function SettingsForm({ initial }: { initial: UserSettings }) {
                 border: `1px solid ${s.quality_days.includes(d.v as any) ? 'var(--goal)' : 'var(--line)'}`,
                 color: s.quality_days.includes(d.v as any) ? 'var(--goal)' : 'var(--mute)',
                 padding: '4px 10px', borderRadius: 6,
-                fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
+                fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
               }}>{d.v.toUpperCase()}</button>
             ))}
           </div>
@@ -110,7 +110,7 @@ export function SettingsForm({ initial }: { initial: UserSettings }) {
           position: 'fixed', bottom: 24, right: 24,
           background: 'var(--green)', color: '#001',
           padding: '10px 18px', borderRadius: 8,
-          fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+          fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
           zIndex: 100,
         }}>{ack}</div>
       )}
@@ -149,7 +149,7 @@ function Picker<T extends string>({ value, options, labels, onChange }: { value:
             border: `1px solid ${selected ? 'var(--green)' : 'rgba(255,255,255,0.12)'}`,
             color: selected ? '#0a0a0c' : 'rgba(246,247,248,0.82)',
             padding: '7px 14px', borderRadius: 7,
-            fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+            fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
             fontWeight: selected ? 700 : 500,
             cursor: 'pointer', transition: 'all .12s',
           }}>{(labels?.[i] ?? o).toUpperCase()}</button>

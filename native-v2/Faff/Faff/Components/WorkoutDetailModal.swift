@@ -60,7 +60,7 @@ struct WorkoutDetailModal: View {
     private var headerBlock: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(formatDate(date))
-                .font(.body(11, weight: .bold))
+                .font(.label(11))
                 .tracking(1.6)
                 .foregroundStyle(Theme.mute)
             Text(headlineText)

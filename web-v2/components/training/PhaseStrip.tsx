@@ -120,7 +120,7 @@ export function PhaseStrip({
               overflow: 'hidden',
             }}>
               <div style={{
-                fontFamily: 'var(--f-display)', fontSize: 12, color: ink,
+                fontFamily: 'var(--f-label)', fontSize: 12, color: ink,
                 letterSpacing: '1.4px', lineHeight: 1, fontWeight: 700,
               }}>
                 {label}

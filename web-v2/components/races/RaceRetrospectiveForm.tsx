@@ -66,7 +66,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
                   border: `1px solid ${pb === v ? (v ? 'var(--green)' : 'var(--line)') : 'var(--line)'}`,
                   color: pb === v ? (v ? 'var(--green)' : 'var(--mute)') : 'var(--mute)',
                   borderRadius: 8, padding: '8px 14px',
-                  fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
+                  fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
                 }}>
                 {v ? 'YES · PB' : 'NO'}
               </button>
@@ -84,7 +84,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
                 border: `1px solid ${felt === f ? 'var(--goal)' : 'var(--line)'}`,
                 color: felt === f ? 'var(--goal)' : 'var(--mute)',
                 borderRadius: 999, padding: '6px 12px',
-                fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
+                fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
               }}>
               {f.toUpperCase()}
             </button>
@@ -101,7 +101,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
                 border: `1px solid ${execution === f ? 'var(--learn)' : 'var(--line)'}`,
                 color: execution === f ? 'var(--learn)' : 'var(--mute)',
                 borderRadius: 999, padding: '6px 12px',
-                fontFamily: 'var(--f-display)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
+                fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
               }}>
               {f.toUpperCase()}
             </button>
@@ -121,7 +121,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
         <button onClick={submit} disabled={pending}
           style={{
             background: 'var(--green)', color: '#001', border: 'none', borderRadius: 8,
-            padding: '10px 20px', fontFamily: 'var(--f-display)', fontSize: 12, letterSpacing: '1.2px',
+            padding: '10px 20px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
             cursor: pending ? 'default' : 'pointer',
           }}>
           {pending ? 'SAVING…' : 'SAVE RETROSPECTIVE'}

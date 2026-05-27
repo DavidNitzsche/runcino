@@ -22,7 +22,7 @@ export function ReadinessBreakdownView({ breakdown, compact = false }: { breakdo
           <span style={{ fontFamily: 'var(--f-display)', fontSize: 56, color, lineHeight: 1, letterSpacing: '0.5px' }}>
             {breakdown.score}
           </span>
-          <span style={{ fontFamily: 'var(--f-display)', fontSize: 16, color, letterSpacing: '1.4px' }}>
+          <span style={{ fontFamily: 'var(--f-label)', fontSize: 16, color, letterSpacing: '1.4px' }}>
             {breakdown.label}
           </span>
         </div>
@@ -59,7 +59,7 @@ function InputRow({ input }: { input: import('@/lib/coach/readiness').ReadinessI
     <tr style={{ background: 'rgba(255,255,255,0.06)' }}>
       <td style={{
         padding: '14px 16px', borderRadius: '8px 0 0 8px',
-        color: 'var(--ink)', fontFamily: 'var(--f-display)', fontSize: 15, letterSpacing: '0.5px',
+        color: 'var(--ink)', fontFamily: 'var(--f-label)', fontSize: 15, letterSpacing: '0.5px',
         width: 1, whiteSpace: 'nowrap',
       }}>
         {labelPart}
@@ -88,7 +88,7 @@ function InputRow({ input }: { input: import('@/lib/coach/readiness').ReadinessI
           background: input.weight > 0 ? 'rgba(62,189,65,0.22)' : input.weight < 0 ? 'rgba(252,77,100,0.22)' : 'rgba(255,255,255,0.10)',
           color: wColor,
           padding: '5px 12px', borderRadius: 999,
-          fontFamily: 'var(--f-display)', fontSize: 15, letterSpacing: '0.5px', fontWeight: 600,
+          fontFamily: 'var(--f-label)', fontSize: 15, letterSpacing: '0.5px', fontWeight: 600,
         }}>
           {input.weight > 0 ? `+${input.weight}` : input.weight === 0 ? '0' : input.weight}
         </span>

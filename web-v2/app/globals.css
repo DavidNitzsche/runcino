@@ -31,8 +31,24 @@
   --learn:  #B084FF;  /* explainer/insight */
   --race:   #FF8847;  /* race/peak/horizon */
 
-  /* Typography */
+  /* Typography
+   *
+   * Three roles:
+   *   --f-display: hero numbers + headlines at ≥18px. Bebas Neue is
+   *                designed for big editorial use; it falls apart below
+   *                ~14px (condensed-stencil-y, hard to scan).
+   *   --f-label:   small caps labels, chip text, table headers, eyebrows
+   *                — anything in caps at <18px. HelveticaNeue-Bold matches
+   *                the Apple Watch app + iOS system font on Apple devices,
+   *                with strong geometric clarity at small sizes.
+   *   --f-body:    paragraph copy + form fields + everything else.
+   *
+   * Rule: if it's <18px and ALL CAPS with letter-tracking, use --f-label.
+   *       if it's a hero number or display headline, use --f-display.
+   *       everything else, --f-body.
+   */
   --f-display: 'Bebas Neue', 'Inter', sans-serif;
+  --f-label:   'HelveticaNeue-Bold', 'Helvetica Neue Bold', 'SF Compact Text', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
   --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Surface radii */
@@ -62,10 +78,10 @@ button { font-family: inherit; cursor: pointer; }
   padding: 16px 18px;
 }
 .card-eyebrow {
-  font-family: var(--f-body);
-  font-size: 9px;
+  font-family: var(--f-label);
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 1.6px;
+  letter-spacing: 1.4px;
   text-transform: uppercase;
   margin-bottom: 8px;
 }
