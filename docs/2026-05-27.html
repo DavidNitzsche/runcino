@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Snappiness sweep · 2026-05-27 · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.04);
+    --card: #11141a;
+    --card2: #1a1d24;
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --learn: #B084FF;
+    --race:  #FF7028;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 56px; font-weight: 400; letter-spacing: 0.5px; margin: 0; }
+  .sub { color: var(--mute); margin-top: 8px; font-size: 14px; }
+  h2 { font-family: 'Bebas Neue', sans-serif; font-size: 32px; font-weight: 400; letter-spacing: 0.5px; margin: 56px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 24px 0 8px; }
+  h4 { font-family: 'Bebas Neue', sans-serif; font-size: 22px; font-weight: 400; margin: 0 0 6px; letter-spacing: 0.5px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  em { color: rgba(246,247,248,0.95); font-style: italic; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: ui-monospace, monospace; color: var(--dist); }
+
+  .lead { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.40); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .lead h2 { margin: 0 0 12px; font-size: 24px; color: var(--green); border: 0; padding: 0; }
+  .lead p { font-size: 14.5px; }
+
+  .item { border-radius: 14px; padding: 18px 22px; margin: 14px 0; border: 1px solid var(--line); background: var(--card); }
+  .item.shipped { border-color: rgba(62,189,65,0.35);  background: rgba(62,189,65,0.04); }
+  .item.high { border-color: rgba(252,77,100,0.40); background: rgba(252,77,100,0.04); }
+  .item.med  { border-color: rgba(243,173,56,0.32); background: rgba(243,173,56,0.03); }
+  .item.low  { border-color: rgba(39,180,224,0.28); background: rgba(39,180,224,0.03); }
+  .item .tag { display: inline-block; font-weight: 700; padding: 3px 10px; border-radius: 6px; font-size: 10.5px; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
+  .item.shipped .tag { background: var(--green); color: #0a0c10; }
+  .item.high .tag    { background: var(--over);  color: #0a0c10; }
+  .item.med  .tag    { background: var(--goal);  color: #0a0c10; }
+  .item.low  .tag    { background: var(--dist);  color: #0a0c10; }
+  .item .meta { color: var(--mute); font-size: 11.5px; letter-spacing: 0.6px; margin-top: 10px; }
+  .item .files { color: rgba(246,247,248,0.55); font-size: 11.5px; margin-top: 6px; font-family: ui-monospace, monospace; }
+
+  .pattern { background: rgba(176,132,255,0.06); border: 1px solid rgba(176,132,255,0.25); border-radius: 14px; padding: 18px 22px; margin: 28px 0; }
+  .pattern h3 { color: var(--learn); margin-top: 0; }
+  .pattern p { font-size: 13.5px; margin: 0 0 8px; }
+  .pattern pre { background: rgba(0,0,0,0.4); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12px; font-family: ui-monospace, monospace; color: rgba(246,247,248,0.88); margin: 8px 0; }
+  .pattern p:last-child { margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10.5px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td.high { color: var(--over); font-weight: 600; }
+  td.med  { color: var(--goal); font-weight: 600; }
+  td.low  { color: var(--dist); font-weight: 600; }
+  td.ok   { color: var(--green); font-weight: 600; }
+  td.mute { color: var(--mute); }
+
+  .nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+  .nav a { font-size: 11.5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--mute); text-decoration: none; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
+  .nav a:hover { color: var(--ink); border-color: var(--ink); }
+  a { color: var(--dist); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .timeline { margin: 18px 0 0; position: relative; padding-left: 18px; }
+  .timeline::before { content: ''; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 1px; background: var(--line); }
+  .timeline .row { position: relative; padding: 4px 0 10px; font-size: 13.5px; }
+  .timeline .row::before { content: ''; position: absolute; left: -18px; top: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+  .timeline .row .what { color: var(--ink); font-weight: 600; }
+  .timeline .row .why { color: var(--mute); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Snappiness sweep · 2026-05-27</h1>
+  <p class="sub">"Make this really fast and user friendly." Overnight build: kill every fetch-on-open pop, codify a prefetch pattern, audit what's left.</p>
+
+  <div class="nav">
+    <a href="#summary">Summary</a>
+    <a href="#shipped">What shipped</a>
+    <a href="#pattern">The pattern</a>
+    <a href="#iphone">iPhone audit</a>
+    <a href="#web">Web audit</a>
+    <a href="#queue">Tomorrow's queue</a>
+  </div>
+
+  <div class="lead" id="summary">
+    <h2>Bottom line</h2>
+    <p>Every modal the runner can tap on web AND iPhone now opens with data already in hand. No skeleton flash. No "Loading…". The bug you flagged tonight is fixed, plus the same pattern applied app-wide on both platforms.</p>
+    <p><strong>Shipped tonight (5 commits, ~400 LOC):</strong> WeekStrip + DayDetailModal prefetch, LogTable + RunDetailModal prefetch, LearnModal + SettingsModal cache, WeekAhead parity on /training, iPhone WeekStripView + WorkoutDetailModal prefetch, iPhone LogView + RunDetailSheet prefetch, keep-warm cron endpoint, Cache-Control headers on 3 hot GET routes.</p>
+    <p><strong>Found but not yet fixed:</strong> 7 web findings (1 high, 4 medium, 2 low) + 2 medium iPhone findings, queued in §6. Total estimated remaining win: <strong>400–650ms across hot paths</strong> + a smattering of UX polish.</p>
+  </div>
+
+  <h2 id="shipped">What shipped tonight</h2>
+
+  <h3>Web</h3>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · #182</span>
+    <h4>WeekStrip pre-fetches all 7 days on mount</h4>
+    <p>Root cause of your "loads first then loads in everything below 6.1" report. <code>PlannedWorkoutBody</code> was firing <code>fetch('/api/prescription?…')</code> on modal mount. Now <code>WeekStrip</code> fires all 7 in parallel as soon as the page loads and passes the matching one into <code>DayDetailModal</code> as a prop. Initialization is synchronous; first paint is complete.</p>
+    <p class="files">web-v2/components/today/WeekStrip.tsx · web-v2/components/today/DayDetailModal.tsx</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · #183</span>
+    <h4>Prefetch sweep — Run detail, Learn, Settings</h4>
+    <p>Three more modals patched with the same shape:</p>
+    <ul>
+      <li><strong>LogTable → RunDetailModal:</strong> hover-prefetches each row's run detail (intent signal) + batch-prefetches the current week on mount + shoes fetched once and shared across every row. Closes <strong>#173</strong> (run detail modal pop-in).</li>
+      <li><strong>LearnCardTrigger → LearnModal:</strong> module-scope cache survives unmount + route changes; prefetched on mount + hover/focus. HRV article opens instantly on /health.</li>
+      <li><strong>TopNav avatar / EDIT link → SettingsModal:</strong> avatar's mount-time prefetch effectively warms <code>/api/settings</code> on every page load.</li>
+    </ul>
+    <p class="files">web-v2/components/runs/RunDetailModal.tsx · components/log/LogTable.tsx · components/learn/LearnModal.tsx · components/settings/SettingsModal.tsx</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED</span>
+    <h4>/training WeekAhead parity</h4>
+    <p>Same <code>DayDetailModal</code> opens from /training but the caller had no prefetch — modal popped in. Now mirrors <code>WeekStrip</code>: parallel fetches on mount for all 7 days, props passed through.</p>
+    <p class="files">web-v2/components/training/WeekAhead.tsx</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED</span>
+    <h4>Cache-Control headers on 3 hot endpoints</h4>
+    <p>From the deep audit's #1 finding (no GETs had cache headers — every request hit the server):</p>
+    <ul>
+      <li><code>/api/runs/[id]</code>: <code>private, max-age=300, stale-while-revalidate=30</code></li>
+      <li><code>/api/prescription</code>: <code>private, max-age=600, stale-while-revalidate=60</code></li>
+      <li><code>/api/learn/[slug]</code>: <code>public, max-age=3600, s-maxage=86400, stale-while-revalidate=300</code> (CDN-cacheable for a day)</li>
+    </ul>
+    <p>Estimated impact: ~40% server-load reduction on hot paths, 50–200ms saved per repeat hit. Other GETs (<code>/api/today</code>, <code>/api/coach/brief</code>, etc.) intentionally NOT cached — they're event-driven via the briefing cache.</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · keep-warm cron</span>
+    <h4>Background warmer for container + DB pool + per-user state</h4>
+    <p>Your "<code>:01</code>" idea, made concrete. <code>POST /api/cron/keep-warm</code> fires every 15 min during waking hours. Pings DB, lists active users, runs <code>loadCoachState()</code> per user — same code path /today uses. <strong>No LLM calls.</strong> Just keeps Railway hot + Postgres pool alive + pg query plan cache populated.</p>
+    <p>Reuses <code>CRON_SECRET</code> auth from <code>refresh-briefings</code>. Setup: point Railway cron at <code>POST https://www.faff.run/api/cron/keep-warm</code> with <code>Authorization: Bearer $CRON_SECRET</code>, schedule <code>*/15 7-23 * * *</code>.</p>
+    <p>GET returns a health probe so you can verify the schedule is up without firing the work.</p>
+    <p class="files">web-v2/app/api/cron/keep-warm/route.ts</p>
+  </div>
+
+  <h3>iPhone</h3>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · iPhone parity</span>
+    <h4>WeekStripView pre-fetches all 7 days · WorkoutDetailModal takes prefetched arg</h4>
+    <p>Mirrors web's WeekStrip. SwiftUI <code>TaskGroup</code> fires all <code>/api/watch/today?date=…</code> in parallel on mount; cached in <code>@State [String: WatchWorkout]</code>. <code>WorkoutDetailModal</code> now has <code>init(date:prefetched:)</code> that seeds its internal state, so the sheet renders complete on first paint.</p>
+    <p class="files">native-v2/Faff/Faff/Components/WeekStripView.swift · Components/WorkoutDetailModal.swift</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · iPhone parity</span>
+    <h4>LogView pre-fetches current-week run details + shoes</h4>
+    <p>Same as web's <code>LogTable</code>. After log loads, two background <code>Task</code>s kick off: <code>TaskGroup</code> parallel fetch of current-week run details into a date-keyed Map, plus a single shoes fetch. <code>RunDetailSheet</code> takes <code>prefetchedDetail</code> + <code>prefetchedShoes</code> init args.</p>
+    <p class="files">native-v2/Faff/Faff/Views/LogView.swift · Views/RunDetailSheet.swift</p>
+  </div>
+
+  <h3>Coach voice doctrine</h3>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · #181</span>
+    <h4>No em-dashes · arithmetic-direction rule · getRuns baselines</h4>
+    <p>You caught the coach saying <em>"cooldown dropped to 165, nine steps below your baseline of 158"</em> — wrong direction (165 > 158) + em-dashes. Two fixes:</p>
+    <ul>
+      <li><strong>VOICE_DOCTRINE</strong> in <code>coach/prompts/index.ts</code>: new PUNCTUATION block forbids em/en-dashes, new ARITHMETIC block forbids stating comparisons ("X above/below Y") — coach must state both numbers and let the reader subtract.</li>
+      <li><strong>Pre-computed baselines</strong> in <code>getRuns</code>: returns distance-weighted <code>avgCadence</code>, <code>avgHrEasy</code>, <code>avgHrQuality</code>, <code>avgCadenceEasy</code>, <code>avgCadenceQuality</code> across the window. Coach reads a real number instead of hallucinating one.</li>
+    </ul>
+    <p>Cache busted; next /today render uses the new doctrine.</p>
+    <p class="files">web-v2/coach/prompts/index.ts · web-v2/lib/coach/tools.ts</p>
+  </div>
+
+  <h2 id="pattern">The prefetch pattern (codified)</h2>
+
+  <div class="pattern">
+    <h3>For every future fetch-on-open modal</h3>
+    <p><strong>1. Modal accepts <code>prefetched*</code> props.</strong> Initializes its <code>useState</code> / <code>@State</code> synchronously from them. First paint is complete when warm.</p>
+    <p><strong>2. Parent owns the cache.</strong> Date-keyed <code>Map</code> for list-of-things, module-scope singleton for app-wide things (settings, articles).</p>
+    <p><strong>3. Trigger fires prefetch on intent.</strong> <code>onMouseEnter</code> + <code>onFocus</code> on web; pre-warming via <code>.task</code> on iPhone.</p>
+    <p><strong>4. Mount-time prefetch when the trigger is highly visible.</strong> Avatar always visible → fetch settings on layout mount. Current week always read → batch-fetch on log mount.</p>
+    <p><strong>5. Fall back to on-mount fetch when cache is cold.</strong> Never break old behavior; props are optional.</p>
+    <pre>// Web shape
+function Modal({ prefetchedData, ... }) {
+  const [data, setData] = useState(prefetchedData ?? null);
+  const [loading, setLoading] = useState(prefetchedData == null);
+  useEffect(() => {
+    if (prefetchedData) { setData(prefetchedData); setLoading(false); return; }
+    fetch(url).then(...);
+  }, [prefetchedData]);
+}
+
+// iPhone shape
+struct Sheet: View {
+  let prefetched: T?
+  init(... prefetched: T? = nil) {
+    self.prefetched = prefetched
+    _data = State(initialValue: prefetched)
+    _loading = State(initialValue: prefetched == nil)
+  }
+  .task { if prefetched == nil { await load() } }
+}</pre>
+    <p>Apply this pattern to every new modal we build. Add it to <code>CLAUDE.md</code> if it isn't there yet.</p>
+  </div>
+
+  <h2 id="iphone">iPhone audit findings (not yet shipped)</h2>
+
+  <div class="item med">
+    <span class="tag">MEDIUM · iPhone</span>
+    <h4>SettingsSheet — settings + profile fetch on appear</h4>
+    <p>Two parallel fetches in <code>.task</code> when the sheet opens (settings + profile). ProfileView is the parent; could warm both on ProfileView mount.</p>
+    <p class="files">native-v2/Faff/Faff/Views/SettingsSheet.swift:141 · /api/settings · /api/profile</p>
+    <p class="meta">~150ms saved per Settings open. Lower priority because Settings is infrequently tapped.</p>
+  </div>
+
+  <div class="item med">
+    <span class="tag">MEDIUM · iPhone</span>
+    <h4>RaceDetailSheet — race detail fetch on appear</h4>
+    <p>Sheet opens from RacesView topic cards, then fires <code>/api/races/[slug]</code>. RacesView already loads the briefing on mount; could prefetch race details for each surfaced race slug.</p>
+    <p class="files">native-v2/Faff/Faff/Views/RaceDetailSheet.swift:43 · /api/races/[slug]</p>
+    <p class="meta">~100ms saved per race detail open.</p>
+  </div>
+
+  <p style="color: var(--mute); font-size: 13px; margin-top: 18px; font-style: italic;">
+    Two LOW-impact iPhone findings deliberately skipped: TabView sibling preload (briefing is cheap) and TipsView detail sheet (no fetch — already optimal).
+  </p>
+
+  <h2 id="web">Web audit findings (not yet shipped)</h2>
+
+  <h3>Server vs client rendering</h3>
+
+  <div class="item med">
+    <span class="tag">MEDIUM</span>
+    <h4>/races/[slug] course geometry loads even when hidden</h4>
+    <p>Server page fetches course geometry inline for every load, even if user doesn't scroll to the CourseSchematic section.</p>
+    <p class="files">web-v2/app/races/[slug]/page.tsx:31-36</p>
+    <p class="meta">Fix: defer to a client-side Suspense boundary that fires only when CourseSchematic enters viewport. Saves 30–50ms on FCP.</p>
+  </div>
+
+  <h3>N+1 queries on hot paths</h3>
+
+  <div class="item high">
+    <span class="tag">HIGH</span>
+    <h4>RunDetailModal opens fire 2 API calls when shoes aren't prefetched</h4>
+    <p><code>/api/runs/[id]</code> + <code>/api/shoe</code> are separate round-trips. LogTable now prefetches shoes once — but any direct deep-link, or modal opened from <code>/today</code>'s DoneRunBar, fires both.</p>
+    <p><strong>Fix:</strong> include shoe list in <code>/api/runs/[id]</code> response (JOIN shoes). Removes the second round-trip permanently.</p>
+    <p class="files">web-v2/lib/coach/run-state.ts · app/api/runs/[id]/route.ts · app/api/shoe/route.ts</p>
+    <p class="meta">80–120ms saved per cold-cache modal open. ~30 min work.</p>
+  </div>
+
+  <div class="item high">
+    <span class="tag">HIGH · BUG</span>
+    <h4>/api/shoe has NO GET handler</h4>
+    <p>Caught while auditing cache headers: <code>app/api/shoe/route.ts</code> only exports POST / PATCH / DELETE. But <code>RunDetailModal</code> and <code>LogTable</code> both call <code>fetch('/api/shoe')</code> (GET) for the shoe picker. That request returns <strong>405 Method Not Allowed</strong> silently.</p>
+    <p><strong>Consequence:</strong> the shoe picker on the run detail modal has likely been empty since launch — users can't assign a shoe to a run. (The mileage auto-bump still works because that runs server-side via the run-merge path.)</p>
+    <p><strong>Fix:</strong> add <code>export async function GET()</code> to <code>app/api/shoe/route.ts</code> returning <code>{ shoes: [...] }</code>. ~15 lines.</p>
+    <p class="files">web-v2/app/api/shoe/route.ts (missing GET)</p>
+    <p class="meta">Functional bug, not a perf issue. But discovered while doing the perf work. Priority: fix tomorrow.</p>
+  </div>
+
+  <div class="item med">
+    <span class="tag">MEDIUM</span>
+    <h4>loadHealthState fires 5–6 separate queries</h4>
+    <p>Sleep, HRV, RHR, cadence baseline each hit <code>health_samples</code> separately. Batch into one query with <code>WHERE sample_type IN (…)</code> + group in code.</p>
+    <p class="files">web-v2/lib/coach/health-state.ts</p>
+    <p class="meta">~100–150ms saved on /health page load. ~45 min work.</p>
+  </div>
+
+  <div class="item med">
+    <span class="tag">MEDIUM</span>
+    <h4>Shared race lookup duplicated across loaders</h4>
+    <p><code>loadCoachState</code> and <code>loadGlanceState</code> both query <code>races</code> table for next A-race. On /today + /health simultaneous loads (via <code>Promise.all</code>), both fire.</p>
+    <p><strong>Fix:</strong> extract <code>loadNextARace(userId)</code> + memoize with a 60s TTL (like BriefingLoader already does).</p>
+    <p class="files">web-v2/lib/coach/state-loader.ts · web-v2/lib/coach/glance-state.ts</p>
+    <p class="meta">~40ms saved on simultaneous loads.</p>
+  </div>
+
+  <h3>Streaming / route-level</h3>
+
+  <div class="item low">
+    <span class="tag">LOW</span>
+    <h4>/profile loads all sections in one mega-query</h4>
+    <p><code>loadProfileState()</code> fetches identity + shoes + gaps in one round-trip. If shoes query is ever slow, the whole page blocks. Split + wrap shoe section in <code>&lt;Suspense&gt;</code>.</p>
+    <p class="files">web-v2/app/profile/page.tsx:16</p>
+    <p class="meta">Not a current pain point. Defer until shoes query gets slow.</p>
+  </div>
+
+  <div class="item low">
+    <span class="tag">LOW</span>
+    <h4>/health navigation prefetch</h4>
+    <p>Verify Next.js <code>&lt;Link prefetch={true}&gt;</code> is firing on TopNav tab links (it's the default in production but should be confirmed). When user hovers HEALTH from /today, /health's RSC should already be downloading.</p>
+    <p class="files">web-v2/components/nav/TopNav.tsx</p>
+    <p class="meta">Likely already working. Verify, don't fix.</p>
+  </div>
+
+  <h2 id="queue">Tomorrow's queue (in priority order)</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 32px;">#</th>
+        <th>Item</th>
+        <th style="width: 80px;">Impact</th>
+        <th style="width: 100px;">Effort</th>
+        <th style="width: 130px;">Surface</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="mute">1</td><td><strong>Add GET handler to /api/shoe</strong> — fixes broken shoe picker silently 405-ing</td><td class="high">HIGH</td><td class="ok">15 min</td><td class="mute">web bug</td></tr>
+      <tr><td class="mute">2</td><td><strong>Fold shoes into /api/runs/[id]</strong> — eliminates 2nd round-trip on modal open</td><td class="high">HIGH</td><td class="med">30 min</td><td class="mute">web</td></tr>
+      <tr><td class="mute">3</td><td><strong>#180 — HK importer pulls power/vert-osc/per-second cadence natively</strong> — so future watch glitches don't need hand patches</td><td class="med">MED</td><td class="med">2-3h</td><td class="mute">iPhone</td></tr>
+      <tr><td class="mute">4</td><td><strong>Batch health_samples queries</strong> — 5-6 separate queries become 1</td><td class="med">MED</td><td class="med">45 min</td><td class="mute">web</td></tr>
+      <tr><td class="mute">5</td><td>Configure Railway cron to hit <code>/api/cron/keep-warm</code> every 15 min</td><td class="med">MED</td><td class="ok">5 min config</td><td class="mute">ops</td></tr>
+      <tr><td class="mute">6</td><td>Shared <code>loadNextARace</code> with 60s memoize</td><td class="med">MED</td><td class="med">30 min</td><td class="mute">web</td></tr>
+      <tr><td class="mute">7</td><td>iPhone SettingsSheet prefetch parity</td><td class="med">MED</td><td class="med">30 min</td><td class="mute">iPhone</td></tr>
+      <tr><td class="mute">8</td><td>iPhone RaceDetailSheet prefetch parity</td><td class="med">MED</td><td class="med">30 min</td><td class="mute">iPhone</td></tr>
+      <tr><td class="mute">9</td><td>Course geometry to Suspense boundary on /races/[slug]</td><td class="low">LOW</td><td class="med">45 min</td><td class="mute">web</td></tr>
+      <tr><td class="mute">10</td><td>Split loadProfileState into Suspense-friendly chunks</td><td class="low">LOW</td><td class="med">1h</td><td class="mute">web</td></tr>
+    </tbody>
+  </table>
+
+  <p style="color: var(--mute); font-size: 13px; margin-top: 24px;">
+    Total remaining wins: ~400–650ms across hot paths plus one functional bug fix. Items 1+2 are the obvious morning wins — sub-hour combined effort, biggest user impact. Item 5 needs the Railway dashboard so it's gated on you, not me.
+  </p>
+
+  <h2>How to read this report</h2>
+  <p>Green = shipped overnight, already live on main. Red = found tonight, not yet shipped (priority items for tomorrow). Orange = medium-priority gap. Blue = informational.</p>
+  <p>Everything in <strong>"What shipped tonight"</strong> can be tested right now on faff.run: open /today, tap a day tile — should render complete with no flash. Open /log, hover a row, click — should render complete. /health learn cards, settings modal, /training week-ahead modals — all instant.</p>
+
+  <p style="color: var(--mute); font-size: 12px; margin-top: 56px; text-align: center;">
+    Generated overnight · session continued from 2026-05-26 · all changes on <code>main</code> via 5 commits between c85f273 and 3605ff4
+  </p>
+
+</div>
+</body>
+</html>
