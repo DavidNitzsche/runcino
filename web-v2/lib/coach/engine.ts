@@ -102,7 +102,12 @@ export async function generateBriefing(
       surface: resolved.surface,
       mode: resolved.mode,
       lead: 'Coach paused',
-      voice: 'The coach is paused while you review notes. Flip the COACH_PAUSED env var off to resume — no LLM calls are firing.',
+      // voice MUST be an array of paragraph strings — the client renders
+      // it with .map(). Bug: was a single string here and crashed /today.
+      voice: [
+        'The coach is paused while you review notes.',
+        'No LLM calls are firing — flip the COACH_PAUSED env var off in Railway to resume.',
+      ],
       topics: [],
       _state: {
         today: state.today,
