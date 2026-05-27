@@ -41,7 +41,15 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        landed; prompt forbids "this morning's check-in" unless a
 //        check-in is dated today. Old briefs claim "this morning's
 //        check-in was TIRED" when David never tapped a chip today.
-export const PROMPT_VERSION = 'v3-checkin-date-stamps';
+//   v4 → 2026-05-27 week-mileage + spike + pace-coherence fixes:
+//        engine orientation now ships weekDone / weekPlannedRemaining
+//        / weekTotalPlanned as HARD FACTS so the coach can't sum runs
+//        in its head and contradict the strip; loadAcwr also stamped so
+//        the coach can't call any ramp a "volume spike" — spike is
+//        defined as ACWR > 1.5 (Gabbett); TODAY_POST_RUN prompt got a
+//        paragraph-structure rule keeping each thread together (no
+//        bookending pace at the open + close around unrelated content).
+export const PROMPT_VERSION = 'v4-week-mileage-spike-coherence';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls

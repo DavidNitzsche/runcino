@@ -137,6 +137,10 @@ export async function generateBriefing(
     // intervals day as easy).
     checkInsLast7d: (state.recentCheckIns ?? []).length,
     yesterdayPlannedType: pickYesterdayPlannedType(state),
+    weekDone: state.weekDone ?? null,
+    weekPlannedRemaining: weekPlannedRemainingMi(state),
+    weekTotalPlanned: weekTotalPlannedMi(state),
+    loadAcwr: state.loadAcwr ?? null,
   });
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -341,6 +345,19 @@ interface OrientationInput {
    *  hallucinated these despite tool data being clear, so we restate them. */
   checkInsLast7d?: number;
   yesterdayPlannedType?: string | null;
+  // 2026-05-27: coach was summing miles in its head (forbidden) and
+  // landing on different numbers than the week-strip header. Surface
+  // server-computed week mileage as HARD FACTS so the LLM doesn't
+  // recompute. weekDone = Mon→today sum from plan_workouts/actuals.
+  // weekPlannedRemaining = today→Sun sum of planned. weekTotalPlanned
+  // = full Mon→Sun plan. All from state-loader's same math the strip
+  // uses, so coach voice and week strip can't disagree.
+  weekDone?: number | null;
+  weekPlannedRemaining?: number | null;
+  weekTotalPlanned?: number | null;
+  // ACWR (Gabbett acute:chronic). Coach was calling any ramp a
+  // "volume spike"; spike is a defined term (ratio > 1.5).
+  loadAcwr?: number | null;
 }
 
 /** Pick yesterday's planned workout type from currentWeekDays so the coach
@@ -350,6 +367,32 @@ function pickYesterdayPlannedType(state: any): string | null {
     .toISOString().slice(0, 10);
   const row = (state.currentWeekDays ?? []).find((d: any) => d.date === yesterday);
   return row?.type ?? null;
+}
+
+/** Sum planned miles for days from today (exclusive) → Sunday. Same
+ *  source the week-strip header reads — no LLM-side arithmetic. */
+function weekPlannedRemainingMi(state: any): number | null {
+  const days = state.currentWeekDays ?? null;
+  if (!days || !Array.isArray(days)) return null;
+  const today = state.today;
+  let sum = 0;
+  for (const d of days) {
+    if (typeof d.date === 'string' && d.date > today) {
+      sum += Number(d.mi) || 0;
+    }
+  }
+  return Math.round(sum * 10) / 10;
+}
+
+/** Sum planned miles for the entire Mon→Sun week. */
+function weekTotalPlannedMi(state: any): number | null {
+  const days = state.currentWeekDays ?? null;
+  if (!days || !Array.isArray(days)) return null;
+  let sum = 0;
+  for (const d of days) {
+    sum += Number(d.mi) || 0;
+  }
+  return Math.round(sum * 10) / 10;
 }
 
 function buildOrientationMessage(o: OrientationInput): string {
@@ -385,6 +428,43 @@ function buildOrientationMessage(o: OrientationInput): string {
       `not by an easy-day default. A threshold/intervals/tempo run SHOULD show Z3-Z5 work-phase HR; ` +
       `that's the session, not a sign of overtraining. Call getDoctrine({ topic: '${o.yesterdayPlannedType}' }) ` +
       `if you want to frame it.`
+    );
+  }
+  // 2026-05-27: week mileage HARD FACTS. The coach was summing runs in
+  // its head and landing on different numbers than the week-strip
+  // header. These three values are server-computed from the SAME plan
+  // data the strip reads — use them verbatim.
+  if (
+    typeof o.weekDone === 'number' ||
+    typeof o.weekPlannedRemaining === 'number' ||
+    typeof o.weekTotalPlanned === 'number'
+  ) {
+    const done = typeof o.weekDone === 'number' ? `${o.weekDone}` : '?';
+    const remain = typeof o.weekPlannedRemaining === 'number' ? `${o.weekPlannedRemaining}` : '?';
+    const total = typeof o.weekTotalPlanned === 'number' ? `${o.weekTotalPlanned}` : '?';
+    lines.push(
+      `- THIS WEEK mileage (from plan_workouts, Mon→Sun): ` +
+      `${done} mi DONE so far · ${remain} mi REMAINING planned · ${total} mi TOTAL planned. ` +
+      `These are the ONLY week-mileage numbers you may state. Do NOT sum runs from getRuns ` +
+      `yourself — you've miscounted before. If you write a week-mileage figure, it must equal ` +
+      `one of these three numbers (or "${done} of ${total}" framing). The week strip the user ` +
+      `is looking at shows the same ${done} / ${total} — drift here means the runner sees the ` +
+      `coach contradicting the UI.`
+    );
+  }
+  // ACWR — "volume spike" is a defined term (Gabbett > 1.5), not vibes.
+  if (typeof o.loadAcwr === 'number') {
+    const ratio = o.loadAcwr.toFixed(2);
+    const isSpike = o.loadAcwr > 1.5;
+    lines.push(
+      `- LOAD ratio (Gabbett acute:chronic): ${ratio}. ` +
+      `A "volume spike" / "spike" / "ramp warning" is ONLY valid when this ratio > 1.5. ` +
+      (isSpike
+        ? `Current ratio IS a spike (${ratio} > 1.5) — you may use that framing.`
+        : `Current ratio is NOT a spike (${ratio} ≤ 1.5). Do NOT call this week a "volume spike," ` +
+          `"big jump," or "ramp warning." A high absolute mileage week is not a spike if the ratio ` +
+          `is in the sweet spot (1.0-1.3) or building band (0.8-1.0). Describe the load by its ` +
+          `band, not by alarm words.`)
     );
   }
   lines.push('');
