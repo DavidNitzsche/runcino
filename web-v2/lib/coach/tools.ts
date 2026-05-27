@@ -64,10 +64,15 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'getRuns',
     description:
-      "Read the runner's actual logged runs in the window. Returns array of " +
-      '{date, mi, pace, hr, cadence, type, name, source}. Use this to know what ' +
-      "actually happened, not what was planned. TRUTH CONTRACT: only narrate runs " +
-      'this tool returns — never invent a run that\'s not in the result.',
+      "Read the runner's actual logged runs in the window. Returns " +
+      '{runs: [...], baselines: {...}}. Each run has {date, mi, pace, avgHr, ' +
+      'maxHr, avgCadence, avgPowerW, avgVertOscCm, elevGainFt, type, name, ' +
+      'splits[], phases[], hrZonePcts, weather}. The baselines block has the ' +
+      "runner's distance-weighted averages across the window: avgCadence, " +
+      'avgHrEasy, avgHrQuality, avgCadenceEasy, avgCadenceQuality. Use baselines ' +
+      "to compare today's numbers without doing arithmetic in your head — they " +
+      'are the source of truth for "your recent average". TRUTH CONTRACT: only ' +
+      "narrate runs this tool returns; never invent a run that's not in the result.",
     input_schema: {
       type: 'object',
       properties: {
@@ -288,8 +293,79 @@ async function getRuns(userId: string, input: { daysBack: number; limit?: number
       LIMIT $4`,
     [userId, today, input.daysBack, limit]
   )).rows;
+  // Pre-compute baselines across the window so coach can reference them
+  // by name without doing mental arithmetic. The "Voice: ARITHMETIC" rule
+  // forbids the coach from subtracting two numbers in its head — these
+  // baselines let it say "your recent avg cadence is 172" without inferring.
+  const completedRuns = r
+    .map((row: any) => row.data ?? {})
+    .filter((d: any) => Number(d.distanceMi ?? d.distance_mi) > 0);
+  const weightedAvg = (
+    pickValue: (d: any) => number | null,
+    pickWeight: (d: any) => number | null,
+  ): number | null => {
+    let sum = 0;
+    let w = 0;
+    for (const d of completedRuns) {
+      const v = pickValue(d);
+      const wt = pickWeight(d) ?? 0;
+      if (v == null || !isFinite(v) || wt <= 0) continue;
+      sum += v * wt;
+      w += wt;
+    }
+    return w > 0 ? Math.round(sum / w) : null;
+  };
+  const byType = (t: string) => completedRuns.filter((d: any) => d.type === t);
+  const weightedAvgIn = (
+    arr: any[],
+    pickValue: (d: any) => number | null,
+    pickWeight: (d: any) => number | null,
+  ): number | null => {
+    let sum = 0;
+    let w = 0;
+    for (const d of arr) {
+      const v = pickValue(d);
+      const wt = pickWeight(d) ?? 0;
+      if (v == null || !isFinite(v) || wt <= 0) continue;
+      sum += v * wt;
+      w += wt;
+    }
+    return w > 0 ? Math.round(sum / w) : null;
+  };
+  const easyRuns = byType('easy').concat(byType('long')).concat(byType('recovery'));
+  const qualityRuns = byType('threshold').concat(byType('intervals')).concat(byType('tempo'));
+  const baselines = {
+    windowDays: input.daysBack,
+    runsCounted: completedRuns.length,
+    // Overall averages across the window (distance-weighted).
+    avgCadence: weightedAvg(
+      (d) => d.avgCadence ?? d.cadence ?? null,
+      (d) => d.distanceMi ?? d.distance_mi ?? null,
+    ),
+    avgHrEasy: weightedAvgIn(
+      easyRuns,
+      (d) => d.avgHr ?? d.hr ?? null,
+      (d) => d.distanceMi ?? d.distance_mi ?? null,
+    ),
+    avgHrQuality: weightedAvgIn(
+      qualityRuns,
+      (d) => d.avgHr ?? d.hr ?? null,
+      (d) => d.distanceMi ?? d.distance_mi ?? null,
+    ),
+    avgCadenceEasy: weightedAvgIn(
+      easyRuns,
+      (d) => d.avgCadence ?? d.cadence ?? null,
+      (d) => d.distanceMi ?? d.distance_mi ?? null,
+    ),
+    avgCadenceQuality: weightedAvgIn(
+      qualityRuns,
+      (d) => d.avgCadence ?? d.cadence ?? null,
+      (d) => d.distanceMi ?? d.distance_mi ?? null,
+    ),
+  };
   return {
     today,
+    baselines,
     runs: r.map((row: any) => {
       const d = row.data ?? {};
       const w = d.weather;
