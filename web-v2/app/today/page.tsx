@@ -2,7 +2,6 @@ import { TopNav } from '@/components/layout/TopNav';
 import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigger';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { WeekStrip } from '@/components/today/WeekStrip';
-import { RunDetailTrigger } from '@/components/runs/RunDetailModal';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -20,11 +19,10 @@ export default async function TodayPage() {
     glanceError = e?.message ?? String(e);
   }
 
-  // Today cell — drives the hero headline + narrative + click target.
+  // Today cell — drives the hero headline + narrative.
   const todayCell = glance?.today
     ? glance.weekDays.find((d) => d.date === glance.today)
     : null;
-  const ran = (todayCell?.doneMi ?? 0) >= 0.5;
   const headline = heroHeadline(todayCell, glance?.daysToARace);
   const narrative = heroNarrative(todayCell, glance);
   const breadcrumb = heroBreadcrumb(glance);
@@ -67,23 +65,9 @@ export default async function TodayPage() {
               )}
             </div>
 
-            {/* Big mileage headline — clickable when ran today (opens run modal) */}
-            {ran && todayCell ? (
-              <RunDetailTrigger
-                activityId={todayCell.activityId ?? `${todayCell.date}-${todayCell.doneMi.toFixed(2)}`}
-                label=""
-                style={{
-                  marginTop: 0, padding: 0,
-                  textAlign: 'left', display: 'block',
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  letterSpacing: 'normal',
-                }}
-              >
-                <HeadlineMileage headline={headline} clickable />
-              </RunDetailTrigger>
-            ) : (
-              <HeadlineMileage headline={headline} clickable={false} />
-            )}
+            {/* Big mileage headline — not clickable. Run details live in the
+             *  week-strip day cards below (single source of click-through). */}
+            <HeadlineMileage headline={headline} />
 
             {narrative && (
               <div style={{
@@ -178,8 +162,9 @@ function MicroStat({ k, v, delta, color }: { k: string; v: string; delta: string
   );
 }
 
-/** Big "7.6 MI DONE" headline. Optional click affordance hint when ran. */
-function HeadlineMileage({ headline, clickable }: { headline: ReturnType<typeof heroHeadline>; clickable: boolean }) {
+/** Big "7.6 MI DONE" headline. Display-only; run details open from the
+ *  week-strip day cards below — single source of click-through. */
+function HeadlineMileage({ headline }: { headline: ReturnType<typeof heroHeadline> }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'baseline', gap: 14,
@@ -194,16 +179,6 @@ function HeadlineMileage({ headline, clickable }: { headline: ReturnType<typeof 
           fontFamily: 'var(--f-display)', fontSize: 28, fontWeight: 700,
           color: headline.postColor, letterSpacing: '0.3px',
         }}>{headline.post}</span>
-      )}
-      {clickable && (
-        <span style={{
-          marginLeft: 'auto',
-          fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700,
-          color: 'var(--mute)', letterSpacing: '1.2px',
-          alignSelf: 'center',
-        }}>
-          TAP FOR DETAILS →
-        </span>
       )}
     </div>
   );
