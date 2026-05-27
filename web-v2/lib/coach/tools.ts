@@ -160,6 +160,59 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    // 2026-05-27 P-COACH-PROPOSAL-1 — actionable swap proposals.
+    // The coach can call this when it wants to RECOMMEND a lighter (or
+    // different) alternative session in place of today's prescribed
+    // workout. The engine post-pass scans tool calls for this name and
+    // lifts the structured payload into BriefingResponse.proposed_alternative,
+    // which the UI renders as an ACCEPT / STICK WITH PLAN card on /today.
+    //
+    // CRITICAL: voice prose alone gives the runner no action. If you
+    // suggest "swap this for an easy 5" in voice without ALSO calling
+    // this tool, the runner has nothing to click. Call this tool
+    // whenever you propose an alternative.
+    //
+    // The handler is intentionally trivial (returns an ack) — the real
+    // work is in the engine's post-loop lift. We log it as a structured
+    // tool call so it shows in toolTrace + the UI gets a clean source
+    // of truth for what was proposed.
+    name: 'proposeWorkoutSwap',
+    description:
+      'Propose a CONCRETE alternative session in place of today\'s planned workout. ' +
+      'The runner sees an "Accept · Swap" button + a "Stick with plan" button on /today. ' +
+      'ONLY call this when there is a real reason (ACWR > 1.5, repeated TIRED/WRECKED ' +
+      'check-ins, missed sleep, illness signal, or an explicit doctrine rule). ' +
+      'Do NOT propose just because you "feel cautious" — propose when the data warrants. ' +
+      'Don\'t re-propose if pendingIntents shows the runner already declined a swap for today. ' +
+      'IMPORTANT: when you call this tool, ALSO mention the swap in voice — the card and ' +
+      'the prose should agree on what\'s being offered and why.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        alt_type: {
+          type: 'string',
+          enum: ['easy', 'recovery', 'long', 'tempo', 'threshold', 'intervals', 'rest', 'cross'],
+          description: 'The TYPE of the alternative session (matches plan_workouts.type).',
+        },
+        alt_distance_mi: {
+          type: 'number',
+          minimum: 0,
+          maximum: 30,
+          description: 'Distance for the alternative in miles. Use 0 for a rest day.',
+        },
+        alt_label: {
+          type: 'string',
+          description: 'Short human-readable label, e.g. "easy 5 miles", "30 min recovery shake-out", "complete rest day".',
+        },
+        reason: {
+          type: 'string',
+          description: 'One-sentence reason the runner sees on the card. Be specific: "ACWR is 1.71 — well above the 1.5 spike line — back off this week to absorb the load."',
+        },
+      },
+      required: ['alt_type', 'alt_distance_mi', 'alt_label', 'reason'],
+    },
+  },
+  {
     name: 'getDoctrine',
     description:
       "Read the research-backed doctrine on a topic, drawn from /Research/. " +
@@ -204,6 +257,12 @@ export async function dispatchTool(
     case 'getWorkoutCompletion': return getWorkoutCompletion(userId, i);
     case 'getDoctrine':      return getDoctrine(i);
     case 'getShoes':         return getShoes(userId);  // P32 / P15.3
+    case 'proposeWorkoutSwap':
+      // Handler is intentionally trivial — the engine post-pass scans
+      // toolTrace for this name and lifts `i` into the response envelope
+      // as proposed_alternative. We just acknowledge here so the model
+      // gets a clean tool_result and doesn't loop trying to re-propose.
+      return { acknowledged: true, proposal: i };
     default:                 return { error: `unknown tool: ${name}` };
   }
 }

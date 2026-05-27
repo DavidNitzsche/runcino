@@ -25,12 +25,28 @@ import { readCachedBriefing, writeCachedBriefing, PROMPT_VERSION } from './cache
 import { TOOLS, dispatchTool } from './tools';
 import { emptyUsage, addRound, recordUsage } from './usage';
 
+/** P-COACH-PROPOSAL-1 — structured payload lifted from a coach
+ *  proposeWorkoutSwap tool call. When set, the UI renders an action
+ *  card on /today with ACCEPT (PATCH today's plan_workouts row) or
+ *  STICK WITH PLAN (write a swap_declined intent so the coach doesn't
+ *  re-propose for today). */
+export interface ProposedAlternative {
+  alt_type: string;
+  alt_distance_mi: number;
+  alt_label: string;
+  reason: string;
+}
+
 export interface BriefingResponse {
   surface: Surface;
   mode: string;
   lead: string;
   voice: string[];
   topics: Topic[];
+  /** Set when the coach called proposeWorkoutSwap during this brief.
+   *  Absent otherwise. Cleared automatically once cache regenerates
+   *  after the user accepts or declines. */
+  proposed_alternative?: ProposedAlternative;
   _state: {
     user_id: string;
     today: string;
@@ -146,6 +162,7 @@ export async function generateBriefing(
     weekPlannedRemaining: weekPlannedRemainingMi(state),
     weekTotalPlanned: weekTotalPlannedMi(state),
     loadAcwr: state.loadAcwr ?? null,
+    swapDeclinedToday: swapDeclinedToday(state),
   });
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -280,12 +297,37 @@ export async function generateBriefing(
     return true;
   });
 
+  // P-COACH-PROPOSAL-1 — lift any proposeWorkoutSwap call from the
+  // tool trace into a structured field on the response. If the coach
+  // called it multiple times in one brief (rare; usually a re-think),
+  // honor the last invocation. We also drop the proposal if the runner
+  // has already declined a swap for today — defensive, since the
+  // doctrine line above tells the coach not to re-propose, but a
+  // determined model might call anyway.
+  let proposed_alternative: ProposedAlternative | undefined;
+  if (!swapDeclinedToday(state)) {
+    const swapCalls = toolTrace.filter((t) => t.name === 'proposeWorkoutSwap');
+    const last = swapCalls[swapCalls.length - 1];
+    if (last && last.input) {
+      const p = last.input as Partial<ProposedAlternative>;
+      if (p.alt_type && typeof p.alt_distance_mi === 'number' && p.alt_label && p.reason) {
+        proposed_alternative = {
+          alt_type: p.alt_type,
+          alt_distance_mi: p.alt_distance_mi,
+          alt_label: p.alt_label,
+          reason: p.reason,
+        };
+      }
+    }
+  }
+
   const response: BriefingResponse = {
     surface: resolved.surface,
     mode: resolved.mode,
     lead: parsed.lead ?? '',
     voice: parsed.voice ?? [],
     topics: filtered,
+    ...(proposed_alternative ? { proposed_alternative } : {}),
     _state: {
       user_id: userId,
       today: state.today,
@@ -363,6 +405,9 @@ interface OrientationInput {
   // ACWR (Gabbett acute:chronic). Coach was calling any ramp a
   // "volume spike"; spike is a defined term (ratio > 1.5).
   loadAcwr?: number | null;
+  // P-COACH-PROPOSAL-1 — if the runner already declined a swap for
+  // today, the coach must NOT re-propose. Cleared on day rollover.
+  swapDeclinedToday?: boolean;
 }
 
 /** Pick yesterday's planned workout type from currentWeekDays so the coach
@@ -387,6 +432,16 @@ function weekPlannedRemainingMi(state: any): number | null {
     }
   }
   return Math.round(sum * 10) / 10;
+}
+
+/** P-COACH-PROPOSAL-1 — did the runner decline a coach-proposed swap
+ *  for TODAY in this state's pending intents? Decline writes a
+ *  `swap_declined` intent with field=today_iso; this checks for one. */
+function swapDeclinedToday(state: any): boolean {
+  const intents = state.pendingIntents ?? [];
+  return intents.some((i: any) =>
+    i?.reason === 'swap_declined' && i?.field === state.today
+  );
 }
 
 /** Sum planned miles for the entire Mon→Sun week. */
@@ -476,7 +531,15 @@ function buildOrientationMessage(o: OrientationInput): string {
           `You MUST acknowledge it in this brief — one short sentence is enough — ` +
           `and either (a) explain why today's session is the right call given the spike, ` +
           `or (b) propose a lighter alternative. Silence here = the runner sees the ` +
-          `readiness card and the coach disagreeing on the same fact.`
+          `readiness card and the coach disagreeing on the same fact. ` +
+          (o.swapDeclinedToday
+            ? `NOTE: the runner already DECLINED a proposed swap for today — do NOT call ` +
+              `proposeWorkoutSwap again this brief. Acknowledge the spike in voice but ` +
+              `respect their choice; the action card is gone until tomorrow.`
+            : `If you choose (b), you MUST call proposeWorkoutSwap with a concrete alt ` +
+              `(alt_type + alt_distance_mi + alt_label + reason). Don't propose in voice ` +
+              `WITHOUT calling the tool — voice alone gives the runner no button to act on. ` +
+              `The card and the prose should agree on what's being offered and why.`)
         : `Current ratio is NOT a spike (${ratio} ≤ 1.5). Do NOT call this week a "volume spike," ` +
           `"big jump," or "ramp warning." A high absolute mileage week is not a spike if the ratio ` +
           `is in the sweet spot (1.0-1.3) or building band (0.8-1.0). Describe the load by its ` +

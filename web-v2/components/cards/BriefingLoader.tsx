@@ -18,6 +18,7 @@ import type { Topic } from '@/lib/topics/types';
 import type { ReadinessBreakdown } from '@/lib/coach/readiness';
 import { CoachBlock } from './CoachBlock';
 import { TopicRenderer } from './TopicRenderer';
+import { ProposalCard } from './ProposalCard';
 
 // Module-level in-flight cache. When /today mounts two <BriefingLoader />
 // instances (left for coach voice, right for cards rail), both share the
@@ -130,6 +131,13 @@ export function BriefingLoader({
           workoutType={(briefing._state as any)?.todayWorkoutType ?? null}
           runId={(briefing._state as any)?.todayRunId ?? null}
         />
+      )}
+      {/* P-COACH-PROPOSAL-1 — actionable swap proposal. Renders only on
+          /today (the only surface where the runner can take action on
+          today's plan) and only when the coach actually proposed one
+          via the proposeWorkoutSwap tool. */}
+      {renderCoach && surface === 'today' && (briefing as any).proposed_alternative && (
+        <ProposalCard proposal={(briefing as any).proposed_alternative} />
       )}
       {renderCards && briefing.topics.length > 0 && (
         <div style={{ padding: renderCoach ? '4px 24px 24px' : '0', display: 'flex', flexDirection: 'column', gap: 10 }}>

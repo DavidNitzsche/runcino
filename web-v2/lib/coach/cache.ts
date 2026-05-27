@@ -60,11 +60,12 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        144)" reads clinical and treats a forgiving aerobic intent
 //        like a tight target. Say "mid-Z2" or "held in aerobic zone."
 //        Quote bpm only when it adds signal the zone name can't.
-// v7-acwr-must-address 2026-05-27: when ACWR > 1.5, the readiness modal
-// tells the runner this is the elevated-injury-risk band. The coach was
-// silently ignoring it — David flagged the contradiction. Doctrine now
-// requires the coach to name the spike and explain (or back off).
-export const PROMPT_VERSION = 'v7-acwr-must-address';
+// v8-actionable-proposals 2026-05-27: introduces proposeWorkoutSwap
+// tool. When ACWR > 1.5 and the coach proposes a lighter alternative,
+// it must call the new tool so the UI can render an Accept · Swap
+// button. If the runner already declined for today (pendingIntents
+// has swap_declined for state.today), the coach must not re-propose.
+export const PROMPT_VERSION = 'v8-actionable-proposals';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls
