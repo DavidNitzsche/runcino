@@ -261,6 +261,23 @@ async function getPlanWindow(userId: string, input: { daysBack: number; daysForw
   )).rows[0];
   if (!plan) return { plan_id: null, days: [] };
 
+  // 2026-05-27: surface the day's prescribed HR ceiling on each easy/
+  // long row. Without it the LLM had no prescription number to anchor
+  // to and would parrot `avgHrEasy` (historical baseline ~135) as if
+  // it were today's ceiling, while the watch payload showed the real
+  // ceiling (LTHR × 0.89 ~ 144). Same formula as
+  // lib/watch/build-workout.ts so the watch card and the coach voice
+  // can't drift apart.
+  const lthrRow = (await pool.query(
+    `SELECT lthr FROM profile
+      WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me')
+      ORDER BY (user_uuid=$1) DESC LIMIT 1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const lthr: number | null = lthrRow?.lthr ?? null;
+  const easyHrCeiling: number | null =
+    lthr != null ? Math.round(lthr * 0.89) : null;
+
   const rows = (await pool.query(
     `SELECT date_iso, dow, type, distance_mi::float AS mi, sub_label
        FROM plan_workouts
@@ -275,6 +292,14 @@ async function getPlanWindow(userId: string, input: { daysBack: number; daysForw
     days: rows.map((r: any) => ({
       date: r.date_iso, dow: r.dow, type: r.type,
       mi: Number(r.mi) || 0, sub_label: r.sub_label,
+      // Only carry the ceiling on aerobic days (easy / long / recovery)
+      // — it's the only prescription the watch card derives this way.
+      // Quality days (threshold/intervals/tempo) hit higher HR by
+      // design and don't get a ceiling.
+      hrCeilingBpm:
+        (r.type === 'easy' || r.type === 'long' || r.type === 'recovery')
+          ? easyHrCeiling
+          : null,
     })),
   };
 }

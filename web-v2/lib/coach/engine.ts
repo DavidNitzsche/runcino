@@ -21,7 +21,7 @@ import { resolveMode, type Surface } from './router';
 import { TopicPrereqs, eligibleKinds, type Topic } from '@/lib/topics/types';
 import { promptFor } from '@/coach/prompts';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
-import { readCachedBriefing, writeCachedBriefing } from './cache';
+import { readCachedBriefing, writeCachedBriefing, PROMPT_VERSION } from './cache';
 import { TOOLS, dispatchTool } from './tools';
 import { emptyUsage, addRound, recordUsage } from './usage';
 
@@ -302,6 +302,9 @@ export async function generateBriefing(
         ? state.latest_activity?.id ?? null
         : null,
       toolTrace,
+      // Stamp the prompt version so the cache can invalidate when
+      // doctrine changes (see cache.ts PROMPT_VERSION).
+      promptVersion: PROMPT_VERSION,
     },
   };
 

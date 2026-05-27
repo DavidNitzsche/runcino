@@ -24,6 +24,19 @@ import { surfacesForEvent, type RegenEvent, type Surface } from './regen-policy'
 // hash; collapses the unique key to (user_id, surface_key).
 const SIGNATURE_SENTINEL = 'event-driven';
 
+// Prompt-version stamp. Bump this whenever the prompts in
+// `coach/prompts/index.ts` change in a way that should invalidate all
+// cached briefings (e.g. a doctrine fix like HR-ceiling drift). Cache
+// reads compare the stored version against this constant and miss on
+// mismatch — much cheaper than enumerating users to bust manually.
+//
+//   v1 → initial
+//   v2 → 2026-05-27 HR-ceiling doctrine fix: getPlanWindow now ships
+//        hrCeilingBpm; TODAY_PRE_RUN prompt instructs LLM to use that
+//        instead of avgHrEasy baseline. Old briefs say "135 or below"
+//        when the watch says "144" — they have to go.
+export const PROMPT_VERSION = 'v2-hr-ceiling-doctrine';
+
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls
 // the bucket name.
@@ -57,6 +70,14 @@ export async function readCachedBriefing(userId: string, key: CacheKey): Promise
     // the engine regenerates against the new day. Cheaper than running a
     // midnight cron + survives if a cron ever misses.
     if (payload?._state?.today && payload._state.today !== todayPT()) {
+      return null;
+    }
+    // Prompt-version invalidation: when prompt doctrine changes (see
+    // PROMPT_VERSION above), every cached brief written against the old
+    // prompt is wrong by definition. Treat as miss; the engine
+    // regenerates against the new prompt on the next request.
+    const storedVersion = (payload as any)?._state?.promptVersion;
+    if (storedVersion && storedVersion !== PROMPT_VERSION) {
       return null;
     }
     return payload;

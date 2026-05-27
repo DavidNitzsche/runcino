@@ -16,14 +16,12 @@ struct ProfileView: View {
     @State private var showLogSheet = false
     @State private var showTipsSheet = false
     @StateObject private var tokenStore = TokenStore.shared
-    // 2026-05-27 iPhone parity audit: profile surface had no coach voice
-    // despite web having it. Wire identity-mode brief here.
-    @State private var briefing: Briefing?
-    // 2026-05-27 follow-on: ProfileView was rendering HARDCODED identity
-    // strings ("David Nitzsche / MALE · 40 / 181 bpm MAX HR") while web
-    // /profile pulled real values from loadProfileState. Now matches:
-    // /api/profile/state ships the same shape to both clients.
-    @State private var profile: ProfileState?
+    // Hydrate from AppCache so identity + physiology + connections all
+    // paint instantly on first tap after launch. Refresh in background.
+    @State private var briefing: Briefing? =
+        AppCache.read(.profileBriefing, as: Briefing.self)
+    @State private var profile: ProfileState? =
+        AppCache.read(.profileState, as: ProfileState.self)
 
     var body: some View {
         NavigationStack {

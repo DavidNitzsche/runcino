@@ -13,9 +13,15 @@
 import SwiftUI
 
 struct HealthView: View {
-    @State private var briefing: Briefing?
-    @State private var readiness: ReadinessSnapshot?
-    @State private var health: HealthState?
+    // Hydrate from AppCache so first tap after launch paints all three
+    // (brief, readiness, metric cards) instantly. Network refresh
+    // overwrites them when it lands.
+    @State private var briefing: Briefing? =
+        AppCache.read(.healthBriefing, as: Briefing.self)
+    @State private var readiness: ReadinessSnapshot? =
+        AppCache.read(.readiness, as: ReadinessSnapshot.self)
+    @State private var health: HealthState? =
+        AppCache.read(.healthState, as: HealthState.self)
 
     var body: some View {
         NavigationStack {

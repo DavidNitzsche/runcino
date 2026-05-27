@@ -7,8 +7,11 @@
 import SwiftUI
 
 struct LogView: View {
-    @State private var log: LogState?
-    @State private var loading = true
+    // Hydrate from AppCache so the run list renders instantly on
+    // first tap after launch.
+    @State private var log: LogState? =
+        AppCache.read(.logState, as: LogState.self)
+    @State private var loading: Bool = AppCache.readRaw(.logState) == nil
     @State private var error: String?
     @State private var selected: LogRun?
     /// Run-detail prefetch cache. Filled in parallel for the current week

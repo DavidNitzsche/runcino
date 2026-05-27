@@ -30,6 +30,19 @@ struct FaffApp: App {
                 .task {
                     WatchSync.shared.start()
 
+                    // 2026-05-27: kick off the per-tab prefetch FIRST,
+                    // in parallel with HK auth + import. By the time
+                    // the user gets through the splash and taps any
+                    // tab, the data is in cache (or in flight). This
+                    // is what closes the "first-tap loading carpet"
+                    // gap David flagged: web feels instant because
+                    // Next.js SSRs every page; the iPhone equivalent
+                    // is hitting every endpoint on boot so subsequent
+                    // tab taps render from AppCache synchronously.
+                    Task.detached(priority: .userInitiated) {
+                        await API.prefetchAllOnLaunch()
+                    }
+
                     // First open: prompt for Health auth + initial 7-day
                     // pull (workouts + samples). On subsequent opens:
                     // quiet re-sync, never prompts.

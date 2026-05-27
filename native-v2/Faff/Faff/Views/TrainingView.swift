@@ -24,9 +24,17 @@
 import SwiftUI
 
 struct TrainingView: View {
-    @State private var briefing: Briefing?
-    @State private var state: TrainingState?
-    @State private var loading = true
+    // Hydrate from AppCache so the first tap after launch paints the
+    // last-seen plan instantly. Network refresh overwrites both state
+    // values when it lands (see load() below).
+    @State private var briefing: Briefing? =
+        AppCache.read(.trainingBriefing, as: Briefing.self)
+    @State private var state: TrainingState? =
+        AppCache.read(.trainingState, as: TrainingState.self)
+    /// `loading` only kicks in when there's nothing cached — the very
+    /// first launch. From then on we paint real content and let
+    /// `.task` refresh silently in the background.
+    @State private var loading: Bool = AppCache.readRaw(.trainingState) == nil
 
     var body: some View {
         NavigationStack {

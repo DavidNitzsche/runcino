@@ -13,15 +13,24 @@
 import SwiftUI
 
 struct TodayView: View {
-    @State private var briefing: Briefing?
-    @State private var workout: WatchWorkout?
+    // Initial values come from the last successful response on disk via
+    // AppCache. First-ever launch reads nil; every subsequent launch
+    // paints real (slightly stale) content the instant the view appears.
+    // The .task hook below refreshes from the server and writes new
+    // bytes back to the cache for next time.
+    @State private var briefing: Briefing? =
+        AppCache.read(.todayBriefing, as: Briefing.self)
+    @State private var workout: WatchWorkout? =
+        AppCache.read(.todayWorkout, as: TodayWorkoutWrapper.self)?.workout
     /// Kept for the rest-day-message fallback (loadAll still pulls the
     /// plan to know if today is a planned rest day). UI no longer shows
     /// the week strip on this surface — Training owns the multi-day
     /// view now.
-    @State private var planWeek: PlanWeek?
+    @State private var planWeek: PlanWeek? =
+        AppCache.read(.planWeek, as: PlanWeek.self)
     @State private var error: String?
-    @State private var readiness: ReadinessSnapshot?
+    @State private var readiness: ReadinessSnapshot? =
+        AppCache.read(.readiness, as: ReadinessSnapshot.self)
 
     var body: some View {
         NavigationStack {

@@ -8,9 +8,14 @@
 import SwiftUI
 
 struct RacesView: View {
-    @State private var briefing: Briefing?
-    @State private var races: [RaceListItem] = []
-    @State private var loadingRaces = true
+    // Hydrate from AppCache so first tap after launch paints instantly.
+    @State private var briefing: Briefing? =
+        AppCache.read(.racesBriefing, as: Briefing.self)
+    @State private var races: [RaceListItem] =
+        AppCache.read(.raceList, as: RaceListResponse.self)?.races ?? []
+    /// `loadingRaces` only fires when there's literally nothing cached
+    /// — i.e. fresh install. Otherwise we paint and refresh quietly.
+    @State private var loadingRaces: Bool = AppCache.readRaw(.raceList) == nil
     /// Tapped-race slug drives the RaceDetailSheet presentation.
     @State private var selected: RaceListItem?
 

@@ -34,7 +34,26 @@ enum API {
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
         }
-        return try JSONDecoder().decode(Briefing.self, from: data)
+        let decoded = try JSONDecoder().decode(Briefing.self, from: data)
+        // Cache the raw bytes so the next launch can hydrate this
+        // surface synchronously — no skeleton, no waiting.
+        // Mode-keyed surfaces (race-detail/today proximity-aware) only
+        // cache the default mode; per-mode caching would balloon the
+        // store. Race-detail prefetches its own cache via prefetchedDetail.
+        AppCache.writeRaw(briefingKey(surface), data: data)
+        return decoded
+    }
+
+    /// Map briefing surface name to its AppCache key. Per-surface keys
+    /// so /today's brief doesn't overwrite /training's, etc.
+    private static func briefingKey(_ surface: String) -> AppCache.Key {
+        switch surface {
+        case "training": return .trainingBriefing
+        case "races":    return .racesBriefing
+        case "health":   return .healthBriefing
+        case "profile":  return .profileBriefing
+        default:         return .todayBriefing
+        }
     }
 
     /// Closed loop §8.1 — record SOLID / TIRED / WRECKED check-in.
@@ -226,8 +245,14 @@ enum API {
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
         }
-        struct Wrapper: Decodable { let workout: WatchWorkout? }
-        let w = try JSONDecoder().decode(Wrapper.self, from: data)
+        let w = try JSONDecoder().decode(TodayWorkoutWrapper.self, from: data)
+        // Cache the *raw* wrapper (not just the workout) so the next
+        // launch decodes back through the same shape. Today's workout
+        // only — caching the WorkoutDetailModal preview-for-tomorrow
+        // would just cause stale-data confusion.
+        if date == nil {
+            AppCache.writeRaw(.todayWorkout, data: data)
+        }
         return w.workout
     }
 
@@ -240,7 +265,9 @@ enum API {
         comps.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
         let (data, resp) = try await URLSession.shared.data(from: comps.url!)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-        return try? JSONDecoder().decode(LogState.self, from: data)
+        guard let decoded = try? JSONDecoder().decode(LogState.self, from: data) else { return nil }
+        AppCache.writeRaw(.logState, data: data)
+        return decoded
     }
 
     /// Single run detail (P28). Powers RunDetailSheet.
@@ -260,7 +287,9 @@ enum API {
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             return nil
         }
-        return try? JSONDecoder().decode(ReadinessSnapshot.self, from: data)
+        guard let decoded = try? JSONDecoder().decode(ReadinessSnapshot.self, from: data) else { return nil }
+        AppCache.writeRaw(.readiness, data: data)
+        return decoded
     }
 
     /// Full /profile state — identity + physiology + connections — shaped
@@ -270,7 +299,9 @@ enum API {
         let url = baseURL.appendingPathComponent("api/profile/state")
         let (data, resp) = try await URLSession.shared.data(from: url)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-        return try? JSONDecoder().decode(ProfileState.self, from: data)
+        guard let decoded = try? JSONDecoder().decode(ProfileState.self, from: data) else { return nil }
+        AppCache.writeRaw(.profileState, data: data)
+        return decoded
     }
 
     /// /api/races — race list for the iPhone /races tab. Same endpoint
@@ -279,7 +310,9 @@ enum API {
         let url = baseURL.appendingPathComponent("api/races")
         let (data, resp) = try await URLSession.shared.data(from: url)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-        return try? JSONDecoder().decode(RaceListResponse.self, from: data)
+        guard let decoded = try? JSONDecoder().decode(RaceListResponse.self, from: data) else { return nil }
+        AppCache.writeRaw(.raceList, data: data)
+        return decoded
     }
 
     /// /api/training/state — full plan state for the /training tab.
@@ -289,7 +322,9 @@ enum API {
         let url = baseURL.appendingPathComponent("api/training/state")
         let (data, resp) = try await URLSession.shared.data(from: url)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-        return try? JSONDecoder().decode(TrainingState.self, from: data)
+        guard let decoded = try? JSONDecoder().decode(TrainingState.self, from: data) else { return nil }
+        AppCache.writeRaw(.trainingState, data: data)
+        return decoded
     }
 
     /// /api/health/state — 30-day trends + summary + watch-mode for
@@ -298,7 +333,9 @@ enum API {
         let url = baseURL.appendingPathComponent("api/health/state")
         let (data, resp) = try await URLSession.shared.data(from: url)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
-        return try? JSONDecoder().decode(HealthState.self, from: data)
+        guard let decoded = try? JSONDecoder().decode(HealthState.self, from: data) else { return nil }
+        AppCache.writeRaw(.healthState, data: data)
+        return decoded
     }
 
     /// Mon-Sun plan_workouts for the week containing `date` (or today).
@@ -313,8 +350,58 @@ enum API {
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
         }
-        return try JSONDecoder().decode(PlanWeek.self, from: data)
+        let decoded = try JSONDecoder().decode(PlanWeek.self, from: data)
+        // Current-week only — date-overridden fetches are previews and
+        // shouldn't overwrite the canonical plan-week cache.
+        if date == nil {
+            AppCache.writeRaw(.planWeek, data: data)
+        }
+        return decoded
     }
+
+    /// Fire every per-tab endpoint in parallel on app launch so the
+    /// cache is warm by the time the user taps any tab. Best-effort;
+    /// failures are silent — the per-tab .task in each View will retry.
+    ///
+    /// Called once from FaffApp.task at boot. 2026-05-27: shipped after
+    /// David asked "before that first tap? we can just go through the
+    /// app and load things." This is the iPhone equivalent of opening
+    /// every web page once on session start so subsequent navigations
+    /// are warm.
+    static func prefetchAllOnLaunch() async {
+        // Fire-and-forget. Each helper writes to AppCache on success
+        // (see writeRaw calls above). View .task hooks still re-fetch
+        // so a stale prefetch never sticks — they just have content
+        // to show in the meantime.
+        async let b1 = (try? await briefing(surface: "today"))
+        async let b2 = (try? await briefing(surface: "training"))
+        async let b3 = (try? await briefing(surface: "races"))
+        async let b4 = (try? await briefing(surface: "health"))
+        async let b5 = (try? await briefing(surface: "profile"))
+        async let w  = (try? await fetchWatchWorkout())
+        async let pw = (try? await fetchPlanWeek())
+        async let r  = (try? await fetchReadiness())
+        async let ts = (try? await fetchTrainingState())
+        async let hs = (try? await fetchHealthState())
+        async let ps = (try? await fetchProfileState())
+        async let rl = (try? await fetchRaces())
+        async let lg = (try? await fetchLog(limit: 80))
+        // Discard results — side effect is the cache writes above.
+        _ = await (b1, b2, b3, b4, b5)
+        _ = await (w, pw, r)
+        _ = await (ts, hs, ps, rl, lg)
+    }
+}
+
+// MARK: - Watch workout wrapper
+//
+// `/api/watch/today` returns `{ "workout": WatchWorkout | null }`. The
+// wrapper lives at top-level (not nested in fetchWatchWorkout) so the
+// AppCache hydration path in TodayView can decode the same shape from
+// the cached bytes.
+
+struct TodayWorkoutWrapper: Decodable {
+    let workout: WatchWorkout?
 }
 
 // MARK: - PlanWeek wire model
