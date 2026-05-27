@@ -88,6 +88,30 @@ export async function generateBriefing(
     };
   }
 
+  // ── PAUSE KILL-SWITCH (P43) ──────────────────────────────────────
+  // When COACH_PAUSED=1 is set in env, NEVER call the LLM. Return a
+  // stub briefing so the UI doesn't error. Cache is also NOT written
+  // (so as soon as the flag clears, the next request fully regenerates).
+  // The cron jobs also skip when this is on.
+  //
+  // Used to freeze spend while reviewing notes, doing migrations,
+  // debugging, or whenever you want zero LLM activity. Flip the env
+  // var off to resume.
+  if (process.env.COACH_PAUSED === '1') {
+    return {
+      surface: resolved.surface,
+      mode: resolved.mode,
+      lead: 'Coach paused',
+      voice: 'The coach is paused while you review notes. Flip the COACH_PAUSED env var off to resume — no LLM calls are firing.',
+      topics: [],
+      _state: {
+        today: state.today,
+        readiness: computeReadiness(state),
+        toolTrace: [],
+      },
+    } as any as BriefingResponse;
+  }
+
   // Build the system prompt + tool-use loop
   const systemPrompt = systemPromptFor(resolved.surface, resolved.mode, compact);
   const orientationMessage = buildOrientationMessage({

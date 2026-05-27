@@ -123,6 +123,9 @@ export async function bustBriefingCache(userId: string, key?: CacheKey): Promise
  * does an upsert, latest-write-wins.
  */
 async function warmBriefingsAfterBust(userId: string): Promise<void> {
+  // P43 pause — when COACH_PAUSED=1, skip the warm fan-out entirely.
+  // Cache stays busted (next read fully regenerates once paused clears).
+  if (process.env.COACH_PAUSED === '1') return;
   try {
     // Dynamic import to dodge the circular dep (engine.ts imports from cache.ts).
     const { generateBriefing } = await import('./engine');

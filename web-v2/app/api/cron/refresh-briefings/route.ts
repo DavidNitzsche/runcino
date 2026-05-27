@@ -52,6 +52,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // P43 pause — skip the entire daily refresh when paused. The day-rollover
+  // staleness check carries over: when paused clears, the next /today open
+  // is a single-user wait of ~15s, not N × user wait.
+  if (process.env.COACH_PAUSED === '1') {
+    return NextResponse.json({ ok: true, paused: true, note: 'COACH_PAUSED=1; refresh skipped' });
+  }
+
   // ── find active users ──
   // "Active" = has a non-archived training plan. If you have multiple
   // beta runners, they all get warmed. Adjust the WHERE clause if you
