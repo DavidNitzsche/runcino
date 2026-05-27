@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { generatePlan } from '@/lib/plan/generate';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: result.reason ?? 'generation failed' }, { status: 400 });
     }
-    await bustBriefingCache(userId);
+    await bustBriefingCacheForEvent(userId, 'plan_swap');
     return NextResponse.json(result);
   } catch (err: any) {
     console.error('[plan/generate] error:', err);

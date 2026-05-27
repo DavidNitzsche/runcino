@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { generateBriefing } from '@/lib/coach/engine';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
@@ -121,8 +121,9 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Bust briefing cache + warm next briefing in background.
-    await bustBriefingCache(userId);
+    // Profile edits change zones + paces; today + training + profile
+    // surfaces need fresh voice. See lib/coach/regen-policy.ts.
+    await bustBriefingCacheForEvent(userId, 'profile_edit');
     void generateBriefing(userId, 'today').catch(() => {});
     void generateBriefing(userId, 'training').catch(() => {});
 

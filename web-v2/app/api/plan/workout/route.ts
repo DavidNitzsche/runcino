@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -77,7 +77,7 @@ export async function PATCH(req: NextRequest) {
       [userId, body.date_iso, JSON.stringify({ from: body.date_iso, to: newDate ?? body.date_iso, ...updates })]
     ).catch(() => {});
 
-    await bustBriefingCache(DAVID_USER_ID);
+    await bustBriefingCacheForEvent(DAVID_USER_ID, 'plan_swap');
 
     return NextResponse.json({ ok: true, updated: r.rows[0] });
   } catch (e: any) {

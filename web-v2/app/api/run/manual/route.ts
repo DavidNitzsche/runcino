@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { randomBytes, createHash } from 'crypto';
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     // that wasn't captured by watch/Strava, but if it overlaps we want
     // the manual row to lose to the richer source.
     try { await autoMergeForDate(userId, body.date); } catch {}
-    await bustBriefingCache(userId);
+    await bustBriefingCacheForEvent(userId, 'run_ingest');
     return NextResponse.json({ ok: true, id: slug });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

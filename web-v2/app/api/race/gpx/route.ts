@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { parseGPX } from '@/lib/race/gpx-parser';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     }
     // Race-detail and races-page coaches frame the season; a fresh course
     // changes the elevation/grade context. Bust + warm.
-    await bustBriefingCache(DAVID_USER_ID);
+    await bustBriefingCacheForEvent(DAVID_USER_ID, 'race_crud');
     return NextResponse.json({
       ok: true,
       slug,

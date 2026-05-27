@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
        ON CONFLICT (slug) DO UPDATE SET meta = EXCLUDED.meta`,
       [slug, body.user_id ?? DAVID_USER_ID, meta]
     );
-    await bustBriefingCache(body.user_id ?? DAVID_USER_ID);
+    await bustBriefingCacheForEvent(body.user_id ?? DAVID_USER_ID, 'race_crud');
     return NextResponse.json({ ok: true, slug });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -131,7 +131,7 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    await bustBriefingCache(DAVID_USER_ID);
+    await bustBriefingCacheForEvent(DAVID_USER_ID, 'race_crud');
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -143,7 +143,7 @@ export async function DELETE(req: NextRequest) {
   if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
   try {
     await pool.query(`DELETE FROM races WHERE slug = $1`, [body.slug]);
-    await bustBriefingCache(DAVID_USER_ID);
+    await bustBriefingCacheForEvent(DAVID_USER_ID, 'race_crud');
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

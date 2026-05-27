@@ -18,6 +18,7 @@
 import { pool } from '@/lib/db/pool';
 import type { Topic } from '@/lib/topics/types';
 import { bustRaceCache } from './race-lookup';
+import { surfacesForEvent, type RegenEvent, type Surface } from './regen-policy';
 
 // Fixed sentinel — old `signature` column is no longer used as an input
 // hash; collapses the unique key to (user_id, surface_key).
@@ -95,11 +96,31 @@ export async function writeCachedBriefing(
  * than a 15-20s LLM wait. Fire-and-forget — the caller (mutating endpoint)
  * is not blocked. Failures are swallowed: the day-rollover-on-read
  * staleness check + lazy regen on next fetch are the safety net.
+ *
+ * @param userId
+ * @param keyOrSurfaces  One of:
+ *    - undefined (legacy) — busts ALL surfaces for this user
+ *    - a single surface string ('today:ios') — busts that one cache key
+ *    - an array of Surface values — busts those surfaces only (web + iOS variants)
  */
-export async function bustBriefingCache(userId: string, key?: CacheKey): Promise<void> {
+export async function bustBriefingCache(
+  userId: string,
+  keyOrSurfaces?: CacheKey | readonly Surface[]
+): Promise<void> {
   try {
-    if (key) {
-      await pool.query(`DELETE FROM briefings WHERE user_id = $1 AND surface = $2`, [userId, key]);
+    if (Array.isArray(keyOrSurfaces)) {
+      // Targeted: bust only the surfaces this event affects. Each Surface
+      // expands to its web + iOS variant (e.g. 'today' busts both 'today'
+      // AND 'today:ios'). Cheaper than the all-busted default.
+      const surfaceKeys = keyOrSurfaces.flatMap((s) => [s, `${s}:ios`]);
+      if (surfaceKeys.length > 0) {
+        await pool.query(
+          `DELETE FROM briefings WHERE user_id = $1 AND surface = ANY($2::text[])`,
+          [userId, surfaceKeys]
+        );
+      }
+    } else if (typeof keyOrSurfaces === 'string') {
+      await pool.query(`DELETE FROM briefings WHERE user_id = $1 AND surface = $2`, [userId, keyOrSurfaces]);
     } else {
       await pool.query(`DELETE FROM briefings WHERE user_id = $1`, [userId]);
     }
@@ -116,6 +137,27 @@ export async function bustBriefingCache(userId: string, key?: CacheKey): Promise
   // Fire background regen. Non-blocking. The mutating endpoint already
   // returned to the caller before this Promise even starts the LLM call.
   void warmBriefingsAfterBust(userId);
+}
+
+/**
+ * Bust caches affected by a specific event, per regen-policy.ts.
+ * Preferred over bustBriefingCache(userId) because it scopes the LLM
+ * regen fan-out to only the surfaces the event actually changes.
+ *
+ * Example:
+ *   /api/race CRUD → bustBriefingCacheForEvent(userId, 'race_crud')
+ *   only busts today + races + race-detail + profile, NOT training/health.
+ */
+export async function bustBriefingCacheForEvent(
+  userId: string,
+  event: RegenEvent
+): Promise<void> {
+  const surfaces = surfacesForEvent(event);
+  if (surfaces.length === 0) {
+    // keep_warm_tick has no surfaces; nothing to bust.
+    return;
+  }
+  return bustBriefingCache(userId, surfaces);
 }
 
 // ── Debounced bust for HK sample arrivals ───────────────────────────────
@@ -146,8 +188,9 @@ export function bustBriefingCacheDebounced(userId: string): void {
   const last = state?.lastBustAt ?? 0;
 
   if (now - last >= DEBOUNCE_MS) {
-    // Leading edge — bust now and start the cooldown window.
-    void bustBriefingCache(userId);
+    // Leading edge — bust now and start the cooldown window. Scoped to
+    // the HK signal event so we only regen today + health, not all surfaces.
+    void bustBriefingCacheForEvent(userId, 'hk_signal_sample');
     debounceState.set(userId, { lastBustAt: now, trailing: null });
     return;
   }
@@ -159,7 +202,7 @@ export function bustBriefingCacheDebounced(userId: string): void {
   // In cooldown, no trailing yet — schedule one at cooldown end.
   const fireAt = last + DEBOUNCE_MS;
   const t = setTimeout(() => {
-    void bustBriefingCache(userId);
+    void bustBriefingCacheForEvent(userId, 'hk_signal_sample');
     debounceState.set(userId, { lastBustAt: Date.now(), trailing: null });
   }, Math.max(0, fireAt - now));
   // Don't keep the Node process alive just for this timer.

@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadRunDetail } from '@/lib/coach/run-state';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -65,7 +65,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       // Recompute mileage for affected shoes (old + new).
       await recomputeShoeMileage(userId);
-      await bustBriefingCache(userId);
+      // Shoe re-assignment on an existing run; same event as direct shoe CRUD.
+      await bustBriefingCacheForEvent(userId, 'shoe_crud');
       return NextResponse.json({ ok: true, shoe_id: shoeId });
     } catch (e: any) {
       console.error('[runs PATCH] shoe assign failed:', e);

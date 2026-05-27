@@ -36,7 +36,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { fetchRunWeather } from '@/lib/weather/openmeteo';
 
@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await bustBriefingCache(userId);
+    await bustBriefingCacheForEvent(userId, 'run_ingest');
 
     // #161 — auto-push to Strava when the toggle is on. Fire-and-forget;
     // failures land in strava_pushes for retry. The push itself is

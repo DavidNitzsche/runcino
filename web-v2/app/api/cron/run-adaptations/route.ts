@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { detectAdaptations, applyAdaptations } from '@/lib/plan/adapt';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
 
 export const maxDuration = 120;
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     try {
       const { triggers, actions } = await detectAdaptations(uid);
       const applied = await applyAdaptations(uid, actions);
-      if (applied > 0) await bustBriefingCache(uid);
+      if (applied > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
       results.push({ user_id: uid, triggers: triggers.length, applied });
     } catch (e: any) {
       results.push({ user_id: uid, triggers: 0, applied: 0, error: e?.message ?? String(e) });
