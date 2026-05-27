@@ -334,21 +334,11 @@ export function RunDetailBody({
         </div>
       )}
 
-      {/* HR Zone breakdown — one row per zone. Eyebrow color tuned
-          down (mute, not orange) so the card doesn't shout. The bpm
-          ranges live on each row now, so the separate ranges row got
-          removed. */}
+      {/* HR section — Round 4 combo (per docs/run-detail-redesign-2026-05-27.html).
+          Hero zone tile + vertical spectrum rail + peak HR gauge +
+          AVG-vs-LTHR donut + zone-colored HR timeline. */}
       {(d.hrZonePcts.z1 + d.hrZonePcts.z2 + d.hrZonePcts.z3 + d.hrZonePcts.z4 + d.hrZonePcts.z5) > 0 && (
-        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>
-            HEART RATE · TIME IN ZONE
-            {d.hr_zones_from_lthr?.lthr ? <span style={{ marginLeft: 8 }}>· LTHR {d.hr_zones_from_lthr.lthr}</span> : null}
-          </div>
-          <HRZones pcts={d.hrZonePcts} ranges={d.hr_zones_from_lthr?.ranges ?? null} />
-          <div style={{ marginTop: 12, fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>
-            {hrInterpretation(d.hrZonePcts, d.type)}
-          </div>
-        </div>
+        <HRSection d={d} />
       )}
 
       {/* Form metrics — cadence, ground contact, stride length, vert ratio.
@@ -647,6 +637,458 @@ function SplitsBars({ splits }: { splits: { mile: number; pace: string | null; h
             {s.mile}{s.pace ? ` · ${s.pace}` : ''}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// HRSection — Round 4 combo from docs/run-detail-redesign-2026-05-27.html.
+// Hero zone tile (with vertical spectrum rail) + peak HR gauge +
+// AVG-vs-LTHR donut + zone-colored HR timeline.
+//
+// Auto-picks dominant zone label (Z2 / Z3-Z4 / MIXED). Builds timeline
+// trace from phase_breakdown when available, falls back to splits.
+// Renders nothing if no HR data exists.
+// ─────────────────────────────────────────────────────────────────────
+
+type ZoneKey = 'z1' | 'z2' | 'z3' | 'z4' | 'z5';
+type ZonePcts = Record<ZoneKey, number>;
+
+const ZONE_COLOR: Record<ZoneKey, string> = {
+  z1: '#008FEC', z2: '#3EBD41', z3: '#F3AD38', z4: '#FC4D64', z5: '#FC4D64',
+};
+const ZONE_NAME: Record<ZoneKey, string> = {
+  z1: 'Z1', z2: 'Z2', z3: 'Z3', z4: 'Z4', z5: 'Z5',
+};
+const ZONE_BLURB: Record<ZoneKey, string> = {
+  z1: 'recovery',
+  z2: 'aerobic',
+  z3: 'tempo',
+  z4: 'threshold',
+  z5: 'VO2 max',
+};
+
+/** Pick the headline label for the hero tile.
+ *   - Single zone ≥ 60% → that zone (e.g. "Z2")
+ *   - Two adjacent zones ≥ 70% combined → combo ("Z3-Z4")
+ *   - Otherwise → "MIXED" */
+function dominantZoneLabel(p: ZonePcts): { label: string; color: string; key: ZoneKey | 'mixed' } {
+  const zones: ZoneKey[] = ['z1', 'z2', 'z3', 'z4', 'z5'];
+  const top = zones.reduce((a, b) => (p[a] >= p[b] ? a : b));
+  if (p[top] >= 60) return { label: ZONE_NAME[top], color: ZONE_COLOR[top], key: top };
+  // Adjacent-pair fallback
+  for (let i = 0; i < zones.length - 1; i++) {
+    const a = zones[i], b = zones[i + 1];
+    const sum = p[a] + p[b];
+    if (sum >= 70 && p[a] >= 15 && p[b] >= 15) {
+      const higher = p[a] > p[b] ? a : b;
+      return { label: `${ZONE_NAME[a]}-${ZONE_NAME[b]}`, color: ZONE_COLOR[higher], key: higher };
+    }
+  }
+  return { label: 'MIXED', color: 'var(--mute)', key: 'mixed' };
+}
+
+/** Build a {tFrac, hr} series for the timeline trace. Prefer phases
+ *  (richer for structured workouts) and fall back to splits. Returns
+ *  null if neither source has enough data. tFrac is 0→1 along the run. */
+function buildTimelineSeries(d: RunDetail): { points: { t: number; hr: number }[]; phases: { tStart: number; tEnd: number; type: PhaseBreakdown['type']; label: string }[] } | null {
+  // Phase path — when watch shipped per-phase data with durations + HR.
+  const phasesWithHR = d.phase_breakdown.filter(
+    (p) => (p.avg_hr ?? 0) > 0 && (p.actual_duration_sec ?? 0) > 0
+  );
+  if (phasesWithHR.length >= 2) {
+    const totalSec = phasesWithHR.reduce((s, p) => s + (p.actual_duration_sec ?? 0), 0);
+    const pts: { t: number; hr: number }[] = [];
+    const phaseSpans: { tStart: number; tEnd: number; type: PhaseBreakdown['type']; label: string }[] = [];
+    let acc = 0;
+    for (const p of phasesWithHR) {
+      const dur = p.actual_duration_sec ?? 0;
+      const tStart = acc / totalSec;
+      const tEnd = (acc + dur) / totalSec;
+      // Two points per phase for a flat-top step look (cleaner than
+      // single-point interpolation between phase centroids).
+      pts.push({ t: tStart, hr: p.avg_hr! });
+      pts.push({ t: tEnd,   hr: p.avg_hr! });
+      phaseSpans.push({ tStart, tEnd, type: p.type, label: p.label });
+      acc += dur;
+    }
+    return { points: pts, phases: phaseSpans };
+  }
+  // Splits fallback — one HR sample per mile.
+  const splitHR = d.splits.filter((s) => s.hr != null && s.hr > 0);
+  if (splitHR.length >= 2) {
+    const n = splitHR.length;
+    const pts = splitHR.map((s, i) => ({ t: i / (n - 1), hr: s.hr! }));
+    return { points: pts, phases: [] };
+  }
+  return null;
+}
+
+/** Convert HR bpm → SVG y coordinate in a 0–80 viewBox. Maps the
+ *  full visible HR range so the trace fills the chart. */
+function hrToY(bpm: number, minHR: number, maxHR: number): number {
+  const span = Math.max(20, maxHR - minHR);
+  const clamped = Math.max(minHR, Math.min(maxHR, bpm));
+  // Margin at top (8) and bottom (8) so trace doesn't touch edges.
+  return 8 + (1 - (clamped - minHR) / span) * 64;
+}
+
+function fmtTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm === 0 ? `${h}h` : `${h}h ${mm}m`;
+}
+
+function HRSection({ d }: { d: RunDetail }) {
+  const pcts = d.hrZonePcts;
+  const dom = dominantZoneLabel(pcts);
+  const lthr = d.hr_zones_from_lthr?.lthr ?? null;
+  const ranges = d.hr_zones_from_lthr?.ranges ?? [];
+
+  // Stable lookup for range bpm strings.
+  const rangeBpm = (key: ZoneKey): string => {
+    const r = ranges.find((x) => x.label.toLowerCase() === key);
+    return r ? `${r.lower}-${r.upper}` : '';
+  };
+
+  // Hero subline — % + bpm range or descriptive blurb.
+  const heroSubline = dom.key === 'mixed'
+    ? `MIXED ZONES · NO SINGLE DOMINANT`
+    : `${Math.round(pcts[dom.key])}% IN ZONE${rangeBpm(dom.key) ? ` · ${rangeBpm(dom.key)} BPM` : ''}`;
+
+  // Hero note — interpretive one-liner from existing hrInterpretation.
+  const heroNote = hrInterpretation(pcts, d.type);
+
+  // Total run time in seconds for the timeline.
+  const totalSec = (() => {
+    if (!d.time_moving) return 0;
+    const parts = d.time_moving.split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return 0;
+  })();
+
+  // Peak HR gauge marker position. Linear scale 100-200 bpm.
+  const peakLeftPct = d.hr_max != null
+    ? Math.max(0, Math.min(100, ((d.hr_max - 100) / 100) * 100))
+    : 0;
+
+  // LTHR ratio (avg / LTHR) for the donut.
+  const lthrRatio = (d.hr_avg != null && lthr != null && lthr > 0)
+    ? Math.round((d.hr_avg / lthr) * 100)
+    : null;
+  const lthrRatioColor = lthrRatio == null ? 'var(--mute)'
+    : lthrRatio >= 100 ? 'var(--over)'
+    : lthrRatio >= 88  ? 'var(--goal)'
+    : 'var(--green)';
+  // Donut: full circle dasharray = 163 (2πr where r=26). Offset shrinks
+  // the visible arc to the ratio %.
+  const donutOffset = lthrRatio == null ? 163 : 163 * (1 - Math.min(105, lthrRatio) / 105);
+
+  // Timeline data
+  const series = buildTimelineSeries(d);
+  const timelineMinHR = Math.max(60, (lthr ?? 160) - 80);
+  const timelineMaxHR = Math.max((d.hr_max ?? 0) + 6, (lthr ?? 160) + 16);
+
+  // Build SVG path string for the trace.
+  const tracePath = series && series.points.length > 0
+    ? series.points.reduce((acc, p, i) => {
+        const x = p.t * 400;
+        const y = hrToY(p.hr, timelineMinHR, timelineMaxHR);
+        return acc + (i === 0 ? `M ${x.toFixed(1)} ${y.toFixed(1)}` : ` L ${x.toFixed(1)} ${y.toFixed(1)}`);
+      }, '')
+    : '';
+
+  // Peak marker on the trace — find max-HR point in the series.
+  const peakPoint = series?.points.reduce((best, p) => (p.hr > best.hr ? p : best), series.points[0]);
+  const peakX = peakPoint ? peakPoint.t * 100 : 0;
+  const peakY = peakPoint && timelineMaxHR > timelineMinHR
+    ? hrToY(peakPoint.hr, timelineMinHR, timelineMaxHR)
+    : 0;
+  const peakYPct = (peakY / 80) * 100;
+
+  // Y position of LTHR and AVG lines (in viewBox 0-80).
+  const lthrY = lthr != null ? hrToY(lthr, timelineMinHR, timelineMaxHR) : null;
+  const avgY = d.hr_avg != null ? hrToY(d.hr_avg, timelineMinHR, timelineMaxHR) : null;
+
+  // Spectrum rail flex values — give a min weight to zero-zones so they
+  // remain visible as thin slivers.
+  const railFlex = (z: ZoneKey): number => Math.max(0.5, pcts[z] / 10);
+
+  // Time tick labels for x-axis (5 evenly spaced).
+  const tickLabels = totalSec > 0
+    ? [0, 0.2, 0.4, 0.6, 0.8, 1].map((f) => f === 0 ? '0' : f === 1 ? fmtTime(totalSec) : fmtTime(Math.round(totalSec * f)))
+    : ['', '', '', '', '', ''];
+
+  return (
+    <div style={{
+      background: '#06080b', borderRadius: 14, padding: 14, border: '1px solid var(--line2)',
+      display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gridTemplateRows: 'auto auto', gap: 10,
+      marginBottom: 12,
+    }}>
+      {/* Vertical zone-trace gradient — used by the timeline below */}
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <defs>
+          <linearGradient id="zoneTraceGrad" x1="0" y1="0" x2="0" y2="80" gradientUnits="userSpaceOnUse">
+            <stop offset="0"     stopColor="#FC4D64" />
+            <stop offset="0.16"  stopColor="#FC4D64" />
+            <stop offset="0.34"  stopColor="#F3AD38" />
+            <stop offset="0.55"  stopColor="#3EBD41" />
+            <stop offset="0.85"  stopColor="#008FEC" />
+            <stop offset="1"     stopColor="#008FEC" />
+          </linearGradient>
+        </defs>
+      </svg>
+
+      {/* HERO TILE — spans 2 rows. Includes spectrum rail on the right. */}
+      <div style={{
+        gridRow: 'span 2',
+        background: `linear-gradient(135deg, ${dom.color === 'var(--mute)' ? 'rgba(138,144,160,0.10)' : `${dom.color}1a`} 0%, transparent 100%)`,
+        borderRadius: 12, padding: 22, border: `1px solid ${dom.color === 'var(--mute)' ? 'rgba(138,144,160,0.25)' : `${dom.color}33`}`,
+        display: 'grid', gridTemplateColumns: '1fr 70px', gap: 14,
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <svg width="11" height="10" viewBox="0 0 11 10" fill="var(--mute)" style={{ opacity: 0.55 }}>
+                <path d="M5.5 9.3 1 5C-0.6 3.4 0.6 0.7 2.9 0.7c1 0 1.9.5 2.6 1.4C6.2 1.2 7.1.7 8.1.7c2.3 0 3.5 2.7 1.9 4.3L5.5 9.3z"/>
+              </svg>
+              <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.6px', fontWeight: 700 }}>HEART RATE</span>
+            </div>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 56, lineHeight: 0.85, letterSpacing: '-0.02em', color: dom.color }}>
+              {dom.label}
+            </div>
+            {d.time_moving && (
+              <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color: 'var(--ink)', marginTop: 8, lineHeight: 1 }}>
+                {d.time_moving}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: 'var(--mute)', letterSpacing: '1.3px', marginTop: 4, fontWeight: 700 }}>
+              {heroSubline}
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(246,247,248,0.7)', fontStyle: 'italic', lineHeight: 1.5, marginTop: 12 }}>
+            {heroNote}
+          </div>
+        </div>
+
+        {/* Spectrum rail */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, height: '100%' }}>
+          <div style={{ fontSize: 8, color: 'var(--mute)', letterSpacing: '1.2px', fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>SPECTRUM</div>
+          {(['z5', 'z4', 'z3', 'z2', 'z1'] as ZoneKey[]).map((z) => {
+            const isDominant = pcts[z] >= 25;
+            const flex = railFlex(z);
+            const pct = pcts[z];
+            return (
+              <div key={z} style={{
+                flex,
+                background: isDominant
+                  ? `linear-gradient(180deg, ${ZONE_COLOR[z]}, ${ZONE_COLOR[z]}cc)`
+                  : `${ZONE_COLOR[z]}1c`,
+                borderRadius: 4,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                minHeight: 14, padding: 2,
+                boxShadow: isDominant ? `inset 0 0 0 1px rgba(255,255,255,0.12)` : 'none',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--f-display)', fontSize: isDominant ? 12 : 10, letterSpacing: '0.5px', lineHeight: 1,
+                  color: isDominant ? '#fff' : `${ZONE_COLOR[z]}80`,
+                }}>{ZONE_NAME[z]}</div>
+                {pct >= 5 && (
+                  <div style={{
+                    fontSize: 8, letterSpacing: '0.5px', marginTop: 1,
+                    color: isDominant ? '#fff' : `${ZONE_COLOR[z]}b0`,
+                    opacity: 0.85,
+                  }}>{Math.round(pct)}%</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* PEAK HR GAUGE */}
+      <div style={{ background: '#0d1015', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line2)' }}>
+        <div style={{ fontSize: 9, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700, marginBottom: 8 }}>PEAK HR</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 10 }}>
+          <span style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)', lineHeight: 1 }}>{d.hr_max ?? '—'}</span>
+          <span style={{ fontSize: 10, color: 'var(--mute)' }}>bpm</span>
+        </div>
+        <div style={{
+          height: 6, borderRadius: 3, position: 'relative',
+          background: 'linear-gradient(90deg, var(--rest), var(--green) 40%, var(--goal) 65%, var(--over) 85%)',
+        }}>
+          {d.hr_max != null && (
+            <div style={{
+              position: 'absolute', top: -3, left: `${peakLeftPct}%`,
+              width: 2, height: 12, background: '#fff', borderRadius: 1,
+            }}/>
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 8, color: 'var(--mute)', letterSpacing: '0.8px' }}>
+          <span>100</span><span>{lthr ? `LTHR ${lthr}` : ''}</span><span>200</span>
+        </div>
+      </div>
+
+      {/* AVG vs LTHR DONUT */}
+      <div style={{ background: '#0d1015', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line2)', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <svg viewBox="0 0 60 60" style={{ width: 54, height: 54, flexShrink: 0, transform: 'rotate(-90deg)' }}>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+          {lthrRatio != null && (
+            <circle cx="30" cy="30" r="26" fill="none" stroke={lthrRatioColor} strokeWidth="6"
+                    strokeDasharray="163" strokeDashoffset={donutOffset} strokeLinecap="round"/>
+          )}
+        </svg>
+        <div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', lineHeight: 1 }}>
+            {lthrRatio != null ? lthrRatio : '—'}
+            <span style={{ fontSize: 10, color: 'var(--mute)' }}>%</span>
+          </div>
+          <div style={{ fontSize: 8, color: 'var(--mute)', letterSpacing: '1.2px', fontWeight: 700, marginTop: 4, textTransform: 'uppercase' }}>AVG vs LTHR</div>
+          <div style={{ fontSize: 9, marginTop: 2, color: lthrRatioColor }}>
+            {d.hr_avg ?? '—'} / {lthr ?? '—'} bpm
+          </div>
+        </div>
+      </div>
+
+      {/* HR TIMELINE — spans 2 cols on bottom row */}
+      <div style={{
+        gridColumn: 'span 2',
+        background: '#0d1015', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line2)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700 }}>
+            HR TIMELINE{totalSec > 0 ? ` · ${fmtTime(totalSec)}` : ''}
+            {d.hr_avg != null ? ` · AVG ${d.hr_avg}` : ''}
+            {d.hr_max != null ? ` · PEAK ${d.hr_max}` : ''}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700 }}>line color = zone</span>
+        </div>
+
+        {series ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '50px 1fr 36px', gap: 0, position: 'relative' }}>
+              {/* Left gutter: LTHR + AVG labels positioned by y-fraction */}
+              <div style={{ position: 'relative', height: 80 }}>
+                {lthrY != null && (
+                  <div style={{
+                    position: 'absolute', right: 8, top: `${(lthrY / 80) * 100}%`, transform: 'translateY(-50%)',
+                    fontSize: 10, fontWeight: 700, letterSpacing: '0.4px', color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap',
+                  }}>LTHR</div>
+                )}
+                {avgY != null && d.hr_avg != null && Math.abs((avgY ?? 0) - (lthrY ?? -999)) > 7 && (
+                  <div style={{
+                    position: 'absolute', right: 8, top: `${(avgY / 80) * 100}%`, transform: 'translateY(-50%)',
+                    fontSize: 10, fontWeight: 700, letterSpacing: '0.4px', color: dom.color, whiteSpace: 'nowrap',
+                  }}>AVG {d.hr_avg}</div>
+                )}
+              </div>
+
+              {/* Chart column */}
+              <div style={{ position: 'relative', height: 80 }}>
+                <svg viewBox="0 0 400 80" preserveAspectRatio="none" style={{ width: '100%', height: 80, display: 'block' }}>
+                  {/* LTHR reference */}
+                  {lthrY != null && (
+                    <line x1="0" x2="400" y1={lthrY} y2={lthrY}
+                          stroke="rgba(255,255,255,0.30)" strokeWidth="0.7" strokeDasharray="4,3"/>
+                  )}
+                  {/* AVG HR reference */}
+                  {avgY != null && (
+                    <line x1="0" x2="400" y1={avgY} y2={avgY}
+                          stroke={`${dom.color}80`} strokeWidth="0.5" strokeDasharray="3,4"/>
+                  )}
+                  {/* Phase span tints (warmup green, work red, recovery blue, cooldown green) */}
+                  {series.phases.map((ph, i) => {
+                    const x = ph.tStart * 400;
+                    const w = (ph.tEnd - ph.tStart) * 400;
+                    const fill = ph.type === 'work' ? 'rgba(252,77,100,0.04)'
+                      : ph.type === 'recovery' ? 'rgba(0,143,236,0.03)'
+                      : ph.type === 'warmup' || ph.type === 'cooldown' ? 'rgba(62,189,65,0.03)'
+                      : 'transparent';
+                    return <rect key={i} x={x} y="6" width={w} height="64" fill={fill} />;
+                  })}
+                  {/* Trace */}
+                  <path d={tracePath} fill="none" stroke="url(#zoneTraceGrad)"
+                        strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"/>
+                  {/* Peak dot */}
+                  {peakPoint && (
+                    <circle cx={peakX * 4} cy={peakY} r="3" fill="#FC4D64"/>
+                  )}
+                </svg>
+
+                {/* Peak HR floating tag */}
+                {peakPoint && d.hr_max != null && (
+                  <div style={{
+                    position: 'absolute', left: `${peakX}%`, top: `${peakYPct}%`,
+                    transform: 'translate(-50%, -100%)',
+                    background: '#0a0c10', border: '1px solid rgba(252,77,100,0.5)', borderRadius: 4,
+                    padding: '2px 6px', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.3px',
+                    whiteSpace: 'nowrap', zIndex: 3, lineHeight: 1.2, marginTop: -4,
+                    pointerEvents: 'none',
+                  }}>
+                    {d.hr_max} PEAK
+                  </div>
+                )}
+
+                {/* Phase chips overlay (HTML for crispness) */}
+                {series.phases.length > 1 && (
+                  <div style={{ position: 'absolute', inset: '0 0 0 0', pointerEvents: 'none' }}>
+                    {series.phases.map((ph, i) => {
+                      const center = ((ph.tStart + ph.tEnd) / 2) * 100;
+                      const color = ph.type === 'work' ? '#FC4D64'
+                        : ph.type === 'recovery' ? 'var(--mute)'
+                        : 'var(--mute)';
+                      const shortLabel = ph.type === 'warmup' ? 'W'
+                        : ph.type === 'cooldown' ? 'CD'
+                        : ph.type === 'recovery' ? 'r'
+                        : ph.label.replace(/Rep\s*/i, 'R').replace(/\s*\/\s*\d+/, '');
+                      return (
+                        <div key={i} style={{
+                          position: 'absolute', left: `${center}%`, bottom: -2, transform: 'translateX(-50%)',
+                          fontSize: 9, fontWeight: 700, color, letterSpacing: '0.3px',
+                        }}>{shortLabel}</div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Right gutter: zone labels */}
+              <div style={{
+                display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: 80,
+                padding: '2px 4px 2px 8px', fontSize: 9, fontWeight: 700, letterSpacing: '0.4px', lineHeight: 1,
+              }}>
+                {(['z5','z4','z3','z2','z1'] as ZoneKey[]).map((z) => {
+                  const active = pcts[z] >= 10;
+                  return (
+                    <div key={z} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'flex-end', height: 14,
+                      color: active ? ZONE_COLOR[z] : `${ZONE_COLOR[z]}55`,
+                    }}>{ZONE_NAME[z]}</div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* X-axis ticks */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '50px 1fr 36px', marginTop: 6,
+              fontSize: 10, color: 'var(--mute)', letterSpacing: '0.4px', fontWeight: 600,
+            }}>
+              <div/>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 2px' }}>
+                {tickLabels.map((t, i) => <span key={i}>{t}</span>)}
+              </div>
+              <div/>
+            </div>
+          </>
+        ) : (
+          <div style={{ padding: '24px 8px', fontSize: 12, color: 'var(--mute)', lineHeight: 1.5 }}>
+            No per-phase or per-mile HR data on this run, so no timeline. The hero zone + peak + LTHR ratio above tell the story.
+          </div>
+        )}
       </div>
     </div>
   );
