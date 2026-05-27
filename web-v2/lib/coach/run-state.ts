@@ -79,10 +79,15 @@ export interface RunDetail {
 
   // P32 — shoe assignment surfaced for the modal picker.
   shoe_id: number | null;
-  // P42 — work-only HR/cadence averages excluding planned recovery/rest
-  // phases. Returns null when no matching planned workout structure is
-  // available; otherwise these are the "real" effort numbers minus the
-  // jog-in-between dilution.
+  // P42 — work-only averages excluding planned recovery/rest phases.
+  // Returns null when no matching planned workout structure is available;
+  // otherwise these are the "real" effort numbers minus the jog-in-between
+  // dilution. Upgraded P44: when phase data exists in coach_intents,
+  // computes weighted averages over WORK phases only (best signal). Falls
+  // back to the "skip first + last split" heuristic when phase data is
+  // missing but the planned workout type is a quality session.
+  pace_work: string | null;
+  pace_work_s_per_mi: number | null;
   hr_avg_work: number | null;
   cadence_avg_work: number | null;
   work_seconds: number | null;
@@ -203,17 +208,18 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const day = r.date || (r.startLocal ?? '').slice(0, 10);
   const form = await loadFormMetrics(userId, day);
 
-  // P42 — work-only averages (excluding planned recovery/rest phases).
-  // computeWorkAverages matches the run's splits against the planned
-  // workout structure for the date and returns averages over work
-  // phases only. Returns nulls when no structure exists.
-  const workAvgs = await computeWorkAverages(userId, day, splits);
-
   // P44 — phase-by-phase breakdown from watch completion payload, when
   // a Faff-watch run for this date exists in coach_intents. Returns
   // empty array for non-watch runs (Apple Watch Workouts, Strava, manual)
   // where we don't have the planned phase structure.
   const phaseBreakdown = await loadPhaseBreakdown(userId, day);
+
+  // P42 + P45 — work-only averages (excluding planned recovery/rest phases).
+  // Tries phase data first (best signal from the WatchCompletion payload),
+  // then falls back to the splits-based heuristic. Returns nulls when no
+  // structure exists or when the run is a plain easy/long run (nothing to
+  // exclude).
+  const workAvgs = await computeWorkAverages(userId, day, splits, phaseBreakdown);
 
   return {
     id: r.id ?? r.activityId ?? activityId,
@@ -239,6 +245,8 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     kudos: Number(r.kudosCount) || null,
 
     shoe_id: shoeId,
+    pace_work: workAvgs.pace,
+    pace_work_s_per_mi: workAvgs.paceSPerMi,
     hr_avg_work: workAvgs.hrAvg,
     cadence_avg_work: workAvgs.cadenceAvg,
     work_seconds: workAvgs.workSeconds,
@@ -344,27 +352,91 @@ function defaultLabel(type: PhaseBreakdown['type'], i: number): string {
 }
 
 /**
- * P42 — compute averages over WORK phases only (exclude warmup, recovery
- * jogs, cooldown). Matches the day's plan_workouts.json structure to the
- * actual splits by walking time forward and assigning each split's
- * estimated time to a phase by cumulative duration.
+ * P42 + P45 — compute averages over WORK phases only (exclude warmup,
+ * recovery jogs, cooldown).
  *
- * Returns nulls when:
- *   - no plan_workout exists for the date
- *   - plan_workout has no phase structure (flat distance/type only)
- *   - splits don't carry HR/cadence
+ * Two signal sources, in order of preference:
  *
- * Phases counted as "work": types containing "work", "rep", "tempo",
- * "threshold", "intervals", "race". Skip: "warmup", "cooldown",
- * "recovery", "rest", "easy_recovery", "jog".
+ *   (a) PHASE DATA from the WatchCompletion payload — when the Faff watch
+ *       app ran the workout, each phase carries actualDurationSec +
+ *       actualDistanceMi + avgHr + avgCadence + type. We weight each
+ *       average by the phase's actual duration so a 20-min threshold rep
+ *       counts more than a 90-sec recovery (which we filter out anyway).
+ *       This is the metric-grade path.
+ *
+ *   (b) SPLITS HEURISTIC fallback — when no phase data exists but the
+ *       planned workout type is a quality session (threshold/tempo/intervals
+ *       /vo2max/race), drop the first split (warmup) and last split
+ *       (cooldown) and average the middle. Decorative, not metric-grade.
+ *
+ * Returns nulls when neither path applies (easy/long runs, no plan match,
+ * etc.) — the UI hides the card so the all-in averages stay the only
+ * headline numbers.
+ *
+ * Phases counted as "work": warmup/cooldown/recovery/rest are filtered
+ * out; everything else (work/rep/tempo/threshold/intervals/race) counts.
  */
 async function computeWorkAverages(
   userId: string,
   date: string | null,
   splits: RunSplit[],
-): Promise<{ hrAvg: number | null; cadenceAvg: number | null; workSeconds: number | null }> {
-  if (!date || splits.length === 0) return { hrAvg: null, cadenceAvg: null, workSeconds: null };
+  phases: PhaseBreakdown[],
+): Promise<{
+  pace: string | null;
+  paceSPerMi: number | null;
+  hrAvg: number | null;
+  cadenceAvg: number | null;
+  workSeconds: number | null;
+}> {
+  const empty = { pace: null, paceSPerMi: null, hrAvg: null, cadenceAvg: null, workSeconds: null };
 
+  // (a) Phase-data path — preferred when WatchCompletion phases exist.
+  if (phases.length > 0) {
+    const workPhases = phases.filter((p) => p.type === 'work');
+    if (workPhases.length > 0) {
+      // Sum duration, distance for the pace calc; weight HR + cadence by duration.
+      let totalSec = 0;
+      let totalMi = 0;
+      let hrWeighted = 0;
+      let hrWeight = 0;
+      let cadWeighted = 0;
+      let cadWeight = 0;
+      for (const p of workPhases) {
+        const sec = Number(p.actual_duration_sec) || 0;
+        const mi = Number(p.actual_distance_mi) || 0;
+        if (sec > 0) totalSec += sec;
+        if (mi > 0) totalMi += mi;
+        if (p.avg_hr && sec > 0) {
+          hrWeighted += p.avg_hr * sec;
+          hrWeight += sec;
+        }
+        if (p.avg_cadence && sec > 0) {
+          cadWeighted += p.avg_cadence * sec;
+          cadWeight += sec;
+        }
+      }
+      const paceSPerMi = totalMi > 0 && totalSec > 0
+        ? Math.round(totalSec / totalMi)
+        : null;
+      const hrAvg = hrWeight > 0 ? Math.round(hrWeighted / hrWeight) : null;
+      const cadenceAvg = cadWeight > 0 ? Math.round(cadWeighted / cadWeight) : null;
+
+      // If at least one of the three signals exists, return them. Otherwise
+      // fall through to the heuristic path.
+      if (paceSPerMi != null || hrAvg != null || cadenceAvg != null) {
+        return {
+          pace: fmtPace(paceSPerMi),
+          paceSPerMi,
+          hrAvg,
+          cadenceAvg,
+          workSeconds: totalSec > 0 ? totalSec : null,
+        };
+      }
+    }
+  }
+
+  // (b) Splits heuristic fallback — only for quality types with ≥3 splits.
+  if (!date || splits.length === 0) return empty;
   const pw = (await pool.query(
     `SELECT pw.notes, pw.distance_mi, pw.type
        FROM plan_workouts pw
@@ -375,31 +447,35 @@ async function computeWorkAverages(
       LIMIT 1`,
     [userId, date]
   ).catch(() => ({ rows: [] }))).rows[0];
-  if (!pw) return { hrAvg: null, cadenceAvg: null, workSeconds: null };
+  if (!pw) return empty;
 
-  // pw.notes can be a JSON blob with structured phases; otherwise we
-  // only know type + distance. Without phase structure, fall back to a
-  // simple heuristic: skip the first split (warmup) and last split
-  // (cooldown) for quality types.
   const isQuality = ['threshold','tempo','intervals','vo2max','race'].includes(pw.type);
-  if (!isQuality || splits.length < 3) {
-    return { hrAvg: null, cadenceAvg: null, workSeconds: null };
-  }
+  if (!isQuality || splits.length < 3) return empty;
 
-  // Heuristic: middle splits (skip first + last) are the work portion.
-  // This isn't phase-accurate, but it's a useful first pass for the
-  // run-detail modal. When plan_workouts gains structured phase JSON
-  // (P38 follow-up), we'll match by cumulative duration.
   const work = splits.slice(1, -1);
   const hrs = work.map((s) => s.hr).filter((n): n is number => typeof n === 'number' && n > 0);
   const cads = work.map((s) => s.cadence).filter((n): n is number => typeof n === 'number' && n > 0);
 
-  // Estimate work seconds: each split is roughly 1 mile of the planned
-  // pace. Without the pace seconds parsed we just use a rough 7-min
-  // baseline; this is decorative, not metric-grade.
-  const workSeconds = work.length * 7 * 60;
+  // For pace from splits we parse the formatted "mm:ss" strings.
+  const splitPaces: number[] = [];
+  for (const s of work) {
+    if (!s.pace) continue;
+    const m = s.pace.match(/^(\d+):(\d{2})$/);
+    if (!m) continue;
+    splitPaces.push(parseInt(m[1], 10) * 60 + parseInt(m[2], 10));
+  }
+  const paceSPerMi = splitPaces.length > 0
+    ? Math.round(splitPaces.reduce((a, b) => a + b, 0) / splitPaces.length)
+    : null;
+
+  // Estimate work seconds from the splits we kept.
+  const workSeconds = paceSPerMi != null
+    ? work.length * paceSPerMi
+    : work.length * 7 * 60;
 
   return {
+    pace: fmtPace(paceSPerMi),
+    paceSPerMi,
     hrAvg: hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null,
     cadenceAvg: cads.length > 0 ? Math.round(cads.reduce((a, b) => a + b, 0) / cads.length) : null,
     workSeconds,

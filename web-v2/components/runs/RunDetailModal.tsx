@@ -184,16 +184,25 @@ function RunDetailBody({ d, shoes, onPickShoe }: { d: RunDetail; shoes: any[]; o
         {d.kudos != null && d.kudos > 0 && <SmallStat v={String(d.kudos)}    u="kudos" />}
       </div>
 
-      {/* P42 — work-only averages when a planned quality workout matches.
-          Shows alongside the all-in numbers so the runner sees the "real"
-          effort filter out recovery jogs. */}
-      {(d.hr_avg_work != null || d.cadence_avg_work != null) && (
+      {/* P42 + P45 — work-only averages when a planned quality workout
+          matches. Shows alongside the all-in numbers so the runner sees
+          the "real" effort filter out recovery jogs.
+          Phase data (Faff watch) wins over the splits heuristic. */}
+      {(d.pace_work != null || d.hr_avg_work != null || d.cadence_avg_work != null) && (
         <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: 'rgba(243,173,56,0.05)', border: '1px solid rgba(243,173,56,0.20)' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--goal)', marginBottom: 6 }}>WORK-PHASE ONLY · WARMUP + COOLDOWN EXCLUDED</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <div className="card-eyebrow" style={{ color: 'var(--goal)', marginBottom: 6 }}>
+            WORK-PHASE AVERAGES · RECOVERIES EXCLUDED
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            {d.pace_work != null && <SmallStat v={d.pace_work} u="work pace" />}
             {d.hr_avg_work != null && <SmallStat v={String(d.hr_avg_work)} u="avg hr" />}
             {d.cadence_avg_work != null && <SmallStat v={String(d.cadence_avg_work)} u="cadence" />}
-            {d.work_seconds != null && <SmallStat v={`${Math.round(d.work_seconds / 60)}m`} u="work" />}
+            {d.work_seconds != null && <SmallStat v={`${Math.round(d.work_seconds / 60)}m`} u="work time" />}
+          </div>
+          <div style={{ marginTop: 8, fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', lineHeight: 1.5 }}>
+            {d.pace_work && d.pace
+              ? `Run average pace was ${d.pace}/mi all-in; ${d.pace_work}/mi just for the work phases.`
+              : `These exclude warmups, cooldowns, and recovery jogs — the number that says whether you hit threshold today.`}
           </div>
         </div>
       )}

@@ -27,6 +27,9 @@ struct RunDetailSheet: View {
                     } else if let d = detail {
                         hero(d)
                         statRow(d)
+                        if hasWorkAverages(d) {
+                            workAveragesBlock(d)
+                        }
                         shoeRow()
                         if let phases = d.phase_breakdown, !phases.isEmpty {
                             phaseBreakdownBlock(phases)
@@ -120,6 +123,56 @@ struct RunDetailSheet: View {
                 Color.clear.frame(maxWidth: .infinity)
             }
         }
+    }
+
+    // MARK: - P42 + P45 Work-only averages
+
+    private func hasWorkAverages(_ d: RunDetail) -> Bool {
+        d.pace_work != nil || d.hr_avg_work != nil || d.cadence_avg_work != nil
+    }
+
+    private func workAveragesBlock(_ d: RunDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("WORK-PHASE AVERAGES · RECOVERIES EXCLUDED")
+                .font(.body(9, weight: .bold)).tracking(1.2).foregroundStyle(Theme.goal)
+                .padding(.horizontal, 24)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    if let p = d.pace_work {
+                        workStat(key: "WORK PACE", value: p)
+                    }
+                    if let h = d.hr_avg_work {
+                        workStat(key: "AVG HR", value: "\(h) bpm")
+                    }
+                    if let c = d.cadence_avg_work {
+                        workStat(key: "CADENCE", value: "\(c)")
+                    }
+                    if let s = d.work_seconds {
+                        workStat(key: "WORK TIME", value: "\(Int((Double(s) / 60.0).rounded()))m")
+                    }
+                }
+                if let pw = d.pace_work, let p = d.pace {
+                    Text("Run average pace was \(p)/mi all-in; \(pw)/mi just for the work phases.")
+                        .font(.body(11)).foregroundStyle(Theme.mute).lineLimit(3)
+                } else {
+                    Text("Excludes warmups, cooldowns, and recovery jogs — the number that says whether you hit threshold today.")
+                        .font(.body(11)).foregroundStyle(Theme.mute).lineLimit(3)
+                }
+            }
+            .padding(14)
+            .background(Theme.goal.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.goal.opacity(0.3), lineWidth: 1))
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private func workStat(key: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(key).font(.body(9, weight: .bold)).tracking(1.0).foregroundStyle(Theme.mute)
+            Text(value).font(.body(14, weight: .semibold)).foregroundStyle(Theme.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - P44 Phase breakdown (plan vs actual)

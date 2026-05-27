@@ -72,6 +72,15 @@ struct RunDetail: Decodable, Identifiable {
     let hrZonePcts: HRZonePcts
     let form: RunForm
 
+    // P42 + P45 — work-phase-only averages (excludes warmup, cooldown,
+    // recovery jogs). Null on easy/long runs or when no phase data is
+    // available.
+    let pace_work: String?
+    let pace_work_s_per_mi: Int?
+    let hr_avg_work: Int?
+    let cadence_avg_work: Int?
+    let work_seconds: Int?
+
     // P44 — phase-by-phase breakdown when the Faff watch app ran a
     // structured workout. Empty for runs from other sources.
     let phase_breakdown: [PhaseBreakdown]?
