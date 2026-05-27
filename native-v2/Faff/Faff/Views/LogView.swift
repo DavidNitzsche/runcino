@@ -176,7 +176,10 @@ struct LogView: View {
             self.log = log
             self.error = nil
             // Kick off background warming (don't block the list render).
-            Task { await prefetchHotRuns(log: log) }
+            // fetchLog returns LogState? — only warm when non-nil.
+            if let log {
+                Task { await prefetchHotRuns(log: log) }
+            }
             Task { await prefetchShoes() }
         } catch {
             self.error = "Couldn't reach the log. Pull to refresh."

@@ -10,7 +10,10 @@ struct CoachBlock: View {
     let lead: String?
     let voice: [String]
     let briefingId: String?
-    let askPrompt: String
+    /// Optional prompt rendered above the SOLID/TIRED/WRECKED chips. Nil
+    /// (or empty) suppresses both the prompt AND the chips, e.g. on
+    /// profile/race-detail surfaces that don't request a check-in.
+    let askPrompt: String?
     var onCheckIn: ((CheckInRating) async -> Bool)? = nil
 
     enum CheckInRating: String { case solid, tired, wrecked }
@@ -43,13 +46,15 @@ struct CoachBlock: View {
                     .padding(.top, 4)
             }
 
-            Text(askPrompt).font(.body(12)).foregroundStyle(Theme.mute)
-                .padding(.top, 8)
+            if let askPrompt, !askPrompt.isEmpty {
+                Text(askPrompt).font(.body(12)).foregroundStyle(Theme.mute)
+                    .padding(.top, 8)
 
-            HStack(spacing: 8) {
-                chipButton(.solid,   color: Theme.green)
-                chipButton(.tired,   color: Theme.goal)
-                chipButton(.wrecked, color: Theme.over)
+                HStack(spacing: 8) {
+                    chipButton(.solid,   color: Theme.green)
+                    chipButton(.tired,   color: Theme.goal)
+                    chipButton(.wrecked, color: Theme.over)
+                }
             }
         }
         .padding(.horizontal, 24)

@@ -21,6 +21,7 @@
 		2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
 		33B4FF295A8A74B4CFA43AEF /* IdleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */; };
+		3A64039201C05E24C914B07D /* SettingsCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7664FBCD6CBCAE37BCC24B3B /* SettingsCache.swift */; };
 		3C045C65BD1D2DBD11B163D1 /* LearnModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A717EF5F371482C8448495 /* LearnModal.swift */; };
 		3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761D6D9F643EAA00C64D9BBC /* Runs.swift */; };
 		49DD1311332CCD7EC88681EC /* Tips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9883A181E1656DBDC8F3FAFC /* Tips.swift */; };
@@ -49,6 +50,7 @@
 		AAF411FFC548C34FA08F3A29 /* WorkoutRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */; };
 		ABA8B73ABAB07391B459D29A /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71B88D7D0751ABFACD1479 /* API.swift */; };
 		ACA6645F1B466A2A24E43209 /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */; };
+		B498F018CFC1F23CF60AE42D /* TipsWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7369F00144A5C5EC897C765E /* TipsWebView.swift */; };
 		B4BA0E10F8F54E818E92E24F /* CountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327F1896B45C80B0A713921B /* CountdownView.swift */; };
 		B6D9A30FAAC0365482CBE064 /* FaffWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E036C5FD2EC231D2FCDC1A /* Watch.swift */; };
@@ -71,6 +73,7 @@
 		FDFB5B7B4C41C8B3C7BBF7C8 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */; };
 		FE0352B79DCC62AE1008EB2A /* WorkoutEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B01231CF6EA2F9487242FC /* WorkoutEngine.swift */; };
 		FEA42A4E4B4191BD50CBCA23 /* FaceKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB076FD4BB8D790F2DB9B79 /* FaceKit.swift */; };
+		FF2DF07A6197C4A272BE20AC /* ReadinessRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59240BA35B6D7724A6A6C20 /* ReadinessRing.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -131,7 +134,9 @@
 		5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSync.swift; sourceTree = "<group>"; };
 		6BC6A9D72C1DC3E28C1C3B43 /* WeekStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStripView.swift; sourceTree = "<group>"; };
 		6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitImporter.swift; sourceTree = "<group>"; };
+		7369F00144A5C5EC897C765E /* TipsWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipsWebView.swift; sourceTree = "<group>"; };
 		761D6D9F643EAA00C64D9BBC /* Runs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runs.swift; sourceTree = "<group>"; };
+		7664FBCD6CBCAE37BCC24B3B /* SettingsCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCache.swift; sourceTree = "<group>"; };
 		7666ED48810586C430FE7E27 /* Faces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Faces.swift; sourceTree = "<group>"; };
 		79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "FaffWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		79F2EC545B990808978B44F0 /* WatchFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFixtures.swift; sourceTree = "<group>"; };
@@ -148,6 +153,7 @@
 		9DDE304E9C6471D398E2D102 /* Briefing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Briefing.swift; sourceTree = "<group>"; };
 		9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
+		A59240BA35B6D7724A6A6C20 /* ReadinessRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessRing.swift; sourceTree = "<group>"; };
 		A75240B39D24E8190EC4C880 /* WorkoutTodayCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTodayCard.swift; sourceTree = "<group>"; };
 		B4EABD5D3321534861E82F02 /* HRAlerter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRAlerter.swift; sourceTree = "<group>"; };
 		B6BF22DF1BD412FB1CA83446 /* Faff.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Faff.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -188,6 +194,7 @@
 				FBCEB932B2D6CD7DB54198CE /* Cards.swift */,
 				03B7740393796CCA0A47FB2D /* CoachBlock.swift */,
 				83A717EF5F371482C8448495 /* LearnModal.swift */,
+				A59240BA35B6D7724A6A6C20 /* ReadinessRing.swift */,
 				C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */,
 				2C3A0E7CA5A4C1C815A9A537 /* TopicRenderer.swift */,
 				6BC6A9D72C1DC3E28C1C3B43 /* WeekStripView.swift */,
@@ -265,6 +272,7 @@
 				543E63FDFDB141572ACDDD5A /* RunDetailSheet.swift */,
 				EAA41631B820945F5A2FB787 /* SettingsSheet.swift */,
 				3C00B92B3DBCA7E7A9A07AC4 /* TipsView.swift */,
+				7369F00144A5C5EC897C765E /* TipsWebView.swift */,
 				3021BAFCB3395A359AD25A3C /* TodayView.swift */,
 				C81CA1D7127B12E871854210 /* TrainingView.swift */,
 			);
@@ -296,6 +304,7 @@
 				5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */,
 				88951A9181D51E114B2B4F0F /* Components */,
 				573E715F6A22233F18DAF594 /* Models */,
+				EC88686815839E1404C2FFD6 /* Util */,
 				C2B8111A66DF191DD39D2EB4 /* Views */,
 			);
 			path = Faff;
@@ -307,6 +316,14 @@
 				9DAD28DB047E17E738BB829D /* Faff */,
 				C76599E847B6D255D6D2CEB2 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		EC88686815839E1404C2FFD6 /* Util */ = {
+			isa = PBXGroup;
+			children = (
+				7664FBCD6CBCAE37BCC24B3B /* SettingsCache.swift */,
+			);
+			path = Util;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -465,13 +482,16 @@
 				F10578E3E4954277E122B955 /* RaceDetailSheet.swift in Sources */,
 				7A0F250BA4DA7F45225E8030 /* Races.swift in Sources */,
 				E74344DC5CD6D34D4FEF1A80 /* RacesView.swift in Sources */,
+				FF2DF07A6197C4A272BE20AC /* ReadinessRing.swift in Sources */,
 				5AA14774A3E133CF375A5822 /* RunDetailSheet.swift in Sources */,
 				3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */,
+				3A64039201C05E24C914B07D /* SettingsCache.swift in Sources */,
 				A5B9A0DEFC127A3E05C434F2 /* SettingsSheet.swift in Sources */,
 				EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */,
 				83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */,
 				49DD1311332CCD7EC88681EC /* Tips.swift in Sources */,
 				D908A1389B777A23A0CA7339 /* TipsView.swift in Sources */,
+				B498F018CFC1F23CF60AE42D /* TipsWebView.swift in Sources */,
 				A4B00D17F9CD81D6D57E75E3 /* TodayView.swift in Sources */,
 				E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */,
 				FCBC071AD54DF36F1AA6DD5A /* TopicRenderer.swift in Sources */,

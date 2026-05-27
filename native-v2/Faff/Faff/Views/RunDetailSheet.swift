@@ -23,7 +23,9 @@ struct RunDetailSheet: View {
         _detail = State(initialValue: prefetchedDetail)
         _loading = State(initialValue: prefetchedDetail == nil)
         _shoes = State(initialValue: prefetchedShoes ?? [])
-        _assignedShoeId = State(initialValue: prefetchedDetail?.shoe_id)
+        // RunDetail doesn't yet carry shoe_id (see comment at the shoeRow
+        // implementation below). Start unassigned; the picker fills it.
+        _assignedShoeId = State(initialValue: nil)
     }
 
     @Environment(\.dismiss) private var dismiss

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>faff</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Faff reads heart rate, HRV, calories, and workout data from Apple Health to coach your training.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Faff writes completed workouts to Apple Health so your training history stays in one place.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Faff records your route during workouts so you can see where you ran.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Faff uses motion data to track cadence, stride length, and other running form metrics.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>WKApplication</key>
+	<true/>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>run.faff.app</string>
+	<key>WKWatchOnly</key>
+	<false/>
+</dict>
+</plist>
