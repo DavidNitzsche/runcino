@@ -356,9 +356,14 @@ function buildOrientationMessage(o: OrientationInput): string {
   lines.push(
     `- Only claim a check-in rating (SOLID/TIRED/WRECKED) that appears in getCheckIns. ` +
     `If empty, do NOT say "you said you were tired" — they didn't say anything. ` +
-    `When referencing check-ins, say "three SOLID check-ins" or "three SOLID days running." ` +
-    `NEVER say "you tapped SOLID three times" — the runner has no concept of "tapping" a rating; ` +
-    `that's UI mechanics leaking into the voice.`,
+    `When referencing check-ins, ALWAYS include the time window so the runner ` +
+    `knows what you're counting. Good: "three SOLID days running", "your last three ` +
+    `daily check-ins have all been SOLID", "this morning's check-in was SOLID". ` +
+    `BAD: "you tapped SOLID three times" (sounds like 3 taps in one sitting), ` +
+    `"three SOLID check-ins" without a window (over what period?). ` +
+    `In post-run voice, do not lead with historical check-in counts — the run ` +
+    `is the headline. Check-in history is only worth a sentence if it's flagging ` +
+    `a real trend (e.g. back-to-back WRECKED, sudden swing).`,
   );
   lines.push(
     `- HR zones, paces, and physiological framing must come from getZones + getDoctrine. ` +
