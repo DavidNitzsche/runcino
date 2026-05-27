@@ -60,14 +60,13 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        144)" reads clinical and treats a forgiving aerobic intent
 //        like a tight target. Say "mid-Z2" or "held in aerobic zone."
 //        Quote bpm only when it adds signal the zone name can't.
-// v9-checkin-mapping-redo 2026-05-27: post_run chip→rating doctrine
-// updated after David's pushback. SOLID now means "I completed the
-// prescribed work" (includes GRINDED IT OUT + FADED LATE — finishing
-// a hard session isn't a fatigue signal). TIRED reserved for "I
-// couldn't do what the workout asked" (HAD TO PUSH on easy, missed
-// reps, walled, missed goal). Cache must regen so existing briefs
-// stop reading recent TIRED tags that were re-rated to SOLID.
-export const PROMPT_VERSION = 'v9-checkin-mapping-redo';
+// v10-easy-pace-no-delta 2026-05-27: tightened easy-day pace doctrine
+// after David caught the loophole — coach was reporting "13s slower
+// than the 8:12 target, but HR was fine" which by raising the
+// comparison turns normal aerobic variability into a thing the runner
+// has to defend. New rule: within ±20s, do NOT report any pace delta.
+// AT ALL. The word "target" is banned for easy/long/recovery pace.
+export const PROMPT_VERSION = 'v10-easy-pace-no-delta';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls
