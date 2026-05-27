@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>/today top hero — rethink · 2026-05-26</title>
+<style>
+  :root {
+    --bg-page: #0a0c10;
+    --card:    #181a1d;
+    --ink:     #f6f7f8;
+    --mute:    rgba(246,247,248,0.55);
+    --dim:     rgba(246,247,248,0.32);
+    --line:    rgba(255,255,255,0.06);
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --over:    #FC4D64;
+    --dist:    #27B4E0;
+    --rest:    #008FEC;
+    --learn:   #B084FF;
+    --race:    #FF8847;
+    --f-display: 'HelveticaNeue-Bold', 'Helvetica Neue', system-ui, sans-serif;
+    --f-label:   'HelveticaNeue-Bold', 'Helvetica Neue Bold', -apple-system, sans-serif;
+    --f-body:    'Inter', -apple-system, system-ui, sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  body {
+    margin: 0; padding: 48px 24px 80px;
+    background: var(--bg-page); color: var(--ink);
+    font-family: var(--f-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1380px; margin: 0 auto; }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: 36px; letter-spacing: 0.3px;
+    margin: 0 0 8px;
+    font-weight: 700;
+  }
+  .deck-intro {
+    color: var(--mute); font-size: 14px; line-height: 1.6;
+    max-width: 760px; margin: 0 0 40px;
+  }
+
+  .mockup {
+    margin-bottom: 56px;
+    padding: 36px 36px 40px;
+    background: rgba(255,255,255,0.015);
+    border-radius: 18px;
+    border: 1px solid var(--line);
+  }
+  .mockup-label {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .mockup-title {
+    font-family: var(--f-label);
+    font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase;
+    color: var(--green); font-weight: 700;
+  }
+  .mockup-tag {
+    color: var(--mute); font-size: 11px; letter-spacing: 1.2px;
+  }
+  .mockup-name {
+    font-family: var(--f-display);
+    font-size: 22px; letter-spacing: 0.3px;
+    font-weight: 700;
+    margin: 4px 0 8px;
+  }
+  .mockup-desc {
+    color: var(--mute); font-size: 13px; line-height: 1.55;
+    max-width: 800px; margin-bottom: 24px;
+  }
+
+  /* ── Shared readiness ring (the only thing David likes today) ── */
+  .ring-wrap {
+    position: relative;
+    width: 96px; height: 96px; flex-shrink: 0;
+  }
+  .ring-wrap.lg { width: 120px; height: 120px; }
+  .ring-wrap.xl { width: 156px; height: 156px; }
+  .ring-svg { transform: rotate(-90deg); }
+  .ring-bg  { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 8; }
+  .ring-fg  { fill: none; stroke: var(--green); stroke-width: 8; stroke-linecap: round; }
+  .ring-text {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+  }
+  .ring-num {
+    font-family: var(--f-display); font-size: 30px; font-weight: 800;
+    color: var(--green); line-height: 1;
+  }
+  .ring-wrap.lg .ring-num { font-size: 38px; }
+  .ring-wrap.xl .ring-num { font-size: 48px; }
+  .ring-cap {
+    font-family: var(--f-label); font-size: 9px; letter-spacing: 1.4px;
+    color: var(--mute); font-weight: 700;
+    margin-top: 2px;
+  }
+  .ring-wrap.xl .ring-cap { font-size: 11px; letter-spacing: 1.6px; }
+
+  /* ========================================================== */
+  /* DIRECTION 1 — Single-row hero, week strip kills the noise   */
+  /* ========================================================== */
+  .d1 .hero {
+    display: grid; grid-template-columns: auto 1fr auto;
+    gap: 32px; align-items: center;
+  }
+  .d1 .today-block .label {
+    font-family: var(--f-label); font-size: 11px; letter-spacing: 1.6px;
+    color: var(--mute); font-weight: 700;
+  }
+  .d1 .today-block .head {
+    font-family: var(--f-display); font-size: 48px; font-weight: 800;
+    letter-spacing: 0.3px; line-height: 1; margin-top: 6px;
+  }
+  .d1 .today-block .head .num { color: var(--green); }
+  .d1 .today-block .sub {
+    font-family: var(--f-body); font-size: 13px; color: var(--mute);
+    margin-top: 8px; letter-spacing: 0.2px;
+  }
+  .d1 .race-tile {
+    text-align: right; padding-left: 28px; border-left: 1px solid var(--line);
+  }
+  .d1 .race-tile .countdown {
+    font-family: var(--f-display); font-size: 56px; font-weight: 800;
+    color: var(--race); line-height: 0.95; letter-spacing: 0.2px;
+  }
+  .d1 .race-tile .race-name {
+    font-family: var(--f-label); font-size: 10px; letter-spacing: 1.5px;
+    color: var(--mute); margin-top: 6px; font-weight: 700;
+  }
+  /* Tiny dot strip below */
+  .d1 .dots {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    margin-top: 22px;
+  }
+  .d1 .dot {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 8px 0; cursor: pointer; border-radius: 8px;
+    background: transparent;
+  }
+  .d1 .dot.today { background: rgba(62,189,65,0.08); }
+  .d1 .dot .dot-day { font-family: var(--f-label); font-size: 10px; color: var(--mute); letter-spacing: 1.2px; }
+  .d1 .dot .dot-day.t { color: var(--green); }
+  .d1 .dot .dot-mi { font-family: var(--f-display); font-size: 15px; font-weight: 700; }
+  .d1 .dot .dot-mi.done { color: var(--green); }
+  .d1 .dot .dot-mi.easy { color: var(--learn); }
+  .d1 .dot .dot-mi.long { color: var(--dist); }
+  .d1 .dot .dot-mi.rest { color: var(--dim); }
+  .d1 .dot .pip {
+    width: 5px; height: 5px; border-radius: 50%;
+  }
+  .d1 .dot .pip.done { background: var(--green); }
+  .d1 .dot .pip.easy { background: var(--learn); }
+  .d1 .dot .pip.long { background: var(--dist); }
+  .d1 .dot .pip.rest { background: var(--dim); }
+
+  /* ========================================================== */
+  /* DIRECTION 2 — Readiness as the hero, today as a sub-line    */
+  /* ========================================================== */
+  .d2 .hero {
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 36px; align-items: center;
+  }
+  .d2 .meta {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .d2 .meta .breadcrumb {
+    font-family: var(--f-label); font-size: 11px; letter-spacing: 1.5px;
+    color: var(--mute); font-weight: 700;
+  }
+  .d2 .meta .breadcrumb .race { color: var(--race); }
+  .d2 .meta .today-line {
+    font-family: var(--f-display); font-size: 44px; font-weight: 800;
+    letter-spacing: 0.3px; line-height: 1;
+  }
+  .d2 .meta .today-line .num { color: var(--green); }
+  .d2 .meta .today-line .label {
+    font-size: 28px; color: var(--mute); font-weight: 700;
+    margin-left: 12px;
+  }
+  .d2 .meta .target-line {
+    font-family: var(--f-body); font-size: 13px; color: var(--mute);
+    letter-spacing: 0.2px;
+  }
+  .d2 .meta .target-line .done { color: var(--green); font-weight: 700; }
+  /* Week strip — calendar-app row */
+  .d2 .week-row {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    margin-top: 22px;
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+  }
+  .d2 .day {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 6px 0;
+  }
+  .d2 .day-name {
+    font-family: var(--f-label); font-size: 10px;
+    color: var(--mute); letter-spacing: 1.2px; font-weight: 700;
+  }
+  .d2 .day-name.t { color: var(--green); }
+  .d2 .day-mi  { font-family: var(--f-display); font-size: 16px; font-weight: 700; line-height: 1; }
+  .d2 .day-mi.done { color: var(--green); }
+  .d2 .day-mi.easy { color: var(--learn); }
+  .d2 .day-mi.long { color: var(--dist); }
+  .d2 .day-mi.rest { color: var(--dim); }
+  .d2 .check { color: var(--green); font-size: 11px; font-weight: 900; }
+
+  /* ========================================================== */
+  /* DIRECTION 3 — Dense dashboard hero, no greeting at all      */
+  /* ========================================================== */
+  .d3 .stats {
+    display: grid; grid-template-columns: auto repeat(3, 1fr);
+    gap: 0;
+    align-items: center;
+  }
+  .d3 .col {
+    padding: 0 28px; border-right: 1px solid var(--line);
+  }
+  .d3 .col:first-child { padding-left: 0; }
+  .d3 .col:last-child  { border-right: none; padding-right: 0; }
+  .d3 .col .kpi-label {
+    font-family: var(--f-label); font-size: 10px; letter-spacing: 1.5px;
+    color: var(--mute); font-weight: 700;
+  }
+  .d3 .col .kpi-value {
+    font-family: var(--f-display); font-size: 44px; font-weight: 800;
+    color: var(--ink); line-height: 1; margin-top: 8px;
+    letter-spacing: 0.2px;
+  }
+  .d3 .col .kpi-value.green { color: var(--green); }
+  .d3 .col .kpi-value.race  { color: var(--race); }
+  .d3 .col .kpi-sub {
+    font-family: var(--f-body); font-size: 11px; color: var(--mute);
+    margin-top: 6px; letter-spacing: 0.2px;
+  }
+  /* Compact week strip below — 7 chevron pills */
+  .d3 .week-pills {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    margin-top: 26px;
+  }
+  .d3 .pill {
+    padding: 10px 8px; border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    text-align: center;
+    display: flex; flex-direction: column; gap: 4px;
+    position: relative;
+  }
+  .d3 .pill.done  { background: linear-gradient(160deg, #2b6230, #143a1d); }
+  .d3 .pill.easy  { background: linear-gradient(160deg, #5b46a5, #25184b); }
+  .d3 .pill.long  { background: linear-gradient(160deg, #1f7aa2, #0d2e44); }
+  .d3 .pill.rest  { background: linear-gradient(160deg, #2a3a4a, #14202b); }
+  .d3 .pill.today { box-shadow: inset 0 0 0 2px var(--green); }
+  .d3 .pill .day-name {
+    font-family: var(--f-label); font-size: 9px; letter-spacing: 1.3px;
+    color: rgba(255,255,255,0.6); font-weight: 700;
+  }
+  .d3 .pill .day-mi { font-family: var(--f-display); font-size: 17px; font-weight: 800; color: #fff; }
+  .d3 .pill .day-mi.rest { color: rgba(255,255,255,0.35); }
+  .d3 .pill .check {
+    position: absolute; top: 6px; right: 8px;
+    color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 900;
+  }
+
+  /* ========================================================== */
+  /* DIRECTION 4 — Verticalpolish: ring left, type stack right   */
+  /* ========================================================== */
+  .d4 .layout {
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 40px; align-items: stretch;
+  }
+  .d4 .left {
+    display: flex; align-items: center; justify-content: center;
+    padding-right: 36px;
+    border-right: 1px solid var(--line);
+  }
+  .d4 .right {
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .d4 .breadcrumb {
+    font-family: var(--f-label); font-size: 11px; letter-spacing: 1.5px;
+    color: var(--mute); font-weight: 700;
+  }
+  .d4 .breadcrumb .race { color: var(--race); }
+  .d4 .headline {
+    font-family: var(--f-display); font-size: 56px; font-weight: 800;
+    letter-spacing: 0.2px; line-height: 0.98;
+  }
+  .d4 .headline .num { color: var(--green); }
+  .d4 .headline .post {
+    font-family: var(--f-display); font-size: 28px; color: var(--mute);
+    margin-left: 12px; font-weight: 700;
+  }
+  .d4 .narrative {
+    font-family: var(--f-body); font-size: 15px;
+    color: rgba(246,247,248,0.85); line-height: 1.55;
+    max-width: 480px;
+  }
+  .d4 .narrative .done { color: var(--green); font-weight: 700; }
+  .d4 .week-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    margin-top: 8px;
+  }
+  .d4 .tile {
+    padding: 10px 6px 12px;
+    border-radius: 10px;
+    text-align: center;
+    background: rgba(255,255,255,0.03);
+    position: relative;
+  }
+  .d4 .tile.done  { background: linear-gradient(160deg, #2b6230, #143a1d); }
+  .d4 .tile.today { box-shadow: inset 0 0 0 2px var(--green); }
+  .d4 .day-name { font-family: var(--f-label); font-size: 10px; color: var(--mute); letter-spacing: 1.2px; font-weight: 700; }
+  .d4 .day-name.done { color: rgba(255,255,255,0.85); }
+  .d4 .day-mi   { font-family: var(--f-display); font-size: 18px; font-weight: 800; margin-top: 6px; line-height: 1; }
+  .d4 .day-mi.done { color: #c8f0c9; }
+  .d4 .day-mi.easy { color: var(--learn); }
+  .d4 .day-mi.long { color: var(--dist); }
+  .d4 .day-mi.rest { color: var(--dim); }
+  .d4 .check  { position: absolute; top: 6px; right: 8px; color: var(--green); font-size: 10px; font-weight: 900; }
+  .d4 .check.invert { color: #c8f0c9; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>/today top hero — rethink</h1>
+  <p class="deck-intro">
+    Drop the cheesy headline greeting. Compress the redundant breadcrumb (TUE · MAY 26 ·
+    BASE · 82 DAYS) + the week-strip header + the planned-card label all into one tight
+    block. Keep the readiness ring — it's the one piece you like. Same data each mockup,
+    different organization of the space above the coach voice.
+  </p>
+
+  <!-- =================== DIRECTION 1 =================== -->
+  <div class="mockup d1">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION 1</span>
+      <span class="mockup-tag">SINGLE-ROW HERO · WEEK BECOMES A DOT STRIP</span>
+    </div>
+    <div class="mockup-name">Today is the headline. Week shrinks to a thin row.</div>
+    <div class="mockup-desc">
+      One horizontal band carries the whole hero: readiness ring · today's run hero · race
+      countdown. Week strip below becomes a thin dot row — 7 small chips, just enough to
+      see "where you are in the week" without dominating space. Greeting copy gone.
+    </div>
+
+    <div class="hero">
+      <!-- Readiness ring (LEFT) -->
+      <div class="ring-wrap lg">
+        <svg class="ring-svg" viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="50"></circle>
+          <circle class="ring-fg" cx="60" cy="60" r="50" stroke-dasharray="314" stroke-dashoffset="100"></circle>
+        </svg>
+        <div class="ring-text">
+          <div class="ring-num">68</div>
+          <div class="ring-cap">READINESS</div>
+        </div>
+      </div>
+
+      <!-- Today (MIDDLE) -->
+      <div class="today-block">
+        <div class="label">TUE · MAY 26 · BASE</div>
+        <div class="head"><span class="num">7.6</span> MI · DONE</div>
+        <div class="sub">Threshold — banked. Avg pace 6:48, HR 165 (Z4). Tomorrow: 5.8mi easy.</div>
+      </div>
+
+      <!-- Race (RIGHT) -->
+      <div class="race-tile">
+        <div class="countdown">82</div>
+        <div class="race-name">DAYS TO AFC</div>
+      </div>
+    </div>
+
+    <div class="dots">
+      <div class="dot"><div class="dot-day">MON</div><div class="dot-mi done">12.3</div><div class="pip done"></div></div>
+      <div class="dot today"><div class="dot-day t">TUE</div><div class="dot-mi done">7.6</div><div class="pip done"></div></div>
+      <div class="dot"><div class="dot-day">WED</div><div class="dot-mi easy">5.8</div><div class="pip easy"></div></div>
+      <div class="dot"><div class="dot-day">THU</div><div class="dot-mi easy">6.1</div><div class="pip easy"></div></div>
+      <div class="dot"><div class="dot-day">FRI</div><div class="dot-mi easy">6.1</div><div class="pip easy"></div></div>
+      <div class="dot"><div class="dot-day">SAT</div><div class="dot-mi rest">—</div><div class="pip rest"></div></div>
+      <div class="dot"><div class="dot-day">SUN</div><div class="dot-mi long">12.1</div><div class="pip long"></div></div>
+    </div>
+  </div>
+
+  <!-- =================== DIRECTION 2 =================== -->
+  <div class="mockup d2">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION 2</span>
+      <span class="mockup-tag">RING AS HERO · TODAY AS THE SUB-LINE</span>
+    </div>
+    <div class="mockup-name">Readiness leads, today is the supporting line.</div>
+    <div class="mockup-desc">
+      The readiness ring is the visual anchor (big, left). Today is told in one big line of
+      mileage + state. Week is a calendar-app row of day-name + mileage with a ✓ on the
+      done ones — no card backgrounds, all white space. Cleanest of the four.
+    </div>
+
+    <div class="hero">
+      <!-- Ring (LEFT, big) -->
+      <div class="ring-wrap xl">
+        <svg class="ring-svg" viewBox="0 0 156 156">
+          <circle class="ring-bg" cx="78" cy="78" r="66"></circle>
+          <circle class="ring-fg" cx="78" cy="78" r="66" stroke-dasharray="414.7" stroke-dashoffset="132.7"></circle>
+        </svg>
+        <div class="ring-text">
+          <div class="ring-num">68</div>
+          <div class="ring-cap">READY</div>
+        </div>
+      </div>
+
+      <!-- Meta stack (RIGHT) -->
+      <div class="meta">
+        <div class="breadcrumb">TUE · MAY 26 · BASE · <span class="race">82 DAYS TO AFC</span></div>
+        <div class="today-line"><span class="num">7.6</span> MI<span class="label">DONE</span></div>
+        <div class="target-line"><span class="done">Threshold banked.</span> 6:48 avg · HR 165 · tomorrow's 5.8 easy.</div>
+      </div>
+    </div>
+
+    <div class="week-row">
+      <div class="day"><div class="day-name">MON</div><div class="day-mi done">12.3</div><div class="check">✓</div></div>
+      <div class="day"><div class="day-name t">TUE</div><div class="day-mi done">7.6</div><div class="check">✓</div></div>
+      <div class="day"><div class="day-name">WED</div><div class="day-mi easy">5.8</div></div>
+      <div class="day"><div class="day-name">THU</div><div class="day-mi easy">6.1</div></div>
+      <div class="day"><div class="day-name">FRI</div><div class="day-mi easy">6.1</div></div>
+      <div class="day"><div class="day-name">SAT</div><div class="day-mi rest">—</div></div>
+      <div class="day"><div class="day-name">SUN</div><div class="day-mi long">12.1</div></div>
+    </div>
+  </div>
+
+  <!-- =================== DIRECTION 3 =================== -->
+  <div class="mockup d3">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION 3</span>
+      <span class="mockup-tag">DASHBOARD KPI · NO GREETING AT ALL</span>
+    </div>
+    <div class="mockup-name">Four-column dashboard. Numbers do the work.</div>
+    <div class="mockup-desc">
+      Drop the greeting concept entirely. Four columns: readiness, today, this week,
+      race countdown. Each a labeled hero number. Below: compact week pills with
+      checkmarks. Reads like a real dashboard — Bloomberg/Whoop energy.
+    </div>
+
+    <div class="stats">
+      <div class="ring-wrap" style="margin: 0 28px 0 0;">
+        <svg class="ring-svg" viewBox="0 0 96 96">
+          <circle class="ring-bg" cx="48" cy="48" r="40"></circle>
+          <circle class="ring-fg" cx="48" cy="48" r="40" stroke-dasharray="251.3" stroke-dashoffset="80.4"></circle>
+        </svg>
+        <div class="ring-text">
+          <div class="ring-num">68</div>
+          <div class="ring-cap">READY</div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="kpi-label">TODAY</div>
+        <div class="kpi-value green">7.6</div>
+        <div class="kpi-sub">mi threshold · banked</div>
+      </div>
+      <div class="col">
+        <div class="kpi-label">WEEK</div>
+        <div class="kpi-value">19.9<span style="font-size:24px;color:var(--mute);"> / 43.8</span></div>
+        <div class="kpi-sub">mi · 45% to plan</div>
+      </div>
+      <div class="col">
+        <div class="kpi-label">TO AFC HALF</div>
+        <div class="kpi-value race">82</div>
+        <div class="kpi-sub">days · goal 1:30</div>
+      </div>
+    </div>
+
+    <div class="week-pills">
+      <div class="pill done"><span class="check">✓</span><div class="day-name">MON 25</div><div class="day-mi">12.3</div></div>
+      <div class="pill done today"><span class="check">✓</span><div class="day-name">TUE 26</div><div class="day-mi">7.6</div></div>
+      <div class="pill easy"><div class="day-name">WED 27</div><div class="day-mi">5.8</div></div>
+      <div class="pill easy"><div class="day-name">THU 28</div><div class="day-mi">6.1</div></div>
+      <div class="pill easy"><div class="day-name">FRI 29</div><div class="day-mi">6.1</div></div>
+      <div class="pill rest"><div class="day-name">SAT 30</div><div class="day-mi rest">—</div></div>
+      <div class="pill long"><div class="day-name">SUN 31</div><div class="day-mi">12.1</div></div>
+    </div>
+  </div>
+
+  <!-- =================== DIRECTION 4 =================== -->
+  <div class="mockup d4">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION 4</span>
+      <span class="mockup-tag">EDITORIAL · RING LEFT, COPY RIGHT</span>
+    </div>
+    <div class="mockup-name">Editorial split — ring left, a real sentence right.</div>
+    <div class="mockup-desc">
+      Ring on the left (big, hero). Right column has the breadcrumb, headline mileage,
+      and a real plain-English narrative sentence — like a coach summary line at the top
+      before the longer coach voice. Compact week tiles below; only DONE days get
+      saturated color, the rest sit on a neutral card.
+    </div>
+
+    <div class="layout">
+      <div class="left">
+        <div class="ring-wrap xl">
+          <svg class="ring-svg" viewBox="0 0 156 156">
+            <circle class="ring-bg" cx="78" cy="78" r="66"></circle>
+            <circle class="ring-fg" cx="78" cy="78" r="66" stroke-dasharray="414.7" stroke-dashoffset="132.7"></circle>
+          </svg>
+          <div class="ring-text">
+            <div class="ring-num">68</div>
+            <div class="ring-cap">READY</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="breadcrumb">TUE · MAY 26 · BASE WEEK 2/4 · <span class="race">82 DAYS TO AFC HALF</span></div>
+        <div class="headline"><span class="num">7.6</span> MI <span class="post">DONE</span></div>
+        <div class="narrative">
+          <span class="done">Threshold banked</span> — 6:48 avg, HR 165 (Z4), all four reps on pace.
+          Tomorrow's 5.8 easy is a recovery shake-out.
+        </div>
+
+        <div class="week-grid">
+          <div class="tile done"><span class="check invert">✓</span><div class="day-name done">MON</div><div class="day-mi done">12.3</div></div>
+          <div class="tile done today"><span class="check invert">✓</span><div class="day-name done">TUE</div><div class="day-mi done">7.6</div></div>
+          <div class="tile"><div class="day-name">WED</div><div class="day-mi easy">5.8</div></div>
+          <div class="tile"><div class="day-name">THU</div><div class="day-mi easy">6.1</div></div>
+          <div class="tile"><div class="day-name">FRI</div><div class="day-mi easy">6.1</div></div>
+          <div class="tile"><div class="day-name">SAT</div><div class="day-mi rest">—</div></div>
+          <div class="tile"><div class="day-name">SUN</div><div class="day-mi long">12.1</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="color:var(--mute); font-size:13px; margin-top:48px; line-height:1.7;">
+    <strong style="color:var(--ink);">All four kill the cheesy greeting.</strong>
+    All four keep the readiness ring as the visual anchor. They differ in how the week
+    strip earns its space — full row of tiles (D4), calendar-row of numbers (D2), dot strip
+    (D1), or compact saturated pills (D3) — and how prominent today's run is vs the week
+    overview.
+    <br><br>
+    Say "ship 2" / "ship 4 with D3's compact pills" / "make 1 with D2's narrative line"
+    and I'll wire it.
+  </div>
+</div>
+</body>
+</html>
