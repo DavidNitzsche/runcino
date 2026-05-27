@@ -1,26 +1,35 @@
-/**
- * POST /api/cron/keep-warm
- *
- * Lightweight warmer that fires every 10-15 minutes during the user's
- * waking window. Purpose:
- *   1. Keep the Railway container alive (no cold-start when David opens
- *      /today at 6:45am, no spin-up between sessions).
- *   2. Keep the Postgres connection pool warm.
- *   3. Pre-load today's CoachState for active users so /today's first
- *      paint reads from a fresh in-process cache.
- *
- * This is NOT the LLM-regen cron (that's refresh-briefings, daily).
- * keep-warm is cheap and frequent — no LLM calls, just DB reads.
- *
- * Auth: same CRON_SECRET as refresh-briefings.
- *
- * Setup (Railway cron):
- *   Schedule: */15 7-23 * * *   (every 15 min, 7am-11pm UTC = waking PT)
- *   Method:   POST https://www.faff.run/api/cron/keep-warm
- *   Header:   Authorization: Bearer <CRON_SECRET>
- *
- * Returns timing per step so you can see if any sub-call is slow.
- */
+// POST /api/cron/keep-warm
+//
+// Lightweight warmer that fires every 10-15 minutes during the user's
+// waking window. Purpose:
+//   1. Keep the Railway container alive (no cold-start when David opens
+//      /today at 6:45am, no spin-up between sessions).
+//   2. Keep the Postgres connection pool warm.
+//   3. Pre-load today's CoachState for active users so /today's first
+//      paint reads from a fresh in-process cache.
+//
+// This is NOT the LLM-regen cron (that's refresh-briefings, daily).
+// keep-warm is cheap and frequent — no LLM calls, just DB reads.
+//
+// Auth: same CRON_SECRET as refresh-briefings.
+//
+// Setup (Railway cron):
+//   Schedule: every 15 min from 7am to 11pm UTC (cron: "0,15,30,45 7-23 * * *")
+//             — slash-15 syntax is fine in the cron field; using explicit
+//             list here because the literal asterisk-slash sequence would
+//             otherwise close any block comment that wrapped this doc.
+//   Method:   POST https://www.faff.run/api/cron/keep-warm
+//   Header:   Authorization: Bearer <CRON_SECRET>
+//
+// Returns timing per step so you can see if any sub-call is slow.
+//
+// 2026-05-27 incident: this doc was originally a /** ... */ JSDoc and
+// contained the literal "asterisk-slash-15" cron schedule, which closed
+// the JSDoc block early on line 18 — the rest of the comment parsed as
+// code, Next.js webpack threw Syntax Error, and Railway rejected every
+// build for ~15 hours. PROMPT_VERSION bumps and other doctrine fixes
+// never reached prod because of this one character pair. Converted to
+// line comments to make it impossible to recur.
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { loadCoachState } from '@/lib/coach/state-loader';
