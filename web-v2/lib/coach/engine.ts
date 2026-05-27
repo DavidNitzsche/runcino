@@ -365,8 +365,8 @@ function buildOrientationMessage(o: OrientationInput): string {
       lines.push(
         `- CHECK-INS in the last 7 days: 0. The runner has NOT rated their state. ` +
         `The words "check-in", "TIRED", "SOLID", "WRECKED" are BANNED from your output. ` +
-        `Do not say "this morning's check-in" or "the readiness board agrees" — ` +
-        `there is nothing to agree with. Don't mention check-ins at all.`
+        `Do not say "this morning's check-in" or "the readiness board agrees". ` +
+        `There is nothing to agree with. Don't mention check-ins at all.`
       );
     } else {
       lines.push(
@@ -396,7 +396,7 @@ function buildOrientationMessage(o: OrientationInput): string {
   lines.push(`# TRUTH CONTRACT`);
   lines.push(
     `- Only narrate runs that getRuns returns. Never invent "Sunday's long run" ` +
-    `or "Friday's 7-miler" — call getRuns and use ONLY what it gives you. If ` +
+    `or "Friday's 7-miler". Call getRuns and use ONLY what it gives you. If ` +
     `getRuns returns 1 run, you can only mention 1 run.`,
   );
   lines.push(
@@ -406,19 +406,19 @@ function buildOrientationMessage(o: OrientationInput): string {
   );
   lines.push(
     `- Only claim a check-in rating (SOLID/TIRED/WRECKED) that appears in getCheckIns. ` +
-    `If empty, do NOT say "you said you were tired" — they didn't say anything. ` +
+    `If empty, do NOT say "you said you were tired". They didn't say anything. ` +
     `When referencing check-ins, ALWAYS include the time window so the runner ` +
     `knows what you're counting. Good: "three SOLID days running", "your last three ` +
     `daily check-ins have all been SOLID", "this morning's check-in was SOLID". ` +
     `BAD: "you tapped SOLID three times" (sounds like 3 taps in one sitting), ` +
     `"three SOLID check-ins" without a window (over what period?). ` +
-    `In post-run voice, do not lead with historical check-in counts — the run ` +
+    `In post-run voice, do not lead with historical check-in counts. The run ` +
     `is the headline. Check-in history is only worth a sentence if it's flagging ` +
     `a real trend (e.g. back-to-back WRECKED, sudden swing).`,
   );
   lines.push(
     `- HR zones MUST come from a run's hrZonePcts field, not from eyeballing avgHr. ` +
-    `"avg HR was 156, that's Z4" is a guess — the actual hrZonePcts shows the time-in-zone ` +
+    `"avg HR was 156, that's Z4" is a guess. The actual hrZonePcts shows the time-in-zone ` +
     `split that determines which zones the run actually touched. Always read hrZonePcts before ` +
     `claiming "you spent N% in Z4." Avg HR alone tells you nothing about peak zones reached.`,
   );
@@ -428,8 +428,8 @@ function buildOrientationMessage(o: OrientationInput): string {
   );
   lines.push(
     `- BEFORE judging the EFFORT of a past run, call getPlanWindow with daysBack ≥ 1 to know ` +
-    `what TYPE was planned that day. A threshold run with HR 165 is NOT "hotter than easy" — ` +
-    `it was planned hot. Frame past-run effort against the planned type, not a default easy band.`,
+    `what TYPE was planned that day. A threshold run with HR 165 is NOT "hotter than easy". ` +
+    `It was planned hot. Frame past-run effort against the planned type, not a default easy band.`,
   );
   lines.push(
     `- If today's session type from getPlanWindow is threshold/intervals/tempo/long, ` +
@@ -444,7 +444,7 @@ function buildOrientationMessage(o: OrientationInput): string {
   lines.push(
     `Return strict JSON in your final message (after any tool calls): ` +
     `{lead, voice: string[], topics: Topic[]}. NO markdown fences. ` +
-    `Topics carry { kind, coach_note } only — the server populates numeric fields ` +
+    `Topics carry { kind, coach_note } only. The server populates numeric fields ` +
     `from the same sources you read from. Don't bother writing dates, miles, days_away ` +
     `into payloads; they're overwritten.`,
   );

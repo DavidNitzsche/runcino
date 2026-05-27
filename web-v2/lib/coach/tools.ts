@@ -30,7 +30,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'getProfile',
     description:
-      "Read the runner's profile — name, experience_level, lthr (lactate threshold HR), " +
+      "Read the runner's profile, name, experience_level, lthr (lactate threshold HR), " +
       'hrmax, rhr (resting HR baseline), height_cm, birthday. Call this when you need ' +
       "any biographical or physiological anchor to reason about today's session.",
     input_schema: { type: 'object', properties: {} },
@@ -70,7 +70,7 @@ export const TOOLS: Anthropic.Tool[] = [
       'splits[], phases[], hrZonePcts, weather}. The baselines block has the ' +
       "runner's distance-weighted averages across the window: avgCadence, " +
       'avgHrEasy, avgHrQuality, avgCadenceEasy, avgCadenceQuality. Use baselines ' +
-      "to compare today's numbers without doing arithmetic in your head — they " +
+      "to compare today's numbers without doing arithmetic in your head, they " +
       'are the source of truth for "your recent average". TRUTH CONTRACT: only ' +
       "narrate runs this tool returns; never invent a run that's not in the result.",
     input_schema: {
@@ -85,7 +85,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'getReadiness',
     description:
-      "Read today's composite readiness score (0-100) with input breakdown — " +
+      "Read today's composite readiness score (0-100) with input breakdown, " +
       'sleep, sleep deficit, RHR delta, HRV, recent training load. Returns ' +
       '{score, band, label, inputs[]}. Call this when you want to read the ' +
       'runner before recommending intensity.',
@@ -110,7 +110,7 @@ export const TOOLS: Anthropic.Tool[] = [
     description:
       "Read the runner's SOLID/TIRED/WRECKED self-ratings in the window. " +
       "Returns {ts, rating}[] plus a summary count. Empty if the runner has not " +
-      "checked in recently — in which case do NOT claim they rated anything. " +
+      "checked in recently, in which case do NOT claim they rated anything. " +
       "WHEN REFERENCING: say 'three SOLID check-ins' or 'three SOLID days running', " +
       "NEVER 'tapped SOLID three times' (the runner isn't aware of the tap mechanic).",
     input_schema: {
@@ -124,7 +124,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'getHealthSeries',
     description:
-      "Read the runner's recent health-sample series — sleep hours by night, " +
+      "Read the runner's recent health-sample series, sleep hours by night, " +
       'RHR by day, HRV by day, cadence baseline. Returns {sleep[], rhr[], hrv[], ' +
       'cadenceBaseline}. Call this when you want trend, not a single number.',
     input_schema: {
@@ -136,7 +136,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'getWorkoutCompletion',
     description:
-      "Read the most recent workout completion payload sent by the watch — " +
+      "Read the most recent workout completion payload sent by the watch, " +
       'per-phase actuals (pace, distance, HR, cadence per warmup/rep/recovery/cooldown), ' +
       'totals (totalDistanceMi, totalDurationSec, avgHr, maxHr), and the completed flag ' +
       "per phase. Use this on POST-RUN briefs to analyze pace consistency across reps, " +
@@ -165,7 +165,7 @@ export const TOOLS: Anthropic.Tool[] = [
       "Read the research-backed doctrine on a topic, drawn from /Research/. " +
       'Topics: "threshold", "intervals", "tempo", "easy", "long", "cardiac-drift", ' +
       '"taper", "base-volume", "vdot", "hr-zones", "fueling". Returns short prose. ' +
-      "Use this when you'd otherwise rely on general knowledge — anchor to the " +
+      "Use this when you'd otherwise rely on general knowledge, anchor to the " +
       "runner's research instead.",
     input_schema: {
       type: 'object',
@@ -601,7 +601,7 @@ async function getWorkoutCompletion(userId: string, input: { workoutId?: string 
       [userId, localDate]
     ).catch(() => ({ rowCount: 0 }))).rowCount ?? 0;
     if (hasReal > 0) {
-      return { completion: null, note: 'watch-app session abandoned, but the runner finished the workout elsewhere — see getRuns for the real completion.' };
+      return { completion: null, note: 'watch-app session abandoned, but the runner finished the workout elsewhere, see getRuns for the real completion.' };
     }
   }
 
