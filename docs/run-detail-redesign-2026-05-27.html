@@ -539,6 +539,1077 @@
 
 
   <!-- ──────────────────────────────────────────────────────────────────
+       HR SECTION — 3 visual treatments inside Direction A
+       David: "make it super visual and cool"
+       ────────────────────────────────────────────────────────────────── -->
+  <div class="section-label">Direction A · HEART RATE · 3 visual treatments to pick from</div>
+  <div class="ann">
+    The current HR card was 5 thin lines, basically invisible when one zone dominates. Here are three bolder visuals — same data (100% Z2, 138–144 bpm, LTHR 162, this morning's run avg HR 140). Pick a flavor.
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────────
+       ROUND 2 — new swings after "none" feedback. Less chart-pattern,
+       more bold/emotional/branded.
+       ──────────────────────────────────────────────────────────────── -->
+  <div class="section-label" style="border-top:1px dashed rgba(255,255,255,0.10);padding-top:32px;margin-top:48px;color:var(--race)">ROUND 2 · less chart, more vibe</div>
+  <div class="ann">
+    None of the round-1 chart treatments hit. These are wilder — typography-first, sculptural, branded. Pick a vibe (or hard-pass these too and tell me what direction — animated? minimal? something specific you've seen?).
+  </div>
+
+  <!-- HR · V4 — TYPOGRAPHY MONOLITH
+       No chart. Just enormous type. The data IS the design. Works
+       brilliantly when one zone dominates (most runs). On a mixed
+       run we'd swap to a different layout — but for an easy day in
+       pure Z2, this is the most confident treatment possible. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--green)">V4 · TYPOGRAPHY MONOLITH</div>
+    <div class="ann" style="margin-bottom:16px">
+      No chart. The data IS the design. Brutal confidence — most runs spend the vast majority of time in one zone, so just SAY that. Smaller stats below for the curious. (For mixed runs we'd swap to a different layout.)
+    </div>
+    <div style="background:linear-gradient(135deg, #0d1015 0%, #11181d 100%);border-radius:14px;padding:48px 48px;border:1px solid var(--line2);position:relative;overflow:hidden">
+      <!-- Background ghost text -->
+      <div style="position:absolute;right:-30px;top:-20px;font-family:'HelveticaNeue-Bold';font-size:320px;color:rgba(62,189,65,0.04);line-height:0.85;letter-spacing:-0.04em;pointer-events:none;user-select:none">Z2</div>
+      <div style="position:relative">
+        <div style="font-size:11px;color:var(--mute);letter-spacing:1.8px;font-weight:700;text-transform:uppercase;margin-bottom:14px">HEART RATE · 49 MINUTES IN</div>
+        <div style="display:flex;align-items:baseline;gap:24px;margin-bottom:10px">
+          <div style="font-family:'HelveticaNeue-Bold';font-size:180px;line-height:0.85;color:var(--green);letter-spacing:-0.03em">Z2</div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:96px;line-height:0.85;color:var(--ink);letter-spacing:-0.02em">100<span style="font-size:48px;color:var(--mute)">%</span></div>
+        </div>
+        <div style="font-family:'HelveticaNeue-Bold';font-size:24px;color:rgba(246,247,248,0.78);letter-spacing:0.2px;margin-bottom:32px;max-width:600px;line-height:1.3">
+          Avg <span style="color:var(--green)">140 bpm</span>. Peak <span style="color:var(--ink)">153</span>. Aerobic. The whole way.
+        </div>
+        <div style="display:flex;gap:36px;padding-top:18px;border-top:1px solid var(--line)">
+          <div><div style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase">Z2 ZONE</div><div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--ink);margin-top:4px">138–144 bpm</div></div>
+          <div><div style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase">LTHR</div><div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--ink);margin-top:4px">162 bpm</div></div>
+          <div><div style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase">TIME IN Z2</div><div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--ink);margin-top:4px">49:22 / 49:22</div></div>
+          <div><div style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase">Z3+ CREEP</div><div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--green);margin-top:4px">NONE</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR · V5 — ANIMATED PULSE
+       EKG strip with subtle pulse animation. Reads as alive. The
+       heartbeat *is* the visual. Background zone bands give context. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--over)">V5 · ANIMATED EKG</div>
+    <div class="ann" style="margin-bottom:16px">
+      Live-feeling EKG strip with a pulsing dot at the trace head. Reads as alive, not as a static chart. (In the mockup the animation runs once on load; in prod it loops slowly while the modal is open.)
+    </div>
+    <style>
+      @keyframes pulse-glow { 0%,100%{ box-shadow:0 0 0 0 rgba(252,77,100,0.6) } 50%{ box-shadow:0 0 0 14px rgba(252,77,100,0) } }
+      @keyframes trace-draw { from{ stroke-dashoffset: 2000 } to{ stroke-dashoffset: 0 } }
+      .ekg-dot{ width:14px; height:14px; border-radius:50%; background:#FC4D64; animation: pulse-glow 1.4s ease-out infinite; position:absolute; top:50%; right:14px; transform:translateY(-50%); z-index:2 }
+      .ekg-trace{ stroke-dasharray:2000; animation: trace-draw 2.4s ease-out forwards; }
+    </style>
+    <div style="background:#0a0c10;border-radius:14px;padding:24px 28px;border:1px solid var(--line2);position:relative;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px">
+        <div>
+          <div style="font-size:11px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase">HEART · 49:22 STRIP</div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:48px;line-height:1;color:var(--over);margin-top:8px;letter-spacing:0.2px">140 <span style="font-size:18px;color:var(--mute);font-weight:600">avg bpm</span></div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:var(--mute);letter-spacing:1.2px">
+          <div><span style="color:var(--green);font-weight:700">100%</span> Z2 · 138–144</div>
+          <div style="margin-top:4px">PEAK <span style="color:var(--ink);font-weight:700">153</span> · LTHR 162</div>
+        </div>
+      </div>
+      <div style="position:relative;height:200px;background:#06080b;border-radius:10px;overflow:hidden">
+        <svg viewBox="0 0 800 200" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
+          <!-- Zone bands (super subtle) -->
+          <rect x="0" y="0"   width="800" height="22" fill="rgba(252,77,100,0.06)" />
+          <rect x="0" y="22"  width="800" height="22" fill="rgba(252,77,100,0.04)" />
+          <rect x="0" y="44"  width="800" height="44" fill="rgba(243,173,56,0.05)" />
+          <rect x="0" y="88"  width="800" height="66" fill="rgba(62,189,65,0.08)" />
+          <rect x="0" y="154" width="800" height="46" fill="rgba(0,143,236,0.04)" />
+          <!-- Z2 band emphasis -->
+          <line x1="0" x2="800" y1="88" y2="88" stroke="rgba(62,189,65,0.25)" stroke-width="1"/>
+          <line x1="0" x2="800" y1="154" y2="154" stroke="rgba(62,189,65,0.25)" stroke-width="1"/>
+          <!-- EKG-style HR trace with sharp little spikes (heartbeat texture) -->
+          <path class="ekg-trace"
+            d="M 0 195 L 30 190 L 35 180 L 38 200 L 42 170 L 60 145
+               L 90 125 L 120 118 L 150 120 L 180 122 L 200 115 L 205 95 L 209 130
+               L 240 121 L 270 119 L 300 118 L 330 122 L 360 120 L 380 115 L 385 90 L 389 128
+               L 420 120 L 450 118 L 480 119 L 510 116 L 540 117
+               L 570 114 L 575 92 L 579 130
+               L 610 119 L 640 121 L 670 124 L 700 128 L 730 135 L 760 142 L 800 150"
+            fill="none" stroke="#FC4D64" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+          <!-- Avg HR baseline -->
+          <line x1="0" x2="800" y1="120" y2="120" stroke="rgba(252,77,100,0.4)" stroke-width="1" stroke-dasharray="2,4"/>
+          <!-- Right-edge zone label -->
+          <text x="792" y="118" text-anchor="end" fill="var(--green)" font-family="HelveticaNeue-Bold" font-size="11" letter-spacing="1.2">Z2</text>
+        </svg>
+        <div class="ekg-dot"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+        <div style="font-size:11px;color:var(--mute);letter-spacing:1px">START → 10m → 20m → 30m → 40m → END</div>
+        <div style="font-size:12px;color:rgba(246,247,248,0.7);font-style:italic">Heartbeat held mid-Z2 — pure aerobic.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR · V6 — STACKED MOUNTAIN
+       Minute-by-minute HR as a filled area chart that reads like a
+       topographic profile or mountain silhouette. Color tinted by
+       the zone the trace is currently in. Looks textural, alive,
+       different from any standard chart. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--dist)">V6 · MOUNTAIN PROFILE</div>
+    <div class="ann" style="margin-bottom:16px">
+      HR over time as a filled silhouette — reads like a topographic profile or skyline. Color of the fill shifts with the zone the trace passes through. More textural than a line chart, more emotional than a bar.
+    </div>
+    <div style="background:linear-gradient(180deg, #0a0c10 0%, #06080b 100%);border-radius:14px;padding:24px 28px;border:1px solid var(--line2)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px">
+        <div style="font-size:11px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase">HEART RATE · TIME IN ZONE</div>
+        <div style="font-size:11px;color:var(--mute);letter-spacing:1.2px">LTHR 162 · AVG <span style="color:var(--green);font-weight:700">140</span></div>
+      </div>
+      <svg viewBox="0 0 800 260" preserveAspectRatio="none" style="width:100%;height:260px;display:block">
+        <defs>
+          <linearGradient id="mountainGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3EBD41" stop-opacity="0.55"/>
+            <stop offset="60%" stop-color="#3EBD41" stop-opacity="0.20"/>
+            <stop offset="100%" stop-color="#3EBD41" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <!-- Zone reference lines -->
+        <line x1="0" x2="800" y1="60"  y2="60"  stroke="rgba(252,77,100,0.10)" stroke-width="1" stroke-dasharray="2,6"/>
+        <line x1="0" x2="800" y1="105" y2="105" stroke="rgba(243,173,56,0.12)" stroke-width="1" stroke-dasharray="2,6"/>
+        <line x1="0" x2="800" y1="160" y2="160" stroke="rgba(62,189,65,0.20)" stroke-width="1" stroke-dasharray="2,6"/>
+        <!-- Filled silhouette -->
+        <path d="M 0 240 L 0 230 C 30 220, 50 200, 80 180 C 110 165, 140 158, 170 156
+                 C 210 154, 250 155, 290 158 C 330 160, 370 159, 410 156
+                 C 450 153, 490 156, 520 162 C 555 168, 590 175, 620 178
+                 C 660 180, 700 178, 730 175 C 760 172, 780 168, 800 165
+                 L 800 240 Z"
+              fill="url(#mountainGradient)" />
+        <!-- Crest line on top of fill -->
+        <path d="M 0 230 C 30 220, 50 200, 80 180 C 110 165, 140 158, 170 156
+                 C 210 154, 250 155, 290 158 C 330 160, 370 159, 410 156
+                 C 450 153, 490 156, 520 162 C 555 168, 590 175, 620 178
+                 C 660 180, 700 178, 730 175 C 760 172, 780 168, 800 165"
+              fill="none" stroke="#3EBD41" stroke-width="2" stroke-linejoin="round" />
+        <!-- Right-edge zone tickmarks -->
+        <text x="14" y="56"  fill="rgba(252,77,100,0.55)" font-family="HelveticaNeue-Bold" font-size="10" letter-spacing="1">Z5 162+</text>
+        <text x="14" y="101" fill="rgba(243,173,56,0.55)" font-family="HelveticaNeue-Bold" font-size="10" letter-spacing="1">Z3 146</text>
+        <text x="14" y="156" fill="rgba(62,189,65,0.85)"  font-family="HelveticaNeue-Bold" font-size="11" letter-spacing="1">Z2 138</text>
+      </svg>
+      <!-- Bottom summary strip -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:14px">
+        <div style="text-align:center;padding:10px 0;background:rgba(0,143,236,0.04);border-radius:6px;opacity:0.4">
+          <div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--rest)">0%</div>
+          <div style="font-size:9px;color:var(--mute);letter-spacing:1px;margin-top:2px">Z1 · 0-138</div>
+        </div>
+        <div style="text-align:center;padding:10px 0;background:rgba(62,189,65,0.18);border-radius:6px;border:1px solid rgba(62,189,65,0.4)">
+          <div style="font-family:'HelveticaNeue-Bold';font-size:22px;color:var(--green)">100%</div>
+          <div style="font-size:10px;color:var(--green);letter-spacing:1px;margin-top:2px;font-weight:700">Z2 · 138-144</div>
+        </div>
+        <div style="text-align:center;padding:10px 0;background:rgba(243,173,56,0.04);border-radius:6px;opacity:0.4">
+          <div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--goal)">0%</div>
+          <div style="font-size:9px;color:var(--mute);letter-spacing:1px;margin-top:2px">Z3 · 146-152</div>
+        </div>
+        <div style="text-align:center;padding:10px 0;background:rgba(252,77,100,0.04);border-radius:6px;opacity:0.4">
+          <div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--over)">0%</div>
+          <div style="font-size:9px;color:var(--mute);letter-spacing:1px;margin-top:2px">Z4 · 154-160</div>
+        </div>
+        <div style="text-align:center;padding:10px 0;background:rgba(252,77,100,0.04);border-radius:6px;opacity:0.4">
+          <div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:var(--over)">0%</div>
+          <div style="font-size:9px;color:var(--mute);letter-spacing:1px;margin-top:2px">Z5 · 162-178</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────────
+       ROUND 3 — Apple Watch complication aesthetic per refs sent.
+       Vivid, gradient, glowing, dense. Tall bars not thin lines.
+       ──────────────────────────────────────────────────────────────── -->
+  <div class="section-label" style="border-top:1px dashed rgba(255,255,255,0.10);padding-top:32px;margin-top:48px;color:var(--dist)">ROUND 3 · watch-complication aesthetic, from your refs</div>
+  <div class="ann">
+    Read your refs: clean tall horizontal HR-zone bars + the vivid/glowy/gradient/dense feel of Apple Watch complications. Three new shots that copy that aesthetic directly.
+  </div>
+
+  <!-- HR · V7 — TALL BARS (ref-2 style done right)
+       Direct take on the "Time in Heart Rate Zones" reference. Tall
+       solid bars, big readable labels, time AND % on the right,
+       vivid zone colors. The bar is the visual — no extra chrome. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--green)">V7 · TALL BARS (ref 2 directly)</div>
+    <div class="ann" style="margin-bottom:16px">
+      Direct take on the Apple Watch "Time in Heart Rate Zones" reference. Each zone is a 36px-tall colored bar — present and confident, not the thin lines I had before.
+    </div>
+    <div style="background:#0a0c10;border-radius:14px;padding:28px 32px;border:1px solid var(--line2)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:22px">
+        <div style="font-family:'HelveticaNeue-Bold';font-size:22px;color:var(--ink);letter-spacing:0.2px">Time in Heart Rate Zones</div>
+        <div style="font-size:11px;color:var(--mute);letter-spacing:1.2px">LTHR 162 · 49:22 TOTAL</div>
+      </div>
+
+      <!-- Z5 -->
+      <div style="display:grid;grid-template-columns:120px 1fr 80px 60px;align-items:center;gap:16px;margin-bottom:14px;opacity:0.45">
+        <div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:15px;color:var(--ink)">Zone 5</div>
+          <div style="font-size:11px;color:var(--mute);margin-top:2px">&gt; 162 bpm</div>
+        </div>
+        <div style="height:36px;background:rgba(255,255,255,0.03);border-radius:6px"></div>
+        <div style="font-family:'HelveticaNeue-Bold';font-size:14px;color:var(--mute);text-align:right">0:00</div>
+        <div style="font-size:13px;color:var(--mute);text-align:right">0 %</div>
+      </div>
+      <!-- Z4 -->
+      <div style="display:grid;grid-template-columns:120px 1fr 80px 60px;align-items:center;gap:16px;margin-bottom:14px;opacity:0.45">
+        <div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:15px;color:var(--ink)">Zone 4</div>
+          <div style="font-size:11px;color:var(--mute);margin-top:2px">154 – 160 bpm</div>
+        </div>
+        <div style="height:36px;background:rgba(255,255,255,0.03);border-radius:6px"></div>
+        <div style="font-family:'HelveticaNeue-Bold';font-size:14px;color:var(--mute);text-align:right">0:00</div>
+        <div style="font-size:13px;color:var(--mute);text-align:right">0 %</div>
+      </div>
+      <!-- Z3 -->
+      <div style="display:grid;grid-template-columns:120px 1fr 80px 60px;align-items:center;gap:16px;margin-bottom:14px;opacity:0.45">
+        <div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:15px;color:var(--ink)">Zone 3</div>
+          <div style="font-size:11px;color:var(--mute);margin-top:2px">146 – 152 bpm</div>
+        </div>
+        <div style="height:36px;background:rgba(255,255,255,0.03);border-radius:6px"></div>
+        <div style="font-family:'HelveticaNeue-Bold';font-size:14px;color:var(--mute);text-align:right">0:00</div>
+        <div style="font-size:13px;color:var(--mute);text-align:right">0 %</div>
+      </div>
+      <!-- Z2 — the dominant -->
+      <div style="display:grid;grid-template-columns:120px 1fr 80px 60px;align-items:center;gap:16px;margin-bottom:14px">
+        <div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:15px;color:var(--ink)">Zone 2</div>
+          <div style="font-size:11px;color:var(--green);margin-top:2px;font-weight:600">138 – 144 bpm</div>
+        </div>
+        <div style="height:36px;border-radius:6px;background:linear-gradient(90deg, #3EBD41, #5dd860);box-shadow:0 0 24px rgba(62,189,65,0.35), inset 0 0 0 1px rgba(255,255,255,0.08);width:100%"></div>
+        <div style="font-family:'HelveticaNeue-Bold';font-size:14px;color:var(--ink);text-align:right">49:22</div>
+        <div style="font-family:'HelveticaNeue-Bold';font-size:13px;color:var(--green);text-align:right">100 %</div>
+      </div>
+      <!-- Z1 -->
+      <div style="display:grid;grid-template-columns:120px 1fr 80px 60px;align-items:center;gap:16px;opacity:0.45">
+        <div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:15px;color:var(--ink)">Zone 1</div>
+          <div style="font-size:11px;color:var(--mute);margin-top:2px">0 – 138 bpm</div>
+        </div>
+        <div style="height:36px;background:rgba(255,255,255,0.03);border-radius:6px"></div>
+        <div style="font-family:'HelveticaNeue-Bold';font-size:14px;color:var(--mute);text-align:right">0:00</div>
+        <div style="font-size:13px;color:var(--mute);text-align:right">0 %</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR · V8 — COMPLICATION HERO + RAIL
+       Watch-complication style: glowing "ZONE 2 49:22" hero on the
+       left (like the "ZONE 4 02:36" reference), tall stacked gradient
+       rail on the right showing where in the zone spectrum the run
+       sat. Dense and vivid like the watch faces. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--learn)">V8 · COMPLICATION HERO + RAIL</div>
+    <div class="ann" style="margin-bottom:16px">
+      Inspired by the "ZONE 4 02:36" complication in your ref. Big glowing hero on the left showing dominant zone + time, vertical color-stacked rail on the right showing where on the HR spectrum this run lived. Dense, vivid, watch-face dense.
+    </div>
+    <div style="background:#06080b;border-radius:14px;padding:0;border:1px solid var(--line2);overflow:hidden">
+      <div style="display:grid;grid-template-columns:1fr 110px;gap:0">
+        <!-- LEFT: glowing hero -->
+        <div style="padding:32px 36px;background:radial-gradient(ellipse at 30% 50%, rgba(62,189,65,0.18) 0%, rgba(62,189,65,0.04) 50%, transparent 80%);position:relative">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+            <span style="width:10px;height:10px;border-radius:50%;background:#FC4D64;box-shadow:0 0 12px rgba(252,77,100,0.7);animation:pulse-glow 1.4s ease-out infinite"></span>
+            <span style="font-size:11px;color:var(--mute);letter-spacing:1.8px;font-weight:700;text-transform:uppercase">HEART · 49 MINUTES</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:24px;margin-bottom:8px">
+            <div style="font-family:'HelveticaNeue-Bold';font-size:96px;line-height:0.85;color:var(--green);letter-spacing:-0.02em;text-shadow:0 0 40px rgba(62,189,65,0.45)">ZONE 2</div>
+          </div>
+          <div style="display:flex;gap:32px;margin-top:24px">
+            <div>
+              <div style="font-family:'HelveticaNeue-Bold';font-size:36px;color:var(--ink);line-height:1">49:22</div>
+              <div style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700;margin-top:6px">TIME IN ZONE</div>
+            </div>
+            <div>
+              <div style="font-family:'HelveticaNeue-Bold';font-size:36px;color:var(--ink);line-height:1">140<span style="font-size:18px;color:var(--mute);margin-left:4px">bpm</span></div>
+              <div style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700;margin-top:6px">AVG HEART RATE</div>
+            </div>
+            <div>
+              <div style="font-family:'HelveticaNeue-Bold';font-size:36px;color:var(--ink);line-height:1">100<span style="font-size:18px;color:var(--mute);margin-left:2px">%</span></div>
+              <div style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700;margin-top:6px">OF RUN</div>
+            </div>
+          </div>
+          <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:rgba(246,247,248,0.78);line-height:1.55">
+            Aerobic-dominant — 138 to 144 bpm the entire run. Peak 153, never crossed into Z3.
+          </div>
+        </div>
+        <!-- RIGHT: vertical color-stacked rail -->
+        <div style="background:#0a0c10;padding:18px 14px;display:flex;flex-direction:column;gap:3px;border-left:1px solid var(--line)">
+          <div style="font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-align:center;margin-bottom:8px">SPECTRUM</div>
+          <!-- Z5 -->
+          <div style="flex:1;background:rgba(252,77,100,0.12);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:rgba(252,77,100,0.5);font-weight:700;letter-spacing:1px">Z5</div>
+          <!-- Z4 -->
+          <div style="flex:1;background:rgba(252,77,100,0.10);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:rgba(252,77,100,0.5);font-weight:700;letter-spacing:1px">Z4</div>
+          <!-- Z3 -->
+          <div style="flex:1;background:rgba(243,173,56,0.10);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:rgba(243,173,56,0.5);font-weight:700;letter-spacing:1px">Z3</div>
+          <!-- Z2 — the dominant, big and glowing -->
+          <div style="flex:5;background:linear-gradient(180deg, #3EBD41, #2ea531);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(62,189,65,0.4), inset 0 0 0 1px rgba(255,255,255,0.12)">
+            <div style="font-family:'HelveticaNeue-Bold';font-size:18px;color:#fff;line-height:1">Z2</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.8px;margin-top:4px">100%</div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.75);letter-spacing:0.8px;margin-top:2px">138-144</div>
+          </div>
+          <!-- Z1 -->
+          <div style="flex:1;background:rgba(0,143,236,0.10);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:rgba(0,143,236,0.5);font-weight:700;letter-spacing:1px">Z1</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR · V9 — COMPLICATION GRID
+       Apple Watch face dense grid: 4-6 small rich tiles all sharing
+       the HR theme. Hero zone tile + peak HR gauge + zone-spectrum
+       bar + avg-HR-vs-LTHR ratio dial. Like a watch face dedicated
+       to the run's HR story. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--race)">V9 · COMPLICATION GRID</div>
+    <div class="ann" style="margin-bottom:16px">
+      Apple Watch face energy — 4 small dense tiles all telling part of the HR story. Hero zone tile + peak gauge + spectrum bar + LTHR ratio. Each tile is rich on its own; together they're a "watch face for this run's heart."
+    </div>
+    <div style="background:#06080b;border-radius:14px;padding:18px;border:1px solid var(--line2);display:grid;grid-template-columns:1.4fr 1fr 1fr;grid-template-rows:auto auto;gap:10px">
+      <!-- BIG zone tile spans 2 rows -->
+      <div style="grid-row:span 2;background:radial-gradient(circle at 30% 30%, rgba(62,189,65,0.22) 0%, rgba(62,189,65,0.04) 60%, transparent 100%);border-radius:12px;padding:24px;border:1px solid rgba(62,189,65,0.25);position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#FC4D64;box-shadow:0 0 10px rgba(252,77,100,0.6)"></span>
+            <span style="font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700">HEART RATE</span>
+          </div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:68px;color:var(--green);line-height:0.85;letter-spacing:-0.02em;text-shadow:0 0 30px rgba(62,189,65,0.4)">Z2</div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:30px;color:var(--ink);margin-top:8px;line-height:1">49:22</div>
+          <div style="font-size:11px;color:var(--mute);letter-spacing:1.4px;margin-top:4px;font-weight:700">100% IN ZONE · 138-144 BPM</div>
+        </div>
+        <div style="font-size:12px;color:rgba(246,247,248,0.7);font-style:italic;line-height:1.5">Aerobic the whole way. No Z3+ creep.</div>
+      </div>
+
+      <!-- Peak HR gauge -->
+      <div style="background:#0d1015;border-radius:12px;padding:14px 16px;border:1px solid var(--line2);position:relative">
+        <div style="font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;margin-bottom:10px">PEAK HR</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px">
+          <span style="font-family:'HelveticaNeue-Bold';font-size:30px;color:var(--ink);line-height:1">153</span>
+          <span style="font-size:10px;color:var(--mute)">bpm</span>
+        </div>
+        <!-- mini gauge -->
+        <div style="height:6px;background:linear-gradient(90deg, var(--rest), var(--green) 40%, var(--goal) 65%, var(--over) 85%);border-radius:3px;position:relative">
+          <div style="position:absolute;left:62%;top:-3px;width:2px;height:12px;background:#fff;box-shadow:0 0 6px rgba(255,255,255,0.6);border-radius:1px"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:8px;color:var(--mute);letter-spacing:0.8px">
+          <span>100</span><span>LTHR 162</span><span>200</span>
+        </div>
+      </div>
+
+      <!-- LTHR ratio donut -->
+      <div style="background:#0d1015;border-radius:12px;padding:14px 16px;border:1px solid var(--line2);display:flex;align-items:center;gap:12px">
+        <svg viewBox="0 0 60 60" style="width:60px;height:60px;flex-shrink:0;transform:rotate(-90deg)">
+          <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--green)" stroke-width="6"
+                  stroke-dasharray="163" stroke-dashoffset="22" stroke-linecap="round"/>
+        </svg>
+        <div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:22px;color:var(--ink);line-height:1">86<span style="font-size:11px;color:var(--mute);margin-left:2px">%</span></div>
+          <div style="font-size:9px;color:var(--mute);letter-spacing:1.2px;font-weight:700;margin-top:4px;text-transform:uppercase">AVG vs LTHR</div>
+          <div style="font-size:9px;color:var(--green);margin-top:2px">140 / 162 bpm</div>
+        </div>
+      </div>
+
+      <!-- HR-over-time mini sparkline -->
+      <div style="background:#0d1015;border-radius:12px;padding:14px 16px;border:1px solid var(--line2);grid-column:span 2">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700">HR TIMELINE · 49 MIN</span>
+          <span style="font-size:10px;color:var(--mute)">START → FINISH</span>
+        </div>
+        <svg viewBox="0 0 380 60" preserveAspectRatio="none" style="width:100%;height:50px;display:block">
+          <!-- Z2 band -->
+          <rect x="0" y="20" width="380" height="22" fill="rgba(62,189,65,0.10)" rx="2"/>
+          <line x1="0" x2="380" y1="20" y2="20" stroke="rgba(62,189,65,0.30)" stroke-width="0.5"/>
+          <line x1="0" x2="380" y1="42" y2="42" stroke="rgba(62,189,65,0.30)" stroke-width="0.5"/>
+          <!-- trace -->
+          <path d="M 0 55 C 20 50, 35 38, 60 30 C 90 26, 120 28, 160 30 C 200 32, 240 30, 280 29 C 320 30, 350 33, 380 36"
+                fill="none" stroke="#3EBD41" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                style="filter:drop-shadow(0 0 4px rgba(62,189,65,0.5))"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────────────────────────────────────────────────────────────
+       ROUND 4 — COMBO (V9 grid + V8 spectrum rail) × 5 scenarios
+       Shows how the same layout adapts to different run profiles.
+       ──────────────────────────────────────────────────────────────── -->
+  <div class="section-label" style="border-top:1px dashed rgba(255,255,255,0.10);padding-top:32px;margin-top:48px;color:var(--green)">ROUND 4 · COMBO (V9 grid + V8 spectrum rail) × 5 RUN SCENARIOS</div>
+  <div class="ann">
+    The combo: V9's hero tile + supporting complications, with V8's vertical spectrum rail on the right edge of the hero. Then the same layout repeated across 5 real-world run scenarios so you can see how it stretches from "single dominant zone" to "wildly mixed."
+  </div>
+
+  <style>
+    /* Combo card styles — reused for all 5 scenarios.
+       2026-05-27 round-4 tweaks per David: less glow, no pulse dot,
+       structured timeline with zone-colored trace + markers. */
+    .combo-grid{background:#06080b;border-radius:14px;padding:18px;border:1px solid var(--line2);
+      display:grid;grid-template-columns:1.5fr 1fr 1fr;grid-template-rows:auto auto;gap:10px;margin-bottom:32px}
+    .combo-hero{grid-row:span 2;border-radius:12px;padding:24px;border:1px solid;position:relative;overflow:hidden;
+      display:grid;grid-template-columns:1fr 76px;gap:14px;align-items:stretch}
+    .combo-hero-text{display:flex;flex-direction:column;justify-content:space-between}
+    .combo-hero-eyebrow{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+    /* Static heart glyph instead of pulsing red dot — David: "pulsing dot is a bit much" */
+    .combo-hero-eyebrow svg{display:block;color:var(--mute);opacity:0.55}
+    .combo-hero-eyebrow span{font-size:10px;color:var(--mute);letter-spacing:1.6px;font-weight:700}
+    /* Reduced text-shadow from 30px/0.4 → 12px/0.18 */
+    .combo-zone{font-family:'HelveticaNeue-Bold';font-size:64px;line-height:0.85;letter-spacing:-0.02em}
+    .combo-time{font-family:'HelveticaNeue-Bold';font-size:28px;color:var(--ink);margin-top:8px;line-height:1}
+    .combo-subline{font-size:11px;color:var(--mute);letter-spacing:1.3px;margin-top:4px;font-weight:700}
+    .combo-note{font-size:12px;color:rgba(246,247,248,0.7);font-style:italic;line-height:1.5;margin-top:12px}
+    /* Spectrum rail in the hero (right column) */
+    .combo-rail{display:flex;flex-direction:column;gap:3px;height:100%}
+    .combo-rail-label{font-size:8px;color:var(--mute);letter-spacing:1.2px;font-weight:700;text-align:center;margin-bottom:4px}
+    .combo-rail-cell{border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      min-height:14px;padding:2px}
+    .combo-rail-cell .z{font-family:'HelveticaNeue-Bold';font-size:10px;letter-spacing:0.5px;line-height:1}
+    .combo-rail-cell .p{font-size:8px;letter-spacing:0.5px;margin-top:1px;opacity:0.85}
+    /* Small tiles */
+    .combo-tile{background:#0d1015;border-radius:12px;padding:14px 16px;border:1px solid var(--line2)}
+    .combo-tile .tlabel{font-size:9px;color:var(--mute);letter-spacing:1.4px;font-weight:700;margin-bottom:8px}
+    .combo-peak{display:flex;flex-direction:column}
+    .combo-peak .v{display:flex;align-items:baseline;gap:6px;margin-bottom:8px}
+    .combo-peak .v strong{font-family:'HelveticaNeue-Bold';font-size:24px;color:var(--ink);line-height:1}
+    .combo-peak .v span{font-size:10px;color:var(--mute)}
+    .combo-peak .gauge{height:6px;background:linear-gradient(90deg, var(--rest), var(--green) 40%, var(--goal) 65%, var(--over) 85%);
+      border-radius:3px;position:relative}
+    .combo-peak .marker{position:absolute;top:-3px;width:2px;height:12px;background:#fff;border-radius:1px}
+    .combo-peak .scale{display:flex;justify-content:space-between;margin-top:4px;font-size:8px;color:var(--mute);letter-spacing:0.8px}
+    .combo-donut{display:flex;align-items:center;gap:12px}
+    .combo-donut svg{width:54px;height:54px;flex-shrink:0;transform:rotate(-90deg)}
+    .combo-donut .v{font-family:'HelveticaNeue-Bold';font-size:20px;color:var(--ink);line-height:1}
+    .combo-donut .lab{font-size:8px;color:var(--mute);letter-spacing:1.2px;font-weight:700;margin-top:4px;text-transform:uppercase}
+    .combo-donut .sub{font-size:9px;margin-top:2px}
+    /* Timeline: HTML labels in dedicated gutters so nothing collides
+       with the trace. SVG just renders grid lines + trace + peak dot.
+       2026-05-27 fix per David: "type is small and intersecting things
+       weird." Labels now real CSS px, not viewBox-squished SVG text. */
+    .combo-timeline{grid-column:span 2;padding:14px 16px 10px}
+    .combo-timeline .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .combo-timeline .hdr span{font-size:10px;color:var(--mute);letter-spacing:1.4px;font-weight:700}
+    /* Frame: left-gutter for AVG/LTHR labels · chart · right-gutter for zone labels. */
+    .timeline-frame{display:grid;grid-template-columns:50px 1fr 36px;gap:0;position:relative}
+    .timeline-frame .lgutter{position:relative;height:80px}
+    .timeline-frame .lgutter .lbl{position:absolute;right:8px;font-size:10px;font-weight:700;letter-spacing:0.4px;
+      line-height:1;transform:translateY(-50%);white-space:nowrap}
+    .timeline-frame .chartcol{position:relative;height:80px}
+    .timeline-frame .chartcol svg{width:100%;height:80px;display:block}
+    /* Peak label floats above the dot inside the chart area, with an
+       arrow notch. Positioned per-scenario via inline left/top. */
+    .timeline-frame .peak-tag{position:absolute;background:#0a0c10;border:1px solid rgba(252,77,100,0.5);
+      border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;color:#fff;letter-spacing:0.3px;
+      transform:translate(-50%, -100%);white-space:nowrap;z-index:3;line-height:1.2}
+    .timeline-frame .peak-tag::after{content:'';position:absolute;left:50%;bottom:-4px;width:6px;height:6px;
+      background:#0a0c10;border-right:1px solid rgba(252,77,100,0.5);border-bottom:1px solid rgba(252,77,100,0.5);
+      transform:translateX(-50%) rotate(45deg)}
+    .timeline-frame .rgutter{display:flex;flex-direction:column;justify-content:space-between;height:80px;
+      padding:2px 4px 2px 8px;font-size:9px;font-weight:700;letter-spacing:0.4px;line-height:1}
+    .timeline-frame .rgutter .z{display:flex;align-items:center;justify-content:flex-end;height:16px}
+    .combo-timeline .xaxis{display:grid;grid-template-columns:50px 1fr 36px;margin-top:6px;
+      font-size:10px;color:var(--mute);letter-spacing:0.4px;font-weight:600}
+    .combo-timeline .xaxis .ticks{display:flex;justify-content:space-between;padding:0 2px}
+    /* Scenario header */
+    .scen-h{font-size:14px;letter-spacing:1.4px;font-weight:700;color:var(--ink);text-transform:uppercase;
+      margin:24px 0 4px}
+    .scen-h em{color:var(--mute);font-style:normal;font-size:11px;letter-spacing:1.2px;margin-left:10px;font-weight:600}
+  </style>
+
+  <!-- Reusable zone gradient: vertical, used by every timeline so the
+       trace color naturally follows the zone the HR is in at each Y
+       position. y=0 (top of chart) = Z5/Z4 red, middle = Z3 gold +
+       Z2 green, bottom = Z1 blue. -->
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="zoneTraceGrad" x1="0" y1="0" x2="0" y2="80" gradientUnits="userSpaceOnUse">
+        <stop offset="0"     stop-color="#FC4D64"/> <!-- Z5 top -->
+        <stop offset="0.16"  stop-color="#FC4D64"/> <!-- Z4 -->
+        <stop offset="0.34"  stop-color="#F3AD38"/> <!-- Z3 -->
+        <stop offset="0.55"  stop-color="#3EBD41"/> <!-- Z2 -->
+        <stop offset="0.85"  stop-color="#008FEC"/> <!-- Z1 -->
+        <stop offset="1"     stop-color="#008FEC"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- ──── Scenario 1: Easy run (David's actual Wednesday) ──── -->
+  <div class="scen-h">Scenario 1 · Easy run<em>100% Z2 · what David actually ran today</em></div>
+  <div class="modal">
+    <div class="combo-grid">
+      <div class="combo-hero" style="background:linear-gradient(135deg, rgba(62,189,65,0.10) 0%, rgba(62,189,65,0.02) 100%);border-color:rgba(62,189,65,0.18)">
+        <div class="combo-hero-text">
+          <div>
+            <div class="combo-hero-eyebrow">
+              <svg width="11" height="10" viewBox="0 0 11 10" fill="currentColor"><path d="M5.5 9.3 1 5C-0.6 3.4 0.6 0.7 2.9 0.7c1 0 1.9.5 2.6 1.4C6.2 1.2 7.1.7 8.1.7c2.3 0 3.5 2.7 1.9 4.3L5.5 9.3z"/></svg>
+              <span>HEART RATE</span>
+            </div>
+            <div class="combo-zone" style="color:var(--green)">Z2</div>
+            <div class="combo-time">49:22</div>
+            <div class="combo-subline" style="color:var(--green)">100% IN ZONE · 138-144 BPM</div>
+          </div>
+          <div class="combo-note">Aerobic the whole way. No Z3+ creep. Avg 140 bpm.</div>
+        </div>
+        <div class="combo-rail">
+          <div class="combo-rail-label">SPECTRUM</div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(252,77,100,0.10)"><div class="z" style="color:rgba(252,77,100,0.45)">Z5</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(252,77,100,0.10)"><div class="z" style="color:rgba(252,77,100,0.45)">Z4</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(243,173,56,0.10)"><div class="z" style="color:rgba(243,173,56,0.45)">Z3</div></div>
+          <div class="combo-rail-cell" style="flex:5;background:linear-gradient(180deg,#3EBD41,#2ea531);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12)">
+            <div class="z" style="color:#fff;font-size:13px">Z2</div><div class="p" style="color:#fff">100%</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(0,143,236,0.10)"><div class="z" style="color:rgba(0,143,236,0.45)">Z1</div></div>
+        </div>
+      </div>
+      <div class="combo-tile combo-peak">
+        <div class="tlabel">PEAK HR</div>
+        <div class="v"><strong>153</strong><span>bpm</span></div>
+        <div class="gauge"><div class="marker" style="left:62%"></div></div>
+        <div class="scale"><span>100</span><span>LTHR 162</span><span>200</span></div>
+      </div>
+      <div class="combo-tile combo-donut">
+        <svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--green)" stroke-width="6"
+                  stroke-dasharray="163" stroke-dashoffset="22" stroke-linecap="round"/></svg>
+        <div><div class="v">86<span style="font-size:10px;color:var(--mute)">%</span></div>
+          <div class="lab">AVG vs LTHR</div><div class="sub" style="color:var(--green)">140 / 162 bpm</div></div>
+      </div>
+      <div class="combo-tile combo-timeline">
+        <div class="hdr"><span>HR TIMELINE · 49 MIN · CRUISED Z2</span><span>line color = zone</span></div>
+        <div class="timeline-frame">
+          <div class="lgutter">
+            <div class="lbl" style="top:8%;color:rgba(255,255,255,0.55)">LTHR</div>
+            <div class="lbl" style="top:41%;color:rgba(62,189,65,0.95)">AVG 140</div>
+          </div>
+          <div class="chartcol">
+            <svg viewBox="0 0 400 80" preserveAspectRatio="none">
+              <!-- LTHR ref -->
+              <line x1="0" x2="400" y1="6" y2="6" stroke="rgba(255,255,255,0.30)" stroke-width="0.7" stroke-dasharray="4,3"/>
+              <!-- Zone boundary dashes -->
+              <line x1="0" x2="400" y1="13" y2="13" stroke="rgba(252,77,100,0.16)" stroke-width="0.5" stroke-dasharray="2,3"/>
+              <line x1="0" x2="400" y1="27" y2="27" stroke="rgba(243,173,56,0.16)" stroke-width="0.5" stroke-dasharray="2,3"/>
+              <line x1="0" x2="400" y1="44" y2="44" stroke="rgba(62,189,65,0.25)"  stroke-width="0.5" stroke-dasharray="2,3"/>
+              <line x1="0" x2="400" y1="62" y2="62" stroke="rgba(0,143,236,0.16)"  stroke-width="0.5" stroke-dasharray="2,3"/>
+              <!-- Avg HR -->
+              <line x1="0" x2="400" y1="33" y2="33" stroke="rgba(62,189,65,0.45)" stroke-width="0.5" stroke-dasharray="3,4"/>
+              <!-- Trace -->
+              <path d="M 0 70 C 20 60, 35 48, 60 40 C 90 36, 120 38, 160 39 C 200 40, 240 38, 280 37 C 320 39, 350 40, 400 42"
+                    fill="none" stroke="url(#zoneTraceGrad)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+              <!-- Peak dot -->
+              <circle cx="118" cy="35" r="3" fill="#FC4D64"/>
+            </svg>
+            <div class="peak-tag" style="left:29.5%;top:35%">153 PEAK</div>
+          </div>
+          <div class="rgutter">
+            <div class="z" style="color:rgba(252,77,100,0.55)">Z5</div>
+            <div class="z" style="color:rgba(252,77,100,0.55)">Z4</div>
+            <div class="z" style="color:rgba(243,173,56,0.55)">Z3</div>
+            <div class="z" style="color:rgba(62,189,65,0.95)">Z2</div>
+            <div class="z" style="color:rgba(0,143,236,0.55)">Z1</div>
+          </div>
+        </div>
+        <div class="xaxis"><div></div><div class="ticks"><span>0</span><span>10m</span><span>20m</span><span>30m</span><span>40m</span><span>49m</span></div><div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──── Scenario 2: Threshold workout — 4x1mi at T pace ──── -->
+  <div class="scen-h">Scenario 2 · Threshold workout<em>4 × 1mi @ T · mixed zones from warmup → reps → cooldown</em></div>
+  <div class="modal">
+    <div class="combo-grid">
+      <div class="combo-hero" style="background:linear-gradient(135deg, rgba(243,173,56,0.10) 0%, rgba(243,173,56,0.02) 100%);border-color:rgba(243,173,56,0.22)">
+        <div class="combo-hero-text">
+          <div>
+            <div class="combo-hero-eyebrow">
+              <svg width="11" height="10" viewBox="0 0 11 10" fill="currentColor"><path d="M5.5 9.3 1 5C-0.6 3.4 0.6 0.7 2.9 0.7c1 0 1.9.5 2.6 1.4C6.2 1.2 7.1.7 8.1.7c2.3 0 3.5 2.7 1.9 4.3L5.5 9.3z"/></svg>
+              <span>HEART RATE</span>
+            </div>
+            <div class="combo-zone" style="color:var(--goal)">Z3-Z4</div>
+            <div class="combo-time">52:18</div>
+            <div class="combo-subline" style="color:var(--goal)">41% Z4 · 18% Z3 · WORK NAILED</div>
+          </div>
+          <div class="combo-note">Reps held T pace. Z4 dominant during work. Avg 152, peak 168.</div>
+        </div>
+        <div class="combo-rail">
+          <div class="combo-rail-label">SPECTRUM</div>
+          <div class="combo-rail-cell" style="flex:0.8;background:rgba(252,77,100,0.18)"><div class="z" style="color:#FC4D64">Z5</div><div class="p" style="color:#FC4D64">8%</div></div>
+          <div class="combo-rail-cell" style="flex:4.1;background:linear-gradient(180deg,#FC4D64,#cc3d52);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12)">
+            <div class="z" style="color:#fff;font-size:13px">Z4</div><div class="p" style="color:#fff">41%</div></div>
+          <div class="combo-rail-cell" style="flex:1.8;background:rgba(243,173,56,0.35);box-shadow:inset 0 0 0 1px rgba(243,173,56,0.4)">
+            <div class="z" style="color:var(--goal)">Z3</div><div class="p" style="color:var(--goal)">18%</div></div>
+          <div class="combo-rail-cell" style="flex:2.8;background:rgba(62,189,65,0.35);box-shadow:inset 0 0 0 1px rgba(62,189,65,0.4)">
+            <div class="z" style="color:var(--green)">Z2</div><div class="p" style="color:var(--green)">28%</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(0,143,236,0.18)"><div class="z" style="color:var(--rest)">Z1</div><div class="p" style="color:var(--rest)">5%</div></div>
+        </div>
+      </div>
+      <div class="combo-tile combo-peak">
+        <div class="tlabel">PEAK HR</div>
+        <div class="v"><strong>168</strong><span>bpm</span></div>
+        <div class="gauge"><div class="marker" style="left:74%"></div></div>
+        <div class="scale"><span>100</span><span>LTHR 162</span><span>200</span></div>
+      </div>
+      <div class="combo-tile combo-donut">
+        <svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--goal)" stroke-width="6"
+                  stroke-dasharray="163" stroke-dashoffset="10" stroke-linecap="round"/></svg>
+        <div><div class="v">94<span style="font-size:10px;color:var(--mute)">%</span></div>
+          <div class="lab">AVG vs LTHR</div><div class="sub" style="color:var(--goal)">152 / 162 bpm</div></div>
+      </div>
+      <div class="combo-tile combo-timeline">
+        <div class="hdr"><span>HR TIMELINE · 52 MIN · 4 × 1mi @ T</span><span>line color = zone</span></div>
+        <div class="timeline-frame">
+          <div class="lgutter">
+            <div class="lbl" style="top:18%;color:rgba(255,255,255,0.55)">LTHR</div>
+            <div class="lbl" style="top:28%;color:rgba(243,173,56,0.95)">AVG 152</div>
+          </div>
+          <div class="chartcol">
+            <svg viewBox="0 0 400 80" preserveAspectRatio="none">
+              <line x1="0" x2="400" y1="14" y2="14" stroke="rgba(255,255,255,0.30)" stroke-width="0.7" stroke-dasharray="4,3"/>
+              <line x1="0" x2="400" y1="22" y2="22" stroke="rgba(243,173,56,0.55)" stroke-width="0.5" stroke-dasharray="3,4"/>
+              <!-- 4 reps trace -->
+              <path d="M 0 68 C 12 54, 22 46, 38 42 C 50 38, 60 36, 64 36
+                       L 84 14 L 102 28 L 110 36 L 120 38
+                       L 138 16 L 158 18 L 176 36 L 184 38
+                       L 212 14 L 232 22 L 250 38 L 258 40
+                       L 286 16 L 304 28 L 324 40 L 332 42
+                       C 350 46, 370 50, 400 52"
+                    fill="none" stroke="url(#zoneTraceGrad)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+              <circle cx="138" cy="16" r="3" fill="#FC4D64"/>
+              <!-- Phase strip along bottom -->
+              <g>
+                <rect x="20"  y="74" width="36" height="3" fill="#3EBD41" opacity="0.6" rx="1"/>
+                <rect x="64"  y="74" width="38" height="3" fill="#FC4D64" rx="1"/>
+                <rect x="110" y="74" width="20" height="3" fill="#008FEC" opacity="0.5" rx="1"/>
+                <rect x="138" y="74" width="38" height="3" fill="#FC4D64" rx="1"/>
+                <rect x="184" y="74" width="20" height="3" fill="#008FEC" opacity="0.5" rx="1"/>
+                <rect x="212" y="74" width="38" height="3" fill="#FC4D64" rx="1"/>
+                <rect x="258" y="74" width="20" height="3" fill="#008FEC" opacity="0.5" rx="1"/>
+                <rect x="286" y="74" width="38" height="3" fill="#FC4D64" rx="1"/>
+                <rect x="332" y="74" width="48" height="3" fill="#3EBD41" opacity="0.6" rx="1"/>
+              </g>
+            </svg>
+            <div class="peak-tag" style="left:34.5%;top:20%">168 PEAK</div>
+            <!-- Phase labels via HTML for crispness -->
+            <div style="position:absolute;left:0;right:0;bottom:0;display:flex;font-size:9px;color:var(--mute);font-weight:700;letter-spacing:0.4px">
+              <div style="position:absolute;left:9.5%">W</div>
+              <div style="position:absolute;left:20.7%;color:#FC4D64">R1</div>
+              <div style="position:absolute;left:30%">r</div>
+              <div style="position:absolute;left:39%;color:#FC4D64">R2</div>
+              <div style="position:absolute;left:48.5%">r</div>
+              <div style="position:absolute;left:57.5%;color:#FC4D64">R3</div>
+              <div style="position:absolute;left:66.5%">r</div>
+              <div style="position:absolute;left:76%;color:#FC4D64">R4</div>
+              <div style="position:absolute;left:88.5%">CD</div>
+            </div>
+          </div>
+          <div class="rgutter">
+            <div class="z" style="color:rgba(252,77,100,0.95)">Z5</div>
+            <div class="z" style="color:rgba(252,77,100,0.95)">Z4</div>
+            <div class="z" style="color:rgba(243,173,56,0.95)">Z3</div>
+            <div class="z" style="color:rgba(62,189,65,0.65)">Z2</div>
+            <div class="z" style="color:rgba(0,143,236,0.55)">Z1</div>
+          </div>
+        </div>
+        <div class="xaxis"><div></div><div class="ticks"><span>0</span><span>10m</span><span>20m</span><span>30m</span><span>40m</span><span>52m</span></div><div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──── Scenario 3: Long run with hills ──── -->
+  <div class="scen-h">Scenario 3 · Long run with hills<em>16 mi · Z2 base + Z3 creep on climbs</em></div>
+  <div class="modal">
+    <div class="combo-grid">
+      <div class="combo-hero" style="background:linear-gradient(135deg, rgba(62,189,65,0.08) 0%, rgba(62,189,65,0.02) 100%);border-color:rgba(62,189,65,0.18)">
+        <div class="combo-hero-text">
+          <div>
+            <div class="combo-hero-eyebrow">
+              <svg width="11" height="10" viewBox="0 0 11 10" fill="currentColor"><path d="M5.5 9.3 1 5C-0.6 3.4 0.6 0.7 2.9 0.7c1 0 1.9.5 2.6 1.4C6.2 1.2 7.1.7 8.1.7c2.3 0 3.5 2.7 1.9 4.3L5.5 9.3z"/></svg>
+              <span>HEART RATE</span>
+            </div>
+            <div class="combo-zone" style="color:var(--green)">Z2</div>
+            <div class="combo-time">1:38:42</div>
+            <div class="combo-subline" style="color:var(--green)">58% Z2 · 32% Z3 ON CLIMBS</div>
+          </div>
+          <div class="combo-note">Aerobic base with climb-driven Z3 creep. Avg 145, peak 162 on the steeper push.</div>
+        </div>
+        <div class="combo-rail">
+          <div class="combo-rail-label">SPECTRUM</div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(252,77,100,0.10)"><div class="z" style="color:rgba(252,77,100,0.45)">Z5</div></div>
+          <div class="combo-rail-cell" style="flex:0.8;background:rgba(252,77,100,0.18)"><div class="z" style="color:#FC4D64">Z4</div><div class="p" style="color:#FC4D64">8%</div></div>
+          <div class="combo-rail-cell" style="flex:3.2;background:rgba(243,173,56,0.35);box-shadow:inset 0 0 0 1px rgba(243,173,56,0.4)">
+            <div class="z" style="color:var(--goal)">Z3</div><div class="p" style="color:var(--goal)">32%</div></div>
+          <div class="combo-rail-cell" style="flex:5.8;background:linear-gradient(180deg,#3EBD41,#2ea531);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12)">
+            <div class="z" style="color:#fff;font-size:13px">Z2</div><div class="p" style="color:#fff">58%</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(0,143,236,0.18)"><div class="z" style="color:var(--rest)">Z1</div><div class="p" style="color:var(--rest)">2%</div></div>
+        </div>
+      </div>
+      <div class="combo-tile combo-peak">
+        <div class="tlabel">PEAK HR</div>
+        <div class="v"><strong>162</strong><span>bpm</span></div>
+        <div class="gauge"><div class="marker" style="left:69%"></div></div>
+        <div class="scale"><span>100</span><span>LTHR 162</span><span>200</span></div>
+      </div>
+      <div class="combo-tile combo-donut">
+        <svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--green)" stroke-width="6"
+                  stroke-dasharray="163" stroke-dashoffset="17" stroke-linecap="round"/></svg>
+        <div><div class="v">90<span style="font-size:10px;color:var(--mute)">%</span></div>
+          <div class="lab">AVG vs LTHR</div><div class="sub" style="color:var(--green)">145 / 162 bpm</div></div>
+      </div>
+      <div class="combo-tile combo-timeline">
+        <div class="hdr"><span>HR TIMELINE · 1h 38m · 2 MAJOR CLIMBS</span><span>line color = zone</span></div>
+        <div class="timeline-frame">
+          <div class="lgutter">
+            <div class="lbl" style="top:18%;color:rgba(255,255,255,0.55)">LTHR</div>
+            <div class="lbl" style="top:35%;color:rgba(62,189,65,0.95)">AVG 145</div>
+          </div>
+          <div class="chartcol">
+            <svg viewBox="0 0 400 80" preserveAspectRatio="none">
+              <line x1="0" x2="400" y1="14" y2="14" stroke="rgba(255,255,255,0.30)" stroke-width="0.7" stroke-dasharray="4,3"/>
+              <line x1="0" x2="400" y1="28" y2="28" stroke="rgba(62,189,65,0.45)" stroke-width="0.5" stroke-dasharray="3,4"/>
+              <!-- Climb verticals -->
+              <line x1="110" x2="110" y1="0" y2="72" stroke="rgba(243,173,56,0.30)" stroke-width="0.5" stroke-dasharray="2,3"/>
+              <line x1="265" x2="265" y1="0" y2="72" stroke="rgba(243,173,56,0.30)" stroke-width="0.5" stroke-dasharray="2,3"/>
+              <path d="M 0 62 C 14 52, 28 48, 50 44 C 70 42, 90 36, 110 26
+                       C 130 24, 150 38, 175 40 C 195 42, 215 40, 235 34
+                       C 250 28, 260 18, 270 20 C 285 28, 300 36, 320 40
+                       C 340 42, 360 44, 400 46"
+                    fill="none" stroke="url(#zoneTraceGrad)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+              <circle cx="265" cy="19" r="3" fill="#FC4D64"/>
+            </svg>
+            <div class="peak-tag" style="left:66.3%;top:24%">162 PEAK</div>
+            <!-- Climb labels overlaid via HTML so they're crisp -->
+            <div style="position:absolute;left:27.5%;top:4px;font-size:9px;font-weight:700;color:rgba(243,173,56,0.95);letter-spacing:0.3px;white-space:nowrap">▲ CLIMB 1</div>
+            <div style="position:absolute;left:66.3%;top:4px;font-size:9px;font-weight:700;color:rgba(243,173,56,0.95);letter-spacing:0.3px;white-space:nowrap;transform:translateX(-100%)">CLIMB 2 ▲</div>
+          </div>
+          <div class="rgutter">
+            <div class="z" style="color:rgba(252,77,100,0.55)">Z5</div>
+            <div class="z" style="color:rgba(252,77,100,0.75)">Z4</div>
+            <div class="z" style="color:rgba(243,173,56,0.95)">Z3</div>
+            <div class="z" style="color:rgba(62,189,65,0.95)">Z2</div>
+            <div class="z" style="color:rgba(0,143,236,0.45)">Z1</div>
+          </div>
+        </div>
+        <div class="xaxis"><div></div><div class="ticks"><span>0</span><span>20m</span><span>40m</span><span>60m</span><span>80m</span><span>98m</span></div><div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──── Scenario 4: Recovery jog ──── -->
+  <div class="scen-h">Scenario 4 · Recovery jog<em>3 mi · purposely easy · Z1-heavy</em></div>
+  <div class="modal">
+    <div class="combo-grid">
+      <div class="combo-hero" style="background:linear-gradient(135deg, rgba(0,143,236,0.10) 0%, rgba(0,143,236,0.02) 100%);border-color:rgba(0,143,236,0.20)">
+        <div class="combo-hero-text">
+          <div>
+            <div class="combo-hero-eyebrow">
+              <svg width="11" height="10" viewBox="0 0 11 10" fill="currentColor"><path d="M5.5 9.3 1 5C-0.6 3.4 0.6 0.7 2.9 0.7c1 0 1.9.5 2.6 1.4C6.2 1.2 7.1.7 8.1.7c2.3 0 3.5 2.7 1.9 4.3L5.5 9.3z"/></svg>
+              <span>HEART RATE</span>
+            </div>
+            <div class="combo-zone" style="color:var(--rest)">Z1</div>
+            <div class="combo-time">35:14</div>
+            <div class="combo-subline" style="color:var(--rest)">68% Z1 · TRUE RECOVERY</div>
+          </div>
+          <div class="combo-note">Stayed easy on purpose. Body's working off yesterday's threshold. Avg 122, peak 135.</div>
+        </div>
+        <div class="combo-rail">
+          <div class="combo-rail-label">SPECTRUM</div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(252,77,100,0.10)"><div class="z" style="color:rgba(252,77,100,0.45)">Z5</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(252,77,100,0.10)"><div class="z" style="color:rgba(252,77,100,0.45)">Z4</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(243,173,56,0.10)"><div class="z" style="color:rgba(243,173,56,0.45)">Z3</div></div>
+          <div class="combo-rail-cell" style="flex:3.2;background:rgba(62,189,65,0.35);box-shadow:inset 0 0 0 1px rgba(62,189,65,0.4)">
+            <div class="z" style="color:var(--green)">Z2</div><div class="p" style="color:var(--green)">32%</div></div>
+          <div class="combo-rail-cell" style="flex:6.8;background:linear-gradient(180deg,#008FEC,#0072c0);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12)">
+            <div class="z" style="color:#fff;font-size:13px">Z1</div><div class="p" style="color:#fff">68%</div></div>
+        </div>
+      </div>
+      <div class="combo-tile combo-peak">
+        <div class="tlabel">PEAK HR</div>
+        <div class="v"><strong>135</strong><span>bpm</span></div>
+        <div class="gauge"><div class="marker" style="left:35%"></div></div>
+        <div class="scale"><span>100</span><span>LTHR 162</span><span>200</span></div>
+      </div>
+      <div class="combo-tile combo-donut">
+        <svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--rest)" stroke-width="6"
+                  stroke-dasharray="163" stroke-dashoffset="40" stroke-linecap="round"/></svg>
+        <div><div class="v">75<span style="font-size:10px;color:var(--mute)">%</span></div>
+          <div class="lab">AVG vs LTHR</div><div class="sub" style="color:var(--rest)">122 / 162 bpm</div></div>
+      </div>
+      <div class="combo-tile combo-timeline">
+        <div class="hdr"><span>HR TIMELINE · 35 MIN · CRUISED EASY</span><span>line color = zone</span></div>
+        <div class="timeline-frame">
+          <div class="lgutter">
+            <div class="lbl" style="top:18%;color:rgba(255,255,255,0.55)">LTHR</div>
+            <div class="lbl" style="top:67%;color:rgba(0,143,236,0.95)">AVG 122</div>
+          </div>
+          <div class="chartcol">
+            <svg viewBox="0 0 400 80" preserveAspectRatio="none">
+              <line x1="0" x2="400" y1="14" y2="14" stroke="rgba(255,255,255,0.30)" stroke-width="0.7" stroke-dasharray="4,3"/>
+              <line x1="0" x2="400" y1="62" y2="62" stroke="rgba(0,143,236,0.25)" stroke-width="0.5" stroke-dasharray="2,3"/>
+              <line x1="0" x2="400" y1="54" y2="54" stroke="rgba(0,143,236,0.55)" stroke-width="0.5" stroke-dasharray="3,4"/>
+              <path d="M 0 72 C 30 66, 60 62, 100 60 C 140 58, 180 60, 220 61 C 260 62, 300 64, 340 66 C 370 69, 380 70, 400 70"
+                    fill="none" stroke="url(#zoneTraceGrad)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+              <circle cx="118" cy="60" r="3" fill="#FC4D64"/>
+            </svg>
+            <div class="peak-tag" style="left:29.5%;top:60%">135 PEAK</div>
+          </div>
+          <div class="rgutter">
+            <div class="z" style="color:rgba(252,77,100,0.35)">Z5</div>
+            <div class="z" style="color:rgba(252,77,100,0.35)">Z4</div>
+            <div class="z" style="color:rgba(243,173,56,0.35)">Z3</div>
+            <div class="z" style="color:rgba(62,189,65,0.65)">Z2</div>
+            <div class="z" style="color:rgba(0,143,236,0.95)">Z1</div>
+          </div>
+        </div>
+        <div class="xaxis"><div></div><div class="ticks"><span>0</span><span>10m</span><span>15m</span><span>20m</span><span>25m</span><span>35m</span></div><div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──── Scenario 5: 5K race ──── -->
+  <div class="scen-h">Scenario 5 · 5K race<em>22:46 finish · Z4-Z5 dominant · maxed it</em></div>
+  <div class="modal">
+    <div class="combo-grid">
+      <div class="combo-hero" style="background:linear-gradient(135deg, rgba(252,77,100,0.12) 0%, rgba(252,77,100,0.03) 100%);border-color:rgba(252,77,100,0.22)">
+        <div class="combo-hero-text">
+          <div>
+            <div class="combo-hero-eyebrow">
+              <svg width="11" height="10" viewBox="0 0 11 10" fill="currentColor"><path d="M5.5 9.3 1 5C-0.6 3.4 0.6 0.7 2.9 0.7c1 0 1.9.5 2.6 1.4C6.2 1.2 7.1.7 8.1.7c2.3 0 3.5 2.7 1.9 4.3L5.5 9.3z"/></svg>
+              <span>HEART RATE</span>
+            </div>
+            <div class="combo-zone" style="color:var(--over)">Z4-Z5</div>
+            <div class="combo-time">22:46</div>
+            <div class="combo-subline" style="color:var(--over)">83% AT THRESHOLD+ · RACE</div>
+          </div>
+          <div class="combo-note">Held threshold, kicked into Z5 for the final mile. Avg 168, peak 184. Don't recover like this.</div>
+        </div>
+        <div class="combo-rail">
+          <div class="combo-rail-label">SPECTRUM</div>
+          <div class="combo-rail-cell" style="flex:3.5;background:linear-gradient(180deg,#FC4D64,#cc3d52);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12)">
+            <div class="z" style="color:#fff;font-size:13px">Z5</div><div class="p" style="color:#fff">35%</div></div>
+          <div class="combo-rail-cell" style="flex:4.8;background:rgba(252,77,100,0.45);box-shadow:inset 0 0 0 1px rgba(252,77,100,0.5)">
+            <div class="z" style="color:#fff">Z4</div><div class="p" style="color:#fff">48%</div></div>
+          <div class="combo-rail-cell" style="flex:1.2;background:rgba(243,173,56,0.30);box-shadow:inset 0 0 0 1px rgba(243,173,56,0.4)">
+            <div class="z" style="color:var(--goal)">Z3</div><div class="p" style="color:var(--goal)">12%</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(62,189,65,0.18)"><div class="z" style="color:var(--green)">Z2</div><div class="p" style="color:var(--green)">5%</div></div>
+          <div class="combo-rail-cell" style="flex:0.5;background:rgba(0,143,236,0.10)"><div class="z" style="color:rgba(0,143,236,0.45)">Z1</div></div>
+        </div>
+      </div>
+      <div class="combo-tile combo-peak">
+        <div class="tlabel">PEAK HR</div>
+        <div class="v"><strong>184</strong><span>bpm</span></div>
+        <div class="gauge"><div class="marker" style="left:88%"></div></div>
+        <div class="scale"><span>100</span><span>LTHR 162</span><span>200</span></div>
+      </div>
+      <div class="combo-tile combo-donut">
+        <svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--over)" stroke-width="6"
+                  stroke-dasharray="163" stroke-dashoffset="-7" stroke-linecap="round"/></svg>
+        <div><div class="v">104<span style="font-size:10px;color:var(--mute)">%</span></div>
+          <div class="lab">AVG vs LTHR</div><div class="sub" style="color:var(--over)">168 / 162 bpm</div></div>
+      </div>
+      <div class="combo-tile combo-timeline">
+        <div class="hdr"><span>HR TIMELINE · 22:46 · FINISH KICK</span><span>line color = zone</span></div>
+        <div class="timeline-frame">
+          <div class="lgutter">
+            <div class="lbl" style="top:18%;color:rgba(255,255,255,0.55)">LTHR</div>
+            <div class="lbl" style="top:14%;color:rgba(252,77,100,0.95)">AVG 168</div>
+          </div>
+          <div class="chartcol">
+            <svg viewBox="0 0 400 80" preserveAspectRatio="none">
+              <line x1="0" x2="400" y1="14" y2="14" stroke="rgba(255,255,255,0.30)" stroke-width="0.7" stroke-dasharray="4,3"/>
+              <line x1="0" x2="400" y1="11" y2="11" stroke="rgba(252,77,100,0.55)" stroke-width="0.5" stroke-dasharray="3,4"/>
+              <!-- Mile + kick verticals -->
+              <line x1="122" x2="122" y1="0" y2="72" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>
+              <line x1="244" x2="244" y1="0" y2="72" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>
+              <line x1="366" x2="366" y1="0" y2="72" stroke="rgba(252,77,100,0.30)" stroke-width="0.5" stroke-dasharray="2,3"/>
+              <!-- Race trace -->
+              <path d="M 0 70 C 8 48, 18 28, 35 18 C 60 14, 90 16, 122 16
+                       C 160 16, 200 14, 244 14
+                       C 280 14, 320 12, 350 8
+                       L 366 6 L 400 2"
+                    fill="none" stroke="url(#zoneTraceGrad)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+              <circle cx="392" cy="3" r="3" fill="#FC4D64"/>
+            </svg>
+            <div class="peak-tag" style="left:97%;top:8%;transform:translate(-100%,-100%)">184 PEAK</div>
+            <!-- Mile + kick labels overlaid as HTML -->
+            <div style="position:absolute;left:30.5%;top:4px;font-size:9px;font-weight:700;color:var(--mute);letter-spacing:0.3px">MI 1</div>
+            <div style="position:absolute;left:61%;top:4px;font-size:9px;font-weight:700;color:var(--mute);letter-spacing:0.3px">MI 2</div>
+            <div style="position:absolute;left:91.5%;top:4px;font-size:9px;font-weight:700;color:rgba(252,77,100,0.95);letter-spacing:0.3px">★ KICK</div>
+          </div>
+          <div class="rgutter">
+            <div class="z" style="color:rgba(252,77,100,0.95)">Z5</div>
+            <div class="z" style="color:rgba(252,77,100,0.95)">Z4</div>
+            <div class="z" style="color:rgba(243,173,56,0.65)">Z3</div>
+            <div class="z" style="color:rgba(62,189,65,0.45)">Z2</div>
+            <div class="z" style="color:rgba(0,143,236,0.35)">Z1</div>
+          </div>
+        </div>
+        <div class="xaxis"><div></div><div class="ticks"><span>0</span><span>5m</span><span>10m</span><span>15m</span><span>20m</span><span>22:46</span></div><div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ann" style="margin-top:30px">
+    <strong style="color:var(--green)">How it scales:</strong>
+    <ul style="margin-top:10px;line-height:1.85;color:rgba(246,247,248,0.78)">
+      <li><strong>Hero zone label</strong> auto-picks the dominant zone (≥40%) or "Z3-Z4" / "Z4-Z5" for split-dominant runs.</li>
+      <li><strong>Hero glow color</strong> matches the dominant zone band (green Z2, gold Z3, red Z4-Z5, blue Z1).</li>
+      <li><strong>Spectrum rail</strong> proportionally sizes every zone — the dominant one gets a gradient + glow, supporting zones get tinted fills, empty zones shrink to a sliver.</li>
+      <li><strong>Peak HR gauge marker</strong> slides along the spectrum (35% recovery → 88% race).</li>
+      <li><strong>LTHR donut</strong> arc fills to the avg/LTHR ratio (75% → 104% across scenarios).</li>
+      <li><strong>HR timeline</strong> background bands shift to highlight the zones the run actually used.</li>
+    </ul>
+  </div>
+
+  <!-- HR · V1 — PULSE TRACE
+       The actual HR curve through the run, drawn over color-banded zone
+       stripes. Tells you not just "100% Z2" but "you ramped in over 6
+       minutes, sat there for 38, dropped at the end." Closest to a Strava
+       moment but cleaner. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--green)">V1 · PULSE TRACE</div>
+    <div class="ann" style="margin-bottom:16px">
+      Your actual HR through the run, drawn over color-banded zone stripes. Tells the story of effort, not just the summary.
+    </div>
+    <div style="position:relative;background:#0d1015;border-radius:14px;padding:22px 24px 18px;border:1px solid var(--line2)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div style="font-size:11px;letter-spacing:1.6px;font-weight:700;color:var(--mute);text-transform:uppercase">HEART RATE · 49:22</div>
+        <div style="font-size:11px;color:var(--mute);letter-spacing:1.2px">AVG <span style="color:var(--green);font-weight:700">140</span> · MAX <span style="color:var(--ink);font-weight:700">153</span> · LTHR <span style="color:var(--ink);font-weight:700">162</span></div>
+      </div>
+      <svg viewBox="0 0 600 220" preserveAspectRatio="none" style="width:100%;height:220px;display:block">
+        <!-- Zone stripes (background bands) -->
+        <rect x="0" y="0"   width="600" height="22" fill="rgba(252,77,100,0.10)" />
+        <rect x="0" y="22"  width="600" height="22" fill="rgba(252,77,100,0.07)" />
+        <rect x="0" y="44"  width="600" height="44" fill="rgba(243,173,56,0.08)" />
+        <rect x="0" y="88"  width="600" height="66" fill="rgba(62,189,65,0.10)" />
+        <rect x="0" y="154" width="600" height="66" fill="rgba(0,143,236,0.06)" />
+        <!-- Zone separator lines -->
+        <line x1="0" x2="600" y1="22"  y2="22"  stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <line x1="0" x2="600" y1="44"  y2="44"  stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <line x1="0" x2="600" y1="88"  y2="88"  stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <line x1="0" x2="600" y1="154" y2="154" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <!-- Zone labels (right side) -->
+        <text x="592" y="14"  text-anchor="end" fill="rgba(252,77,100,0.6)" font-family="HelveticaNeue-Bold" font-size="10" letter-spacing="1.2">Z5</text>
+        <text x="592" y="36"  text-anchor="end" fill="rgba(252,77,100,0.6)" font-family="HelveticaNeue-Bold" font-size="10" letter-spacing="1.2">Z4</text>
+        <text x="592" y="68"  text-anchor="end" fill="rgba(243,173,56,0.6)" font-family="HelveticaNeue-Bold" font-size="10" letter-spacing="1.2">Z3</text>
+        <text x="592" y="122" text-anchor="end" fill="rgba(62,189,65,0.9)"  font-family="HelveticaNeue-Bold" font-size="11" letter-spacing="1.2">Z2</text>
+        <text x="592" y="190" text-anchor="end" fill="rgba(0,143,236,0.5)"  font-family="HelveticaNeue-Bold" font-size="10" letter-spacing="1.2">Z1</text>
+        <!-- HR trace (fake but realistic-looking: warmup → settle Z2 → slight late climb → cool-down) -->
+        <path d="M 0 200 C 30 195, 50 180, 80 150 C 110 130, 130 122, 160 118 C 200 116, 240 115, 280 117 C 320 119, 360 120, 400 116 C 440 113, 480 115, 510 120 C 540 124, 565 135, 600 145"
+              fill="none" stroke="#3EBD41" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+        <!-- Avg HR dashed line at y=120 (140bpm) -->
+        <line x1="0" x2="600" y1="120" y2="120" stroke="rgba(62,189,65,0.5)" stroke-width="1" stroke-dasharray="3,4"/>
+      </svg>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--mute);letter-spacing:1px">
+        <span>START</span><span>10m</span><span>20m</span><span>30m</span><span>40m</span><span>FINISH</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)">
+        <div style="display:flex;gap:14px">
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:var(--green)"></span><span style="font-size:11px;color:var(--ink);font-weight:600">Z2 · 138–144 bpm</span></div>
+          <div style="font-size:11px;color:var(--mute)">100% of run</div>
+        </div>
+        <div style="font-size:12px;color:rgba(246,247,248,0.7);font-style:italic">Aerobic-dominant — exactly where easy days should live.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR · V2 — VERTICAL THERMOMETER
+       Five color-coded zone columns stacked vertically, sized by % of
+       time. The dominant zone is the biggest block. Z5/Z4 at top
+       (high effort) → Z1 at bottom (recovery). Easy day = giant green
+       Z2 block. Threshold day = mixed pile. Reads at a glance from
+       across the room. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--learn)">V2 · ZONE THERMOMETER</div>
+    <div class="ann" style="margin-bottom:16px">
+      Five color-coded zone blocks stacked vertically, sized by % of time spent there. Z5 at top (max effort) → Z1 at bottom. Easy day = one giant Z2 block. Threshold day = a mixed stack. Reads at a glance from across the room.
+    </div>
+    <div style="display:grid;grid-template-columns:280px 1fr;gap:28px;align-items:stretch">
+      <!-- Thermometer column -->
+      <div style="background:#0d1015;border-radius:14px;padding:18px;border:1px solid var(--line2);display:flex;flex-direction:column;gap:3px">
+        <!-- Z5 -->
+        <div style="height:4%;min-height:6px;background:rgba(252,77,100,0.10);border-radius:4px;display:flex;align-items:center;padding:0 12px;justify-content:space-between">
+          <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:rgba(252,77,100,0.4)">Z5 · 162–178</span>
+          <span style="font-size:10px;color:rgba(252,77,100,0.4)">0%</span>
+        </div>
+        <div style="height:4%;min-height:6px;background:rgba(252,77,100,0.10);border-radius:4px;display:flex;align-items:center;padding:0 12px;justify-content:space-between">
+          <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:rgba(252,77,100,0.4)">Z4 · 154–160</span>
+          <span style="font-size:10px;color:rgba(252,77,100,0.4)">0%</span>
+        </div>
+        <div style="height:4%;min-height:6px;background:rgba(243,173,56,0.10);border-radius:4px;display:flex;align-items:center;padding:0 12px;justify-content:space-between">
+          <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:rgba(243,173,56,0.4)">Z3 · 146–152</span>
+          <span style="font-size:10px;color:rgba(243,173,56,0.4)">0%</span>
+        </div>
+        <!-- Z2 — the dominant block -->
+        <div style="flex:1;min-height:240px;background:linear-gradient(180deg, var(--green), #2ea531);border-radius:8px;display:flex;align-items:center;padding:0 18px;justify-content:space-between;box-shadow:0 4px 24px rgba(62,189,65,0.25)">
+          <div>
+            <div style="font-family:'HelveticaNeue-Bold';font-size:32px;color:#fff;letter-spacing:0.3px;line-height:1">Z2</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:6px;letter-spacing:0.8px">138–144 BPM · AEROBIC</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'HelveticaNeue-Bold';font-size:48px;color:#fff;line-height:1">100<span style="font-size:24px;opacity:0.7">%</span></div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:2px;letter-spacing:0.8px">49:22 IN ZONE</div>
+          </div>
+        </div>
+        <div style="height:4%;min-height:6px;background:rgba(0,143,236,0.10);border-radius:4px;display:flex;align-items:center;padding:0 12px;justify-content:space-between">
+          <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:rgba(0,143,236,0.4)">Z1 · 0–138</span>
+          <span style="font-size:10px;color:rgba(0,143,236,0.4)">0%</span>
+        </div>
+      </div>
+      <!-- Right side meta -->
+      <div style="display:flex;flex-direction:column;justify-content:center;gap:18px">
+        <div>
+          <div style="font-size:11px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase;margin-bottom:8px">HEART RATE TODAY</div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:64px;line-height:1;color:var(--green);letter-spacing:0.2px">140<span style="font-size:24px;color:var(--mute);margin-left:8px">avg bpm</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+          <div><div style="font-size:10px;color:var(--mute);letter-spacing:1.2px;font-weight:600;text-transform:uppercase">PEAK</div><div style="font-family:'HelveticaNeue-Bold';font-size:22px;color:var(--ink);margin-top:4px">153 bpm</div></div>
+          <div><div style="font-size:10px;color:var(--mute);letter-spacing:1.2px;font-weight:600;text-transform:uppercase">LTHR</div><div style="font-family:'HelveticaNeue-Bold';font-size:22px;color:var(--ink);margin-top:4px">162 bpm</div></div>
+        </div>
+        <div style="font-size:14px;color:rgba(246,247,248,0.78);line-height:1.55;font-style:italic">Aerobic-dominant — locked in pure Z2 the whole way. No Z3+ creep, no Z1 walking breaks. This is what a textbook easy day looks like.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR · V3 — RADIAL / TARGET
+       Donut chart with zone slices, big avg HR number in the center.
+       Reads as "did the effort match the target zone" — when one zone
+       dominates you get a satisfying near-solid ring. -->
+  <div class="modal" style="margin-bottom:24px">
+    <div class="section-label" style="margin:0 0 14px;padding-top:0;border-top:none;color:var(--race)">V3 · TARGET RING</div>
+    <div class="ann" style="margin-bottom:16px">
+      Zone breakdown as a donut, with avg HR + plan-vs-actual in the center. When one zone dominates (easy day in Z2), the ring is a satisfying solid color. Mixed runs get visible slices.
+    </div>
+    <div style="display:grid;grid-template-columns:280px 1fr;gap:32px;align-items:center;padding:24px 28px;background:#0d1015;border-radius:14px;border:1px solid var(--line2)">
+      <div style="position:relative;width:240px;height:240px">
+        <svg viewBox="0 0 100 100" style="width:100%;height:100%;transform:rotate(-90deg)">
+          <!-- Donut ring -->
+          <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="12" />
+          <!-- Z2 = 100% of arc -->
+          <circle cx="50" cy="50" r="42" fill="none" stroke="var(--green)" stroke-width="12"
+                  stroke-dasharray="263.9" stroke-dashoffset="0" stroke-linecap="round" />
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:10px;color:var(--mute);letter-spacing:1.4px;font-weight:700;text-transform:uppercase">AVG HR</div>
+          <div style="font-family:'HelveticaNeue-Bold';font-size:54px;color:var(--green);line-height:1;letter-spacing:0.2px">140</div>
+          <div style="font-size:11px;color:var(--mute);letter-spacing:1px;margin-top:4px">100% Z2</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--mute);letter-spacing:1.6px;font-weight:700;text-transform:uppercase;margin-bottom:14px">TIME IN ZONE · LTHR 162</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:14px;height:14px;border-radius:4px;background:var(--rest);opacity:0.35"></span><span style="flex:1;font-size:13px;color:var(--mute)">Z1 · 0–138</span><span style="font-size:13px;color:var(--mute);font-weight:600">0%</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:14px;height:14px;border-radius:4px;background:var(--green)"></span><span style="flex:1;font-size:13px;color:var(--ink);font-weight:600">Z2 · 138–144</span><span style="font-size:13px;color:var(--ink);font-weight:700">100%</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:14px;height:14px;border-radius:4px;background:var(--goal);opacity:0.35"></span><span style="flex:1;font-size:13px;color:var(--mute)">Z3 · 146–152</span><span style="font-size:13px;color:var(--mute);font-weight:600">0%</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:14px;height:14px;border-radius:4px;background:var(--over);opacity:0.35"></span><span style="flex:1;font-size:13px;color:var(--mute)">Z4 · 154–160</span><span style="font-size:13px;color:var(--mute);font-weight:600">0%</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:14px;height:14px;border-radius:4px;background:var(--over);opacity:0.35"></span><span style="flex:1;font-size:13px;color:var(--mute)">Z5 · 162–178</span><span style="font-size:13px;color:var(--mute);font-weight:600">0%</span></div>
+        </div>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:rgba(246,247,248,0.78);line-height:1.55;font-style:italic">Aerobic-dominant — exactly where easy days should live.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────────────────────────────────────────────────────────────
        PICKER ROW
        ────────────────────────────────────────────────────────────────── -->
   <div class="section-label" style="border-top:none;margin-top:80px">How to pick</div>
