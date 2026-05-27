@@ -57,6 +57,10 @@ struct LearnModal: View {
             }
         }
         .task { await load() }
+        // Native iOS sheet feel — drag-down to dismiss + medium/large
+        // detents so it stops short of the status bar.
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private func load() async {

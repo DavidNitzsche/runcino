@@ -16,7 +16,6 @@ struct TodayView: View {
     @State private var briefing: Briefing?
     @State private var workout: WatchWorkout?
     @State private var planWeek: PlanWeek?
-    @State private var loading = true
     @State private var error: String?
     /// Observable HK importer — surfaces auth status + last sync result.
     /// Without this, a silent HK failure (no permission, empty result,
@@ -25,71 +24,100 @@ struct TodayView: View {
     @State private var readiness: ReadinessSnapshot?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                appBar
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Date label sits under the iOS large title — drops
+                    // the redundant "faff" wordmark since the tab bar +
+                    // app icon already identify the app.
+                    Text(todayLabel())
+                        .font(.label(11)).tracking(1.2)
+                        .foregroundStyle(Theme.mute)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 0)
 
-                // HK importer status strip — only shows when not idle.
-                // Lets David see auth state + sync results in one glance
-                // instead of having to dig into the Health app or wait
-                // for runs to appear in /log.
-                healthStatusStrip
+                    // HK importer status strip — only shows when not idle.
+                    // Lets David see auth state + sync results in one glance
+                    // instead of having to dig into the Health app or wait
+                    // for runs to appear in /log.
+                    healthStatusStrip
 
-                if loading {
-                    HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }
-                        .padding(40)
-                } else if let error {
+                    // No page-blocking spinner. Each section renders the
+                // instant its data lands; until then it shows nothing
+                // (or a matched-shape skeleton for the coach slot).
+                // Inspired by web /today's BriefingLoader pattern.
+
+                if let error {
                     errorBlock(error)
-                } else {
-                    // 1) Today's structured workout — the thing you're about
-                    //    to do. Leads the scroll so it's not buried in prose.
-                    if let workout {
-                        WorkoutTodayCard(workout: workout)
-                    } else if let restMessage = restDayMessage {
-                        restBlock(restMessage)
+                }
+
+                // 1) Today's structured workout — leads the scroll.
+                if let workout {
+                    WorkoutTodayCard(workout: workout)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                } else if let restMessage = restDayMessage {
+                    restBlock(restMessage)
+                        .transition(.opacity)
+                }
+
+                // 2) Week strip — tap any tile to preview that day.
+                if let week = planWeek, !week.days.isEmpty {
+                    WeekStripView(week: week)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                // 3) Coach prose slot — skeleton while loading, snaps in
+                //    when the brief arrives. Never blocks the screen.
+                CoachSlot(
+                    briefing: briefing,
+                    surface: "today",
+                    askPrompt: briefing.map { askPrompt(for: $0.mode) },
+                    onCheckIn: { rating in
+                        guard let b = briefing else { return false }
+                        do {
+                            try await API.checkin(rating: rating.rawValue,
+                                                   briefingId: "\(b.surface)|\(b.mode)")
+                            Task { await loadAll() }
+                            return true
+                        } catch {
+                            return false
+                        }
                     }
+                )
 
-                    // 2) Week strip — tap any tile to preview that day.
-                    if let week = planWeek, !week.days.isEmpty {
-                        WeekStripView(week: week)
-                    }
-
-                    // 3) Coach prose — shorter on iOS via surface=today_ios,
-                    //    drops to second slot now.
-                    if let briefing {
-                        CoachBlock(
-                            lead: briefing.lead,
-                            voice: briefing.voice,
-                            briefingId: "\(briefing.surface)|\(briefing.mode)",
-                            askPrompt: askPrompt(for: briefing.mode),
-                            onCheckIn: { rating in
-                                do {
-                                    try await API.checkin(rating: rating.rawValue,
-                                                           briefingId: "\(briefing.surface)|\(briefing.mode)")
-                                    Task { await loadAll() }
-                                    return true
-                                } catch {
-                                    return false
-                                }
-                            }
-                        )
-
-                        // 4) Topic cards — fueling / race horizon / readiness
-                        //    detail / gap-fill prompts.
+                // 4) Topic cards — fueling / race horizon / readiness
+                //    detail / gap-fill prompts.
+                    if let briefing, !briefing.topics.isEmpty {
                         VStack(spacing: 10) {
                             ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
                                 TopicRenderer(topic: topic)
                             }
                         }
                         .padding(.horizontal, 24)
+                        .transition(.opacity)
                     }
                 }
+                .padding(.bottom, 40)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: workout?.workoutId)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: planWeek?.days.count)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: briefing?.lead)
             }
-            .padding(.bottom, 40)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Today")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                // Readiness ring lives in the toolbar — native iOS pattern
+                // for "always visible status" + frees up vertical space
+                // for the actual run content.
+                ToolbarItem(placement: .topBarTrailing) {
+                    ReadinessRing(score: readiness?.score)
+                }
+            }
+            .task { await loadAll() }
+            .refreshable { await loadAll() }
+            // Haptic ping when the run-card lands so the refresh feels alive.
+            .sensoryFeedback(.success, trigger: workout?.workoutId)
         }
-        .background(Theme.bg.ignoresSafeArea())
-        .task { await loadAll() }
-        .refreshable { await loadAll() }
     }
 
     // MARK: - Health status strip
@@ -134,21 +162,8 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - App bar
-
-    private var appBar: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("faff").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
-            Text(todayLabel()).font(.label(11)).tracking(1.2)
-                .foregroundStyle(Theme.mute)
-            Spacer()
-            // Readiness ring — pulls real score from /api/readiness (P27.2).
-            // Falls through to "?" if the server can't compute one (no HK
-            // data yet). No more hardcoded 88.
-            ReadinessChip(score: readiness?.score)
-        }
-        .padding(.horizontal, 24).padding(.top, 8)
-    }
+    // App bar removed in iPhone-rebuild — replaced by NavigationStack
+    // large title + ReadinessRing in the toolbar's topBarTrailing slot.
 
     // MARK: - Load
 
@@ -156,8 +171,8 @@ struct TodayView: View {
     /// Once the workout JSON is in hand, immediately push it to the watch
     /// so the watch reflects any plan edit without a phone relaunch.
     private func loadAll() async {
-        loading = true
-        defer { loading = false }
+        // No global loading flag — each piece renders the instant it
+        // lands. CoachSlot shows a skeleton while `briefing` is nil.
         async let bRes = (try? await API.briefing(surface: "today"))
         async let wRes = (try? await API.fetchWatchWorkout())
         async let pRes = (try? await API.fetchPlanWeek())

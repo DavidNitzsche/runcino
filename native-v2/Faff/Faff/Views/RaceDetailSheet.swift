@@ -34,26 +34,26 @@ struct RaceDetailSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if loading {
-                        HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }.padding(40)
-                    } else if let d = data {
+                    if let d = data {
                         hero(d.race, proximity: d.proximity)
+                            .transition(.opacity)
                         stats(d.race)
-                        // Coach voice slots in between stats and the
-                        // proximity-keyed structural block. Hidden if the
-                        // brief hasn't loaded yet so the page paints fast.
-                        if let briefing {
-                            CoachBlock(
-                                lead: briefing.lead,
-                                voice: briefing.voice,
-                                briefingId: "race-detail|\(briefing.mode)|\(slug)",
-                                askPrompt: nil
-                            )
-                        }
+                            .transition(.opacity)
+                        // Coach slot — background loads, skeleton while
+                        // pending so the page paints fast.
+                        CoachSlot(
+                            briefing: briefing,
+                            surface: "race-detail",
+                            askPrompt: nil
+                        )
                         proximityBlock(d.proximity, race: d.race)
+                            .transition(.opacity)
                         if d.race.priority == "A" {
                             packingNote()
                         }
+                    } else if loading {
+                        raceDetailSkeleton
+                            .transition(.opacity)
                     } else {
                         Text("Couldn't load this race.")
                             .font(.body(13)).foregroundStyle(Theme.mute)
@@ -76,10 +76,49 @@ struct RaceDetailSheet: View {
             if prefetched == nil { await load() }
             await loadBrief()
         }
+        // Native iOS sheet feel — drag-down to dismiss + medium/large
+        // detents. Set here on the sheet body so callers automatically
+        // get the right behavior.
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
 
     /// Compute the surface mode from days_to_race, matching web's
     /// resolveRaceDetail() in lib/coach/router.ts.
+    /// Matched-shape skeleton while race detail is in flight.
+    private var raceDetailSkeleton: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Capsule().fill(Theme.ink.opacity(0.05)).frame(width: 24, height: 14)
+                    Capsule().fill(Theme.ink.opacity(0.05)).frame(width: 100, height: 12)
+                }
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Theme.ink.opacity(0.06))
+                    .frame(width: 240, height: 32)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Theme.ink.opacity(0.05))
+                    .frame(width: 180, height: 12)
+            }
+            .padding(.horizontal, 24)
+
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 4) {
+                        RoundedRectangle(cornerRadius: 3).fill(Theme.ink.opacity(0.05)).frame(width: 50, height: 10)
+                        RoundedRectangle(cornerRadius: 3).fill(Theme.ink.opacity(0.06)).frame(width: 60, height: 18)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Theme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
     private func raceDetailMode(daysToRace: Int?) -> String {
         guard let d = daysToRace else { return "building" }
         if d < 0 { return "post-race" }

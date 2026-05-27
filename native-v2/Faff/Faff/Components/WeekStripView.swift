@@ -56,6 +56,8 @@ struct WeekStripView: View {
             WorkoutDetailModal(date: box.date, prefetched: workoutsByDate[box.date])
         }
         .task(id: weekFingerprint) { await prefetchWeek() }
+        // Soft tick when a day tile pops the workout modal.
+        .sensoryFeedback(.selection, trigger: selectedDate)
     }
 
     /// Stable id for the .task so we re-prefetch only when the week changes

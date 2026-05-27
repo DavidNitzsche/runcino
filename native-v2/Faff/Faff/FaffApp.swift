@@ -72,7 +72,10 @@ struct RootTabView: View {
     enum Tab: String, CaseIterable, Identifiable {
         case today, training, log, races, health, tips, profile
         var id: String { rawValue }
-        var label: String { rawValue.uppercased() }
+        // Title Case for tab labels matches iOS convention (Apple's
+        // own apps: Today, Library, Search). The uppercase "TODAY"
+        // labels read web-y, not native.
+        var label: String { rawValue.capitalized }
         var systemImage: String {
             switch self {
             case .today:    return "house.fill"
@@ -88,13 +91,13 @@ struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            TodayView()    .tabItem { Label("TODAY",    systemImage: Tab.today.systemImage) }    .tag(Tab.today)
-            TrainingView() .tabItem { Label("TRAINING", systemImage: Tab.training.systemImage) } .tag(Tab.training)
-            LogView()      .tabItem { Label("LOG",      systemImage: Tab.log.systemImage) }      .tag(Tab.log)
-            RacesView()    .tabItem { Label("RACES",    systemImage: Tab.races.systemImage) }    .tag(Tab.races)
-            HealthView()   .tabItem { Label("HEALTH",   systemImage: Tab.health.systemImage) }   .tag(Tab.health)
-            TipsView()     .tabItem { Label("TIPS",     systemImage: Tab.tips.systemImage) }     .tag(Tab.tips)
-            ProfileView()  .tabItem { Label("PROFILE",  systemImage: Tab.profile.systemImage) }  .tag(Tab.profile)
+            TodayView()    .tabItem { Label("Today",    systemImage: Tab.today.systemImage) }    .tag(Tab.today)
+            TrainingView() .tabItem { Label("Training", systemImage: Tab.training.systemImage) } .tag(Tab.training)
+            LogView()      .tabItem { Label("Log",      systemImage: Tab.log.systemImage) }      .tag(Tab.log)
+            RacesView()    .tabItem { Label("Races",    systemImage: Tab.races.systemImage) }    .tag(Tab.races)
+            HealthView()   .tabItem { Label("Health",   systemImage: Tab.health.systemImage) }   .tag(Tab.health)
+            TipsView()     .tabItem { Label("Tips",     systemImage: Tab.tips.systemImage) }     .tag(Tab.tips)
+            ProfileView()  .tabItem { Label("Profile",  systemImage: Tab.profile.systemImage) }  .tag(Tab.profile)
         }
         .tint(Theme.green)
     }

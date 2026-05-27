@@ -7,42 +7,40 @@ import SwiftUI
 
 struct RacesView: View {
     @State private var briefing: Briefing?
-    @State private var loading = true
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("faff").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
-                    Spacer()
-                }
-                .padding(.horizontal, 24).padding(.top, 8)
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                // Background-load coach — page chrome paints immediately.
+                CoachSlot(
+                    briefing: briefing,
+                    surface: "races",
+                    askPrompt: nil
+                )
 
-                Text("RACES").font(.display(48)).tracking(0.5).foregroundStyle(Theme.ink)
-                    .padding(.horizontal, 24)
-
-                if loading {
-                    HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }.padding(40)
-                } else if let briefing {
-                    CoachBlock(
-                        lead: briefing.lead, voice: briefing.voice,
-                        briefingId: "races|\(briefing.mode)",
-                        askPrompt: "Pick a race when ready."
-                    )
+                if let briefing, !briefing.topics.isEmpty {
                     VStack(spacing: 10) {
                         ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
                             TopicRenderer(topic: topic)
                         }
                     }
                     .padding(.horizontal, 24)
+                    .transition(.opacity)
                 }
+                }
+                .padding(.bottom, 40)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: briefing?.lead)
             }
-            .padding(.bottom, 40)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Races")
+            .navigationBarTitleDisplayMode(.large)
+            .task { await load() }
+            .refreshable { await load() }
         }
-        .background(Theme.bg.ignoresSafeArea())
-        .task {
-            loading = true; defer { loading = false }
-            briefing = try? await API.briefing(surface: "races")
-        }
+    }
+
+    private func load() async {
+        briefing = try? await API.briefing(surface: "races")
     }
 }

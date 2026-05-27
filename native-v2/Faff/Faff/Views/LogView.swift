@@ -19,19 +19,21 @@ struct LogView: View {
     @State private var shoes: [Shoe] = []
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                appBar
-
-                if loading {
-                    HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }
-                        .padding(40)
-                } else if let error {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                // Background-load: header stats render the moment data
+                // lands, weeks fill in below. No page-blocking spinner —
+                // skeleton placeholders for the first few rows while we
+                // wait. Same pattern as TodayView/CoachSlot.
+                if let error {
                     errorBlock(error)
                 } else if let log {
                     headerStats(log)
+                        .transition(.opacity)
                     ForEach(log.weeks) { week in
                         weekBlock(week)
+                            .transition(.opacity)
                     }
                     if log.weeks.isEmpty {
                         Text("No runs logged yet.")
@@ -39,30 +41,92 @@ struct LogView: View {
                             .foregroundStyle(Theme.mute)
                             .padding(.horizontal, 24).padding(.top, 8)
                     }
+                } else if loading {
+                    logSkeleton
+                        .transition(.opacity)
                 }
+                }
+                .padding(.bottom, 40)
             }
-            .padding(.bottom, 40)
-        }
-        .background(Theme.bg.ignoresSafeArea())
-        .task { await load() }
-        .refreshable { await load() }
-        .sheet(item: $selected) { run in
-            RunDetailSheet(
-                runId: run.id,
-                fallback: run,
-                prefetchedDetail: detailById[run.id],
-                prefetchedShoes: shoes.isEmpty ? nil : shoes
-            )
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Log")
+            .navigationBarTitleDisplayMode(.large)
+            .task { await load() }
+            .refreshable { await load() }
+            .sensoryFeedback(.selection, trigger: selected?.id)
+            .sheet(item: $selected) { run in
+                RunDetailSheet(
+                    runId: run.id,
+                    fallback: run,
+                    prefetchedDetail: detailById[run.id],
+                    prefetchedShoes: shoes.isEmpty ? nil : shoes
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 
-    private var appBar: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("LOG").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
-            Spacer()
+    /// Matched-shape skeleton rows so the screen doesn't go white while
+    /// the log is in flight. Three placeholder weeks of three rows each.
+    private var logSkeleton: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header stats placeholder
+            HStack(spacing: 24) {
+                ForEach(0..<2, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 4) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Theme.ink.opacity(0.06))
+                            .frame(width: 50, height: 10)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Theme.ink.opacity(0.08))
+                            .frame(width: 60, height: 22)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+
+            ForEach(0..<3, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 8) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Theme.ink.opacity(0.05))
+                        .frame(width: 110, height: 10)
+                        .padding(.horizontal, 24)
+                    VStack(spacing: 0) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Theme.ink.opacity(0.06))
+                                        .frame(width: 140, height: 13)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Theme.ink.opacity(0.04))
+                                        .frame(width: 80, height: 10)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Theme.ink.opacity(0.06))
+                                        .frame(width: 50, height: 13)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Theme.ink.opacity(0.04))
+                                        .frame(width: 70, height: 10)
+                                }
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 12)
+                        }
+                    }
+                    .background(Theme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+                    .padding(.horizontal, 24)
+                }
+            }
         }
-        .padding(.horizontal, 24).padding(.top, 8)
     }
+
+    // appBar removed: NavigationStack + .navigationTitle("Log") at the
+    // top of this view now provides the native iOS large title.
 
     private func headerStats(_ s: LogState) -> some View {
         HStack(spacing: 24) {

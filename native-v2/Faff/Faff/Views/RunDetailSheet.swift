@@ -39,12 +39,9 @@ struct RunDetailSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if loading {
-                        HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }
-                            .padding(40)
-                    } else if let d = detail {
-                        hero(d)
-                        statRow(d)
+                    if let d = detail {
+                        hero(d).transition(.opacity)
+                        statRow(d).transition(.opacity)
                         if hasWorkAverages(d) {
                             workAveragesBlock(d)
                         }
@@ -58,6 +55,9 @@ struct RunDetailSheet: View {
                         if d.has_route, let poly = d.route_polyline, !poly.isEmpty {
                             routeBlock(poly)
                         }
+                    } else if loading {
+                        runDetailSkeleton(fallback: fallback)
+                            .transition(.opacity)
                     } else {
                         Text("Couldn't load this run's details.")
                             .font(.body(13))
@@ -65,6 +65,7 @@ struct RunDetailSheet: View {
                             .padding(.horizontal, 24)
                     }
                 }
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: detail?.id)
                 .padding(.vertical, 18)
             }
             .background(Theme.bg.ignoresSafeArea())
@@ -468,6 +469,8 @@ struct RunDetailSheet: View {
                 Task { await assignShoe(id) }
                 showShoePicker = false
             }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -496,6 +499,65 @@ struct RunDetailSheet: View {
         // TODO: server doesn't yet return assigned shoe_id on RunDetail.
         // Coach + log views will pick it up via the recomputed mileage.
         // Future patch: extend RunDetail with shoe_id.
+    }
+
+    /// Matched-shape skeleton — shows the fallback's basic stats while
+    /// the full detail (splits/zones/route) loads. Keeps the sheet from
+    /// going white on tap when the prefetch hasn't landed.
+    private func runDetailSkeleton(fallback: LogRun) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            // Hero: type + name from fallback so the sheet doesn't look empty
+            VStack(alignment: .leading, spacing: 6) {
+                if let t = fallback.type {
+                    Text(t.uppercased())
+                        .font(.label(10)).tracking(1.4)
+                        .foregroundStyle(Theme.green)
+                }
+                Text(fallback.name).font(.display(28)).foregroundStyle(Theme.ink)
+                Text(fallback.date).font(.body(12)).foregroundStyle(Theme.mute)
+            }
+            .padding(.horizontal, 24)
+
+            // Stat row placeholder
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 4) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Theme.ink.opacity(0.05))
+                            .frame(width: 40, height: 9)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Theme.ink.opacity(0.07))
+                            .frame(width: 60, height: 20)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Theme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+                }
+            }
+            .padding(.horizontal, 24)
+
+            // Splits placeholder
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Theme.ink.opacity(0.05))
+                    .frame(width: 80, height: 10)
+                ForEach(0..<4, id: \.self) { _ in
+                    HStack {
+                        RoundedRectangle(cornerRadius: 3).fill(Theme.ink.opacity(0.05)).frame(width: 30, height: 12)
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 3).fill(Theme.ink.opacity(0.05)).frame(width: 60, height: 12)
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .padding(16)
+            .background(Theme.card)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+            .padding(.horizontal, 24)
+        }
     }
 }
 

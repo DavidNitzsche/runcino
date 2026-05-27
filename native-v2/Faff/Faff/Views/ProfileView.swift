@@ -16,8 +16,9 @@ struct ProfileView: View {
     @State private var briefing: Briefing?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
                 // Identity
                 HStack(alignment: .center, spacing: 18) {
                     ZStack {
@@ -36,16 +37,14 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, 24).padding(.top, 24)
 
-                // Coach identity-mode voice. Renders when ready, hidden
-                // when nil so /profile loads without waiting on it.
-                if let briefing {
-                    CoachBlock(
-                        lead: briefing.lead,
-                        voice: briefing.voice,
-                        briefingId: "profile|\(briefing.mode)",
-                        askPrompt: nil
-                    )
-                }
+                // Coach identity-mode voice. Background-loads via
+                // CoachSlot — skeleton while pending, snaps in when
+                // ready. Never blocks the page.
+                CoachSlot(
+                    briefing: briefing,
+                    surface: "profile",
+                    askPrompt: nil
+                )
 
                 // PERSONAL — including gap input
                 SectionLabel("PERSONAL")
@@ -101,34 +100,47 @@ struct ProfileView: View {
                 }
                 .padding(.horizontal, 24)
 
-                Spacer().frame(height: 40)
+                    Spacer().frame(height: 40)
+                }
+            }
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.large)
+            // Warm settings + profile in the background as soon as /profile
+            // mounts. SettingsSheet seeds its @State synchronously from the
+            // cache when opened — kills the visible "Loading…" flash.
+            .task { await load() }
+            .refreshable { await load() }
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: briefing?.lead)
+            .sheet(isPresented: $showHeightSheet) {
+                HeightInputSheet(onSave: { showHeightSheet = false })
+                    .presentationDetents([.height(260)])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(Theme.card)
+            }
+            .sheet(isPresented: $showSettingsSheet) {
+                SettingsSheet()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showManualRunSheet) {
+                ManualRunSheet()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showOnboardingSheet) {
+                OnboardingSheet()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
         }
-        .background(Theme.bg.ignoresSafeArea())
-        // Warm settings + profile in the background as soon as /profile
-        // mounts. SettingsSheet seeds its @State synchronously from the
-        // cache when opened — kills the visible "Loading…" flash.
-        .task {
-            await SettingsCache.shared.warm()
-            // Coach brief loads in parallel; UI shows the page immediately
-            // and the brief snaps in when ready (existing pattern from
-            // TodayView/TrainingView).
-            briefing = try? await API.briefing(surface: "profile")
-        }
-        .sheet(isPresented: $showHeightSheet) {
-            HeightInputSheet(onSave: { showHeightSheet = false })
-                .presentationDetents([.height(220)])
-                .presentationBackground(Theme.card)
-        }
-        .sheet(isPresented: $showSettingsSheet) {
-            SettingsSheet()
-        }
-        .sheet(isPresented: $showManualRunSheet) {
-            ManualRunSheet()
-        }
-        .sheet(isPresented: $showOnboardingSheet) {
-            OnboardingSheet()
-        }
+    }
+
+    private func load() async {
+        await SettingsCache.shared.warm()
+        // Coach brief loads in parallel; UI shows the page immediately
+        // and the brief snaps in when ready.
+        briefing = try? await API.briefing(surface: "profile")
     }
 
     private func actionRow(icon: String, label: String, sub: String) -> some View {

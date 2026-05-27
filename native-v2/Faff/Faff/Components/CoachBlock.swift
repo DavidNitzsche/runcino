@@ -60,6 +60,10 @@ struct CoachBlock: View {
         .padding(.horizontal, 24)
         .padding(.top, 22)
         .padding(.bottom, 22)
+        // Subtle haptic on chip-select + a heavier "success" thump when
+        // the ack lands so check-ins feel like a real interaction.
+        .sensoryFeedback(.selection, trigger: selected)
+        .sensoryFeedback(.success, trigger: ack)
     }
 
     /// Render **bold** spans inline (LLM emits markdown-ish emphasis).

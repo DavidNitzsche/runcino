@@ -11,27 +11,15 @@ struct TipsView: View {
     @State private var selected: FormTip?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("TIPS").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
-                    Spacer()
-                }
-                .padding(.horizontal, 24).padding(.top, 8)
-
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
                 Text("FORM · WHAT IT MEANS · WHAT TO DO")
                     .font(.label(10)).tracking(1.4)
                     .foregroundStyle(Theme.mute)
                     .padding(.horizontal, 24)
 
-                if loading {
-                    HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }
-                        .padding(40)
-                } else if tips.isEmpty {
-                    Text("Couldn't load tips.")
-                        .font(.body(13)).foregroundStyle(Theme.mute)
-                        .padding(.horizontal, 24)
-                } else {
+                if !tips.isEmpty {
                     VStack(spacing: 10) {
                         ForEach(tips) { tip in
                             Button { selected = tip } label: { tipCard(tip) }
@@ -39,16 +27,71 @@ struct TipsView: View {
                         }
                     }
                     .padding(.horizontal, 24)
+                    .transition(.opacity)
+                } else if loading {
+                    tipsSkeleton
+                        .transition(.opacity)
+                } else {
+                    Text("Couldn't load tips.")
+                        .font(.body(13)).foregroundStyle(Theme.mute)
+                        .padding(.horizontal, 24)
                 }
+                }
+                .padding(.bottom, 40)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: tips.count)
             }
-            .padding(.bottom, 40)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Tips")
+            .navigationBarTitleDisplayMode(.large)
+            .task { await load() }
+            .refreshable { await load() }
+            .sensoryFeedback(.selection, trigger: selected?.id)
+            .sheet(item: $selected) { tip in
+                FormTipDetailSheet(tip: tip)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
         }
-        .background(Theme.bg.ignoresSafeArea())
-        .task { await load() }
-        .refreshable { await load() }
-        .sheet(item: $selected) { tip in
-            FormTipDetailSheet(tip: tip)
+    }
+
+    /// Skeleton tip cards — same shape as the real ones — so the screen
+    /// doesn't go blank while /api/tips is in flight.
+    private var tipsSkeleton: some View {
+        VStack(spacing: 10) {
+            ForEach(0..<5, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Theme.ink.opacity(0.06))
+                            .frame(width: 140, height: 22)
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Theme.ink.opacity(0.05))
+                            .frame(width: 50, height: 10)
+                    }
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Theme.ink.opacity(0.05))
+                        .frame(height: 13)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Theme.ink.opacity(0.05))
+                        .frame(maxWidth: 200, alignment: .leading)
+                        .frame(height: 13)
+                    HStack(spacing: 8) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            Capsule()
+                                .fill(Theme.ink.opacity(0.04))
+                                .frame(width: 50, height: 16)
+                        }
+                    }
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.025))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line, lineWidth: 1))
+            }
         }
+        .padding(.horizontal, 24)
     }
 
     private func tipCard(_ tip: FormTip) -> some View {

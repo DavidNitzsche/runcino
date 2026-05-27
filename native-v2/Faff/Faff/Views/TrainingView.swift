@@ -12,15 +12,47 @@ import SwiftUI
 struct TrainingView: View {
     @State private var briefing: Briefing?
     @State private var planWeek: PlanWeek?
-    @State private var loading = true
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("faff").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
-                    Spacer()
-                    if let mode = briefing?.mode {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                // Background-load pattern: page chrome paints immediately,
+                // each section snaps in as data lands.
+
+                // 1) Week strip — the schedule itself, clickable per day.
+                if let week = planWeek, !week.days.isEmpty {
+                    WeekStripView(week: week)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                // 2) Coach voice on the phase / training arc.
+                CoachSlot(
+                    briefing: briefing,
+                    surface: "training",
+                    askPrompt: nil   // no chips on /training
+                )
+
+                if let briefing, !briefing.topics.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
+                            TopicRenderer(topic: topic)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .transition(.opacity)
+                }
+                }
+                .padding(.bottom, 40)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: planWeek?.days.count)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: briefing?.lead)
+            }
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Training")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                if let mode = briefing?.mode {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Text(mode.uppercased())
                             .font(.label(10)).tracking(1.4)
                             .foregroundStyle(phaseColor(mode))
@@ -30,49 +62,13 @@ struct TrainingView: View {
                             .clipShape(Capsule())
                     }
                 }
-                .padding(.horizontal, 24).padding(.top, 8)
-
-                Text("TRAINING").font(.display(48)).tracking(0.5).foregroundStyle(Theme.ink)
-                    .padding(.horizontal, 24)
-
-                if loading {
-                    HStack { Spacer(); ProgressView().tint(Theme.green); Spacer() }.padding(40)
-                } else {
-                    // 1) Week strip — the schedule itself, clickable per day.
-                    if let week = planWeek, !week.days.isEmpty {
-                        WeekStripView(week: week)
-                    }
-
-                    // 2) Coach voice on the phase / training arc.
-                    if let briefing {
-                        CoachBlock(
-                            lead: briefing.lead, voice: briefing.voice,
-                            briefingId: "training|\(briefing.mode)",
-                            askPrompt: "Tracking the plan."
-                        )
-                        VStack(spacing: 10) {
-                            ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
-                                TopicRenderer(topic: topic)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                    } else {
-                        Text("Coach voice pending sync. Pull to refresh.")
-                            .font(.body(13)).foregroundStyle(Theme.mute)
-                            .padding(.horizontal, 24)
-                    }
-                }
             }
-            .padding(.bottom, 40)
+            .task { await loadAll() }
+            .refreshable { await loadAll() }
         }
-        .background(Theme.bg.ignoresSafeArea())
-        .task { await loadAll() }
-        .refreshable { await loadAll() }
     }
 
     private func loadAll() async {
-        loading = true
-        defer { loading = false }
         async let bRes = (try? await API.briefing(surface: "training"))
         async let pRes = (try? await API.fetchPlanWeek())
         briefing = await bRes
