@@ -163,6 +163,7 @@ export async function generateBriefing(
     weekTotalPlanned: weekTotalPlannedMi(state),
     loadAcwr: state.loadAcwr ?? null,
     swapDeclinedToday: swapDeclinedToday(state),
+    weekProjectedTotal: weekProjectedTotalMi(state),
   });
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -408,6 +409,12 @@ interface OrientationInput {
   // P-COACH-PROPOSAL-1 — if the runner already declined a swap for
   // today, the coach must NOT re-propose. Cleared on day rollover.
   swapDeclinedToday?: boolean;
+  // P-DOCTRINE-WEEK-OVER 2026-05-27 — projected total = weekDone +
+  // weekPlannedRemaining. When that exceeds weekTotalPlanned by more
+  // than a couple miles, the runner is over-delivering vs the plan
+  // (running longer than the day called for). Coach should frame that
+  // as ambition, not just report "X of Y planned" flatly.
+  weekProjectedTotal?: number | null;
 }
 
 /** Pick yesterday's planned workout type from currentWeekDays so the coach
@@ -442,6 +449,16 @@ function swapDeclinedToday(state: any): boolean {
   return intents.some((i: any) =>
     i?.reason === 'swap_declined' && i?.field === state.today
   );
+}
+
+/** Projected week total = miles already done (weekDone) + miles still
+ *  planned today→Sunday. Compared against weekTotalPlanned to detect
+ *  over- or under-delivery vs the original plan. */
+function weekProjectedTotalMi(state: any): number | null {
+  const done = typeof state.weekDone === 'number' ? state.weekDone : null;
+  const remaining = weekPlannedRemainingMi(state);
+  if (done == null || remaining == null) return null;
+  return Math.round((done + remaining) * 10) / 10;
 }
 
 /** Sum planned miles for the entire Mon→Sun week. */
@@ -502,15 +519,40 @@ function buildOrientationMessage(o: OrientationInput): string {
     const done = typeof o.weekDone === 'number' ? `${o.weekDone}` : '?';
     const remain = typeof o.weekPlannedRemaining === 'number' ? `${o.weekPlannedRemaining}` : '?';
     const total = typeof o.weekTotalPlanned === 'number' ? `${o.weekTotalPlanned}` : '?';
+    const projected = typeof o.weekProjectedTotal === 'number' ? `${o.weekProjectedTotal}` : '?';
     lines.push(
       `- THIS WEEK mileage (from plan_workouts, Mon→Sun): ` +
-      `${done} mi DONE so far · ${remain} mi REMAINING planned · ${total} mi TOTAL planned. ` +
+      `${done} mi DONE so far · ${remain} mi REMAINING planned · ${total} mi TOTAL planned · ` +
+      `${projected} mi PROJECTED (done + remaining). ` +
       `These are the ONLY week-mileage numbers you may state. Do NOT sum runs from getRuns ` +
-      `yourself — you've miscounted before. If you write a week-mileage figure, it must equal ` +
-      `one of these three numbers (or "${done} of ${total}" framing). The week strip the user ` +
-      `is looking at shows the same ${done} / ${total} — drift here means the runner sees the ` +
-      `coach contradicting the UI.`
+      `yourself — you've miscounted before. The week strip the user is looking at shows the ` +
+      `same ${done} / ${total} — drift here means the runner sees the coach contradicting the UI.`
     );
+    // P-DOCTRINE-WEEK-OVER 2026-05-27 — frame over- or under-delivery
+    // when the runner is materially off the planned trajectory.
+    if (typeof o.weekProjectedTotal === 'number' && typeof o.weekTotalPlanned === 'number') {
+      const delta = o.weekProjectedTotal - o.weekTotalPlanned;
+      if (delta >= 3) {
+        const deltaMi = Math.round(delta * 10) / 10;
+        lines.push(
+          `  → PROJECTED (${projected}) is ${deltaMi} mi OVER the planned ${total}. The runner ` +
+          `is over-delivering vs the plan — likely running longer than each day called for. ` +
+          `When you mention week mileage, frame it as "tracking for ${projected}, above the ` +
+          `${total} planned" or "${projected} on pace, a notch above plan." If readiness/ACWR ` +
+          `looks OK, frame as ambition ("great if you feel great"); if signals are stressed, ` +
+          `note the cost ("watch how the next days land"). NEVER frame as a miss or a problem ` +
+          `on its own — running more than planned is a choice, not a failure.`
+        );
+      } else if (delta <= -3) {
+        const deltaMi = Math.round(Math.abs(delta) * 10) / 10;
+        lines.push(
+          `  → PROJECTED (${projected}) is ${deltaMi} mi UNDER the planned ${total}. The runner ` +
+          `is tracking below plan — running shorter than each day called for or missed days. ` +
+          `Frame neutrally ("tracking for ${projected}, under the ${total} planned"). Do NOT ` +
+          `prescribe a make-up run; the plan absorbed the miss already.`
+        );
+      }
+    }
   }
   // ACWR — "volume spike" is a defined term (Gabbett > 1.5), not vibes.
   // 2026-05-27: when ratio > 1.5 the readiness modal explicitly tells

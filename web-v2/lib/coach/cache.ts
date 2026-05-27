@@ -60,13 +60,13 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        144)" reads clinical and treats a forgiving aerobic intent
 //        like a tight target. Say "mid-Z2" or "held in aerobic zone."
 //        Quote bpm only when it adds signal the zone name can't.
-// v10-easy-pace-no-delta 2026-05-27: tightened easy-day pace doctrine
-// after David caught the loophole — coach was reporting "13s slower
-// than the 8:12 target, but HR was fine" which by raising the
-// comparison turns normal aerobic variability into a thing the runner
-// has to defend. New rule: within ±20s, do NOT report any pace delta.
-// AT ALL. The word "target" is banned for easy/long/recovery pace.
-export const PROMPT_VERSION = 'v10-easy-pace-no-delta';
+// v11-week-projected-over 2026-05-27: surface weekProjectedTotal
+// (= weekDone + weekPlannedRemaining) as a HARD FACT and frame
+// over-/under-delivery vs the planned total. Coach was reporting
+// "25.8 of 43.8 planned" flatly when the runner was actually
+// tracking for ~50 (above plan); should now frame as "tracking for
+// 50, above the 43.8 planned, great if you feel great" when ahead.
+export const PROMPT_VERSION = 'v11-week-projected-over';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls
