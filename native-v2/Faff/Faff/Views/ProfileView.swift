@@ -91,6 +91,10 @@ struct ProfileView: View {
             }
         }
         .background(Theme.bg.ignoresSafeArea())
+        // Warm settings + profile in the background as soon as /profile
+        // mounts. SettingsSheet seeds its @State synchronously from the
+        // cache when opened — kills the visible "Loading…" flash.
+        .task { await SettingsCache.shared.warm() }
         .sheet(isPresented: $showHeightSheet) {
             HeightInputSheet(onSave: { showHeightSheet = false })
                 .presentationDetents([.height(220)])

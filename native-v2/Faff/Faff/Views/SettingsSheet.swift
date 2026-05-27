@@ -146,14 +146,21 @@ struct SettingsSheet: View {
 
     private func load() async {
         defer { loading = false }
-        if let s = try? await API.fetchSettings() {
+        // Try the warm cache first — populated when ProfileView mounted.
+        // Falls through to live fetches if either side is still cold.
+        let cached = await SettingsCache.shared.read()
+        var s = cached.settings
+        var p = cached.profile
+        if s == nil { s = try? await API.fetchSettings() }
+        if p == nil { p = try? await API.fetchProfile() }
+        if let s {
             unitsDistance = s.units_distance ?? "mi"
             unitsTemp     = s.units_temp ?? "F"
             unitsPace     = s.units_pace ?? "min/mi"
             longRunDay    = s.long_run_day ?? "saturday"
             restDay       = s.rest_day ?? "monday"
         }
-        if let p = try? await API.fetchProfile() {
+        if let p {
             maxHr = p.hrmax_observed.map(String.init) ?? p.maxhr.map(String.init) ?? ""
             lthr  = p.lthr.map(String.init) ?? ""
             heightCm = p.height_cm.map { String(Int($0)) } ?? ""
@@ -209,6 +216,9 @@ struct SettingsSheet: View {
             if !profilePatch.isEmpty {
                 try await API.updateProfile(profilePatch)
             }
+            // Drop the warm cache so the next open re-reads the freshly-
+            // saved values instead of the pre-edit snapshot.
+            await SettingsCache.shared.invalidate()
             dismiss()
         } catch {
             self.error = "Couldn't save: \(error.localizedDescription)"

@@ -7,10 +7,23 @@ import SwiftUI
 
 struct RaceDetailSheet: View {
     let slug: String
+    /// Pre-fetched payload. When supplied the sheet renders synchronously
+    /// with no spinner. Pattern matches RunDetailSheet + WorkoutDetailModal
+    /// — parent view warms a date/slug-keyed cache and hands the matching
+    /// entry in here. Currently unwired (no callers); ready for whichever
+    /// surface lights up the race-detail pop-in.
+    let prefetched: RaceDetailResponse?
+
+    init(slug: String, prefetched: RaceDetailResponse? = nil) {
+        self.slug = slug
+        self.prefetched = prefetched
+        _data = State(initialValue: prefetched)
+        _loading = State(initialValue: prefetched == nil)
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var data: RaceDetailResponse?
-    @State private var loading = true
+    @State private var loading: Bool
 
     var body: some View {
         NavigationStack {
@@ -40,7 +53,10 @@ struct RaceDetailSheet: View {
                 }
             }
         }
-        .task { await load() }
+        .task {
+            // Skip the fetch when prefetched — parent already warmed it.
+            if prefetched == nil { await load() }
+        }
     }
 
     private func hero(_ r: RaceDetail, proximity: String) -> some View {
