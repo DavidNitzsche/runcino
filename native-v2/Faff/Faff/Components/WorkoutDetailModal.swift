@@ -11,11 +11,24 @@ import SwiftUI
 
 struct WorkoutDetailModal: View {
     let date: String
+    /// Optional pre-fetched workout — when provided, the sheet renders
+    /// synchronously with no loading state. Parents (WeekStripView) batch-
+    /// prefetch all 7 days on mount so taps feel instant. Falls back to the
+    /// on-appear fetch when nil (legacy paths).
+    let prefetched: WatchWorkout?
+
+    init(date: String, prefetched: WatchWorkout? = nil) {
+        self.date = date
+        self.prefetched = prefetched
+        // Seed state immediately so first paint is complete when warm.
+        _workout = State(initialValue: prefetched)
+        _loading = State(initialValue: prefetched == nil)
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var workout: WatchWorkout?
     @State private var message: String?
-    @State private var loading = true
+    @State private var loading: Bool
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -52,7 +65,12 @@ struct WorkoutDetailModal: View {
             .padding(.top, 16).padding(.trailing, 16)
         }
         .background(Theme.bg.ignoresSafeArea())
-        .task { await load() }
+        .task {
+            // Skip the network call when parent already gave us the
+            // workout — keeps modal render synchronous.
+            guard prefetched == nil else { return }
+            await load()
+        }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }

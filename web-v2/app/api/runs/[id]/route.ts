@@ -28,7 +28,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
   const detail = await loadRunDetail(DAVID_USER_ID, id);
   if (!detail) return NextResponse.json({ error: 'run not found' }, { status: 404 });
-  return NextResponse.json(detail);
+  // Run history is immutable once stored — pace, splits, HR don't change.
+  // 5min browser cache + 30s SWR keeps repeat hits off the server. PATCH
+  // (shoe assignment) writes don't propagate through this GET cache, but
+  // that's fine; the modal updates optimistically.
+  return NextResponse.json(detail, {
+    headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=30' },
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

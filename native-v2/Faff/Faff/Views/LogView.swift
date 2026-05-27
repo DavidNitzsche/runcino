@@ -11,6 +11,12 @@ struct LogView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var selected: LogRun?
+    /// Run-detail prefetch cache. Filled in parallel for the current week
+    /// when log loads, plus on-tap for any earlier rows. Mirrors web
+    /// LogTable's pattern — taps render synchronously when warm.
+    @State private var detailById: [String: RunDetail] = [:]
+    /// Shoes are app-wide, fetched once. Same idea as web LogTable.
+    @State private var shoes: [Shoe] = []
 
     var body: some View {
         ScrollView {
@@ -41,7 +47,12 @@ struct LogView: View {
         .task { await load() }
         .refreshable { await load() }
         .sheet(item: $selected) { run in
-            RunDetailSheet(runId: run.id, fallback: run)
+            RunDetailSheet(
+                runId: run.id,
+                fallback: run,
+                prefetchedDetail: detailById[run.id],
+                prefetchedShoes: shoes.isEmpty ? nil : shoes
+            )
         }
     }
 
@@ -161,10 +172,37 @@ struct LogView: View {
         loading = true
         defer { loading = false }
         do {
-            self.log = try await API.fetchLog(limit: 80)
+            let log = try await API.fetchLog(limit: 80)
+            self.log = log
             self.error = nil
+            // Kick off background warming (don't block the list render).
+            Task { await prefetchHotRuns(log: log) }
+            Task { await prefetchShoes() }
         } catch {
             self.error = "Couldn't reach the log. Pull to refresh."
         }
+    }
+
+    /// Pre-fetch run detail for the current week so taps feel instant.
+    /// Older runs still hit the on-appear fetch in the sheet itself.
+    private func prefetchHotRuns(log: LogState) async {
+        guard let current = log.weeks.first(where: { $0.isCurrent }) ?? log.weeks.first else { return }
+        await withTaskGroup(of: (String, RunDetail?).self) { group in
+            for r in current.runs {
+                group.addTask {
+                    let d = try? await API.fetchRunDetail(id: r.id)
+                    return (r.id, d)
+                }
+            }
+            for await (id, detail) in group {
+                if let d = detail { detailById[id] = d }
+            }
+        }
+    }
+
+    private func prefetchShoes() async {
+        guard let resp = try? await API.fetchShoes(), let list = resp.shoes else { return }
+        // Match web behavior: only active shoes in the picker.
+        shoes = list.filter { !($0.retired ?? false) }
     }
 }

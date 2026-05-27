@@ -18,6 +18,10 @@ import SwiftUI
 struct WeekStripView: View {
     let week: PlanWeek
     @State private var selectedDate: String? = nil
+    /// Date-keyed cache of fetched workouts so taps render synchronously.
+    /// Filled in parallel on mount; modal reads the matching entry as
+    /// `prefetched` — same pattern as web WeekStrip.
+    @State private var workoutsByDate: [String: WatchWorkout] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -49,7 +53,30 @@ struct WeekStripView: View {
             get: { selectedDate.map { DateBox(date: $0) } },
             set: { selectedDate = $0?.date }
         )) { box in
-            WorkoutDetailModal(date: box.date)
+            WorkoutDetailModal(date: box.date, prefetched: workoutsByDate[box.date])
+        }
+        .task(id: weekFingerprint) { await prefetchWeek() }
+    }
+
+    /// Stable id for the .task so we re-prefetch only when the week changes
+    /// (date list shifts on day-rollover or plan regen), not on every redraw.
+    private var weekFingerprint: String {
+        week.days.map(\.date_iso).joined(separator: ",")
+    }
+
+    /// Fetch every non-rest day in parallel. Best-effort — failures just
+    /// fall back to the modal's on-appear fetch.
+    private func prefetchWeek() async {
+        await withTaskGroup(of: (String, WatchWorkout?).self) { group in
+            for day in week.days where day.type != "rest" && day.distance_mi > 0 {
+                group.addTask {
+                    let w = try? await API.fetchWatchWorkout(date: day.date_iso)
+                    return (day.date_iso, w)
+                }
+            }
+            for await (date, workout) in group {
+                if let w = workout { workoutsByDate[date] = w }
+            }
         }
     }
 

@@ -9,11 +9,27 @@ import SwiftUI
 struct RunDetailSheet: View {
     let runId: String
     let fallback: LogRun
+    /// Optional pre-fetched detail — when provided, sheet renders
+    /// synchronously with no spinner. Parent views (LogView) batch-
+    /// prefetch current-week runs on mount so taps feel instant.
+    let prefetchedDetail: RunDetail?
+    let prefetchedShoes: [Shoe]?
+
+    init(runId: String, fallback: LogRun, prefetchedDetail: RunDetail? = nil, prefetchedShoes: [Shoe]? = nil) {
+        self.runId = runId
+        self.fallback = fallback
+        self.prefetchedDetail = prefetchedDetail
+        self.prefetchedShoes = prefetchedShoes
+        _detail = State(initialValue: prefetchedDetail)
+        _loading = State(initialValue: prefetchedDetail == nil)
+        _shoes = State(initialValue: prefetchedShoes ?? [])
+        _assignedShoeId = State(initialValue: prefetchedDetail?.shoe_id)
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var detail: RunDetail?
-    @State private var loading = true
-    @State private var shoes: [Shoe] = []
+    @State private var loading: Bool
+    @State private var shoes: [Shoe]
     @State private var assignedShoeId: Int?
     @State private var showShoePicker = false
 
@@ -56,7 +72,10 @@ struct RunDetailSheet: View {
                 }
             }
         }
-        .task { await load() }
+        .task {
+            // Skip the fetch when parent already gave us the detail.
+            if prefetchedDetail == nil { await load() }
+        }
     }
 
     // MARK: - Hero

@@ -65,5 +65,10 @@ export async function GET(req: NextRequest) {
     lthr, goal_seconds, goal_distance_mi,
   }, isFinite(targetMi as number) ? (targetMi as number) : undefined);
 
-  return NextResponse.json(prescription);
+  // Prescriptions are deterministic from (type, weeklyMi, lthr, goal_*).
+  // The same query string returns the same output until the runner's
+  // profile changes — safe to cache aggressively client-side.
+  return NextResponse.json(prescription, {
+    headers: { 'Cache-Control': 'private, max-age=600, stale-while-revalidate=60' },
+  });
 }
