@@ -4,16 +4,27 @@
  * `getStravaToken(userId)` returns a valid access token, refreshing on
  * expiry. Used by every server route that hits Strava's API.
  *
- * Tokens live in profile.strava_access_token / strava_refresh_token /
- * strava_expires_at (epoch-aware ISO timestamp). The OAuth flow at
- * /api/auth/strava persists them on initial connect.
+ * 2026-05-27 fix: token storage drifted to two locations:
+ *   - `connector_tokens` (newer, normalized, multi-provider) — populated
+ *     by the active OAuth flow.
+ *   - `profile.strava_*` (legacy, single-provider columns) — older flow.
+ *
+ * David's connector_tokens row had valid access+refresh; his profile
+ * row had NULLs. The reader was hitting profile.* and throwing
+ * STRAVA_NOT_CONNECTED — that's why GPX finder said "Strava not
+ * connected to enable GPX search."
+ *
+ * Now: read connector_tokens first, fall back to profile.* for any
+ * legacy users not yet migrated. Refresh writes BOTH so they stay in
+ * sync. Long-term: drop profile.strava_* columns once we're sure all
+ * users have connector_tokens rows.
  */
 import { pool } from '@/lib/db/pool';
 
-interface StravaTokenRow {
-  strava_access_token: string | null;
-  strava_refresh_token: string | null;
-  strava_expires_at: string | null;
+interface TokenTriple {
+  access_token: string | null;
+  refresh_token: string | null;
+  expires_at: string | null;
 }
 
 /**
@@ -23,24 +34,40 @@ interface StravaTokenRow {
  * "Strava not connected" and surface a connect prompt.
  */
 export async function getStravaToken(userId: string): Promise<string> {
-  const row = (await pool.query<StravaTokenRow>(
-    `SELECT strava_access_token, strava_refresh_token, strava_expires_at
-       FROM profile WHERE user_uuid = $1`,
+  // Source of truth: connector_tokens table. Read that first.
+  let triple: TokenTriple | null = (await pool.query<TokenTriple>(
+    `SELECT access_token, refresh_token, expires_at::text AS expires_at
+       FROM connector_tokens
+      WHERE user_id = $1 AND provider = 'strava' AND disconnected_at IS NULL
+      ORDER BY connected_at DESC LIMIT 1`,
     [userId]
-  )).rows[0];
-  if (!row?.strava_access_token || !row.strava_refresh_token) {
+  ).catch(() => ({ rows: [] as TokenTriple[] }))).rows[0] ?? null;
+
+  // Legacy fallback for any user whose tokens still live on profile.*
+  if (!triple?.access_token || !triple.refresh_token) {
+    const legacy = (await pool.query(
+      `SELECT strava_access_token AS access_token,
+              strava_refresh_token AS refresh_token,
+              strava_expires_at::text AS expires_at
+         FROM profile WHERE user_uuid = $1`,
+      [userId]
+    ).catch(() => ({ rows: [] }))).rows[0];
+    if (legacy?.access_token && legacy?.refresh_token) triple = legacy;
+  }
+
+  if (!triple?.access_token || !triple.refresh_token) {
     throw new Error('STRAVA_NOT_CONNECTED');
   }
 
   const now = Date.now();
-  const expiresAt = row.strava_expires_at ? new Date(row.strava_expires_at).getTime() : 0;
+  const expiresAt = triple.expires_at ? new Date(triple.expires_at).getTime() : 0;
   // Refresh if expired OR within 5 minutes of expiry. Avoids races where
   // a token expires mid-request.
   if (now < expiresAt - 5 * 60 * 1000) {
-    return row.strava_access_token;
+    return triple.access_token;
   }
 
-  return refreshStravaToken(userId, row.strava_refresh_token);
+  return refreshStravaToken(userId, triple.refresh_token);
 }
 
 /**
@@ -75,22 +102,46 @@ async function refreshStravaToken(userId: string, refreshToken: string): Promise
     ? new Date(tokens.expires_at * 1000).toISOString()
     : null;
 
-  await pool.query(
-    `UPDATE profile
-        SET strava_access_token  = $1,
-            strava_refresh_token = $2,
-            strava_expires_at    = $3
-      WHERE user_uuid = $4`,
-    [newAccess, newRefresh, newExpires, userId]
-  );
+  // Write to BOTH stores so connector_tokens (source of truth) and the
+  // legacy profile.* columns stay in sync until the legacy columns are
+  // dropped. UPDATE-only on connector_tokens — INSERT happens via the
+  // OAuth callback when the user first connects.
+  await Promise.all([
+    pool.query(
+      `UPDATE connector_tokens
+          SET access_token  = $1,
+              refresh_token = $2,
+              expires_at    = $3::timestamptz,
+              updated_at    = NOW()
+        WHERE user_id = $4 AND provider = 'strava'`,
+      [newAccess, newRefresh, newExpires, userId]
+    ),
+    pool.query(
+      `UPDATE profile
+          SET strava_access_token  = $1,
+              strava_refresh_token = $2,
+              strava_expires_at    = $3
+        WHERE user_uuid = $4`,
+      [newAccess, newRefresh, newExpires, userId]
+    ),
+  ]);
   return newAccess;
 }
 
 /** True if the user has a Strava connection (token row present). Cheap check. */
 export async function hasStravaConnection(userId: string): Promise<boolean> {
-  const row = (await pool.query(
+  // Mirror getStravaToken's read order: connector_tokens first, fall
+  // back to legacy profile.* columns.
+  const conn = (await pool.query(
+    `SELECT 1 FROM connector_tokens
+      WHERE user_id = $1 AND provider = 'strava'
+        AND access_token IS NOT NULL AND disconnected_at IS NULL LIMIT 1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (conn) return true;
+  const legacy = (await pool.query(
     `SELECT 1 FROM profile WHERE user_uuid = $1 AND strava_refresh_token IS NOT NULL`,
     [userId]
-  )).rows[0];
-  return Boolean(row);
+  ).catch(() => ({ rows: [] }))).rows[0];
+  return Boolean(legacy);
 }

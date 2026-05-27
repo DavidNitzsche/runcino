@@ -7,6 +7,13 @@ import SwiftUI
 
 @main
 struct FaffApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+    /// Throttle background→foreground HK re-imports so opening + immediately
+    /// re-opening the app doesn't fire two parallel ingests. 30s is enough
+    /// to dedupe rapid switching while still catching "I haven't opened the
+    /// app since this morning" gaps (the original sleep-stale bug).
+    @State private var lastImportAt: Date = .distantPast
+
     var body: some Scene {
         WindowGroup {
             RootTabView()
@@ -32,6 +39,7 @@ struct FaffApp: App {
                     } else {
                         await HealthKitImporter.shared.importIfConnected(daysBack: 7)
                     }
+                    lastImportAt = Date()
 
                     // P35 — boot the HR alerter if the runner previously
                     // enabled phone alerts. Silent if disabled.
@@ -39,6 +47,21 @@ struct FaffApp: App {
                         await HRAlerter.shared.start()
                     }
                 }
+        }
+        // 2026-05-27: re-import HK samples on every background→foreground
+        // transition. The `.task` above only fires once per app launch, so
+        // overnight HealthKit writes (last night's sleep, HRV, RHR landing
+        // around 6am) never reached the server unless David force-quit and
+        // re-launched. Now bringing the app forward triggers a fresh pull,
+        // throttled to once per 30s.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            let now = Date()
+            guard now.timeIntervalSince(lastImportAt) > 30 else { return }
+            lastImportAt = now
+            Task {
+                await HealthKitImporter.shared.importIfConnected(daysBack: 2)
+            }
         }
     }
 }
