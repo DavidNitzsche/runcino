@@ -17,6 +17,30 @@ export interface RunSplit {
   elev_change_ft: number | null;
 }
 
+/**
+ * P44 — single phase of a structured workout, plan vs actual.
+ * Populated from WatchCompletionPhase entries in coach_intents.
+ */
+export interface PhaseBreakdown {
+  index: number;
+  label: string;            // "Warmup" | "Rep 1/4" | "Recovery" | "Cooldown"
+  type: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown';
+  // Plan
+  target_pace: string | null;       // "6:48" formatted
+  target_distance_mi: number | null;
+  target_duration_sec: number | null;
+  // Actual
+  actual_pace: string | null;
+  actual_distance_mi: number | null;
+  actual_duration_sec: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  avg_cadence: number | null;
+  completed: boolean;
+  // Derived: did the rep hit target? "on" / "fast" / "slow" / null
+  status: 'on' | 'fast' | 'slow' | null;
+}
+
 export interface RunForm {
   // Apple Watch form-metric set, cross-referenced from health_samples for
   // the run's date. Cadence here can override the activity's stale value.
@@ -62,6 +86,12 @@ export interface RunDetail {
   hr_avg_work: number | null;
   cadence_avg_work: number | null;
   work_seconds: number | null;
+
+  // P44 — phase-by-phase breakdown when the watch did the workout.
+  // Populated from coach_intents.value.phases (WatchCompletion payload)
+  // for Faff-watch runs. Empty for runs from other sources (Apple Watch
+  // Workouts, Strava, manual) where we only have mile splits.
+  phase_breakdown: PhaseBreakdown[];
 
   has_route: boolean;
   route_polyline: string | null;  // Strava-encoded polyline if available
@@ -179,6 +209,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // phases only. Returns nulls when no structure exists.
   const workAvgs = await computeWorkAverages(userId, day, splits);
 
+  // P44 — phase-by-phase breakdown from watch completion payload, when
+  // a Faff-watch run for this date exists in coach_intents. Returns
+  // empty array for non-watch runs (Apple Watch Workouts, Strava, manual)
+  // where we don't have the planned phase structure.
+  const phaseBreakdown = await loadPhaseBreakdown(userId, day);
+
   return {
     id: r.id ?? r.activityId ?? activityId,
     date: day,
@@ -213,7 +249,98 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     hrZonePcts,
     hr_zones_from_lthr,
     form,
+    phase_breakdown: phaseBreakdown,
   };
+}
+
+/**
+ * P44 — load the phase-by-phase breakdown for a Faff-watch run.
+ *
+ * The watch app posts a WatchCompletion payload at run end that includes
+ * a phases[] array with target + actual numbers per phase (warmup, each
+ * rep, recoveries, cooldown). We tucked that into coach_intents so the
+ * coach voice could reference "rep 3 was 4s slow." This loader surfaces
+ * it to the run-detail UI so the runner sees the same breakdown they
+ * felt on the watch.
+ *
+ * Returns []:
+ *   - non-Faff-watch runs (Apple Watch Workouts, Strava, manual) where
+ *     no WatchCompletion intent exists
+ *   - days that did have a Faff-watch run but no phase structure (open
+ *     easy runs with no planned phases)
+ *
+ * Only returns the most-recent watch_completion intent for the date —
+ * if the runner did multiple watch sessions on one day (rare), the
+ * latest one wins.
+ */
+async function loadPhaseBreakdown(userId: string, date: string | null): Promise<PhaseBreakdown[]> {
+  if (!date) return [];
+  const row = (await pool.query(
+    `SELECT value FROM coach_intents
+      WHERE user_id = $1
+        AND reason = 'watch_completion'
+        AND ts::date = $2::date
+      ORDER BY ts DESC LIMIT 1`,
+    [userId, date]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!row?.value) return [];
+
+  let payload: any = row.value;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { return []; }
+  }
+  const phases: any[] = Array.isArray(payload?.phases) ? payload.phases : [];
+  if (phases.length === 0) return [];
+
+  return phases.map((p: any, i: number): PhaseBreakdown => {
+    const targetSPerMi = Number(p.targetPaceSPerMi) || null;
+    const actualSPerMi = Number(p.actualPaceSPerMi) || null;
+
+    // Status: on-target if within ±5s/mi, otherwise fast/slow.
+    let status: 'on' | 'fast' | 'slow' | null = null;
+    if (targetSPerMi && actualSPerMi && p.type !== 'recovery' && p.type !== 'rest') {
+      const delta = actualSPerMi - targetSPerMi;
+      if (Math.abs(delta) <= 5) status = 'on';
+      else if (delta < 0) status = 'fast';      // fewer s/mi = faster
+      else status = 'slow';
+    }
+
+    const typeRaw = String(p.type ?? 'unknown').toLowerCase();
+    const type: PhaseBreakdown['type'] =
+      typeRaw === 'warmup' || typeRaw === 'cooldown' || typeRaw === 'recovery'
+        ? typeRaw
+        : (typeRaw === 'work' || typeRaw === 'rep' || typeRaw === 'tempo'
+            || typeRaw === 'threshold' || typeRaw === 'intervals' || typeRaw === 'race')
+          ? 'work'
+          : 'unknown';
+
+    return {
+      index: Number(p.index ?? i) || i,
+      label: String(p.label ?? p.name ?? defaultLabel(type, i)),
+      type,
+      target_pace: fmtPace(targetSPerMi),
+      target_distance_mi: Number(p.targetDistanceMi) || null,
+      target_duration_sec: Number(p.targetDurationSec) || null,
+      actual_pace: fmtPace(actualSPerMi),
+      actual_distance_mi: Number(p.actualDistanceMi) || null,
+      actual_duration_sec: Number(p.actualDurationSec) || null,
+      avg_hr: Number(p.avgHr) || null,
+      max_hr: Number(p.maxHr) || null,
+      avg_cadence: Number(p.avgCadence) || null,
+      completed: Boolean(p.completed ?? true),
+      status,
+    };
+  });
+}
+
+function defaultLabel(type: PhaseBreakdown['type'], i: number): string {
+  switch (type) {
+    case 'warmup': return 'Warmup';
+    case 'cooldown': return 'Cooldown';
+    case 'recovery': return 'Recovery';
+    case 'work': return `Rep ${i + 1}`;
+    default: return `Phase ${i + 1}`;
+  }
 }
 
 /**

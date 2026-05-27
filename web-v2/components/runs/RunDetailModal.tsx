@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { RunDetail } from '@/lib/coach/run-state';
+import type { RunDetail, PhaseBreakdown } from '@/lib/coach/run-state';
 import { RouteSparkline } from './RouteSparkline';
 import { FormStatButton } from './FormTipModal';
 
@@ -229,6 +229,16 @@ function RunDetailBody({ d, shoes, onPickShoe }: { d: RunDetail; shoes: any[]; o
         </div>
       )}
 
+      {/* P44 — phase-by-phase breakdown when the watch did a structured
+          workout. Plan vs actual, one row per phase (warmup, reps,
+          recoveries, cooldown). Empty for non-watch runs. */}
+      {d.phase_breakdown && d.phase_breakdown.length > 0 && (
+        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>BREAKDOWN · PLAN vs ACTUAL</div>
+          <PhaseBreakdownTable phases={d.phase_breakdown} />
+        </div>
+      )}
+
       {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it */}
       {d.splits.length > 0 && (
         <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
@@ -396,6 +406,99 @@ function SmallStat({ v, u }: { v: string; u: string }) {
     <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.025)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)', lineHeight: 1, letterSpacing: '0.3px' }}>{v}</div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 9.5, color: 'var(--mute)', letterSpacing: '1.1px', textTransform: 'uppercase', marginTop: 3 }}>{u}</div>
+    </div>
+  );
+}
+
+/**
+ * P44 — plan-vs-actual table. Each row is one phase of the workout.
+ * Status pip on the right says "on target / fast / slow" so the runner
+ * gets the headline answer at a glance.
+ */
+function PhaseBreakdownTable({ phases }: { phases: PhaseBreakdown[] }) {
+  const fmtDur = (s: number | null): string => {
+    if (!s || s <= 0) return '—';
+    const m = Math.floor(s / 60);
+    const r = Math.round(s % 60);
+    if (m === 0) return `${r}s`;
+    return `${m}:${String(r).padStart(2, '0')}`;
+  };
+  const statusColor = (st: PhaseBreakdown['status']): string =>
+    st === 'on' ? 'var(--green)'
+    : st === 'fast' ? 'var(--over)'
+    : st === 'slow' ? 'var(--goal)'
+    : 'var(--mute)';
+  const statusLabel = (st: PhaseBreakdown['status']): string =>
+    st === 'on' ? 'ON' : st === 'fast' ? 'FAST' : st === 'slow' ? 'SLOW' : '—';
+  const typeBadge = (t: PhaseBreakdown['type']): string =>
+    t === 'warmup' ? 'WARMUP'
+    : t === 'cooldown' ? 'COOLDOWN'
+    : t === 'recovery' ? 'RECOVERY'
+    : t === 'work' ? 'WORK'
+    : 'PHASE';
+  const typeBadgeColor = (t: PhaseBreakdown['type']): string =>
+    t === 'warmup' || t === 'cooldown' ? 'var(--rest)'
+    : t === 'recovery' ? 'var(--mute)'
+    : t === 'work' ? 'var(--goal)'
+    : 'var(--ink)';
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--f-body)', fontSize: 12 }}>
+        <thead>
+          <tr style={{ color: 'var(--mute)', fontSize: 9.5, letterSpacing: '1.1px', textTransform: 'uppercase', fontWeight: 700 }}>
+            <th style={{ textAlign: 'left',  padding: '6px 4px' }}>PHASE</th>
+            <th style={{ textAlign: 'right', padding: '6px 4px' }}>TARGET</th>
+            <th style={{ textAlign: 'right', padding: '6px 4px' }}>ACTUAL</th>
+            <th style={{ textAlign: 'right', padding: '6px 4px' }}>HR</th>
+            <th style={{ textAlign: 'right', padding: '6px 4px', width: 50 }}>·</th>
+          </tr>
+        </thead>
+        <tbody>
+          {phases.map((p) => {
+            // For recovery/warmup/cooldown: show duration as the headline.
+            // For work phases: show pace as the headline; duration is secondary.
+            const showPace = p.type === 'work';
+            const targetCell = showPace
+              ? (p.target_pace ?? '—')
+              : (p.target_duration_sec ? fmtDur(p.target_duration_sec) : (p.target_pace ?? '—'));
+            const actualCell = showPace
+              ? (p.actual_pace ?? '—')
+              : (p.actual_duration_sec ? fmtDur(p.actual_duration_sec) : (p.actual_pace ?? '—'));
+            return (
+              <tr key={p.index} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                <td style={{ padding: '8px 4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 6px', borderRadius: 4,
+                      background: 'rgba(255,255,255,0.05)', color: typeBadgeColor(p.type),
+                      fontSize: 8.5, letterSpacing: '0.9px', fontWeight: 700,
+                    }}>{typeBadge(p.type)}</span>
+                    <span style={{ color: 'var(--ink)', fontSize: 12.5 }}>{p.label}</span>
+                  </div>
+                  {p.actual_distance_mi != null && (
+                    <div style={{ fontSize: 10, color: 'var(--mute)', marginTop: 2, marginLeft: 0 }}>
+                      {p.actual_distance_mi.toFixed(2)}mi
+                      {p.actual_duration_sec && showPace ? ` · ${fmtDur(p.actual_duration_sec)}` : ''}
+                    </div>
+                  )}
+                </td>
+                <td style={{ padding: '8px 4px', textAlign: 'right', fontFamily: 'var(--f-display)', color: 'var(--mute)', fontSize: 13 }}>{targetCell}</td>
+                <td style={{ padding: '8px 4px', textAlign: 'right', fontFamily: 'var(--f-display)', color: 'var(--ink)', fontSize: 13.5 }}>{actualCell}</td>
+                <td style={{ padding: '8px 4px', textAlign: 'right', color: p.avg_hr ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-display)', fontSize: 13 }}>
+                  {p.avg_hr ?? '—'}
+                </td>
+                <td style={{ padding: '8px 4px', textAlign: 'right' }}>
+                  <span style={{
+                    fontSize: 8.5, letterSpacing: '1px', fontWeight: 700,
+                    color: statusColor(p.status),
+                  }}>{statusLabel(p.status)}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

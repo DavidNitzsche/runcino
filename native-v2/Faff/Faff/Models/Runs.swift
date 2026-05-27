@@ -71,6 +71,29 @@ struct RunDetail: Decodable, Identifiable {
     let splits: [RunSplit]
     let hrZonePcts: HRZonePcts
     let form: RunForm
+
+    // P44 — phase-by-phase breakdown when the Faff watch app ran a
+    // structured workout. Empty for runs from other sources.
+    let phase_breakdown: [PhaseBreakdown]?
+}
+
+/// P44 — single phase of a structured workout, plan vs actual.
+struct PhaseBreakdown: Decodable, Identifiable {
+    var id: Int { index }
+    let index: Int
+    let label: String
+    let type: String                       // "warmup" | "work" | "recovery" | "cooldown" | "unknown"
+    let target_pace: String?
+    let target_distance_mi: Double?
+    let target_duration_sec: Int?
+    let actual_pace: String?
+    let actual_distance_mi: Double?
+    let actual_duration_sec: Int?
+    let avg_hr: Int?
+    let max_hr: Int?
+    let avg_cadence: Int?
+    let completed: Bool
+    let status: String?                    // "on" | "fast" | "slow" | nil
 }
 
 struct RunSplit: Decodable, Identifiable {

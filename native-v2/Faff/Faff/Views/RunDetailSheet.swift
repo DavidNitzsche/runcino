@@ -28,6 +28,9 @@ struct RunDetailSheet: View {
                         hero(d)
                         statRow(d)
                         shoeRow()
+                        if let phases = d.phase_breakdown, !phases.isEmpty {
+                            phaseBreakdownBlock(phases)
+                        }
                         if !d.splits.isEmpty { splitsBlock(d.splits) }
                         hrZonesBlock(d)
                         if hasAnyForm(d.form) { formBlock(d.form) }
@@ -117,6 +120,114 @@ struct RunDetailSheet: View {
                 Color.clear.frame(maxWidth: .infinity)
             }
         }
+    }
+
+    // MARK: - P44 Phase breakdown (plan vs actual)
+
+    private func phaseBreakdownBlock(_ phases: [PhaseBreakdown]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("BREAKDOWN · PLAN vs ACTUAL")
+                .font(.body(10, weight: .bold)).tracking(1.4).foregroundStyle(Theme.goal)
+                .padding(.horizontal, 24)
+            VStack(spacing: 0) {
+                ForEach(phases) { p in
+                    phaseRow(p)
+                    if p.index != phases.last?.index {
+                        Divider().background(Theme.line).padding(.leading, 16)
+                    }
+                }
+            }
+            .background(Theme.card)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+            .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private func phaseRow(_ p: PhaseBreakdown) -> some View {
+        let showPace = p.type == "work"
+        let targetText: String = {
+            if showPace { return p.target_pace ?? "—" }
+            if let sec = p.target_duration_sec, sec > 0 { return fmtPhaseDuration(sec) }
+            return p.target_pace ?? "—"
+        }()
+        let actualText: String = {
+            if showPace { return p.actual_pace ?? "—" }
+            if let sec = p.actual_duration_sec, sec > 0 { return fmtPhaseDuration(sec) }
+            return p.actual_pace ?? "—"
+        }()
+        let statusColor: Color = {
+            switch p.status {
+            case "on": return Theme.green
+            case "fast": return Theme.over
+            case "slow": return Theme.goal
+            default: return Theme.mute
+            }
+        }()
+        let statusLabel: String = {
+            switch p.status {
+            case "on": return "ON"
+            case "fast": return "FAST"
+            case "slow": return "SLOW"
+            default: return "—"
+            }
+        }()
+        let typeBadgeColor: Color = {
+            switch p.type {
+            case "warmup", "cooldown": return Theme.rest
+            case "recovery": return Theme.mute
+            case "work": return Theme.goal
+            default: return Theme.ink
+            }
+        }()
+        return HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(p.type.uppercased())
+                        .font(.body(8, weight: .bold)).tracking(1.0)
+                        .foregroundStyle(typeBadgeColor)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Theme.bg.opacity(0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                    Text(p.label).font(.body(12)).foregroundStyle(Theme.ink)
+                }
+                if let mi = p.actual_distance_mi {
+                    Text(String(format: "%.2f mi", mi))
+                        .font(.body(10)).foregroundStyle(Theme.mute)
+                }
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("TARGET").font(.body(8, weight: .bold)).tracking(0.8).foregroundStyle(Theme.mute)
+                Text(targetText).font(.body(12, weight: .semibold)).foregroundStyle(Theme.mute)
+            }
+            .frame(width: 64, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("ACTUAL").font(.body(8, weight: .bold)).tracking(0.8).foregroundStyle(Theme.mute)
+                Text(actualText).font(.body(12, weight: .semibold)).foregroundStyle(Theme.ink)
+            }
+            .frame(width: 64, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("HR").font(.body(8, weight: .bold)).tracking(0.8).foregroundStyle(Theme.mute)
+                Text(p.avg_hr.map { String($0) } ?? "—")
+                    .font(.body(12, weight: .semibold))
+                    .foregroundStyle(p.avg_hr != nil ? Theme.ink : Theme.mute)
+            }
+            .frame(width: 42, alignment: .trailing)
+            Text(statusLabel)
+                .font(.body(9, weight: .bold)).tracking(0.8)
+                .foregroundStyle(statusColor)
+                .frame(width: 38, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func fmtPhaseDuration(_ secs: Int) -> String {
+        let m = secs / 60
+        let s = secs % 60
+        if m == 0 { return "\(s)s" }
+        return String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Splits
