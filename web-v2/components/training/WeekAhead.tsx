@@ -15,9 +15,11 @@
  * onto GlanceWeekDay via a tiny adapter — keeps the modal a single source
  * of truth.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PlanWeek } from '@/lib/coach/training-state';
 import type { GlanceWeekDay } from '@/lib/coach/glance-state';
+import type { Prescription } from '@/lib/training/prescriptions';
+import type { RunDetail } from '@/lib/coach/run-state';
 import { WorkoutSwapButton } from './WorkoutSwapButton';
 import { DayDetailModal } from '@/components/today/DayDetailModal';
 
@@ -148,6 +150,49 @@ function targetFor(type: string, _mi: number, label: string | null): Target {
 export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: string; planId?: string }) {
   const [openDay, setOpenDay] = useState<GlanceWeekDay | null>(null);
 
+  // Same pre-fetch pattern as WeekStrip — kill the pop-in on /training too.
+  // Planned days hit /api/prescription, ran days hit /api/runs/[id], both
+  // in parallel on mount. By the time a tile is tapped, the modal renders
+  // synchronously.
+  const [presByDate, setPresByDate] = useState<Record<string, Prescription>>({});
+  const [runByDate, setRunByDate] = useState<Record<string, RunDetail>>({});
+  useEffect(() => {
+    let mounted = true;
+    const planned = week.days.filter((d) => {
+      const ran = d.doneMi > 0 && d.activityId;
+      const isRest = d.type === 'rest' || d.mi === 0;
+      return !ran && !isRest && d.mi > 0 && d.type !== 'unplanned';
+    });
+    const ranDays = week.days.filter((d) => d.doneMi > 0 && d.activityId);
+    Promise.all([
+      ...planned.map((d) => {
+        const proxyWeekly = Math.max(d.mi * 6, 25);
+        return fetch(`/api/prescription?type=${encodeURIComponent(d.type)}&weeklyMi=${proxyWeekly}&targetMi=${d.mi}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((p) => p ? { kind: 'pres' as const, date: d.date, payload: p as Prescription } : null)
+          .catch(() => null);
+      }),
+      ...ranDays.map((d) =>
+        fetch(`/api/runs/${encodeURIComponent(d.activityId!)}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((p) => p ? { kind: 'run' as const, date: d.date, payload: p as RunDetail } : null)
+          .catch(() => null)
+      ),
+    ]).then((results) => {
+      if (!mounted) return;
+      const pMap: Record<string, Prescription> = {};
+      const rMap: Record<string, RunDetail> = {};
+      for (const r of results) {
+        if (!r) continue;
+        if (r.kind === 'pres') pMap[r.date] = r.payload;
+        if (r.kind === 'run')  rMap[r.date] = r.payload;
+      }
+      setPresByDate(pMap);
+      setRunByDate(rMap);
+    });
+    return () => { mounted = false; };
+  }, [week.days]);
+
   return (
     <div style={{
       background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16,
@@ -173,7 +218,14 @@ export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: stri
         ))}
       </div>
 
-      {openDay && <DayDetailModal day={openDay} onClose={() => setOpenDay(null)} />}
+      {openDay && (
+        <DayDetailModal
+          day={openDay}
+          prefetchedPres={presByDate[openDay.date] ?? null}
+          prefetchedRun={runByDate[openDay.date] ?? null}
+          onClose={() => setOpenDay(null)}
+        />
+      )}
     </div>
   );
 }
