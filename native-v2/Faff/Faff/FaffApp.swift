@@ -86,10 +86,6 @@ struct RootTabView: View {
         }
     }
 
-    /// POC toggle (TipsWebView). Read here so we can swap the tab body
-    /// without forcing TipsView itself to know about the alternative.
-    @AppStorage("faff.tips.useWebView") private var useTipsWebView: Bool = false
-
     var body: some View {
         TabView(selection: $selectedTab) {
             TodayView()    .tabItem { Label("TODAY",    systemImage: Tab.today.systemImage) }    .tag(Tab.today)
@@ -97,11 +93,7 @@ struct RootTabView: View {
             LogView()      .tabItem { Label("LOG",      systemImage: Tab.log.systemImage) }      .tag(Tab.log)
             RacesView()    .tabItem { Label("RACES",    systemImage: Tab.races.systemImage) }    .tag(Tab.races)
             HealthView()   .tabItem { Label("HEALTH",   systemImage: Tab.health.systemImage) }   .tag(Tab.health)
-            Group {
-                if useTipsWebView { TipsWebView() } else { TipsView() }
-            }
-            .tabItem { Label("TIPS", systemImage: Tab.tips.systemImage) }
-            .tag(Tab.tips)
+            TipsView()     .tabItem { Label("TIPS",     systemImage: Tab.tips.systemImage) }     .tag(Tab.tips)
             ProfileView()  .tabItem { Label("PROFILE",  systemImage: Tab.profile.systemImage) }  .tag(Tab.profile)
         }
         .tint(Theme.green)

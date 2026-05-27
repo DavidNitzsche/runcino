@@ -9,11 +9,6 @@ struct TipsView: View {
     @State private var tips: [FormTip] = []
     @State private var loading = true
     @State private var selected: FormTip?
-    /// 2026-05-27 POC toggle: flip to swap this native screen for the
-    /// WKWebView version that loads www.faff.run/tips?embed=ios. Lets us
-    /// A/B native vs web-view in real time without rebuilds. See
-    /// TipsWebView.swift.
-    @AppStorage("faff.tips.useWebView") private var useWebView: Bool = false
 
     var body: some View {
         ScrollView {
@@ -21,12 +16,6 @@ struct TipsView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("TIPS").font(.display(26)).tracking(1.2).foregroundStyle(Theme.ink)
                     Spacer()
-                    Button("Try web view") {
-                        useWebView = true
-                    }
-                    .font(.label(10))
-                    .tracking(1.2)
-                    .foregroundStyle(Theme.learn)
                 }
                 .padding(.horizontal, 24).padding(.top, 8)
 
