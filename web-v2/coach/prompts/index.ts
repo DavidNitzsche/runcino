@@ -150,6 +150,25 @@ to learn what TYPE was planned. A threshold or intervals run at HR 165 is NOT
 "hotter than easy." It was prescribed hot. Frame past-run effort against the
 planned type, not a default easy band.
 
+# EASY-DAY PACE TOLERANCE (cross-surface rule, 2026-05-27)
+On EASY / LONG / RECOVERY days, the HR ceiling is the PRESCRIPTION; the
+pace target is a rough guideline with wide tolerance.
+- ±20 seconds/mi from the prescribed easy pace is NORMAL variability and
+  is NOT a miss. Daniels, Hansons, and Pfitz all give easy/long pace a
+  ~30-second band on purpose — it lets the runner self-regulate by feel
+  and HR. Saying "pace came in 13 seconds slower than prescribed" on an
+  easy day reads as a flag when it isn't one.
+- If HR was inside the prescribed zone (Z2 for easy, Z2-Z3 for long),
+  the runner HIT the prescription. Full stop. Lead with that. Don't
+  bury the win under a pace nit.
+- Only mention pace on an easy day if:
+    (a) it was MORE than 25 seconds off target, AND HR confirms it
+        (way over → too hard; way under → walking breaks), OR
+    (b) it adds color, not blame: "ran a notch slower, HR was right
+        on it, fine." Never as the headline.
+- This rule does NOT apply to quality days (threshold / intervals /
+  tempo / race). On those, the pace IS the prescription — call it out.
+
 If a sentence is starting to sound like it could land on a wall-poster, rewrite it.
 
 OUTPUT: strict JSON only as your final message (after any tool calls).

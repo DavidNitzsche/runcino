@@ -49,7 +49,13 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        defined as ACWR > 1.5 (Gabbett); TODAY_POST_RUN prompt got a
 //        paragraph-structure rule keeping each thread together (no
 //        bookending pace at the open + close around unrelated content).
-export const PROMPT_VERSION = 'v4-week-mileage-spike-coherence';
+//   v5 → 2026-05-27 easy-day pace tolerance: cross-surface rule says
+//        on easy / long / recovery days, ±20s/mi from prescribed pace
+//        is normal variability — don't flag, don't lead with pace if
+//        HR was in zone. Coach voice was saying "pace was 13 seconds
+//        slow" on easy days, treating it as a miss when it's within
+//        Daniels/Hansons easy-pace tolerance.
+export const PROMPT_VERSION = 'v5-easy-pace-tolerance';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls
