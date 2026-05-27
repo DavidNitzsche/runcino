@@ -308,6 +308,8 @@ async function getRuns(userId: string, input: { daysBack: number; limit?: number
         avgHr: d.avgHr ?? d.hr ?? null,
         maxHr: d.maxHr ?? null,
         avgCadence: d.avgCadence ?? d.cadence ?? null,
+        avgPowerW: d.avgPowerW ?? null,           // running power (HK)
+        avgVertOscCm: d.avgVertOscCm ?? null,     // vertical oscillation (HK)
         elevGainFt: d.elevGainFt ?? null,
         movingTime: d.timeMoving ?? d.movingTime ?? null,
         type: d.type ?? null,
@@ -331,6 +333,9 @@ async function getRuns(userId: string, input: { daysBack: number; limit?: number
           actualDistanceMi: p.actualDistanceMi ?? null,
           actualDurationSec: p.actualDurationSec ?? null,
           avgHr: p.avgHr ?? null,
+          avgCadence: p.avgCadence ?? null,
+          avgPowerW: p.avgPowerW ?? null,
+          avgVertOscCm: p.avgVertOscCm ?? null,
         })) : null,
         // HR-zone distribution when stored — Z1/Z2/Z3/Z4/Z5 percentages.
         hrZonePcts: d.hrZonePcts ?? null,
@@ -442,15 +447,18 @@ async function getCheckIns(userId: string, input: { daysBack: number }) {
     [userId, input.daysBack]
   ).catch(() => ({ rows: [] }))).rows;
   const checkIns = r.map((x: any) => ({ ts: x.ts, rating: x.rating }));
-  // Summary string the coach can quote directly without inventing wording
-  // like "tapped three times." e.g. "3 SOLID, 0 TIRED, 0 WRECKED over 7 days".
+  // Summary the coach can quote without inventing wording like "tapped
+  // three times" or "three SOLID today." Includes the unique-day count
+  // so the LLM has no excuse to conflate "3 check-ins" with "3 today."
   const counts = { solid: 0, tired: 0, wrecked: 0 };
+  const uniqueDays = new Set<string>();
   for (const c of checkIns) {
     const k = String(c.rating).toLowerCase();
     if (k === 'solid' || k === 'tired' || k === 'wrecked') counts[k as keyof typeof counts]++;
+    if (c.ts) uniqueDays.add(new Date(c.ts).toISOString().slice(0, 10));
   }
-  const summary = `${counts.solid} SOLID · ${counts.tired} TIRED · ${counts.wrecked} WRECKED over the last ${input.daysBack} days`;
-  return { check_ins: checkIns, summary };
+  const summary = `${counts.solid} SOLID · ${counts.tired} TIRED · ${counts.wrecked} WRECKED across ${uniqueDays.size} different days in the last ${input.daysBack} days`;
+  return { check_ins: checkIns, summary, uniqueDaysCovered: uniqueDays.size };
 }
 
 async function getHealthSeries(userId: string, input: { daysBack: number }) {
