@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react';
 import type { GlanceWeekDay } from '@/lib/coach/glance-state';
 import type { RunDetail } from '@/lib/coach/run-state';
 import type { Prescription, PrescriptionStep } from '@/lib/training/prescriptions';
-import { RunDetailTrigger } from '@/components/runs/RunDetailModal';
+import { RunDetailBody } from '@/components/runs/RunDetailModal';
 
 const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -96,7 +96,13 @@ export function DayDetailModal({ day, onClose, prefetchedPres, prefetchedRun }: 
         style={{
           background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
           boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
-          padding: '28px 32px', maxWidth: 600, width: '100%', maxHeight: '85vh', overflow: 'auto',
+          // 2026-05-27: widened from 600 → 1100 so the COMPLETED-day variant
+          // can render splits + HR + form + route inline (David: "don't
+          // want to have to click to load details. can be more horizontal
+          // instead of vertical"). Other variants (planned/rest/unplanned)
+          // are still narrower visually because their content is short —
+          // the modal just has more breathing room around them.
+          padding: '28px 32px', maxWidth: 1100, width: '100%', maxHeight: '85vh', overflow: 'auto',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }}>
@@ -129,21 +135,52 @@ export function DayDetailModal({ day, onClose, prefetchedPres, prefetchedRun }: 
 // ── Body variants ───────────────────────────────────────────────────────
 
 function CompletedRunBody({ day, detail }: { day: GlanceWeekDay; detail: RunDetail | null }) {
+  // 2026-05-27: David didn't want a click-through to a second modal —
+  // render the whole run-detail body inline (splits + HR zones + form
+  // tiles + route). RunDetailBody now exports an `inline` mode so its
+  // hero stats are suppressed (the day modal already has Wednesday /
+  // MAY 27 / big stats up top — no point repeating them).
+  //
+  // Optimistic shoe-PATCH: keep local copy in sync so the picker
+  // doesn't snap back, server is source of truth on next refresh.
+  const [localDetail, setLocalDetail] = useState<RunDetail | null>(detail);
+  useEffect(() => { setLocalDetail(detail); }, [detail]);
+
+  async function pickShoe(shoeId: number | null) {
+    if (!localDetail || !day.activityId) return;
+    setLocalDetail({ ...localDetail, shoe_id: shoeId });
+    try {
+      await fetch(`/api/runs/${encodeURIComponent(day.activityId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shoe_id: shoeId }),
+      });
+    } catch {
+      // best-effort optimistic update; refresh reconciles if it fails.
+    }
+  }
+
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 18 }}>
+      {/* Top stat row — concise summary above the detailed inline body */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
         <BigStat v={day.doneMi.toFixed(1)} u="miles" color="var(--dist)" />
-        {detail?.pace        && <BigStat v={detail.pace}        u="avg pace" color="var(--green)" />}
-        {detail?.time_moving && <BigStat v={detail.time_moving} u="moving"   color="var(--ink)" />}
-        {detail?.hr_avg != null && <BigStat v={String(detail.hr_avg)} u="avg hr" color="var(--mute)" />}
+        {localDetail?.pace        && <BigStat v={localDetail.pace}        u="avg pace" color="var(--green)" />}
+        {localDetail?.time_moving && <BigStat v={localDetail.time_moving} u="moving"   color="var(--ink)" />}
+        {localDetail?.hr_avg != null && <BigStat v={String(localDetail.hr_avg)} u="avg hr" color="var(--over)" />}
       </div>
-      {day.activityId && (
-        // Pass the already-fetched detail down so the deeper RunDetailModal
-        // also opens with no skeleton flash — same prefetch chain.
-        <RunDetailTrigger
-          activityId={day.activityId}
-          label="Splits · route · form data →"
-          prefetchedData={detail}
+
+      {/* Inline run detail — splits + HR zones + form tiles + route.
+          `inline` mode hides RunDetailBody's own title + hero stats
+          since we already showed them above. Renders nothing while
+          detail is still loading — the BigStats row alone is enough
+          structure to read. */}
+      {localDetail && (
+        <RunDetailBody
+          d={localDetail}
+          shoes={Array.isArray(localDetail.shoes) ? localDetail.shoes : []}
+          onPickShoe={pickShoe}
+          inline
         />
       )}
     </>

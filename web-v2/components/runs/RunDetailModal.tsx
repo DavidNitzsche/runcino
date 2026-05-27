@@ -192,7 +192,25 @@ function ErrorState({ err }: { err: string }) {
   );
 }
 
-function RunDetailBody({ d, shoes, onPickShoe }: { d: RunDetail; shoes: any[]; onPickShoe: (id: number | null) => void }) {
+/**
+ * Body content of the run-detail modal — extracted so other surfaces
+ * (e.g. DayDetailModal's CompletedRunBody) can inline the full detail
+ * instead of opening a second modal-on-top-of-modal.
+ *
+ * `inline` mode hides the title + source eyebrow + hero stats (the
+ * outer surface already shows these on its own header) and starts the
+ * body at the secondary stats / phase / splits / HR / form / route
+ * stack. Default mode (non-inline) renders the full thing for the
+ * standalone RunDetailModal.
+ */
+export function RunDetailBody({
+  d, shoes, onPickShoe, inline = false,
+}: {
+  d: RunDetail;
+  shoes: any[];
+  onPickShoe: (id: number | null) => void;
+  inline?: boolean;
+}) {
   const sourceLabel = d.source === 'watch' ? 'WATCH'
     : d.source === 'apple_health' ? 'APPLE HEALTH'
     : d.source === 'manual' ? 'MANUAL ENTRY'
@@ -200,20 +218,24 @@ function RunDetailBody({ d, shoes, onPickShoe }: { d: RunDetail; shoes: any[]; o
 
   return (
     <>
-      <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 38, margin: '4px 0 6px', letterSpacing: '0.5px', lineHeight: 1, color: 'var(--ink)' }}>
-        {d.name ?? `${d.distance_mi.toFixed(1)} MI ${(d.type ?? 'run').toUpperCase()}`}
-      </h2>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 18, fontWeight: 600 }}>
-        {sourceLabel}{d.type ? ` · ${d.type}` : ''}
-      </div>
+      {!inline && (
+        <>
+          <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 38, margin: '4px 0 6px', letterSpacing: '0.5px', lineHeight: 1, color: 'var(--ink)' }}>
+            {d.name ?? `${d.distance_mi.toFixed(1)} MI ${(d.type ?? 'run').toUpperCase()}`}
+          </h2>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 18, fontWeight: 600 }}>
+            {sourceLabel}{d.type ? ` · ${d.type}` : ''}
+          </div>
 
-      {/* Hero stats — 4 most important numbers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
-        <BigStat v={d.distance_mi.toFixed(2)} u="miles" color="var(--dist)" />
-        {d.pace        && <BigStat v={d.pace}              u="avg pace" color="var(--green)" />}
-        {d.time_moving && <BigStat v={d.time_moving}       u="moving"   color="var(--ink)" />}
-        {d.hr_avg != null && <BigStat v={String(d.hr_avg)} u="avg hr"   color="var(--over)" />}
-      </div>
+          {/* Hero stats — 4 most important numbers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+            <BigStat v={d.distance_mi.toFixed(2)} u="miles" color="var(--dist)" />
+            {d.pace        && <BigStat v={d.pace}              u="avg pace" color="var(--green)" />}
+            {d.time_moving && <BigStat v={d.time_moving}       u="moving"   color="var(--ink)" />}
+            {d.hr_avg != null && <BigStat v={String(d.hr_avg)} u="avg hr"   color="var(--over)" />}
+          </div>
+        </>
+      )}
 
       {/* Secondary stats row — what didn't fit above */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
