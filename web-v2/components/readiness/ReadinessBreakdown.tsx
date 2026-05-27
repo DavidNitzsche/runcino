@@ -59,15 +59,18 @@ function StoryRow({ input }: { input: ReadinessInput }) {
     : input.weight < 0 ? 'var(--over)'
                        : 'var(--mute)';
 
-  // Label may be "SLEEP · 25%" — split for cleaner formatting.
+  // Label may be "SLEEP · 25%". Split for cleaner formatting.
   const [labelPart, sharePart] = input.label.split(' · ');
 
-  // Decide what the headline is. Prefer the rich "value — sub" pattern when
-  // both pieces exist; otherwise the observed value is the headline.
-  const headline = input.observedSub
-    ? `${input.observedV} — ${input.observedSub.replace(/^[+-]?[\d.]+\s*\w+\s*/, '')}`.trim()
-    : String(input.observedV);
-
+  // 2026-05-27: was a fragile regex merge that tried to strip the leading
+  // numeric prefix from observedSub so it could be appended after an em-dash.
+  // The regex (`/^[+-]?[\d.]+\s*\w+\s*/`) doesn't match '%' (not a word char),
+  // so "+10% vs baseline" stripped to "% vs baseline" and "+0 bpm vs baseline"
+  // stripped to "vs baseline". Result: headline "62ms , % vs baseline".
+  //
+  // Cleaner: render observedV and observedSub as two stacked rows. No regex,
+  // no em-dashes, each piece self-labeled. The meaning line below carries
+  // the interpretation.
   return (
     <div style={{
       display: 'flex',
@@ -109,15 +112,26 @@ function StoryRow({ input }: { input: ReadinessInput }) {
           </span>
         </div>
 
-        {/* Headline: value + delta in one line */}
-        <div style={{
-          fontFamily: 'var(--f-body)', fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', lineHeight: 1.3,
-        }}>
-          {headline}
+        {/* Big observed value (left) + delta-from-baseline (right). Each piece
+            self-labeled, no regex merge, no em-dash. */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+          <div style={{
+            fontFamily: 'var(--f-body)', fontSize: 16, fontWeight: 700,
+            color: 'var(--ink)', lineHeight: 1.2,
+          }}>
+            {input.observedV}
+          </div>
+          {input.observedSub && (
+            <div style={{
+              fontFamily: 'var(--f-body)', fontSize: 12,
+              color: 'var(--mute)', letterSpacing: '0.2px',
+            }}>
+              {input.observedSub}
+            </div>
+          )}
         </div>
 
-        {/* Narrative — the actual insight, the largest typographic element */}
+        {/* Narrative, the actual insight. */}
         {input.meaning && (
           <div style={{
             fontFamily: 'var(--f-body)', fontSize: 14,

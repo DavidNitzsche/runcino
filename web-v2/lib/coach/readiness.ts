@@ -49,15 +49,16 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
         ? `Roughly ${debt.toFixed(0)}h of sleep debt across the week. Recovery cost compounds.`
         : debt >= 3
           ? `About ${debt.toFixed(0)}h short for the week. Watch for fatigue creep.`
-          : `Just under target — a few hours short, but nothing concerning.`;
+          : `Just under target. A few hours short, but nothing concerning.`;
     inputs.push({
       key: 'sleep', label: 'SLEEP · 25%', weight: w,
-      observedV: `${state.sleep7Avg.toFixed(1)}h`,
-      observedSub: delta >= 0 ? `+${delta.toFixed(1)}h vs target` : `${delta.toFixed(1)}h vs target`,
+      // Tag the value as the 7-night average so it doesn't read as "last night".
+      observedV: `${state.sleep7Avg.toFixed(1)}h · 7-night avg`,
+      observedSub: delta >= 0 ? `+${delta.toFixed(1)}h vs 7.5h target` : `${delta.toFixed(1)}h vs 7.5h target`,
       meaning,
     });
   } else {
-    inputs.push({ key: 'sleep', label: 'SLEEP · 25%', weight: 0, observedV: '—', observedSub: 'no data', meaning: 'No sleep data yet — wear the watch overnight.' });
+    inputs.push({ key: 'sleep', label: 'SLEEP · 25%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No sleep data yet. Wear the watch overnight.' });
   }
 
   // HRV (25%)
@@ -66,22 +67,23 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const w = Math.max(-15, Math.min(15, Math.round(pct / 2)));
     score += w;
     const meaning = pct >= 15
-      ? `Well above your baseline — nervous system fully recovered. Green light for hard work.`
+      ? `Well above your baseline. Nervous system fully recovered, green light for hard work.`
       : pct >= 5
-        ? `Above baseline — recovered, ready to go.`
+        ? `Above baseline. Recovered, ready to go.`
         : pct >= -5
-          ? `At baseline — neutral signal.`
+          ? `At baseline. Neutral signal.`
           : pct >= -15
-            ? `Below baseline — could be stress, sleep, or accumulating load. Watch tomorrow.`
-            : `Well below baseline — pull back today and check rest.`;
+            ? `Below baseline. Could be stress, sleep, or accumulating load. Watch tomorrow.`
+            : `Well below baseline. Pull back today and check rest.`;
     inputs.push({
       key: 'hrv', label: 'HRV · 25%', weight: w,
       observedV: `${state.hrvCurrent}ms`,
-      observedSub: `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}% vs baseline`,
+      // State both numbers, no delta. Same rule the coach voice follows.
+      observedSub: `baseline ${state.hrvBaseline}ms`,
       meaning,
     });
   } else {
-    inputs.push({ key: 'hrv', label: 'HRV · 25%', weight: 0, observedV: '—', observedSub: 'no data', meaning: 'No HRV data yet — needs a few overnights of watch wear.' });
+    inputs.push({ key: 'hrv', label: 'HRV · 25%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No HRV data yet. Needs a few overnights of watch wear.' });
   }
 
   // RHR (20%)
@@ -90,20 +92,20 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const w = Math.max(-10, Math.min(5, delta > 0 ? -delta * 2 : -delta));
     score += w;
     const meaning = delta <= -2
-      ? `Below your baseline — sign of strong fitness adaptation.`
+      ? `Below your baseline. Sign of strong fitness adaptation.`
       : delta <= 1
-        ? `At baseline — typical resting cardio.`
+        ? `At baseline. Steady resting cardio.`
         : delta <= 4
-          ? `A few beats above baseline — could be sleep deficit, dehydration, or a volume bump. Single-day rise is fine; watch for a streak.`
-          : `Notably elevated — sleep, illness brewing, dehydration, or overreach. If it stays up 3+ days, ease the load.`;
+          ? `A few beats above baseline. Could be sleep deficit, dehydration, or a volume bump. Single-day rise is fine; watch for a streak.`
+          : `Notably elevated. Sleep, illness brewing, dehydration, or overreach. If it stays up 3+ days, ease the load.`;
     inputs.push({
       key: 'rhr', label: 'RHR · 20%', weight: w,
-      observedV: `${state.rhrCurrent}`,
-      observedSub: `${delta >= 0 ? '+' : ''}${delta} bpm vs baseline`,
+      observedV: `${state.rhrCurrent} bpm`,
+      observedSub: `baseline ${state.rhrBaseline} bpm`,
       meaning,
     });
   } else {
-    inputs.push({ key: 'rhr', label: 'RHR · 20%', weight: 0, observedV: '—', observedSub: 'no data', meaning: 'No resting HR data yet.' });
+    inputs.push({ key: 'rhr', label: 'RHR · 20%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No resting HR data yet.' });
   }
 
   // SUBJECTIVE (15%) — last 2 check-ins
@@ -116,11 +118,11 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const allSolid = ratings.every((r) => r === 'solid');
     const anyWrecked = ratings.some((r) => r === 'wrecked');
     const meaning = anyWrecked
-      ? `A WRECKED check-in is a real signal — coach should ease the next session.`
+      ? `A WRECKED check-in is a real signal. Coach should ease the next session.`
       : allSolid && ratings.length >= 2
-        ? `Back-to-back SOLID feel — you're absorbing the work.`
+        ? `Back-to-back SOLID feel. You're absorbing the work.`
         : ratings.includes('tired')
-          ? `TIRED in recent check-ins — fatigue accumulating, watch volume.`
+          ? `TIRED in recent check-ins. Fatigue accumulating, watch volume.`
           : `Subjective reads steady.`;
     inputs.push({
       key: 'subjective', label: 'CHECK-IN · 15%', weight: w,
@@ -129,7 +131,7 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
       meaning,
     });
   } else {
-    inputs.push({ key: 'subjective', label: 'CHECK-IN · 15%', weight: 0, observedV: '—', observedSub: 'no rating yet', meaning: 'No subjective rating yet today — coach defaults to neutral.' });
+    inputs.push({ key: 'subjective', label: 'CHECK-IN · 15%', weight: 0, observedV: 'no rating yet', observedSub: '', meaning: 'No subjective rating yet today. Coach defaults to neutral.' });
   }
 
   // LOAD (15%) — Gabbett's Acute:Chronic Workload Ratio (ACWR).
@@ -148,33 +150,33 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     let meaning = '';
     if (r < 0.8) {
       w = -3;
-      meaning = `Below 0.8 — you're trending toward detraining. Recent volume is well below your 28-day base.`;
+      meaning = `Below 0.8. You're trending toward detraining. Recent volume is well below your 28-day base.`;
     } else if (r < 1.0) {
       w = 2;
-      meaning = `Below 1.0 — building gradually. Sustainable progression with low injury risk.`;
+      meaning = `Below 1.0. Building gradually, sustainable progression with low injury risk.`;
     } else if (r <= 1.3) {
       w = 5;
-      meaning = `Sweet spot — gains with low injury risk. The Gabbett zone for productive training.`;
+      meaning = `Sweet spot. Gains with low injury risk, the Gabbett zone for productive training.`;
     } else if (r <= 1.5) {
       w = -3;
-      meaning = `Elevated ramp — recent volume well above your 28-day base. Hold here, don't add more.`;
+      meaning = `Elevated ramp. Recent volume well above your 28-day base. Hold here, don't add more.`;
     } else {
       w = -8;
-      meaning = `Spike above 1.5 — high injury risk. Back off this week or absorb the cost.`;
+      meaning = `Spike above 1.5. High injury risk. Back off this week or absorb the cost.`;
     }
     score += w;
     inputs.push({
       key: 'load', label: 'LOAD · 15%', weight: w,
-      observedV: r.toFixed(2),
-      observedSub: `acute ${state.loadAcute7.toFixed(1)} / chronic ${state.loadChronic28.toFixed(1)} mi/day`,
+      observedV: `${r.toFixed(2)} ACWR`,
+      observedSub: `acute ${state.loadAcute7.toFixed(1)} · chronic ${state.loadChronic28.toFixed(1)} mi/day`,
       meaning,
     });
   } else {
     // Insufficient history — Gabbett needs ≥3 runs in 28 days to mean anything.
     inputs.push({
       key: 'load', label: 'LOAD · 15%', weight: 0,
-      observedV: '—',
-      observedSub: 'building history',
+      observedV: 'building history',
+      observedSub: '',
       meaning: 'Acute:Chronic load ratio needs at least 3 runs in the last 28 days to be meaningful.',
     });
   }
