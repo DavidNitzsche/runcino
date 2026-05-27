@@ -1,20 +1,54 @@
+'use client';
+
 /**
  * Week-ahead grid — 7 days w/ DOW, miles, type, and bottom-anchored
  * target line (pace + HR/intent). Mirrors deck §3.
  *
- * Days w/ a logged strava activity → clickable Link to /runs/[activity_id].
- * Future days + days w/o a run stay display-only.
+ * Every tile is clickable → opens <DayDetailModal /> with the right view:
+ *   - past + ran → recap (splits, HR zones, route, etc. via RunDetailTrigger)
+ *   - today / future → planned-workout preview (steps, target pace, HR band)
+ *   - rest → quiet rest-day note
+ *   - unplanned → "no plan for this day yet" hint
+ *
+ * Same modal that /today's WeekStrip uses, so /training's WEEK AHEAD and
+ * /today's strip behave identically on tap. PlanWeek's day shape is mapped
+ * onto GlanceWeekDay via a tiny adapter — keeps the modal a single source
+ * of truth.
  */
-import Link from 'next/link';
+import { useState } from 'react';
 import type { PlanWeek } from '@/lib/coach/training-state';
+import type { GlanceWeekDay } from '@/lib/coach/glance-state';
 import { WorkoutSwapButton } from './WorkoutSwapButton';
+import { DayDetailModal } from '@/components/today/DayDetailModal';
 
 const DOW_NAMES = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 const QUALITY = new Set(['threshold', 'tempo', 'intervals']);
 
 interface Target { pace: string; secondary: string }
 
-function DayCell({ day, today, planId }: { day: PlanWeek['days'][number]; today: string; planId?: string }) {
+/** Map a PlanWeek day onto the GlanceWeekDay shape DayDetailModal expects. */
+function toGlanceDay(day: PlanWeek['days'][number], today: string): GlanceWeekDay {
+  return {
+    date: day.date,
+    dow: day.dow,
+    plannedMi: day.mi,
+    plannedType: day.type,
+    plannedLabel: day.label,
+    doneMi: day.doneMi,
+    activityId: day.activityId,
+    isToday: day.date === today,
+    isPast: day.date < today,
+  };
+}
+
+function DayCell({
+  day, today, planId, onOpen,
+}: {
+  day: PlanWeek['days'][number];
+  today: string;
+  planId?: string;
+  onOpen: () => void;
+}) {
   const isToday = day.date === today;
   const isPast = day.date < today;
   const isRest = day.type === 'rest' || day.mi === 0;
@@ -28,7 +62,6 @@ function DayCell({ day, today, planId }: { day: PlanWeek['days'][number]; today:
   const typLabel = isRest && !ran ? 'REST'
     : (day.label ? day.label.toUpperCase() : day.type.toUpperCase());
   const dowName = DOW_NAMES[day.dow] ?? '';
-  // EASY now has its own color (purple) instead of falling through to dim mute.
   const typColor = isToday ? 'var(--green)'
     : isQuality ? 'var(--goal)'
     : isLong    ? 'var(--dist)'
@@ -36,30 +69,42 @@ function DayCell({ day, today, planId }: { day: PlanWeek['days'][number]; today:
     : isEasy    ? 'var(--learn)'
                 : 'var(--mute)';
 
-  const tile = (
-    <div style={{
-      background: isToday ? 'rgba(62,189,65,0.10)'
-        : ran ? 'rgba(62,189,65,0.05)'
-              : 'rgba(255,255,255,0.025)',
-      border: isToday ? '1px solid rgba(62,189,65,0.30)'
-        : ran && isPast ? '1px solid rgba(62,189,65,0.18)'
-                        : '1px solid transparent',
-      borderRadius: 10, padding: '14px 11px',
-      display: 'flex', flexDirection: 'column',
-      cursor: ran && isPast ? 'pointer' : 'default',
-      transition: 'background .12s, border .12s',
-      height: '100%',
-      position: 'relative',
-    }}>
-      {/* Swap button — future workouts only, opens edit modal */}
+  return (
+    <button
+      onClick={onOpen}
+      type="button"
+      style={{
+        background: isToday ? 'rgba(62,189,65,0.10)'
+          : ran ? 'rgba(62,189,65,0.05)'
+                : 'rgba(255,255,255,0.025)',
+        border: isToday ? '1px solid rgba(62,189,65,0.30)'
+          : ran && isPast ? '1px solid rgba(62,189,65,0.18)'
+                          : '1px solid transparent',
+        borderRadius: 10, padding: '14px 11px',
+        display: 'flex', flexDirection: 'column',
+        cursor: 'pointer',
+        transition: 'background .12s, border .12s, transform .08s',
+        height: '100%',
+        position: 'relative',
+        textAlign: 'left',
+        font: 'inherit', color: 'inherit',
+        width: '100%',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+    >
+      {/* Swap button — future workouts only, opens edit modal. stopPropagation
+          so clicking the swap chip doesn't ALSO open the detail modal. */}
       {!isPast && planId && (
-        <WorkoutSwapButton
-          planId={planId}
-          date={day.date}
-          currentType={day.type}
-          currentMi={day.mi}
-          currentLabel={day.label}
-        />
+        <div onClick={(e) => e.stopPropagation()}>
+          <WorkoutSwapButton
+            planId={planId}
+            date={day.date}
+            currentType={day.type}
+            currentMi={day.mi}
+            currentLabel={day.label}
+          />
+        </div>
       )}
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700, color: isToday ? 'var(--green)' : 'var(--mute)', letterSpacing: '1.4px' }}>
         {dowName}
@@ -83,20 +128,11 @@ function DayCell({ day, today, planId }: { day: PlanWeek['days'][number]; today:
           {tgt.secondary}
         </span>
       </div>
-    </div>
+    </button>
   );
-
-  if (ran && day.activityId) {
-    return (
-      <Link href={`/runs/${encodeURIComponent(day.activityId)}`} style={{ textDecoration: 'none' }}>
-        {tile}
-      </Link>
-    );
-  }
-  return tile;
 }
 
-function targetFor(type: string, mi: number, label: string | null): Target {
+function targetFor(type: string, _mi: number, label: string | null): Target {
   switch (type) {
     case 'easy':       return { pace: '9:00 /mi', secondary: 'HR < 140' };
     case 'long':       return { pace: '8:50 /mi', secondary: 'HR < 145 · fuel @45\'' };
@@ -110,6 +146,8 @@ function targetFor(type: string, mi: number, label: string | null): Target {
 }
 
 export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: string; planId?: string }) {
+  const [openDay, setOpenDay] = useState<GlanceWeekDay | null>(null);
+
   return (
     <div style={{
       background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16,
@@ -124,8 +162,18 @@ export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: stri
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, flex: 1 }}>
-        {week.days.map((d) => <DayCell key={d.date} day={d} today={today} planId={planId} />)}
+        {week.days.map((d) => (
+          <DayCell
+            key={d.date}
+            day={d}
+            today={today}
+            planId={planId}
+            onOpen={() => setOpenDay(toGlanceDay(d, today))}
+          />
+        ))}
       </div>
+
+      {openDay && <DayDetailModal day={openDay} onClose={() => setOpenDay(null)} />}
     </div>
   );
 }
