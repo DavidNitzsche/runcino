@@ -1104,18 +1104,24 @@ function HRSection({ d }: { d: RunDetail }) {
         </div>
       </div>
 
-      {/* HR TIMELINE — spans 2 cols on bottom row */}
+      {/* HR TIMELINE / SUMMARY — spans 2 cols on bottom row.
+          2026-05-27: when no per-time data, swap header label from
+          "HR TIMELINE" to "HR SUMMARY" and drop the "line color = zone"
+          hint — it was promising a chart we couldn't draw, then saying
+          "no data" right below. Honest. */}
       <div style={{
         gridColumn: 'span 2',
         background: 'rgba(255,255,255,0.035)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700 }}>
-            HR TIMELINE{totalSec > 0 ? ` · ${fmtTime(totalSec)}` : ''}
+            {series ? 'HR TIMELINE' : 'HR SUMMARY'}{totalSec > 0 ? ` · ${fmtTime(totalSec)}` : ''}
             {d.hr_avg != null ? ` · AVG ${d.hr_avg}` : ''}
             {d.hr_max != null ? ` · PEAK ${d.hr_max}` : ''}
           </span>
-          <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700 }}>line color = zone</span>
+          {series && (
+            <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700 }}>line color = zone</span>
+          )}
         </div>
 
         {series ? (
@@ -1235,10 +1241,147 @@ function HRSection({ d }: { d: RunDetail }) {
             </div>
           </>
         ) : (
-          <div style={{ padding: '24px 8px', fontSize: 12, color: 'var(--mute)', lineHeight: 1.5 }}>
-            No per-phase or per-mile HR data on this run, so no timeline. The hero zone + peak + LTHR ratio above tell the story.
-          </div>
+          <HrSummaryFallback
+            pcts={pcts}
+            totalSec={totalSec}
+            hrAvg={d.hr_avg}
+            hrMax={d.hr_max}
+            lthr={lthr}
+          />
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Honest fallback when we have aggregate HR but no per-time series.
+ * Was previously "No per-phase or per-mile HR data on this run" — read
+ * as a contradiction because the header right above said "AVG 140 ·
+ * PEAK 153". David flagged it. New version uses real data we have:
+ *   - horizontal time-in-zone stacked bar (zone pcts × total time)
+ *   - bpm scale with AVG, PEAK, LTHR markers
+ *   - short summary line
+ */
+function HrSummaryFallback({
+  pcts, totalSec, hrAvg, hrMax, lthr,
+}: {
+  pcts: ZonePcts;
+  totalSec: number;
+  hrAvg: number | null;
+  hrMax: number | null;
+  lthr: number | null;
+}) {
+  const zones: ZoneKey[] = ['z1', 'z2', 'z3', 'z4', 'z5'];
+  const hasZoneData = zones.some((z) => pcts[z] > 0.5);
+
+  // bpm axis — anchor on LTHR when present, otherwise span 100-200.
+  const axisMin = lthr ? Math.max(80, lthr - 60) : 100;
+  const axisMax = lthr ? Math.max((hrMax ?? 0) + 8, lthr + 20) : 200;
+  const axisSpan = axisMax - axisMin;
+  const pctOnAxis = (bpm: number) =>
+    Math.max(0, Math.min(100, ((bpm - axisMin) / axisSpan) * 100));
+
+  // Pick dominant zone for the one-liner.
+  const dominantKey: ZoneKey = zones.reduce((best, k) => (pcts[k] > pcts[best] ? k : best), 'z2');
+  const dominantPct = Math.round(pcts[dominantKey]);
+  const fmtZoneTime = (z: ZoneKey) => {
+    const sec = Math.round(totalSec * (pcts[z] / 100));
+    if (sec <= 0) return '0';
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    return `${m}m`;
+  };
+
+  // Build a one-line interpretive summary.
+  const summary: string = (() => {
+    if (!hasZoneData) {
+      if (hrAvg != null) {
+        return `Averaged ${hrAvg} bpm${hrMax != null ? `, peaked at ${hrMax}` : ''}. No per-time HR samples on this run, so no second-by-second trace.`;
+      }
+      return 'No detailed HR breakdown for this run.';
+    }
+    const zoneName = ZONE_NAME[dominantKey];
+    return `${dominantPct}% of moving time in ${zoneName}${
+      hrMax != null && hrAvg != null ? `. Averaged ${hrAvg} bpm, peaked at ${hrMax}` : ''
+    }. Per-time samples aren't available — the bar shows time-in-zone, the scale shows where AVG and PEAK landed.`;
+  })();
+
+  return (
+    <div style={{ paddingTop: 4, paddingBottom: 2 }}>
+      {/* TIME-IN-ZONE STACKED BAR */}
+      {hasZoneData && (
+        <div>
+          <div style={{ display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+            {zones.map((z) => {
+              const pct = pcts[z];
+              if (pct < 0.5) return null;
+              return (
+                <div key={z} style={{
+                  flex: pct, background: ZONE_COLOR[z],
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: 18,
+                }}>
+                  {pct >= 8 && (
+                    <span style={{ fontSize: 9, fontWeight: 700, color: '#fff', letterSpacing: '0.4px' }}>
+                      {ZONE_NAME[z]}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', marginTop: 4, fontSize: 9, color: 'var(--mute)', letterSpacing: '0.3px', fontWeight: 600 }}>
+            {zones.map((z) => {
+              const pct = pcts[z];
+              if (pct < 0.5) return null;
+              return (
+                <div key={z} style={{ flex: pct, textAlign: 'center', minWidth: 18 }}>
+                  {Math.round(pct)}% · {fmtZoneTime(z)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* BPM SCALE — AVG, PEAK, LTHR markers */}
+      {(hrAvg != null || hrMax != null) && (
+        <div style={{ marginTop: hasZoneData ? 16 : 4 }}>
+          <div style={{ position: 'relative', height: 28 }}>
+            {/* base track */}
+            <div style={{
+              position: 'absolute', left: 0, right: 0, top: 12, height: 4, borderRadius: 2,
+              background: 'linear-gradient(90deg, rgba(0,143,236,0.35), rgba(62,189,65,0.45) 40%, rgba(243,173,56,0.5) 70%, rgba(252,77,100,0.55) 100%)',
+            }}/>
+            {/* LTHR marker */}
+            {lthr != null && lthr >= axisMin && lthr <= axisMax && (
+              <div style={{ position: 'absolute', left: `${pctOnAxis(lthr)}%`, top: 0, transform: 'translateX(-50%)' }}>
+                <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.35)', margin: '4px auto 0' }}/>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.3px', fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>LTHR {lthr}</div>
+              </div>
+            )}
+            {/* AVG marker */}
+            {hrAvg != null && hrAvg >= axisMin && hrAvg <= axisMax && (
+              <div style={{ position: 'absolute', left: `${pctOnAxis(hrAvg)}%`, top: 0, transform: 'translateX(-50%)' }}>
+                <div style={{ width: 2, height: 16, background: '#fff', margin: '4px auto 0', borderRadius: 1 }}/>
+                <div style={{ fontSize: 9, color: '#fff', letterSpacing: '0.3px', fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>AVG {hrAvg}</div>
+              </div>
+            )}
+            {/* PEAK marker */}
+            {hrMax != null && hrMax >= axisMin && hrMax <= axisMax && (
+              <div style={{ position: 'absolute', left: `${pctOnAxis(hrMax)}%`, top: 0, transform: 'translateX(-50%)' }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#FC4D64', margin: '11px auto 0', boxShadow: '0 0 0 2px rgba(252,77,100,0.25)' }}/>
+                <div style={{ fontSize: 9, color: '#FC4D64', letterSpacing: '0.3px', fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap' }}>PEAK {hrMax}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Honest one-liner */}
+      <div style={{ marginTop: 10, fontSize: 11, color: 'var(--mute)', lineHeight: 1.5 }}>
+        {summary}
       </div>
     </div>
   );
