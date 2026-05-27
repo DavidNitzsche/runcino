@@ -14,8 +14,10 @@
  *
  * Every tile is clickable → opens DayDetailModal.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GlanceWeekDay } from '@/lib/coach/glance-state';
+import type { Prescription } from '@/lib/training/prescriptions';
+import type { RunDetail } from '@/lib/coach/run-state';
 import { DayDetailModal } from './DayDetailModal';
 
 const DOW_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -28,6 +30,51 @@ export function WeekStrip({ days, weekDone, weekPlanned, phaseLabel }: {
   phaseLabel: string | null;
 }) {
   const [openDay, setOpenDay] = useState<GlanceWeekDay | null>(null);
+
+  // Pre-fetch every planned day's prescription AND every ran day's
+  // run-detail so the modal renders synchronously when tapped.
+  // Eliminates the half-tick pop-in between modal open and detail
+  // arrival. Keyed by date so we can look up the right one on click.
+  const [presByDate, setPresByDate] = useState<Record<string, Prescription>>({});
+  const [runByDate, setRunByDate] = useState<Record<string, RunDetail>>({});
+  useEffect(() => {
+    let mounted = true;
+    const planned = days.filter((d) => {
+      const ran = d.doneMi >= 0.5;
+      const isRest = d.plannedType === 'rest';
+      const isUnplanned = d.plannedType === 'unplanned' || (d.plannedMi === 0 && !isRest);
+      return !ran && !isRest && !isUnplanned && d.plannedMi > 0;
+    });
+    const ranDays = days.filter((d) => d.doneMi >= 0.5 && d.activityId);
+    Promise.all([
+      ...planned.map((d) => {
+        const proxyWeekly = Math.max(d.plannedMi * 6, 25);
+        return fetch(`/api/prescription?type=${encodeURIComponent(d.plannedType)}&weeklyMi=${proxyWeekly}&targetMi=${d.plannedMi}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((p) => p ? { kind: 'pres' as const, date: d.date, payload: p as Prescription } : null)
+          .catch(() => null);
+      }),
+      ...ranDays.map((d) =>
+        fetch(`/api/runs/${encodeURIComponent(d.activityId!)}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((p) => p ? { kind: 'run' as const, date: d.date, payload: p as RunDetail } : null)
+          .catch(() => null)
+      ),
+    ]).then((results) => {
+      if (!mounted) return;
+      const pMap: Record<string, Prescription> = {};
+      const rMap: Record<string, RunDetail> = {};
+      for (const r of results) {
+        if (!r) continue;
+        if (r.kind === 'pres') pMap[r.date] = r.payload;
+        if (r.kind === 'run')  rMap[r.date] = r.payload;
+      }
+      setPresByDate(pMap);
+      setRunByDate(rMap);
+    });
+    return () => { mounted = false; };
+  }, [days]);
+
   return (
     <div style={{ padding: '4px 24px 14px' }}>
       <div style={{
@@ -43,7 +90,14 @@ export function WeekStrip({ days, weekDone, weekPlanned, phaseLabel }: {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
         {days.map((d) => <DayTile key={d.date} day={d} onClick={() => setOpenDay(d)} />)}
       </div>
-      {openDay && <DayDetailModal day={openDay} onClose={() => setOpenDay(null)} />}
+      {openDay && (
+        <DayDetailModal
+          day={openDay}
+          prefetchedPres={presByDate[openDay.date] ?? null}
+          prefetchedRun={runByDate[openDay.date] ?? null}
+          onClose={() => setOpenDay(null)}
+        />
+      )}
     </div>
   );
 }

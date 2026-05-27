@@ -23,16 +23,35 @@ function fmtDate(iso: string): string {
   return `${MONTHS[m - 1]} ${d}, ${y}`;
 }
 
-interface Props { day: GlanceWeekDay; onClose: () => void }
+interface Props {
+  day: GlanceWeekDay;
+  onClose: () => void;
+  /**
+   * Optional pre-fetched prescription. When provided, the modal renders
+   * synchronously with no fetch on open — kills the pop-in. WeekStrip
+   * pre-fetches all 7 days when it mounts and passes the matching one
+   * in here. WeekAhead.tsx doesn't pass this (legacy caller); the
+   * PlannedWorkoutBody falls back to the old on-mount fetch.
+   */
+  prefetchedPres?: Prescription | null;
+  /**
+   * Same idea for the past+ran case — pre-fetched run detail (pace,
+   * time, HR avg) so the CompletedRunBody BigStats render synchronously.
+   */
+  prefetchedRun?: RunDetail | null;
+}
 
-export function DayDetailModal({ day, onClose }: Props) {
-  const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
+export function DayDetailModal({ day, onClose, prefetchedPres, prefetchedRun }: Props) {
+  const [runDetail, setRunDetail] = useState<RunDetail | null>(prefetchedRun ?? null);
   const ran = day.doneMi >= 0.5;
   const isRest = day.plannedType === 'rest';
   const isUnplanned = day.plannedType === 'unplanned' || (day.plannedMi === 0 && !isRest);
 
-  // If past + ran, fetch detail to show splits + HR zone summary inline.
+  // If past + ran AND no prefetch came in, fetch detail to show splits
+  // + HR zone summary inline. WeekStrip path always pre-fetches so this
+  // is only the WeekAhead-on-/training fallback.
   useEffect(() => {
+    if (prefetchedRun) { setRunDetail(prefetchedRun); return; }
     if (!ran || !day.activityId) return;
     let mounted = true;
     fetch(`/api/runs/${encodeURIComponent(day.activityId)}`)
@@ -40,7 +59,7 @@ export function DayDetailModal({ day, onClose }: Props) {
       .then((d) => { if (mounted && d) setRunDetail(d); })
       .catch(() => {});
     return () => { mounted = false; };
-  }, [ran, day.activityId]);
+  }, [ran, day.activityId, prefetchedRun]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -99,7 +118,7 @@ export function DayDetailModal({ day, onClose }: Props) {
 
         {/* Body — branches on state */}
         {ran && <CompletedRunBody day={day} detail={runDetail} />}
-        {!ran && !isRest && !isUnplanned && <PlannedWorkoutBody day={day} typeColor={typeColor} />}
+        {!ran && !isRest && !isUnplanned && <PlannedWorkoutBody day={day} typeColor={typeColor} prefetchedPres={prefetchedPres ?? null} />}
         {isRest && !ran && <RestBody />}
         {isUnplanned && !ran && <UnplannedBody day={day} />}
       </div>
@@ -125,11 +144,15 @@ function CompletedRunBody({ day, detail }: { day: GlanceWeekDay; detail: RunDeta
   );
 }
 
-function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor: string }) {
-  const [pres, setPres] = useState<Prescription | null>(null);
-  const [loading, setLoading] = useState(true);
+function PlannedWorkoutBody({ day, typeColor, prefetchedPres }: { day: GlanceWeekDay; typeColor: string; prefetchedPres: Prescription | null }) {
+  // If parent pre-fetched (WeekStrip path), render synchronously with no
+  // loading state — kills the pop-in. Otherwise (WeekAhead path), fall
+  // back to the on-mount fetch.
+  const [pres, setPres] = useState<Prescription | null>(prefetchedPres);
+  const [loading, setLoading] = useState(prefetchedPres == null);
 
   useEffect(() => {
+    if (prefetchedPres) { setPres(prefetchedPres); setLoading(false); return; }
     let mounted = true;
     // We don't yet know the week's planned mileage from glance, so pass
     // the day's planned mi as a proxy weekly volume (the prescriptions
@@ -141,7 +164,7 @@ function PlannedWorkoutBody({ day, typeColor }: { day: GlanceWeekDay; typeColor:
       .then((d) => { if (mounted) { setPres(d); setLoading(false); } })
       .catch(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [day.plannedType, day.plannedMi]);
+  }, [day.plannedType, day.plannedMi, prefetchedPres]);
 
   return (
     <>
