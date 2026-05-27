@@ -58,6 +58,11 @@ interface TypeStyle {
   typeLabel: string;
 }
 
+/**
+ * Style per workout type. RULE: always two colors / two shades. Never
+ * fade to black or card-bg. Gradient stops are paired hues of the same
+ * accent — lighter at the top-left, darker at the bottom-right.
+ */
 function styleFor(day: GlanceWeekDay, ran: boolean): TypeStyle {
   const isRest = day.plannedType === 'rest';
   const isUnplanned = day.plannedType === 'unplanned';
@@ -68,57 +73,57 @@ function styleFor(day: GlanceWeekDay, ran: boolean): TypeStyle {
 
   if (ran) {
     return {
-      background: 'linear-gradient(160deg, #1f4523 0%, #14301a 70%, #0e1014 100%)',
-      ink: '#9be29e',
+      background: 'linear-gradient(160deg, #2b6230 0%, #143a1d 100%)',
+      ink: '#c8f0c9',
       typeLabel: 'DONE',
     };
   }
   if (isRace) {
     return {
-      background: 'linear-gradient(160deg, #5a2a18 0%, #3a1a10 70%, #0e1014 100%)',
-      ink: '#ffb088',
+      background: 'linear-gradient(160deg, #b14d2a 0%, #5a2014 100%)',
+      ink: '#ffd4be',
       typeLabel: 'RACE',
     };
   }
   if (isQuality) {
     return {
-      background: 'linear-gradient(160deg, #4a3812 0%, #2e2410 70%, #0e1014 100%)',
-      ink: '#f3c266',
+      background: 'linear-gradient(160deg, #b88224 0%, #4a2e0e 100%)',
+      ink: '#f8d899',
       typeLabel: (day.plannedLabel ?? day.plannedType).toUpperCase().slice(0, 12),
     };
   }
   if (isLong) {
     return {
-      background: 'linear-gradient(160deg, #103b4f 0%, #0a2535 70%, #0e1014 100%)',
-      ink: '#6fc8e6',
+      background: 'linear-gradient(160deg, #1f7aa2 0%, #0d2e44 100%)',
+      ink: '#a7dbef',
       typeLabel: 'LONG',
     };
   }
   if (isEasy) {
     return {
-      background: 'linear-gradient(160deg, #2e2354 0%, #1d1638 70%, #0e1014 100%)',
-      ink: '#c0a8ff',
+      background: 'linear-gradient(160deg, #5b46a5 0%, #25184b 100%)',
+      ink: '#dccaff',
       typeLabel: 'EASY',
     };
   }
   if (isRest) {
     return {
-      background: 'linear-gradient(160deg, #14202b 0%, #0f1620 70%, #0e1014 100%)',
-      ink: 'rgba(246,247,248,0.45)',
+      background: 'linear-gradient(160deg, #2a3a4a 0%, #14202b 100%)',
+      ink: 'rgba(246,247,248,0.65)',
       typeLabel: 'REST',
     };
   }
   if (isUnplanned) {
     return {
-      background: 'linear-gradient(160deg, #14171c 0%, #0e1014 100%)',
-      ink: 'rgba(246,247,248,0.35)',
+      background: 'linear-gradient(160deg, #232730 0%, #14171c 100%)',
+      ink: 'rgba(246,247,248,0.45)',
       typeLabel: '—',
     };
   }
-  // Fallback
+  // Fallback — same as unplanned but slightly brighter so it's clear something's there
   return {
-    background: 'linear-gradient(160deg, #14171c 0%, #0e1014 100%)',
-    ink: 'rgba(246,247,248,0.55)',
+    background: 'linear-gradient(160deg, #2a2f38 0%, #181c22 100%)',
+    ink: 'rgba(246,247,248,0.7)',
     typeLabel: (day.plannedLabel ?? day.plannedType).toUpperCase().slice(0, 12),
   };
 }

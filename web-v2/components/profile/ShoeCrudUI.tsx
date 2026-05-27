@@ -94,22 +94,59 @@ interface ShoeCardData {
 
 /**
  * Build the card background from one or two colors.
- * - Two colors → diagonal gradient using both at full strength, then a
- *   dark veil so text reads.
- * - One color → single-color tint fading to dark.
- * - No color  → plain card with subtle slate gradient.
+ *
+ * RULE: always two colors / two shades. Never fade to black or card-bg.
+ *  - Two colors → diagonal gradient between them, with a dark veil
+ *    layered on top so text reads at any color combo.
+ *  - One color → two-shade gradient of the same hue (lighter → darker)
+ *    so we still get depth without fading to bg.
+ *  - No color  → neutral slate gradient (two slate shades).
  */
 function shoeBackground(c1: string | null | undefined, c2: string | null | undefined): string {
   if (c1 && c2) {
-    // Two-tone: full-strength gradient with a dark veil layered on top so
-    // text stays legible. The veil ensures even bright colors don't blow out.
-    return `linear-gradient(135deg, rgba(8,10,14,0.45), rgba(8,10,14,0.65)), linear-gradient(135deg, ${c1}, ${c2})`;
+    return `linear-gradient(135deg, rgba(8,10,14,0.45), rgba(8,10,14,0.62)), linear-gradient(135deg, ${c1}, ${c2})`;
   }
   if (c1) {
-    // Single color: tint fading to dark in the bottom-right.
-    return `linear-gradient(135deg, ${c1} 0%, ${c1}AA 35%, var(--card) 100%), linear-gradient(135deg, rgba(8,10,14,0.55), rgba(8,10,14,0.55))`;
+    const lighter = adjustLightness(c1, +10);
+    const darker  = adjustLightness(c1, -25);
+    return `linear-gradient(135deg, rgba(8,10,14,0.40), rgba(8,10,14,0.60)), linear-gradient(135deg, ${lighter}, ${darker})`;
   }
-  return 'linear-gradient(160deg, #1a1d22 0%, #14171c 100%)';
+  return 'linear-gradient(160deg, #2a2f38 0%, #181c22 100%)';
+}
+
+/** Hex helper — shift HSL lightness by N points. Used to derive the
+ *  second shade for single-color shoe cards so we never fade to black. */
+function adjustLightness(hex: string, deltaPct: number): string {
+  const m = hex.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return hex;
+  const r = parseInt(m[1], 16) / 255;
+  const g = parseInt(m[2], 16) / 255;
+  const b = parseInt(m[3], 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0; const l = (max + min) / 2;
+  const d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const newL = Math.max(0, Math.min(100, l * 100 + deltaPct)) / 100;
+  // hsl → rgb back to hex
+  const c = (1 - Math.abs(2 * newL - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m2 = newL - c / 2;
+  let r2 = 0, g2 = 0, b2 = 0;
+  if (h < 60)       { r2 = c; g2 = x; b2 = 0; }
+  else if (h < 120) { r2 = x; g2 = c; b2 = 0; }
+  else if (h < 180) { r2 = 0; g2 = c; b2 = x; }
+  else if (h < 240) { r2 = 0; g2 = x; b2 = c; }
+  else if (h < 300) { r2 = x; g2 = 0; b2 = c; }
+  else              { r2 = c; g2 = 0; b2 = x; }
+  const toHex = (v: number) => Math.round((v + m2) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`;
 }
 
 /**

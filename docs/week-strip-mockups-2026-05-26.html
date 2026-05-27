@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Week strip — mockup deck · 2026-05-26</title>
+<style>
+  :root {
+    --bg-page: #0a0c10;
+    --card:    #181a1d;
+    --ink:     #f6f7f8;
+    --mute:    rgba(246,247,248,0.55);
+    --dim:     rgba(246,247,248,0.32);
+    --line:    rgba(255,255,255,0.06);
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --over:    #FC4D64;
+    --dist:    #27B4E0;
+    --rest:    #008FEC;
+    --learn:   #B084FF;
+    --race:    #FF8847;
+    --f-display: 'HelveticaNeue-Bold', 'Helvetica Neue', system-ui, sans-serif;
+    --f-label:   'HelveticaNeue-Bold', 'Helvetica Neue Bold', -apple-system, sans-serif;
+    --f-body:    'Inter', -apple-system, system-ui, sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  body {
+    margin: 0; padding: 48px 24px 80px;
+    background: var(--bg-page); color: var(--ink);
+    font-family: var(--f-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1380px; margin: 0 auto; }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: 36px; letter-spacing: 0.3px;
+    margin: 0 0 8px;
+    font-weight: 700;
+  }
+  .deck-intro {
+    color: var(--mute); font-size: 14px; line-height: 1.6;
+    max-width: 720px; margin: 0 0 40px;
+  }
+
+  .mockup {
+    margin-bottom: 56px;
+    padding: 32px 28px;
+    background: rgba(255,255,255,0.015);
+    border-radius: 18px;
+    border: 1px solid var(--line);
+  }
+  .mockup-label {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .mockup-title {
+    font-family: var(--f-label);
+    font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase;
+    color: var(--green);
+    font-weight: 700;
+  }
+  .mockup-name {
+    font-family: var(--f-display);
+    font-size: 24px; letter-spacing: 0.3px;
+    font-weight: 700;
+    margin: 4px 0 10px;
+  }
+  .mockup-desc {
+    color: var(--mute); font-size: 13px; line-height: 1.55;
+    max-width: 760px; margin-bottom: 22px;
+  }
+
+  /* Header for each strip mockup */
+  .strip-header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--f-label);
+    font-size: 11px; font-weight: 700; color: var(--mute);
+    letter-spacing: 1.6px; text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .strip-total { color: var(--green); }
+
+  /* Grid base — same 7-col layout across all mockups */
+  .strip-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+  }
+
+  /* ========================================================== */
+  /* MOCKUP A — Editorial light                                  */
+  /* ========================================================== */
+  .mockA .tile {
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 14px 8px;
+    text-align: center;
+    position: relative;
+    min-height: 110px;
+  }
+  .mockA .tile.done {
+    background: linear-gradient(160deg, #2b6230, #143a1d);
+  }
+  .mockA .tile.today {
+    box-shadow: inset 0 0 0 2px var(--green);
+  }
+  .mockA .dow {
+    font-family: var(--f-label); font-size: 11px; font-weight: 700;
+    color: var(--ink); letter-spacing: 1.5px;
+  }
+  .mockA .dow.t { color: var(--green); }
+  .mockA .dom {
+    font-size: 10px; color: var(--mute); margin-top: 2px;
+    letter-spacing: 0.4px;
+  }
+  .mockA .mi {
+    font-family: var(--f-display); font-size: 28px; font-weight: 800;
+    margin-top: 8px; letter-spacing: 0.2px;
+    line-height: 1;
+  }
+  .mockA .mi.done { color: #c8f0c9; }
+  .mockA .mi.easy { color: var(--learn); }
+  .mockA .mi.long { color: var(--dist); }
+  .mockA .mi.rest { color: var(--dim); }
+  .mockA .type {
+    font-family: var(--f-label); font-size: 9.5px; letter-spacing: 1.5px;
+    font-weight: 700; color: var(--mute);
+    margin-top: 6px; text-transform: uppercase;
+  }
+  .mockA .type.done { color: #c8f0c9; }
+  .mockA .type.easy { color: var(--learn); }
+  .mockA .type.long { color: var(--dist); }
+  .mockA .check {
+    position: absolute; top: 8px; right: 8px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--green); color: #0a0c10;
+    font-size: 10px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ========================================================== */
+  /* MOCKUP B — Saturated color blocks (per-day full color)      */
+  /* ========================================================== */
+  .mockB .tile {
+    border-radius: 14px; padding: 16px 10px;
+    text-align: center; position: relative;
+    min-height: 130px;
+  }
+  .mockB .tile.done { background: linear-gradient(160deg, #3EBD41, #1d6420); }
+  .mockB .tile.today { background: linear-gradient(160deg, #4DD050, #2c8a2f); box-shadow: 0 8px 24px rgba(62,189,65,0.25); }
+  .mockB .tile.easy { background: linear-gradient(160deg, #B084FF, #5b3fa8); }
+  .mockB .tile.long { background: linear-gradient(160deg, #4DCDEB, #166789); }
+  .mockB .tile.rest { background: linear-gradient(160deg, #4a5560, #232a33); }
+  .mockB .dow {
+    font-family: var(--f-label); font-size: 11px; font-weight: 700;
+    color: rgba(255,255,255,0.85); letter-spacing: 1.5px;
+  }
+  .mockB .dom {
+    font-size: 10px; color: rgba(255,255,255,0.55); margin-top: 2px;
+  }
+  .mockB .mi {
+    font-family: var(--f-display); font-size: 32px; font-weight: 800;
+    color: #fff; margin-top: 10px; line-height: 1;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  }
+  .mockB .mi.rest { color: rgba(255,255,255,0.45); }
+  .mockB .type {
+    font-family: var(--f-label); font-size: 10px; font-weight: 700;
+    color: rgba(255,255,255,0.92);
+    letter-spacing: 1.4px; margin-top: 6px;
+  }
+  .mockB .check {
+    position: absolute; top: 8px; right: 8px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: rgba(255,255,255,0.95); color: var(--green);
+    font-size: 11px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ========================================================== */
+  /* MOCKUP C — Minimalist agenda                                */
+  /* ========================================================== */
+  .mockC .strip-grid {
+    background: rgba(255,255,255,0.02);
+    border-radius: 14px;
+    padding: 4px;
+  }
+  .mockC .tile {
+    border-radius: 10px; padding: 14px 8px;
+    text-align: center; position: relative;
+    background: transparent;
+    min-height: 110px;
+  }
+  .mockC .tile.today { background: rgba(62,189,65,0.10); }
+  .mockC .accent {
+    height: 3px; border-radius: 2px; margin: 0 auto 12px;
+    width: 36px;
+  }
+  .mockC .accent.done { background: var(--green); }
+  .mockC .accent.easy { background: var(--learn); }
+  .mockC .accent.long { background: var(--dist); }
+  .mockC .accent.rest { background: var(--dim); }
+  .mockC .dow {
+    font-family: var(--f-label); font-size: 11px; font-weight: 700;
+    color: var(--mute); letter-spacing: 1.4px;
+  }
+  .mockC .dom {
+    font-family: var(--f-display); font-size: 14px; color: var(--ink);
+    margin-top: 2px; font-weight: 600;
+  }
+  .mockC .mi {
+    font-family: var(--f-display); font-size: 30px; font-weight: 800;
+    color: var(--ink); margin-top: 10px; line-height: 1;
+  }
+  .mockC .mi.rest { color: var(--dim); }
+  .mockC .type {
+    font-family: var(--f-label); font-size: 9.5px; letter-spacing: 1.4px;
+    color: var(--mute); margin-top: 8px;
+  }
+  .mockC .check {
+    position: absolute; top: 8px; right: 10px;
+    color: var(--green); font-size: 12px; font-weight: 900;
+  }
+
+  /* ========================================================== */
+  /* MOCKUP D — Tonal duotone (subtle two-shade per type)        */
+  /* ========================================================== */
+  .mockD .tile {
+    border-radius: 14px; padding: 16px 10px;
+    text-align: center; position: relative;
+    min-height: 130px;
+  }
+  .mockD .tile.done  { background: linear-gradient(150deg, #1b3d20, #284f2c); }
+  .mockD .tile.today { background: linear-gradient(150deg, #1b3d20, #284f2c); box-shadow: inset 0 0 0 2px var(--green); }
+  .mockD .tile.easy  { background: linear-gradient(150deg, #2c2152, #3d307a); }
+  .mockD .tile.long  { background: linear-gradient(150deg, #0e3245, #185975); }
+  .mockD .tile.rest  { background: linear-gradient(150deg, #1a232c, #232f3a); }
+  .mockD .dow {
+    font-family: var(--f-label); font-size: 11px; font-weight: 700;
+    color: rgba(255,255,255,0.7); letter-spacing: 1.5px;
+  }
+  .mockD .dom {
+    font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 2px;
+  }
+  .mockD .mi {
+    font-family: var(--f-display); font-size: 30px; font-weight: 800;
+    margin-top: 10px; line-height: 1;
+  }
+  .mockD .mi.done { color: #b8edbb; }
+  .mockD .mi.easy { color: #d7c4ff; }
+  .mockD .mi.long { color: #b3e6f8; }
+  .mockD .mi.rest { color: rgba(255,255,255,0.4); }
+  .mockD .type {
+    font-family: var(--f-label); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.4px; margin-top: 6px;
+  }
+  .mockD .type.done { color: #b8edbb; }
+  .mockD .type.easy { color: #d7c4ff; }
+  .mockD .type.long { color: #b3e6f8; }
+  .mockD .type.rest { color: rgba(255,255,255,0.4); }
+  .mockD .check {
+    position: absolute; top: 10px; right: 10px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--green); color: #0a0c10;
+    font-size: 11px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ========================================================== */
+  /* MOCKUP E — Big mileage hero / day on top of color band      */
+  /* ========================================================== */
+  .mockE .tile {
+    border-radius: 14px; padding: 0; overflow: hidden;
+    background: var(--card);
+    min-height: 130px;
+    position: relative;
+    display: flex; flex-direction: column;
+  }
+  .mockE .band {
+    height: 6px; width: 100%;
+  }
+  .mockE .band.done { background: linear-gradient(90deg, #3EBD41, #2b8e2e); }
+  .mockE .band.easy { background: linear-gradient(90deg, #B084FF, #7a52d4); }
+  .mockE .band.long { background: linear-gradient(90deg, #4DCDEB, #1f86a8); }
+  .mockE .band.rest { background: linear-gradient(90deg, #4a5560, #2a3340); }
+  .mockE .body {
+    padding: 14px 8px 14px;
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+  }
+  .mockE .tile.today { box-shadow: inset 0 0 0 2px var(--green); border-radius: 14px; }
+  .mockE .dow {
+    font-family: var(--f-label); font-size: 11px; font-weight: 700;
+    color: var(--ink); letter-spacing: 1.5px;
+  }
+  .mockE .dom {
+    font-size: 10px; color: var(--mute); margin-top: 2px;
+  }
+  .mockE .mi {
+    font-family: var(--f-display); font-size: 32px; font-weight: 800;
+    margin-top: 10px; line-height: 1;
+    color: var(--ink);
+  }
+  .mockE .mi.rest { color: var(--dim); }
+  .mockE .type {
+    font-family: var(--f-label); font-size: 10px; font-weight: 700;
+    letter-spacing: 1.4px; margin-top: 8px;
+  }
+  .mockE .type.done { color: var(--green); }
+  .mockE .type.easy { color: var(--learn); }
+  .mockE .type.long { color: var(--dist); }
+  .mockE .type.rest { color: var(--mute); }
+  .mockE .check {
+    position: absolute; top: 12px; right: 10px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--green); color: #0a0c10;
+    font-size: 10px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Week strip — mockup deck</h1>
+  <p class="deck-intro">
+    Five visual directions for the 7-day week strip on /today. Same data each time
+    (MON 12.3 DONE · TUE 7.6 DONE today · WED-FRI EASY · SAT REST · SUN 12.1 LONG).
+    All follow the locked rule: <strong>two-color or two-shade gradients only — never fade to black</strong>.
+    Pick a direction (or a hybrid) and I'll ship it.
+  </p>
+
+  <!-- =================== MOCKUP A =================== -->
+  <div class="mockup mockA">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION A</span>
+      <span style="color:var(--mute);font-size:11px;letter-spacing:1px;">EDITORIAL</span>
+    </div>
+    <div class="mockup-name">Editorial — done tiles colored, plan tiles neutral</div>
+    <div class="mockup-desc">
+      Only DONE tiles get a saturated gradient. The rest of the week sits on a neutral
+      card surface with type-colored mileage + label. Reads like a New York Times sports
+      week — clean, restrained. Today's tile gets the ink ring.
+    </div>
+    <div class="strip-header">
+      <span>THIS WEEK · BASE</span>
+      <span class="strip-total">19.9 / 43.8 MI</span>
+    </div>
+    <div class="strip-grid">
+      <div class="tile done">
+        <div class="check">✓</div>
+        <div class="dow">MON</div><div class="dom">25</div>
+        <div class="mi done">12.3</div><div class="type done">DONE</div>
+      </div>
+      <div class="tile done today">
+        <div class="check">✓</div>
+        <div class="dow t">TUE</div><div class="dom">26</div>
+        <div class="mi done">7.6</div><div class="type done">DONE</div>
+      </div>
+      <div class="tile">
+        <div class="dow">WED</div><div class="dom">27</div>
+        <div class="mi easy">5.8</div><div class="type easy">EASY</div>
+      </div>
+      <div class="tile">
+        <div class="dow">THU</div><div class="dom">28</div>
+        <div class="mi easy">6.1</div><div class="type easy">EASY</div>
+      </div>
+      <div class="tile">
+        <div class="dow">FRI</div><div class="dom">29</div>
+        <div class="mi easy">6.1</div><div class="type easy">EASY</div>
+      </div>
+      <div class="tile">
+        <div class="dow">SAT</div><div class="dom">30</div>
+        <div class="mi rest">—</div><div class="type">REST</div>
+      </div>
+      <div class="tile">
+        <div class="dow">SUN</div><div class="dom">31</div>
+        <div class="mi long">12.1</div><div class="type long">LONG</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== MOCKUP B =================== -->
+  <div class="mockup mockB">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION B</span>
+      <span style="color:var(--mute);font-size:11px;letter-spacing:1px;">VIBRANT</span>
+    </div>
+    <div class="mockup-name">Vibrant — saturated color blocks per type</div>
+    <div class="mockup-desc">
+      Every tile is a full saturated gradient using two shades of its workout color.
+      White ink on top. Today gets a brighter green glow + shadow. App Store widget energy.
+      Loud and confident — won't get called "cheap".
+    </div>
+    <div class="strip-header">
+      <span>THIS WEEK · BASE</span>
+      <span class="strip-total">19.9 / 43.8 MI</span>
+    </div>
+    <div class="strip-grid">
+      <div class="tile done">
+        <div class="check">✓</div>
+        <div class="dow">MON</div><div class="dom">25</div>
+        <div class="mi">12.3</div><div class="type">DONE</div>
+      </div>
+      <div class="tile today">
+        <div class="check">✓</div>
+        <div class="dow">TUE</div><div class="dom">26</div>
+        <div class="mi">7.6</div><div class="type">DONE</div>
+      </div>
+      <div class="tile easy">
+        <div class="dow">WED</div><div class="dom">27</div>
+        <div class="mi">5.8</div><div class="type">EASY</div>
+      </div>
+      <div class="tile easy">
+        <div class="dow">THU</div><div class="dom">28</div>
+        <div class="mi">6.1</div><div class="type">EASY</div>
+      </div>
+      <div class="tile easy">
+        <div class="dow">FRI</div><div class="dom">29</div>
+        <div class="mi">6.1</div><div class="type">EASY</div>
+      </div>
+      <div class="tile rest">
+        <div class="dow">SAT</div><div class="dom">30</div>
+        <div class="mi rest">—</div><div class="type">REST</div>
+      </div>
+      <div class="tile long">
+        <div class="dow">SUN</div><div class="dom">31</div>
+        <div class="mi">12.1</div><div class="type">LONG</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== MOCKUP C =================== -->
+  <div class="mockup mockC">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION C</span>
+      <span style="color:var(--mute);font-size:11px;letter-spacing:1px;">MINIMAL AGENDA</span>
+    </div>
+    <div class="mockup-name">Minimal — color signal as a small accent bar</div>
+    <div class="mockup-desc">
+      No backgrounds at all on the tiles. Each day reads as a calendar entry, with a small
+      colored bar above the day name as the only type signal. White space does the work.
+      Today gets a subtle green tint. Confident in its restraint.
+    </div>
+    <div class="strip-header">
+      <span>THIS WEEK · BASE</span>
+      <span class="strip-total">19.9 / 43.8 MI</span>
+    </div>
+    <div class="strip-grid">
+      <div class="tile">
+        <div class="check">✓</div>
+        <div class="accent done"></div>
+        <div class="dow">MON</div><div class="dom">25</div>
+        <div class="mi">12.3</div><div class="type">DONE</div>
+      </div>
+      <div class="tile today">
+        <div class="check">✓</div>
+        <div class="accent done"></div>
+        <div class="dow">TUE</div><div class="dom">26</div>
+        <div class="mi">7.6</div><div class="type">DONE</div>
+      </div>
+      <div class="tile">
+        <div class="accent easy"></div>
+        <div class="dow">WED</div><div class="dom">27</div>
+        <div class="mi">5.8</div><div class="type">EASY</div>
+      </div>
+      <div class="tile">
+        <div class="accent easy"></div>
+        <div class="dow">THU</div><div class="dom">28</div>
+        <div class="mi">6.1</div><div class="type">EASY</div>
+      </div>
+      <div class="tile">
+        <div class="accent easy"></div>
+        <div class="dow">FRI</div><div class="dom">29</div>
+        <div class="mi">6.1</div><div class="type">EASY</div>
+      </div>
+      <div class="tile">
+        <div class="accent rest"></div>
+        <div class="dow">SAT</div><div class="dom">30</div>
+        <div class="mi rest">—</div><div class="type">REST</div>
+      </div>
+      <div class="tile">
+        <div class="accent long"></div>
+        <div class="dow">SUN</div><div class="dom">31</div>
+        <div class="mi">12.1</div><div class="type">LONG</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== MOCKUP D =================== -->
+  <div class="mockup mockD">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION D</span>
+      <span style="color:var(--mute);font-size:11px;letter-spacing:1px;">TONAL DUOTONE (REFINED CURRENT)</span>
+    </div>
+    <div class="mockup-name">Tonal — what we have now, but refined</div>
+    <div class="mockup-desc">
+      Same conceptual direction as the live version but with two-shade-same-color gradients
+      (no fade-to-black) and brighter ink colors. Reads as moody/app-native, not cheap.
+      Closest to the current implementation if you want the lightest-touch fix.
+    </div>
+    <div class="strip-header">
+      <span>THIS WEEK · BASE</span>
+      <span class="strip-total">19.9 / 43.8 MI</span>
+    </div>
+    <div class="strip-grid">
+      <div class="tile done">
+        <div class="check">✓</div>
+        <div class="dow">MON</div><div class="dom">25</div>
+        <div class="mi done">12.3</div><div class="type done">DONE</div>
+      </div>
+      <div class="tile today done">
+        <div class="check">✓</div>
+        <div class="dow">TUE</div><div class="dom">26</div>
+        <div class="mi done">7.6</div><div class="type done">DONE</div>
+      </div>
+      <div class="tile easy">
+        <div class="dow">WED</div><div class="dom">27</div>
+        <div class="mi easy">5.8</div><div class="type easy">EASY</div>
+      </div>
+      <div class="tile easy">
+        <div class="dow">THU</div><div class="dom">28</div>
+        <div class="mi easy">6.1</div><div class="type easy">EASY</div>
+      </div>
+      <div class="tile easy">
+        <div class="dow">FRI</div><div class="dom">29</div>
+        <div class="mi easy">6.1</div><div class="type easy">EASY</div>
+      </div>
+      <div class="tile rest">
+        <div class="dow">SAT</div><div class="dom">30</div>
+        <div class="mi rest">—</div><div class="type rest">REST</div>
+      </div>
+      <div class="tile long">
+        <div class="dow">SUN</div><div class="dom">31</div>
+        <div class="mi long">12.1</div><div class="type long">LONG</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================== MOCKUP E =================== -->
+  <div class="mockup mockE">
+    <div class="mockup-label">
+      <span class="mockup-title">DIRECTION E</span>
+      <span style="color:var(--mute);font-size:11px;letter-spacing:1px;">COLOR BAND</span>
+    </div>
+    <div class="mockup-name">Color band — neutral card with a top color stripe</div>
+    <div class="mockup-desc">
+      Every tile is a clean neutral card. A 6px color band runs across the top (two-shade
+      gradient per type) so the workout color reads at a glance without dominating the tile.
+      Mileage gets full presence on a calm canvas. Calendar-app vibe.
+    </div>
+    <div class="strip-header">
+      <span>THIS WEEK · BASE</span>
+      <span class="strip-total">19.9 / 43.8 MI</span>
+    </div>
+    <div class="strip-grid">
+      <div class="tile">
+        <div class="check">✓</div>
+        <div class="band done"></div>
+        <div class="body">
+          <div class="dow">MON</div><div class="dom">25</div>
+          <div class="mi">12.3</div><div class="type done">DONE</div>
+        </div>
+      </div>
+      <div class="tile today">
+        <div class="check">✓</div>
+        <div class="band done"></div>
+        <div class="body">
+          <div class="dow">TUE</div><div class="dom">26</div>
+          <div class="mi">7.6</div><div class="type done">DONE</div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="band easy"></div>
+        <div class="body">
+          <div class="dow">WED</div><div class="dom">27</div>
+          <div class="mi">5.8</div><div class="type easy">EASY</div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="band easy"></div>
+        <div class="body">
+          <div class="dow">THU</div><div class="dom">28</div>
+          <div class="mi">6.1</div><div class="type easy">EASY</div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="band easy"></div>
+        <div class="body">
+          <div class="dow">FRI</div><div class="dom">29</div>
+          <div class="mi">6.1</div><div class="type easy">EASY</div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="band rest"></div>
+        <div class="body">
+          <div class="dow">SAT</div><div class="dom">30</div>
+          <div class="mi rest">—</div><div class="type rest">REST</div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="band long"></div>
+        <div class="body">
+          <div class="dow">SUN</div><div class="dom">31</div>
+          <div class="mi">12.1</div><div class="type long">LONG</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="color:var(--mute); font-size:13px; margin-top:48px; line-height:1.7;">
+    <strong style="color:var(--ink);">Pick by letter</strong> — say "ship B" or "B with E's neutral card on the rest day" and I'll wire it up. We can also tune any specific bit (gradient saturation, ink contrast, type chip size) on the chosen direction.
+  </div>
+</div>
+</body>
+</html>
