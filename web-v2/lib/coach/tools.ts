@@ -104,8 +104,10 @@ export const TOOLS: Anthropic.Tool[] = [
     name: 'getCheckIns',
     description:
       "Read the runner's SOLID/TIRED/WRECKED self-ratings in the window. " +
-      'Returns {ts, rating}[]. Empty if they have not tapped recently — in ' +
-      "which case do NOT claim they rated anything; just don't mention it.",
+      "Returns {ts, rating}[] plus a summary count. Empty if the runner has not " +
+      "checked in recently — in which case do NOT claim they rated anything. " +
+      "WHEN REFERENCING: say 'three SOLID check-ins' or 'three SOLID days running', " +
+      "NEVER 'tapped SOLID three times' (the runner isn't aware of the tap mechanic).",
     input_schema: {
       type: 'object',
       properties: {
@@ -289,19 +291,49 @@ async function getRuns(userId: string, input: { daysBack: number; limit?: number
   return {
     today,
     runs: r.map((row: any) => {
-      const w = row.data?.weather;
+      const d = row.data ?? {};
+      const w = d.weather;
+      // Field names: jsonb canonically uses camelCase (distanceMi,
+      // avgPaceMinPerMi, avgHr, avgCadence). Earlier version read
+      // snake_case which always returned nulls — that's why the coach
+      // kept saying "no detailed splits to parse" even when splits
+      // existed in the row.
+      const splits = Array.isArray(d.splits) ? d.splits : [];
+      const phases = Array.isArray(d.phases) ? d.phases : [];
       return {
-        id: row.data?.id ?? null,
-        date: row.data?.date,
-        mi: Number(row.data?.distance_mi) || 0,
-        pace: row.data?.pace ?? null,
-        hr: row.data?.hr ?? null,
-        cadence: row.data?.cadence ?? null,
-        type: row.data?.type ?? null,
-        name: row.data?.name ?? null,
-        source: row.data?.source ?? 'strava',
-        // P31 — weather, when enriched. Coach uses these to speak to
-        // heat / cold / wind that explain pace divergence vs target.
+        id: d.id ?? d.activityId ?? null,
+        date: d.date,
+        mi: Number(d.distanceMi ?? d.distance_mi) || 0,
+        pace: d.avgPaceMinPerMi ?? d.pace ?? null,
+        avgHr: d.avgHr ?? d.hr ?? null,
+        maxHr: d.maxHr ?? null,
+        avgCadence: d.avgCadence ?? d.cadence ?? null,
+        elevGainFt: d.elevGainFt ?? null,
+        movingTime: d.timeMoving ?? d.movingTime ?? null,
+        type: d.type ?? null,
+        name: d.name ?? null,
+        source: d.source ?? 'strava',
+        // Per-mile splits when present — pace + HR + cadence per mile.
+        // Coach can reference rep consistency, cardiac drift, fade in late miles.
+        splits: splits.length > 0 ? splits.map((s: any) => ({
+          mile: s.mile ?? s.index ?? null,
+          pace: s.pace ?? s.pace_min_per_mi ?? null,
+          hr: s.hr ?? s.avgHr ?? null,
+          cadence: s.cadence ?? s.avgCadence ?? null,
+        })) : null,
+        // Per-phase breakdown (warmup / work / recovery / cooldown) — when
+        // the Faff watch app shipped structured-workout phases.
+        phases: phases.length > 0 ? phases.map((p: any) => ({
+          type: p.type,
+          label: p.label ?? null,
+          targetPaceSPerMi: p.targetPaceSPerMi ?? null,
+          actualPaceSPerMi: p.actualPaceSPerMi ?? null,
+          actualDistanceMi: p.actualDistanceMi ?? null,
+          actualDurationSec: p.actualDurationSec ?? null,
+          avgHr: p.avgHr ?? null,
+        })) : null,
+        // HR-zone distribution when stored — Z1/Z2/Z3/Z4/Z5 percentages.
+        hrZonePcts: d.hrZonePcts ?? null,
         weather: w ? {
           temp_f: w.temp_f ?? null,
           humidity_pct: w.humidity_pct ?? null,
@@ -409,7 +441,16 @@ async function getCheckIns(userId: string, input: { daysBack: number }) {
       ORDER BY ts DESC LIMIT 20`,
     [userId, input.daysBack]
   ).catch(() => ({ rows: [] }))).rows;
-  return { check_ins: r.map((x: any) => ({ ts: x.ts, rating: x.rating })) };
+  const checkIns = r.map((x: any) => ({ ts: x.ts, rating: x.rating }));
+  // Summary string the coach can quote directly without inventing wording
+  // like "tapped three times." e.g. "3 SOLID, 0 TIRED, 0 WRECKED over 7 days".
+  const counts = { solid: 0, tired: 0, wrecked: 0 };
+  for (const c of checkIns) {
+    const k = String(c.rating).toLowerCase();
+    if (k === 'solid' || k === 'tired' || k === 'wrecked') counts[k as keyof typeof counts]++;
+  }
+  const summary = `${counts.solid} SOLID · ${counts.tired} TIRED · ${counts.wrecked} WRECKED over the last ${input.daysBack} days`;
+  return { check_ins: checkIns, summary };
 }
 
 async function getHealthSeries(userId: string, input: { daysBack: number }) {

@@ -355,7 +355,10 @@ function buildOrientationMessage(o: OrientationInput): string {
   );
   lines.push(
     `- Only claim a check-in rating (SOLID/TIRED/WRECKED) that appears in getCheckIns. ` +
-    `If empty, do NOT say "you said you were tired" — they didn't say anything.`,
+    `If empty, do NOT say "you said you were tired" — they didn't say anything. ` +
+    `When referencing check-ins, say "three SOLID check-ins" or "three SOLID days running." ` +
+    `NEVER say "you tapped SOLID three times" — the runner has no concept of "tapping" a rating; ` +
+    `that's UI mechanics leaking into the voice.`,
   );
   lines.push(
     `- HR zones, paces, and physiological framing must come from getZones + getDoctrine. ` +
