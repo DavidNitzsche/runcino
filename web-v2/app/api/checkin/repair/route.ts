@@ -28,9 +28,9 @@ const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-99
 // Keep this in sync with /api/checkin/route.ts ratingFromPostRun.
 function recomputeRating(execution?: string, body?: string): string | null {
   const exec = (execution ?? '').toLowerCase();
-  if (['nailed', 'chatty', 'controlled', 'strong', 'crushed_goal', 'on_goal'].includes(exec)) return 'solid';
-  if (['grinded', 'pushed', 'faded'].includes(exec)) return 'tired';
-  if (['missed', 'walled', 'missed_goal'].includes(exec)) return 'wrecked';
+  if (['nailed', 'chatty', 'controlled', 'grinded', 'strong', 'faded',
+       'crushed_goal', 'on_goal'].includes(exec)) return 'solid';
+  if (['pushed', 'missed', 'walled', 'missed_goal'].includes(exec)) return 'tired';
   if (body === 'fresh' || body === 'worked') return 'solid';
   if (body === 'cooked') return 'wrecked';
   return null;

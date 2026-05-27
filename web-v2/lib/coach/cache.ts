@@ -60,12 +60,14 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        144)" reads clinical and treats a forgiving aerobic intent
 //        like a tight target. Say "mid-Z2" or "held in aerobic zone."
 //        Quote bpm only when it adds signal the zone name can't.
-// v8-actionable-proposals 2026-05-27: introduces proposeWorkoutSwap
-// tool. When ACWR > 1.5 and the coach proposes a lighter alternative,
-// it must call the new tool so the UI can render an Accept · Swap
-// button. If the runner already declined for today (pendingIntents
-// has swap_declined for state.today), the coach must not re-propose.
-export const PROMPT_VERSION = 'v8-actionable-proposals';
+// v9-checkin-mapping-redo 2026-05-27: post_run chip→rating doctrine
+// updated after David's pushback. SOLID now means "I completed the
+// prescribed work" (includes GRINDED IT OUT + FADED LATE — finishing
+// a hard session isn't a fatigue signal). TIRED reserved for "I
+// couldn't do what the workout asked" (HAD TO PUSH on easy, missed
+// reps, walled, missed goal). Cache must regen so existing briefs
+// stop reading recent TIRED tags that were re-rated to SOLID.
+export const PROMPT_VERSION = 'v9-checkin-mapping-redo';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls

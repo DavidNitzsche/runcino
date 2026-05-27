@@ -56,15 +56,29 @@ interface CheckinBody {
 function ratingFromPostRun(execution?: string, body?: string): Rating | null {
   // Execution maps directly when present. Body falls through when no execution.
   const exec = (execution ?? '').toLowerCase();
-  // SOLID — everything that's a normal-or-better outcome, including hitting
-  // the goal (on_goal) and running an easy that was slightly above chat-pace
-  // (controlled). These are not fatigue signals.
-  if (['nailed', 'chatty', 'controlled', 'strong', 'crushed_goal', 'on_goal'].includes(exec)) return 'solid';
-  // TIRED — runner had to push harder than the workout warranted (grinded,
-  // pushed, faded). Distinct from normal effort.
-  if (['grinded', 'pushed', 'faded'].includes(exec)) return 'tired';
-  // WRECKED — couldn't hold the workout (missed, walled, missed_goal).
-  if (['missed', 'walled', 'missed_goal'].includes(exec)) return 'wrecked';
+  //
+  // 2026-05-27 second pass on the chip→rating mapping after David's
+  // pushback: "I dont know if I would say STRUGGLE. It was a speed day.
+  // It was hard. I fucking did it." Doctrine clarified —
+  //
+  //   SOLID    = "I completed the prescribed work." Includes nailing
+  //              the workout AND grinding through a hard session you
+  //              still finished. GRINDED IT OUT and FADED LATE both
+  //              count as completed work, not fatigue signals.
+  //
+  //   TIRED    = "I couldn't do what the workout asked." HAD TO PUSH
+  //              on an easy day, missed the reps on a quality day,
+  //              walled on the long, missed the race goal. Real fatigue
+  //              indicators because the prescribed work didn't happen.
+  //
+  //   WRECKED  = "Body is wrecked." Only body=cooked. The execution row
+  //              tops out at TIRED — even bailing on a workout doesn't
+  //              auto-promote to WRECKED unless the runner explicitly
+  //              flags their body state.
+  //
+  if (['nailed', 'chatty', 'controlled', 'grinded', 'strong', 'faded',
+       'crushed_goal', 'on_goal'].includes(exec)) return 'solid';
+  if (['pushed', 'missed', 'walled', 'missed_goal'].includes(exec)) return 'tired';
 
   // Recovery day — no execution; body alone drives the rating.
   // WORKED is the baseline post-run state (legs feel the work) — NOT a
