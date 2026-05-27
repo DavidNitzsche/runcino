@@ -59,10 +59,15 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <EditableField
             field="birthday" label="Birthday" kind="text"
             currentValue={profile.identity.birthday}
+            displayValue={formatBirthday(profile.identity.birthday)}
             unitLabel={profile.identity.age != null ? `(age ${profile.identity.age})` : ''}
           />
           {profile.identity.height_cm != null
-            ? <EditableField field="height_cm" label="Height" kind="number" currentValue={profile.identity.height_cm} unitLabel="cm" />
+            ? <EditableField
+                field="height_cm" label="Height" kind="number"
+                currentValue={profile.identity.height_cm}
+                displayValue={formatHeightFtIn(profile.identity.height_cm)}
+              />
             : <ProfileGapInput field="height_cm" label="Height" why="Unlocks cadence target" focused={focusedGap === 'height_cm'} />
           }
         </Grid4>
@@ -307,4 +312,21 @@ function ConnCard({ name, sub, connected }: { name: string; sub: string; connect
       </span>
     </div>
   );
+}
+
+/** Convert centimeters to a display string like "6' 1\"". DB stays in cm. */
+function formatHeightFtIn(cm: number | null | undefined): string {
+  if (cm == null || !Number.isFinite(cm) || cm <= 0) return '—';
+  const totalInches = Math.round(cm / 2.54);
+  const ft = Math.floor(totalInches / 12);
+  const inch = totalInches % 12;
+  return `${ft}′ ${inch}″`;
+}
+
+/** Convert ISO YYYY-MM-DD to MM-DD-YYYY for display. DB stays ISO. */
+function formatBirthday(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[2]}-${m[3]}-${m[1]}`;
 }

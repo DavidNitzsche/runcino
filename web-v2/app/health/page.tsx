@@ -115,20 +115,22 @@ export default async function HealthPage() {
           />
         </Grid3>
 
+        {/* VO2 + CADENCE have no trend chart yet — use the smaller StatCard
+         *  so the card height matches the content. */}
         <Grid2>
-          <TrendCard
+          <StatCard
             title="VO2 MAX · APPLE WATCH" titleColor="var(--learn)"
             value={health.vo2.current != null ? `${health.vo2.current.toFixed(1)}` : '—'}
             valueColor="var(--learn)"
+            narrative={vo2Narrative(health.vo2.current)}
             sub="ml/kg/min · highest reading from Apple Health"
-            chart={null}
           />
-          <TrendCard
+          <StatCard
             title="CADENCE · 60D" titleColor="var(--dist)"
             value={health.cadence.baseline != null ? `${health.cadence.baseline}` : '—'}
             valueColor="var(--dist)"
-            sub="spm · 60-day baseline · real cadence target waits on your height"
-            chart={null}
+            narrative={cadenceNarrative(health.cadence.baseline)}
+            sub="spm · 60-day running baseline"
           />
         </Grid2>
       </div>
@@ -162,14 +164,16 @@ function WatchListBox({ items }: { items: HealthState['watchItems'] }) {
 }
 
 /**
- * TrendCard (#156 redesign) — big + bold + insight-led.
+ * TrendCard (#156 / #166) — chart IS the card's visual identity.
  *
- * Old: 180px-tall card, 42pt stat, tiny chart strip, dense 3-layer
- * supporting text. Half-empty + wireframe.
+ * Layout: header (~140px) sits on top of a tall chart (~200px). Total
+ * card height is content-driven, no min-height padding to fake-fill.
+ * Charts get real space to breathe — previously they were a tiny strip
+ * with dead space below. The CHART carries the visual weight.
  *
- * New: hero number bumped to 96pt Bebas (matches race detail headline scale).
- * Chart breathes in the lower half. One bold trend sentence below the hero
- * is the actual insight. Mid-grey "sub" line stays for precision specs.
+ * For statistic cards with no trend data (VO2, CADENCE), use <StatCard />
+ * instead — same eyebrow + hero + narrative + sub, smaller height,
+ * no chart slot.
  */
 function TrendCard({
   title, titleColor, value, valueColor, sub, narrative, chart,
@@ -184,13 +188,13 @@ function TrendCard({
   chart: React.ReactNode;
 }) {
   return (
-    <div className="card" style={{ padding: '24px 28px', minHeight: 320 }}>
-      <div className="card-eyebrow" style={{ color: titleColor, marginBottom: 12 }}>{title}</div>
+    <div className="card" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column' }}>
+      <div className="card-eyebrow" style={{ color: titleColor, marginBottom: 10 }}>{title}</div>
 
-      {/* Hero number — proper editorial scale, matches race-detail hero */}
+      {/* Hero number — proper editorial scale */}
       <div style={{
         fontFamily: 'var(--f-display)',
-        fontSize: 96,
+        fontSize: 88,
         color: valueColor,
         letterSpacing: '0.5px',
         lineHeight: 0.95,
@@ -199,11 +203,11 @@ function TrendCard({
         {value}
       </div>
 
-      {/* Trend insight (when provided) — the punchline */}
+      {/* Trend insight — the punchline */}
       {narrative && (
         <div style={{
           fontFamily: 'var(--f-body)',
-          fontSize: 15,
+          fontSize: 14,
           fontWeight: 600,
           color: 'var(--ink)',
           lineHeight: 1.4,
@@ -213,19 +217,69 @@ function TrendCard({
         </div>
       )}
 
-      {/* Sub line — precision specs (baseline, delta, period) */}
+      {/* Sub line — precision specs */}
       <div style={{
         fontFamily: 'var(--f-body)',
-        fontSize: 12,
+        fontSize: 11,
         color: 'var(--mute)',
         letterSpacing: '0.4px',
-        marginBottom: 18,
+        marginBottom: 16,
         lineHeight: 1.4,
       }}>
         {sub}
       </div>
 
-      {chart}
+      {/* Chart fills the bottom — big enough to actually read */}
+      <div style={{ flex: 1, minHeight: 180 }}>
+        {chart}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * StatCard — for /health stats with no trend chart yet (VO2, CADENCE).
+ * Just eyebrow + hero + narrative + sub. Sits ~180-200px tall — sized
+ * to its content, not inflated to TrendCard height.
+ */
+function StatCard({
+  title, titleColor, value, valueColor, sub, narrative,
+}: {
+  title: string;
+  titleColor: string;
+  value: string;
+  valueColor: string;
+  sub: string;
+  narrative?: string;
+}) {
+  return (
+    <div className="card" style={{ padding: '22px 26px' }}>
+      <div className="card-eyebrow" style={{ color: titleColor, marginBottom: 10 }}>{title}</div>
+      <div style={{
+        fontFamily: 'var(--f-display)',
+        fontSize: 72,
+        color: valueColor,
+        letterSpacing: '0.5px',
+        lineHeight: 0.95,
+        marginBottom: 8,
+      }}>
+        {value}
+      </div>
+      {narrative && (
+        <div style={{
+          fontFamily: 'var(--f-body)',
+          fontSize: 14, fontWeight: 600,
+          color: 'var(--ink)', lineHeight: 1.4, marginBottom: 4,
+        }}>
+          {narrative}
+        </div>
+      )}
+      <div style={{
+        fontFamily: 'var(--f-body)', fontSize: 11,
+        color: 'var(--mute)', letterSpacing: '0.4px', lineHeight: 1.4,
+      }}>
+        {sub}
+      </div>
     </div>
   );
 }
@@ -269,6 +323,22 @@ function hrvNarrative(pctAboveBaseline: number | null | undefined): string {
   if (pctAboveBaseline >= -3) return `Within normal nightly variance — system's stable.`;
   if (pctAboveBaseline >= -10) return `${pctAboveBaseline}% below baseline — could be stress, sleep, or accumulating load. Watch tomorrow.`;
   return `${pctAboveBaseline}% below baseline — strong signal to back off if it persists.`;
+}
+
+function vo2Narrative(v: number | null | undefined): string {
+  if (v == null) return 'No reading yet — needs a few outdoor runs on the watch.';
+  if (v >= 60) return 'Elite-adjacent aerobic ceiling.';
+  if (v >= 50) return 'Strong aerobic engine — well above the average runner.';
+  if (v >= 40) return 'Solid recreational range — room to grow with consistent base work.';
+  return 'Foundational range — base mileage is the biggest lever here.';
+}
+
+function cadenceNarrative(c: number | null | undefined): string {
+  if (c == null) return 'Needs more cadence data from recent runs.';
+  if (c >= 175) return 'Efficient turnover — well-tuned stride.';
+  if (c >= 165) return 'In the optimal band — keep it here.';
+  if (c >= 155) return 'A touch low — shorter, quicker steps will lift it.';
+  return 'Low — overstriding likely. Worth a form drill block.';
 }
 
 function weightNarrative(delta30: number | null | undefined): string {

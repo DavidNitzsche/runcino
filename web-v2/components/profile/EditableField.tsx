@@ -24,7 +24,7 @@ export interface RichOption {
 }
 
 export function EditableField({
-  field, label, currentValue, kind, options = [], richOptions, contextLine, hint, unitLabel, displayMap,
+  field, label, currentValue, kind, options = [], richOptions, contextLine, hint, unitLabel, displayMap, displayValue,
 }: {
   field: string;
   label: string;
@@ -40,6 +40,11 @@ export function EditableField({
   /** Optional display-time mapping (DB value → human label).
    *  e.g. { advanced_plus: 'Sub-elite' }. */
   displayMap?: Record<string, string>;
+  /** Optional fully-formatted display string. When set, overrides
+   *  the displayed value entirely — useful for unit conversions
+   *  (cm→ft/in) or date reformatting (ISO→MM-DD-YYYY) where the
+   *  edit input still uses the raw value. */
+  displayValue?: string;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -92,7 +97,9 @@ export function EditableField({
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: currentValue == null ? 'rgba(246,247,248,0.45)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
           {currentValue == null
             ? '— Add'
-            : `${displayMap?.[String(currentValue)] ?? currentValue}${unitLabel ? ' ' + unitLabel : ''}`}
+            : displayValue
+              ? `${displayValue}${unitLabel ? ' ' + unitLabel : ''}`
+              : `${displayMap?.[String(currentValue)] ?? currentValue}${unitLabel ? ' ' + unitLabel : ''}`}
         </div>
         {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '1px' }}>{hint}</div>}
       </button>

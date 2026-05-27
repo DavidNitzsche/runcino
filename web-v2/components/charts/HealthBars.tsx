@@ -18,7 +18,7 @@ interface BarProps {
 }
 
 export function BarChart({
-  series, min, max, color, unit = '', baseline, xLabel, height = 64,
+  series, min, max, color, unit = '', baseline, xLabel, height = 160,
 }: BarProps) {
   if (series.length === 0) {
     return (
