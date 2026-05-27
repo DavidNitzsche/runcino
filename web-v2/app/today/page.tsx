@@ -25,11 +25,22 @@ export default async function TodayPage() {
       <TopNav />
 
       <div style={{ padding: '40px 40px 8px', maxWidth: 1440, margin: '0 auto' }}>
-        {/* Greeting + readiness — uses glance state, no LLM needed */}
+        {/* Greeting + readiness — uses glance state, no LLM needed.
+         * #165: state-aware greeting in Faff coach voice — drops the
+         * cold "Night, David." pattern for messages that actually know
+         * what's happening today. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'end', marginBottom: 28 }}>
           <div>
             <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 64, lineHeight: 1, margin: 0, letterSpacing: '0.5px' }}>
-              {timeOfDayGreeting()}, <span style={{ color: 'var(--green)' }}>{glance?.greetingName ?? 'David'}.</span>
+              {(() => {
+                const g = greetingFor(glance);
+                return (
+                  <>
+                    {g.lead}{g.lead ? ' ' : ''}
+                    <span style={{ color: 'var(--green)' }}>{g.name}{g.terminal}</span>
+                  </>
+                );
+              })()}
             </h1>
             <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 10 }}>
               {todayLabel(glance?.today)}
@@ -139,15 +150,75 @@ function todayLabel(iso: string | undefined): string {
   return `${days[d.getUTCDay()]} · ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
-function timeOfDayGreeting(): string {
-  // Server-rendered in UTC on Railway — that gave "Night" at 4pm PT.
-  // Hard-coded to America/Los_Angeles for now; flips to user.timezone when auth lands.
+/**
+ * #165 state-aware greeting. Reads glance to decide what to say.
+ * Returns three pieces:
+ *   lead   — the coach-voice opener ("Nice."), can be empty for name-only
+ *   name   — the runner's name (highlighted green by the caller)
+ *   terminal — punctuation after the name ("." or "?" or ", today.")
+ *
+ * Priority (top match wins):
+ *   1. race day (days=0)
+ *   2. race tomorrow (days=1)
+ *   3. race week (≤7 days)
+ *   4. ran today
+ *   5. rest day on the plan
+ *   6. quality day (threshold/tempo/intervals)
+ *   7. long run day
+ *   8. easy day
+ *   9. late night fallback
+ */
+function greetingFor(glance: any): { lead: string; name: string; terminal: string } {
+  const name = glance?.greetingName ?? 'David';
+  const today = glance?.today as string | undefined;
+  const days  = glance?.daysToARace as number | null | undefined;
+  const todayCell = today ? (glance?.weekDays ?? []).find((d: any) => d.date === today) : null;
+  const ran = todayCell?.doneMi >= 0.5;
+  const ptype = (todayCell?.plannedType ?? '') as string;
+  const isQuality = ['threshold', 'tempo', 'intervals', 'vo2max'].includes(ptype);
+  const isLong = ptype === 'long';
+  const isRest = ptype === 'rest';
+
+  // 1. Race day
+  if (days === 0) {
+    return { lead: "Today's the day,", name, terminal: '.' };
+  }
+  // 2. Tomorrow
+  if (days === 1) {
+    return { lead: 'Tomorrow,', name, terminal: '.' };
+  }
+  // 3. Race week
+  if (days != null && days >= 2 && days <= 7) {
+    return { lead: 'Race week,', name, terminal: '.' };
+  }
+  // 4. Ran today — the legs spoke first
+  if (ran) {
+    const sayings = ['Nice work,', 'Banked.', 'Got it done,', "That's the work,"];
+    const idx = (today ?? '').split('-').reduce((a, x) => a + Number(x || 0), 0) % sayings.length;
+    return { lead: sayings[idx], name, terminal: '.' };
+  }
+  // 5. Rest day
+  if (isRest) {
+    return { lead: 'Rest day,', name, terminal: '.' };
+  }
+  // 6. Quality day
+  if (isQuality) {
+    return { lead: 'Big one,', name, terminal: '.' };
+  }
+  // 7. Long run day
+  if (isLong) {
+    return { lead: 'Long run,', name, terminal: '.' };
+  }
+  // 8. Easy day with miles
+  if (ptype === 'easy' || ptype === 'shakeout') {
+    return { lead: 'Easy day,', name, terminal: '.' };
+  }
+  // 9. Late-night fallback (no plan match)
   const h = parseInt(new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false,
   }).format(new Date()), 10);
-  if (h < 5)  return 'Late night';
-  if (h < 12) return 'Morning';
-  if (h < 17) return 'Afternoon';
-  if (h < 21) return 'Evening';
-  return 'Night';
+  if (h < 5)  return { lead: 'Up late,', name, terminal: '.' };
+  if (h >= 21) return { lead: 'Wrapping up,', name, terminal: '.' };
+  // Daylight, no plan cue — keep it minimal, no fake cheer.
+  return { lead: '', name, terminal: '.' };
 }
