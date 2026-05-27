@@ -263,6 +263,25 @@ enum API {
         return try? JSONDecoder().decode(ReadinessSnapshot.self, from: data)
     }
 
+    /// Full /profile state — identity + physiology + connections — shaped
+    /// identically to web's ProfileState. Replaces hardcoded values in
+    /// ProfileView. See web-v2/app/api/profile/state/route.ts.
+    static func fetchProfileState() async throws -> ProfileState? {
+        let url = baseURL.appendingPathComponent("api/profile/state")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(ProfileState.self, from: data)
+    }
+
+    /// /api/races — race list for the iPhone /races tab. Same endpoint
+    /// the web list reads. Sorted upcoming-first.
+    static func fetchRaces() async throws -> RaceListResponse? {
+        let url = baseURL.appendingPathComponent("api/races")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(RaceListResponse.self, from: data)
+    }
+
     /// Mon-Sun plan_workouts for the week containing `date` (or today).
     /// Drives the iPhone WeekStrip.
     static func fetchPlanWeek(date: String? = nil) async throws -> PlanWeek {
@@ -347,4 +366,71 @@ struct ProfileFields: Decodable {
     let onboarded_at: String?
     let strava_auto_push: Bool?
     let phone_hr_alerts: Bool?
+}
+
+// MARK: - ProfileState (full /profile rendering)
+//
+// Mirrors web-v2/lib/coach/profile-state.ts → trimmed to identity +
+// physiology + connections. Other slices (shoes, nextARace, prefs)
+// have their own dedicated endpoints. Replaces the hardcoded "David
+// Nitzsche / MALE · 40 · LOS ANGELES" + "181 bpm" string literals
+// that lived in ProfileView.swift.
+
+struct ProfileState: Decodable {
+    let identity: ProfileIdentity
+    let physiology: ProfilePhysiology
+    let connections: ProfileConnections
+}
+
+struct ProfileIdentity: Decodable {
+    let full_name: String?
+    let sex: String?
+    let birthday: String?
+    let age: Int?
+    let city: String?
+    let height_cm: Double?
+    let experience_level: String?
+}
+
+struct ProfilePhysiology: Decodable {
+    let max_hr: Int?
+    let max_hr_source: String?     // 'observed' / 'lthr-derived' / 'formula' / 'manual'
+    let rhr: Int?
+    let vo2: Double?
+    let weight_lb: Double?
+    let vdot: Double?
+    let lthr: Int?
+}
+
+struct ProfileConnections: Decodable {
+    let strava: ProfileConnectionState
+    let appleHealth: ProfileConnectionState
+    let appleWatch: ProfileConnectionState
+}
+
+struct ProfileConnectionState: Decodable {
+    let connected: Bool
+    let lastSync: String?
+    let note: String
+}
+
+// MARK: - Race list (iPhone /races)
+//
+// Mirrors GET /api/races. The web /races page also shows this list
+// under the brief; the iPhone was previously missing it.
+
+struct RaceListResponse: Decodable {
+    let races: [RaceListItem]
+}
+
+struct RaceListItem: Decodable, Identifiable {
+    let slug: String
+    let name: String?
+    let date: String?              // ISO yyyy-mm-dd
+    let priority: String?          // "A" / "B" / "C"
+    let distance_label: String?
+    let location: String?
+    let days_to_race: Int?
+    /// Slug doubles as the stable identity for SwiftUI ForEach.
+    var id: String { slug }
 }

@@ -14,23 +14,34 @@ struct ProfileView: View {
     // 2026-05-27 iPhone parity audit: profile surface had no coach voice
     // despite web having it. Wire identity-mode brief here.
     @State private var briefing: Briefing?
+    // 2026-05-27 follow-on: ProfileView was rendering HARDCODED identity
+    // strings ("David Nitzsche / MALE · 40 / 181 bpm MAX HR") while web
+    // /profile pulled real values from loadProfileState. Now matches:
+    // /api/profile/state ships the same shape to both clients.
+    @State private var profile: ProfileState?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                // Identity
+                // Identity — real data from /api/profile/state. Falls
+                // back to "—" while loading or if the field is empty,
+                // matching web's behaviour.
                 HStack(alignment: .center, spacing: 18) {
                     ZStack {
                         Circle().fill(
                             LinearGradient(colors: [Theme.learn, Theme.race], startPoint: .topLeading, endPoint: .bottomTrailing)
                         )
-                        Text("DN").font(.display(36)).foregroundStyle(Color(white: 0.1)).tracking(1)
+                        Text(initialsForProfile())
+                            .font(.display(36))
+                            .foregroundStyle(Color(white: 0.1))
+                            .tracking(1)
                     }
                     .frame(width: 88, height: 88)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("David Nitzsche").font(.display(36)).tracking(0.5).foregroundStyle(Theme.ink)
-                        Text("MALE · 40 · LOS ANGELES, CA")
+                        Text(profile?.identity.full_name ?? "Runner")
+                            .font(.display(36)).tracking(0.5).foregroundStyle(Theme.ink)
+                        Text(identitySubtitle())
                             .font(.label(11)).tracking(1.4).foregroundStyle(Theme.mute)
                     }
                     Spacer()
@@ -46,38 +57,60 @@ struct ProfileView: View {
                     askPrompt: nil
                 )
 
-                // PERSONAL — including gap input
+                // PERSONAL — real fields from /api/profile/state.
                 SectionLabel("PERSONAL")
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    Field(k: "NAME", v: "David Nitzsche")
-                    Field(k: "SEX",  v: "Male")
-                    Field(k: "AGE",  v: "40")
-                    // Height gap — taps open a sheet for input
-                    Button {
-                        showHeightSheet = true
-                    } label: {
-                        ProfileGapCard(field: "height_cm", why: "Unlocks cadence target")
+                    Field(k: "NAME", v: profile?.identity.full_name ?? "—")
+                    Field(k: "GENDER",  v: profile?.identity.sex?.capitalized ?? "—")
+                    Field(k: "AGE",  v: profile?.identity.age.map(String.init) ?? "—")
+                    // Height — taps the editor when missing. When set,
+                    // shows the value (in feet/inches).
+                    if let cm = profile?.identity.height_cm {
+                        Field(k: "HEIGHT", v: formatHeightFtIn(cm: cm))
+                    } else {
+                        Button {
+                            showHeightSheet = true
+                        } label: {
+                            ProfileGapCard(field: "height_cm", why: "Unlocks cadence target")
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 24)
 
-                // PHYSIOLOGY · DERIVED
+                // PHYSIOLOGY · DERIVED — real numbers from health_samples
+                // + computed (VDOT from best recent race, max-HR sourced
+                // per `max_hr_source`).
                 SectionLabel("PHYSIOLOGY · DERIVED")
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    Field(k: "MAX HR",     v: "181 bpm", hint: "OBSERVED")
-                    Field(k: "RESTING HR", v: "47 bpm",  hint: "60D MEAN")
-                    Field(k: "VO2 MAX",    v: "61.3",     hint: "APPLE")
-                    Field(k: "WEIGHT",     v: "186 lb",   hint: "APPLE HEALTH")
+                    Field(k: "MAX HR",
+                          v: profile?.physiology.max_hr.map { "\($0) bpm" } ?? "—",
+                          hint: maxHrHint(profile?.physiology.max_hr_source))
+                    Field(k: "RESTING HR",
+                          v: profile?.physiology.rhr.map { "\($0) bpm" } ?? "—",
+                          hint: "60D MEAN")
+                    Field(k: "VO2 MAX",
+                          v: profile?.physiology.vo2.map { String(format: "%.1f", $0) } ?? "—",
+                          hint: "APPLE")
+                    Field(k: "WEIGHT",
+                          v: profile?.physiology.weight_lb.map { String(format: "%.0f lb", $0) } ?? "—",
+                          hint: "APPLE HEALTH")
                 }
                 .padding(.horizontal, 24)
 
-                // CONNECTIONS
+                // CONNECTIONS — connected/last-sync state from server,
+                // not blind "CONNECTED" labels.
                 SectionLabel("CONNECTIONS")
                 VStack(spacing: 10) {
-                    ConnRow(name: "Strava",       sub: "Auto-sync via OAuth")
-                    ConnRow(name: "Apple Health", sub: "Sleep / HRV / RHR / weight")
-                    ConnRow(name: "Apple Watch",  sub: "Paired via WatchConnectivity")
+                    ConnRow(name: "Strava",
+                            sub: profile?.connections.strava.note ?? "Auto-sync via OAuth",
+                            connected: profile?.connections.strava.connected ?? false)
+                    ConnRow(name: "Apple Health",
+                            sub: profile?.connections.appleHealth.note ?? "Sleep / HRV / RHR / weight",
+                            connected: profile?.connections.appleHealth.connected ?? false)
+                    ConnRow(name: "Apple Watch",
+                            sub: profile?.connections.appleWatch.note ?? "Paired via WatchConnectivity",
+                            connected: profile?.connections.appleWatch.connected ?? false)
                 }
                 .padding(.horizontal, 24)
 
@@ -138,9 +171,53 @@ struct ProfileView: View {
 
     private func load() async {
         await SettingsCache.shared.warm()
-        // Coach brief loads in parallel; UI shows the page immediately
-        // and the brief snaps in when ready.
-        briefing = try? await API.briefing(surface: "profile")
+        // Three calls in parallel: settings cache warm (cached locally for
+        // the SettingsSheet), the coach brief, and the profile state. UI
+        // shows the page immediately and each piece fills in as it lands.
+        async let pRes = (try? await API.fetchProfileState())
+        async let bRes = (try? await API.briefing(surface: "profile"))
+        profile = await pRes ?? nil
+        briefing = await bRes ?? nil
+    }
+
+    /// "DN" from a full name (falls back when name not loaded).
+    private func initialsForProfile() -> String {
+        guard let n = profile?.identity.full_name, !n.isEmpty else { return "—" }
+        let parts = n.split(separator: " ", omittingEmptySubsequences: true)
+        let chars = parts.prefix(2).compactMap { $0.first.map(String.init) }
+        return chars.joined().uppercased()
+    }
+
+    /// "MALE · 40 · LOS ANGELES, CA" assembled from real fields. Each
+    /// segment renders only when its value is present, matching web.
+    private func identitySubtitle() -> String {
+        guard let p = profile?.identity else { return "" }
+        var parts: [String] = []
+        if let sex = p.sex, !sex.isEmpty { parts.append(sex.uppercased()) }
+        if let age = p.age { parts.append("\(age)") }
+        if let city = p.city, !city.isEmpty { parts.append(city.uppercased()) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// 175 cm → "5'9\"" — same formatter web /profile uses
+    /// (lib/format/height.ts).
+    private func formatHeightFtIn(cm: Double) -> String {
+        let totalInches = cm / 2.54
+        let feet = Int(totalInches / 12)
+        let inches = Int(totalInches.truncatingRemainder(dividingBy: 12).rounded())
+        return "\(feet)'\(inches)\""
+    }
+
+    /// MAX HR card's small hint label keys off how the value was derived
+    /// (manual / observed peak / LTHR-derived / formula).
+    private func maxHrHint(_ source: String?) -> String {
+        switch source ?? "" {
+        case "manual":        return "MANUAL"
+        case "observed":      return "OBSERVED"
+        case "lthr-derived":  return "LTHR-DERIVED"
+        case "formula":       return "FORMULA"
+        default:              return "—"
+        }
     }
 
     private func actionRow(icon: String, label: String, sub: String) -> some View {
@@ -196,7 +273,13 @@ private struct Field: View {
 }
 
 private struct ConnRow: View {
-    let name: String; let sub: String
+    let name: String
+    let sub: String
+    /// 2026-05-27: was hardcoded "CONNECTED" green chip for every row.
+    /// Now reflects real state from /api/profile/state — green when the
+    /// server's freshness window says the source is live, mute otherwise.
+    let connected: Bool
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -205,8 +288,12 @@ private struct ConnRow: View {
             }
             Spacer()
             HStack(spacing: 6) {
-                Circle().fill(Theme.green).frame(width: 6, height: 6)
-                Text("CONNECTED").font(.label(10)).tracking(1).foregroundStyle(Theme.green)
+                Circle()
+                    .fill(connected ? Theme.green : Theme.mute)
+                    .frame(width: 6, height: 6)
+                Text(connected ? "CONNECTED" : "NOT CONNECTED")
+                    .font(.label(10)).tracking(1)
+                    .foregroundStyle(connected ? Theme.green : Theme.mute)
             }
         }
         .padding(14)
