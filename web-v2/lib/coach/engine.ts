@@ -47,10 +47,14 @@ export interface BriefingResponse {
     nextARaceName: string | null;
     daysToARace: number | null;
     readiness: ReadinessBreakdown;
-    /** Tool calls the coach made while composing this briefing.
-     *  Used to verify the coach is actually reading via tools, not
-     *  free-wheeling. Survives the cache so probing /api/briefing shows
-     *  what it called last time. */
+    /** Today's planned workout type — drives the post-run check-in
+     *  chip variant on the /today coach card (quality / easy / long /
+     *  race / rest). null when no plan exists for today. */
+    todayWorkoutType: string | null;
+    /** Today's logged run id (when ran) — used by the niggle field
+     *  to attach an injury/tightness note to the run. */
+    todayRunId: string | null;
+    /** Tool calls the coach made while composing this briefing. */
     toolTrace?: Array<{ name: string; input: any }>;
   };
 }
@@ -282,6 +286,14 @@ export async function generateBriefing(
       nextARaceName: state.nextARace?.name ?? null,
       daysToARace: state.nextARace?.days_to_race ?? null,
       readiness: computeReadiness(state),
+      // Surface today's planned workout type + completed run id so the
+      // /today post-run check-in chips can pick the right execution row
+      // (NAILED IT / GRINDED IT OUT / COULDN'T HOLD for quality vs
+      // CHATTY EASY / etc. for easy) and attach the niggle to the run.
+      todayWorkoutType: state.todayWorkout?.type ?? null,
+      todayRunId: state.latest_activity?.date === state.today
+        ? state.latest_activity?.id ?? null
+        : null,
       toolTrace,
     },
   };
