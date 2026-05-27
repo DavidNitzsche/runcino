@@ -77,12 +77,23 @@ struct HealthView: View {
                 .font(.display(28))
                 .tracking(0.4)
                 .foregroundStyle(color)
-            Text("LONG-TERM PATTERNS · 30-DAY VIEW\(health?.watchMode.map { " · MODE: \($0.uppercased())" } ?? "")")
+            // `Optional<String>.map { ... }` was being read as
+            // `String.map { ... }` (a sequence map over characters,
+            // returning [String]). Explicit subtitle build instead.
+            Text(subtitleText())
                 .font(.label(10)).tracking(1.4)
                 .foregroundStyle(Theme.mute)
         }
         .padding(.horizontal, 24)
         .padding(.top, 4)
+    }
+
+    private func subtitleText() -> String {
+        var s = "LONG-TERM PATTERNS · 30-DAY VIEW"
+        if let mode = health?.watchMode {
+            s += " · MODE: \(mode.uppercased())"
+        }
+        return s
     }
 
     private func headlineForMode(_ mode: String?) -> (String, Color) {
