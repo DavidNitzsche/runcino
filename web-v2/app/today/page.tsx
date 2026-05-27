@@ -2,7 +2,7 @@ import { TopNav } from '@/components/layout/TopNav';
 import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigger';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { WeekStrip } from '@/components/today/WeekStrip';
-import { TodayPlannedCard } from '@/components/today/TodayPlannedCard';
+import { RunDetailTrigger } from '@/components/runs/RunDetailModal';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -20,40 +20,83 @@ export default async function TodayPage() {
     glanceError = e?.message ?? String(e);
   }
 
+  // Today cell — drives the hero headline + narrative + click target.
+  const todayCell = glance?.today
+    ? glance.weekDays.find((d) => d.date === glance.today)
+    : null;
+  const ran = (todayCell?.doneMi ?? 0) >= 0.5;
+  const headline = heroHeadline(todayCell, glance?.daysToARace);
+  const narrative = heroNarrative(todayCell, glance);
+  const breadcrumb = heroBreadcrumb(glance);
+
   return (
     <main>
       <TopNav />
 
       <div style={{ padding: '40px 40px 8px', maxWidth: 1440, margin: '0 auto' }}>
-        {/* Greeting + readiness — uses glance state, no LLM needed.
-         * #165: state-aware greeting in Faff coach voice — drops the
-         * cold "Night, David." pattern for messages that actually know
-         * what's happening today. */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'end', marginBottom: 28 }}>
-          <div>
-            <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 64, lineHeight: 1, margin: 0, letterSpacing: '0.5px' }}>
-              {(() => {
-                const g = greetingFor(glance);
-                return (
-                  <>
-                    {g.lead}{g.lead ? ' ' : ''}
-                    <span style={{ color: 'var(--green)' }}>{g.name}{g.terminal}</span>
-                  </>
-                );
-              })()}
-            </h1>
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 10 }}>
-              {todayLabel(glance?.today)}
-              {glance?.phaseLabel ? ` · ${glance.phaseLabel}` : ''}
-              {glance?.daysToARace != null ? ` · ${glance.daysToARace} DAYS TO ${glance.nextARaceName?.toUpperCase() ?? 'RACE'}` : ''}
-            </div>
+        {/* Direction 4 hero — readiness ring left, breadcrumb + headline +
+         *  narrative on the right. Drops the cheesy greeting. */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 40,
+          alignItems: 'center', marginBottom: 28,
+        }}>
+          {/* LEFT — big readiness ring */}
+          <div style={{
+            paddingRight: 36, borderRight: '1px solid var(--line)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            minWidth: 196,
+          }}>
+            {glance?.readiness && (
+              <ReadinessChipTrigger breakdown={glance.readiness} size="lg" />
+            )}
           </div>
-          {glance?.readiness && (
-            <ReadinessChipTrigger breakdown={glance.readiness} />
-          )}
+
+          {/* RIGHT — copy stack */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{
+              fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700,
+              color: 'var(--mute)', letterSpacing: '1.5px',
+              textTransform: 'uppercase',
+            }}>
+              {breadcrumb.before}
+              {breadcrumb.race && (
+                <>
+                  {breadcrumb.before ? ' · ' : ''}
+                  <span style={{ color: 'var(--race)' }}>{breadcrumb.race}</span>
+                </>
+              )}
+            </div>
+
+            {/* Big mileage headline — clickable when ran today (opens run modal) */}
+            {ran && todayCell ? (
+              <RunDetailTrigger
+                activityId={todayCell.activityId ?? `${todayCell.date}-${todayCell.doneMi.toFixed(2)}`}
+                label=""
+                style={{
+                  marginTop: 0, padding: 0,
+                  textAlign: 'left', display: 'block',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  letterSpacing: 'normal',
+                }}
+              >
+                <HeadlineMileage headline={headline} clickable />
+              </RunDetailTrigger>
+            ) : (
+              <HeadlineMileage headline={headline} clickable={false} />
+            )}
+
+            {narrative && (
+              <div style={{
+                fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.55,
+                color: 'rgba(246,247,248,0.85)', maxWidth: 540,
+              }}>
+                {narrative}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Week strip — past days w/ a run click through to /runs/[id] */}
+        {/* Week strip — Direction E (color band over neutral card) */}
         {glance?.weekDays && glance.weekDays.length > 0 && (
           <div style={{ marginBottom: 24, marginLeft: -24, marginRight: -24 }}>
             <WeekStrip
@@ -69,12 +112,8 @@ export default async function TodayPage() {
       {/* Two-column desktop / single column mobile. Coach voice loads async. */}
       <div style={{ padding: '0 40px 80px', maxWidth: 1440, margin: '0 auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 32 }} className="today-grid">
-          {/* LEFT: today's planned/done card renders INSTANTLY from glance,
-              then coach voice loads async beneath it */}
+          {/* LEFT — coach voice (TodayPlannedCard's role is now in the hero) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {glance?.weekDays && (
-              <TodayPlannedCard today={glance.today} weekDays={glance.weekDays} />
-            )}
             <div style={{
               background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
               border: '1px solid var(--line)',
@@ -86,8 +125,7 @@ export default async function TodayPage() {
             </div>
           </div>
 
-          {/* RIGHT: cards rail loads async — only the coach's emitted topics
-              (not the today-card duplicate) */}
+          {/* RIGHT: cards rail loads async */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <BriefingCardsOnly />
           </div>
@@ -125,9 +163,7 @@ export default async function TodayPage() {
   );
 }
 
-// Right-rail cards — cards only, no coach voice (that lives in the left column).
-// Shares the in-flight fetch w/ the left column via BriefingLoader's module-level
-// cache, so it's ONE network call.
+// Right-rail cards — cards only, no coach voice.
 function BriefingCardsOnly() {
   return <BriefingLoader surface="today" renderCoach={false} renderCards={true} />;
 }
@@ -135,11 +171,149 @@ function BriefingCardsOnly() {
 function MicroStat({ k, v, delta, color }: { k: string; v: string; delta: string; color: string }) {
   return (
     <div className="card" style={{ padding: '14px 16px' }}>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>{k}</div>
+      <div style={{ fontFamily: 'var(--f-label)', fontSize: 10, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>{k}</div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color, lineHeight: 1, marginTop: 4 }}>{v}</div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', marginTop: 4 }}>{delta}</div>
     </div>
   );
+}
+
+/** Big "7.6 MI DONE" headline. Optional click affordance hint when ran. */
+function HeadlineMileage({ headline, clickable }: { headline: ReturnType<typeof heroHeadline>; clickable: boolean }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', gap: 14,
+      lineHeight: 0.98,
+    }}>
+      <span style={{
+        fontFamily: 'var(--f-display)', fontSize: 56, fontWeight: 800,
+        color: headline.numColor, letterSpacing: '0.2px',
+      }}>{headline.num}</span>
+      {headline.post && (
+        <span style={{
+          fontFamily: 'var(--f-display)', fontSize: 28, fontWeight: 700,
+          color: headline.postColor, letterSpacing: '0.3px',
+        }}>{headline.post}</span>
+      )}
+      {clickable && (
+        <span style={{
+          marginLeft: 'auto',
+          fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700,
+          color: 'var(--mute)', letterSpacing: '1.2px',
+          alignSelf: 'center',
+        }}>
+          TAP FOR DETAILS →
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Build the breadcrumb pieces. Race chunk separated so it can render in race-orange. */
+function heroBreadcrumb(glance: any): { before: string; race: string | null } {
+  if (!glance) return { before: '', race: null };
+  const before = [
+    todayLabel(glance.today),
+    glance.phaseLabel,
+  ].filter(Boolean).join(' · ');
+  const race = glance.daysToARace != null
+    ? `${glance.daysToARace} DAYS TO ${(glance.nextARaceName ?? 'RACE').toUpperCase()}`
+    : null;
+  return { before, race };
+}
+
+/** Build the big mileage headline. State-aware. */
+function heroHeadline(
+  todayCell: any,
+  daysToRace: number | null | undefined,
+): { num: string; post: string; numColor: string; postColor: string } {
+  if (daysToRace === 0) {
+    return { num: 'RACE', post: 'DAY', numColor: 'var(--race)', postColor: 'var(--mute)' };
+  }
+  if (!todayCell) {
+    return { num: '—', post: '', numColor: 'var(--dim)', postColor: 'var(--mute)' };
+  }
+  const ran = todayCell.doneMi >= 0.5;
+  if (ran) {
+    return {
+      num: todayCell.doneMi.toFixed(todayCell.doneMi % 1 === 0 ? 0 : 1),
+      post: 'MI · DONE',
+      numColor: 'var(--green)',
+      postColor: 'var(--mute)',
+    };
+  }
+  if (todayCell.plannedType === 'rest' || todayCell.plannedMi === 0) {
+    return { num: 'REST', post: 'DAY', numColor: 'var(--rest)', postColor: 'var(--mute)' };
+  }
+  // Pre-run, planned
+  const t = (todayCell.plannedType ?? '').toUpperCase();
+  return {
+    num: todayCell.plannedMi.toFixed(todayCell.plannedMi % 1 === 0 ? 0 : 1),
+    post: `MI · ${t}`,
+    numColor: 'var(--ink)',
+    postColor: 'var(--mute)',
+  };
+}
+
+/** Build the one-line plain-English coach summary that sits under the headline.
+ *  Deterministic — no LLM. Sources from glance state only. */
+function heroNarrative(todayCell: any, glance: any): string {
+  if (!todayCell || !glance) return '';
+  const ran = todayCell.doneMi >= 0.5;
+  const ptype = (todayCell.plannedType ?? '').toLowerCase();
+
+  // Tomorrow's plan for "tomorrow's X" cue
+  const tomorrowCell = nextWorkout(glance.weekDays, todayCell.date);
+
+  if (glance.daysToARace === 0) {
+    return `Race day. Run the plan, trust the work.`;
+  }
+  if (glance.daysToARace === 1) {
+    return `Light shake-out and early to bed — race goes tomorrow.`;
+  }
+
+  if (ran) {
+    const banked = isQuality(ptype) ? 'Threshold banked'
+      : ptype === 'long'   ? 'Long banked'
+      : ptype === 'tempo'  ? 'Tempo banked'
+      : ptype === 'race'   ? 'Race in the books'
+      : ptype === 'easy'   ? 'Easy in the bank'
+      : 'Run in the books';
+    const next = tomorrowCell ? ` Tomorrow's ${describeWorkout(tomorrowCell)}.` : '';
+    return `${banked}.${next}`;
+  }
+  if (ptype === 'rest') {
+    return `Sleep, mobility, recovery. The legs earned it.`;
+  }
+  // Pre-run, planned
+  const cue = isQuality(ptype) ? 'Lock the target pace. Form holds, splits hold.'
+    : ptype === 'long'   ? 'Keep it aerobic. Fuel by 45 minutes.'
+    : ptype === 'tempo'  ? 'Sustained, controlled — find the line and ride it.'
+    : ptype === 'race'   ? 'Trust the plan. Hold back early, spend it late.'
+    : ptype === 'easy'   ? 'Conversational. If you can\'t chat, you\'re going too hard.'
+    : '';
+  return cue;
+}
+
+function isQuality(ptype: string): boolean {
+  return ['threshold', 'intervals', 'vo2max'].includes(ptype);
+}
+
+function nextWorkout(weekDays: any[], today: string): any | null {
+  const idx = weekDays.findIndex((d) => d.date === today);
+  if (idx < 0 || idx + 1 >= weekDays.length) return null;
+  return weekDays[idx + 1];
+}
+
+function describeWorkout(cell: any): string {
+  const mi = cell.plannedMi?.toFixed(cell.plannedMi % 1 === 0 ? 0 : 1) ?? '?';
+  const t = (cell.plannedType ?? '').toLowerCase();
+  if (t === 'rest') return 'rest day';
+  if (t === 'easy' || t === 'shakeout') return `${mi}mi easy is a recovery shake-out`;
+  if (t === 'long') return `${mi}mi long run`;
+  if (isQuality(t)) return `${mi}mi quality session`;
+  if (t === 'race') return 'race day';
+  return `${mi}mi ${t}`;
 }
 
 function todayLabel(iso: string | undefined): string {
@@ -148,77 +322,4 @@ function todayLabel(iso: string | undefined): string {
   const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   return `${days[d.getUTCDay()]} · ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
-}
-
-/**
- * #165 state-aware greeting. Reads glance to decide what to say.
- * Returns three pieces:
- *   lead   — the coach-voice opener ("Nice."), can be empty for name-only
- *   name   — the runner's name (highlighted green by the caller)
- *   terminal — punctuation after the name ("." or "?" or ", today.")
- *
- * Priority (top match wins):
- *   1. race day (days=0)
- *   2. race tomorrow (days=1)
- *   3. race week (≤7 days)
- *   4. ran today
- *   5. rest day on the plan
- *   6. quality day (threshold/tempo/intervals)
- *   7. long run day
- *   8. easy day
- *   9. late night fallback
- */
-function greetingFor(glance: any): { lead: string; name: string; terminal: string } {
-  const name = glance?.greetingName ?? 'David';
-  const today = glance?.today as string | undefined;
-  const days  = glance?.daysToARace as number | null | undefined;
-  const todayCell = today ? (glance?.weekDays ?? []).find((d: any) => d.date === today) : null;
-  const ran = todayCell?.doneMi >= 0.5;
-  const ptype = (todayCell?.plannedType ?? '') as string;
-  const isQuality = ['threshold', 'tempo', 'intervals', 'vo2max'].includes(ptype);
-  const isLong = ptype === 'long';
-  const isRest = ptype === 'rest';
-
-  // 1. Race day
-  if (days === 0) {
-    return { lead: "Today's the day,", name, terminal: '.' };
-  }
-  // 2. Tomorrow
-  if (days === 1) {
-    return { lead: 'Tomorrow,', name, terminal: '.' };
-  }
-  // 3. Race week
-  if (days != null && days >= 2 && days <= 7) {
-    return { lead: 'Race week,', name, terminal: '.' };
-  }
-  // 4. Ran today — the legs spoke first
-  if (ran) {
-    const sayings = ['Nice work,', 'Banked.', 'Got it done,', "That's the work,"];
-    const idx = (today ?? '').split('-').reduce((a, x) => a + Number(x || 0), 0) % sayings.length;
-    return { lead: sayings[idx], name, terminal: '.' };
-  }
-  // 5. Rest day
-  if (isRest) {
-    return { lead: 'Rest day,', name, terminal: '.' };
-  }
-  // 6. Quality day
-  if (isQuality) {
-    return { lead: 'Big one,', name, terminal: '.' };
-  }
-  // 7. Long run day
-  if (isLong) {
-    return { lead: 'Long run,', name, terminal: '.' };
-  }
-  // 8. Easy day with miles
-  if (ptype === 'easy' || ptype === 'shakeout') {
-    return { lead: 'Easy day,', name, terminal: '.' };
-  }
-  // 9. Late-night fallback (no plan match)
-  const h = parseInt(new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false,
-  }).format(new Date()), 10);
-  if (h < 5)  return { lead: 'Up late,', name, terminal: '.' };
-  if (h >= 21) return { lead: 'Wrapping up,', name, terminal: '.' };
-  // Daylight, no plan cue — keep it minimal, no fake cheer.
-  return { lead: '', name, terminal: '.' };
 }

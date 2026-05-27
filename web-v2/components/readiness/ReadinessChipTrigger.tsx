@@ -4,34 +4,49 @@ import { useState } from 'react';
 import type { ReadinessBreakdown as RB } from '@/lib/coach/readiness';
 import { ReadinessBreakdownView } from './ReadinessBreakdown';
 
-/** Clickable readiness chip — tap opens an inline breakdown sheet (§8.3). */
-export function ReadinessChipTrigger({ breakdown }: { breakdown: RB }) {
+/** Clickable readiness chip — tap opens an inline breakdown sheet (§8.3).
+ *  size='lg' renders the big hero ring (156px) used in /today's Direction-4
+ *  top hero. Default 'sm' is the original 64px corner chip. */
+export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB; size?: 'sm' | 'lg' }) {
   const [open, setOpen] = useState(false);
   const color = breakdown.band === 'sharp' || breakdown.band === 'ready' ? 'var(--green)'
     : breakdown.band === 'moderate' ? 'var(--goal)'
                                     : 'var(--over)';
-  const r = 26;
+  const dim = size === 'lg' ? 156 : 64;
+  const stroke = size === 'lg' ? 8 : 4;
+  const r = (dim / 2) - stroke;
   const C = 2 * Math.PI * r;
   const off = C * (1 - breakdown.score / 100);
+  const numSize = size === 'lg' ? 56 : 26;
 
   return (
     <>
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
-          width: 64, height: 64, position: 'relative',
+          width: dim, height: dim, position: 'relative',
           background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
         aria-label={`Readiness ${breakdown.score} (${breakdown.label}) — tap for breakdown`}
       >
-        <svg viewBox="0 0 64 64" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-          <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-          <circle cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={off} />
+        <svg viewBox={`0 0 ${dim} ${dim}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+          <circle cx={dim / 2} cy={dim / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+          <circle cx={dim / 2} cy={dim / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={C} strokeDashoffset={off} />
         </svg>
-        <span style={{ fontFamily: 'var(--f-display)', fontSize: 26, color, letterSpacing: '0.5px' }}>
-          {breakdown.score}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1, position: 'relative' }}>
+          <span style={{ fontFamily: 'var(--f-display)', fontSize: numSize, color, letterSpacing: '0.5px', fontWeight: 800 }}>
+            {breakdown.score}
+          </span>
+          {size === 'lg' && (
+            <span style={{
+              fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--mute)',
+              letterSpacing: '1.6px', fontWeight: 700, marginTop: 6,
+            }}>
+              {breakdown.label}
+            </span>
+          )}
+        </div>
       </button>
 
       {open && (

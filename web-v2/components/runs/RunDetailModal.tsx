@@ -18,10 +18,15 @@ export function RunDetailTrigger({
   activityId,
   label = 'Splits · route · form data →',
   style,
+  children,
 }: {
   activityId: string | null | undefined;
   label?: string;
   style?: React.CSSProperties;
+  /** Optional custom trigger contents — when provided, renders children
+   *  instead of the label. Used by /today's hero so the whole headline
+   *  block becomes the run-detail click target. */
+  children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -35,14 +40,14 @@ export function RunDetailTrigger({
       <button
         onClick={() => setOpen(true)}
         style={{
-          display: 'inline-block', marginTop: 12,
+          display: 'inline-block', marginTop: children ? 0 : 12,
           background: 'transparent', border: 'none', padding: 0,
           fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 500,
           color: 'var(--mute)', letterSpacing: '0.3px', cursor: 'pointer',
           ...style,
         }}
       >
-        {label}
+        {children ?? label}
       </button>
       {open && <RunDetailModal activityId={activityId} onClose={() => setOpen(false)} />}
     </>
