@@ -119,8 +119,21 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
   // it was, surface those labels in observedSub, and let the meaning
   // string explicitly call out staleness when nothing landed today.
   const todayIso = (state.today ?? new Date().toISOString().slice(0, 10));
+  // 2026-05-27: TZ bug — state.today is computed in state-loader as
+  // (UTC now - 7h) → PDT-shifted ISO date. But the previous version of
+  // this block computed checkInDay from raw UTC (`new Date(c.ts).toISOString()`).
+  // Result: David checks in at 8pm PDT yesterday (= ~3am UTC today) →
+  // checkInDay falsely came out as "today" while state.today was ALSO
+  // today by the PDT clock → daysAgo === 0 → labeled "today" even
+  // though it was yesterday by his local clock. The phantom "TIRED
+  // (today)" he saw in the breakdown modal.
+  //
+  // Fix: shift the check-in timestamp by the same -7h offset before
+  // slicing, so both dates live in the same reference frame.
+  const PDT_SHIFT_MS = 7 * 3600000;
   const recent = state.recentCheckIns.slice(0, 2).map((c) => {
-    const checkInDay = new Date(c.ts).toISOString().slice(0, 10);
+    const checkInDay = new Date(new Date(c.ts).getTime() - PDT_SHIFT_MS)
+      .toISOString().slice(0, 10);
     const daysAgo = Math.max(0, Math.round(
       (Date.parse(todayIso + 'T12:00:00Z') -
        Date.parse(checkInDay + 'T12:00:00Z')) / 86400000
@@ -138,12 +151,16 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const ratings = recent.map((c) => c.rating);
     const allSolid = ratings.every((r) => r === 'solid');
     const anyWrecked = ratings.some((r) => r === 'wrecked');
+    // 2026-05-27: readiness rows describe the SIGNAL only — the coach
+    // is the only voice that prescribes. Stripped "watch volume" and
+    // "ease the next session" so this card and the coach can't
+    // contradict each other.
     const baseMeaning = anyWrecked
-      ? `A WRECKED check-in is a real signal. Coach should ease the next session.`
+      ? `A WRECKED check-in is the strongest subjective signal in the model.`
       : allSolid && ratings.length >= 2
-        ? `Back-to-back SOLID feel. You're absorbing the work.`
+        ? `Back-to-back SOLID. You're absorbing the work.`
         : ratings.includes('tired')
-          ? `TIRED in recent check-ins. Fatigue accumulating, watch volume.`
+          ? `TIRED in recent check-ins. Subjective fatigue is registering.`
           : `Subjective reads steady.`;
     // When nothing landed today, prepend a hard "no check-in today"
     // note so the LLM can't frame the most-recent rating as today's.
@@ -178,21 +195,25 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     const r = state.loadAcwr;
     let w = 0;
     let meaning = '';
+    // 2026-05-27: descriptive only — what the ratio IS, not what to DO
+    // about it. The coach decides prescription. Otherwise this card and
+    // the coach voice openly contradict (David flagged it: "why is it
+    // telling me to back off but the coach isn't?").
     if (r < 0.8) {
       w = -3;
-      meaning = `Below 0.8. You're trending toward detraining. Recent volume is well below your 28-day base.`;
+      meaning = `Below 0.8. Recent 7-day volume sits well under the 28-day base — the detraining band.`;
     } else if (r < 1.0) {
       w = 2;
-      meaning = `Below 1.0. Building gradually, sustainable progression with low injury risk.`;
+      meaning = `Below 1.0. Building gradually, sustainable-progression band.`;
     } else if (r <= 1.3) {
       w = 5;
-      meaning = `Sweet spot. Gains with low injury risk, the Gabbett zone for productive training.`;
+      meaning = `Sweet spot per Gabbett. Productive-training band with the lowest injury rate in his cohort.`;
     } else if (r <= 1.5) {
       w = -3;
-      meaning = `Elevated ramp. Recent volume well above your 28-day base. Hold here, don't add more.`;
+      meaning = `Elevated ramp. Recent 7-day volume runs above the 28-day base.`;
     } else {
       w = -8;
-      meaning = `Spike above 1.5. High injury risk. Back off this week or absorb the cost.`;
+      meaning = `Above 1.5 — the elevated-injury-risk band per Gabbett. Coach factors this into today's prescription.`;
     }
     score += w;
     inputs.push({

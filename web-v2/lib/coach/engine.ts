@@ -458,6 +458,12 @@ function buildOrientationMessage(o: OrientationInput): string {
     );
   }
   // ACWR — "volume spike" is a defined term (Gabbett > 1.5), not vibes.
+  // 2026-05-27: when ratio > 1.5 the readiness modal explicitly tells
+  // the runner this is the elevated-injury-risk band and says "Coach
+  // factors this into today's prescription." If the coach then says
+  // nothing, the surfaces openly contradict — David flagged exactly
+  // that ("if the coach is fine with it then this seems pretty
+  // dramatic"). Require the coach to NAME the spike when it exists.
   if (typeof o.loadAcwr === 'number') {
     const ratio = o.loadAcwr.toFixed(2);
     const isSpike = o.loadAcwr > 1.5;
@@ -465,7 +471,12 @@ function buildOrientationMessage(o: OrientationInput): string {
       `- LOAD ratio (Gabbett acute:chronic): ${ratio}. ` +
       `A "volume spike" / "spike" / "ramp warning" is ONLY valid when this ratio > 1.5. ` +
       (isSpike
-        ? `Current ratio IS a spike (${ratio} > 1.5) — you may use that framing.`
+        ? `Current ratio IS a spike (${ratio} > 1.5). The readiness modal is ` +
+          `telling the runner this is the elevated-injury-risk band per Gabbett. ` +
+          `You MUST acknowledge it in this brief — one short sentence is enough — ` +
+          `and either (a) explain why today's session is the right call given the spike, ` +
+          `or (b) propose a lighter alternative. Silence here = the runner sees the ` +
+          `readiness card and the coach disagreeing on the same fact.`
         : `Current ratio is NOT a spike (${ratio} ≤ 1.5). Do NOT call this week a "volume spike," ` +
           `"big jump," or "ramp warning." A high absolute mileage week is not a spike if the ratio ` +
           `is in the sweet spot (1.0-1.3) or building band (0.8-1.0). Describe the load by its ` +

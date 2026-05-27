@@ -60,7 +60,11 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        144)" reads clinical and treats a forgiving aerobic intent
 //        like a tight target. Say "mid-Z2" or "held in aerobic zone."
 //        Quote bpm only when it adds signal the zone name can't.
-export const PROMPT_VERSION = 'v6-zone-naming-style';
+// v7-acwr-must-address 2026-05-27: when ACWR > 1.5, the readiness modal
+// tells the runner this is the elevated-injury-risk band. The coach was
+// silently ignoring it — David flagged the contradiction. Doctrine now
+// requires the coach to name the spike and explain (or back off).
+export const PROMPT_VERSION = 'v7-acwr-must-address';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls
