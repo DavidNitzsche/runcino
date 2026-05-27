@@ -38,6 +38,7 @@ import { loadTrainingState } from '@/lib/coach/training-state';
 import { loadRacesState } from '@/lib/coach/races-state';
 import { loadHealthState } from '@/lib/coach/health-state';
 import { loadProfileState } from '@/lib/coach/profile-state';
+import { generateBriefing } from '@/lib/coach/engine';
 
 export const maxDuration = 30;
 
@@ -114,6 +115,24 @@ export async function POST(req: NextRequest) {
       runLoader('races',    () => loadRacesState(userId)),
       runLoader('health',   () => loadHealthState(userId)),
       runLoader('profile',  () => loadProfileState(userId)),
+    ]);
+    // 2026-05-27 P-KEEPWARM-SECONDARY: in addition to the DB state
+    // loaders above, also pre-warm the briefing CACHE for every
+    // LLM-backed surface. generateBriefing returns instantly when
+    // cache is fresh (the common case), and regenerates exactly once
+    // per invalidation event (day rollover, version bump, mutation).
+    // Net effect: David never sees "Faffing on..." on a surface
+    // he hasn't visited recently, because the cron warmed it.
+    //
+    // Cost in steady state: ~0 (cache hits). Cost after a daily
+    // invalidation: ~5 LLM calls × active users (one per surface).
+    await Promise.all([
+      runLoader('brief:today',    () => generateBriefing(userId, 'today')),
+      runLoader('brief:todayIos', () => generateBriefing(userId, 'today', undefined, true)),
+      runLoader('brief:training', () => generateBriefing(userId, 'training')),
+      runLoader('brief:races',    () => generateBriefing(userId, 'races')),
+      runLoader('brief:health',   () => generateBriefing(userId, 'health')),
+      runLoader('brief:profile',  () => generateBriefing(userId, 'profile')),
     ]);
     const ok = Object.values(loaders).every((v) => typeof v === 'number');
     perUser.push({ user_id: userId, ms: Date.now() - us, ok, loaders });

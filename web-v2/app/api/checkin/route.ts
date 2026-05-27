@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { generateCheckinReply } from '@/lib/coach/checkin-reply';
+import { generateCheckinReply, pickCannedReply } from '@/lib/coach/checkin-reply';
 import { loadCoachState } from '@/lib/coach/state-loader';
 import { readCachedBriefing } from '@/lib/coach/cache';
 
@@ -155,33 +155,55 @@ export async function POST(req: NextRequest) {
   // brief and waiting 15-20s for a full LLM regen. The next natural
   // regen (day rollover, run ingest) folds the check-in into the
   // morning voice normally.
+  // 2026-05-27 David's call: "if this is the reply, thats fine but
+  // then we dont need to call in the API or LLM it can just be canned
+  // responses." Generic acknowledgments don't earn an LLM call. Reserve
+  // the LLM for the case where the runner wrote a NIGGLE — that's
+  // unpredictable free text and worth a contextual response.
+  //
+  // Path A (default, ~95%+ of check-ins): chip-only → canned reply
+  //   keyed on (workout_kind, execution, body). Instant, free,
+  //   deterministic, on-voice. No LLM call.
+  //
+  // Path B: niggle present → LLM reply with full context. Costs
+  //   ~$0.005-0.01, takes ~3-5s, but addresses the runner's actual
+  //   words. This is where the model earns its keep.
   let coachReply: string | null = null;
-  try {
-    const state = await loadCoachState(userId);
-    const cached = await readCachedBriefing(userId, 'today').catch(() => null);
-    coachReply = await generateCheckinReply({
-      runner: state.profile?.full_name?.split(' ')[0] ?? 'David',
-      today: state.today,
-      todayWorkout: state.todayWorkout ? {
-        type: state.todayWorkout.type,
-        mi: state.todayWorkout.mi,
-        label: state.todayWorkout.label,
-      } : null,
-      checkIn: {
-        kind: body.kind ?? 'post_run',
-        workout_kind: body.workout_kind ?? null,
-        execution: body.execution ?? null,
-        body: body.body ?? null,
-        niggle: body.niggle ?? null,
-      },
-      todayBriefLead: (cached as any)?.lead ?? null,
-    });
-  } catch (e: any) {
-    // Reply generation is non-fatal — the check-in is already saved.
-    // The runner sees a generic ack and the next brief still absorbs
-    // the row.
-    console.error('[checkin-reply] failed:', e?.message ?? e);
-    coachReply = null;
+  const hasNiggle = Boolean(body.niggle && body.niggle.trim());
+  if (!hasNiggle) {
+    coachReply = pickCannedReply(
+      body.workout_kind ?? null,
+      body.execution ?? null,
+      body.body ?? null,
+    );
+  }
+  if (coachReply == null) {
+    // Either had a niggle (Path B) OR the canned matrix didn't have a
+    // line for this combo (rare fallback) — call the LLM.
+    try {
+      const state = await loadCoachState(userId);
+      const cached = await readCachedBriefing(userId, 'today').catch(() => null);
+      coachReply = await generateCheckinReply({
+        runner: state.profile?.full_name?.split(' ')[0] ?? 'David',
+        today: state.today,
+        todayWorkout: state.todayWorkout ? {
+          type: state.todayWorkout.type,
+          mi: state.todayWorkout.mi,
+          label: state.todayWorkout.label,
+        } : null,
+        checkIn: {
+          kind: body.kind ?? 'post_run',
+          workout_kind: body.workout_kind ?? null,
+          execution: body.execution ?? null,
+          body: body.body ?? null,
+          niggle: body.niggle ?? null,
+        },
+        todayBriefLead: (cached as any)?.lead ?? null,
+      });
+    } catch (e: any) {
+      console.error('[checkin-reply] failed:', e?.message ?? e);
+      coachReply = null;
+    }
   }
 
   // Persist the reply onto the check-in row so a page refresh can show
