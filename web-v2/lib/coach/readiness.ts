@@ -132,12 +132,52 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
     inputs.push({ key: 'subjective', label: 'CHECK-IN · 15%', weight: 0, observedV: '—', observedSub: 'no rating yet', meaning: 'No subjective rating yet today — coach defaults to neutral.' });
   }
 
-  // LOAD (15%) — A:C ratio. Not loaded into state yet; pass-through 0.
-  inputs.push({
-    key: 'load', label: 'LOAD · 15%', weight: 0, observedV: '—',
-    observedSub: 'A:C ratio pending',
-    meaning: 'Acute:Chronic load ratio needs 28 days of running to compute. Lands once we have a fuller history.',
-  });
+  // LOAD (15%) — Gabbett's Acute:Chronic Workload Ratio (ACWR).
+  //   acute7    = avg daily mi over last 7 days
+  //   chronic28 = avg daily mi over last 28 days
+  //   ratio     = acute7 / chronic28
+  //
+  //   <0.8  detrained — fitness drift, -3
+  //   0.8-1.0 building — sustainable, +2
+  //   1.0-1.3 sweet spot — gains, low injury risk, +5
+  //   1.3-1.5 caution — elevated ramp, -3
+  //   >1.5   spike — high injury risk per Gabbett, -8
+  if (state.loadAcwr != null && state.loadAcute7 != null && state.loadChronic28 != null) {
+    const r = state.loadAcwr;
+    let w = 0;
+    let meaning = '';
+    if (r < 0.8) {
+      w = -3;
+      meaning = `Below 0.8 — you're trending toward detraining. Recent volume is well below your 28-day base.`;
+    } else if (r < 1.0) {
+      w = 2;
+      meaning = `Below 1.0 — building gradually. Sustainable progression with low injury risk.`;
+    } else if (r <= 1.3) {
+      w = 5;
+      meaning = `Sweet spot — gains with low injury risk. The Gabbett zone for productive training.`;
+    } else if (r <= 1.5) {
+      w = -3;
+      meaning = `Elevated ramp — recent volume well above your 28-day base. Hold here, don't add more.`;
+    } else {
+      w = -8;
+      meaning = `Spike above 1.5 — high injury risk. Back off this week or absorb the cost.`;
+    }
+    score += w;
+    inputs.push({
+      key: 'load', label: 'LOAD · 15%', weight: w,
+      observedV: r.toFixed(2),
+      observedSub: `acute ${state.loadAcute7.toFixed(1)} / chronic ${state.loadChronic28.toFixed(1)} mi/day`,
+      meaning,
+    });
+  } else {
+    // Insufficient history — Gabbett needs ≥3 runs in 28 days to mean anything.
+    inputs.push({
+      key: 'load', label: 'LOAD · 15%', weight: 0,
+      observedV: '—',
+      observedSub: 'building history',
+      meaning: 'Acute:Chronic load ratio needs at least 3 runs in the last 28 days to be meaningful.',
+    });
+  }
 
   score = Math.max(0, Math.min(100, score));
   const band = score > 85 ? 'sharp'

@@ -200,6 +200,31 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     [userId]
   ).catch(() => ({ rows: [] }));
 
+  // ACWR for LOAD pillar — sum mi/day in 7d and 28d windows.
+  const acwrRow = await pool.query(
+    `SELECT
+        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '7 days')::text
+                          AND  data->>'date' <  ($1::date + interval '1 day')::text
+                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS acute_sum,
+        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '28 days')::text
+                          AND  data->>'date' <  ($1::date + interval '1 day')::text
+                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS chronic_sum,
+        COUNT(*) FILTER (WHERE data->>'date' >= ($1::date - interval '28 days')::text)::int AS runs28
+       FROM strava_activities
+      WHERE (user_uuid = $2 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
+        AND (data->>'distanceMi')::numeric > 0.3`,
+    [today, userId]
+  ).catch(() => ({ rows: [] as any[] }));
+  const acuteSum = Number(acwrRow.rows[0]?.acute_sum) || 0;
+  const chronicSum = Number(acwrRow.rows[0]?.chronic_sum) || 0;
+  const runs28 = Number(acwrRow.rows[0]?.runs28) || 0;
+  const loadAcute7 = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
+  const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
+  const loadAcwr = (loadChronic28 >= 0.1 && runs28 >= 3)
+    ? +(loadAcute7 / loadChronic28).toFixed(2)
+    : null;
+
   const readiness = computeReadiness({
     today, user_id: userId,
     profile: prof ?? null,
@@ -213,6 +238,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       : null,
     sleep7Avg, sleep7Deficit, hrvCurrent, hrvBaseline,
     rhrCurrent, rhrBaseline, cadenceBaseline,
+    loadAcute7, loadChronic28, loadAcwr,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     pendingIntents: [], shoes: [],
   });

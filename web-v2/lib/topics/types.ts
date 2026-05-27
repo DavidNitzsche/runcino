@@ -91,6 +91,13 @@ export interface CoachState {
   rhrBaseline: number | null;
   cadenceBaseline: number | null;
 
+  // Acute:Chronic load — distance-based. acute7 = avg daily mi over last 7d,
+  // chronic28 = avg daily mi over last 28d. Ratio = acute7 / chronic28.
+  // Drives the LOAD pillar of readiness (Gabbett ACWR).
+  loadAcute7: number | null;       // mi/day, last 7 days
+  loadChronic28: number | null;    // mi/day, last 28 days
+  loadAcwr: number | null;         // acute7 / chronic28
+
   // Recent check-ins (last 7 days) — informs voice tone next briefing
   recentCheckIns: Array<{ ts: string; rating: 'solid' | 'tired' | 'wrecked' }>;
 

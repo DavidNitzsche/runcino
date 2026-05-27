@@ -282,6 +282,39 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     [userId]
   ).catch(() => ({ rows: [] }));  // table may not exist before P0.7 migration
 
+  // ACWR — Acute:Chronic Workload Ratio (Gabbett).
+  //   acute7    = avg daily distance over last 7 days   (mi/day)
+  //   chronic28 = avg daily distance over last 28 days  (mi/day)
+  //   ratio     = acute7 / chronic28
+  // Pulls from strava_activities (the full ingested run history). Rest
+  // days count as 0 — that's the point. We sum total miles in each
+  // window and divide by the window length, NOT by the count of runs.
+  const acwrRow = await pool.query(
+    `SELECT
+        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '7 days')::text
+                          AND  data->>'date' <  ($1::date + interval '1 day')::text
+                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS acute_sum,
+        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '28 days')::text
+                          AND  data->>'date' <  ($1::date + interval '1 day')::text
+                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS chronic_sum,
+        COUNT(*) FILTER (WHERE data->>'date' >= ($1::date - interval '28 days')::text)::int AS runs28
+       FROM strava_activities
+      WHERE (user_uuid = $2 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
+        AND (data->>'distanceMi')::numeric > 0.3`,
+    [today, userId]
+  ).catch(() => ({ rows: [] as any[] }));
+  const acuteSum   = Number(acwrRow.rows[0]?.acute_sum) || 0;
+  const chronicSum = Number(acwrRow.rows[0]?.chronic_sum) || 0;
+  const runs28     = Number(acwrRow.rows[0]?.runs28) || 0;
+  const loadAcute7    = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
+  const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
+  // Only compute the ratio when we have at least a few runs in the chronic
+  // window — otherwise divide-by-near-zero gives nonsense spikes.
+  const loadAcwr = (loadChronic28 >= 0.1 && runs28 >= 3)
+    ? +(loadAcute7 / loadChronic28).toFixed(2)
+    : null;
+
   // Pending intents (not yet acknowledged)
   const intents = await pool.query(
     `SELECT reason, field, value FROM coach_intents
@@ -321,6 +354,9 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     rhrCurrent,
     rhrBaseline,
     cadenceBaseline,
+    loadAcute7,
+    loadChronic28,
+    loadAcwr,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     pendingIntents: intents.rows.map((r: any) => ({
       reason: r.reason, field: r.field, value: r.value,
