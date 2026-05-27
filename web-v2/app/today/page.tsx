@@ -19,12 +19,11 @@ export default async function TodayPage() {
     glanceError = e?.message ?? String(e);
   }
 
-  // Today cell — drives the hero headline + narrative.
+  // Today cell drives the hero coach hit.
   const todayCell = glance?.today
     ? glance.weekDays.find((d) => d.date === glance.today)
     : null;
-  const headline = heroHeadline(todayCell, glance?.daysToARace);
-  const narrative = heroNarrative(todayCell, glance);
+  const hit = heroCoachHit(todayCell, glance);
   const breadcrumb = heroBreadcrumb(glance);
 
   return (
@@ -32,25 +31,25 @@ export default async function TodayPage() {
       <TopNav />
 
       <div style={{ padding: '40px 40px 8px', maxWidth: 1440, margin: '0 auto' }}>
-        {/* Direction 4 hero — readiness ring left, breadcrumb + headline +
-         *  narrative on the right. Drops the cheesy greeting. */}
+        {/* v3 Direction D — readiness ring on the left, breadcrumb + a real
+         *  2-line coach hit promoted to hero status. No workout-name headline
+         *  (that lives in the week-strip today tile below). */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 40,
+          display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 28,
           alignItems: 'center', marginBottom: 28,
         }}>
           {/* LEFT — big readiness ring */}
           <div style={{
-            paddingRight: 36, borderRight: '1px solid var(--line)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            minWidth: 196,
+            minWidth: 156,
           }}>
             {glance?.readiness && (
               <ReadinessChipTrigger breakdown={glance.readiness} size="lg" />
             )}
           </div>
 
-          {/* RIGHT — copy stack */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* RIGHT — breadcrumb + the coach hit */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{
               fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700,
               color: 'var(--mute)', letterSpacing: '1.5px',
@@ -65,18 +64,14 @@ export default async function TodayPage() {
               )}
             </div>
 
-            {/* Big mileage headline — not clickable. Run details live in the
-             *  week-strip day cards below (single source of click-through). */}
-            <HeadlineMileage headline={headline} />
-
-            {narrative && (
-              <div style={{
-                fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.55,
-                color: 'rgba(246,247,248,0.85)', maxWidth: 540,
-              }}>
-                {narrative}
-              </div>
-            )}
+            {/* The hit. Lower-case prose, brand-voice. ~22-24px, two lines. */}
+            <div style={{
+              fontFamily: 'var(--f-body)', fontSize: 22, lineHeight: 1.4,
+              fontWeight: 500, color: 'var(--ink)',
+              maxWidth: 720,
+            }}>
+              {hit}
+            </div>
           </div>
         </div>
 
@@ -162,27 +157,6 @@ function MicroStat({ k, v, delta, color }: { k: string; v: string; delta: string
   );
 }
 
-/** Big workout-name headline (e.g. "CRUISE INTERVALS · DONE").
- *  Display-only; run details open from the week-strip day cards below. */
-function HeadlineMileage({ headline }: { headline: ReturnType<typeof heroHeadline> }) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap',
-      lineHeight: 0.98,
-    }}>
-      <span style={{
-        fontFamily: 'var(--f-display)', fontSize: 48, fontWeight: 800,
-        color: headline.numColor, letterSpacing: '0.4px',
-      }}>{headline.num}</span>
-      {headline.post && (
-        <span style={{
-          fontFamily: 'var(--f-display)', fontSize: 26, fontWeight: 700,
-          color: headline.postColor, letterSpacing: '0.5px',
-        }}>{headline.post}</span>
-      )}
-    </div>
-  );
-}
 
 /** Build the breadcrumb pieces. Race chunk separated so it can render in race-orange. */
 function heroBreadcrumb(glance: any): { before: string; race: string | null } {
@@ -197,116 +171,130 @@ function heroBreadcrumb(glance: any): { before: string; race: string | null } {
   return { before, race };
 }
 
-/** Build the workout-name headline. State-aware.
+/**
+ * heroCoachHit (#178) — the two-line coach voice that lives in the
+ * /today hero. Deterministic, sourced from glance state. No LLM call,
+ * no em-dashes, brand-voice. Picks one of many templates based on the
+ * day's state; daily rotation gives variety without feeling random.
  *
- *  Headline = WORKOUT NAME in its type accent color
- *           + " · DONE" / " · TODAY" / " · REST DAY" suffix
- *
- *  Colors per type:
- *    easy / shakeout → purple (--learn)
- *    threshold / intervals / tempo / vo2max → amber (--goal)
- *    long → blue (--dist)
- *    race → orange (--race)
- *    rest → rest blue (--rest)
- *
- *  The suffix (DONE/TODAY/etc) carries the green completion signal
- *  separately from the workout type color.
+ * Priority (top match wins):
+ *   1. race day (days=0) / tomorrow (days=1) / race week (≤7d)
+ *   2. ran today (by type)
+ *   3. pre-run (by type)
+ *   4. rest day
  */
-function heroHeadline(
-  todayCell: any,
-  daysToRace: number | null | undefined,
-): { num: string; post: string; numColor: string; postColor: string } {
-  if (daysToRace === 0) {
-    return { num: 'RACE DAY', post: '', numColor: 'var(--race)', postColor: 'var(--mute)' };
-  }
-  if (!todayCell) {
-    return { num: '—', post: '', numColor: 'var(--dim)', postColor: 'var(--mute)' };
-  }
+function heroCoachHit(todayCell: any, glance: any): string {
+  if (!todayCell || !glance) return 'Welcome back. Open a workout or check in to get started.';
+
   const ran = todayCell.doneMi >= 0.5;
-  const t = String(todayCell.plannedType ?? '').toLowerCase();
-  const isRest = t === 'rest' || todayCell.plannedMi === 0;
+  const ptype = String(todayCell.plannedType ?? '').toLowerCase();
+  const days = glance.daysToARace as number | null | undefined;
+  const raceName = glance.nextARaceName ?? 'the race';
+  const tomorrow = nextWorkout(glance.weekDays, todayCell.date);
+  const tDesc = tomorrow ? describeWorkout(tomorrow) : null;
 
-  if (isRest && !ran) {
-    return { num: 'REST DAY', post: '', numColor: 'var(--rest)', postColor: 'var(--mute)' };
+  // Pick a deterministic-but-rotating index from today's date so the
+  // same day gives the same hit; different days rotate variants.
+  const dateSeed = (todayCell.date ?? '').split('-').reduce((a: number, x: string) => a + Number(x || 0), 0);
+  const pick = <T,>(arr: T[]): T => arr[dateSeed % arr.length];
+
+  // 1. RACE STATES
+  if (days === 0) {
+    return pick([
+      `Today is the day. Run the plan, trust the work.`,
+      `Race day. The training is done. Just run.`,
+      `${raceName} day. You've earned every mile to get here.`,
+    ]);
+  }
+  if (days === 1) {
+    return pick([
+      `${raceName} tomorrow. Light shake-out, early to bed, dial in the kit.`,
+      `Race goes tomorrow. The work is done. Protect the sleep tonight.`,
+    ]);
+  }
+  if (days != null && days >= 2 && days <= 7) {
+    return pick([
+      `Race week. Volume drops, intensity stays sharp. Trust the taper.`,
+      `${days} days to ${raceName}. Rest matters more than miles this week.`,
+      `Race week ${raceName}. Sharpen, don't strengthen. The base is banked.`,
+    ]);
   }
 
-  const name = workoutName(todayCell);
-  const color = typeAccent(t);
-
+  // 2. RAN TODAY — celebrate + cue tomorrow
   if (ran) {
-    return { num: name, post: '· DONE', numColor: color, postColor: 'var(--green)' };
-  }
-  return { num: name, post: '· TODAY', numColor: color, postColor: 'var(--mute)' };
-}
-
-/** Pull the human-readable workout name from a glance day cell.
- *  Prefers the plannedLabel (e.g. "Cruise Intervals") when set, falls
- *  back to a friendly version of the type enum. */
-function workoutName(cell: any): string {
-  const label = (cell.plannedLabel ?? '').toString().trim();
-  if (label) return label.toUpperCase();
-  const t = String(cell.plannedType ?? '').toLowerCase();
-  switch (t) {
-    case 'easy':       return 'EASY RUN';
-    case 'shakeout':   return 'SHAKEOUT';
-    case 'long':       return 'LONG RUN';
-    case 'threshold':  return 'THRESHOLD';
-    case 'tempo':      return 'TEMPO';
-    case 'intervals':  return 'INTERVALS';
-    case 'vo2max':     return 'VO2 MAX';
-    case 'race':       return 'RACE';
-    case 'progression':return 'PROGRESSION';
-    default:           return t ? t.toUpperCase() : 'RUN';
-  }
-}
-
-function typeAccent(t: string): string {
-  if (t === 'easy' || t === 'shakeout') return 'var(--learn)';
-  if (['threshold', 'tempo', 'intervals', 'vo2max'].includes(t)) return 'var(--goal)';
-  if (t === 'long' || t === 'progression') return 'var(--dist)';
-  if (t === 'race') return 'var(--race)';
-  if (t === 'rest') return 'var(--rest)';
-  return 'var(--ink)';
-}
-
-/** Build the one-line plain-English coach summary that sits under the headline.
- *  Deterministic — no LLM. Sources from glance state only. */
-function heroNarrative(todayCell: any, glance: any): string {
-  if (!todayCell || !glance) return '';
-  const ran = todayCell.doneMi >= 0.5;
-  const ptype = (todayCell.plannedType ?? '').toLowerCase();
-
-  // Tomorrow's plan for "tomorrow's X" cue
-  const tomorrowCell = nextWorkout(glance.weekDays, todayCell.date);
-
-  if (glance.daysToARace === 0) {
-    return `Race day. Run the plan, trust the work.`;
-  }
-  if (glance.daysToARace === 1) {
-    return `Light shake-out and early to bed — race goes tomorrow.`;
+    if (isQuality(ptype)) {
+      const next = tDesc ? ` Tomorrow's ${tDesc}.` : '';
+      return pick([
+        `Threshold banked.${next}`,
+        `That's the work. Quality session done.${next}`,
+        `Hit the reps. Recovery starts now.${next}`,
+      ]);
+    }
+    if (ptype === 'tempo') {
+      const next = tDesc ? ` Tomorrow's ${tDesc}.` : '';
+      return `Tempo banked.${next}`;
+    }
+    if (ptype === 'long') {
+      const next = tDesc ? ` Tomorrow's ${tDesc}.` : ' Refuel within the hour, sleep early.';
+      return pick([
+        `Long run in the books.${next}`,
+        `Big aerobic day banked.${next}`,
+      ]);
+    }
+    if (ptype === 'race') {
+      return `Race in the books. Take the day. The work paid off.`;
+    }
+    if (ptype === 'easy') {
+      const next = tDesc ? ` Tomorrow's ${tDesc}.` : '';
+      return pick([
+        `Easy banked. Legs get to breathe.${next}`,
+        `Conversational miles done.${next}`,
+      ]);
+    }
+    // Default ran
+    return tDesc ? `Run in the books. Tomorrow's ${tDesc}.` : `Run in the books. Recovery wins now.`;
   }
 
-  if (ran) {
-    const banked = isQuality(ptype) ? 'Threshold banked'
-      : ptype === 'long'   ? 'Long banked'
-      : ptype === 'tempo'  ? 'Tempo banked'
-      : ptype === 'race'   ? 'Race in the books'
-      : ptype === 'easy'   ? 'Easy in the bank'
-      : 'Run in the books';
-    const next = tomorrowCell ? ` Tomorrow's ${describeWorkout(tomorrowCell)}.` : '';
-    return `${banked}.${next}`;
+  // 3. PRE-RUN — cue the work
+  if (isQuality(ptype)) {
+    return pick([
+      `Big one today. Lock the target pace, the splits hold themselves.`,
+      `Quality day. Warm up well, then trust the legs.`,
+      `Threshold today. Form first, pace second, the rest follows.`,
+    ]);
   }
+  if (ptype === 'tempo') {
+    return `Tempo today. Sustained and controlled. Find the line and ride it.`;
+  }
+  if (ptype === 'long') {
+    return pick([
+      `Long day. Keep it aerobic. Fuel by 45 minutes.`,
+      `Long run today. The point is time on feet, not the pace.`,
+      `Long today. Conversational, even if the legs feel fresh early.`,
+    ]);
+  }
+  if (ptype === 'race') {
+    return `Race day. Hold back early, spend it late. The plan is the plan.`;
+  }
+  if (ptype === 'easy' || ptype === 'shakeout') {
+    return pick([
+      `Easy day. If you can't chat the whole way, you're going too hard.`,
+      `Easy miles today. The point is recovery, not training stimulus.`,
+      `Easy run. Save the legs for the next quality day.`,
+    ]);
+  }
+
+  // 4. REST DAY
   if (ptype === 'rest') {
-    return `Sleep, mobility, recovery. The legs earned it.`;
+    return pick([
+      `Rest day. The legs earned it. Sleep, mobility, recovery.`,
+      `Rest is the work today. Stretch, hydrate, take a real day off.`,
+      `No miles today. This is where the adaptations happen.`,
+    ]);
   }
-  // Pre-run, planned
-  const cue = isQuality(ptype) ? 'Lock the target pace. Form holds, splits hold.'
-    : ptype === 'long'   ? 'Keep it aerobic. Fuel by 45 minutes.'
-    : ptype === 'tempo'  ? 'Sustained, controlled — find the line and ride it.'
-    : ptype === 'race'   ? 'Trust the plan. Hold back early, spend it late.'
-    : ptype === 'easy'   ? 'Conversational. If you can\'t chat, you\'re going too hard.'
-    : '';
-  return cue;
+
+  // Unplanned / default
+  return `Nothing on the calendar. Open a workout or log a run when you're done.`;
 }
 
 function isQuality(ptype: string): boolean {
@@ -319,6 +307,8 @@ function nextWorkout(weekDays: any[], today: string): any | null {
   return weekDays[idx + 1];
 }
 
+/** Plain-English description of an upcoming workout, used in tomorrow cues.
+ *  No em-dashes, no clever punctuation. */
 function describeWorkout(cell: any): string {
   const mi = cell.plannedMi?.toFixed(cell.plannedMi % 1 === 0 ? 0 : 1) ?? '?';
   const t = (cell.plannedType ?? '').toLowerCase();
