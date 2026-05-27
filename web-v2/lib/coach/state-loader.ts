@@ -233,13 +233,37 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   )).rows[0];
   const cadenceBaseline = cad?.avg ? Math.round(Number(cad.avg)) : null;
 
-  // Recent check-ins (7 days)
+  // Recent check-ins (7 days) — pull extras so we can derive activeNiggle.
   const checkIns = await pool.query(
-    `SELECT ts, rating FROM check_ins
+    `SELECT ts, rating, note, extras FROM check_ins
       WHERE user_id = $1 AND ts >= NOW() - interval '7 days'
       ORDER BY ts DESC LIMIT 10`,
     [userId]
   ).catch(() => ({ rows: [] }));  // table may not exist before P0.7 migration
+
+  // P-OPTION-C 2026-05-27 — compute activeNiggle = most recent unresolved
+  // body-issue mention in the last 7 days. The extractor LLM stamps
+  // extras.extracted.niggle = { body_part, severity, description, resolved }
+  // when the runner writes about a niggle. Coach reads activeNiggle as a
+  // HARD FACT and addresses it in voice + prescription doctrine.
+  let activeNiggle: CoachState['activeNiggle'] = null;
+  const todayMs = Date.parse(today + 'T12:00:00Z');
+  for (const row of checkIns.rows) {
+    const ex = row.extras ?? {};
+    const n = ex.extracted?.niggle;
+    if (!n || !n.body_part || n.resolved) continue;
+    const firstLogged = row.ts instanceof Date ? row.ts.toISOString() : String(row.ts);
+    const niggleMs = Date.parse(firstLogged);
+    const daysAgo = Math.max(0, Math.round((todayMs - niggleMs) / 86400000));
+    activeNiggle = {
+      body_part: String(n.body_part),
+      severity: (n.severity ?? null) as 'mild' | 'moderate' | 'flare' | null,
+      description: String(n.description ?? row.note ?? ''),
+      first_logged_ts: firstLogged,
+      days_ago: daysAgo,
+    };
+    break;  // most recent unresolved wins
+  }
 
   // ACWR — Acute:Chronic Workload Ratio (Gabbett).
   //   acute7    = avg daily distance over last 7 days   (mi/day)
@@ -317,6 +341,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     loadChronic28,
     loadAcwr,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
+    activeNiggle,
     pendingIntents: intents.rows.map((r: any) => ({
       reason: r.reason, field: r.field, value: r.value,
     })),

@@ -60,13 +60,13 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        144)" reads clinical and treats a forgiving aerobic intent
 //        like a tight target. Say "mid-Z2" or "held in aerobic zone."
 //        Quote bpm only when it adds signal the zone name can't.
-// v11-week-projected-over 2026-05-27: surface weekProjectedTotal
-// (= weekDone + weekPlannedRemaining) as a HARD FACT and frame
-// over-/under-delivery vs the planned total. Coach was reporting
-// "25.8 of 43.8 planned" flatly when the runner was actually
-// tracking for ~50 (above plan); should now frame as "tracking for
-// 50, above the 43.8 planned, great if you feel great" when ahead.
-export const PROMPT_VERSION = 'v11-week-projected-over';
+// v12-option-c-niggle-lead 2026-05-27: free-text check-ins are now
+// the primary input; extractor LLM surfaces niggle + context_factors
+// + mood/energy as structured signals that flow into the coach via
+// the new activeNiggle HARD FACT and getCheckIns enrichment. Also:
+// post-run LEAD must be about THE RUN (no "spike week" hedging in
+// headline), and spike/ACWR jargon must be glossed inline first use.
+export const PROMPT_VERSION = 'v12-option-c-niggle-lead';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls

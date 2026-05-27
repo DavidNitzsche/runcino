@@ -105,6 +105,19 @@ export interface CoachState {
   // Recent check-ins (last 7 days) — informs voice tone next briefing
   recentCheckIns: Array<{ ts: string; rating: 'solid' | 'tired' | 'wrecked' }>;
 
+  /** P-OPTION-C 2026-05-27 — most recent unresolved niggle (body issue
+   *  the runner flagged via free text) in the last 7 days. Surfaced
+   *  as a HARD FACT in the coach orientation so it can't be ignored.
+   *  Resolved when a later check-in marks it resolved or 5+ days pass
+   *  without re-mention. */
+  activeNiggle: {
+    body_part: string;
+    severity: 'mild' | 'moderate' | 'flare' | null;
+    description: string;
+    first_logged_ts: string;
+    days_ago: number;
+  } | null;
+
   // Logged coach intents not yet acknowledged in voice — voice may mention once
   pendingIntents: Array<{ reason: string; field: string; value: string | number }>;
 

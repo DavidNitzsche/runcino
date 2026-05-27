@@ -602,13 +602,50 @@ async function getRaces(userId: string, input: { priority?: string; upcomingOnly
 }
 
 async function getCheckIns(userId: string, input: { daysBack: number }) {
+  // P-OPTION-C 2026-05-27: also return note (free text) + extracted
+  // signals + coach_reply per row. The runner's own words and the
+  // extractor's structured tags are first-class signals now; not a
+  // black hole.
   const r = (await pool.query(
-    `SELECT ts, rating FROM check_ins
+    `SELECT ts, rating, note, extras FROM check_ins
       WHERE user_id = $1 AND ts >= (now() - ($2::int || ' days')::interval)
       ORDER BY ts DESC LIMIT 20`,
     [userId, input.daysBack]
   ).catch(() => ({ rows: [] }))).rows;
-  const checkIns = r.map((x: any) => ({ ts: x.ts, rating: x.rating }));
+
+  const checkIns = r.map((x: any) => {
+    const ex = x.extras ?? {};
+    const extracted = ex.extracted ?? null;
+    // Surface the runner's text from EITHER column (varies by code path).
+    const noteText = (typeof x.note === 'string' && x.note.trim())
+      ? x.note.trim()
+      : (typeof ex.note === 'string' && ex.note.trim())
+        ? ex.note.trim()
+        : (typeof ex.niggle === 'string' && ex.niggle.trim())
+          ? ex.niggle.trim()
+          : null;
+    return {
+      ts: x.ts,
+      rating: x.rating,
+      note: noteText,
+      execution_chip: ex.execution ?? null,
+      body_chip: ex.body_state ?? null,
+      workout_kind: ex.workout_kind ?? null,
+      coach_reply: ex.coach_reply ?? null,
+      extracted: extracted
+        ? {
+            mood: extracted.mood ?? null,
+            energy: extracted.energy ?? null,
+            niggle: extracted.niggle ?? null,
+            context_factors: Array.isArray(extracted.context_factors) ? extracted.context_factors : [],
+            execution_implicit: extracted.execution_implicit ?? null,
+            body_implicit: extracted.body_implicit ?? null,
+            notable: extracted.notable ?? null,
+          }
+        : null,
+    };
+  });
+
   // Summary the coach can quote without inventing wording like "tapped
   // three times" or "three SOLID today." Includes the unique-day count
   // so the LLM has no excuse to conflate "3 check-ins" with "3 today."
@@ -620,7 +657,30 @@ async function getCheckIns(userId: string, input: { daysBack: number }) {
     if (c.ts) uniqueDays.add(new Date(c.ts).toISOString().slice(0, 10));
   }
   const summary = `${counts.solid} SOLID · ${counts.tired} TIRED · ${counts.wrecked} WRECKED across ${uniqueDays.size} different days in the last ${input.daysBack} days`;
-  return { check_ins: checkIns, summary, uniqueDaysCovered: uniqueDays.size };
+
+  // Identify the active niggle: the most recent unresolved niggle in
+  // the window. Coach should acknowledge it in voice (and prescription
+  // doctrine should avoid load that aggravates it).
+  let activeNiggle: any = null;
+  for (const c of checkIns) {
+    const n = c.extracted?.niggle;
+    if (n && !n.resolved && !activeNiggle) {
+      activeNiggle = {
+        body_part: n.body_part,
+        severity: n.severity ?? null,
+        description: n.description ?? c.note,
+        first_logged_ts: c.ts,
+      };
+    }
+    // If a later (older in this loop) entry says resolved, leave it.
+  }
+
+  return {
+    check_ins: checkIns,
+    summary,
+    uniqueDaysCovered: uniqueDays.size,
+    activeNiggle,
+  };
 }
 
 async function getHealthSeries(userId: string, input: { daysBack: number }) {

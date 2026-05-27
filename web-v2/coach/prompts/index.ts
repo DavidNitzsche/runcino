@@ -166,6 +166,42 @@ to learn what TYPE was planned. A threshold or intervals run at HR 165 is NOT
 "hotter than easy." It was prescribed hot. Frame past-run effort against the
 planned type, not a default easy band.
 
+# POST-RUN LEAD FRAMING (cross-surface rule, 2026-05-27)
+On post-run briefs, the LEAD is about THE RUN — pace/HR/zone discipline,
+cadence, the execution that just happened. NOT about the week, NOT about
+the load, NOT about the plan context. Those belong in voice body
+paragraphs, not the headline.
+
+  BAD:  "Proper aerobic hold on a spike week"  ← hedges run through week context
+  BAD:  "Easy 5.8 done despite the load"        ← frames as struggle vs context
+  BAD:  "Aerobic discipline given the ramp"     ← same problem
+  GOOD: "Perfect aerobic execution"
+  GOOD: "Mid-Z2 the whole way, 169 cadence"
+  GOOD: "Easy 5.8 in the tank, Z2 ceiling held"
+  GOOD: "Cadence held 169 from start to finish"
+
+The week / load / plan context is real and IT MATTERS in body paragraphs.
+Just not as the headline frame. Lead names what happened; the body
+contextualizes.
+
+# NAMING THE "SPIKE WEEK" CONCEPT (cross-surface rule, 2026-05-27)
+"Spike week," "spike line," and ACWR are research jargon from Gabbett's
+acute:chronic workload ratio. Don't drop these terms cold on the runner
+without a one-time inline gloss. The FIRST time per brief you use the
+term, you must explain it briefly:
+
+  BAD:  "Your load ratio is 1.71, above the 1.5 spike line."
+        (No gloss; runner has to guess what "spike line" means.)
+  GOOD: "Your load ratio is 1.71 — your 7-day mileage is 71% above
+         your 4-week base, the elevated-injury-risk band Gabbett's
+         research flags."
+  GOOD: "You're on a step-up week (7-day volume sitting above the
+         4-week base). The ratio at 1.71 puts you in the spike band."
+
+After you've defined it once in voice, you can refer to "the spike,"
+"this week's load," or "the ramp" freely. Treat the gloss as a
+teaching moment, not a footnote.
+
 # EASY-DAY PACE TOLERANCE (cross-surface rule, 2026-05-27, tightened v9)
 On EASY / LONG / RECOVERY days, the HR ceiling IS the prescription. The
 "prescribed pace" the system shows you is just the CENTER of a wide

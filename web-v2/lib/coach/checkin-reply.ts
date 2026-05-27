@@ -18,6 +18,105 @@
  *   - Latency: ~3-5s vs 15-20s.
  */
 import Anthropic from '@anthropic-ai/sdk';
+import type { ExtractedSignals } from './checkin-extract';
+
+/** Build a contextual reply for a TEXT-BEARING check-in.
+ *
+ *  P-OPTION-C 2026-05-27: when the runner writes free text, we already
+ *  paid the LLM cost to extract structured signals. This reply uses
+ *  both the text + extracted signals to write something specific to
+ *  what the runner said.
+ *
+ *  Voice rules (same as the main brief):
+ *  - No em-dashes.
+ *  - No bpm-in-parens after zone names.
+ *  - "target" banned for easy/long/recovery pace.
+ *  - If a niggle is present, address it explicitly with appropriate concern.
+ *  - If a context_factor explains an apparent miss (heat, trail, social),
+ *    name the context so the runner knows the coach gets it.
+ *  - 1-3 sentences. No questions back.
+ */
+export interface ContextualReplyInput {
+  runner: string;
+  noteText: string;
+  signals: ExtractedSignals;
+  todayWorkout: { type: string | null; mi: number; label: string | null } | null;
+  todayBriefLead?: string | null;
+}
+
+const CONTEXTUAL_SYSTEM = `
+You are the runner's coach. They just submitted a post-run check-in
+with free text. You read the text + a set of extracted structured
+signals; write a 1-3 sentence acknowledgment that lands specifically
+on what they said.
+
+PRIORITY ORDER for what to address:
+  1. NIGGLE (any body issue) — name the body part, match the severity,
+     say you've got it on your radar. Do not prescribe ice/rest; the
+     next brief handles prescription. You CAN say "we'll watch how it
+     feels on tomorrow's easy."
+  2. CONTEXT FACTORS that change how the run reads — heat, trail,
+     social, fasted — name them so the runner knows you understood
+     why the run was what it was. Don't lecture; just acknowledge.
+  3. MOOD / ENERGY — if the text was openly positive or openly low,
+     match the tone honestly. No cheese on a positive run; no
+     catastrophizing on a low run.
+
+VOICE:
+- Short. Direct. Plain English. No em-dashes ever.
+- Use their first name once if it fits naturally.
+- Do NOT re-summarize the run; they just lived it.
+- Do NOT ask a question back.
+- Do NOT prescribe; reference the next brief if needed.
+- No bpm-in-parens after zone names. The word "target" is banned for
+  easy/long/recovery pace.
+
+OUTPUT: just the reply text. No JSON, no markdown, no "Coach:" prefix.
+Max ~80 words.
+`.trim();
+
+export async function generateContextualReply(
+  input: ContextualReplyInput
+): Promise<string> {
+  const s = input.signals;
+  const sections: string[] = [
+    `RUNNER: ${input.runner}`,
+    `TODAY'S WORKOUT: ${input.todayWorkout
+      ? `${input.todayWorkout.type ?? '—'} ${input.todayWorkout.mi}mi${input.todayWorkout.label ? ` (${input.todayWorkout.label})` : ''}`
+      : 'no planned workout'}`,
+    input.todayBriefLead ? `MORNING BRIEF SAID: "${input.todayBriefLead}"` : '',
+    ``,
+    `RUNNER'S FREE TEXT:`,
+    `"${input.noteText.trim()}"`,
+    ``,
+    `EXTRACTED SIGNALS:`,
+    `  mood:    ${s.mood ?? 'unspecified'}`,
+    `  energy:  ${s.energy ?? 'unspecified'}`,
+    `  niggle:  ${s.niggle
+      ? `${s.niggle.body_part} (${s.niggle.severity ?? 'unspecified'}) — "${s.niggle.description}"${s.niggle.resolved ? ' [resolved]' : ''}`
+      : 'none'}`,
+    `  context_factors: ${s.context_factors.length ? s.context_factors.join(', ') : 'none'}`,
+    `  notable: ${s.notable ?? 'none'}`,
+    ``,
+    `Write the 1-3 sentence reply now.`,
+  ];
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const resp = await client.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 320,
+    system: [{ type: 'text', text: CONTEXTUAL_SYSTEM }],
+    messages: [{ role: 'user', content: sections.filter(Boolean).join('\n') }],
+  });
+
+  const text = resp.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join(' ')
+    .trim();
+
+  return text.replace(/^["']/, '').replace(/["']$/, '').trim();
+}
 
 export interface CheckinReplyInput {
   runner: string;                  // first name for tone ("David")

@@ -9,7 +9,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { generateCheckinReply, pickCannedReply } from '@/lib/coach/checkin-reply';
+import {
+  generateCheckinReply,
+  generateContextualReply,
+  pickCannedReply,
+} from '@/lib/coach/checkin-reply';
+import {
+  extractCheckin,
+  buildStaticExtraction,
+  type ExtractedSignals,
+} from '@/lib/coach/checkin-extract';
 import { loadCoachState } from '@/lib/coach/state-loader';
 import { readCachedBriefing } from '@/lib/coach/cache';
 
@@ -155,22 +164,42 @@ export async function POST(req: NextRequest) {
   // brief and waiting 15-20s for a full LLM regen. The next natural
   // regen (day rollover, run ingest) folds the check-in into the
   // morning voice normally.
-  // 2026-05-27 David's call: "if this is the reply, thats fine but
-  // then we dont need to call in the API or LLM it can just be canned
-  // responses." Generic acknowledgments don't earn an LLM call. Reserve
-  // the LLM for the case where the runner wrote a NIGGLE — that's
-  // unpredictable free text and worth a contextual response.
+  // P-OPTION-C 2026-05-27 — free-text is the primary input. The chip
+  // values become a backup quick-tap path. Two routes through here:
   //
-  // Path A (default, ~95%+ of check-ins): chip-only → canned reply
-  //   keyed on (workout_kind, execution, body). Instant, free,
-  //   deterministic, on-voice. No LLM call.
+  //   TEXT-BEARING (runner wrote a note):
+  //     1. Run the extractor LLM → ExtractedSignals (mood, energy,
+  //        niggle, context_factors, implicit chips, notable).
+  //     2. Persist extras.note + extras.extracted on the row.
+  //     3. Generate contextual reply using both text + signals.
   //
-  // Path B: niggle present → LLM reply with full context. Costs
-  //   ~$0.005-0.01, takes ~3-5s, but addresses the runner's actual
-  //   words. This is where the model earns its keep.
+  //   CHIP-ONLY:
+  //     1. Build a static ExtractedSignals from the chips alone
+  //        (no LLM, free) so downstream readers always have the same shape.
+  //     2. Persist extras.extracted on the row.
+  //     3. Canned reply from the matrix.
+  //
+  // Either way the row ends up with structured signals the coach can
+  // read on the next brief. The runner is never just chipping into
+  // a black hole.
+  const noteText = (body.niggle ?? body.note ?? '').trim();
+  const hasText = noteText.length > 0;
+
+  let extracted: ExtractedSignals;
+  if (hasText) {
+    extracted = await extractCheckin({
+      text: noteText,
+      workout_kind: body.workout_kind ?? null,
+      execution_chip: body.execution ?? null,
+      body_chip: body.body ?? null,
+    });
+  } else {
+    extracted = buildStaticExtraction(body.execution ?? null, body.body ?? null);
+  }
+
   let coachReply: string | null = null;
-  const hasNiggle = Boolean(body.niggle && body.niggle.trim());
-  if (!hasNiggle) {
+  if (!hasText) {
+    // Chip-only fast path: canned reply.
     coachReply = pickCannedReply(
       body.workout_kind ?? null,
       body.execution ?? null,
@@ -178,46 +207,63 @@ export async function POST(req: NextRequest) {
     );
   }
   if (coachReply == null) {
-    // Either had a niggle (Path B) OR the canned matrix didn't have a
-    // line for this combo (rare fallback) — call the LLM.
+    // Either had text (contextual reply path) OR canned matrix had
+    // no line for the chip combo (fallback to the older slim LLM).
     try {
       const state = await loadCoachState(userId);
       const cached = await readCachedBriefing(userId, 'today').catch(() => null);
-      coachReply = await generateCheckinReply({
-        runner: state.profile?.full_name?.split(' ')[0] ?? 'David',
-        today: state.today,
-        todayWorkout: state.todayWorkout ? {
-          type: state.todayWorkout.type,
-          mi: state.todayWorkout.mi,
-          label: state.todayWorkout.label,
-        } : null,
-        checkIn: {
-          kind: body.kind ?? 'post_run',
-          workout_kind: body.workout_kind ?? null,
-          execution: body.execution ?? null,
-          body: body.body ?? null,
-          niggle: body.niggle ?? null,
-        },
-        todayBriefLead: (cached as any)?.lead ?? null,
-      });
+      const todayWorkout = state.todayWorkout ? {
+        type: state.todayWorkout.type,
+        mi: state.todayWorkout.mi,
+        label: state.todayWorkout.label,
+      } : null;
+      const runnerName = state.profile?.full_name?.split(' ')[0] ?? 'David';
+      if (hasText) {
+        coachReply = await generateContextualReply({
+          runner: runnerName,
+          noteText,
+          signals: extracted,
+          todayWorkout,
+          todayBriefLead: (cached as any)?.lead ?? null,
+        });
+      } else {
+        coachReply = await generateCheckinReply({
+          runner: runnerName,
+          today: state.today,
+          todayWorkout,
+          checkIn: {
+            kind: body.kind ?? 'post_run',
+            workout_kind: body.workout_kind ?? null,
+            execution: body.execution ?? null,
+            body: body.body ?? null,
+            niggle: null,
+          },
+          todayBriefLead: (cached as any)?.lead ?? null,
+        });
+      }
     } catch (e: any) {
       console.error('[checkin-reply] failed:', e?.message ?? e);
       coachReply = null;
     }
   }
 
-  // Persist the reply onto the check-in row so a page refresh can show
-  // it again, and so the next brief regen can see "what we said last time."
-  if (coachReply && insertedId) {
+  // Persist the reply + the note + extracted signals onto the row so a
+  // page refresh can rehydrate them, and so the next brief regen can
+  // see "what we said last time + what the runner reported."
+  if (insertedId) {
     try {
+      const patch: Record<string, any> = {};
+      if (coachReply) patch.coach_reply = coachReply;
+      if (hasText) patch.note = noteText;
+      patch.extracted = extracted;
       await pool.query(
         `UPDATE check_ins
-            SET extras = COALESCE(extras, '{}'::jsonb) || jsonb_build_object('coach_reply', $1::text)
+            SET extras = COALESCE(extras, '{}'::jsonb) || $1::jsonb
           WHERE id = $2`,
-        [coachReply, insertedId]
+        [JSON.stringify(patch), insertedId]
       );
     } catch (e: any) {
-      console.error('[checkin] failed to persist reply:', e?.message ?? e);
+      console.error('[checkin] failed to persist extras:', e?.message ?? e);
     }
   }
 

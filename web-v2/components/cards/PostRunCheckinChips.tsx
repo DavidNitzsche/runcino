@@ -51,7 +51,6 @@ export function PostRunCheckinChips({
   const kind = classify(workoutType);
   const [exec, setExec] = useState<Execution | null>(null);
   const [body, setBody] = useState<BodyState | null>(null);
-  const [niggleOpen, setNiggleOpen] = useState(false);
   const [niggle, setNiggle] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -63,7 +62,13 @@ export function PostRunCheckinChips({
 
   // Recovery / shakeout sub-types skip the execution row.
   const showExec = kind !== 'recovery';
-  const canSubmit = (showExec ? exec != null : true) && body != null && !sending;
+  // P-OPTION-C 2026-05-27: text or chips both count as a valid check-in.
+  // The text field is the primary input — if the runner wrote anything,
+  // we have enough to send. Chips become a quick-tap option but no
+  // longer mandatory.
+  const hasText = niggle.trim().length > 0;
+  const hasChips = (showExec ? exec != null : true) && body != null;
+  const canSubmit = (hasText || hasChips) && !sending;
 
   async function submit() {
     if (!canSubmit) return;
@@ -137,86 +142,78 @@ export function PostRunCheckinChips({
   }
 
   const execOptions = executionOptionsFor(kind);
-  const prompt = promptFor(kind);
 
+  // P-OPTION-C 2026-05-27 — text field is now the primary input. The
+  // chips drop to a "quick tap" secondary row. Either or both will
+  // submit; runner can just talk to the coach.
   return (
     <div style={{ padding: '12px 0' }}>
+      {/* PRIMARY: free-text field */}
       <div style={{
-        fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)',
-        marginBottom: 12,
+        fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--ink)',
+        marginBottom: 8, fontWeight: 600,
       }}>
-        {prompt}
+        How'd the run go?
       </div>
+      <textarea
+        value={niggle}
+        onChange={(e) => setNiggle(e.target.value)}
+        placeholder="Trail run with my neighbor, felt great. Calf tight on cooldown. Heat was brutal. Whatever you'd tell a coach."
+        rows={3}
+        style={{
+          width: '100%',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 10,
+          padding: '12px 14px',
+          color: 'var(--ink)',
+          fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.5,
+          resize: 'vertical', outline: 'none',
+          marginBottom: 14,
+        }}
+      />
 
-      {/* Row 1: EXECUTION (skipped for recovery) */}
-      {showExec && execOptions && (
-        <div style={{ marginBottom: 10 }}>
-          <ChipRowLabel>EXECUTION</ChipRowLabel>
-          <ChipRow>
-            {execOptions.map((opt) => (
-              <Chip
-                key={opt.value}
-                active={exec === opt.value}
-                onClick={() => setExec(opt.value)}
-                tone={opt.tone}
-              >
-                {opt.label}
-              </Chip>
-            ))}
-          </ChipRow>
-        </div>
-      )}
-
-      {/* Row 2: BODY (universal) */}
-      <div style={{ marginBottom: 10 }}>
-        <ChipRowLabel>LEGS NOW</ChipRowLabel>
-        <ChipRow>
-          <Chip active={body === 'fresh'}  onClick={() => setBody('fresh')}  tone="green">FRESH</Chip>
-          <Chip active={body === 'worked'} onClick={() => setBody('worked')} tone="goal">WORKED</Chip>
-          <Chip active={body === 'cooked'} onClick={() => setBody('cooked')} tone="over">COOKED</Chip>
-        </ChipRow>
-      </div>
-
-      {/* Niggle toggle + optional input */}
-      {!hideNiggle && (
-        <div style={{ marginTop: 12 }}>
-          {!niggleOpen ? (
-            <button
-              type="button"
-              onClick={() => setNiggleOpen(true)}
-              style={{
-                background: 'transparent', border: '1px dashed rgba(255,255,255,0.18)',
-                color: 'var(--mute)', borderRadius: 8,
-                padding: '8px 12px',
-                fontFamily: 'var(--f-body)', fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              + Anything tight or off?
-            </button>
-          ) : (
-            <div>
-              <ChipRowLabel>NIGGLE / PAIN</ChipRowLabel>
-              <textarea
-                value={niggle}
-                onChange={(e) => setNiggle(e.target.value)}
-                placeholder="Left calf was tight on the cooldown..."
-                rows={2}
-                style={{
-                  width: '100%',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  borderRadius: 8,
-                  padding: '10px 12px',
-                  color: 'var(--ink)',
-                  fontFamily: 'var(--f-body)', fontSize: 13,
-                  resize: 'vertical', outline: 'none',
-                }}
-              />
+      {/* SECONDARY: quick-tap chips. Collapsed by default — runner can
+          expand if they want to tap instead of type. */}
+      <details style={{ marginBottom: 8 }}>
+        <summary style={{
+          cursor: 'pointer',
+          fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)',
+          letterSpacing: '0.4px',
+          padding: '4px 0',
+          listStyle: 'none',
+          userSelect: 'none',
+        }}>
+          + quick tap instead
+        </summary>
+        <div style={{ marginTop: 10 }}>
+          {showExec && execOptions && (
+            <div style={{ marginBottom: 10 }}>
+              <ChipRowLabel>EXECUTION</ChipRowLabel>
+              <ChipRow>
+                {execOptions.map((opt) => (
+                  <Chip
+                    key={opt.value}
+                    active={exec === opt.value}
+                    onClick={() => setExec(opt.value)}
+                    tone={opt.tone}
+                  >
+                    {opt.label}
+                  </Chip>
+                ))}
+              </ChipRow>
             </div>
           )}
+          <div style={{ marginBottom: 4 }}>
+            <ChipRowLabel>LEGS NOW</ChipRowLabel>
+            <ChipRow>
+              <Chip active={body === 'fresh'}  onClick={() => setBody('fresh')}  tone="green">FRESH</Chip>
+              <Chip active={body === 'worked'} onClick={() => setBody('worked')} tone="goal">WORKED</Chip>
+              <Chip active={body === 'cooked'} onClick={() => setBody('cooked')} tone="over">COOKED</Chip>
+            </ChipRow>
+          </div>
         </div>
-      )}
+      </details>
 
       {error && (
         <div style={{

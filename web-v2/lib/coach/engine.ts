@@ -164,6 +164,7 @@ export async function generateBriefing(
     loadAcwr: state.loadAcwr ?? null,
     swapDeclinedToday: swapDeclinedToday(state),
     weekProjectedTotal: weekProjectedTotalMi(state),
+    activeNiggle: state.activeNiggle,
   });
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -415,6 +416,15 @@ interface OrientationInput {
   // (running longer than the day called for). Coach should frame that
   // as ambition, not just report "X of Y planned" flatly.
   weekProjectedTotal?: number | null;
+  // P-OPTION-C 2026-05-27 — most recent unresolved niggle the runner
+  // flagged in free text. Coach MUST acknowledge in voice and avoid
+  // prescribing load that aggravates it.
+  activeNiggle?: {
+    body_part: string;
+    severity: 'mild' | 'moderate' | 'flare' | null;
+    description: string;
+    days_ago: number;
+  } | null;
 }
 
 /** Pick yesterday's planned workout type from currentWeekDays so the coach
@@ -497,6 +507,27 @@ function buildOrientationMessage(o: OrientationInput): string {
         `Only narrate ratings the tool returns.`
       );
     }
+  }
+  // P-OPTION-C 2026-05-27 — active niggle is a MUST-acknowledge HARD FACT.
+  // The runner told us a body part hurts. Silence here = the runner sees
+  // the coach as not listening. Acknowledge specifically in voice (name
+  // the body part) and let it influence the prescription suggestion if
+  // it's a quality day.
+  if (o.activeNiggle) {
+    const n = o.activeNiggle;
+    const sev = n.severity ? n.severity.toUpperCase() : 'UNSPECIFIED severity';
+    const when = n.days_ago === 0 ? 'today'
+              : n.days_ago === 1 ? 'yesterday'
+              : `${n.days_ago} days ago`;
+    lines.push(
+      `- ACTIVE NIGGLE (HARD FACT): runner flagged their ${n.body_part} ` +
+      `(${sev}) ${when}: "${n.description}". You MUST acknowledge this ` +
+      `specifically in voice — name the body part. Don't lecture about ` +
+      `RICE or rest; just show you heard them ("watching that ${n.body_part}"). ` +
+      `If today is a quality day (threshold/intervals/tempo) AND the niggle ` +
+      `severity is moderate or flare, consider calling proposeWorkoutSwap ` +
+      `for an easy alternative. Mild niggles don't auto-swap, but mention them.`
+    );
   }
   if (o.yesterdayPlannedType) {
     lines.push(

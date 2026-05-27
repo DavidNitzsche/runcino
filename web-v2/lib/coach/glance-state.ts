@@ -242,6 +242,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     rhrCurrent, rhrBaseline, cadenceBaseline,
     loadAcute7, loadChronic28, loadAcwr,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
+    activeNiggle: null,  // glance state doesn't pull niggle extras
     pendingIntents: [], shoes: [],
   });
 
