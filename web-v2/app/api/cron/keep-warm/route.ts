@@ -1,0 +1,115 @@
+/**
+ * POST /api/cron/keep-warm
+ *
+ * Lightweight warmer that fires every 10-15 minutes during the user's
+ * waking window. Purpose:
+ *   1. Keep the Railway container alive (no cold-start when David opens
+ *      /today at 6:45am, no spin-up between sessions).
+ *   2. Keep the Postgres connection pool warm.
+ *   3. Pre-load today's CoachState for active users so /today's first
+ *      paint reads from a fresh in-process cache.
+ *
+ * This is NOT the LLM-regen cron (that's refresh-briefings, daily).
+ * keep-warm is cheap and frequent — no LLM calls, just DB reads.
+ *
+ * Auth: same CRON_SECRET as refresh-briefings.
+ *
+ * Setup (Railway cron):
+ *   Schedule: */15 7-23 * * *   (every 15 min, 7am-11pm UTC = waking PT)
+ *   Method:   POST https://www.faff.run/api/cron/keep-warm
+ *   Header:   Authorization: Bearer <CRON_SECRET>
+ *
+ * Returns timing per step so you can see if any sub-call is slow.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { pool } from '@/lib/db/pool';
+import { loadCoachState } from '@/lib/coach/state-loader';
+
+export const maxDuration = 30;
+
+export async function POST(req: NextRequest) {
+  // ── auth ──
+  const expected = process.env.CRON_SECRET;
+  if (!expected) {
+    return NextResponse.json({
+      error: 'CRON_SECRET not configured.',
+      hint: 'set CRON_SECRET in env, then redeploy + retry.',
+    }, { status: 503 });
+  }
+  const auth = req.headers.get('authorization') ?? '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (token !== expected) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
+  const timings: Record<string, number> = {};
+  const start = Date.now();
+
+  // ── DB ping ──
+  const t1 = Date.now();
+  try {
+    await pool.query('SELECT 1');
+    timings.db_ping_ms = Date.now() - t1;
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, step: 'db_ping', error: e?.message ?? String(e) }, { status: 500 });
+  }
+
+  // ── find active users (same definition as refresh-briefings) ──
+  const t2 = Date.now();
+  let activeUserIds: string[] = [];
+  try {
+    const r = await pool.query(
+      `SELECT DISTINCT user_uuid FROM training_plans
+        WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`
+    );
+    activeUserIds = r.rows.map((row: any) => row.user_uuid as string);
+    const meRow = await pool.query(
+      `SELECT 1 FROM training_plans
+        WHERE archived_iso IS NULL AND (user_uuid IS NULL OR user_id = 'me') LIMIT 1`
+    );
+    if (meRow.rowCount && meRow.rowCount > 0) {
+      const DAVID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+      if (!activeUserIds.includes(DAVID)) activeUserIds.push(DAVID);
+    }
+    timings.list_users_ms = Date.now() - t2;
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, step: 'list_users', error: e?.message ?? String(e) }, { status: 500 });
+  }
+
+  // ── pre-load CoachState per user ──
+  // Same code path /today and /api/coach/brief use; populates per-user
+  // computed fields (readiness, ACWR, baselines, etc.) into pg query
+  // plan cache. No LLM spend; pure DB work.
+  const t3 = Date.now();
+  const perUser: Array<{ user_id: string; ms: number; ok: boolean; err?: string }> = [];
+  for (const userId of activeUserIds) {
+    const us = Date.now();
+    try {
+      await loadCoachState(userId);
+      perUser.push({ user_id: userId, ms: Date.now() - us, ok: true });
+    } catch (e: any) {
+      perUser.push({ user_id: userId, ms: Date.now() - us, ok: false, err: e?.message ?? String(e) });
+    }
+  }
+  timings.coach_state_total_ms = Date.now() - t3;
+  timings.total_ms = Date.now() - start;
+
+  return NextResponse.json({
+    ok: perUser.every((u) => u.ok),
+    users: activeUserIds.length,
+    timings,
+    per_user: perUser,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// Health probe — same shape as refresh-briefings.
+export async function GET() {
+  return NextResponse.json({
+    endpoint: 'POST /api/cron/keep-warm',
+    auth: 'Authorization: Bearer <CRON_SECRET>',
+    secret_configured: Boolean(process.env.CRON_SECRET),
+    recommended_schedule: '*/15 7-23 * * *  (every 15 min, 7am-11pm UTC)',
+    purpose: 'keep container + DB pool + per-user state warm; no LLM spend',
+  });
+}
