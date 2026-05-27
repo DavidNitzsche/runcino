@@ -44,11 +44,15 @@ function toGlanceDay(day: PlanWeek['days'][number], today: string): GlanceWeekDa
 }
 
 function DayCell({
-  day, today, planId, onOpen,
+  day, today, planId, pres, onOpen,
 }: {
   day: PlanWeek['days'][number];
   today: string;
   planId?: string;
+  /** Prefetched prescription for this day (when available) — used to
+   *  render pace + HR on the tile so it matches the detail modal
+   *  instead of hardcoded placeholders. */
+  pres?: Prescription | null;
   onOpen: () => void;
 }) {
   const isToday = day.date === today;
@@ -59,7 +63,13 @@ function DayCell({
   const isRace = day.type === 'race';
   const isEasy = day.type === 'easy' || day.type === 'shakeout';
   const ran = day.doneMi > 0 && day.activityId;
-  const tgt = targetFor(day.type, day.mi, day.label);
+  // 2026-05-27 P-TILE-PRES-DRIFT: prefer the real prescription. The
+  // hardcoded targetFor() returned generic "9:00 /mi · HR < 140" which
+  // openly disagreed with the detail modal's "7:47-8:37 /mi · 138-144
+  // bpm (Z2 Aerobic)" — same screen, two sources, different numbers.
+  // When the prescription is loaded, pull the work step's pace_target
+  // + hr_target so tile and detail can't drift.
+  const tgt = targetFromPrescription(pres) ?? targetFor(day.type, day.mi, day.label);
 
   const typLabel = isRest && !ran ? 'REST'
     : (day.label ? day.label.toUpperCase() : day.type.toUpperCase());
@@ -147,6 +157,35 @@ function targetFor(type: string, _mi: number, label: string | null): Target {
   }
 }
 
+/** 2026-05-27 P-TILE-PRES-DRIFT — pull pace + HR for the tile from the
+ *  same Prescription that the detail modal renders. Picks the work
+ *  step (skips warmup/cooldown when there's a meaningful middle step,
+ *  e.g. threshold reps). Returns null when prescription has no useful
+ *  step targets so caller can fall back to the hardcoded placeholder. */
+function targetFromPrescription(pres: Prescription | null | undefined): Target | null {
+  if (!pres || !Array.isArray(pres.steps) || pres.steps.length === 0) return null;
+  // Prefer the step that has a real pace/HR target. For easy/long there's
+  // usually only one step ("Run"); for threshold/intervals there's
+  // warmup + reps + cooldown and we want the reps row. Scan for the
+  // first step with BOTH pace and HR targets; fall back to first step
+  // with EITHER; fall back to the longest-distance step.
+  const withBoth = pres.steps.find((s) => s.pace_target && s.hr_target);
+  const withEither = pres.steps.find((s) => s.pace_target || s.hr_target);
+  const longest = [...pres.steps].sort(
+    (a, b) => (b.distance_mi ?? 0) - (a.distance_mi ?? 0)
+  )[0];
+  const step = withBoth ?? withEither ?? longest;
+  if (!step) return null;
+  const pace = step.pace_target ?? '—';
+  // Strip the parenthetical zone suffix from the HR target so the tile
+  // stays compact — "138-144 bpm (Z2 Aerobic)" → "138-144 bpm".
+  const hr = step.hr_target
+    ? step.hr_target.replace(/\s*\([^)]*\)\s*$/, '')
+    : '';
+  if (!step.pace_target && !step.hr_target) return null;
+  return { pace, secondary: hr };
+}
+
 export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: string; planId?: string }) {
   const [openDay, setOpenDay] = useState<GlanceWeekDay | null>(null);
 
@@ -213,6 +252,7 @@ export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: stri
             day={d}
             today={today}
             planId={planId}
+            pres={presByDate[d.date] ?? null}
             onOpen={() => setOpenDay(toGlanceDay(d, today))}
           />
         ))}
