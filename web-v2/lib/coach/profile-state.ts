@@ -6,6 +6,7 @@ import { pool } from '@/lib/db/pool';
 import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
 import { bestRecentVdot, parseRaceTime } from '@/lib/training/vdot';
+import { loadNextARace } from './race-lookup';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
@@ -56,54 +57,94 @@ function ageFromBirthday(iso: string | null): number | null {
 export async function loadProfileState(userId: string): Promise<ProfileState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 
-  const p = (await pool.query(
-    `SELECT full_name, sex, age, city, height_cm, hrmax, rhr,
-            birthday::text AS birthday,
-            lthr, hrmax_observed, experience_level,
-            lthr_method, lthr_set_at::text AS lthr_set_at
-       FROM profile
-      WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
-      ORDER BY (user_uuid = $1) DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
+  // Audit 2026-05-27: most of /profile's data sources are independent.
+  // Parallelize the 11-query first batch with Promise.all so /profile FCP
+  // is bounded by max query time rather than sum. Dependent lookups
+  // (race lookup off plan.race_id, VDOT candidate runs off race rows,
+  // LTHR derive off race meta) follow in the second wave.
+  const [
+    pRow,
+    mhrRow,
+    rhrRow,
+    vo2Row,
+    wRow,
+    shoesRows,
+    planRow,
+    stravaRow,
+    healthRow,
+    watchRow,
+    preferencesResolved,
+  ] = await Promise.all([
+    pool.query(
+      `SELECT full_name, sex, age, city, height_cm, hrmax, rhr,
+              birthday::text AS birthday,
+              lthr, hrmax_observed, experience_level,
+              lthr_method, lthr_set_at::text AS lthr_set_at
+         FROM profile
+        WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
+        ORDER BY (user_uuid = $1) DESC LIMIT 1`,
+      [userId]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT MAX(value) AS m FROM health_samples WHERE user_id = $1 AND sample_type = 'hr'`,
+      [userId]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT AVG(value) AS a FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'resting_hr'
+          AND recorded_at >= NOW() - interval '60 days'`,
+      [userId]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'vo2_max'
+        ORDER BY recorded_at DESC LIMIT 1`,
+      [userId]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'body_mass'
+        ORDER BY sample_date DESC LIMIT 1`,
+      [userId]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT id, brand, model, color, color2, notes, run_types, mileage, mileage_cap, retired, preferred
+         FROM shoes
+        WHERE user_uuid = $1 OR user_uuid IS NULL
+        ORDER BY id`,
+      [userId]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT race_id FROM training_plans WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL
+        ORDER BY authored_iso DESC LIMIT 1`,
+      [userId]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT MAX(COALESCE(data->>'date', LEFT(data->>'startLocal',10))::text) AS last
+         FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND NOT (data ? 'mergedIntoId')`,
+      [userId]
+    ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT MAX(recorded_at) AS last FROM health_samples WHERE user_id = $1`,
+      [userId]
+    ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT MAX(recorded_at) AS last
+         FROM health_samples
+        WHERE user_id = $1
+          AND sample_type IN ('hrv_sdnn','vo2_max','resting_hr')`,
+      [userId]
+    ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
+    loadSettings(userId).catch(() => DEFAULT_PREFS),
+  ]);
 
-  // Observed max HR from health_samples (peak across all recorded HR samples).
-  // Final max_hr decision happens below after LTHR is known.
-  const mhrRow = (await pool.query(
-    `SELECT MAX(value) AS m FROM health_samples WHERE user_id = $1 AND sample_type = 'hr'`,
-    [userId]
-  )).rows[0];
-
-  const rhrRow = (await pool.query(
-    `SELECT AVG(value) AS a FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'resting_hr'
-        AND recorded_at >= NOW() - interval '60 days'`,
-    [userId]
-  )).rows[0];
+  const p = pRow;
   const rhr = rhrRow?.a ? Math.round(Number(rhrRow.a)) : (p?.rhr ?? null);
-
-  const vo2Row = (await pool.query(
-    `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'vo2_max'
-      ORDER BY recorded_at DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
   const vo2 = vo2Row?.value ? +Number(vo2Row.value).toFixed(1) : null;
-
-  const wRow = (await pool.query(
-    `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'body_mass'
-      ORDER BY sample_date DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
   const weight_lb = wRow?.value ? +(Number(wRow.value) * 2.20462).toFixed(1) : null;
+  const preferences = preferencesResolved;
 
-  // Shoes
-  const shoes = (await pool.query(
-    `SELECT id, brand, model, color, color2, notes, run_types, mileage, mileage_cap, retired, preferred
-       FROM shoes
-      WHERE user_uuid = $1 OR user_uuid IS NULL
-      ORDER BY id`,
-    [userId]
-  )).rows.map((s: any) => {
+  const shoes = shoesRows.map((s: any) => {
     const m = Number(s.mileage) || 0;
     const cap = Number(s.mileage_cap) || 400;
     return {
@@ -121,56 +162,24 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     };
   });
 
-  // Next A race for context (shoes-vs-race not surfaced unless flagged)
-  const plan = (await pool.query(
-    `SELECT race_id FROM training_plans WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL
-      ORDER BY authored_iso DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
-  let nextARace: ProfileState['nextARace'] = null;
-  if (plan?.race_id) {
-    const raceRow = (await pool.query(`SELECT slug, meta FROM races WHERE slug = $1`, [plan.race_id])).rows[0];
-    if (raceRow) {
-      const date = raceRow.meta?.date;
-      const days_to_race = Math.round((Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000);
-      nextARace = { slug: raceRow.slug, name: raceRow.meta?.name, date, goal: raceRow.meta?.goalDisplay ?? null, days_to_race };
-    }
-  }
+  // Next A race — shared memoized helper. Same lookup state-loader uses,
+  // so /today + /profile + /health all share one query per 60s window.
+  const nextARaceFull = await loadNextARace(userId, today, planRow?.race_id ?? null);
+  const nextARace: ProfileState['nextARace'] = nextARaceFull ? {
+    slug: nextARaceFull.slug,
+    name: nextARaceFull.name ?? '',
+    date: nextARaceFull.date,
+    goal: nextARaceFull.goal,
+    days_to_race: nextARaceFull.days_to_race,
+  } : null;
 
-  // === Connection state — real data presence, not hardcoded ===
-  // Strava = most recent activity in strava_activities (jsonb data->>'date').
-  const stravaRow = (await pool.query(
-    `SELECT MAX(COALESCE(data->>'date', LEFT(data->>'startLocal',10))::text) AS last
-       FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND NOT (data ? 'mergedIntoId')`,
-    [userId]
-  ).catch(() => ({ rows: [{ last: null }] }))).rows[0];
+  // Connection windows from the now-parallelized lastsync rows.
   const stravaLast: Date | null = stravaRow?.last ? new Date(`${stravaRow.last}T12:00:00Z`) : null;
   const stravaConnected = stravaLast != null && (Date.now() - stravaLast.getTime()) < 1000 * 60 * 60 * 24 * 14;
-
-  // Apple Health = most recent health_samples row
-  const healthRow = (await pool.query(
-    `SELECT MAX(recorded_at) AS last FROM health_samples WHERE user_id = $1`,
-    [userId]
-  ).catch(() => ({ rows: [{ last: null }] }))).rows[0];
   const healthLast: Date | null = healthRow?.last ? new Date(healthRow.last) : null;
   const healthConnected = healthLast != null && (Date.now() - healthLast.getTime()) < 1000 * 60 * 60 * 24 * 7;
-
-  // Apple Watch = paired iff watch-only metrics (HRV, VO2 max) are landing.
-  // The watch is the only source of those sample types in our pipeline.
-  const watchRow = (await pool.query(
-    `SELECT MAX(recorded_at) AS last
-       FROM health_samples
-      WHERE user_id = $1
-        AND sample_type IN ('hrv_sdnn','vo2_max','resting_hr')`,
-    [userId]
-  ).catch(() => ({ rows: [{ last: null }] }))).rows[0];
   const watchLast: Date | null = watchRow?.last ? new Date(watchRow.last) : null;
   const watchConnected = watchLast != null && (Date.now() - watchLast.getTime()) < 1000 * 60 * 60 * 24 * 30;
-
-  // Preferences (settings) — real values, not hardcoded
-  const preferences = await loadSettings(userId).catch(() => DEFAULT_PREFS);
 
   // VDOT — compute from the best race in the last 6 months.
   // Only A/B priority races count (skip C and custom flags like

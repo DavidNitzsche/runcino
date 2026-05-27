@@ -25,13 +25,17 @@ const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-99
 export default async function RaceDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
 
-  const races = await loadRacesState(DAVID_USER_ID);
-
-  // Course geometry (set if any GPX has been attached)
-  const geoRow = await pool.query(
-    `SELECT course_geometry, course_source FROM races WHERE slug = $1`,
-    [slug]
-  ).catch(() => ({ rows: [] }));
+  // Audit 2026-05-27: races + geometry were two sequential awaits, doubling
+  // FCP latency on race detail. They're independent — parallelize. The page
+  // still server-renders fully (avoids streaming complexity for a single
+  // page-load) but at the cost of ~1 round-trip instead of 2.
+  const [races, geoRow] = await Promise.all([
+    loadRacesState(DAVID_USER_ID),
+    pool.query(
+      `SELECT course_geometry, course_source FROM races WHERE slug = $1`,
+      [slug]
+    ).catch(() => ({ rows: [] as any[] })),
+  ]);
   const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
   const courseSource = geoRow.rows[0]?.course_source ?? null;
 
