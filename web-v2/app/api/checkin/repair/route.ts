@@ -1,0 +1,120 @@
+/**
+ * GET  /api/checkin/repair?days=30           — dry-run: list check-ins
+ *                                              where the NEW chip→rating
+ *                                              mapping would yield a
+ *                                              different rating than
+ *                                              what's stored.
+ *
+ * POST /api/checkin/repair  { days?, mode? } — apply the repair.
+ *      mode='update'  (default) → UPDATE rating on each mismatched row
+ *                                 to what the new mapping says it
+ *                                 should be. Preserves the row + extras.
+ *      mode='delete'           → DELETE each mismatched row (use only
+ *                                 if you want it gone, not relabeled).
+ *
+ * P-PHANTOM-CHECKIN-2 — David flagged that the coach kept saying
+ * "yesterday's check-in was TIRED" even though he never tapped TIRED.
+ * Root cause: the original chip→rating mapping in /api/checkin treated
+ * CONTROLLED, NOT CHATTY (a pace description) and WORKED (normal post-
+ * run state) as fatigue signals → wrote TIRED to the DB. This endpoint
+ * surfaces the diff so David can see what's actually there, then apply.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { pool } from '@/lib/db/pool';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+
+const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+
+// Keep this in sync with /api/checkin/route.ts ratingFromPostRun.
+function recomputeRating(execution?: string, body?: string): string | null {
+  const exec = (execution ?? '').toLowerCase();
+  if (['nailed', 'chatty', 'controlled', 'strong', 'crushed_goal', 'on_goal'].includes(exec)) return 'solid';
+  if (['grinded', 'pushed', 'faded'].includes(exec)) return 'tired';
+  if (['missed', 'walled', 'missed_goal'].includes(exec)) return 'wrecked';
+  if (body === 'fresh' || body === 'worked') return 'solid';
+  if (body === 'cooked') return 'wrecked';
+  return null;
+}
+
+async function fetchPostRunCheckins(userId: string, days: number) {
+  return (await pool.query(
+    `SELECT id, ts, rating, surface, extras
+       FROM check_ins
+      WHERE user_id = $1
+        AND ts >= now() - ($2::int || ' days')::interval
+        AND extras->>'kind' = 'post_run'
+      ORDER BY ts DESC`,
+    [userId, days]
+  )).rows;
+}
+
+function diffRow(row: any) {
+  const ex = row.extras ?? {};
+  const newRating = recomputeRating(ex.execution, ex.body_state);
+  return {
+    id: row.id,
+    ts: row.ts,
+    surface: row.surface,
+    stored_rating: row.rating,
+    new_rating: newRating,
+    execution: ex.execution ?? null,
+    body: ex.body_state ?? null,
+    niggle: ex.niggle ?? null,
+    would_change: newRating != null && newRating !== row.rating,
+  };
+}
+
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const userId = url.searchParams.get('user_id') ?? DAVID_USER_ID;
+  const days = Number(url.searchParams.get('days') ?? '30');
+  const rows = await fetchPostRunCheckins(userId, days);
+  const diffs = rows.map(diffRow);
+  const mismatches = diffs.filter((d) => d.would_change);
+  return NextResponse.json({
+    user_id: userId,
+    days,
+    total: diffs.length,
+    mismatches: mismatches.length,
+    all: diffs,
+    only_mismatches: mismatches,
+  });
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}));
+  const userId = body.user_id ?? DAVID_USER_ID;
+  const days = Number(body.days ?? 30);
+  const mode = (body.mode === 'delete' ? 'delete' : 'update') as 'update' | 'delete';
+
+  const rows = await fetchPostRunCheckins(userId, days);
+  const mismatches = rows.map(diffRow).filter((d) => d.would_change);
+
+  let changed = 0;
+  for (const m of mismatches) {
+    if (mode === 'delete') {
+      const r = await pool.query(`DELETE FROM check_ins WHERE id = $1`, [m.id]);
+      changed += r.rowCount ?? 0;
+    } else {
+      const r = await pool.query(
+        `UPDATE check_ins SET rating = $1 WHERE id = $2`,
+        [m.new_rating, m.id]
+      );
+      changed += r.rowCount ?? 0;
+    }
+  }
+
+  // Bust the brief cache so the next read regenerates voice without the
+  // phantom TIRED references.
+  if (changed > 0) {
+    await bustBriefingCacheForEvent(userId, 'check_in');
+  }
+
+  return NextResponse.json({
+    ok: true,
+    mode,
+    inspected: rows.length,
+    mismatches_found: mismatches.length,
+    changed,
+  });
+}

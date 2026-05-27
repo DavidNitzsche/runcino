@@ -40,17 +40,36 @@ interface CheckinBody {
  * Map the new post-run execution+body chips onto the legacy
  * solid/tired/wrecked rating so existing coach logic still works.
  * The richer signal is also persisted in extras for new doctrine.
+ *
+ * 2026-05-27 phantom-TIRED fix. Original mapping conflated "how the run
+ * executed" with "how the runner feels." Tapping CONTROLLED, NOT CHATTY
+ * on an easy day = describes pace (slightly above conversation), NOT
+ * fatigue — but it was silently writing TIRED. Same trap with the body
+ * chip WORKED, which is the normal state after every run. Result: David
+ * was reading "yesterday's check-in was TIRED" in coach voice without
+ * ever having tapped anything that meant "I feel tired."
+ *
+ * New principle: a chip maps to TIRED/WRECKED ONLY when it semantically
+ * means the runner is signaling fatigue or under-recovery. Neutral
+ * descriptions of pace/effort stay SOLID.
  */
 function ratingFromPostRun(execution?: string, body?: string): Rating | null {
   // Execution maps directly when present. Body falls through when no execution.
   const exec = (execution ?? '').toLowerCase();
-  if (['nailed', 'chatty', 'strong', 'crushed_goal'].includes(exec)) return 'solid';
-  if (['grinded', 'controlled', 'faded', 'on_goal'].includes(exec)) return 'tired';
-  if (['missed', 'pushed', 'walled', 'missed_goal'].includes(exec)) return 'wrecked';
+  // SOLID — everything that's a normal-or-better outcome, including hitting
+  // the goal (on_goal) and running an easy that was slightly above chat-pace
+  // (controlled). These are not fatigue signals.
+  if (['nailed', 'chatty', 'controlled', 'strong', 'crushed_goal', 'on_goal'].includes(exec)) return 'solid';
+  // TIRED — runner had to push harder than the workout warranted (grinded,
+  // pushed, faded). Distinct from normal effort.
+  if (['grinded', 'pushed', 'faded'].includes(exec)) return 'tired';
+  // WRECKED — couldn't hold the workout (missed, walled, missed_goal).
+  if (['missed', 'walled', 'missed_goal'].includes(exec)) return 'wrecked';
 
   // Recovery day — no execution; body alone drives the rating.
-  if (body === 'fresh')  return 'solid';
-  if (body === 'worked') return 'tired';
+  // WORKED is the baseline post-run state (legs feel the work) — NOT a
+  // fatigue signal. Only COOKED counts as a real "I feel wrecked" tap.
+  if (body === 'fresh' || body === 'worked') return 'solid';
   if (body === 'cooked') return 'wrecked';
   return null;
 }
