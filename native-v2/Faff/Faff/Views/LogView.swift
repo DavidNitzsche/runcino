@@ -238,9 +238,18 @@ struct LogView: View {
         do {
             let log = try await API.fetchLog(limit: 80)
             self.log = log
+            // Silent-failure guard. fetchLog returns LogState? — if the
+            // server 5xx'd, the decoder failed, or the response was
+            // truncated, log is nil and no error was thrown. Without
+            // this, the page just rendered blank forever (build 91
+            // regression — "Log is not loading AT ALL"). Now we
+            // surface the error block instead.
+            if log == nil {
+                self.error = "Couldn't load the log. Pull to refresh."
+                return
+            }
             self.error = nil
             // Kick off background warming (don't block the list render).
-            // fetchLog returns LogState? — only warm when non-nil.
             if let log {
                 Task { await prefetchHotRuns(log: log) }
             }

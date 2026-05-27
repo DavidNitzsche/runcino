@@ -36,6 +36,7 @@
 		83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600BF38DD79CB8A08592B03 /* Theme.swift */; };
 		923AE80C7C5A47CFFFA7423A /* Inter-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D9FA179F02EB61425E2DF62A /* Inter-Variable.ttf */; };
 		9276B87CB0A938E3DF8E70EA /* PaceDrift.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA31DB52794BE1700934B01 /* PaceDrift.swift */; };
+		9354693CE555F3C986EA13C8 /* CoachSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18BFFA019FC2D0414D9A8A9A /* CoachSlot.swift */; };
 		961FBF4DEC67B3CAD676A523 /* ReadinessGlanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 590886F21D4DD966A37DE610 /* ReadinessGlanceView.swift */; };
 		9683A651BCFCE43A4E2F5F30 /* WorkoutDetailModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09428CF254263C8C9CBEF5F4 /* WorkoutDetailModal.swift */; };
 		96AB4DF9DC78C005205930DA /* ResponsiveFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D23DD51213DA16F555FCAA /* ResponsiveFace.swift */; };
@@ -50,7 +51,6 @@
 		AAF411FFC548C34FA08F3A29 /* WorkoutRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */; };
 		ABA8B73ABAB07391B459D29A /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71B88D7D0751ABFACD1479 /* API.swift */; };
 		ACA6645F1B466A2A24E43209 /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */; };
-		B498F018CFC1F23CF60AE42D /* TipsWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7369F00144A5C5EC897C765E /* TipsWebView.swift */; };
 		B4BA0E10F8F54E818E92E24F /* CountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327F1896B45C80B0A713921B /* CountdownView.swift */; };
 		B6D9A30FAAC0365482CBE064 /* FaffWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E036C5FD2EC231D2FCDC1A /* Watch.swift */; };
@@ -110,6 +110,7 @@
 		139264554EDD5A64F64E384F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		162F4E9C0CB7F4A9A9298265 /* FaffWatch Watch App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "FaffWatch Watch App.entitlements"; sourceTree = "<group>"; };
 		174FE8C6F00184359AC974B6 /* Races.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Races.swift; sourceTree = "<group>"; };
+		18BFFA019FC2D0414D9A8A9A /* CoachSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachSlot.swift; sourceTree = "<group>"; };
 		1AA31DB52794BE1700934B01 /* PaceDrift.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceDrift.swift; sourceTree = "<group>"; };
 		1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		2600BF38DD79CB8A08592B03 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -134,7 +135,6 @@
 		5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSync.swift; sourceTree = "<group>"; };
 		6BC6A9D72C1DC3E28C1C3B43 /* WeekStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStripView.swift; sourceTree = "<group>"; };
 		6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitImporter.swift; sourceTree = "<group>"; };
-		7369F00144A5C5EC897C765E /* TipsWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipsWebView.swift; sourceTree = "<group>"; };
 		761D6D9F643EAA00C64D9BBC /* Runs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runs.swift; sourceTree = "<group>"; };
 		7664FBCD6CBCAE37BCC24B3B /* SettingsCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCache.swift; sourceTree = "<group>"; };
 		7666ED48810586C430FE7E27 /* Faces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Faces.swift; sourceTree = "<group>"; };
@@ -193,6 +193,7 @@
 			children = (
 				FBCEB932B2D6CD7DB54198CE /* Cards.swift */,
 				03B7740393796CCA0A47FB2D /* CoachBlock.swift */,
+				18BFFA019FC2D0414D9A8A9A /* CoachSlot.swift */,
 				83A717EF5F371482C8448495 /* LearnModal.swift */,
 				A59240BA35B6D7724A6A6C20 /* ReadinessRing.swift */,
 				C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */,
@@ -272,7 +273,6 @@
 				543E63FDFDB141572ACDDD5A /* RunDetailSheet.swift */,
 				EAA41631B820945F5A2FB787 /* SettingsSheet.swift */,
 				3C00B92B3DBCA7E7A9A07AC4 /* TipsView.swift */,
-				7369F00144A5C5EC897C765E /* TipsWebView.swift */,
 				3021BAFCB3395A359AD25A3C /* TodayView.swift */,
 				C81CA1D7127B12E871854210 /* TrainingView.swift */,
 			);
@@ -469,6 +469,7 @@
 				E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */,
 				13B4162B4830A44A709F20B2 /* Cards.swift in Sources */,
 				831522736DD104E914590A01 /* CoachBlock.swift in Sources */,
+				9354693CE555F3C986EA13C8 /* CoachSlot.swift in Sources */,
 				30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */,
 				661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */,
 				D4E3F4875BAFEC6F6D5FDCC7 /* HRAlerter.swift in Sources */,
@@ -491,7 +492,6 @@
 				83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */,
 				49DD1311332CCD7EC88681EC /* Tips.swift in Sources */,
 				D908A1389B777A23A0CA7339 /* TipsView.swift in Sources */,
-				B498F018CFC1F23CF60AE42D /* TipsWebView.swift in Sources */,
 				A4B00D17F9CD81D6D57E75E3 /* TodayView.swift in Sources */,
 				E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */,
 				FCBC071AD54DF36F1AA6DD5A /* TopicRenderer.swift in Sources */,

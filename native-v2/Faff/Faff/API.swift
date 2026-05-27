@@ -282,6 +282,16 @@ enum API {
         return try? JSONDecoder().decode(RaceListResponse.self, from: data)
     }
 
+    /// /api/training/state — full plan state for the /training tab.
+    /// Powers the iPhone PhaseStrip / mileage arc / week-ahead detail,
+    /// using the same data web /training reads.
+    static func fetchTrainingState() async throws -> TrainingState? {
+        let url = baseURL.appendingPathComponent("api/training/state")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(TrainingState.self, from: data)
+    }
+
     /// Mon-Sun plan_workouts for the week containing `date` (or today).
     /// Drives the iPhone WeekStrip.
     static func fetchPlanWeek(date: String? = nil) async throws -> PlanWeek {
@@ -412,6 +422,74 @@ struct ProfileConnectionState: Decodable {
     let connected: Bool
     let lastSync: String?
     let note: String
+}
+
+// MARK: - TrainingState (iPhone /training)
+//
+// Mirrors web-v2/lib/coach/training-state.ts. Powers the multi-week
+// plan arc, phase strip, and week-ahead detail. The TypeScript shape
+// already includes a `PlanWeek` interface, distinct from our wire
+// model in API.swift — we name ours `TrainingPlanWeek` here to avoid
+// colliding with the simpler PlanWeek (Mon-Sun day strip) used by
+// /api/plan/week + WeekStripView.
+
+struct TrainingState: Decodable {
+    let plan_id: String?
+    let today: String
+    let race: TrainingRace?
+    let phases: [TrainingPlanPhase]
+    let weeks: [TrainingPlanWeek]
+    let currentPhase: String?
+    let currentWeekIdx: Int?
+    let nextQuality: TrainingNextQuality?
+    let weekDone: Double
+    let weekPlanned: Double?
+}
+
+struct TrainingRace: Decodable {
+    let slug: String
+    let name: String
+    let date: String
+    let goal: String?
+    let days_to_race: Int
+}
+
+struct TrainingPlanPhase: Decodable, Identifiable {
+    let label: String
+    let startWeekIdx: Int
+    let endWeekIdx: Int
+    /// Use the label + start/end index as the stable id so SwiftUI's
+    /// ForEach doesn't redraw the strip when the row order is stable.
+    var id: String { "\(label)|\(startWeekIdx)-\(endWeekIdx)" }
+}
+
+struct TrainingPlanWeek: Decodable, Identifiable {
+    let idx: Int
+    let phase: String
+    let startDate: String
+    let plannedMi: Double
+    let days: [TrainingPlanDay]
+    let isCurrent: Bool
+    var id: Int { idx }
+}
+
+struct TrainingPlanDay: Decodable, Identifiable {
+    let date: String
+    let dow: Int
+    let type: String
+    let mi: Double
+    let label: String?
+    let doneMi: Double
+    let activityId: String?
+    var id: String { date }
+}
+
+struct TrainingNextQuality: Decodable {
+    let date: String
+    let dow: Int
+    let type: String
+    let label: String?
+    let mi: Double
 }
 
 // MARK: - Race list (iPhone /races)
