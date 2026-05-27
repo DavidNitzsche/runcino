@@ -5,6 +5,7 @@ import { AddShoeButton, ShoeEditCard } from '@/components/profile/ShoeCrudUI';
 import { SettingsLinkTrigger } from '@/components/settings/SettingsModal';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
+import { BriefingLoader } from '@/components/cards/BriefingLoader';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,12 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
               </div>
             )}
           </div>
+        </div>
+
+        {/* Audit 2026-05-27: PROFILE_IDENTITY prompt existed but no
+            BriefingLoader was rendering it. Coach intro now actually shows. */}
+        <div style={{ marginBottom: 36 }}>
+          <BriefingLoader surface="profile" />
         </div>
 
         {/* PERSONAL — birthday auto-updates age */}

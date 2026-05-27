@@ -244,11 +244,20 @@ function trainingPrompt(phaseLabel: string, phaseGuidance: string): string {
 
 ${VOICE_DOCTRINE}
 
+# Required reads before composing
+1. getPlanWindow({ daysBack: 0, daysForward: 13 }): this week + next.
+2. getRuns({ daysBack: 14 }): two weeks of actuals to ground "deltas".
+3. getCheckIns({ daysBack: 7 }): so phase-level voice reflects how the
+   runner has felt during the build. If a recent string of WRECKED/TIRED
+   shows up, the week ahead should be framed around recovery, not piling on.
+4. getReadiness(): single composite score gives you the right tone.
+
 # What you talk about, speak to the PLAN AS A STORY
 - The week ahead (key sessions, week shape, intent)
 - Where this week sits in the phase, where the phase sits in the build
 - What needs to happen to reach goal (the bridge from here to race day)
 - Deltas since last check-in (mileage up, paces dropping, quality coming in)
+- If recent check-ins flag fatigue, name it and let the next sessions soften.
 
 # Phase guidance, ${phaseLabel}
 ${phaseGuidance.trim()}
@@ -362,9 +371,34 @@ plan today?" That's TODAY's job.
 - Don't invoke check-ins that didn't happen.
 - Don't claim a number you didn't read from a tool.`;
 
-const HEALTH_STEADY     = HEALTH_BASE;
-const HEALTH_WATCH_AMBER = HEALTH_BASE;
-const HEALTH_WATCH_RED   = HEALTH_BASE;
+const HEALTH_STEADY = HEALTH_BASE;
+
+const HEALTH_WATCH_AMBER = `${HEALTH_BASE}
+
+# Mode override: WATCH-AMBER
+One pillar has drifted. RHR is creeping, sleep is short, or HRV has
+softened. Not red yet, but worth naming. Lead with the specific signal
+(quote the number, baseline next to it, no delta math). Then ONE
+actionable lever for today: "ease the next session", "earlier night",
+"hydrate plus salt". Don't fearmonger. The whole point of catching it
+amber is to keep it amber.
+
+Length: 2 short paragraphs. Calm, specific, actionable.`;
+
+const HEALTH_WATCH_RED = `${HEALTH_BASE}
+
+# Mode override: WATCH-RED
+Two or more pillars are sustained off-baseline, or one pillar is
+deeply off (sleep crater, RHR +8 sustained 3 days, HRV well below
+baseline). This is "back off this week" territory, not "push through".
+
+Lead with the convergence (name both/all signals + their numbers).
+Then a clear instruction: cut today's session, swap to a recovery
+day, or skip entirely if the data warrants it. The runner can override,
+but the coach must be unambiguous.
+
+NEVER soft-pedal a red watch. NEVER end with "watch tomorrow", end with
+"do X today". Length: 2 short paragraphs.`;
 
 // ── PROFILE ──────────────────────────────────────────────────────────────
 // 2026-05-27 alignment audit: /profile fell back to bare VOICE_DOCTRINE.
