@@ -9,7 +9,7 @@
  * the modal which lazy-fetches /api/runs/[id].
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { RunDetail, PhaseBreakdown } from '@/lib/coach/run-state';
 import { RouteSparkline } from './RouteSparkline';
 import { FormStatButton } from './FormTipModal';
@@ -277,34 +277,14 @@ export function RunDetailBody({
         </div>
       )}
 
-      {/* P32 — shoe picker. Pick the active shoe used; server bumps mileage. */}
+      {/* P32 — shoe picker. Pick the active shoe used; server bumps mileage.
+          2026-05-27: dumped the native <select> — its popover (white list,
+          bright iOS blue selection) was wildly off-theme. ShoePicker is a
+          custom button+popover that stays in the app's palette. */}
       {shoes.length > 0 && (
         <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: '#1f2226' }}>
           <div className="card-eyebrow" style={{ color: 'var(--green)', marginBottom: 8 }}>SHOES</div>
-          <select
-            value={d.shoe_id ?? ''}
-            onChange={(e) => onPickShoe(e.target.value ? Number(e.target.value) : null)}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              color: 'var(--ink)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              padding: '8px 12px',
-              fontFamily: 'var(--f-body)',
-              fontSize: 13,
-              width: '100%',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">— No shoe assigned —</option>
-            {shoes.map((s: any) => (
-              <option key={s.id} value={s.id}>
-                {[s.brand, s.model].filter(Boolean).join(' ')}
-                {s.mileage != null ? ` · ${Math.round(s.mileage)}mi` : ''}
-                {s.mileage_cap ? ` / ${s.mileage_cap}` : ''}
-              </option>
-            ))}
-          </select>
+          <ShoePicker shoes={shoes} value={d.shoe_id ?? null} onChange={onPickShoe} />
         </div>
       )}
 
@@ -643,6 +623,173 @@ function SplitsBars({ splits }: { splits: { mile: number; pace: string | null; h
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// ShoePicker — custom dropdown to replace the native <select> on the run
+// detail modal. The native select's popover (white background, bright iOS
+// blue selection) was wildly off-theme on every browser/OS combo. This
+// renders a styled trigger button plus an absolutely-positioned popover
+// that stays inside the app's dark palette. Click outside or pick a row
+// to close.
+// ─────────────────────────────────────────────────────────────────────
+function ShoePicker({
+  shoes,
+  value,
+  onChange,
+}: {
+  shoes: Array<any>;
+  value: number | null;
+  onChange: (id: number | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Close on click outside / Escape.
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const shoeLabel = (s: any) => {
+    const name = [s.brand, s.model].filter(Boolean).join(' ') || s.name || `Shoe #${s.id}`;
+    return name;
+  };
+  const shoeMileage = (s: any) => {
+    if (s.mileage == null) return null;
+    const used = Math.round(s.mileage);
+    return s.mileage_cap ? `${used} / ${s.mileage_cap} mi` : `${used} mi`;
+  };
+  const selected = value != null ? shoes.find((s: any) => s.id === value) : null;
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: '100%',
+          background: 'rgba(255,255,255,0.05)',
+          color: 'var(--ink)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 8,
+          padding: '10px 12px',
+          fontFamily: 'var(--f-body)',
+          fontSize: 13,
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          textAlign: 'left',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selected ? shoeLabel(selected) : <span style={{ color: 'var(--mute)' }}>— No shoe assigned —</span>}
+          </span>
+          {selected && shoeMileage(selected) && (
+            <span style={{ color: 'var(--mute)', fontSize: 11, flexShrink: 0 }}>{shoeMileage(selected)}</span>
+          )}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.5, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 120ms' }}>
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 50,
+            background: '#16191e',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 10,
+            padding: 4,
+            boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)',
+            maxHeight: 280, overflowY: 'auto',
+          }}
+        >
+          <ShoeRow
+            label={<span style={{ color: 'var(--mute)' }}>— No shoe assigned —</span>}
+            sub={null}
+            selected={value == null}
+            onClick={() => { onChange(null); setOpen(false); }}
+          />
+          {shoes.map((s: any) => {
+            const mi = shoeMileage(s);
+            const pct = s.mileage != null && s.mileage_cap ? s.mileage / s.mileage_cap : null;
+            const wearColor = pct == null ? 'var(--mute)'
+              : pct >= 0.9 ? 'var(--over)'
+              : pct >= 0.75 ? 'var(--goal)'
+              : 'var(--mute)';
+            return (
+              <ShoeRow
+                key={s.id}
+                label={shoeLabel(s)}
+                sub={mi ? <span style={{ color: wearColor }}>{mi}</span> : null}
+                selected={value === s.id}
+                onClick={() => { onChange(s.id); setOpen(false); }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShoeRow({
+  label, sub, selected, onClick,
+}: {
+  label: React.ReactNode;
+  sub: React.ReactNode;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={onClick}
+      style={{
+        width: '100%',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        background: selected ? 'rgba(62,189,65,0.16)' : (hover ? 'rgba(255,255,255,0.05)' : 'transparent'),
+        border: 'none',
+        color: 'var(--ink)',
+        padding: '9px 10px',
+        borderRadius: 7,
+        fontFamily: 'var(--f-body)',
+        fontSize: 13,
+        cursor: 'pointer',
+        textAlign: 'left',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {selected && (
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none" style={{ color: 'var(--green)', flexShrink: 0 }}>
+            <path d="M2 5.5l2.5 2.5L9 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      </span>
+      {sub && <span style={{ fontSize: 11, flexShrink: 0 }}>{sub}</span>}
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // HRSection — Round 4 combo from docs/run-detail-redesign-2026-05-27.html.
 // Hero zone tile (with vertical spectrum rail) + peak HR gauge +
 // AVG-vs-LTHR donut + zone-colored HR timeline.
@@ -825,7 +972,10 @@ function HRSection({ d }: { d: RunDetail }) {
 
   return (
     <div style={{
-      background: '#06080b', borderRadius: 14, padding: 14, border: '1px solid var(--line2)',
+      // 2026-05-27: was #06080b (near-black) → reads as a hole punched in the
+      // modal. Other run-detail cards use #1f2226; matching that here lets the
+      // HR block sit in the visual stack instead of plunging out of it.
+      background: '#1f2226', borderRadius: 14, padding: 14, border: '1px solid var(--line2)',
       display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gridTemplateRows: 'auto auto', gap: 10,
       marginBottom: 12,
     }}>
@@ -911,7 +1061,7 @@ function HRSection({ d }: { d: RunDetail }) {
       </div>
 
       {/* PEAK HR GAUGE */}
-      <div style={{ background: '#0d1015', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line2)' }}>
+      <div style={{ background: 'rgba(255,255,255,0.035)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ fontSize: 9, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700, marginBottom: 8 }}>PEAK HR</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 10 }}>
           <span style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)', lineHeight: 1 }}>{d.hr_max ?? '—'}</span>
@@ -934,7 +1084,7 @@ function HRSection({ d }: { d: RunDetail }) {
       </div>
 
       {/* AVG vs LTHR DONUT */}
-      <div style={{ background: '#0d1015', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line2)', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ background: 'rgba(255,255,255,0.035)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 12 }}>
         <svg viewBox="0 0 60 60" style={{ width: 54, height: 54, flexShrink: 0, transform: 'rotate(-90deg)' }}>
           <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
           {lthrRatio != null && (
@@ -957,7 +1107,7 @@ function HRSection({ d }: { d: RunDetail }) {
       {/* HR TIMELINE — spans 2 cols on bottom row */}
       <div style={{
         gridColumn: 'span 2',
-        background: '#0d1015', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--line2)',
+        background: 'rgba(255,255,255,0.035)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700 }}>
@@ -1024,7 +1174,7 @@ function HRSection({ d }: { d: RunDetail }) {
                   <div style={{
                     position: 'absolute', left: `${peakX}%`, top: `${peakYPct}%`,
                     transform: 'translate(-50%, -100%)',
-                    background: '#0a0c10', border: '1px solid rgba(252,77,100,0.5)', borderRadius: 4,
+                    background: 'rgba(15,17,21,0.92)', border: '1px solid rgba(252,77,100,0.5)', borderRadius: 4,
                     padding: '2px 6px', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.3px',
                     whiteSpace: 'nowrap', zIndex: 3, lineHeight: 1.2, marginTop: -4,
                     pointerEvents: 'none',
