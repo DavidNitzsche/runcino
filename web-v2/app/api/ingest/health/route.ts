@@ -20,9 +20,17 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { bustBriefingCache } from '@/lib/coach/cache';
+import { bustBriefingCacheDebounced } from '@/lib/coach/cache';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+
+// Only these sample types move the readiness needle day-to-day, so only
+// these justify a fresh LLM regen on arrival. Weight / VO2 / body fat
+// change too slowly to matter for today's voice — they're stored but
+// don't trigger a bust.
+const READINESS_SIGNAL_TYPES = new Set([
+  'sleep_hours', 'resting_hr', 'hrv', 'hr_recovery',
+]);
 
 const ALLOWED_TYPES = new Set([
   'sleep_hours', 'hrv', 'resting_hr', 'vo2_max', 'body_mass',
@@ -43,6 +51,7 @@ export async function POST(req: NextRequest) {
   let inserted = 0;
   let skipped = 0;
   let errors = 0;
+  let insertedSignal = 0;  // count of newly-stored readiness-relevant samples
 
   for (const s of samples) {
     if (!s?.sample_type || !ALLOWED_TYPES.has(s.sample_type)) { skipped++; continue; }
@@ -67,7 +76,12 @@ export async function POST(req: NextRequest) {
          RETURNING id`,
         [userId, s.sample_type, s.value, sampleDate, recordedAt]
       );
-      if ((r.rowCount ?? 0) > 0) inserted++; else skipped++;
+      if ((r.rowCount ?? 0) > 0) {
+        inserted++;
+        if (READINESS_SIGNAL_TYPES.has(s.sample_type)) insertedSignal++;
+      } else {
+        skipped++;
+      }
     } catch (err: any) {
       // Postgres unique-constraint violation = the row exists from a
       // prior sync. That's idempotent dedup, not an error.
@@ -80,6 +94,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (inserted > 0) await bustBriefingCache(userId);
-  return NextResponse.json({ ok: true, inserted, skipped, errors });
+  // Only bust briefings when a readiness-relevant sample landed.
+  // Trailing-edge 5-min debounce so an HK burst (sleep + HRV + RHR
+  // arriving within seconds) collapses into at most 2 LLM regens
+  // instead of one per sample. Weight / VO2 / body_fat arrivals do
+  // NOT bust — they don't move today's voice.
+  if (insertedSignal > 0) bustBriefingCacheDebounced(userId);
+  return NextResponse.json({ ok: true, inserted, skipped, errors, signalSamples: insertedSignal });
 }

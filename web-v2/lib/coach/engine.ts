@@ -130,6 +130,13 @@ export async function generateBriefing(
     mode: resolved.mode,
     eligibleKinds: eligible,
     compact,
+    // 2026-05-27: surface a few HARD FACTS as guardrails so the coach
+    // can't hallucinate them. Not spoon-feeding interpretation — just
+    // the boolean "did this thing happen at all" that the coach kept
+    // getting wrong (claiming check-ins that don't exist, treating an
+    // intervals day as easy).
+    checkInsLast7d: (state.recentCheckIns ?? []).length,
+    yesterdayPlannedType: pickYesterdayPlannedType(state),
   });
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -327,6 +334,19 @@ interface OrientationInput {
   mode: string;
   eligibleKinds: string[];
   compact?: boolean;
+  /** Hard-fact guardrails surfaced ahead of any tool calls. The coach has
+   *  hallucinated these despite tool data being clear, so we restate them. */
+  checkInsLast7d?: number;
+  yesterdayPlannedType?: string | null;
+}
+
+/** Pick yesterday's planned workout type from currentWeekDays so the coach
+ *  can't treat an intervals day as easy. Returns null if no plan for that day. */
+function pickYesterdayPlannedType(state: any): string | null {
+  const yesterday = new Date(Date.parse(`${state.today}T12:00:00Z`) - 86400000)
+    .toISOString().slice(0, 10);
+  const row = (state.currentWeekDays ?? []).find((d: any) => d.date === yesterday);
+  return row?.type ?? null;
 }
 
 function buildOrientationMessage(o: OrientationInput): string {
@@ -335,6 +355,37 @@ function buildOrientationMessage(o: OrientationInput): string {
   lines.push(`TODAY: ${o.today} (${dayOfWeekName(o.today)}). The training week runs Monday→Sunday.`);
   lines.push(`SURFACE: ${o.surface} · MODE: ${o.mode}.`);
   lines.push('');
+
+  // ── HARD FACTS ──────────────────────────────────────────────────
+  // The coach has hallucinated these even with tool data available.
+  // Restate them up front so they're impossible to miss.
+  lines.push(`# HARD FACTS (do not contradict)`);
+  if (typeof o.checkInsLast7d === 'number') {
+    if (o.checkInsLast7d === 0) {
+      lines.push(
+        `- CHECK-INS in the last 7 days: 0. The runner has NOT rated their state. ` +
+        `The words "check-in", "TIRED", "SOLID", "WRECKED" are BANNED from your output. ` +
+        `Do not say "this morning's check-in" or "the readiness board agrees" — ` +
+        `there is nothing to agree with. Don't mention check-ins at all.`
+      );
+    } else {
+      lines.push(
+        `- CHECK-INS in the last 7 days: ${o.checkInsLast7d}. Call getCheckIns for the ratings + dates. ` +
+        `Only narrate ratings the tool returns.`
+      );
+    }
+  }
+  if (o.yesterdayPlannedType) {
+    lines.push(
+      `- YESTERDAY's planned workout type: ${o.yesterdayPlannedType}. ` +
+      `If you reference yesterday's run, JUDGE the HR/pace by THIS type's expected effort, ` +
+      `not by an easy-day default. A threshold/intervals/tempo run SHOULD show Z3-Z5 work-phase HR; ` +
+      `that's the session, not a sign of overtraining. Call getDoctrine({ topic: '${o.yesterdayPlannedType}' }) ` +
+      `if you want to frame it.`
+    );
+  }
+  lines.push('');
+
   lines.push(`# READ FIRST, COMPOSE SECOND`);
   lines.push(
     `You have ZERO data about this runner in this message. Every number, ` +
@@ -366,8 +417,19 @@ function buildOrientationMessage(o: OrientationInput): string {
     `a real trend (e.g. back-to-back WRECKED, sudden swing).`,
   );
   lines.push(
+    `- HR zones MUST come from a run's hrZonePcts field, not from eyeballing avgHr. ` +
+    `"avg HR was 156, that's Z4" is a guess — the actual hrZonePcts shows the time-in-zone ` +
+    `split that determines which zones the run actually touched. Always read hrZonePcts before ` +
+    `claiming "you spent N% in Z4." Avg HR alone tells you nothing about peak zones reached.`,
+  );
+  lines.push(
     `- HR zones, paces, and physiological framing must come from getZones + getDoctrine. ` +
     `Don't invent thresholds.`,
+  );
+  lines.push(
+    `- BEFORE judging the EFFORT of a past run, call getPlanWindow with daysBack ≥ 1 to know ` +
+    `what TYPE was planned that day. A threshold run with HR 165 is NOT "hotter than easy" — ` +
+    `it was planned hot. Frame past-run effort against the planned type, not a default easy band.`,
   );
   lines.push(
     `- If today's session type from getPlanWindow is threshold/intervals/tempo/long, ` +

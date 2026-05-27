@@ -118,6 +118,55 @@ export async function bustBriefingCache(userId: string, key?: CacheKey): Promise
   void warmBriefingsAfterBust(userId);
 }
 
+// ── Debounced bust for HK sample arrivals ───────────────────────────────
+//
+// HK syncs often arrive in bursts (watch syncs sleep + HRV + RHR within
+// seconds when you open the iPhone app). Without debouncing, each arrival
+// triggers a fresh LLM regen.
+//
+// Leading + trailing-edge debounce per user:
+//   - First call: bust immediately. Start 5-min cooldown.
+//   - During cooldown: schedule a trailing bust at cooldown end.
+//     Subsequent calls within the same cooldown coalesce into the same
+//     trailing bust (no extra schedules).
+//   - After cooldown: next call is treated as leading edge again.
+//
+// Worst case: 2 LLM regens per 5-min window per user. Nothing dropped.
+
+interface DebounceState {
+  lastBustAt: number;
+  trailing: NodeJS.Timeout | null;
+}
+const debounceState = new Map<string, DebounceState>();
+const DEBOUNCE_MS = 5 * 60_000;
+
+export function bustBriefingCacheDebounced(userId: string): void {
+  const now = Date.now();
+  const state = debounceState.get(userId);
+  const last = state?.lastBustAt ?? 0;
+
+  if (now - last >= DEBOUNCE_MS) {
+    // Leading edge — bust now and start the cooldown window.
+    void bustBriefingCache(userId);
+    debounceState.set(userId, { lastBustAt: now, trailing: null });
+    return;
+  }
+  if (state?.trailing) {
+    // In cooldown, trailing already scheduled — this sample will be
+    // picked up by the pending fire. Coalesce.
+    return;
+  }
+  // In cooldown, no trailing yet — schedule one at cooldown end.
+  const fireAt = last + DEBOUNCE_MS;
+  const t = setTimeout(() => {
+    void bustBriefingCache(userId);
+    debounceState.set(userId, { lastBustAt: Date.now(), trailing: null });
+  }, Math.max(0, fireAt - now));
+  // Don't keep the Node process alive just for this timer.
+  if (typeof t.unref === 'function') t.unref();
+  debounceState.set(userId, { lastBustAt: last, trailing: t });
+}
+
 /**
  * Background warm — regenerate the surfaces the user actually opens.
  *
