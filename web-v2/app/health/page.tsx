@@ -130,7 +130,7 @@ export default async function HealthPage() {
             value={health.cadence.baseline != null ? `${health.cadence.baseline}` : '—'}
             valueColor="var(--dist)"
             narrative={cadenceNarrative(health.cadence.baseline)}
-            sub="spm · 60-day running baseline"
+            sub="spm · 60-day running baseline · target band 170–180 spm"
           />
         </Grid2>
       </div>
