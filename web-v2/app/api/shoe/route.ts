@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const ALLOWED_PATCH = new Set(['mileage', 'mileage_cap', 'run_types', 'retired', 'preferred', 'color', 'notes']);
+const ALLOWED_PATCH = new Set(['mileage', 'mileage_cap', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null);
