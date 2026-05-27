@@ -4,17 +4,40 @@
  * SettingsModal — opens settings as an overlay instead of routing to /settings.
  * Trigger lives in the TopNav avatar. Same opaque-card pattern as the other
  * modals (run detail, learn, readiness).
+ *
+ * Snappiness: settings is fetched once via a module-scope shared cache.
+ * Both triggers (avatar + link) prefetch on hover/focus AND on mount, so
+ * by the time the user clicks, the data is already there. The cache
+ * survives close/reopen cycles for the whole session.
  */
 import { useEffect, useState } from 'react';
 import { SettingsForm } from './SettingsForm';
 import type { UserSettings } from '@/lib/coach/settings';
 
+// Shared module-scope cache. Single source of truth for the modal payload.
+let cachedSettings: UserSettings | null = null;
+let inflight: Promise<UserSettings | null> | null = null;
+function prefetchSettings(): Promise<UserSettings | null> {
+  if (cachedSettings) return Promise.resolve(cachedSettings);
+  if (inflight) return inflight;
+  inflight = fetch('/api/settings')
+    .then((r) => r.ok ? r.json() : null)
+    .then((d) => { if (d) cachedSettings = d; inflight = null; return d; })
+    .catch(() => { inflight = null; return null; });
+  return inflight;
+}
+
 export function SettingsAvatarTrigger({ initials = 'DN' }: { initials?: string }) {
   const [open, setOpen] = useState(false);
+  // Avatar is always visible in TopNav, so this is effectively an
+  // app-wide warm-up of /api/settings on every page load. Cheap.
+  useEffect(() => { prefetchSettings(); }, []);
   return (
     <>
       <button
         onClick={() => setOpen(true)}
+        onMouseEnter={() => prefetchSettings()}
+        onFocus={() => prefetchSettings()}
         aria-label="Settings"
         style={{
           width: 36, height: 36, borderRadius: '50%',
@@ -38,6 +61,8 @@ export function SettingsLinkTrigger({ children = 'EDIT →' }: { children?: Reac
     <>
       <button
         onClick={() => setOpen(true)}
+        onMouseEnter={() => prefetchSettings()}
+        onFocus={() => prefetchSettings()}
         style={{
           background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
           color: 'var(--learn)', fontFamily: 'var(--f-body)',
@@ -51,17 +76,22 @@ export function SettingsLinkTrigger({ children = 'EDIT →' }: { children?: Reac
 }
 
 function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [data, setData] = useState<UserSettings | null>(null);
+  // Seed synchronously from the shared cache so first paint is complete
+  // when the cache is warm (which it will be after any hover/focus or
+  // page load where TopNav rendered).
+  const [data, setData] = useState<UserSettings | null>(cachedSettings);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (data) return;
     let mounted = true;
-    fetch('/api/settings')
-      .then((r) => r.ok ? r.json() : r.json().then((e) => { throw new Error(e.error ?? 'load failed'); }))
-      .then((d) => { if (mounted) setData(d); })
-      .catch((e) => { if (mounted) setError(e.message ?? String(e)); });
+    prefetchSettings().then((d) => {
+      if (!mounted) return;
+      if (d) setData(d);
+      else setError('load failed');
+    });
     return () => { mounted = false; };
-  }, []);
+  }, [data]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };

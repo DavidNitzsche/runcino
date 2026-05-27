@@ -138,7 +138,13 @@ function CompletedRunBody({ day, detail }: { day: GlanceWeekDay; detail: RunDeta
         {detail?.hr_avg != null && <BigStat v={String(detail.hr_avg)} u="avg hr" color="var(--mute)" />}
       </div>
       {day.activityId && (
-        <RunDetailTrigger activityId={day.activityId} label="Splits · route · form data →" />
+        // Pass the already-fetched detail down so the deeper RunDetailModal
+        // also opens with no skeleton flash — same prefetch chain.
+        <RunDetailTrigger
+          activityId={day.activityId}
+          label="Splits · route · form data →"
+          prefetchedData={detail}
+        />
       )}
     </>
   );

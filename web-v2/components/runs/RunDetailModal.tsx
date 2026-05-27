@@ -19,6 +19,8 @@ export function RunDetailTrigger({
   label = 'Splits · route · form data →',
   style,
   children,
+  prefetchedData,
+  prefetchedShoes,
 }: {
   activityId: string | null | undefined;
   label?: string;
@@ -27,6 +29,9 @@ export function RunDetailTrigger({
    *  instead of the label. Used by /today's hero so the whole headline
    *  block becomes the run-detail click target. */
   children?: React.ReactNode;
+  /** Optional pre-fetched data so modal renders synchronously on open. */
+  prefetchedData?: RunDetail | null;
+  prefetchedShoes?: any[] | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -49,18 +54,46 @@ export function RunDetailTrigger({
       >
         {children ?? label}
       </button>
-      {open && <RunDetailModal activityId={activityId} onClose={() => setOpen(false)} />}
+      {open && (
+        <RunDetailModal
+          activityId={activityId}
+          onClose={() => setOpen(false)}
+          prefetchedData={prefetchedData}
+          prefetchedShoes={prefetchedShoes}
+        />
+      )}
     </>
   );
 }
 
-export function RunDetailModal({ activityId, onClose }: { activityId: string; onClose: () => void }) {
-  const [data, setData] = useState<RunDetail | null>(null);
+export function RunDetailModal({
+  activityId,
+  onClose,
+  prefetchedData,
+  prefetchedShoes,
+}: {
+  activityId: string;
+  onClose: () => void;
+  /** Pre-fetched run detail — when present, modal renders synchronously
+   *  with no skeleton flash. Parents (LogTable, DayDetailModal, /today
+   *  hero) hover-prefetch or batch-prefetch and pass it in. */
+  prefetchedData?: RunDetail | null;
+  prefetchedShoes?: any[] | null;
+}) {
+  const [data, setData] = useState<RunDetail | null>(prefetchedData ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [shoes, setShoes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(prefetchedData == null);
+  const [shoes, setShoes] = useState<any[]>(prefetchedShoes ?? []);
 
   useEffect(() => {
+    // Pre-fetched path — skip the fetch entirely. Updates from prop
+    // changes (e.g. user re-opens modal after navigating).
+    if (prefetchedData) {
+      setData(prefetchedData);
+      setLoading(false);
+      if (prefetchedShoes) setShoes(prefetchedShoes);
+      return;
+    }
     let mounted = true;
     fetch(`/api/runs/${encodeURIComponent(activityId)}`)
       .then((r) => r.ok ? r.json() : r.json().then((e) => { throw new Error(e.error ?? 'failed'); }))
@@ -72,7 +105,7 @@ export function RunDetailModal({ activityId, onClose }: { activityId: string; on
       .then((j) => { if (mounted && j?.shoes) setShoes(j.shoes.filter((s: any) => !s.retired)); })
       .catch(() => {});
     return () => { mounted = false; };
-  }, [activityId]);
+  }, [activityId, prefetchedData, prefetchedShoes]);
 
   /** Update run.shoe_id via PATCH /api/runs/[id]. Optimistic — the server
    *  recomputes shoes.mileage on success, refresh of /profile reflects it. */

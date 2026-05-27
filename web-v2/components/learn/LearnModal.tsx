@@ -6,7 +6,10 @@
  * RunDetailModal — never leave the page.
  *
  * Two-step: <LearnCardTrigger> is the inline card with the term + summary;
- * tapping opens the modal which lazy-fetches /api/learn/[slug].
+ * tapping opens the modal. Hovering pre-fetches the article so the click
+ * feels instant. The article body lives in a module-scope cache shared by
+ * every card on the page — open one HRV card, then open it again on a
+ * different page, no second fetch.
  */
 import { useEffect, useState } from 'react';
 
@@ -19,12 +22,33 @@ interface Article {
   related_slugs: string[];
 }
 
+// Module-scope shared cache. Survives unmounts and route changes for the
+// session. Each entry is either an in-flight Promise or a resolved Article.
+const articleCache = new Map<string, Article | Promise<Article | null>>();
+
+function prefetchArticle(slug: string): Promise<Article | null> {
+  const hit = articleCache.get(slug);
+  if (hit && !(hit instanceof Promise)) return Promise.resolve(hit);
+  if (hit instanceof Promise) return hit;
+  const p: Promise<Article | null> = fetch(`/api/learn/${encodeURIComponent(slug)}`)
+    .then((r) => r.ok ? r.json() : null)
+    .then((d) => { if (d) articleCache.set(slug, d); return d; })
+    .catch(() => null);
+  articleCache.set(slug, p);
+  return p;
+}
+
 export function LearnCardTrigger({ term, body, slug }: { term: string; body: string; slug: string }) {
   const [open, setOpen] = useState(false);
+  // Best-effort: prefetch on mount so visible cards are warm by tap time.
+  // The mount-time prefetch is bounded to /health's 3-4 cards so it's cheap.
+  useEffect(() => { prefetchArticle(slug); }, [slug]);
   return (
     <>
       <button
         onClick={() => setOpen(true)}
+        onMouseEnter={() => prefetchArticle(slug)}
+        onFocus={() => prefetchArticle(slug)}
         className="card"
         style={{
           display: 'block', textAlign: 'left', padding: '18px 20px', width: '100%',
@@ -50,18 +74,26 @@ export function LearnCardTrigger({ term, body, slug }: { term: string; body: str
 }
 
 function LearnModal({ slug, onClose }: { slug: string; onClose: () => void }) {
-  const [data, setData] = useState<Article | null>(null);
+  // Pull from the shared cache synchronously when warm — that's the
+  // mount-time prefetch path. If cold (cache miss), the article fetch is
+  // kicked off but we still pop the modal frame immediately with a skeleton.
+  const cached = articleCache.get(slug);
+  const initial = cached && !(cached instanceof Promise) ? cached : null;
+  const [data, setData] = useState<Article | null>(initial);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initial == null);
 
   useEffect(() => {
+    if (initial) return; // already populated from cache
     let mounted = true;
-    fetch(`/api/learn/${encodeURIComponent(slug)}`)
-      .then((r) => r.ok ? r.json() : r.json().then((e) => { throw new Error(e.error ?? 'not found'); }))
-      .then((d) => { if (mounted) { setData(d); setLoading(false); } })
-      .catch((e) => { if (mounted) { setError(e.message ?? String(e)); setLoading(false); } });
+    prefetchArticle(slug)
+      .then((d) => {
+        if (!mounted) return;
+        if (d) { setData(d); setLoading(false); }
+        else   { setError('not found'); setLoading(false); }
+      });
     return () => { mounted = false; };
-  }, [slug]);
+  }, [slug, initial]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
