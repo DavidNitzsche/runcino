@@ -250,12 +250,17 @@ export function RunDetailBody({
       </div>
 
       {/* P42 + P45 — work-only averages when a planned quality workout
-          matches. Shows alongside the all-in numbers so the runner sees
-          the "real" effort filter out recovery jogs.
-          Phase data (Faff watch) wins over the splits heuristic. */}
-      {(d.pace_work != null || d.hr_avg_work != null || d.cadence_avg_work != null) && (
-        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: 'rgba(243,173,56,0.05)', border: '1px solid rgba(243,173,56,0.20)' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--goal)', marginBottom: 6 }}>
+          matches. 2026-05-27: only render this card when work-only
+          numbers ACTUALLY DIFFER from the all-in numbers above. For a
+          single-phase easy run (no warmup/cooldown), work pace == run
+          pace and the card just repeats info already on screen. David:
+          "i know this is working but its confusing, not organized well,
+          data heavy in a way where I don't know what I'm looking at."
+          Also dropped the loud orange tint/border — eyebrow now reads
+          mute since this isn't an alert, it's context. */}
+      {hasMeaningfulWorkAverages(d) && (
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: '#1f2226' }}>
+          <div className="card-eyebrow" style={{ color: 'var(--mute)', marginBottom: 6 }}>
             WORK-PHASE AVERAGES · RECOVERIES EXCLUDED
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
@@ -304,43 +309,43 @@ export function RunDetailBody({
       )}
 
       {/* P44 — phase-by-phase breakdown when the watch did a structured
-          workout. Plan vs actual, one row per phase (warmup, reps,
-          recoveries, cooldown). Empty for non-watch runs. */}
-      {d.phase_breakdown && d.phase_breakdown.length > 0 && (
+          workout. 2026-05-27: only render when there's MORE THAN ONE
+          phase. A single "WORK Run 5.8mi" phase just restates the hero
+          stats with extra chrome — pure noise on an easy day. The card
+          becomes useful again the moment a real workout has warmup +
+          reps + recoveries + cooldown. Recolored eyebrow to mute too —
+          it's structural, not an alert. */}
+      {d.phase_breakdown && d.phase_breakdown.length > 1 && (
         <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>BREAKDOWN · PLAN vs ACTUAL</div>
+          <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>BREAKDOWN · PLAN vs ACTUAL</div>
           <PhaseBreakdownTable phases={d.phase_breakdown} />
         </div>
       )}
 
-      {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it */}
-      {d.splits.length > 0 && (
+      {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it.
+          2026-05-27: hidden when there's only 1 split AND no per-mile
+          pace data (the "(no pace data)" empty row was contributing
+          nothing). A single mile of useful data still renders. */}
+      {d.splits.length > 1 && (
         <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--green)' }}>SPLITS · {d.splits.length} MILES</div>
+          <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>SPLITS · {d.splits.length} MILES</div>
           <SplitsBars splits={d.splits} />
           <SplitsTable splits={d.splits} />
         </div>
       )}
 
-      {/* HR Zone breakdown — shows where this run actually landed, plus
-          the user's LTHR zone bands so they can see the relationship */}
+      {/* HR Zone breakdown — one row per zone. Eyebrow color tuned
+          down (mute, not orange) so the card doesn't shout. The bpm
+          ranges live on each row now, so the separate ranges row got
+          removed. */}
       {(d.hrZonePcts.z1 + d.hrZonePcts.z2 + d.hrZonePcts.z3 + d.hrZonePcts.z4 + d.hrZonePcts.z5) > 0 && (
         <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>
-            TIME IN HR ZONE · WHERE THIS RUN LANDED
-            {d.hr_zones_from_lthr?.lthr ? <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· LTHR {d.hr_zones_from_lthr.lthr}</span> : null}
+          <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>
+            HEART RATE · TIME IN ZONE
+            {d.hr_zones_from_lthr?.lthr ? <span style={{ marginLeft: 8 }}>· LTHR {d.hr_zones_from_lthr.lthr}</span> : null}
           </div>
-          <HRZones pcts={d.hrZonePcts} />
-          {d.hr_zones_from_lthr && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginTop: 12 }}>
-              {d.hr_zones_from_lthr.ranges.map((r) => (
-                <div key={r.label} style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.5px', textAlign: 'center' }}>
-                  <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{r.label}</span> {r.lower}-{r.upper}
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ marginTop: 10, fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>
+          <HRZones pcts={d.hrZonePcts} ranges={d.hr_zones_from_lthr?.ranges ?? null} />
+          <div style={{ marginTop: 12, fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>
             {hrInterpretation(d.hrZonePcts, d.type)}
           </div>
         </div>
@@ -647,21 +652,59 @@ function SplitsBars({ splits }: { splits: { mile: number; pace: string | null; h
   );
 }
 
-function HRZones({ pcts }: { pcts: { z1: number; z2: number; z3: number; z4: number; z5: number } }) {
-  const colors = { z1: 'var(--rest)', z2: 'var(--green)', z3: 'var(--goal)', z4: 'var(--over)', z5: 'var(--over)' };
+function HRZones({
+  pcts,
+  ranges,
+}: {
+  pcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
+  /** Optional LTHR-derived bpm ranges per zone, rendered alongside each row. */
+  ranges?: { label: string; lower: number; upper: number }[] | null;
+}) {
+  // 2026-05-27 redesign: was a single thin stacked bar where every
+  // segment was the same color in practice (100% in one zone → solid
+  // green blob, no zone labeling on the bar). David: "no idea what
+  // this is showing." Now one row per zone — zone label · bpm range ·
+  // proportional bar in the zone's color · % at the right edge. You
+  // can see at a glance which zones the run actually hit.
+  const colors: Record<'z1'|'z2'|'z3'|'z4'|'z5', string> = {
+    z1: 'var(--rest)',
+    z2: 'var(--green)',
+    z3: 'var(--goal)',
+    z4: 'var(--over)',
+    z5: 'var(--over)',
+  };
+  const rangeByLabel = new Map<string, { lower: number; upper: number }>();
+  (ranges ?? []).forEach((r) => rangeByLabel.set(r.label.toLowerCase(), r));
   return (
-    <div>
-      <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginTop: 8 }}>
-        {(['z1','z2','z3','z4','z5'] as const).map((z) => {
-          if (pcts[z] <= 0) return null;
-          return <div key={z} style={{ flex: pcts[z], background: colors[z] }} />;
-        })}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', marginTop: 6, letterSpacing: '0.5px' }}>
-        {(['z1','z2','z3','z4','z5'] as const).map((z) => (
-          <span key={z}>{z.toUpperCase()} {Math.round(pcts[z])}%</span>
-        ))}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+      {(['z1','z2','z3','z4','z5'] as const).map((z) => {
+        const pct = Math.max(0, Math.min(100, pcts[z] ?? 0));
+        const rng = rangeByLabel.get(z);
+        return (
+          <div key={z} style={{
+            display: 'grid',
+            gridTemplateColumns: '36px 64px 1fr 48px',
+            alignItems: 'center', gap: 10,
+            opacity: pct > 0 ? 1 : 0.4,
+          }}>
+            <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, letterSpacing: '0.4px', color: colors[z] }}>
+              {z.toUpperCase()}
+            </span>
+            <span style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.3px' }}>
+              {rng ? `${rng.lower}–${rng.upper}` : ''}
+            </span>
+            <div style={{ position: 'relative', height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{
+                position: 'absolute', inset: 0, width: `${pct}%`,
+                background: colors[z], borderRadius: 4,
+              }} />
+            </div>
+            <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 600, color: 'var(--ink)', textAlign: 'right' }}>
+              {Math.round(pct)}%
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -687,4 +730,34 @@ function parsePace(s: string | null | undefined): number | null {
   const m = String(s).match(/^(\d+):(\d{2})$/);
   if (!m) return null;
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+/**
+ * True only when the work-only averages tell the runner something the
+ * all-in averages above don't. For a single-phase easy run with no
+ * warmup/cooldown, work pace ≈ all-in pace, work HR ≈ all-in HR, and
+ * the card just duplicates info already on screen. We render it only
+ * when at least one of pace/HR/cadence DIFFERS materially — that's
+ * exactly the case the card was designed for (a quality workout where
+ * recoveries pull the all-in averages soft).
+ */
+function hasMeaningfulWorkAverages(d: RunDetail): boolean {
+  const noWorkData =
+    d.pace_work == null &&
+    d.hr_avg_work == null &&
+    d.cadence_avg_work == null;
+  if (noWorkData) return false;
+
+  // Pace: differ by ≥ 5 seconds/mi → meaningful.
+  const pAll = parsePace(d.pace ?? null);
+  const pWork = parsePace(d.pace_work ?? null);
+  if (pAll != null && pWork != null && Math.abs(pAll - pWork) >= 5) return true;
+
+  // HR: differ by ≥ 3 bpm.
+  if (d.hr_avg != null && d.hr_avg_work != null && Math.abs(d.hr_avg - d.hr_avg_work) >= 3) return true;
+
+  // Cadence: differ by ≥ 3 spm.
+  if (d.cadence_avg != null && d.cadence_avg_work != null && Math.abs(d.cadence_avg - d.cadence_avg_work) >= 3) return true;
+
+  return false;
 }
