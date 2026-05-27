@@ -79,6 +79,10 @@ const patch = {
   splits: [warmupSplit, ...existingSplits],
   warmupAddedManually: true,
   warmupAddedAt: new Date().toISOString(),
+  // P43 — explicit bonus amounts so /api/ingest/workout can re-apply
+  // the bonus when the iPhone re-syncs the same HKWorkout.
+  warmupBonusMi: WARMUP_MI,
+  warmupBonusSec: WARMUP_SEC,
   warmupNote: '15-min easy warmup in Faff watch app — watch app did not record, hand-added',
 };
 

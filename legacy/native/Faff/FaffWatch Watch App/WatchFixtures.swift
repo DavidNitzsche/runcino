@@ -35,15 +35,22 @@ struct InRunStatsFace: View {
         avgPace == "—:—" || avgPace == "—" ? .mute : .live
     }
     var body: some View {
-        NumberFace(rows: [
-            NumRow(distance, .dist),
-            NumRow(elapsed,  .neutral),
-            NumRow(avgPace,  paceRole),
-            // Flame icon disambiguates the bare integer from HR / cadence /
-            // any other count. Same icon pattern as HR (♥) / cadence (🏃)
-            // on the in-run faces — glyph = "this is what kind of number."
-            NumRow(calories, .mute, icon: "flame.fill")
-        ])
+        // Top tag "STATS" anchors the face to the OS clock baseline;
+        // four big rows flex below it under the locked law. Without a
+        // label the face had no caption — just rows of numbers with no
+        // declaration of what they meant.
+        NumberFace(
+            rows: [
+                NumRow(distance, .dist),
+                NumRow(elapsed,  .neutral),
+                NumRow(avgPace,  paceRole),
+                // Flame icon disambiguates the bare integer from HR /
+                // cadence / any other count. Same icon pattern as HR (♥)
+                // / cadence (🏃) on the in-run faces.
+                NumRow(calories, .mute, icon: "flame.fill")
+            ],
+            topLabel: "STATS"
+        )
     }
 }
 
@@ -278,7 +285,7 @@ struct WatchFixtureView: View {
             // Plan done at 11.6, runner has banked 0.4 more — total 12.0,
             // distance row in purple (Faff.bonus) per the locked grammar.
             SteadyRunFace(livePace: "9:02", paceRole: .neutral,
-                          distance: "12.0", elapsed: "1:47:18",
+                          distance: "12.0", elapsed: "1:47",
                           distanceRole: .bonus,
                           topLabel: "OVERTIME")
         default:

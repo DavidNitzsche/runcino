@@ -237,8 +237,8 @@ struct SteadyRunFace: View {
         NumberFace(
             rows: [
                 NumRow(livePace, paceRole),
-                NumRow(distance, distanceRole),
-                NumRow(elapsed,  .neutral)
+                NumRow(elapsed,  .neutral),
+                NumRow(distance, distanceRole)
             ],
             topLabel: topLabel
         )
@@ -760,42 +760,41 @@ struct TodayDoneFace: View {
 }
 
 /// Calibrate — race-day GPS re-sync stepper.
+/// Calibrate — mid-race GPS re-sync. The watch knows roughly where the
+/// runner is from GPS / phase position, so it auto-selects the nearest
+/// mile marker. The runner just confirms by tapping "Set mile N".
+///
+/// Old design had a +/- stepper to pick the mile manually — but mid-race
+/// you'd only ever set the mile you're closest to. The stepper was
+/// noise; one button is the read.
 struct CalibrateFace: View {
+    /// The mile marker the runner is nearest to — auto-detected from
+    /// GPS position relative to the course. Caller is responsible for
+    /// picking the right value.
     let mile: Int
-    var onMinus: () -> Void = {}
-    var onPlus: () -> Void = {}
     var onSet: () -> Void = {}
     var body: some View {
-        Screen {
+        ZStack(alignment: .bottom) {
+            NumberFace(
+                rows: [NumRow("MILE \(mile)", .dist)],
+                topLabel: "CALIBRATE",
+                topLabelColor: Faff.mute,
+                bottomReservation: 0.22    // Set button area
+            )
             GeometryReader { geo in
                 let h = geo.size.height
-                VStack(spacing: 0) {
-                    VStack(spacing: h * 0.02) {
-                        FaceLabel(text: "Calibrate · mile marker", color: Faff.mute, size: h * 0.06)
-                        HStack(spacing: h * 0.06) {
-                            Button(action: onMinus) {
-                                Image(systemName: "minus.circle.fill")
-                                    .font(.system(size: h * 0.13)).foregroundStyle(Faff.mute)
-                            }.buttonStyle(.plain)
-                            Text("\(mile)").foregroundStyle(Faff.dist).tightNumber(h * 0.34)
-                            Button(action: onPlus) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: h * 0.13)).foregroundStyle(Faff.mute)
-                            }.buttonStyle(.plain)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    Button(action: onSet) {
-                        Text("Set mile \(mile)")
-                            .font(.custom("HelveticaNeue-Bold", size: h * 0.10))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).padding(.vertical, h * 0.04)
-                            .background(Capsule().fill(Faff.brand))
-                    }
-                    .buttonStyle(.plain)
+                Button(action: onSet) {
+                    Text("Set mile \(mile)")
+                        .font(.custom("HelveticaNeue-Bold", size: h * 0.085))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, h * 0.022)
+                        .background(Capsule().fill(Faff.brand))
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, h * 0.075)
-                .padding(.bottom, h * 0.085)         // clear bottom bezel curve
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, h * 0.020)
             }
         }
     }

@@ -93,6 +93,53 @@ export async function POST(req: NextRequest) {
     // Build a stable BIGINT id from a hash of client_workout_id so the
     // INSERT doesn't violate NOT NULL and re-imports stay idempotent.
     const stableId = bigIntIdFromString(body.client_workout_id);
+
+    // P43 — preserve hand-added warmup data across re-ingests. When the
+    // iPhone re-syncs an HKWorkout we'd otherwise DELETE then INSERT,
+    // wiping any warmup bonus that was patched on top (e.g. the Faff
+    // watch app glitched and the 15-min warmup was hand-added). Read
+    // the existing row first; if it has warmupAddedManually=true,
+    // re-apply the warmup bonus to the new data before insert.
+    const existing = (await pool.query(
+      `SELECT data FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND data->>'client_workout_id' = $2
+        LIMIT 1`,
+      [userId, body.client_workout_id]
+    )).rows[0]?.data;
+
+    if (existing?.warmupAddedManually) {
+      const bonusMi = Number(existing.warmupBonusMi ?? 1.7);
+      const bonusSec = Number(existing.warmupBonusSec ?? 900);
+      const warmupSplit = (existing.splits ?? []).find((s: any) => s?.note?.includes('warmup'))
+        ?? { mile: 0, pace: '8:50', elev_ft: 0, note: 'Faff warmup (preserved across re-ingest)' };
+
+      const newDist = Math.round(((data as any).distanceMi + bonusMi) * 100) / 100;
+      const newDurS = Number((data as any).durationSec ?? 0) + bonusSec;
+      const newMovS = Number((data as any).movingSec ?? newDurS - bonusSec) + bonusSec;
+      const sPerMi = newDist > 0 ? Math.round(newDurS / newDist) : 0;
+      const newPace = sPerMi > 0
+        ? `${Math.floor(sPerMi / 60)}:${String(sPerMi % 60).padStart(2, '0')}`
+        : (data as any).avgPaceMinPerMi;
+      const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+      Object.assign(data, {
+        distanceMi: newDist,
+        durationSec: newDurS,
+        movingSec: newMovS,
+        movingTimeS: newMovS,
+        timeMoving: mmss(newMovS),
+        avgPaceMinPerMi: newPace,
+        splits: [warmupSplit, ...((data as any).splits ?? [])],
+        warmupAddedManually: true,
+        warmupAddedAt: existing.warmupAddedAt ?? new Date().toISOString(),
+        warmupBonusMi: bonusMi,
+        warmupBonusSec: bonusSec,
+        warmupNote: existing.warmupNote ?? 'Hand-added warmup preserved across re-ingest.',
+      });
+      console.log('[ingest/workout] preserved warmup bonus across re-ingest for', body.client_workout_id);
+    }
+
     await pool.query(
       `DELETE FROM strava_activities
         WHERE (user_uuid = $1 OR user_uuid IS NULL)

@@ -381,11 +381,28 @@ struct NumberFace: View {
             // Gap is the canonical value in BOTH modes.
             let gap: CGFloat = CANONICAL_GAP
 
-            // Row group position. Anchored: pinned below top label.
-            // Centered: floats vertically in the available area.
+            // Row group position. Anchored: pinned below top label —
+            // BUT if the rows are width-bound and don't fill the band
+            // (1-row or short-content faces leave slack below), shift
+            // down so the group is vertically centered in the band.
+            // Prevents the "top-heavy single number floating with empty
+            // bottom" look David flagged on GO / FUEL / CALIBRATE.
+            // Multi-row anchored faces that fill the band exactly get
+            // extraSpace ≈ 0 and stay at their natural top position.
+            //
+            // Centered (no top label): floats vertically in the
+            // available area (above any strip or bottom reservation).
             let firstRowTop: CGFloat = {
                 if hasTopLabel {
-                    return TOP_MARGIN + labelCap + gap
+                    let bandTop = TOP_MARGIN + labelCap + gap
+                    let bandBottom: CGFloat = (hasStrip || bottomReservation != nil)
+                        ? centeredAreaBottom
+                        : (1 - TOP_MARGIN)
+                    let rowGroupHeight = CGFloat(nRows) * glyphF
+                        + CGFloat(max(nRows - 1, 0)) * gap
+                        + (hasBottomLabel ? gap + labelCap : 0)
+                    let extraSpace = (bandBottom - bandTop) - rowGroupHeight
+                    return bandTop + max(0, extraSpace / 2)
                 } else {
                     let groupHeight = CGFloat(nRows) * glyphF
                         + CGFloat(nGaps) * gap
