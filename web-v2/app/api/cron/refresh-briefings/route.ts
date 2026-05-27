@@ -89,19 +89,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, regenerated: 0, users: 0, note: 'no active users' });
   }
 
-  // ── regenerate per user (today + today:ios) ──
-  // Run users sequentially but the two surfaces per user in parallel —
-  // controls peak LLM concurrency while keeping per-user latency low.
-  const results: Array<{ user_id: string; today: 'ok' | string; today_ios: 'ok' | string }> = [];
+  // ── regenerate per user (today + today:ios + touched surfaces) ──
+  // Run users sequentially but the surfaces per user in parallel — controls
+  // peak LLM concurrency while keeping per-user latency low.
+  //
+  // 2026-05-27: extended beyond today + today:ios to also warm the other
+  // LLM-backed surfaces (training, races, health, profile) IFF the user
+  // has touched them in the last 14 days. Reason: David hit /training +
+  // /races at night and they lazy-regenerated because the daily cron
+  // wasn't warming them. The 14-day touched-gate keeps cost bounded
+  // (won't warm surfaces a runner never visits).
+  type Surface = 'today' | 'training' | 'races' | 'health' | 'profile';
+  type SurfaceResult = Record<string, 'ok' | string>;
+  const results: Array<{ user_id: string; surfaces: SurfaceResult }> = [];
+
   for (const userId of activeUserIds) {
-    const [todayRes, iosRes] = await Promise.all([
-      generateBriefing(userId, 'today').then(() => 'ok' as const).catch((e: any) => (e?.message ?? String(e))),
-      generateBriefing(userId, 'today', undefined, true).then(() => 'ok' as const).catch((e: any) => (e?.message ?? String(e))),
-    ]);
-    results.push({ user_id: userId, today: todayRes, today_ios: iosRes });
+    // Always warm today + today:ios.
+    const targets: Array<{ surface: Surface; compact?: boolean; key: string }> = [
+      { surface: 'today', key: 'today' },
+      { surface: 'today', compact: true, key: 'today:ios' },
+    ];
+    // Add other surfaces if the user has a cached briefing within 14 days.
+    const recent = (await pool.query(
+      `SELECT DISTINCT surface FROM briefings
+        WHERE user_id = $1
+          AND generated_at >= NOW() - interval '14 days'
+          AND surface IN ('training', 'races', 'health', 'profile')`,
+      [userId]
+    ).catch(() => ({ rows: [] as Array<{ surface: string }> }))).rows;
+    for (const r of recent) {
+      targets.push({ surface: r.surface as Surface, key: r.surface });
+    }
+
+    const outcomes = await Promise.all(
+      targets.map((t) =>
+        generateBriefing(userId, t.surface, undefined, t.compact)
+          .then(() => [t.key, 'ok' as const] as const)
+          .catch((e: any) => [t.key, e?.message ?? String(e)] as const)
+      )
+    );
+    const surfaces: SurfaceResult = Object.fromEntries(outcomes);
+    results.push({ user_id: userId, surfaces });
   }
 
-  const failed = results.filter((r) => r.today !== 'ok' || r.today_ios !== 'ok');
+  const failed = results.filter((r) => Object.values(r.surfaces).some((v) => v !== 'ok'));
   if (failed.length > 0) {
     // P37 — surface regen failures through the alerts pipeline. Severity
     // bumps to 'error' if more than half failed; otherwise 'warn'.
@@ -113,10 +144,16 @@ export async function POST(req: NextRequest) {
       source: 'cron/refresh-briefings',
     }).catch(() => {});
   }
+  const totalSurfaces = results.reduce((s, r) => s + Object.keys(r.surfaces).length, 0);
+  const failedSurfaces = results.reduce(
+    (s, r) => s + Object.values(r.surfaces).filter((v) => v !== 'ok').length,
+    0
+  );
   return NextResponse.json({
     ok: failed.length === 0,
     users: activeUserIds.length,
-    regenerated: results.length * 2 - failed.length,
+    surfaces_attempted: totalSurfaces,
+    surfaces_failed: failedSurfaces,
     failed_count: failed.length,
     results,
     timestamp: new Date().toISOString(),

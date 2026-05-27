@@ -24,6 +24,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { loadCoachState } from '@/lib/coach/state-loader';
+import { loadGlanceState } from '@/lib/coach/glance-state';
+import { loadTrainingState } from '@/lib/coach/training-state';
+import { loadRacesState } from '@/lib/coach/races-state';
+import { loadHealthState } from '@/lib/coach/health-state';
+import { loadProfileState } from '@/lib/coach/profile-state';
 
 export const maxDuration = 30;
 
@@ -76,22 +81,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, step: 'list_users', error: e?.message ?? String(e) }, { status: 500 });
   }
 
-  // ── pre-load CoachState per user ──
-  // Same code path /today and /api/coach/brief use; populates per-user
-  // computed fields (readiness, ACWR, baselines, etc.) into pg query
-  // plan cache. No LLM spend; pure DB work.
+  // ── pre-load ALL page-level state loaders per user ──
+  // 2026-05-27: extended beyond loadCoachState to cover the loaders for
+  // every LLM-backed surface. Each call populates pg query plan cache +
+  // warms the shared race lookup memo. No LLM spend; pure DB work.
+  //
+  // Run loaders in parallel per user (they hit different tables); users
+  // sequentially so a slow user doesn't block other users' warm windows.
   const t3 = Date.now();
-  const perUser: Array<{ user_id: string; ms: number; ok: boolean; err?: string }> = [];
+  const perUser: Array<{ user_id: string; ms: number; ok: boolean; loaders: Record<string, number | string> }> = [];
   for (const userId of activeUserIds) {
     const us = Date.now();
-    try {
-      await loadCoachState(userId);
-      perUser.push({ user_id: userId, ms: Date.now() - us, ok: true });
-    } catch (e: any) {
-      perUser.push({ user_id: userId, ms: Date.now() - us, ok: false, err: e?.message ?? String(e) });
-    }
+    const loaders: Record<string, number | string> = {};
+    const runLoader = async (name: string, fn: () => Promise<unknown>) => {
+      const t = Date.now();
+      try { await fn(); loaders[name] = Date.now() - t; }
+      catch (e: any) { loaders[name] = `err: ${e?.message ?? String(e)}`; }
+    };
+    await Promise.all([
+      runLoader('coach',    () => loadCoachState(userId)),
+      runLoader('glance',   () => loadGlanceState(userId)),
+      runLoader('training', () => loadTrainingState(userId)),
+      runLoader('races',    () => loadRacesState(userId)),
+      runLoader('health',   () => loadHealthState(userId)),
+      runLoader('profile',  () => loadProfileState(userId)),
+    ]);
+    const ok = Object.values(loaders).every((v) => typeof v === 'number');
+    perUser.push({ user_id: userId, ms: Date.now() - us, ok, loaders });
   }
-  timings.coach_state_total_ms = Date.now() - t3;
+  timings.state_warm_total_ms = Date.now() - t3;
   timings.total_ms = Date.now() - start;
 
   return NextResponse.json({
