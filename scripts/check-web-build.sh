@@ -20,7 +20,12 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Resolve repo root. When invoked via .git/hooks/pre-push, $0 is inside
+# .git/hooks/ and `dirname $0/..` lands on .git — NOT the repo root, so
+# $ROOT/web-v2 silently misses and the hook skips on every push. Use
+# `git rev-parse --show-toplevel` (the only reliable way from a hook) and
+# fall back to dirname math only for manual invocation outside a repo.
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "$0")/.." && pwd))"
 WEB="$ROOT/web-v2"
 
 if [ ! -d "$WEB/node_modules" ]; then
