@@ -7,6 +7,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import type { CoachState } from '@/lib/topics/types';
+import { loadNextARace } from './race-lookup';
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
@@ -163,54 +164,12 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       };
     }
 
-    if (plan.race_id) {
-      const raceRow = (await pool.query(
-        `SELECT slug, meta FROM races WHERE slug = $1`,
-        [plan.race_id]
-      )).rows[0];
-      if (raceRow) {
-        const date = raceRow.meta?.date;
-        const days_to_race = Math.round(
-          (Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000
-        );
-        nextARace = {
-          slug: raceRow.slug,
-          name: raceRow.meta?.name,
-          date,
-          goal: raceRow.meta?.goalDisplay ?? null,
-          days_to_race,
-        };
-      }
-    }
   }
 
-  // Fallback: if NO plan but the user has an upcoming A-race, still surface
-  // it so the coach doesn't think we're "in free-running mode" when the
-  // runner has anchored races. This is the source-of-truth for nextARace
-  // when between plans.
-  if (!nextARace) {
-    const fallbackRace = (await pool.query(
-      `SELECT slug, meta FROM races
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
-          AND meta->>'priority' = 'A'
-          AND (meta->>'date')::date >= $2::date
-        ORDER BY (meta->>'date') ASC LIMIT 1`,
-      [userId, today]
-    ).catch(() => ({ rows: [] }))).rows[0];
-    if (fallbackRace) {
-      const date = fallbackRace.meta?.date;
-      const days_to_race = Math.round(
-        (Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000
-      );
-      nextARace = {
-        slug: fallbackRace.slug,
-        name: fallbackRace.meta?.name,
-        date,
-        goal: fallbackRace.meta?.goalDisplay ?? null,
-        days_to_race,
-      };
-    }
-  }
+  // Race lookup (plan-anchored → fallback to soonest A-race). Extracted
+  // into a shared, 60s-memoized helper so /today + /health don't run the
+  // same query twice when their Promise.all fans out. See race-lookup.ts.
+  nextARace = await loadNextARace(userId, today, plan?.race_id ?? null);
 
   // WEEK DONE (strava sum from Monday → today)
   const monday = (() => {

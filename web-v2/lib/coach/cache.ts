@@ -17,6 +17,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import type { Topic } from '@/lib/topics/types';
+import { bustRaceCache } from './race-lookup';
 
 // Fixed sentinel — old `signature` column is no longer used as an input
 // hash; collapses the unique key to (user_id, surface_key).
@@ -105,6 +106,12 @@ export async function bustBriefingCache(userId: string, key?: CacheKey): Promise
   } catch {
     // non-fatal
   }
+
+  // Bust the in-process race lookup memo too — any mutation that touches
+  // briefings could also have touched race meta (race CRUD, plan swap),
+  // and the 60s TTL on race-lookup wouldn't reflect a freshly-edited race
+  // otherwise. Cheap: clears an in-memory Map.
+  bustRaceCache();
 
   // Fire background regen. Non-blocking. The mutating endpoint already
   // returned to the caller before this Promise even starts the LLM call.

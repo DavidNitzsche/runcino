@@ -11,6 +11,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
+import { loadNextARace } from './race-lookup';
 
 export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
@@ -102,11 +103,12 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       phaseLabel = phases.find((p: any) => cw.week_idx >= p.start_week_idx && cw.week_idx <= p.end_week_idx)?.label ?? null;
     }
     if (plan.race_id) {
-      const race = (await pool.query(`SELECT meta FROM races WHERE slug = $1`, [plan.race_id])).rows[0];
-      const date = race?.meta?.date;
-      if (date) {
-        daysToARace = Math.round((Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000);
-        nextARaceName = race.meta?.name ?? null;
+      // Shared, memoized lookup — same query state-loader runs on /today
+      // and /health Promise.all'd loads, deduped to 1 round-trip per 60s.
+      const race = await loadNextARace(userId, today, plan.race_id);
+      if (race) {
+        daysToARace = race.days_to_race;
+        nextARaceName = race.name;
       }
     }
     const planRows = (await pool.query(

@@ -27,34 +27,79 @@ export interface HealthState {
 export async function loadHealthState(userId: string): Promise<HealthState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 
-  // Sleep 30 nights
-  const sleepRows = (await pool.query(
-    `SELECT sample_date, value FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'sleep_hours'
-        AND sample_date >= ($2::date - interval '30 days')
-        AND sample_date <= $2::date
-      ORDER BY sample_date ASC`,
-    [userId, today]
-  )).rows;
+  // 2026-05-27: was 6 sequential awaits = 6× round-trip latency. Now all
+  // six health_samples queries fire in parallel via Promise.all — they
+  // touch the same table with different filters, so the pg pool serves
+  // them concurrently. Roughly 5/6 of the latency falls away.
+  //
+  // We don't fold into one UNION query because each has different
+  // aggregations (raw values vs date-grouped AVG) and the data shapes
+  // diverge enough that the post-processing would get awkward.
+  const [
+    sleepRows,
+    rhrRows,
+    hrvRows,
+    wRows,
+    cadRow,
+    vo2Row,
+  ] = await Promise.all([
+    pool.query(
+      `SELECT sample_date, value FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'sleep_hours'
+          AND sample_date >= ($2::date - interval '30 days')
+          AND sample_date <= $2::date
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'resting_hr'
+          AND recorded_at >= NOW() - interval '60 days'
+        GROUP BY recorded_at::date
+        ORDER BY d ASC`,
+      [userId]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'hrv'
+          AND recorded_at >= NOW() - interval '60 days'
+        GROUP BY recorded_at::date
+        ORDER BY d ASC`,
+      [userId]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT sample_date, value FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'body_mass'
+          AND sample_date >= ($2::date - interval '30 days')
+          AND sample_date <= $2::date
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
+    pool.query(
+      `SELECT AVG(value)::numeric AS avg FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'cadence'
+          AND sample_date >= ($2::date - interval '60 days')`,
+      [userId, today]
+    ).then((r) => r.rows[0]),
+    pool.query(
+      `SELECT value FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'vo2_max'
+        ORDER BY recorded_at DESC LIMIT 1`,
+      [userId]
+    ).then((r) => r.rows[0]),
+  ]);
+
+  // Sleep
   const sleepSeries = sleepRows.map((r: any) => ({
     date: r.sample_date.toISOString ? r.sample_date.toISOString().slice(0, 10) : String(r.sample_date),
     hours: Number(r.value),
   })).filter((d: any) => d.hours > 0);
-
   const sleepLast7 = sleepSeries.slice(-7).map((d) => d.hours);
   const avg7n = sleepLast7.length ? +(sleepLast7.reduce((s, x) => s + x, 0) / sleepLast7.length).toFixed(1) : null;
   const avg30n = sleepSeries.length ? +(sleepSeries.reduce((s, x) => s + x.hours, 0) / sleepSeries.length).toFixed(1) : null;
   const deficit7 = +sleepLast7.reduce((s, x) => s + Math.max(0, 7.5 - x), 0).toFixed(1);
 
-  // RHR 30 days
-  const rhrRows = (await pool.query(
-    `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'resting_hr'
-        AND recorded_at >= NOW() - interval '60 days'
-      GROUP BY recorded_at::date
-      ORDER BY d ASC`,
-    [userId]
-  )).rows;
+  // RHR
   const rhrSeries = rhrRows.map((r: any) => ({
     date: r.d.toISOString().slice(0, 10),
     bpm: Math.round(Number(r.v)),
@@ -67,14 +112,6 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   const rhrDelta = (rhrCurrent != null && rhrBaseline != null) ? rhrCurrent - rhrBaseline : null;
 
   // HRV
-  const hrvRows = (await pool.query(
-    `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'hrv'
-        AND recorded_at >= NOW() - interval '60 days'
-      GROUP BY recorded_at::date
-      ORDER BY d ASC`,
-    [userId]
-  )).rows;
   const hrvSeries = hrvRows.map((r: any) => ({
     date: r.d.toISOString().slice(0, 10),
     ms: Math.round(Number(r.v)),
@@ -87,15 +124,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   const hrvPct = (hrvCurrent != null && hrvBaseline != null && hrvBaseline > 0)
     ? Math.round(((hrvCurrent - hrvBaseline) / hrvBaseline) * 100) : null;
 
-  // Weight (kg → lb)
-  const wRows = (await pool.query(
-    `SELECT sample_date, value FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'body_mass'
-        AND sample_date >= ($2::date - interval '30 days')
-        AND sample_date <= $2::date
-      ORDER BY sample_date ASC`,
-    [userId, today]
-  )).rows;
+  // Weight
   const weightSeries = wRows.map((r: any) => ({
     date: r.sample_date.toISOString ? r.sample_date.toISOString().slice(0, 10) : String(r.sample_date),
     lb: +(Number(r.value) * 2.20462).toFixed(1),
@@ -105,22 +134,10 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   const weightDelta30 = (weightCurrent != null && weightFirst != null) ? +(weightCurrent - weightFirst).toFixed(1) : null;
 
   // Cadence baseline
-  const cad = (await pool.query(
-    `SELECT AVG(value)::numeric AS avg FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'cadence'
-        AND sample_date >= ($2::date - interval '60 days')`,
-    [userId, today]
-  )).rows[0];
-  const cadenceBaseline = cad?.avg ? Math.round(Number(cad.avg)) : null;
+  const cadenceBaseline = cadRow?.avg ? Math.round(Number(cadRow.avg)) : null;
 
   // VO2
-  const v = (await pool.query(
-    `SELECT value FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'vo2_max'
-      ORDER BY recorded_at DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
-  const vo2Current = v?.value ? +Number(v.value).toFixed(1) : null;
+  const vo2Current = vo2Row?.value ? +Number(vo2Row.value).toFixed(1) : null;
 
   // Watch-list logic
   const rhrElevated     = rhrDelta != null && rhrDelta >= 5;
