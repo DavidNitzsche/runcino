@@ -55,7 +55,12 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        HR was in zone. Coach voice was saying "pace was 13 seconds
 //        slow" on easy days, treating it as a miss when it's within
 //        Daniels/Hansons easy-pace tolerance.
-export const PROMPT_VERSION = 'v5-easy-pace-tolerance';
+//   v6 → 2026-05-27 zone-naming style: stop dumping bpm ranges in
+//        parens after the zone name. "held 140 in middle of Z2 (138 to
+//        144)" reads clinical and treats a forgiving aerobic intent
+//        like a tight target. Say "mid-Z2" or "held in aerobic zone."
+//        Quote bpm only when it adds signal the zone name can't.
+export const PROMPT_VERSION = 'v6-zone-naming-style';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls
