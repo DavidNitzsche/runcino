@@ -1,0 +1,69 @@
+# Frequent lightweight warmer for the Faff Railway container.
+#
+# Why this workflow exists: Railway puts the container to sleep when
+# idle. First request after a sleep waits ~3-5s for spin-up + a cold
+# pg pool. Hitting /api/cron/keep-warm every 15 min during waking
+# hours keeps the container alive, the pg pool warm, and the per-user
+# loadCoachState() query plans populated.
+#
+# This is NOT the LLM regen cron — that's refresh-briefings, daily.
+# keep-warm runs no Anthropic calls; it's pure DB warming, costs ~0.
+#
+# Schedule: every 15 min, 14:00-06:00 UTC = 7am-11pm PT. Off
+# overnight when nobody's opening the app (saves ~28 cron runs).
+#
+# Manual trigger: Actions tab > "Keep warm" > Run workflow.
+
+name: Keep warm
+
+on:
+  schedule:
+    # GitHub uses UTC. PT is UTC-7 (PDT) or UTC-8 (PST). The window
+    # 14:00-06:00 UTC covers 7am-11pm PT during PDT (most of the year)
+    # and 6am-10pm PT during PST — both are fine for "waking hours."
+    #
+    # GitHub Actions cron has a 5-min granularity minimum on the free
+    # plan and tends to drift; "every 15 min" gives us 4 attempts per
+    # hour even if half drift past their target.
+    - cron: '*/15 14-23 * * *'
+    - cron: '*/15 0-6 * * *'
+  workflow_dispatch: {}  # manual trigger
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit /api/cron/keep-warm
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 30 \
+            https://www.faff.run/api/cron/keep-warm)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          # Don't fail on transient issues — keep-warm is a heartbeat;
+          # one missed tick doesn't matter. Only fail on auth issues
+          # (401) so we catch broken secrets.
+          if [ "$status" = "401" ]; then
+            echo "::error::Unauthorized — CRON_SECRET may be stale"
+            exit 1
+          fi
+          # 5xx gets a warning but not a failure; transient Railway
+          # blips during cold-start would otherwise spam alerts.
+          if [ "$status" -ge "500" ] 2>/dev/null; then
+            echo "::warning::Server returned $status"
+          fi
