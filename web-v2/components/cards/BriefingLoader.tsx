@@ -124,6 +124,11 @@ export function BriefingLoader({
           // Check-in chips ONLY on /today, and only in modes where it makes
           // sense as a check-in moment. Other surfaces are read-only voice.
           showCheckin={surface === 'today' && CHECKIN_MODES.has(briefing.mode)}
+          // #150 — post-run uses the new workout-type-aware two-axis chips.
+          // Other check-in modes (pre-run, rest-day) keep the legacy 3-chip set.
+          checkinMode={briefing.mode === 'post-run' ? 'post_run' : 'legacy'}
+          workoutType={(briefing._state as any)?.todayWorkoutType ?? null}
+          runId={(briefing._state as any)?.todayRunId ?? null}
         />
       )}
       {renderCards && briefing.topics.length > 0 && (

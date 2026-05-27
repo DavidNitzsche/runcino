@@ -92,6 +92,18 @@ struct WorkoutRootView: View {
             .onAppear {
                 phone.activate()
                 phone.requestTodayWorkout()
+                #if targetEnvironment(simulator)
+                // -autostart launch arg: skip the lobby tap and immediately
+                // begin the simulator workout. For automated sim drives via
+                // `xcrun simctl launch ... -autostart`.
+                if ProcessInfo.processInfo.arguments.contains("-autostart"),
+                   model.engine == nil,
+                   let w = Self.simulatorWorkout {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        model.start(w)
+                    }
+                }
+                #endif
             }
     }
 

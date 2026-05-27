@@ -19,6 +19,7 @@
 
 import SwiftUI
 
+
 // MARK: - Faff palette (canonical tokens — single source of truth)
 
 extension Color {
@@ -247,7 +248,7 @@ struct NumberFace: View {
         guard let c = s.first else { return 0 }
         let fraction: CGFloat
         switch c {
-        case "1":                      fraction = 0.00  // narrow stem at left edge
+        case "1":                      fraction = 0.115 // HelveticaNeue-Bold "1" has a big internal LSB — the stem is in the middle of the glyph box, not at the left edge. Empirically measured on Ultra 3: visible "1" stem sits ~18px / F=157pt to the right of the bounding-box left edge. Compensate by pulling the row's offset.x left by 0.115·F so the "1" lines up with rows starting with "8" / "9".
         case "0", "6", "8", "9":       fraction = 0.06  // round bowls inset
         case "2", "3", "5":            fraction = 0.05
         case "4", "7":                 fraction = 0.04

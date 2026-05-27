@@ -82,15 +82,20 @@ function ARaceHero({ race }: { race: RaceRow }) {
   return (
     <Link href={`/races/${race.slug}`} style={{
       display: 'block',
-      background: 'linear-gradient(135deg, rgba(255,136,71,0.08), rgba(255,136,71,0.02))',
-      border: '1px solid rgba(255,136,71,0.30)',
-      borderRadius: 22,
+      background: 'var(--card)',
+      border: '1px solid var(--line)',
+      borderLeft: '3px solid var(--race)',
+      borderRadius: 18,
       padding: '32px 36px',
       marginBottom: 24,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
         <div>
-          <span style={{ display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', padding: '3px 8px', borderRadius: 4, background: 'rgba(255,136,71,0.18)', color: 'var(--race)' }}>A · GOAL RACE</span>
+          <span style={{
+            display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 11,
+            letterSpacing: '1.2px', padding: '4px 9px', borderRadius: 4,
+            background: 'var(--race)', color: '#0e1014', fontWeight: 700,
+          }}>A · GOAL RACE</span>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 56, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1, marginTop: 14 }}>
             {race.name}
           </div>
@@ -126,13 +131,18 @@ function SecondaryARace({ race }: { race: RaceRow }) {
   return (
     <Link href={`/races/${race.slug}`} style={{
       display: 'block',
-      background: 'linear-gradient(135deg, rgba(255,136,71,0.06), rgba(255,136,71,0.02))',
-      border: '1px solid rgba(255,136,71,0.22)',
-      borderRadius: 16, padding: '20px 24px', marginBottom: 16,
+      background: 'var(--card)',
+      border: '1px solid var(--line)',
+      borderLeft: '3px solid var(--race)',
+      borderRadius: 14, padding: '20px 24px', marginBottom: 16,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <span style={{ display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 10, letterSpacing: '1px', padding: '2px 7px', borderRadius: 4, background: 'rgba(255,136,71,0.18)', color: 'var(--race)' }}>A</span>
+          <span style={{
+            display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 10,
+            letterSpacing: '1.2px', padding: '3px 7px', borderRadius: 4,
+            background: 'var(--race)', color: '#0e1014', fontWeight: 700,
+          }}>A</span>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', marginTop: 8, letterSpacing: '0.5px' }}>{race.name}</div>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
             {race.distance_label ?? ''} {race.date ? `· ${formatDate(race.date)}` : ''}{race.goal ? ` · goal ${race.goal}` : ''}

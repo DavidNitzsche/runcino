@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { UserSettings } from '@/lib/coach/settings';
+import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
 
 const DOWS = [
   { v: 'sun', l: 'Sunday' },   { v: 'mon', l: 'Monday' }, { v: 'tue', l: 'Tuesday' },
@@ -136,26 +137,18 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
+/**
+ * Local <Picker /> wrapper around the shared SegmentedToggle (#160).
+ * Single rounded container, accent on selected, full-ink unselected text
+ * so it reads as a tappable choice instead of disappearing into the dark.
+ */
 function Picker<T extends string>({ value, options, labels, onChange }: { value: T; options: T[]; labels?: string[]; onChange: (v: T) => void }) {
   return (
-    <div style={{ display: 'flex', gap: 4 }}>
-      {options.map((o, i) => {
-        const selected = o === value;
-        return (
-          <button key={o} onClick={() => onChange(o)} style={{
-            // Selected: solid green fill + dark ink (high contrast).
-            // Unselected: subtle bg + clearer body ink so it reads as a button.
-            background: selected ? 'var(--green)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${selected ? 'var(--green)' : 'rgba(255,255,255,0.12)'}`,
-            color: selected ? '#0a0a0c' : 'rgba(246,247,248,0.82)',
-            padding: '7px 14px', borderRadius: 7,
-            fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
-            fontWeight: selected ? 700 : 500,
-            cursor: 'pointer', transition: 'all .12s',
-          }}>{(labels?.[i] ?? o).toUpperCase()}</button>
-        );
-      })}
-    </div>
+    <SegmentedToggle
+      value={value}
+      options={options.map((o, i) => ({ value: o, label: (labels?.[i] ?? o).toUpperCase() }))}
+      onChange={onChange}
+    />
   );
 }
 

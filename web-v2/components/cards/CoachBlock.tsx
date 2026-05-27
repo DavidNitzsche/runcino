@@ -2,10 +2,15 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { PostRunCheckinChips } from './PostRunCheckinChips';
 
 /**
  * Coach hero block — the warm voice + lead + reply chips.
- * §8.1 closed loop: SOLID / TIRED / WRECKED tap → POST /api/checkin → coach reads on next briefing.
+ *
+ * Post-run check-in (#150): when checkinMode='post_run', renders the
+ * new workout-type-aware two-axis chips (execution × body + niggle).
+ * Otherwise falls back to the legacy SOLID/TIRED/WRECKED chips for
+ * pre-run / rest-day modes where the simpler scale still applies.
  */
 export function CoachBlock({
   lead,
@@ -13,12 +18,19 @@ export function CoachBlock({
   briefingId,
   askPrompt = 'How did the run feel?',
   showCheckin = true,
+  checkinMode = 'legacy',
+  workoutType,
+  runId,
 }: {
   lead?: string;
   voice: string[];
   briefingId?: string;
   askPrompt?: string;
   showCheckin?: boolean;
+  /** 'post_run' → use the new two-axis chips (#150). 'legacy' → SOLID/TIRED/WRECKED. */
+  checkinMode?: 'post_run' | 'legacy';
+  workoutType?: string | null;
+  runId?: string | null;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<'solid' | 'tired' | 'wrecked' | null>(null);
@@ -116,7 +128,19 @@ export function CoachBlock({
         </p>
       )}
 
-      {showCheckin && (
+      {/* #150 — post-run check-in: workout-type-aware execution + body
+       *  chips. Falls back to legacy SOLID/TIRED/WRECKED for pre-run + rest. */}
+      {showCheckin && checkinMode === 'post_run' && (
+        <div style={{ marginTop: 18 }}>
+          <PostRunCheckinChips
+            workoutType={workoutType ?? null}
+            runId={runId ?? null}
+            onSubmitted={() => router.refresh()}
+          />
+        </div>
+      )}
+
+      {showCheckin && checkinMode === 'legacy' && (
       <div style={{
         fontFamily: 'var(--f-body)',
         fontSize: 12,
@@ -129,7 +153,7 @@ export function CoachBlock({
       </div>
       )}
 
-      {showCheckin && (
+      {showCheckin && checkinMode === 'legacy' && (
       <div style={{ display: 'flex', gap: 8 }}>
         {(['solid', 'tired', 'wrecked'] as const).map((r) => {
           const isSelected = selected === r;

@@ -27,6 +27,32 @@ interface CheckinBody {
   soreness?: string[];             // ["calves", "quads", "hips"...]
   mood?: 'great' | 'good' | 'flat' | 'low';
   sleep_quality?: number;          // 1-10
+  // #150 — new post-run shape (kind='post_run')
+  kind?: 'post_run' | 'pre_run' | 'rest_day';
+  workout_kind?: 'quality' | 'easy' | 'long' | 'race' | 'recovery';
+  execution?: string;              // type-aware: nailed/grinded/missed/chatty/.../crushed_goal/...
+  body?: 'fresh' | 'worked' | 'cooked';
+  niggle?: string | null;
+  run_id?: string | null;
+}
+
+/**
+ * Map the new post-run execution+body chips onto the legacy
+ * solid/tired/wrecked rating so existing coach logic still works.
+ * The richer signal is also persisted in extras for new doctrine.
+ */
+function ratingFromPostRun(execution?: string, body?: string): Rating | null {
+  // Execution maps directly when present. Body falls through when no execution.
+  const exec = (execution ?? '').toLowerCase();
+  if (['nailed', 'chatty', 'strong', 'crushed_goal'].includes(exec)) return 'solid';
+  if (['grinded', 'controlled', 'faded', 'on_goal'].includes(exec)) return 'tired';
+  if (['missed', 'pushed', 'walled', 'missed_goal'].includes(exec)) return 'wrecked';
+
+  // Recovery day — no execution; body alone drives the rating.
+  if (body === 'fresh')  return 'solid';
+  if (body === 'worked') return 'tired';
+  if (body === 'cooked') return 'wrecked';
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -37,9 +63,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const rating = body.rating?.toLowerCase();
+  // Two intake shapes:
+  //  (a) legacy: { rating: solid|tired|wrecked, ... }
+  //  (b) #150:   { kind: 'post_run', execution, body, niggle? }
+  // Derive a legacy rating from the new shape so downstream code is unchanged.
+  let rating = body.rating?.toLowerCase();
+  if (!rating && body.kind === 'post_run') {
+    const derived = ratingFromPostRun(body.execution, body.body);
+    rating = derived ?? undefined;
+  }
   if (!rating || !VALID_RATINGS.includes(rating as Rating)) {
-    return NextResponse.json({ error: 'rating must be one of solid|tired|wrecked' }, { status: 400 });
+    return NextResponse.json({ error: 'rating must be one of solid|tired|wrecked (or post_run shape with execution+body)' }, { status: 400 });
   }
 
   const userId = body.user_id ?? DAVID_USER_ID;
@@ -47,11 +81,19 @@ export async function POST(req: NextRequest) {
 
   // P34 — build the optional 'extras' jsonb from any expanded fields.
   // Stays null if the caller only sent rating/note (back-compat).
+  // #150 — also persist the new two-axis signal (execution + body + niggle)
+  // so coach doctrine can read it when the chips were used.
   const extras: Record<string, any> = {};
   if (body.energy != null) extras.energy = body.energy;
   if (Array.isArray(body.soreness) && body.soreness.length > 0) extras.soreness = body.soreness;
   if (body.mood) extras.mood = body.mood;
   if (body.sleep_quality != null) extras.sleep_quality = body.sleep_quality;
+  if (body.kind) extras.kind = body.kind;
+  if (body.workout_kind) extras.workout_kind = body.workout_kind;
+  if (body.execution) extras.execution = body.execution;
+  if (body.body) extras.body_state = body.body;
+  if (body.niggle && body.niggle.trim()) extras.niggle = body.niggle.trim();
+  if (body.run_id) extras.run_id = body.run_id;
   const extrasJson = Object.keys(extras).length > 0 ? JSON.stringify(extras) : null;
 
   try {

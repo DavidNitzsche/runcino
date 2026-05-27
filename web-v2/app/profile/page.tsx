@@ -3,6 +3,7 @@ import { ProfileGapInput } from '@/components/profile/ProfileGapInput';
 import { EditableField } from '@/components/profile/EditableField';
 import { AddShoeButton, ShoeEditCard } from '@/components/profile/ShoeCrudUI';
 import { SettingsLinkTrigger } from '@/components/settings/SettingsModal';
+import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
 
 export const dynamic = 'force-dynamic';
@@ -69,25 +70,87 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
           <EditableField field="city" label="City" kind="text" currentValue={profile.identity.city} />
           <EditableField
-            field="experience_level" label="Experience" kind="select"
-            options={['beginner','intermediate','advanced','advanced_plus']}
+            field="experience_level"
+            label="Experience"
+            kind="richSelect"
             currentValue={profile.identity.experience_level}
+            displayMap={{
+              beginner: 'Beginner',
+              intermediate: 'Intermediate',
+              advanced: 'Advanced',
+              advanced_plus: 'Sub-elite',
+            }}
+            contextLine="Sets your plan's volume ceiling, intensity ramp, and how aggressively the coach progresses you week-to-week."
+            richOptions={[
+              {
+                value: 'beginner',
+                label: 'BEGINNER',
+                description: '0–2 years consistent running. Conservative 5–8%/wk volume progression. Quality work introduced gradually.',
+              },
+              {
+                value: 'intermediate',
+                label: 'INTERMEDIATE',
+                description: '2–5 years. Standard Daniels ramp (10% rule). One quality session per week building to two.',
+              },
+              {
+                value: 'advanced',
+                label: 'ADVANCED',
+                description: '5+ years with race history. Higher quality tolerance, faster ramp, 2–3 quality sessions/wk in peak.',
+              },
+              {
+                value: 'advanced_plus',
+                label: 'SUB-ELITE',
+                description: 'Competitive runner, sub-3 marathon / sub-1:25 half. Aggressive volume + intensity blocks.',
+              },
+            ]}
           />
         </div>
 
-        {/* PHYSIOLOGY — LTHR is primary zone anchor (Friel). MAX HR editable too. */}
+        {/* PHYSIOLOGY — LTHR is primary zone anchor (Friel). MAX HR editable too.
+         * #158: each card now carries source + freshness + used-for so the runner
+         * understands how each number is picked and what it drives. */}
         <SectionLabel>PHYSIOLOGY · TRAINING ANCHORS</SectionLabel>
         <Grid4>
-          <EditableField
-            field="lthr" label="LTHR" kind="number"
-            currentValue={profile.physiology.lthr} unitLabel="bpm"
+          <AnchorCard
+            label="LTHR"
+            value={profile.physiology.lthr != null ? `${profile.physiology.lthr} bpm` : '—'}
+            source="Auto-calibrated from your threshold workouts — override if you've LT-tested"
+            usedFor="HR zones (Z1–Z5 from Friel)"
+            editable={
+              <EditableField
+                field="lthr" label="LTHR" kind="number"
+                currentValue={profile.physiology.lthr} unitLabel="bpm"
+                hint="Drives all HR zone bands"
+              />
+            }
           />
-          <EditableField
-            field="hrmax_observed" label="Max HR" kind="number"
-            currentValue={profile.physiology.max_hr} unitLabel="bpm"
+          <AnchorCard
+            label="Max HR"
+            value={profile.physiology.max_hr != null ? `${profile.physiology.max_hr} bpm` : '—'}
+            source="Set by you (or estimated from age — rough)"
+            usedFor="HR zone ceiling (Z5 cap), age-grade fallback"
+            editable={
+              <EditableField
+                field="hrmax_observed" label="Max HR" kind="number"
+                currentValue={profile.physiology.max_hr} unitLabel="bpm"
+                hint="Sets the Z5 ceiling"
+              />
+            }
           />
-          <FieldCard k="RESTING HR" v={profile.physiology.rhr != null ? `${profile.physiology.rhr} bpm` : '—'} hint={profile.physiology.rhr ? '60-DAY MEAN' : 'PENDING'} />
-          <FieldCard k="VDOT" v={profile.physiology.vdot != null ? String(profile.physiology.vdot) : '—'} hint={profile.physiology.vdot != null ? 'BEST RACE · 6 MO' : 'NEEDS A RACE FINISH'} />
+          <AnchorCard
+            label="RESTING HR"
+            value={profile.physiology.rhr != null ? `${profile.physiology.rhr} bpm` : '—'}
+            source={profile.physiology.rhr ? '60-day mean from your watch' : 'Pending — needs 60 days of wear'}
+            usedFor="Readiness baseline (RHR deviation flags fatigue)"
+          />
+          <AnchorCard
+            label="VDOT"
+            value={profile.physiology.vdot != null ? String(profile.physiology.vdot) : '—'}
+            source={profile.physiology.vdot != null
+              ? 'Best race performance in last 6 months (auto-updated)'
+              : 'Needs a race finish to compute'}
+            usedFor="Pace zones (E/M/T/I/R), race-pace prediction"
+          />
         </Grid4>
 
         {/* Live zone table — recomputes from LTHR/MaxHR every render */}
@@ -127,10 +190,17 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <FieldCard k="WEIGHT"     v={profile.physiology.weight_lb != null ? `${profile.physiology.weight_lb} lb` : '—'} hint={profile.physiology.weight_lb ? 'APPLE HEALTH' : 'PENDING'} />
         </Grid4>
 
-        {/* CONNECTIONS — real data-presence check */}
+        {/* CONNECTIONS — real data-presence check. Strava gets the rich
+         * StravaConnectionCard (#161) with auto-push toggle + privacy +
+         * title format + recent-pushes widget. */}
         <SectionLabel>CONNECTIONS</SectionLabel>
+        <div style={{ marginBottom: 14 }}>
+          <StravaConnectionCard initial={{
+            connected: profile.connections.strava.connected,
+            lastSyncAgo: profile.connections.strava.note.replace(/^Last sync /, ''),
+          }} />
+        </div>
         <Grid3>
-          <ConnCard name="Strava"       sub={profile.connections.strava.note}      connected={profile.connections.strava.connected} />
           <ConnCard name="Apple Health" sub={profile.connections.appleHealth.note} connected={profile.connections.appleHealth.connected} />
           <ConnCard name="Apple Watch"  sub={profile.connections.appleWatch.note}  connected={profile.connections.appleWatch.connected} />
         </Grid3>
@@ -170,9 +240,50 @@ function Grid5({ children }: { children: React.ReactNode }) { return <div style=
 function FieldCard({ k, v, hint }: { k: string; v: string; hint?: string }) {
   return (
     <div className="card" style={{ padding: '18px 22px' }}>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>{k}</div>
+      <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>{k}</div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>{v}</div>
-      {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '1px' }}>{hint}</div>}
+      {hint && <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '1px' }}>{hint}</div>}
+    </div>
+  );
+}
+
+/**
+ * AnchorCard (#158) — training anchor with source + freshness + used-for.
+ * Used for the four PHYSIOLOGY · TRAINING ANCHORS cards (LTHR, MAX HR,
+ * RESTING HR, VDOT). Answers the runner's question "how is this picked
+ * and what does it change?"
+ */
+function AnchorCard({
+  label, value, source, freshness, usedFor, editable,
+}: {
+  label: string;
+  value: string;
+  source: string;     // "Auto-calibrated from your threshold workouts" / "Set by you"
+  freshness?: string; // "Last updated 8 days ago" — null for always-fresh stats like VDOT-from-race
+  usedFor: string;    // "HR zones (Z1–Z5 from Friel)"
+  editable?: React.ReactNode; // optional <EditableField/> for fields the user can manually override
+}) {
+  if (editable) return <>{editable}</>;
+  return (
+    <div className="card" style={{ padding: '18px 22px' }}>
+      <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
+        {value}
+      </div>
+      <div style={{
+        fontFamily: 'var(--f-body)', fontSize: 11, lineHeight: 1.5,
+        color: 'var(--mute)', marginTop: 8,
+      }}>
+        {source}{freshness ? ` · ${freshness}` : ''}
+      </div>
+      <div style={{
+        fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--dim)',
+        marginTop: 4, letterSpacing: '0.4px',
+      }}>
+        Used for {usedFor}
+      </div>
     </div>
   );
 }

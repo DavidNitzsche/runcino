@@ -94,10 +94,35 @@ final class WorkoutEngine: ObservableObject {
 
     // MARK: Private timing state
 
+    /// Debug time-warp factor — read at process start from env var
+    /// `FAFF_TIME_WARP` or the `-warp <N>` launch argument. Multiplies the
+    /// engine's perception of elapsed time so a 10-minute warmup completes
+    /// in 20 real seconds at warp=30. Defaults to 1.0 (real time). Only
+    /// active in sim/debug — production never sets it.
+    static let warpFactor: Double = {
+        let env = ProcessInfo.processInfo.environment["FAFF_TIME_WARP"]
+        let args = ProcessInfo.processInfo.arguments
+        let argVal: String? = {
+            if let i = args.firstIndex(of: "-warp"), i + 1 < args.count { return args[i + 1] }
+            return args.first(where: { $0.hasPrefix("-warp=") })?.dropFirst(6).description
+        }()
+        return Double(env ?? "") ?? Double(argVal ?? "") ?? 1.0
+    }()
+
+    /// Wall-clock seconds since the current phase started, scaled by the
+    /// warp factor. ALL of the engine's elapsed/banked math goes through
+    /// here — pause/resume's wall-clock `phaseStart` adjustments are
+    /// applied separately and are NOT warped (real-time pause stays real).
+    private func elapsedSincePhaseStart() -> Int {
+        return Int(Date.now.timeIntervalSince(phaseStart) * Self.warpFactor)
+    }
+
     private var ticker: Task<Void, Never>?
     private var countdownTask: Task<Void, Never>?
     private var transitionClear: Task<Void, Never>?
-    private var phaseStart: Date = .now
+    // Internal (not private) so @testable tests can roll phaseStart
+    // backward to simulate elapsed wall-clock time without real delays.
+    var phaseStart: Date = .now
     /// Cumulative GPS distance (mi) at the moment the current phase began —
     /// lets a distance rep measure how far you've run *within* this rep.
     private var phaseStartMi: Double = 0
@@ -486,20 +511,23 @@ final class WorkoutEngine: ObservableObject {
         ticker = nil
     }
 
-    private func tick() {
+    // Internal so tests can call it directly after rolling `phaseStart`
+    // backward to simulate elapsed time. Production callers reach it via
+    // the Task loop in `startTimer()`.
+    func tick() {
         guard state == .running, !isPaused else { return }
 
         // Overtime: plan is done, but keep the clock + live metrics running.
         // No phase logic — the user runs free until they End.
         if planComplete {
-            phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
+            phaseElapsedSec = elapsedSincePhaseStart()
             totalElapsedSec = bankedSec + phaseElapsedSec
             return
         }
 
         guard let phase = currentPhase else { return }
 
-        phaseElapsedSec = Int(Date.now.timeIntervalSince(phaseStart))
+        phaseElapsedSec = elapsedSincePhaseStart()
         totalElapsedSec = bankedSec + phaseElapsedSec
 
         // Sample per-phase aggregates from the tracker once per tick (1 Hz).
@@ -695,8 +723,9 @@ final class WorkoutEngine: ObservableObject {
         recordCurrentPhase(completed: completedCurrent)
 
         // Bank the wall-clock time actually spent in the phase we're
-        // leaving (honest even when the user skipped early).
-        bankedSec += Int(Date.now.timeIntervalSince(phaseStart))
+        // leaving (honest even when the user skipped early). Warped so
+        // banked + per-phase elapsed stay consistent under time-warp.
+        bankedSec += elapsedSincePhaseStart()
 
         if currentIndex + 1 >= workout.phases.count {
             // Plan done — do NOT stop. Enter overtime: the workout is complete,
@@ -750,7 +779,7 @@ final class WorkoutEngine: ObservableObject {
 
     private func recordCurrentPhase(completed: Bool) {
         guard let p = currentPhase else { return }
-        let actual = Int(Date.now.timeIntervalSince(phaseStart))
+        let actual = elapsedSincePhaseStart()
         // True averages from the per-tick samples, not the instantaneous
         // snapshot at the moment the phase ended.
         let distMi = phaseCoveredMi

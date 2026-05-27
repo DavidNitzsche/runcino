@@ -36,12 +36,31 @@ interface PushRow {
   pushed_at: string;
 }
 
-export function StravaConnectionCard({ initial }: { initial: StravaPrefs }) {
-  const [prefs, setPrefs] = useState<StravaPrefs>(initial);
+export function StravaConnectionCard({ initial }: { initial: { connected: boolean; lastSyncAgo?: string } }) {
+  const [prefs, setPrefs] = useState<StravaPrefs>({
+    connected: initial.connected,
+    lastSyncAgo: initial.lastSyncAgo,
+    autoPush: false,
+    privacy: 'private',
+    titleFormat: 'type_phases',
+  });
   const [pushes, setPushes] = useState<PushRow[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
 
+  // Fetch full prefs + history once on mount.
   useEffect(() => {
+    fetch('/api/profile')
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => {
+        if (!j) return;
+        setPrefs((p) => ({
+          ...p,
+          autoPush: Boolean(j.strava_auto_push),
+          privacy: (j.strava_push_privacy ?? 'private') as StravaPrefs['privacy'],
+          titleFormat: (j.strava_push_title_format ?? 'type_phases') as StravaPrefs['titleFormat'],
+        }));
+      })
+      .catch(() => {});
     fetch('/api/strava/pushes')
       .then((r) => r.ok ? r.json() : null)
       .then((j) => { if (j?.pushes) setPushes(j.pushes.slice(0, 3)); })

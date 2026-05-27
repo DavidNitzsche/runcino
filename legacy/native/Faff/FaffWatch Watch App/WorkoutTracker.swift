@@ -68,6 +68,13 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
     @discardableResult
     func requestAuthorization() async -> Bool {
+        // In the simulator, the workout uses `startSimulatorMock()` and
+        // never touches HealthKit. Skipping the auth prompt unblocks
+        // automated sim drives (the HK consent sheet can't be clicked
+        // reliably via simctl).
+        #if targetEnvironment(simulator)
+        return true
+        #else
         guard available else { return false }
         // SHARE (write) set. The route MUST be here: HKWorkoutRouteBuilder
         // .finishRoute() silently fails to persist the GPS route without
@@ -92,6 +99,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         } catch {
             return false
         }
+        #endif
     }
 
     // MARK: - Lifecycle
@@ -260,19 +268,25 @@ final class WorkoutTracker: NSObject, ObservableObject {
     private func startSimulatorMock() {
         guard mockTask == nil else { return }
         isRecording = true
+        // Warp the mock the same way the engine's clock is warped, so a
+        // distance-based phase (e.g. cruise warmup = 1.8 mi) completes
+        // in proportional real time alongside time-based phases. Without
+        // this the engine would auto-advance on distance at real-time
+        // pace while time phases warp 30x — the run looks broken.
+        let warp = WorkoutEngine.warpFactor
         mockTask = Task { @MainActor [weak self] in
             var t = 0.0
             while !Task.isCancelled {
                 guard let self else { return }
                 if self.mockPaused { try? await Task.sleep(for: .seconds(1)); continue }
                 t += 1
-                // Pace: sine drift ±18s around the current target → crosses
-                // the tolerance bands (green/amber/red) for any target pace.
                 let drift = Int((sin(t / 7) * 18).rounded())
                 self.paceSPerMi = self.mockCenterPace + drift
                 self.heartRate = 164 + Int((sin(t / 11) * 6).rounded())
                 self.cadence = 181 + Int((sin(t / 5) * 3).rounded())
-                self.distanceMi += 0.0045
+                // Mock distance accumulates at ~0.0045 mi/sec at warp=1.
+                // Scale up when warped so distance + time stay in sync.
+                self.distanceMi += 0.0045 * warp
                 self.hrSum += self.heartRate; self.hrCount += 1
                 self.cadSum += self.cadence; self.cadCount += 1
                 self.maxHr = max(self.maxHr, self.heartRate)

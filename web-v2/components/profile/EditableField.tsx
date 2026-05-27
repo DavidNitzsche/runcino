@@ -11,18 +11,35 @@ import { useRouter } from 'next/navigation';
  *   <EditableField field="city" label="City" currentValue="Los Angeles" kind="text" />
  *   <EditableField field="sex" label="Sex" currentValue="Male" kind="select" options={['Male','Female','Other']} />
  *
+ * #157: also supports a `richSelect` kind for fields that need real
+ * descriptions per option (e.g. experience_level). Each option carries a
+ * sentence explaining what the pick does to the user's plan.
+ *
  * Saves via PATCH /api/profile. router.refresh on success.
  */
+export interface RichOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
 export function EditableField({
-  field, label, currentValue, kind, options = [], hint, unitLabel,
+  field, label, currentValue, kind, options = [], richOptions, contextLine, hint, unitLabel, displayMap,
 }: {
   field: string;
   label: string;
   currentValue: string | number | null;
-  kind: 'number' | 'text' | 'select';
+  kind: 'number' | 'text' | 'select' | 'richSelect';
   options?: string[];
+  /** richSelect: array of cards with label + description per choice. */
+  richOptions?: RichOption[];
+  /** Context line shown when editing a richSelect — "this setting drives …" */
+  contextLine?: string;
   hint?: string;
   unitLabel?: string;
+  /** Optional display-time mapping (DB value → human label).
+   *  e.g. { advanced_plus: 'Sub-elite' }. */
+  displayMap?: Record<string, string>;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -73,7 +90,9 @@ export function EditableField({
           </div>
         </div>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: currentValue == null ? 'rgba(246,247,248,0.45)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
-          {currentValue == null ? '— Add' : `${currentValue}${unitLabel ? ' ' + unitLabel : ''}`}
+          {currentValue == null
+            ? '— Add'
+            : `${displayMap?.[String(currentValue)] ?? currentValue}${unitLabel ? ' ' + unitLabel : ''}`}
         </div>
         {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '1px' }}>{hint}</div>}
       </button>
@@ -86,10 +105,70 @@ export function EditableField({
       border: '1px solid var(--green)',
       background: 'rgba(62,189,65,0.04)',
     }}>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8 }}>
+      <div className="card-eyebrow" style={{ color: 'var(--mute)', marginBottom: 8 }}>
         EDIT {label.toUpperCase()}
       </div>
-      {kind === 'select' ? (
+      {kind === 'richSelect' && richOptions ? (
+        <>
+          {contextLine && (
+            <div style={{
+              fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)',
+              lineHeight: 1.5, marginBottom: 12,
+            }}>
+              {contextLine}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {richOptions.map((opt) => {
+              const selected = value === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setValue(opt.value)}
+                  style={{
+                    textAlign: 'left',
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    background: selected ? 'rgba(62,189,65,0.10)' : 'rgba(255,255,255,0.025)',
+                    border: `1px solid ${selected ? 'var(--green)' : 'rgba(255,255,255,0.08)'}`,
+                    cursor: 'pointer',
+                    color: 'inherit', font: 'inherit',
+                    transition: 'background .12s, border-color .12s',
+                  }}
+                >
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4,
+                  }}>
+                    <span style={{
+                      width: 14, height: 14, borderRadius: '50%',
+                      border: `2px solid ${selected ? 'var(--green)' : 'rgba(255,255,255,0.25)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {selected && (
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)' }} />
+                      )}
+                    </span>
+                    <span style={{
+                      fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1px',
+                      color: selected ? 'var(--green)' : 'var(--ink)', fontWeight: 700,
+                    }}>
+                      {opt.label}
+                    </span>
+                  </div>
+                  <div style={{
+                    fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)',
+                    lineHeight: 1.5, marginLeft: 22,
+                  }}>
+                    {opt.description}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ) : kind === 'select' ? (
         <select autoFocus value={value} onChange={(e) => setValue(e.target.value)}
           style={inputStyle()}>
           <option value="">(select)</option>
