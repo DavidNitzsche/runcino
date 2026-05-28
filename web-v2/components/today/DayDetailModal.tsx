@@ -14,6 +14,7 @@ import type { GlanceWeekDay } from '@/lib/coach/glance-state';
 import type { RunDetail } from '@/lib/coach/run-state';
 import type { Prescription, PrescriptionStep } from '@/lib/training/prescriptions';
 import { RunDetailBody } from '@/components/runs/RunDetailModal';
+import { StravaPushButton } from '@/components/runs/StravaPushButton';
 
 const DOW_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -105,8 +106,8 @@ export function DayDetailModal({ day, onClose, prefetchedPres, prefetchedRun }: 
           padding: '28px 32px', maxWidth: 1100, width: '100%', maxHeight: '85vh', overflow: 'auto',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }}>
-          <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, gap: 12 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: typeColor, letterSpacing: '1.6px', fontWeight: 700, textTransform: 'uppercase' }}>
               {typeLabel}{day.isToday ? ' · TODAY' : ''}
             </div>
@@ -117,9 +118,19 @@ export function DayDetailModal({ day, onClose, prefetchedPres, prefetchedRun }: 
               {fmtDate(day.date)}
             </div>
           </div>
-          <button onClick={onClose} style={{
-            background: 'transparent', border: 'none', color: 'var(--mute)', fontSize: 26, cursor: 'pointer', lineHeight: 1,
-          }} aria-label="Close">×</button>
+          {/* 2026-05-27: Strava push + close X live together top-right.
+              David: "put it at the top under the X or something. A random
+              button splitting 2 rows is insane." Push button only shows
+              when there's actually a run to push (ran + activityId + not
+              already a Strava source). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {ran && day.activityId && (
+              <StravaPushButton runId={day.activityId} source={runDetail?.source ?? null} />
+            )}
+            <button onClick={onClose} style={{
+              background: 'transparent', border: 'none', color: 'var(--mute)', fontSize: 26, cursor: 'pointer', lineHeight: 1,
+            }} aria-label="Close">×</button>
+          </div>
         </div>
 
         {/* Body — branches on state */}

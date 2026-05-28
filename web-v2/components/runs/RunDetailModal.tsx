@@ -260,14 +260,11 @@ export function RunDetailBody({
         </>
       )}
 
-      {/* P-STRAVA-MANUAL-PUSH 2026-05-27 — also expose the push action
-          in inline mode (DayDetailModal embeds RunDetailBody this way).
-          Non-inline already gets the button next to the source label. */}
-      {inline && d.id && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-          <StravaPushButton runId={d.id} source={d.source} />
-        </div>
-      )}
+      {/* 2026-05-27: inline-mode push button removed. DayDetailModal
+          owns the push button in its own header (top-right next to
+          the close X) so it doesn't end up as a floating button
+          splitting the hero row from the secondary row. David:
+          "A random button splitting 2 rows is insane." */}
 
       {/* Secondary stats row — what didn't fit above */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
