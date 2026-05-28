@@ -178,6 +178,7 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:1.4px;margin:1
   <a href="#race-day">Race-day ops</a>
   <a href="#spectator">Spectator mode</a>
   <a href="#live">Live run</a>
+  <a href="#treadmill">Treadmill mode</a>
   <a href="#workout">Workout detail</a>
   <a href="#health">Health</a>
   <a href="#coach-full">Coach full-page</a>
@@ -2166,6 +2167,253 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:1.4px;margin:1
   <div class="cap" style="margin:32px 0 0;max-width:none;position:relative"><strong>The choreography matters.</strong> Phone sits in a pocket 95% of the run. When you do pull it out (a stoplight, water, the long stretch by the canal), it should answer: <em>what mile am I on, am I on target, has anyone bumped me?</em> The watch handles the tactical decisions inside the run. The phone is the strategic check-in. Both surfaces share state via the central store — change the watch's HR target on the phone mid-run and the watch updates next second.</div>
 </section>
 
+<!-- ════════════════════ TREADMILL MODE ════════════════════ -->
+<section id="treadmill" class="stage" style="background:linear-gradient(180deg,#15171c 0%,#0a0c10 100%)">
+  <div style="position:absolute;top:0;right:0;width:55%;height:100%;background:radial-gradient(circle at 75% 35%,rgba(39,180,224,0.10) 0%,transparent 55%);pointer-events:none"></div>
+  <div class="eyebrow" style="color:var(--dist);position:relative">indoor · plan-driven</div>
+  <h3 style="position:relative">treadmill<br>takeover.</h3>
+  <div class="blurb" style="position:relative">
+    <strong>Phone-as-coach when you're on the belt.</strong> Today's workout already knows the speeds and the climbs — let the phone drive the treadmill. Big screen takeover, watch-face vibes scaled up: speed and <strong style="color:var(--dist)">elevation</strong> as the hero pair, segment timer, HR pulled live from your paired Apple Watch, up-next on deck. Runna does this half-right — it tells you the speed but not the incline, which is insane when the plan literally specifies hill repeats and tempo gradients. Faff doesn't punt on the climbs.
+  </div>
+  <div class="blurb" style="position:relative;color:rgba(246,247,248,0.6);font-size:13px">
+    <strong style="color:var(--dist)">How it works:</strong> On the morning of a planned workout, the Today card adds a "treadmill" toggle. Flip it → phone enters takeover mode (rotates landscape-optional, dims auto-lock, screen stays on). Workout is broken into segments (warmup · interval blocks · recovery · cooldown). At each transition the phone fires a haptic + flashes the new <em>speed × incline</em> pair big enough to read from the treadmill console. Watch handles HR + auto-syncs the workout to the Run app so splits land in Apple Health. Steady runs get the same treatment — one tile, one number to hold.
+  </div>
+
+  <!-- ────── 4-phone story ────── -->
+  <div class="row dense" style="position:relative;margin-top:24px">
+    <!-- PHONE 01 — Entry: pick treadmill -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>6:42</span><span class="icons">●●● 5G ▮</span></div>
+          <div class="scr" style="padding:18px 20px">
+            <div class="sub-cap" style="color:var(--goal)">QUALITY · TUE 28 MAY</div>
+            <div style="font-family:var(--f-display);font-size:48px;line-height:0.95;letter-spacing:0.4px;margin:8px 0 14px">6 × 800m<br>intervals.</div>
+            <!-- workout summary -->
+            <div style="background:var(--card);border-radius:14px;padding:14px 16px;border:1px solid var(--line);margin-bottom:18px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><div class="sub-cap">REPS</div><div class="h-num" style="font-size:14px">6 × 800m @ 6:08/mi</div></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px"><div class="sub-cap">RECOVERY</div><div class="h-num" style="font-size:14px">400m jog</div></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px"><div class="sub-cap">WARMUP / COOL</div><div class="h-num" style="font-size:14px">1mi each</div></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;padding-top:8px;border-top:1px solid var(--line)"><div class="sub-cap" style="color:var(--ink)">TOTAL</div><div class="h-num" style="font-size:16px;color:var(--ink)">6.0 mi · ~48 min</div></div>
+            </div>
+            <div class="sub-cap" style="margin-bottom:10px">WHERE ARE WE RUNNING?</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+                <div style="display:flex;align-items:center;gap:12px"><div style="font-size:24px">🏞</div><div><div style="font-family:var(--f-display);font-size:18px;line-height:1">OUTDOOR</div><div class="sub-cap" style="font-size:9px;color:var(--mute);margin-top:2px">Track · open road</div></div></div>
+                <span class="kbd">→</span>
+              </div>
+              <div style="background:rgba(39,180,224,0.08);border:2px solid var(--dist);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+                <div style="display:flex;align-items:center;gap:12px"><div style="font-size:24px">🏠</div><div><div style="font-family:var(--f-display);font-size:18px;line-height:1;color:var(--dist)">TREADMILL</div><div class="sub-cap" style="font-size:9px;color:var(--dist);margin-top:2px">Phone drives the workout</div></div></div>
+                <span class="kbd dist">→ start</span>
+              </div>
+            </div>
+            <div style="margin-top:14px;padding:10px 12px;background:linear-gradient(180deg,rgba(176,132,255,0.07),transparent);border:1px solid var(--line);border-radius:10px">
+              <div class="sub-cap" style="color:var(--learn);margin-bottom:3px">COACH</div>
+              <div style="font-size:11.5px;line-height:1.5">Belt fine for this one — flat 800s. If the gym treadmill caps below 11mph, swap to outdoor.</div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab on"><div class="ico">▣</div>Today</div>
+            <div class="tab"><div class="ico">═</div>Plan</div>
+            <div class="tab"><div class="ico">◇</div>Races</div>
+            <div class="tab"><div class="ico">♡</div>Health</div>
+            <div class="tab"><div class="ico">○</div>Me</div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="phone-label"><strong>01 Entry</strong> · pick the belt</div>
+    </div>
+
+    <!-- PHONE 02 — WARMUP CUE (takeover) -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen" style="background:#000">
+          <div class="island"></div>
+          <div class="sb"><span>6:48</span><span class="icons">●●● 5G ▮</span></div>
+          <div class="scr no-tab" style="padding:0;display:flex;flex-direction:column">
+            <!-- top status -->
+            <div style="padding:12px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)">
+              <div class="sub-cap" style="color:var(--dist)">● TREADMILL · SEG 1/13 · WARMUP</div>
+              <div class="kbd dist">9:32 left</div>
+            </div>
+            <!-- hero set-it block -->
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 24px;text-align:center">
+              <div class="sub-cap" style="color:rgba(255,255,255,0.4);letter-spacing:5px;margin-bottom:14px">SET TREADMILL</div>
+              <div style="display:flex;align-items:baseline;gap:18px;margin-bottom:8px">
+                <div><div class="h-num" style="font-size:130px;color:#fff;line-height:0.85">5.0</div><div class="sub-cap" style="font-size:11px;letter-spacing:3.5px;color:var(--dist);margin-top:6px">MPH · SPEED</div></div>
+              </div>
+              <div style="height:1px;width:80%;background:rgba(255,255,255,0.12);margin:18px 0"></div>
+              <div><div class="h-num" style="font-size:74px;color:#fff;line-height:0.85">1.0<span style="font-size:32px;color:rgba(255,255,255,0.5);margin-left:6px">%</span></div><div class="sub-cap" style="font-size:11px;letter-spacing:3.5px;color:var(--dist);margin-top:8px">INCLINE</div></div>
+            </div>
+            <!-- progress / next -->
+            <div style="padding:14px 18px;border-top:1px solid var(--line)">
+              <!-- whole workout segments -->
+              <div style="display:flex;gap:2px;height:6px;margin-bottom:8px;border-radius:3px;overflow:hidden">
+                <div style="flex:3;background:var(--dist);border-radius:2px;position:relative"><div style="position:absolute;left:5%;top:0;bottom:0;width:2px;background:#fff"></div></div>
+                <div style="flex:2;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:2;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:2;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:2;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:2;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:2;background:rgba(255,255,255,0.08)"></div>
+                <div style="flex:3;background:rgba(255,255,255,0.08)"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10px;color:var(--mute);font-family:var(--f-sub);letter-spacing:1.2px;font-weight:600">
+                <span>WU</span><span>1</span><span>R</span><span>2</span><span>R</span><span>3</span><span>R</span><span>4</span><span>R</span><span>5</span><span>R</span><span>6</span><span>CD</span>
+              </div>
+              <div style="margin-top:14px;background:var(--card);border-radius:10px;padding:9px 12px;border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+                <div><div class="sub-cap" style="font-size:8px">UP NEXT · REP 1</div><div style="font-size:12px;font-weight:500;margin-top:2px">8.5 mph · 3.0% · 800m</div></div>
+                <div class="kbd warn" style="font-size:9px">at 6:08/mi</div>
+              </div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="phone-label"><strong>02 Warmup cue</strong> · set the belt</div>
+    </div>
+
+    <!-- PHONE 03 — MID-INTERVAL (active) -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen" style="background:#000">
+          <div class="island"></div>
+          <div class="sb"><span>6:54</span><span class="icons">●●● 5G ▮</span></div>
+          <div class="scr no-tab" style="padding:0;display:flex;flex-direction:column">
+            <!-- top status: REP 1 OF 6 -->
+            <div style="padding:12px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);background:rgba(243,173,56,0.08)">
+              <div class="sub-cap" style="color:var(--goal)">● REP 1 OF 6 · TEMPO</div>
+              <div class="kbd warn">02:18 left</div>
+            </div>
+            <!-- speed + incline + countdown -->
+            <div style="padding:16px 18px 8px;text-align:center">
+              <div class="sub-cap" style="color:rgba(255,255,255,0.4);letter-spacing:5px;margin-bottom:4px">HOLD</div>
+              <div style="display:flex;justify-content:center;align-items:baseline;gap:24px">
+                <div><div class="h-num" style="font-size:88px;color:#fff;line-height:0.88">8.5</div><div class="sub-cap" style="font-size:9px;letter-spacing:2.5px;color:var(--dist)">MPH</div></div>
+                <div style="font-size:32px;color:rgba(255,255,255,0.25);line-height:1">·</div>
+                <div><div class="h-num" style="font-size:88px;color:#fff;line-height:0.88">3.0<span style="font-size:30px;color:rgba(255,255,255,0.4);margin-left:2px">%</span></div><div class="sub-cap" style="font-size:9px;letter-spacing:2.5px;color:var(--dist)">INCLINE</div></div>
+              </div>
+            </div>
+            <!-- HR live from watch -->
+            <div style="padding:0 18px 12px">
+              <div style="margin-top:12px;background:rgba(252,77,100,0.06);border:1px solid rgba(252,77,100,0.18);border-radius:12px;padding:10px 14px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><div class="sub-cap" style="color:var(--over)">⌚ HR · FROM WATCH</div><div class="kbd warn" style="font-size:8px">Z3 upper</div></div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px"><div class="h-num" style="font-size:42px;color:var(--over);line-height:0.9">168</div><div style="font-size:11px;color:var(--mute);font-family:var(--f-sub);font-weight:600">bpm · climbing</div></div>
+                <!-- mini zone bar -->
+                <div style="position:relative;height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,0.05);margin-top:8px">
+                  <div style="display:flex;height:100%">
+                    <div style="flex:0.2;background:var(--rest);opacity:0.45"></div>
+                    <div style="flex:0.35;background:var(--green);opacity:0.7"></div>
+                    <div style="flex:0.25;background:var(--goal);opacity:0.85"></div>
+                    <div style="flex:0.15;background:var(--race);opacity:0.45"></div>
+                    <div style="flex:0.05;background:var(--over);opacity:0.45"></div>
+                  </div>
+                  <div style="position:absolute;top:-3px;bottom:-3px;left:62%;width:2px;background:#fff;box-shadow:0 0 8px rgba(255,255,255,0.7)"></div>
+                </div>
+              </div>
+            </div>
+            <!-- countdown ring -->
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 24px;position:relative">
+              <svg viewBox="0 0 100 100" style="width:140px;height:140px;transform:rotate(-90deg)">
+                <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.06)" stroke-width="5" fill="none"/>
+                <circle cx="50" cy="50" r="44" stroke="#F3AD38" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="100"/>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <div class="h-num" style="font-size:42px;color:#fff;line-height:1">02:18</div>
+                <div class="sub-cap" style="font-size:9px;color:var(--mute);margin-top:3px">REMAINING</div>
+              </div>
+            </div>
+            <!-- up next -->
+            <div style="padding:10px 18px 14px;border-top:1px solid var(--line);background:rgba(0,143,236,0.05);display:flex;justify-content:space-between;align-items:center">
+              <div><div class="sub-cap" style="font-size:8px;color:var(--rest)">UP NEXT · RECOVERY</div><div style="font-size:12px;font-weight:500;margin-top:2px;color:#fff">5.0 mph · 1.0% · 400m jog</div></div>
+              <div style="font-family:var(--f-display);font-size:18px;color:var(--rest)">02:30</div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="phone-label"><strong>03 Mid-interval</strong> · HR from watch</div>
+    </div>
+
+    <!-- PHONE 04 — COMPLETE -->
+    <div>
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>7:34</span><span class="icons">●●● 5G ▮</span></div>
+          <div class="scr no-tab" style="padding:0">
+            <div style="background:linear-gradient(180deg,rgba(39,180,224,0.18),transparent 70%);padding:24px 22px 14px">
+              <div class="sub-cap" style="color:var(--dist)">TREADMILL · COMPLETED</div>
+              <div style="font-family:var(--f-display);font-size:100px;line-height:0.85;letter-spacing:0.5px;margin-top:14px">6 OF 6.<br>DONE.</div>
+            </div>
+            <div style="padding:14px 22px 0">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:12px;border-bottom:1px solid var(--line)">
+                <div><div class="h-num" style="font-size:32px">6.04</div><div class="sub-cap" style="font-size:8px">MILES</div></div>
+                <div><div class="h-num" style="font-size:32px">48:12</div><div class="sub-cap" style="font-size:8px">TIME</div></div>
+                <div><div class="h-num" style="font-size:32px;color:var(--green)">157</div><div class="sub-cap" style="font-size:8px">AVG HR</div></div>
+              </div>
+              <!-- rep table -->
+              <div style="padding:12px 0">
+                <div class="sub-cap" style="margin-bottom:6px">REPS · ALL HIT</div>
+                <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px">
+                  <div style="background:var(--card);border-radius:6px;padding:5px 0;text-align:center;border-top:2px solid var(--green)"><div class="h-num" style="font-size:13px">3:02</div><div class="sub-cap" style="font-size:7px;color:var(--mute);margin-top:1px">R1</div></div>
+                  <div style="background:var(--card);border-radius:6px;padding:5px 0;text-align:center;border-top:2px solid var(--green)"><div class="h-num" style="font-size:13px">3:04</div><div class="sub-cap" style="font-size:7px;color:var(--mute);margin-top:1px">R2</div></div>
+                  <div style="background:var(--card);border-radius:6px;padding:5px 0;text-align:center;border-top:2px solid var(--green)"><div class="h-num" style="font-size:13px">3:02</div><div class="sub-cap" style="font-size:7px;color:var(--mute);margin-top:1px">R3</div></div>
+                  <div style="background:var(--card);border-radius:6px;padding:5px 0;text-align:center;border-top:2px solid var(--green)"><div class="h-num" style="font-size:13px">3:01</div><div class="sub-cap" style="font-size:7px;color:var(--mute);margin-top:1px">R4</div></div>
+                  <div style="background:var(--card);border-radius:6px;padding:5px 0;text-align:center;border-top:2px solid var(--goal)"><div class="h-num" style="font-size:13px">3:06</div><div class="sub-cap" style="font-size:7px;color:var(--mute);margin-top:1px">R5</div></div>
+                  <div style="background:var(--card);border-radius:6px;padding:5px 0;text-align:center;border-top:2px solid var(--green)"><div class="h-num" style="font-size:13px">3:00</div><div class="sub-cap" style="font-size:7px;color:var(--mute);margin-top:1px">R6</div></div>
+                </div>
+              </div>
+              <!-- coach -->
+              <div style="background:linear-gradient(180deg,rgba(176,132,255,0.08),transparent);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-top:6px">
+                <div class="sub-cap" style="color:var(--learn);margin-bottom:4px">COACH</div>
+                <div style="font-size:12px;line-height:1.5">Reps 1-4 perfect. R5 drifted 4s — caught yourself, brought R6 back. <strong>Quality bank made.</strong></div>
+              </div>
+              <div style="display:flex;gap:5px;margin-top:10px;flex-wrap:wrap">
+                <span class="kbd green">✓ all reps</span>
+                <span class="kbd green">✓ z3 71%</span>
+                <span class="kbd dist">→ apple health</span>
+              </div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="phone-label"><strong>04 Complete</strong> · debrief</div>
+    </div>
+  </div>
+
+  <!-- ────── annotation row ────── -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px;position:relative">
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px">
+      <div class="sub-cap" style="color:var(--dist);margin-bottom:8px">WHY ELEVATION MATTERS</div>
+      <div style="font-family:var(--f-display);font-size:22px;letter-spacing:0.4px;margin-bottom:10px;line-height:1.05">Runna's blind spot.</div>
+      <div style="font-size:12.5px;line-height:1.6;color:rgba(246,247,248,0.78)">Hill repeats are <em>defined</em> by incline. Tempo "with a slight grade" is a real prescription. A 6×800 at 3% incline ≈ a 6×800 at 5K pace on the flat — refuse to set the incline and the workout is functionally different. Faff already stores grade per segment. Just surface it.</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px">
+      <div class="sub-cap" style="color:var(--learn);margin-bottom:8px">WATCH IS HR · PHONE IS COACH</div>
+      <div style="font-family:var(--f-display);font-size:22px;letter-spacing:0.4px;margin-bottom:10px;line-height:1.05">Two surfaces,<br>one workout.</div>
+      <div style="font-size:12.5px;line-height:1.6;color:rgba(246,247,248,0.78)">Watch runs its normal workout face (HR, rep number, timer — all from FaceKit). Phone shows the big speed×incline pair propped on the treadmill console. Both share state via the central store. End the workout on either device — both stop, run lands in Apple Health.</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px">
+      <div class="sub-cap" style="color:var(--goal);margin-bottom:8px">SEGMENT TRANSITIONS</div>
+      <div style="font-family:var(--f-display);font-size:22px;letter-spacing:0.4px;margin-bottom:10px;line-height:1.05">10-second pre-cue.</div>
+      <div style="font-size:12.5px;line-height:1.6;color:rgba(246,247,248,0.78)">Ten seconds before a segment change the phone <em>and</em> watch both pulse the new <em>speed × incline</em>. Big enough to read mid-stride, no fumbling at the console. Recovery segments cue down. Cooldown is the same screen, slower.</div>
+    </div>
+  </div>
+
+  <div class="cap" style="margin:32px 0 0;max-width:none;position:relative">
+    <strong>The bet.</strong> Treadmill mode used to be a "for people without watches" feature. With Apple Watch nearly universal among Faff users, it becomes the opposite — a power-user mode where the phone takes the strategic role (knowing the whole plan, calling the next segment) and the watch keeps doing what it's great at (HR + workout recording). The audience that runs intervals on a belt during dark January mornings is exactly the audience that doesn't have time to memorize a 13-segment workout. Faff already has the plan. Make the belt obey it.
+  </div>
+</section>
+
 <!-- ════════════════════ GREENFIELD ════════════════════ -->
 <section id="stretch">
   <div class="eyebrow">stretch bets</div>
@@ -2614,8 +2862,8 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:1.4px;margin:1
     <div style="background:var(--card);border:1.5px solid var(--race);border-radius:18px;padding:28px;position:relative">
       <div class="kbd race" style="position:absolute;top:18px;right:18px">pick one · v1.2</div>
       <div class="sub-cap" style="color:var(--race);margin-bottom:8px">MOVE 03</div>
-      <div style="font-family:var(--f-display);font-size:38px;line-height:1.05;letter-spacing:0.4px;margin-bottom:14px">Add one wildcard:<br>squad · voice · camp.</div>
-      <div style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.78);margin-bottom:14px"><strong>Squad</strong> = social moat, but plan-weighted leaderboards are a coach product, not a feed. <strong>Voice notes</strong> = closes the loop on the existing coach engine. <strong>Camp mode</strong> = power-user love. Pick one for v1.2. My vote: <strong style="color:var(--race)">voice notes</strong> — smallest scope, biggest "Faff gets me" moment.</div>
+      <div style="font-family:var(--f-display);font-size:38px;line-height:1.05;letter-spacing:0.4px;margin-bottom:14px">Add one wildcard:<br>treadmill · squad · voice · camp.</div>
+      <div style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.78);margin-bottom:14px"><strong>Treadmill mode</strong> = phone takes over the belt, calls speed AND incline (Runna's blind spot), HR from watch. <strong>Squad</strong> = social moat with plan-weighted leaderboards. <strong>Voice notes</strong> = closes the loop on the existing coach engine. <strong>Camp mode</strong> = power-user love. My vote: <strong style="color:var(--race)">treadmill mode</strong> — the plan already knows the inclines, surfacing them is days of work, and "I open Faff every Tuesday January night" is the use case that wins evangelists.</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line)">
         <span class="kbd race">opinion</span>
         <span class="kbd">small scope</span>
