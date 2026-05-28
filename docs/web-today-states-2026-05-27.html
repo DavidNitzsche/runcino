@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / web TODAY · states + rules · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+
+  --g-easy:linear-gradient(135deg,#3EBD41 0%,#1f8a52 60%,#0f4a3a 100%);
+  --g-quality:linear-gradient(135deg,#F3AD38 0%,#E85D26 60%,#7a2828 100%);
+  --g-long:linear-gradient(135deg,#27B4E0 0%,#1a6a9e 60%,#0c2a5e 100%);
+  --g-rest:linear-gradient(135deg,#008FEC 0%,#4a3a8e 60%,#1c1a3a 100%);
+  --g-done:linear-gradient(135deg,#3EBD41 0%,#27B4E0 60%,#1a4a8e 100%);
+  --g-ease:linear-gradient(135deg,#F3AD38 0%,#7a4a26 60%,#2a1a18 100%);
+  --g-niggle:linear-gradient(135deg,#3EBD41 0%,#2a6a3a 50%,#5a3408 100%);
+  --g-sick:linear-gradient(135deg,#5a6580 0%,#3a3a55 60%,#1a1a2a 100%);
+  --g-missed:linear-gradient(135deg,#F3AD38 0%,#c47812 60%,#5a3408 100%);
+  --g-race:linear-gradient(135deg,#FF8847 0%,#E85D26 50%,#7a2828 100%);
+  --g-new:linear-gradient(135deg,#B084FF 0%,#6a4ace 60%,#2a1a5a 100%);
+
+  --f-display:'Bebas Neue','HelveticaNeue-Bold',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-sub:'Oswald','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#06080b;color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:48px 32px 160px}
+.wrap{max-width:1480px;margin:0 auto}
+
+.eyebrow{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.deck-hero{padding:24px 0 56px;border-bottom:1px solid var(--line);margin-bottom:64px}
+h1.title{font-family:var(--f-display);font-size:120px;line-height:0.88;letter-spacing:0.8px;margin:18px 0 12px;font-weight:400}
+.title .a{background:linear-gradient(135deg,#3EBD41 0%,#27B4E0 30%,#B084FF 60%,#FF8847 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:17px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:880px;margin-top:24px}
+.lede strong{color:var(--ink)}
+.lede em{color:var(--race);font-style:normal;font-weight:600}
+
+h2.sec{font-family:var(--f-display);font-size:72px;letter-spacing:0.8px;margin:96px 0 8px;line-height:1;font-weight:400}
+.sec-tag{font-family:var(--f-sub);font-size:11px;letter-spacing:2.2px;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:32px;display:flex;align-items:center;gap:12px}
+.sec-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.kicker{font-size:15px;line-height:1.6;color:rgba(246,247,248,0.75);max-width:880px;margin-bottom:48px}
+.kicker strong{color:var(--ink)}
+
+/* ─── pattern recap ─── */
+.pattern{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:80px}
+.pat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+.pat .num{font-family:var(--f-display);font-size:54px;color:rgba(255,255,255,0.07);line-height:1;float:right;margin-top:-4px;font-weight:400}
+.pat .tag{font-family:var(--f-sub);font-size:10px;letter-spacing:1.8px;text-transform:uppercase;color:var(--learn);font-weight:700;margin-bottom:10px}
+.pat h4{font-family:var(--f-display);font-size:26px;letter-spacing:0.4px;line-height:1.05;font-weight:400;margin:0 0 10px}
+.pat p{font-size:13px;line-height:1.55;color:rgba(246,247,248,0.7);margin:0}
+.pat p strong{color:var(--ink)}
+
+/* ─── overview matrix ─── */
+.matrix{width:100%;border-collapse:collapse;margin:24px 0 96px;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.matrix th{padding:14px 18px;text-align:left;font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;font-weight:600;color:var(--mute);background:var(--bg2);border-bottom:1px solid var(--line)}
+.matrix td{padding:14px 18px;border-bottom:1px solid var(--line2);vertical-align:middle}
+.matrix tr:last-child td{border-bottom:0}
+.matrix tr:hover td{background:rgba(255,255,255,0.02)}
+.matrix .state{font-family:var(--f-display);font-size:22px;letter-spacing:0.4px}
+.matrix .swatch{width:36px;height:36px;border-radius:6px;display:inline-block;vertical-align:middle;margin-right:8px;border:1px solid var(--line);box-shadow:inset 0 0 0 1px rgba(0,0,0,0.2)}
+.matrix .verb{font-family:var(--f-display);font-size:18px;color:var(--ink);letter-spacing:0.3px}
+.matrix .trigger{font-family:Inter;font-size:12px;color:rgba(246,247,248,0.7);line-height:1.45}
+.matrix .trigger code{font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.04);padding:1px 5px;border-radius:3px;color:var(--ink)}
+.matrix .sibling{font-family:Inter;font-size:12.5px;color:rgba(246,247,248,0.7)}
+.matrix .sibling strong{color:var(--ink)}
+
+/* ─── state block ─── */
+.state-block{margin:64px 0;padding:36px 0;border-top:1px solid var(--line)}
+.state-head{display:flex;justify-content:space-between;align-items:baseline;gap:32px;margin-bottom:24px}
+.state-head .left h3{font-family:var(--f-display);font-size:56px;letter-spacing:0.6px;line-height:1;margin:0;font-weight:400;display:flex;align-items:center;gap:18px}
+.state-head .left h3 .n{font-family:var(--f-display);font-size:20px;color:var(--mute);letter-spacing:1.8px;vertical-align:14px}
+.state-head .left .blurb{font-size:14px;line-height:1.55;color:rgba(246,247,248,0.7);max-width:640px;margin-top:8px}
+.state-head .left .blurb strong{color:var(--ink)}
+.state-head .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;padding-top:6px}
+.state-head .swatch{width:120px;height:48px;border-radius:8px;border:1px solid var(--line)}
+.state-head .pill{font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;font-weight:600;text-transform:uppercase;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,0.06);color:var(--mute)}
+
+/* ─── compact today preview ─── */
+.preview{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-bottom:24px}
+.mini-poster{border-radius:14px;overflow:hidden;padding:24px 26px 22px;color:#fff;display:flex;flex-direction:column;min-height:340px;position:relative}
+.mini-poster.easy{background:var(--g-easy)}
+.mini-poster.quality{background:var(--g-quality)}
+.mini-poster.long{background:var(--g-long)}
+.mini-poster.rest{background:var(--g-rest)}
+.mini-poster.done{background:var(--g-done)}
+.mini-poster.ease{background:var(--g-ease)}
+.mini-poster.niggle{background:var(--g-niggle)}
+.mini-poster.sick{background:var(--g-sick)}
+.mini-poster.missed{background:var(--g-missed)}
+.mini-poster.race{background:var(--g-race)}
+.mini-poster.new{background:var(--g-new)}
+.mini-poster .htag{font-family:var(--f-sub);font-size:10px;letter-spacing:2.2px;text-transform:uppercase;font-weight:600;color:rgba(255,255,255,0.85);margin-bottom:4px}
+.mini-poster .verb{font-family:var(--f-display);font-size:88px;line-height:0.84;letter-spacing:0.4px;font-weight:400;color:#fff;margin-top:4px}
+.mini-poster .verb.small{font-size:64px}
+.mini-poster .verb.tiny{font-size:48px}
+.mini-poster .rx{font-family:Inter;font-size:14px;font-weight:500;color:rgba(255,255,255,0.88);margin-top:12px;line-height:1.45;max-width:90%}
+.mini-poster .phase-tag{font-family:var(--f-sub);font-size:10px;letter-spacing:1.8px;text-transform:uppercase;font-weight:600;color:rgba(255,255,255,0.65);margin-top:14px}
+.mini-poster .stat-trio{display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:16px}
+.mini-poster .stat-trio .v{font-family:var(--f-display);font-size:36px;line-height:1;color:#fff}
+.mini-poster .stat-trio .v.amber{color:#FFE38F}
+.mini-poster .stat-trio .l{font-family:var(--f-sub);font-size:9px;letter-spacing:1.8px;font-weight:600;color:rgba(255,255,255,0.7);text-transform:uppercase;margin-top:4px}
+.mini-poster .choice-row{margin-top:auto;padding-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mini-poster .choice{padding:10px 12px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.25);color:#fff}
+.mini-poster .choice.pref{background:#fff;color:#0a0c10;border-color:#fff}
+.mini-poster .choice .cverb{font-family:var(--f-display);font-size:20px;line-height:1;letter-spacing:0.3px}
+.mini-poster .choice .csub{font-family:var(--f-sub);font-size:8px;letter-spacing:1.2px;text-transform:uppercase;font-weight:600;margin-top:4px;opacity:0.7}
+
+/* mini sibling */
+.mini-sibling{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;display:flex;flex-direction:column;min-height:340px}
+.mini-sibling h4{font-family:var(--f-display);font-size:24px;letter-spacing:0.4px;margin:0 0 18px;font-weight:400;display:flex;align-items:baseline;gap:10px}
+.mini-sibling h4 .stag{font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:var(--mute);font-weight:600;text-transform:uppercase}
+.mini-sibling .prose{font-family:Inter;font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.82);margin-bottom:14px}
+.mini-sibling .prose strong{color:var(--ink)}
+
+/* tile grid in mini sibling */
+.mtiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1}
+.mtile{background:rgba(255,255,255,0.02);border:1px solid var(--line2);border-radius:9px;padding:12px 14px;position:relative}
+.mtile .mdot{position:absolute;top:12px;right:12px;width:7px;height:7px;border-radius:50%}
+.mtile .mdot.green{background:var(--green);box-shadow:0 0 6px rgba(62,189,65,0.55)}
+.mtile .mdot.warn{background:var(--goal);box-shadow:0 0 6px rgba(243,173,56,0.55)}
+.mtile .mdot.over{background:var(--over);box-shadow:0 0 6px rgba(252,77,100,0.55)}
+.mtile .mdot.dist{background:var(--dist);box-shadow:0 0 6px rgba(39,180,224,0.55)}
+.mtile .mlbl{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:6px}
+.mtile .mv{font-family:var(--f-display);font-size:26px;letter-spacing:0.3px;line-height:1;color:var(--ink)}
+.mtile .mv.green{color:var(--green)}
+.mtile .mv.amber{color:var(--goal)}
+.mtile .mv.over{color:var(--over)}
+.mtile .mv.race{color:var(--race)}
+.mtile .mv.dist{color:var(--dist)}
+.mtile .mv .u{font-size:13px;color:var(--mute);margin-left:2px}
+.mtile .mmeta{font-family:Inter;font-size:10.5px;line-height:1.45;color:rgba(246,247,248,0.6);margin-top:7px}
+.mtile .mmeta strong{color:rgba(246,247,248,0.9);font-weight:600}
+
+/* ─── rules block ─── */
+.rules{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+.rule{background:rgba(255,255,255,0.02);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.rule .rt{font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;color:var(--learn);margin-bottom:8px}
+.rule .rt.warn{color:var(--goal)}
+.rule .rt.over{color:var(--over)}
+.rule .rt.green{color:var(--green)}
+.rule .rb{font-family:Inter;font-size:12px;line-height:1.55;color:rgba(246,247,248,0.82)}
+.rule .rb strong{color:var(--ink)}
+.rule .rb code{font-family:'Courier New',monospace;font-size:10.5px;background:rgba(255,255,255,0.05);padding:1px 5px;border-radius:3px;color:var(--ink)}
+
+/* endnote */
+.endnote{margin-top:120px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:var(--f-display);font-size:54px;letter-spacing:0.6px;margin:0 0 18px;font-weight:400}
+.endnote p{font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:880px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+.endnote p code{font-family:'Courier New',monospace;font-size:12px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px}
+
+@media (max-width:1100px){.pattern{grid-template-columns:1fr}.preview{grid-template-columns:1fr}.rules{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO INTRO -->
+<div class="deck-hero">
+  <div class="eyebrow">faff · web today · states + rules · 2026-05-27</div>
+  <h1 class="title">eleven states.<br>one <span class="a">pattern.</span></h1>
+  <div class="lede">
+    Pattern's locked: <strong>poster + sibling + week strip + mini-tiles</strong>. Now the work is showing what every state looks like under that pattern, and writing the rules that pick between them. <em>Below: every state Faff supports, what triggers it, what fills the poster, what fills the sibling.</em>
+  </div>
+  <div class="lede" style="color:rgba(246,247,248,0.58);font-size:14px;margin-top:14px">
+    Each state has a <strong style="color:var(--ink)">resolver clause</strong> — when does this state fire — and a <strong style="color:var(--ink)">render spec</strong> — gradient, verb, sibling content, tiles. Build sprint 01 implements the resolver as a pure function; sprint 02 fills in the verb table + sibling variants; sprint 03 polishes the transitions.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ -->
+<!-- PATTERN RECAP — 3 building blocks -->
+<!-- ═══════════════════════════════ -->
+<section>
+  <div class="eyebrow">the pattern · locked</div>
+  <h2 class="sec">three building<br>blocks.</h2>
+  <div class="sec-tag"><span class="dot"></span>poster · sibling · week strip — every state composes these</div>
+
+  <div class="pattern">
+    <div class="pat">
+      <div class="num">01</div>
+      <div class="tag">poster</div>
+      <h4>The gradient card.</h4>
+      <p>Eyebrow tag · verb (Bebas hero) · phase-tag (small caps) · stat trio at the bottom. Sometimes the stat trio is a choice button pair (MISSED) or a logistics block (RACE WEEK). <strong>Gradient = state.</strong></p>
+    </div>
+    <div class="pat">
+      <div class="num">02</div>
+      <div class="tag" style="color:var(--green)">sibling</div>
+      <h4>The data card.</h4>
+      <p>Dark card next to the poster. Header (At a glance / Run details / Why X / Setup) + optional prose + <strong>2×N mini-tile dashboard</strong>. Tiles have a status dot (green/amber/red), big number, one-line meta. Same component, different content per state.</p>
+    </div>
+    <div class="pat">
+      <div class="num">03</div>
+      <div class="tag" style="color:var(--goal)">week strip</div>
+      <h4>The arc.</h4>
+      <p>Section header (THIS WEEK + mileage summary) + 7 day cards with colored accent bars. Bar color matches state. Today gets the white outline. Done days get the check badge. <strong>Always visible, never collapses.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ -->
+<!-- OVERVIEW MATRIX                  -->
+<!-- ═══════════════════════════════ -->
+<section>
+  <div class="eyebrow">overview · every state</div>
+  <h2 class="sec">eleven rules.<br>eleven mockups.</h2>
+  <div class="sec-tag"><span class="dot" style="background:var(--learn)"></span>resolver picks one · render spec per state</div>
+  <div class="kicker">Resolver runs on app foreground + push invalidation + day-rollover. <strong>Returns one state.</strong> UI binds. The priority order below is the resolver's decision tree — first match wins.</div>
+
+  <table class="matrix">
+    <thead>
+      <tr>
+        <th style="width:14%">State</th>
+        <th style="width:24%">Trigger (resolver)</th>
+        <th style="width:14%">Hero verb</th>
+        <th style="width:22%">Poster shows</th>
+        <th>Sibling shows</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-race)"></span>Race week</td>
+        <td class="trigger"><code>race.days ≤ 3</code> · highest priority. Locks panel until race+1d.</td>
+        <td class="verb">LONDON.</td>
+        <td class="trigger">Race name · days countdown · bib · corral · predicted finish.</td>
+        <td class="sibling"><strong>Race-day ops</strong> tiles: weather · transport · spectators · checklist.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-sick)"></span>Sick</td>
+        <td class="trigger"><code>hrv ↓ 25%+</code> AND <code>rhr ↑ 8+</code> for 2 days. Auto-detected.</td>
+        <td class="verb">REST.</td>
+        <td class="trigger">Verb · "Body's fighting something." · streak auto-paused.</td>
+        <td class="sibling"><strong>Body alert</strong> tiles: HRV · RHR · sleep · trend over 5 days.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-missed)"></span>Missed</td>
+        <td class="trigger"><code>yesterday.workout</code> existed AND no <code>actual.run</code> recorded.</td>
+        <td class="verb">PICK ONE.</td>
+        <td class="trigger">Two-button hero · CATCH UP / MOVE ON. Plan-aware default.</td>
+        <td class="sibling"><strong>Why move on</strong> prose + tiles: load impact · block hit rate · HRV · race.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-niggle)"></span>Niggle</td>
+        <td class="trigger"><code>niggles.active.length &gt; 0</code> AND not race-week. Modifier on base state.</td>
+        <td class="verb">RUN EASY. — <em>Watch L calf.</em></td>
+        <td class="trigger">Base verb + modifier suffix. Gradient subdued green.</td>
+        <td class="sibling"><strong>Niggle watch</strong> tiles: location · severity · days · ease-trigger threshold.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-done)"></span>Done · nailed</td>
+        <td class="trigger"><code>last_run.ended ≤ 6h ago</code> AND all targets hit. Auto-replaces base state.</td>
+        <td class="verb">NAILED IT.</td>
+        <td class="trigger">Result-keyed verb · actual stats (dist · time · avg HR).</td>
+        <td class="sibling"><strong>Run details</strong> tiles: pace vs target · Z2 % · cadence · HR drift · next hard · recovery.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-ease)"></span>Done · ease off</td>
+        <td class="trigger"><code>last_run</code> ≤ 6h AND <code>hr_drift &gt; 8bpm</code> OR <code>z_above_target &gt; 20%</code>.</td>
+        <td class="verb">EASE OFF TOMORROW.</td>
+        <td class="trigger">Honest result verb · stats · what to do about it.</td>
+        <td class="sibling"><strong>Run details</strong> + warning · HR drift highlighted · tomorrow adjusted.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-quality)"></span>Quality</td>
+        <td class="trigger"><code>today.workout.type ∈ {intervals, tempo, threshold}</code></td>
+        <td class="verb">WORK DAY.</td>
+        <td class="trigger">Reps × distance · rep pace · effort tag.</td>
+        <td class="sibling"><strong>At a glance</strong> tiles · prep-focused: sleep · HRV · load · race · next · readiness.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-long)"></span>Long</td>
+        <td class="trigger"><code>today.workout.distance ≥ 12mi</code> OR <code>type = long</code></td>
+        <td class="verb">GO LONG.</td>
+        <td class="trigger">Distance hero · pace band · fuel checkpoints.</td>
+        <td class="sibling"><strong>At a glance</strong> · long-focused: sleep · fuel · weather · route grade · race · shoe.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-rest)"></span>Rest</td>
+        <td class="trigger"><code>today.workout.type = rest</code> AND not race-week.</td>
+        <td class="verb">REST.</td>
+        <td class="trigger">Verb · "Permission, not punishment." · tomorrow preview.</td>
+        <td class="sibling"><strong>Recovery state</strong> tiles: HRV · RHR · sleep trend · streak · readiness · tomorrow.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-easy)"></span>Easy</td>
+        <td class="trigger"><code>today.workout.type = easy</code> · default for aerobic days.</td>
+        <td class="verb">RUN EASY.</td>
+        <td class="trigger">Stat trio · phase tag · gradient says aerobic.</td>
+        <td class="sibling"><strong>At a glance</strong> · 6 standard tiles · the daily readout.</td>
+      </tr>
+      <tr>
+        <td class="state"><span class="swatch" style="background:var(--g-new)"></span>New user</td>
+        <td class="trigger"><code>profile.completeness &lt; 60%</code> OR <code>first_session = true</code>.</td>
+        <td class="verb">WELCOME.</td>
+        <td class="trigger">Setup verb · "Tell Faff a few things." · progress strip.</td>
+        <td class="sibling"><strong>Setup steps</strong> tiles: race · threshold · watch · first run.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="kicker" style="margin-top:-64px">
+    <strong>Priority is real.</strong> Race week locks out everything else. Sick auto-overrides workout plans. Missed becomes the home until the user picks. Done auto-replaces base state for 6 hours. Niggle modifies base state without replacing it. Everything else flows from <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.04);padding:1px 5px;border-radius:3px">today.workout.type</code>.
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ -->
+<!-- STATE DETAILS — one block each   -->
+<!-- ═══════════════════════════════ -->
+<section>
+  <div class="eyebrow">state details · mockups + rules</div>
+  <h2 class="sec">each state,<br>fully spec'd.</h2>
+  <div class="sec-tag"><span class="dot"></span>compact mockup · resolver trigger · render rule · sibling content</div>
+</section>
+
+<!-- ═══ 01 · EASY ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">01</span>EASY</h3>
+      <div class="blurb">The baseline aerobic day. Default for any <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.05);padding:1px 5px;border-radius:3px">workout.type = easy</code>. <strong>Hits the home most days.</strong> Green gradient · single hero verb · standard 6-tile dashboard.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-easy)"></div><div class="pill" style="color:var(--green)">G-EASY · #3EBD41</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster easy">
+      <div class="htag">TODAY · EASY · Z2 · WED 27 MAY</div>
+      <div class="verb">RUN<br>EASY.</div>
+      <div class="phase-tag">Build · Wk 6 of 8 · Aerobic</div>
+      <div class="stat-trio">
+        <div><div class="v">5.8</div><div class="l">MI</div></div>
+        <div><div class="v">8:12</div><div class="l">PACE</div></div>
+        <div><div class="v amber">148</div><div class="l">HR CAP</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>At a glance <span class="stag">· the why</span></h4>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Sleep</div><div class="mv amber">7.2h</div><div class="mmeta"><strong>6th short night.</strong></div></div>
+        <div class="mtile"><div class="mdot over"></div><div class="mlbl">HRV</div><div class="mv over">38<span class="u">ms</span></div><div class="mmeta"><strong>Trending down.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">RHR</div><div class="mv green">48</div><div class="mmeta">+0. <strong>Steady.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Load</div><div class="mv amber">1.24</div><div class="mmeta">Build band.</div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Week mi</div><div class="mv green">22 / 30</div><div class="mmeta"><strong>On pace.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">London · 14d</div><div class="mv race">2:54</div><div class="mmeta"><strong>1:00 ahead.</strong></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>today.workout.type = easy</code> · default aerobic. Fires when no higher-priority state matches (race-week, sick, missed, post-run window, niggle, doubles).</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-easy</code> (green → dark green). Verb <strong>RUN EASY.</strong> Phase-tag from <code>plan.phase + plan.phase_intent</code>. Stat trio = distance · pace · HR cap.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"At a glance" with 6 standard tiles: sleep · HRV · RHR · load · week mi · race. Dots colored by band: green (in range), amber (off), red (alarm).</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 02 · QUALITY ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">02</span>QUALITY</h3>
+      <div class="blurb">Intervals · tempo · threshold. The day the plan asks for hard work. Amber-red gradient says <em>effort.</em> Stat trio shows reps × distance instead of single distance. Sibling stays "At a glance" but tiles flex toward pre-quality prep.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-quality)"></div><div class="pill" style="color:var(--goal)">G-QUALITY · #F3AD38→#E85D26</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster quality">
+      <div class="htag">TODAY · QUALITY · INTERVALS · THU 28 MAY</div>
+      <div class="verb">WORK<br>DAY.</div>
+      <div class="phase-tag">Build · Wk 6 of 8 · Neuromuscular</div>
+      <div class="stat-trio">
+        <div><div class="v">6×800</div><div class="l">REPS</div></div>
+        <div><div class="v">3:02</div><div class="l">REP PACE</div></div>
+        <div><div class="v amber">168</div><div class="l">HR TARGET</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>At a glance <span class="stag">· prep</span></h4>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Sleep</div><div class="mv green">8.1h</div><div class="mmeta"><strong>Rested. Go.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">HRV</div><div class="mv green">46<span class="u">ms</span></div><div class="mmeta">+3. <strong>Recovered.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Load · post</div><div class="mv amber">→ 1.42</div><div class="mmeta">Builds to spike risk.</div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Last quality</div><div class="mv green">5/6</div><div class="mmeta">10 days ago. <strong>Hit.</strong></div></div>
+        <div class="mtile"><div class="mdot dist"></div><div class="mlbl">Weather · 6am</div><div class="mv dist">8°</div><div class="mmeta">Cool. <strong>Layer up.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">London · 13d</div><div class="mv race">2:54</div><div class="mmeta">This is the session.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>workout.type ∈ {intervals, tempo, threshold, fartlek}</code>. Overrides easy when both could apply.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-quality</code> (amber → red). Verb table picks: WORK DAY · TEMPO · INTERVALS · THRESHOLD by workout sub-type. Stat trio = reps × dist · rep pace · HR target.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"At a glance · prep" — tiles skew pre-quality: sleep (readiness), HRV (recovered?), <strong>load post</strong> (where you'll be after), last quality (continuity), weather, race horizon.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 03 · LONG ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">03</span>LONG</h3>
+      <div class="blurb">Sunday morning. The big aerobic block. <strong>Single hero number</strong> — distance dominates · pace is a range, not a target. Cyan-blue gradient says <em>calm before the time.</em> Sibling tiles flex toward fuel + route + shoes.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-long)"></div><div class="pill" style="color:var(--dist)">G-LONG · #27B4E0→#1a6a9e</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster long">
+      <div class="htag">TODAY · LONG RUN · Z2 STEADY · SUN 31 MAY</div>
+      <div style="display:flex;align-items:flex-end;gap:14px;margin-top:6px"><div style="font-family:var(--f-display);font-size:128px;line-height:0.82;color:#fff">14</div><div style="padding-bottom:10px"><div style="font-family:var(--f-sub);font-size:11px;letter-spacing:2px;font-weight:600;color:rgba(255,255,255,0.85);text-transform:uppercase">MILES</div><div style="font-family:var(--f-display);font-size:22px;color:#fff;line-height:1;margin-top:3px">~1:55</div></div></div>
+      <div class="phase-tag">Build · Wk 6 of 8 · Aerobic capacity</div>
+      <div class="stat-trio">
+        <div><div class="v">8:00–8:30</div><div class="l">PACE BAND</div></div>
+        <div><div class="v amber">155</div><div class="l">HR CAP</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>At a glance <span class="stag">· the long</span></h4>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Sleep</div><div class="mv green">7.6h</div><div class="mmeta"><strong>Good base.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Fueling</div><div class="mv amber">2 gels</div><div class="mmeta">Take @ <strong>mi 5, 10</strong>.</div></div>
+        <div class="mtile"><div class="mdot dist"></div><div class="mlbl">Weather · 7am</div><div class="mv dist">11° ☁</div><div class="mmeta"><strong>Cool. Ideal.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Route · grade</div><div class="mv green">+220ft</div><div class="mmeta">Canal loop. <strong>Flat.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Shoes</div><div class="mv green">312 mi</div><div class="mmeta">Endorphin. <strong>OK.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">London · 11d</div><div class="mv race">2:54</div><div class="mmeta">Race dress rehearsal.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>workout.distance ≥ 12mi</code> OR <code>workout.type = long</code>. Saturday/Sunday default for marathon plans.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-long</code> (cyan → deep blue). <strong>Distance replaces verb</strong> — single big number, miles label, est duration. Stat trio = pace band + HR cap (no third stat, the long doesn't need one).</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"At a glance · the long" — tiles reweight: sleep, <strong>fueling</strong>, weather, route grade, shoes mileage, race horizon. Body alarms (HRV/RHR) move to deep-dive.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 04 · REST ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">04</span>REST</h3>
+      <div class="blurb">Programmed day off. The verb is the call. <strong>Permission, not punishment.</strong> Blue-purple gradient feels like the parasympathetic side of the system. Sibling flexes to recovery + tomorrow preview + streak protection.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-rest)"></div><div class="pill" style="color:var(--rest)">G-REST · #008FEC→purple</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster rest">
+      <div class="htag">TODAY · REST DAY · FRI 29 MAY</div>
+      <div class="verb">REST.</div>
+      <div class="rx">Permission, not punishment. The work this week was real — let the body absorb it.</div>
+      <div class="phase-tag">Build · Wk 6 of 8</div>
+      <div class="stat-trio" style="padding-top:14px">
+        <div><div class="v">23</div><div class="l">DAY STREAK</div></div>
+        <div><div class="v">8.0</div><div class="l">TMRW · EASY</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Recovery state <span class="stag">· the body</span></h4>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">HRV · today</div><div class="mv green">46<span class="u">ms</span></div><div class="mmeta">+8 vs yesterday.</div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">RHR</div><div class="mv green">46</div><div class="mmeta">−2. <strong>Recovering.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Sleep · last</div><div class="mv green">8.4h</div><div class="mmeta"><strong>Deep night.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Load</div><div class="mv green">1.18</div><div class="mmeta">Trending to build band.</div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Streak</div><div class="mv green">23<span class="u">d</span></div><div class="mmeta">Consistency. <strong>Holds.</strong></div></div>
+        <div class="mtile"><div class="mdot dist"></div><div class="mlbl">Tomorrow</div><div class="mv dist">8mi</div><div class="mmeta">Easy. <strong>Ready by 7am.</strong></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>workout.type = rest</code> AND not <code>sick</code> AND not <code>missed</code>. Includes cross-train days (yoga, swim) — render same with type chip.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-rest</code> (blue → purple). Verb <strong>REST.</strong> with prose subhead. Stat trio replaced by <strong>streak counter + tomorrow preview</strong> (both anti-anxiety chips).</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Recovery state" — every tile should be green when rest is doing its job: HRV rebounding, RHR dropping, sleep banking. Red dot here = something's off.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 05 · DONE · NAILED ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">05</span>DONE · NAILED</h3>
+      <div class="blurb">Post-run, all targets hit. <strong>Auto-replaces base state for 6 hours.</strong> Sibling flips from "At a glance" (prep) to "Run details" (results). The screenshot moment.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-done)"></div><div class="pill" style="color:var(--green)">G-DONE · #3EBD41→#27B4E0</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster done">
+      <div class="htag">EASY · COMPLETED · 0:48 AGO · WED 27 MAY</div>
+      <div class="verb">NAILED<br>IT.</div>
+      <div class="phase-tag">Build · Wk 6 of 8 · Banked</div>
+      <div class="stat-trio">
+        <div><div class="v">5.86</div><div class="l">MI</div></div>
+        <div><div class="v">49:22</div><div class="l">TIME</div></div>
+        <div><div class="v">140</div><div class="l">AVG HR</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Run details <span class="stag">· what happened</span></h4>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Pace · target</div><div class="mv amber">8:25</div><div class="mmeta">vs 8:12 · <strong>13s soft.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Z2 time</div><div class="mv green">100<span class="u">%</span></div><div class="mmeta"><strong>Locked in.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Cadence</div><div class="mv green">169</div><div class="mmeta">+1 vs avg.</div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">HR drift</div><div class="mv green">+3<span class="u">bpm</span></div><div class="mmeta">Aerobic. <strong>Negligible.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Distance</div><div class="mv green">+0.06</div><div class="mmeta">vs 5.8 plan. <strong>Bonus.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Next · Thu</div><div class="mv amber">6×800</div><div class="mmeta">Quality. <strong>Cap 168.</strong></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>last_run.ended ≤ 6h ago</code> AND result-keyed verb resolves to <strong>NAILED IT</strong>. Verb fires when: distance hit ±0.3mi · pace within 10s · HR in zone · no cut-short flag.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-done</code> (green → cyan). Verb from result table (NAILED IT · STEADY · GOOD ENOUGH · NEW BEST · DISTANCE BANKED). Stat trio = actual distance · time · avg HR.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Run details" — tiles flip to result data: pace vs target · Z2 % · cadence · HR drift · distance vs plan · <strong>next workout</strong>. Body context moves to body deep-dive below.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 06 · DONE · EASE OFF ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">06</span>DONE · EASE OFF TOMORROW</h3>
+      <div class="blurb">Post-run, HR drifted over OR pace miss with elevated effort. <strong>Honest verb, not punishing.</strong> Faded amber gradient · clear warning · tomorrow proposes a lighter session if available.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-ease)"></div><div class="pill" style="color:var(--goal)">G-EASE · faded amber</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster ease">
+      <div class="htag">EASY · COMPLETED · HR DRIFTED · WED 27 MAY</div>
+      <div class="verb small">EASE OFF<br>TOMORROW.</div>
+      <div class="rx">Z2 cap was 148. Drifted to 154 by mile 4. Easy day ran orange.</div>
+      <div class="phase-tag">Build · Wk 6 of 8</div>
+      <div class="stat-trio">
+        <div><div class="v">5.86</div><div class="l">MI</div></div>
+        <div><div class="v">49:22</div><div class="l">TIME</div></div>
+        <div><div class="v amber">152</div><div class="l">AVG HR</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Run details <span class="stag">· honest read</span></h4>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot over"></div><div class="mlbl">HR drift</div><div class="mv over">+11<span class="u">bpm</span></div><div class="mmeta">Mile 1 → 4. <strong>Over Z2 cap.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Z2 time</div><div class="mv amber">62<span class="u">%</span></div><div class="mmeta">38% above. <strong>Drift.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Pace</div><div class="mv green">8:10</div><div class="mmeta">vs 8:12. <strong>On pace.</strong></div></div>
+        <div class="mtile"><div class="mdot over"></div><div class="mlbl">Effort · RPE</div><div class="mv over">6</div><div class="mmeta">Easy felt 6/10. <strong>Off day.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Tomorrow · was</div><div class="mv amber">6×800</div><div class="mmeta">→ propose <strong>moved to Fri.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Watch · 24h</div><div class="mv amber">HRV</div><div class="mmeta">If &lt; 35 tomorrow → rest.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>last_run.ended ≤ 6h</code> AND (<code>hr_drift &gt; 8bpm</code> OR <code>z_above_target &gt; 20%</code> OR <code>cut_short = true</code>). Honest verbs over fake congratulations.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-ease</code> (faded amber). Verb table: EASE OFF TOMORROW · CUT SHORT · BACK OFF. Prose explains <em>what happened</em> in one line. Stat trio shows actual with amber on the drift number.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Run details · honest read" — tiles surface the misses. <strong>Tomorrow tile proposes adjustment</strong> (quality → easy, or move to Friday). 24h watch chip primes the runner for tomorrow's check.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 07 · NIGGLE ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">07</span>NIGGLE · MODIFIER</h3>
+      <div class="blurb">Active niggle logged but not bad enough to scrap the workout. <strong>Modifier on the base state</strong> — keeps the gradient but tweaks the verb (suffix) and the sibling. Subtle visual cue, real-world important.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-niggle)"></div><div class="pill" style="color:var(--green)">G-NIGGLE · subdued easy</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster niggle">
+      <div class="htag">TODAY · EASY · WATCH L CALF · WED 27 MAY</div>
+      <div class="verb small">RUN EASY.<br><span style="font-family:Inter;font-size:18px;font-style:italic;color:rgba(255,255,255,0.85);letter-spacing:0.2px">— Watch L calf.</span></div>
+      <div class="phase-tag">Build · Wk 6 of 8 · Aerobic</div>
+      <div class="stat-trio">
+        <div><div class="v">5.8</div><div class="l">MI</div></div>
+        <div><div class="v">8:12</div><div class="l">PACE</div></div>
+        <div><div class="v amber">148</div><div class="l">HR CAP</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Niggle watch <span class="stag">· L calf · day 2</span></h4>
+      <div class="prose">Logged Mon evening · grade <strong>2 / 5</strong>. No pain at rest, slight tightness on first mile. <strong>Bail if grade jumps to 3 or pain after mile 2.</strong></div>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Grade</div><div class="mv amber">2 / 5</div><div class="mmeta">Mild. <strong>Run-able.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Days · active</div><div class="mv amber">2</div><div class="mmeta">If &gt;5 → see physio.</div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Last run · L calf</div><div class="mv green">OK</div><div class="mmeta">No flare on Tue.</div></div>
+        <div class="mtile"><div class="mdot over"></div><div class="mlbl">Bail trigger</div><div class="mv over">3</div><div class="mmeta">Pain after <strong>mi 2.</strong></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>niggles.active.length &gt; 0</code> AND grade &lt; 4 AND not race-week. Modifier — keeps base state's gradient, appends verb suffix, replaces sibling.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-niggle</code> (subdued easy — same color, lower saturation). Verb stays base + italic suffix line. Stat trio unchanged. Phase-tag eyebrow gets the watch flag.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Niggle watch" — prose names the location + grade + bail trigger. 4 tiles: grade · days active · last-run check · bail threshold. <strong>Honest about what would change the call.</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 08 · SICK ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">08</span>SICK · DETECTED</h3>
+      <div class="blurb">Auto-detected from biometrics. <strong>HRV down 25%+ AND RHR up 8+ bpm for two consecutive mornings.</strong> Muted grey-blue gradient takes the loudness out — body's fighting. Streak auto-paused.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-sick)"></div><div class="pill">G-SICK · muted grey-blue</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster sick">
+      <div class="htag">TODAY · BODY FIGHTING · DAY 2</div>
+      <div class="verb">REST.</div>
+      <div class="rx">HRV down 14 over 2 days. RHR +9 vs baseline. Body's fighting something — your job is to let it.</div>
+      <div class="phase-tag">Streak auto-paused · Will resume on return</div>
+      <div class="stat-trio">
+        <div><div class="v">2</div><div class="l">DAY OFF</div></div>
+        <div><div class="v amber">24<span class="l" style="font-size:14px;color:rgba(255,255,255,0.7);margin-left:2px">ms</span></div><div class="l">HRV LOW</div></div>
+        <div><div class="v over">57</div><div class="l">RHR HIGH</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Body alert <span class="stag">· auto-detected</span></h4>
+      <div class="prose">5-day vitals trend triggered the SICK clause. Plan paused. <strong>Returns to easy when HRV ≥ 36 AND RHR &lt; 52 for 2 mornings.</strong></div>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot over"></div><div class="mlbl">HRV · 5d</div><div class="mv over">−14</div><div class="mmeta">vs baseline 38. <strong>Crash.</strong></div></div>
+        <div class="mtile"><div class="mdot over"></div><div class="mlbl">RHR · 5d</div><div class="mv over">+9</div><div class="mmeta">vs baseline 48. <strong>Elevated.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Sleep · last</div><div class="mv amber">9.4h</div><div class="mmeta">Long. <strong>Body asking.</strong></div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Plan · next</div><div class="mv amber">paused</div><div class="mmeta">Resumes on <strong>HRV ≥ 36.</strong></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb">Auto-detected: <code>hrv.5d_avg ≤ baseline × 0.75</code> AND <code>rhr.5d_avg ≥ baseline + 8</code> for 2 consecutive mornings. Overrides workout plan. Resolver priority above quality/easy/long.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-sick</code> (muted grey-blue — visually quiet). Verb <strong>REST.</strong> with prose explaining the trigger. Stat trio = days off · HRV value · RHR value. <strong>No loud colors.</strong></div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Body alert" — prose surfaces the detection rule + return condition. 4 tiles all red/amber until vitals recover. Plan tile shows "paused" with the resume trigger explicit.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 09 · MISSED ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">09</span>MISSED</h3>
+      <div class="blurb">Yesterday's workout didn't happen. <strong>Hero becomes a choice</strong> — CATCH UP or MOVE ON. Plan-aware default recommendation. The most retention-critical state in the app — turns "shit, I broke the plan" into "okay, here's what we do."</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-missed)"></div><div class="pill" style="color:var(--goal)">G-MISSED · amber</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster missed">
+      <div class="htag">YESTERDAY · QUALITY MISSED · 6×800</div>
+      <div class="verb small">PICK<br>ONE.</div>
+      <div class="rx">Tuesday's 6×800 didn't happen. Your call — and the plan adjusts.</div>
+      <div class="choice-row">
+        <div class="choice"><div class="cverb">CATCH UP.</div><div class="csub">Today → 6×800</div></div>
+        <div class="choice pref"><div class="cverb">MOVE ON.</div><div class="csub" style="color:rgba(10,12,16,0.7)">Easy as planned</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Why move on <span class="stag">· recommended</span></h4>
+      <div class="prose">You've hit <strong>6 of 7 quality sessions</strong> this block. Catching up means two hard days in three — load jumps from <strong>1.24 to 1.48</strong>.</div>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Load · today</div><div class="mv amber">1.24</div><div class="mmeta"><strong>Catch up → 1.48.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Block · quality</div><div class="mv green">3 / 4</div><div class="mmeta"><strong>On track.</strong></div></div>
+        <div class="mtile"><div class="mdot over"></div><div class="mlbl">HRV</div><div class="mv over">38<span class="u">ms</span></div><div class="mmeta">Trending down.</div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">London · 14d</div><div class="mv race">2:54</div><div class="mmeta"><strong>1:00 ahead.</strong></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>yesterday.workout</code> existed AND <code>actual.run</code> is null AND not <code>sick</code>. Locks the home until the user picks. Choice persists in <code>plan.adjustments</code>.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-missed</code> (amber). Verb <strong>PICK ONE.</strong> Stat trio replaced by two-button choice. <strong>Default-recommended button is filled white</strong> — keyed off load + quality hit rate.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Why move on" — prose explains the load math. 4 tiles: today's load (with catch-up projection) · block quality hit rate · HRV · race horizon. Reasoning before recommendation.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 10 · RACE WEEK ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">10</span>RACE WEEK · TAKEOVER</h3>
+      <div class="blurb"><code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.05);padding:1px 5px;border-radius:3px">race.days ≤ 3</code> — race owns the hero, locks all other promotion. <strong>Today's workout collapses into a one-liner.</strong> Sibling becomes race-day operations. The most important screen in the app for the week before a goal race.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-race)"></div><div class="pill" style="color:var(--race)">G-RACE · #FF8847→#E85D26</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster race">
+      <div class="htag">RACE WEEK · LOCKED IN</div>
+      <div class="verb">LONDON.</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:10px"><div style="font-family:var(--f-display);font-size:72px;line-height:0.9;color:#fff">3</div><div style="padding-bottom:6px"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.8px;font-weight:600;color:rgba(255,255,255,0.85);text-transform:uppercase">DAYS</div><div style="font-family:var(--f-display);font-size:18px;color:#fff;line-height:1;margin-top:3px">11 JUN · 09:35</div></div></div>
+      <div class="stat-trio" style="padding-top:14px">
+        <div><div class="v">2147</div><div class="l">BIB</div></div>
+        <div><div class="v">B</div><div class="l">CORRAL</div></div>
+        <div><div class="v amber">2:54</div><div class="l">PRED</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Race-day ops <span class="stag">· T−3d</span></h4>
+      <div class="prose">Today is a <strong>2mi shakeout</strong>, 09:00. Keep it boring. Then it's logistics until Sunday morning.</div>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot dist"></div><div class="mlbl">Weather · sun</div><div class="mv dist">12° ☁</div><div class="mmeta">8mph SW. <strong>Cool.</strong></div></div>
+        <div class="mtile"><div class="mdot green"></div><div class="mlbl">Checklist</div><div class="mv green">3 / 4</div><div class="mmeta">Watch needs charge.</div></div>
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Transport</div><div class="mv amber">Cab</div><div class="mmeta">06:30 pickup booked.</div></div>
+        <div class="mtile"><div class="mdot dist"></div><div class="mlbl">Tracking</div><div class="mv dist">7<span class="u">ppl</span></div><div class="mmeta">Mum, Dad, +5. <strong>Sunday live.</strong></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>race.priority = A</code> AND <code>race.days ≤ 3</code>. Highest priority — overrides workout type, post-run, missed, niggle. Holds until race+1d (then transitions to POST-RACE).</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-race</code> (orange-red). Race name is the verb. <strong>Days countdown is the headline number.</strong> Stat trio = bib · corral · predicted finish. Today's workout collapses into a one-line prose in the sibling.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Race-day ops" — flips entirely to logistics: weather · checklist · transport · spectators · drop bag. Race-day prose names today's shakeout. <strong>Body deep-dive below is hidden during race week — taper isn't the time to obsess.</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 11 · NEW USER ═══ -->
+<div class="state-block">
+  <div class="state-head">
+    <div class="left">
+      <h3><span class="n">11</span>NEW USER · ONBOARDING</h3>
+      <div class="blurb">First open. No plan, no race, no vitals history. Pattern stays — gradient · verb · stat trio · sibling — but the content is <strong>setup</strong> not training. Same components, different job. Every other state inherits from a complete profile; this state builds one.</div>
+    </div>
+    <div class="right"><div class="swatch" style="background:var(--g-new)"></div><div class="pill" style="color:var(--learn)">G-NEW · purple → blue</div></div>
+  </div>
+  <div class="preview">
+    <div class="mini-poster new">
+      <div class="htag">WELCOME · LET'S TUNE FAFF TO YOU</div>
+      <div class="verb">WELCOME.</div>
+      <div class="rx">Four answers and Faff starts knowing what to ask of you.</div>
+      <div class="phase-tag">Step 1 of 4 · Race goal</div>
+      <div class="stat-trio">
+        <div><div class="v">25%</div><div class="l">COMPLETE</div></div>
+        <div><div class="v">~3</div><div class="l">MIN LEFT</div></div>
+      </div>
+    </div>
+    <div class="mini-sibling">
+      <h4>Setup <span class="stag">· 4 steps</span></h4>
+      <div class="prose">Each step unlocks a piece of the pattern. <strong>Skip any time — Faff backfills from your watch data.</strong></div>
+      <div class="mtiles">
+        <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Step 1</div><div class="mv amber">Race</div><div class="mmeta">Or "fitness." <strong>Now.</strong></div></div>
+        <div class="mtile"><div class="mdot"></div><div class="mlbl">Step 2</div><div class="mv">HR</div><div class="mmeta">Max + LTHR or auto.</div></div>
+        <div class="mtile"><div class="mdot"></div><div class="mlbl">Step 3</div><div class="mv">Watch</div><div class="mmeta">Apple · Garmin · sync.</div></div>
+        <div class="mtile"><div class="mdot"></div><div class="mlbl">Step 4</div><div class="mv">First run</div><div class="mmeta">Calibrates the plan.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">trigger</div>
+      <div class="rb"><code>profile.completeness &lt; 60%</code> OR <code>first_session = true</code>. Persists until profile crosses threshold OR user explicitly skips. Most users land here for ~5 minutes lifetime.</div>
+    </div>
+    <div class="rule">
+      <div class="rt warn">render</div>
+      <div class="rb">Gradient <code>g-new</code> (purple → blue · not a state-coded color, this is meta). Verb <strong>WELCOME.</strong> Stat trio = completion % + time left. <strong>No mileage data because there isn't any yet.</strong></div>
+    </div>
+    <div class="rule">
+      <div class="rt green">sibling</div>
+      <div class="rb">"Setup · 4 steps" — each tile is a setup step. Active step has amber dot. Empty tiles wait their turn. Tap a tile to do that step. After step 4 the home transitions to EASY (or whatever the first plan day is).</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ENDNOTE ═══ -->
+<div class="endnote">
+  <div class="eyebrow" style="color:var(--green);margin-bottom:12px">implementation order</div>
+  <h3>three sprints.<br>eleven states.<br>one resolver.</h3>
+  <p><strong>Sprint 01 · spine (1 week).</strong> Implement the resolver as a pure function returning one of the 11 states. Build the 3 components — <code>Poster</code>, <code>Sibling</code>, <code>WeekStrip</code> — accepting state + data. Ship 4 states: EASY · QUALITY · LONG · REST. These cover ~70% of daily home views.</p>
+  <p><strong>Sprint 02 · post-run + edges (1 week).</strong> Add DONE · NAILED, DONE · EASE OFF, MISSED, NIGGLE. Verb table reaches ~25 phrases. Sibling card learns "Run details" and "Why move on" variants. Auto-promotion + 6h TTL on DONE state.</p>
+  <p><strong>Sprint 03 · special states (1 week).</strong> SICK detection (5-day biometric rule). RACE WEEK takeover with race-day ops sibling. NEW USER onboarding with 4-step setup. Streak pause/resume logic. Hero takeover gesture.</p>
+  <p style="margin-top:24px"><strong>Total: 3 weeks for the complete state coverage.</strong> All on the same SwiftUI/Next.js component substrate. Resolver is testable as a pure function — every state gets a unit test with hand-crafted fixture data. Each new edge case discovered post-ship becomes a new clause + a new test, not a new screen.</p>
+  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">docs/web-today-states-2026-05-27.html</code> · companion to the v2.2 audit + mockup decks. State library + rules · the implementation brief. Nod and the next move is <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">web-v2/app/today/resolver.ts</code> + the 3 React components.</p>
+</div>
+
+<div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:var(--f-sub);font-size:11px;letter-spacing:3px">— END · 2026-05-27 · WEB TODAY · STATES + RULES —</div>
+
+</div>
+</body>
+</html>
