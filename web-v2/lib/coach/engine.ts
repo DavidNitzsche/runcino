@@ -122,6 +122,25 @@ export async function generateBriefing(
   // Used to freeze spend while reviewing notes, doing migrations,
   // debugging, or whenever you want zero LLM activity. Flip the env
   // var off to resume.
+  // ── DETERMINISTIC TEMPLATE PATH (P-DETERMINISTIC 2026-05-27) ─────
+  // David: "Lets try wiring today to not use LLM. See what happens."
+  // When COACH_DETERMINISTIC=1, /today renders from rule+template
+  // (lib/coach/templates/today.ts) — zero LLM calls, instant, free,
+  // deterministic. Other surfaces fall through to the LLM path below
+  // for now (rolling experiment, /today first).
+  //
+  // Checked BEFORE COACH_PAUSED because deterministic mode IS what
+  // paused mode is trying to achieve (no LLM). David: "why do I
+  // have to unpause the coach?" — you don't.
+  //
+  // Topics are returned empty by the template; downstream enrichment
+  // is a follow-up — for now the right rail just renders whatever
+  // topic cards survived the prereq filter without coach notes.
+  if (process.env.COACH_DETERMINISTIC === '1' && resolved.surface === 'today') {
+    const { renderTodayBriefDeterministic } = await import('./templates/today');
+    return renderTodayBriefDeterministic(state, resolved, userId, eligible);
+  }
+
   if (process.env.COACH_PAUSED === '1') {
     return {
       surface: resolved.surface,
@@ -140,21 +159,6 @@ export async function generateBriefing(
         toolTrace: [],
       },
     } as any as BriefingResponse;
-  }
-
-  // ── DETERMINISTIC TEMPLATE PATH (P-DETERMINISTIC 2026-05-27) ─────
-  // David: "Lets try wiring today to not use LLM. See what happens."
-  // When COACH_DETERMINISTIC=1, /today renders from rule+template
-  // (lib/coach/templates/today.ts) — zero LLM calls, instant, free,
-  // deterministic. Other surfaces fall through to the LLM path below
-  // for now (rolling experiment, /today first).
-  //
-  // Topics are returned empty by the template; downstream enrichment
-  // is a follow-up — for now the right rail just renders whatever
-  // topic cards survived the prereq filter without coach notes.
-  if (process.env.COACH_DETERMINISTIC === '1' && resolved.surface === 'today') {
-    const { renderTodayBriefDeterministic } = await import('./templates/today');
-    return renderTodayBriefDeterministic(state, resolved, userId, eligible);
   }
 
   // Build the system prompt + tool-use loop
