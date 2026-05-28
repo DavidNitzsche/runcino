@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / AT A GLANCE · 4 directions · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+
+  --f-display:'HelveticaNeue-Bold','Inter',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-sub:'Oswald','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:64px 32px 200px}
+.wrap{max-width:1400px;margin:0 auto}
+
+.eyebrow{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.hero{padding:24px 0 56px;border-bottom:1px solid var(--line);margin-bottom:56px}
+h1.title{font-family:var(--f-display);font-size:120px;line-height:0.88;letter-spacing:-0.02em;margin:18px 0 12px;font-weight:900}
+.lede{font-size:17px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:880px;margin-top:24px}
+.lede strong{color:var(--ink)}
+
+h2.sec{font-family:var(--f-display);font-size:64px;letter-spacing:-0.01em;margin:96px 0 8px;line-height:1;font-weight:900}
+.sec-tag{font-family:var(--f-sub);font-size:11px;letter-spacing:2.4px;text-transform:uppercase;color:var(--mute);margin-bottom:18px;display:flex;gap:14px;align-items:center}
+.sec-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.kicker{font-size:14px;line-height:1.6;color:rgba(246,247,248,0.78);max-width:780px;margin-bottom:28px}
+.kicker strong{color:var(--ink)}
+
+/* mockup card chrome */
+.card-wrap{max-width:640px;margin:0 0 24px}
+.card-label{font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--mute);margin-bottom:12px;font-weight:600}
+.card-label strong{color:var(--ink);font-weight:700}
+.notes{font-family:var(--f-body);font-size:12px;color:var(--mute);margin-top:12px;line-height:1.55;max-width:640px}
+.notes strong{color:var(--ink)}
+
+/* base panel (shared) */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px}
+.panel .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px}
+.panel .head .t{font-family:var(--f-display);font-size:22px;font-weight:900;letter-spacing:-0.005em;line-height:1}
+.panel .head .sub{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);text-transform:uppercase;font-weight:600}
+
+/* ─────────────────── A · COLOR-CODED ROWS ──────────────────── */
+.a-row{padding:14px 0;border-bottom:1px solid var(--line2);display:grid;grid-template-columns:60px 1fr;gap:14px;align-items:center}
+.a-row:last-child{border-bottom:0}
+.a-row .lbl{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase}
+.a-row .lbl.race{color:var(--race)}
+.a-row .vals{font-family:var(--f-body);font-size:14px;color:rgba(246,247,248,0.85);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.a-row .vals .v{font-weight:700;color:var(--ink)}
+.a-row .vals .v.warn{color:var(--goal)}
+.a-row .vals .v.bad{color:var(--over)}
+.a-row .vals .v.good{color:var(--green)}
+.a-row .vals .v.cool{color:var(--dist)}
+.a-row .vals .sep{color:var(--dim)}
+.a-row .vals .meta{font-size:11px;color:var(--mute)}
+.a-row .vals .meta.bad{color:var(--over)}
+.a-row .vals .meta.good{color:var(--green)}
+.a-row .vals .meta.warn{color:var(--goal)}
+
+/* ─────────────────── B · WEATHER REPORT ────────────────────── */
+.b-section{padding:14px 0;border-bottom:1px solid var(--line2)}
+.b-section:last-child{border-bottom:0}
+.b-section .h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.b-section .h .lbl{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase}
+.b-section .h .lbl.race{color:var(--race)}
+.b-section .h .verdict{font-family:var(--f-display);font-size:13px;letter-spacing:0.4px;font-weight:900;text-transform:uppercase}
+.b-section .h .verdict.warn{color:var(--goal)}
+.b-section .h .verdict.bad{color:var(--over)}
+.b-section .h .verdict.good{color:var(--green)}
+.b-section .data{font-family:var(--f-body);font-size:13px;color:rgba(246,247,248,0.75);line-height:1.6}
+.b-section .data strong{color:var(--ink);font-weight:600}
+
+/* ─────────────────── C · VISUAL DATA VIZ ────────────────────── */
+.c-block{padding:18px 0;border-bottom:1px solid var(--line2)}
+.c-block:last-child{border-bottom:0;padding-bottom:0}
+.c-block .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.c-block .top .lbl{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase}
+.c-block .top .lbl.race{color:var(--race)}
+.c-block .top .pri{font-family:var(--f-display);font-size:20px;letter-spacing:-0.005em;font-weight:900}
+.c-block .top .pri.warn{color:var(--goal)}
+.c-block .top .pri.bad{color:var(--over)}
+.c-block .top .pri.good{color:var(--green)}
+.c-block .top .pri.cool{color:var(--dist)}
+.c-block .meta{font-family:var(--f-body);font-size:11px;color:var(--mute);margin-bottom:8px}
+.c-block .bar-track{height:6px;background:rgba(255,255,255,0.06);border-radius:99px;position:relative;overflow:hidden}
+.c-block .bar-fill{position:absolute;top:0;bottom:0;left:0;border-radius:99px}
+.c-block .bar-fill.warn{background:var(--goal)}
+.c-block .bar-fill.bad{background:var(--over)}
+.c-block .bar-fill.good{background:var(--green)}
+.c-block .bar-fill.cool{background:var(--dist)}
+.c-block .bar-fill.race{background:var(--race)}
+.c-block .bar-marker{position:absolute;top:-3px;bottom:-3px;width:2px;background:rgba(255,255,255,0.4)}
+/* sparkline */
+.c-block .sparkbox{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.c-block svg.spark{flex:1;height:32px;display:block}
+.c-block .spark-trend{font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;color:var(--mute);text-transform:uppercase;font-weight:600}
+.c-block .spark-trend.bad{color:var(--over)}
+.c-block .spark-trend.good{color:var(--green)}
+.c-block .spark-trend.warn{color:var(--goal)}
+
+/* ─────────────────── D · MINI TILES ────────────────────── */
+.d-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.d-tile{background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:14px 16px;position:relative}
+.d-tile .lbl{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:6px}
+.d-tile .lbl.race{color:var(--race)}
+.d-tile .v{font-family:var(--f-display);font-size:26px;line-height:1;font-weight:900;letter-spacing:-0.01em}
+.d-tile .v.warn{color:var(--goal)}
+.d-tile .v.bad{color:var(--over)}
+.d-tile .v.good{color:var(--green)}
+.d-tile .v.cool{color:var(--dist)}
+.d-tile .meta{font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:6px;line-height:1.4}
+.d-tile .meta strong{color:var(--ink)}
+.d-tile .dot{position:absolute;top:14px;right:14px;width:8px;height:8px;border-radius:50%}
+.d-tile .dot.bad{background:var(--over)}
+.d-tile .dot.warn{background:var(--goal)}
+.d-tile .dot.good{background:var(--green)}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="eyebrow">faff · /today · at-a-glance card · 4 directions · 2026-05-27</div>
+  <h1 class="title">at a glance.</h1>
+  <div class="lede">
+    The mockup card you flagged was three flat label/value rows with no visual signal. Four directions
+    for the rebuild — same data, four different ways to make it glanceable. Real numbers from David's
+    state (HRV down −7, sleep 7.2h short by 1.1, RHR 48, ACWR 1.24, London 14 days out, predicted 2:54
+    vs goal 2:55). Pick one to ship, or call out beats from across.
+  </div>
+</div>
+
+<!-- ═══════════════════════ A ═══════════════════════ -->
+<h2 class="sec">A · color-coded rows.</h2>
+<div class="sec-tag"><span class="dot"></span>same row structure, every value carries its own signal color</div>
+<div class="kicker">
+  Minimal departure from the original. Each value gets a status color based on its band: HRV in pink,
+  load amber when building, predicted in green when ahead of goal, etc. Tight, scannable, prose-like.
+  Lowest visual lift, highest fidelity to the screenshot you liked.
+</div>
+<div class="card-wrap">
+  <div class="card-label">A · <strong>color-coded rows</strong></div>
+  <div class="panel">
+    <div class="head">
+      <span class="t">At a glance</span>
+      <span class="sub">the why</span>
+    </div>
+    <div class="a-row">
+      <div class="lbl">body</div>
+      <div class="vals">
+        <span class="v">7.2h</span><span>sleep</span>
+        <span class="sep">·</span>
+        <span class="v bad">HRV low</span><span class="meta bad">−7 vs avg</span>
+        <span class="sep">·</span>
+        <span class="v good">48</span><span>rhr</span>
+      </div>
+    </div>
+    <div class="a-row">
+      <div class="lbl">load</div>
+      <div class="vals">
+        <span class="v warn">1.24</span><span class="meta">building band</span>
+        <span class="sep">·</span>
+        <span>week</span><span class="v">22 / 30 mi</span>
+        <span class="meta good">on pace</span>
+      </div>
+    </div>
+    <div class="a-row">
+      <div class="lbl">ahead</div>
+      <div class="vals">
+        <span>hard</span><span class="v">Thu 6×800</span>
+        <span class="sep">·</span>
+        <span>long</span><span class="v cool">Sun 14mi</span>
+      </div>
+    </div>
+    <div class="a-row">
+      <div class="lbl race">race</div>
+      <div class="vals">
+        <span class="v" style="color:var(--race)">London</span><span>14d</span>
+        <span class="sep">·</span>
+        <span class="v">2:54</span><span class="meta">pred</span>
+        <span class="sep">·</span>
+        <span class="meta good">−1:00 of goal</span>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <strong>Wins:</strong> closest to the original screenshot, smallest leap. Color does the work — HRV in
+    pink, predicted in green. <strong>Loses:</strong> still mostly text; you have to read it. The "WEEK"
+    and "AHEAD" rows broken up — load lives with mileage now, workouts get their own row.
+  </div>
+</div>
+
+<!-- ═══════════════════════ B ═══════════════════════ -->
+<h2 class="sec">B · verdict + detail.</h2>
+<div class="sec-tag"><span class="dot"></span>each row leads with a one-word verdict, detail follows</div>
+<div class="kicker">
+  Inspired by Whoop's "RECOVERY" verdicts. Each row leads with a colored verdict word (UNDERSLEPT, BUILDING,
+  ON TRACK) on the right, the data follows below. You read the verdict first; if you care, you read the
+  detail. Fastest scan of the four.
+</div>
+<div class="card-wrap">
+  <div class="card-label">B · <strong>verdict + detail</strong></div>
+  <div class="panel">
+    <div class="head">
+      <span class="t">At a glance</span>
+      <span class="sub">the why</span>
+    </div>
+    <div class="b-section">
+      <div class="h">
+        <span class="lbl">body</span>
+        <span class="verdict bad">undersleeping</span>
+      </div>
+      <div class="data"><strong>7.2h</strong> sleep · <strong>HRV low</strong> at −7 · <strong>48</strong> rhr</div>
+    </div>
+    <div class="b-section">
+      <div class="h">
+        <span class="lbl">load</span>
+        <span class="verdict warn">building</span>
+      </div>
+      <div class="data">ACWR <strong>1.24</strong> · week <strong>22 of 30 mi</strong> on pace</div>
+    </div>
+    <div class="b-section">
+      <div class="h">
+        <span class="lbl">week ahead</span>
+        <span class="verdict">2 quality</span>
+      </div>
+      <div class="data">Hard <strong>Thu</strong> 6×800 · Long <strong>Sun</strong> 14 mi</div>
+    </div>
+    <div class="b-section">
+      <div class="h">
+        <span class="lbl race">race</span>
+        <span class="verdict good">on track</span>
+      </div>
+      <div class="data"><strong>London</strong> in 14 days · predicted <strong>2:54</strong> vs goal 2:55</div>
+    </div>
+  </div>
+  <div class="notes">
+    <strong>Wins:</strong> the verdict word is the 1-second read. UNDERSLEEPING in pink tells you the
+    story before you read a number. Most scannable of the four. <strong>Loses:</strong> the verdicts have
+    to be carefully written — "building" / "on track" / "spike zone" — and the lookup needs maintenance.
+  </div>
+</div>
+
+<!-- ═══════════════════════ C ═══════════════════════ -->
+<h2 class="sec">C · data viz.</h2>
+<div class="sec-tag"><span class="dot"></span>numbers + mini bars/sparklines per row</div>
+<div class="kicker">
+  Each row has the data PLUS a tiny visual — band-position bar for load and sleep, mini sparkline for HRV
+  trend, race-trajectory bar. You can SEE where each metric sits in its band, not just read it. Most
+  information-dense, takes most space.
+</div>
+<div class="card-wrap">
+  <div class="card-label">C · <strong>data viz</strong></div>
+  <div class="panel">
+    <div class="head">
+      <span class="t">At a glance</span>
+      <span class="sub">the why</span>
+    </div>
+    <div class="c-block">
+      <div class="top">
+        <span class="lbl">sleep · 7d avg</span>
+        <span class="pri warn">7.2h <span style="font-size:11px;color:var(--mute);font-weight:600">/ 8.3 target</span></span>
+      </div>
+      <div class="meta">−1.1h short. Sixth night under target this week.</div>
+      <div class="bar-track">
+        <div class="bar-fill warn" style="width:62%"></div>
+        <div class="bar-marker" style="left:75%"></div>
+      </div>
+    </div>
+    <div class="c-block">
+      <div class="top">
+        <span class="lbl">hrv · 14d trend</span>
+        <span class="pri bad">38ms <span style="font-size:11px;color:var(--mute);font-weight:600">/ 45 avg</span></span>
+      </div>
+      <div class="sparkbox">
+        <svg class="spark" viewBox="0 0 200 32" preserveAspectRatio="none">
+          <polyline points="0,8 16,10 32,9 48,11 64,12 80,13 96,15 112,16 128,17 144,19 160,21 176,23 200,25"
+            fill="none" stroke="#FC4D64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="200" cy="25" r="3" fill="#FC4D64"/>
+        </svg>
+        <span class="spark-trend bad">▼ down trend</span>
+      </div>
+    </div>
+    <div class="c-block">
+      <div class="top">
+        <span class="lbl">load · ACWR</span>
+        <span class="pri warn">1.24 <span style="font-size:11px;color:var(--mute);font-weight:600">build band</span></span>
+      </div>
+      <div class="meta">0.8–1.3 = sweet spot · 1.5 = spike line</div>
+      <div class="bar-track">
+        <div class="bar-fill warn" style="width:62%"></div>
+        <div class="bar-marker" style="left:75%"></div>
+      </div>
+    </div>
+    <div class="c-block">
+      <div class="top">
+        <span class="lbl">week · 22 of 30 mi</span>
+        <span class="pri good">73%</span>
+      </div>
+      <div class="meta">Hard <strong style="color:var(--ink)">Thu 6×800</strong> · Long <strong style="color:var(--ink)">Sun 14mi</strong> still to come.</div>
+      <div class="bar-track">
+        <div class="bar-fill good" style="width:73%"></div>
+      </div>
+    </div>
+    <div class="c-block">
+      <div class="top">
+        <span class="lbl race">london · 14 days</span>
+        <span class="pri good">on track</span>
+      </div>
+      <div class="meta">Predicted <strong style="color:var(--ink)">2:54</strong> vs goal 2:55 — <strong style="color:var(--green)">1:00 ahead</strong>.</div>
+      <div class="bar-track">
+        <div class="bar-fill race" style="width:88%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <strong>Wins:</strong> you can see where every metric sits without parsing words. HRV sparkline tells
+    you the trend at a glance. <strong>Loses:</strong> tallest card by far (~480px). If /today's right
+    column is short, this dominates. Best if AT A GLANCE is the primary right-column content.
+  </div>
+</div>
+
+<!-- ═══════════════════════ D ═══════════════════════ -->
+<h2 class="sec">D · mini tiles.</h2>
+<div class="sec-tag"><span class="dot"></span>2×3 grid of self-contained tiles, status dot per tile</div>
+<div class="kicker">
+  Closer to a dashboard pattern. Each metric gets its own tile with big number, label, one-line context,
+  and a status dot in the corner (green/amber/red). Lets the eye pick what matters — the red dots
+  attract attention first, then green dots reassure. Most modern UI pattern.
+</div>
+<div class="card-wrap">
+  <div class="card-label">D · <strong>mini tiles</strong></div>
+  <div class="panel">
+    <div class="head">
+      <span class="t">At a glance</span>
+      <span class="sub">the why</span>
+    </div>
+    <div class="d-grid">
+      <div class="d-tile">
+        <span class="dot warn"></span>
+        <div class="lbl">sleep · 7n</div>
+        <div class="v warn">7.2h</div>
+        <div class="meta">−1.1 vs target. <strong>6th short night</strong>.</div>
+      </div>
+      <div class="d-tile">
+        <span class="dot bad"></span>
+        <div class="lbl">hrv</div>
+        <div class="v bad">38ms</div>
+        <div class="meta">−7 vs avg. <strong>Trending down</strong>.</div>
+      </div>
+      <div class="d-tile">
+        <span class="dot good"></span>
+        <div class="lbl">rhr</div>
+        <div class="v good">48</div>
+        <div class="meta">+0 vs baseline. Steady.</div>
+      </div>
+      <div class="d-tile">
+        <span class="dot warn"></span>
+        <div class="lbl">load · acwr</div>
+        <div class="v warn">1.24</div>
+        <div class="meta">Build band. <strong>1.5 = spike line</strong>.</div>
+      </div>
+      <div class="d-tile">
+        <span class="dot good"></span>
+        <div class="lbl">week mi</div>
+        <div class="v good">22 / 30</div>
+        <div class="meta">On pace. Sun long run to close.</div>
+      </div>
+      <div class="d-tile">
+        <span class="dot good"></span>
+        <div class="lbl race">london · 14d</div>
+        <div class="v" style="color:var(--race)">2:54</div>
+        <div class="meta">Pred vs goal 2:55. <strong>1:00 ahead</strong>.</div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <strong>Wins:</strong> red dots are the alarm — eye finds them first. Each tile is self-contained.
+    Good for desktop where horizontal space exists. <strong>Loses:</strong> repetitive eyebrow/number/meta
+    pattern across 6 tiles. Less narrative — you don't get the "body / load / race" categories as cleanly.
+    Best for a runner who wants the dashboard feel.
+  </div>
+</div>
+
+<!-- DECISION -->
+<h2 class="sec">picking.</h2>
+<div class="sec-tag"><span class="dot"></span>which one to ship</div>
+<div class="kicker">
+  <strong>My read:</strong> A is the closest to the design you liked, B is the most original-and-scannable,
+  C is the most information-dense, D is the most dashboard-pattern. If we're keeping the spirit of the
+  screenshot you flagged, A wins. If we're willing to depart for sharper scan, B. If the goal is
+  "everything visible," C. If we want the modern grid pattern, D.
+</div>
+<div class="kicker" style="color:var(--ink);margin-top:32px">
+  Tell me which to wire — or which beats to splice (e.g. "B's verdict words on A's row structure" or
+  "C's mini bars under A's text").
+</div>
+
+</div>
+</body>
+</html>
