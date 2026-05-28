@@ -142,6 +142,21 @@ export async function generateBriefing(
     } as any as BriefingResponse;
   }
 
+  // ── DETERMINISTIC TEMPLATE PATH (P-DETERMINISTIC 2026-05-27) ─────
+  // David: "Lets try wiring today to not use LLM. See what happens."
+  // When COACH_DETERMINISTIC=1, /today renders from rule+template
+  // (lib/coach/templates/today.ts) — zero LLM calls, instant, free,
+  // deterministic. Other surfaces fall through to the LLM path below
+  // for now (rolling experiment, /today first).
+  //
+  // Topics are returned empty by the template; downstream enrichment
+  // is a follow-up — for now the right rail just renders whatever
+  // topic cards survived the prereq filter without coach notes.
+  if (process.env.COACH_DETERMINISTIC === '1' && resolved.surface === 'today') {
+    const { renderTodayBriefDeterministic } = await import('./templates/today');
+    return renderTodayBriefDeterministic(state, resolved, userId, eligible);
+  }
+
   // Build the system prompt + tool-use loop
   const systemPrompt = systemPromptFor(resolved.surface, resolved.mode, compact);
   const orientationMessage = buildOrientationMessage({
