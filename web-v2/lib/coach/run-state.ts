@@ -175,7 +175,8 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
 
   if (!row) return null;
   const r = row.data;
-  const shoeId: number | null = row.shoe_id ?? null;
+  // Coerce: bigint columns can come back as strings (see shoes mapping).
+  const shoeId: number | null = row.shoe_id == null ? null : Number(row.shoe_id);
 
   // Pace — prefer formatted, else derive from seconds.
   const paceSPerMi = Number(r.paceSPerMi) || null;
@@ -258,7 +259,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     [userId]
   ).catch(() => ({ rows: [] }))).rows;
   const shoes: RunDetailShoe[] = shoesRows.map((s: any) => ({
-    id: s.id,
+    // 2026-05-27: coerce id to number. node-postgres returns bigint
+    // columns as strings by default, but RunDetailShoe.id is typed
+    // as number and the ShoePicker uses strict `value === s.id` to
+    // know which row is selected — string vs number broke the
+    // post-save selection display ("assigned shoes are not saving").
+    id: Number(s.id),
     brand: s.brand,
     model: s.model,
     color: s.color,

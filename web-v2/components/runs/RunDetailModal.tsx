@@ -669,7 +669,11 @@ function ShoePicker({
     const used = Math.round(s.mileage);
     return s.mileage_cap ? `${used} / ${s.mileage_cap} mi` : `${used} mi`;
   };
-  const selected = value != null ? shoes.find((s: any) => s.id === value) : null;
+  // 2026-05-27: number-coerce both sides of the comparison so a stray
+  // string id (postgres bigint returned as a string somewhere upstream)
+  // can't break the "which shoe is selected" check.
+  const selectedId = value != null ? Number(value) : null;
+  const selected = selectedId != null ? shoes.find((s: any) => Number(s.id) === selectedId) : null;
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
@@ -734,7 +738,7 @@ function ShoePicker({
                 key={s.id}
                 label={shoeLabel(s)}
                 sub={mi ? <span style={{ color: wearColor }}>{mi}</span> : null}
-                selected={value === s.id}
+                selected={Number(s.id) === selectedId}
                 onClick={() => { onChange(s.id); setOpen(false); }}
               />
             );
