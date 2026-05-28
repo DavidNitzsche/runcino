@@ -333,72 +333,87 @@ export function RunDetailBody({
         </div>
       )}
 
-      {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it.
-          2026-05-27: hidden when there's only 1 split AND no per-mile
-          pace data (the "(no pace data)" empty row was contributing
-          nothing). A single mile of useful data still renders. */}
-      {d.splits.length > 1 && (
-        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>SPLITS · {d.splits.length} MILES</div>
-          <SplitsBars splits={d.splits} />
-          <SplitsTable splits={d.splits} />
-        </div>
-      )}
+      {/* 2026-05-27 P-DAYMODAL-HR-LAYOUT: bottom-half sections (HR
+          + SPLITS in column 1, FORM + ROUTE in column 2) flow in a
+          2-column grid in inline mode (DayDetailModal renders us at
+          1100px wide). Standalone RunDetailModal at 720px keeps the
+          single-column stack since two columns would be too cramped.
+          align-items:start so each column independently grows. */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: inline ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
+        gap: inline ? 12 : 0,
+        alignItems: 'start',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* HR section — Round 4 combo. Render whenever we have ANY
+              HR signal — even if stored hrZonePcts is all-zero,
+              HRSection computes from splits + LTHR ranges as a fallback
+              (Apple Watch imports often miss the zone-enrichment step). */}
+          {(d.hr_avg != null || d.hr_max != null || (d.splits ?? []).some(s => s.hr != null)) && (
+            <HRSection d={d} />
+          )}
 
-      {/* HR section — Round 4 combo (per docs/run-detail-redesign-2026-05-27.html).
-          Hero zone tile + vertical spectrum rail + peak HR gauge +
-          AVG-vs-LTHR donut + zone-colored HR timeline. */}
-      {(d.hrZonePcts.z1 + d.hrZonePcts.z2 + d.hrZonePcts.z3 + d.hrZonePcts.z4 + d.hrZonePcts.z5) > 0 && (
-        <HRSection d={d} />
-      )}
-
-      {/* Form metrics — cadence, ground contact, stride length, vert ratio.
-          Pulled from health_samples for the run's date (Apple Watch).
-          Each tile is clickable → opens a FormTipModal with definition,
-          target bands, and drills when flagged. */}
-      {hasFormData(d) && (
-        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--learn)' }}>FORM · APPLE WATCH · TAP A TILE</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 10 }}>
-            {d.cadence_avg            != null && <FormStatButton metricKey="cadence_spm"             value={String(d.cadence_avg)}                    unit=""    label="cadence spm"       hint={cadenceHint(d.cadence_avg)} />}
-            {d.form.ground_contact_ms != null && <FormStatButton metricKey="ground_contact_ms"       value={String(d.form.ground_contact_ms)}         unit=""    label="ground contact ms"  hint={gctHint(d.form.ground_contact_ms)} />}
-            {d.form.stride_length_m   != null && <FormStatButton metricKey="stride_length_m"         value={d.form.stride_length_m.toFixed(2)}        unit=""    label="stride length m"    hint="" />}
-            {d.form.vertical_oscillation_cm != null && <FormStatButton metricKey="vertical_oscillation_cm" value={d.form.vertical_oscillation_cm.toFixed(1)} unit="" label="vert. osc. cm"   hint={voHint(d.form.vertical_oscillation_cm)} />}
-            {d.form.vertical_ratio_pct != null && <FormStatButton metricKey="vertical_ratio_pct"    value={d.form.vertical_ratio_pct.toFixed(1)}     unit="%"   label="vert. ratio"        hint={vrHint(d.form.vertical_ratio_pct)} />}
-            {d.form.run_power_w        != null && <FormStatButton metricKey="run_power_w"            value={String(d.form.run_power_w)}              unit=""    label="power watts"        hint="" />}
-            {d.form.spo2_pct           != null && <FormStatButton metricKey="spo2_pct"               value={d.form.spo2_pct.toFixed(1)}              unit="%"   label="SpO₂"               hint="" />}
-            {d.form.respiratory_rate   != null && <FormStatButton metricKey="respiratory_rate"       value={d.form.respiratory_rate.toFixed(0)}      unit=""    label="breaths/min"        hint="" />}
-          </div>
-        </div>
-      )}
-
-      {/* Route — render the actual polyline as an SVG sparkline when we
-          have it (Strava-encoded). Falls back to a stat-only note. */}
-      {d.has_route && (
-        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
-          <div className="card-eyebrow" style={{ color: 'var(--dist)' }}>
-            ROUTE
-            {d.elev_gain_ft != null && d.elev_gain_ft > 0 && (
-              <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· {d.elev_gain_ft}ft climbed</span>
-            )}
-          </div>
-          {d.route_polyline ? (
-            <>
-              <div style={{ marginTop: 10, marginLeft: -8, marginRight: -8 }}>
-                <RouteSparkline polyline={d.route_polyline} height={220} />
-              </div>
-              <div style={{ display: 'flex', gap: 14, marginTop: 6, fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.5px' }}>
-                <span><span style={{ color: 'var(--green)' }}>●</span> start</span>
-                <span><span style={{ color: 'var(--race)' }}>●</span> finish</span>
-              </div>
-            </>
-          ) : (
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55, marginTop: 6 }}>
-              GPS recorded but polyline not stored on this activity.
+          {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it.
+              Hidden when there's only 1 split AND no per-mile pace data. */}
+          {d.splits.length > 1 && (
+            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+              <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>SPLITS · {d.splits.length} MILES</div>
+              <SplitsBars splits={d.splits} />
+              <SplitsTable splits={d.splits} />
             </div>
           )}
         </div>
-      )}
+
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* Form metrics — cadence, ground contact, stride length, vert ratio.
+              Pulled from health_samples for the run's date (Apple Watch).
+              Each tile is clickable → opens a FormTipModal. */}
+          {hasFormData(d) && (
+            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+              <div className="card-eyebrow" style={{ color: 'var(--learn)' }}>FORM · APPLE WATCH · TAP A TILE</div>
+              <div style={{ display: 'grid', gridTemplateColumns: inline ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 10, marginTop: 10 }}>
+                {d.cadence_avg            != null && <FormStatButton metricKey="cadence_spm"             value={String(d.cadence_avg)}                    unit=""    label="cadence spm"       hint={cadenceHint(d.cadence_avg)} />}
+                {d.form.ground_contact_ms != null && <FormStatButton metricKey="ground_contact_ms"       value={String(d.form.ground_contact_ms)}         unit=""    label="ground contact ms"  hint={gctHint(d.form.ground_contact_ms)} />}
+                {d.form.stride_length_m   != null && <FormStatButton metricKey="stride_length_m"         value={d.form.stride_length_m.toFixed(2)}        unit=""    label="stride length m"    hint="" />}
+                {d.form.vertical_oscillation_cm != null && <FormStatButton metricKey="vertical_oscillation_cm" value={d.form.vertical_oscillation_cm.toFixed(1)} unit="" label="vert. osc. cm"   hint={voHint(d.form.vertical_oscillation_cm)} />}
+                {d.form.vertical_ratio_pct != null && <FormStatButton metricKey="vertical_ratio_pct"    value={d.form.vertical_ratio_pct.toFixed(1)}     unit="%"   label="vert. ratio"        hint={vrHint(d.form.vertical_ratio_pct)} />}
+                {d.form.run_power_w        != null && <FormStatButton metricKey="run_power_w"            value={String(d.form.run_power_w)}              unit=""    label="power watts"        hint="" />}
+                {d.form.spo2_pct           != null && <FormStatButton metricKey="spo2_pct"               value={d.form.spo2_pct.toFixed(1)}              unit="%"   label="SpO₂"               hint="" />}
+                {d.form.respiratory_rate   != null && <FormStatButton metricKey="respiratory_rate"       value={d.form.respiratory_rate.toFixed(0)}      unit=""    label="breaths/min"        hint="" />}
+              </div>
+            </div>
+          )}
+
+          {/* Route — render the actual polyline as an SVG sparkline when we
+              have it (Strava-encoded). Falls back to a stat-only note. */}
+          {d.has_route && (
+            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+              <div className="card-eyebrow" style={{ color: 'var(--dist)' }}>
+                ROUTE
+                {d.elev_gain_ft != null && d.elev_gain_ft > 0 && (
+                  <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· {d.elev_gain_ft}ft climbed</span>
+                )}
+              </div>
+              {d.route_polyline ? (
+                <>
+                  <div style={{ marginTop: 10, marginLeft: -8, marginRight: -8 }}>
+                    <RouteSparkline polyline={d.route_polyline} height={220} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 14, marginTop: 6, fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.5px' }}>
+                    <span><span style={{ color: 'var(--green)' }}>●</span> start</span>
+                    <span><span style={{ color: 'var(--race)' }}>●</span> finish</span>
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55, marginTop: 6 }}>
+                  GPS recorded but polyline not stored on this activity.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </>
   );
 }
@@ -924,8 +939,53 @@ function fmtTime(seconds: number): string {
   return mm === 0 ? `${h}h` : `${h}h ${mm}m`;
 }
 
+/** P-DAYMODAL-HR-LAYOUT 2026-05-27 — derive zone percentages from
+ *  splits HR + LTHR-anchored zone ranges. Used as a fallback when the
+ *  stored hrZonePcts is all-zero (Apple Watch imports often don't get
+ *  zone enrichment at ingest, but splits + HR + LTHR are all present
+ *  in the run record). */
+function computeZonesFromSplits(d: RunDetail): ZonePcts | null {
+  const ranges = d.hr_zones_from_lthr?.ranges;
+  const splits = d.splits ?? [];
+  if (!ranges || ranges.length === 0 || splits.length === 0) return null;
+  const zoneFor = (hr: number): ZoneKey | null => {
+    for (const r of ranges) {
+      const label = r.label.toLowerCase() as ZoneKey;
+      if (hr >= r.lower && hr <= r.upper) return label;
+    }
+    // Above the highest range upper → Z5; below the lowest lower → Z1.
+    const sorted = [...ranges].sort((a, b) => a.lower - b.lower);
+    if (hr > (sorted[sorted.length - 1]?.upper ?? 0)) return 'z5';
+    return 'z1';
+  };
+  const totals = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 } as Record<ZoneKey, number>;
+  let totalWeight = 0;
+  for (const s of splits) {
+    if (s.hr == null || s.hr <= 0) continue;
+    const z = zoneFor(s.hr);
+    if (!z) continue;
+    // Each split represents ~1 mile; weight equally.
+    totals[z] += 1;
+    totalWeight += 1;
+  }
+  if (totalWeight === 0) return null;
+  return {
+    z1: (totals.z1 / totalWeight) * 100,
+    z2: (totals.z2 / totalWeight) * 100,
+    z3: (totals.z3 / totalWeight) * 100,
+    z4: (totals.z4 / totalWeight) * 100,
+    z5: (totals.z5 / totalWeight) * 100,
+  };
+}
+
 function HRSection({ d }: { d: RunDetail }) {
-  const pcts = d.hrZonePcts;
+  // 2026-05-27: stored hrZonePcts is often all-zero for Apple Watch
+  // imports even though splits + HR + LTHR are present. Compute from
+  // splits as a fallback so the section actually renders.
+  const storedSum = d.hrZonePcts.z1 + d.hrZonePcts.z2 + d.hrZonePcts.z3 + d.hrZonePcts.z4 + d.hrZonePcts.z5;
+  const pcts: ZonePcts = storedSum > 0
+    ? d.hrZonePcts
+    : (computeZonesFromSplits(d) ?? d.hrZonePcts);
   const dom = dominantZoneLabel(pcts);
   const lthr = d.hr_zones_from_lthr?.lthr ?? null;
   const ranges = d.hr_zones_from_lthr?.ranges ?? [];
