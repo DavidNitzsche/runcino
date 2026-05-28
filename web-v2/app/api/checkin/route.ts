@@ -106,17 +106,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  // Two intake shapes:
+  // Three intake shapes:
   //  (a) legacy: { rating: solid|tired|wrecked, ... }
   //  (b) #150:   { kind: 'post_run', execution, body, niggle? }
-  // Derive a legacy rating from the new shape so downstream code is unchanged.
+  //  (c) P-OPTION-C: { kind: 'post_run', niggle: <text> }
+  //      — free text alone, no chips. Default rating to 'solid'; the
+  //      extractor LLM (later in this handler) inspects the text and
+  //      may refine it via extracted.body_implicit / execution_implicit.
+  //      The rating field is the rough fatigue flag for the readiness
+  //      pillar; the structured extracted signals are what the coach
+  //      actually reads.
   let rating = body.rating?.toLowerCase();
   if (!rating && body.kind === 'post_run') {
     const derived = ratingFromPostRun(body.execution, body.body);
     rating = derived ?? undefined;
   }
+  const textPresent = Boolean((body.niggle ?? body.note ?? '').trim());
+  if (!rating && textPresent) {
+    rating = 'solid';  // text-only: provisional, refined post-extraction
+  }
   if (!rating || !VALID_RATINGS.includes(rating as Rating)) {
-    return NextResponse.json({ error: 'rating must be one of solid|tired|wrecked (or post_run shape with execution+body)' }, { status: 400 });
+    return NextResponse.json({
+      error: 'check-in needs at least one of: rating, execution+body chips, or free text',
+    }, { status: 400 });
   }
 
   const userId = body.user_id ?? DAVID_USER_ID;
@@ -250,6 +262,22 @@ export async function POST(req: NextRequest) {
   // Persist the reply + the note + extracted signals onto the row so a
   // page refresh can rehydrate them, and so the next brief regen can
   // see "what we said last time + what the runner reported."
+  //
+  // For text-only check-ins, the rating started as a provisional 'solid'
+  // (placeholder to clear validation). Now that the extractor has
+  // surfaced what the runner actually said, refine the rating:
+  //   - body_implicit=cooked          → wrecked
+  //   - body_implicit=worked + pushed → tired
+  //   - execution_implicit=missed/walled/missed_goal → tired
+  //   - else                          → leave as solid
+  let refinedRating: string | null = null;
+  if (hasText) {
+    const bi = extracted.body_implicit;
+    const ei = extracted.execution_implicit;
+    if (bi === 'cooked') refinedRating = 'wrecked';
+    else if (ei && ['pushed', 'missed', 'walled', 'missed_goal'].includes(ei)) refinedRating = 'tired';
+  }
+
   if (insertedId) {
     try {
       const patch: Record<string, any> = {};
@@ -258,9 +286,11 @@ export async function POST(req: NextRequest) {
       patch.extracted = extracted;
       await pool.query(
         `UPDATE check_ins
-            SET extras = COALESCE(extras, '{}'::jsonb) || $1::jsonb
+            SET extras = COALESCE(extras, '{}'::jsonb) || $1::jsonb${refinedRating ? ', rating = $3' : ''}
           WHERE id = $2`,
-        [JSON.stringify(patch), insertedId]
+        refinedRating
+          ? [JSON.stringify(patch), insertedId, refinedRating]
+          : [JSON.stringify(patch), insertedId]
       );
     } catch (e: any) {
       console.error('[checkin] failed to persist extras:', e?.message ?? e);
