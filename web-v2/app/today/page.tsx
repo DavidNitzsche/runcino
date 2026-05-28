@@ -2,7 +2,9 @@
  * /today · the daily home (v3 cutover · 2026-05-28).
  *
  * Server component:
- *   1. Loads GlanceState via the existing production loader (unchanged)
+ *   1. Loads GlanceState via the existing production loader (unchanged) —
+ *      OR substitutes a persona fixture when `?persona=<key>` is on the URL
+ *      (simulator mode, Phase 13).
  *   2. Resolves the 11-state DayState via the Faff adapter
  *   3. Builds PosterPayload / SiblingPayload / WeekStripPayload
  *   4. Renders TodayClient with the legacy BriefingLoader injected as a
@@ -15,9 +17,21 @@
  *     12 state gradients, 5 zone tokens)
  *
  * What stayed the same:
- *   - loadGlanceState (the data path)
- *   - BriefingLoader (the LLM coach voice loader)
+ *   - loadGlanceState (the data path) for the real-data branch
+ *   - BriefingLoader (the LLM coach voice loader) for the real-data branch
  *   - TopNav (the global navigation)
+ *
+ * Simulator path · Phase 13 (2026-05-28):
+ *   `/today?persona=<key>` bypasses the DB lookup and feeds the persona's
+ *   deterministic GlanceState directly to the adapter. Lets us visually
+ *   verify every day-state without seeding a runner per archetype in the
+ *   DB. The persona catalogue lives in lib/faff/personas.ts (read-only;
+ *   mirror of Faff repo's canonical fixtures).
+ *
+ *   The LLM briefing is suppressed in persona mode — BriefingLoader hits
+ *   Anthropic with the real user's data, which is meaningless for a
+ *   simulated persona. We render a static "simulator mode" placeholder
+ *   in its slot instead.
  *
  * Cardinal Rule #1 · build it right. Cardinal Rule #4 · single source of
  * truth (tokens come from /lib/faff/types + design/tokens/*.css mirrored
@@ -26,13 +40,18 @@
 
 import { TopNav } from '@/components/layout/TopNav';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
-import { loadGlanceState } from '@/lib/coach/glance-state';
+import { loadGlanceState, type GlanceState } from '@/lib/coach/glance-state';
 import {
   resolveDayState,
   buildPoster,
   buildSibling,
   buildWeekStrip,
 } from '@/lib/faff/glance-adapter';
+import {
+  PERSONA_CATALOGUE,
+  getPersonaGlanceState,
+  type PersonaKey,
+} from '@/lib/faff/personas';
 import { TodayClient } from './TodayClient';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -41,14 +60,27 @@ export const dynamic = 'force-dynamic';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
-export default async function TodayPage() {
-  let glance: Awaited<ReturnType<typeof loadGlanceState>> | null = null;
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ persona?: string }>;
+}) {
+  const params = await searchParams;
+  const personaKey = isPersonaKey(params.persona) ? params.persona : null;
+
+  let glance: GlanceState | null = null;
   let glanceError: string | null = null;
-  try {
-    glance = await loadGlanceState(DAVID_USER_ID);
-  } catch (e: unknown) {
-    const err = e as { message?: string };
-    glanceError = err?.message ?? String(e);
+
+  if (personaKey) {
+    // Simulator path · deterministic, no DB lookup, no LLM briefing.
+    glance = getPersonaGlanceState(personaKey);
+  } else {
+    try {
+      glance = await loadGlanceState(DAVID_USER_ID);
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      glanceError = err?.message ?? String(e);
+    }
   }
 
   // Hard-fail render: if the loader broke, show the error chip on top of
@@ -67,6 +99,16 @@ export default async function TodayPage() {
   const sibling = buildSibling(glance, state);
   const week = buildWeekStrip(glance);
 
+  // In persona mode, suppress the LLM briefing — BriefingLoader hits
+  // Anthropic with the real user's data and doesn't know about the
+  // simulated persona. Render a static placeholder instead so the
+  // slot's visual footprint is preserved.
+  const briefingSlot = personaKey ? (
+    <SimulatorBriefingPlaceholder />
+  ) : (
+    <BriefingLoader surface="today" renderCards={false} />
+  );
+
   return (
     <>
       <TopNav />
@@ -76,10 +118,37 @@ export default async function TodayPage() {
         week={week}
         state={state}
         phaseLabel={glance.phaseLabel}
-        briefingSlot={<BriefingLoader surface="today" renderCards={false} />}
+        briefingSlot={briefingSlot}
         errorSlot={glanceError ? <ErrorChip message={glanceError} /> : null}
+        activePersona={personaKey}
       />
     </>
+  );
+}
+
+/**
+ * Type-guard: only accept strings that match a known PersonaKey from the
+ * catalogue. Keeps URL handling tight — typos route to the real-data path
+ * rather than throwing.
+ */
+function isPersonaKey(s: string | undefined): s is PersonaKey {
+  if (!s) return false;
+  return PERSONA_CATALOGUE.some((p) => p.key === s);
+}
+
+function SimulatorBriefingPlaceholder() {
+  return (
+    <div
+      style={{
+        fontFamily: 'var(--f-body)',
+        fontSize: 12,
+        color: 'var(--mute)',
+        padding: '12px 4px',
+        letterSpacing: '0.2px',
+      }}
+    >
+      Coach voice · simulator mode · LLM briefing suppressed for personas.
+    </div>
   );
 }
 
