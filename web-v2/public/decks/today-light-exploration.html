@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>/today · Light Exploration — 2026-05-28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* ─── shared gradient tokens (sacred · same across every direction) ─── */
+    --g-easy:    linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+    --g-quality: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #7a2828 100%);
+    --g-long:    linear-gradient(135deg, #27B4E0 0%, #1a6a9e 60%, #0c2a5e 100%);
+    --g-done:    linear-gradient(135deg, #3EBD41 0%, #27B4E0 60%, #1a4a8e 100%);
+    --g-race:    linear-gradient(135deg, #FF8847 0%, #E85D26 50%, #7a2828 100%);
+    --g-phase:   linear-gradient(135deg, #B084FF 0%, #6a4ace 60%, #2a1a5a 100%);
+
+    /* ─── semantic dots (used in MiniTile status pips) ─── */
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --dist:    #27B4E0;
+
+    /* ─── typography ─── */
+    --f-display:           'Oswald', sans-serif;
+    --f-body:              'Inter', system-ui, sans-serif;
+    --f-display-weight:    700;
+    --f-display-tracking:  -0.015em;
+    --f-display-line:      0.86;
+
+    /* ─── deck chrome (dark — frames the directions, doesn't compete) ─── */
+    --deck-bg:   #0a0c10;
+    --deck-page: #15171c;
+    --deck-card: #11141a;
+    --deck-ink:  #f6f7f8;
+    --deck-mute: #8a90a0;
+    --deck-line: rgba(255,255,255,0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--deck-page);
+    color: var(--deck-ink);
+    font-family: var(--f-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── deck header ─── */
+  .header {
+    border-bottom: 1px solid var(--deck-line);
+    padding-bottom: 40px;
+    margin-bottom: 56px;
+  }
+  .h-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--deck-mute);
+    margin-bottom: 18px;
+  }
+  .h-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 88px;
+    margin: 0 0 14px 0;
+  }
+  .h-sub {
+    font-size: 16px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    max-width: 760px;
+    margin: 0;
+  }
+
+  /* ─── direction header ─── */
+  .direction {
+    margin-top: 96px;
+  }
+  .d-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 36px;
+    align-items: end;
+  }
+  .d-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--deck-mute);
+    margin-bottom: 12px;
+  }
+  .d-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    margin: 0;
+  }
+  .d-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.74);
+    margin: 0;
+  }
+
+  /* ─── mockup stage ─── */
+  .stage {
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+  }
+  .stage-inner {
+    padding: 48px;
+    min-height: 900px;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+   * SHARED /today LAYOUT
+   * Every direction reuses these structural classes — only color tokens
+   * change between .dir-* scopes. Spacing, type sizing, component shapes
+   * are identical across directions so the experiment is controlled.
+   * ═══════════════════════════════════════════════════════════════ */
+
+  /* Poster + Sibling pair */
+  .today-row1 {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: 22px;
+  }
+
+  .poster {
+    border-radius: 22px;
+    overflow: hidden;
+    padding: 26px;
+    color: #fff;
+    min-height: 360px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .poster.easy { background: var(--g-easy); }
+  .p-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.88);
+    margin-bottom: 16px;
+  }
+  .p-verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 84px;
+    margin: 0;
+    color: #fff;
+  }
+  .p-phase {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.74);
+    margin-top: 12px;
+  }
+  .p-trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: auto;
+    padding-top: 28px;
+  }
+  .p-trio .stat-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 36px;
+    color: #fff;
+    line-height: 1;
+    font-feature-settings: "tnum";
+  }
+  .p-trio .stat-l {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.78);
+    margin-top: 6px;
+  }
+
+  /* Sibling card */
+  .sib {
+    border-radius: 22px;
+    padding: 26px;
+    display: flex;
+    flex-direction: column;
+  }
+  .sib-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .sib-prose {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: 1.04;
+    font-size: 30px;
+    margin: 0 0 22px 0;
+  }
+  .sib-tiles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: auto;
+  }
+  .tile {
+    border-radius: 14px;
+    padding: 14px 14px 12px;
+    position: relative;
+  }
+  .tile-label {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .tile-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 26px;
+    line-height: 1;
+    font-feature-settings: "tnum";
+  }
+  .tile-v small {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+    margin-left: 3px;
+    opacity: 0.7;
+  }
+  .tile-meta {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 500;
+    margin-top: 6px;
+  }
+  .tile .dot {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+  .dot.green { background: var(--green); }
+  .dot.amber { background: var(--goal); }
+
+  /* WeekStrip */
+  .week {
+    margin-top: 22px;
+    border-radius: 22px;
+    padding: 22px 26px 24px;
+  }
+  .week-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .week-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+  }
+  .week-total {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 22px;
+    font-feature-settings: "tnum";
+  }
+  .week-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+  }
+  .day {
+    border-radius: 14px;
+    padding: 12px 10px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-height: 108px;
+    position: relative;
+  }
+  .day-dow {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+  }
+  .day-mi {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 22px;
+    line-height: 1;
+    font-feature-settings: "tnum";
+  }
+  .day-type {
+    font-family: var(--f-body);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+  }
+  .day-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    margin-top: auto;
+  }
+  .day-icon.check { background: var(--green); color: #fff; font-size: 11px; font-weight: 800; }
+  .day-icon.today { background: transparent; border: 1.5px solid currentColor; }
+  .day.today { font-weight: 700; }
+
+  /* Coach voice card */
+  .coach {
+    margin-top: 22px;
+    border-radius: 22px;
+    padding: 26px 28px 28px;
+  }
+  .coach-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .coach-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+  }
+  .coach-sub {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: 0.95;
+    font-size: 26px;
+    margin: 0 0 14px 0;
+  }
+  .coach-prose {
+    font-family: var(--f-body);
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.62;
+    margin: 0;
+    max-width: 1100px;
+  }
+
+  /* BodyGrid */
+  .body-section {
+    margin-top: 30px;
+  }
+  .body-section-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .body-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .body-card {
+    border-radius: 18px;
+    padding: 22px 22px 80px;
+    min-height: 180px;
+  }
+  .bc-label {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .bc-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 28px;
+    line-height: 0.95;
+    margin: 0 0 8px 0;
+  }
+  .bc-sub {
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+   * DIRECTION A · CREAM / WARM PAPER
+   * ═══════════════════════════════════════════════════════════════ */
+  .dir-cream {
+    background: #f6f1e7;
+    color: #2b2620;
+  }
+  .dir-cream .sib {
+    background: #fbf7ed;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-cream .sib-eye { color: #8a7355; }
+  .dir-cream .sib-prose { color: #2b2620; }
+  .dir-cream .tile {
+    background: #ffffff;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-cream .tile-label { color: #8a7355; }
+  .dir-cream .tile-v { color: #2b2620; }
+  .dir-cream .tile-meta { color: #6a604d; }
+
+  .dir-cream .week {
+    background: #fbf7ed;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-cream .week-eye { color: #8a7355; }
+  .dir-cream .week-total { color: #2b2620; }
+  .dir-cream .day {
+    background: #ffffff;
+    border: 1px solid rgba(120,90,40,0.08);
+  }
+  .dir-cream .day-dow { color: #8a7355; }
+  .dir-cream .day-mi { color: #2b2620; }
+  .dir-cream .day-type { color: #6a604d; }
+  .dir-cream .day.today {
+    background: #fff7e3;
+    border-color: rgba(243,173,56,0.45);
+    color: #5a3a08;
+  }
+  .dir-cream .day.today .day-dow { color: #b07a18; }
+  .dir-cream .day.today .day-type { color: #b07a18; }
+  .dir-cream .day-icon.today { color: #b07a18; }
+
+  .dir-cream .coach {
+    background: #fbf7ed;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-cream .coach-eye { color: #8a7355; }
+  .dir-cream .coach-sub { color: #2b2620; }
+  .dir-cream .coach-prose { color: #3a3026; }
+
+  .dir-cream .body-section-eye { color: #8a7355; }
+  .dir-cream .body-card {
+    background: #ffffff;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-cream .bc-label { color: #8a7355; }
+  .dir-cream .bc-title { color: #2b2620; }
+  .dir-cream .bc-sub { color: #6a604d; }
+
+  /* ═══════════════════════════════════════════════════════════════
+   * DIRECTION B · PEARL / COOL WHITE
+   * ═══════════════════════════════════════════════════════════════ */
+  .dir-pearl {
+    background: #f8fafc;
+    color: #0f172a;
+  }
+  .dir-pearl .sib {
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06);
+  }
+  .dir-pearl .sib-eye { color: #64748b; }
+  .dir-pearl .sib-prose { color: #0f172a; }
+  .dir-pearl .tile {
+    background: #f1f5f9;
+  }
+  .dir-pearl .tile-label { color: #64748b; }
+  .dir-pearl .tile-v { color: #0f172a; }
+  .dir-pearl .tile-meta { color: #475569; }
+
+  .dir-pearl .week {
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06);
+  }
+  .dir-pearl .week-eye { color: #64748b; }
+  .dir-pearl .week-total { color: #0f172a; }
+  .dir-pearl .day { background: #f1f5f9; }
+  .dir-pearl .day-dow { color: #64748b; }
+  .dir-pearl .day-mi { color: #0f172a; }
+  .dir-pearl .day-type { color: #475569; }
+  .dir-pearl .day.today {
+    background: #ffffff;
+    box-shadow: 0 0 0 2px rgba(243,173,56,0.55), 0 4px 12px rgba(15,23,42,0.08);
+    color: #0f172a;
+  }
+  .dir-pearl .day.today .day-dow { color: #b07a18; }
+  .dir-pearl .day.today .day-type { color: #b07a18; }
+  .dir-pearl .day-icon.today { color: #b07a18; }
+
+  .dir-pearl .coach {
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06);
+  }
+  .dir-pearl .coach-eye { color: #64748b; }
+  .dir-pearl .coach-sub { color: #0f172a; }
+  .dir-pearl .coach-prose { color: #1e293b; }
+
+  .dir-pearl .body-section-eye { color: #64748b; }
+  .dir-pearl .body-card {
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06);
+  }
+  .dir-pearl .bc-label { color: #64748b; }
+  .dir-pearl .bc-title { color: #0f172a; }
+  .dir-pearl .bc-sub { color: #475569; }
+
+  /* ═══════════════════════════════════════════════════════════════
+   * DIRECTION D · GLASS / GRADIENT-WASH
+   * ═══════════════════════════════════════════════════════════════ */
+  .dir-glass {
+    background:
+      radial-gradient(1100px 700px at 12% 8%, rgba(62,189,65,0.18), transparent 60%),
+      radial-gradient(900px 700px at 92% 100%, rgba(39,180,224,0.18), transparent 55%),
+      linear-gradient(180deg, #eaf3ee 0%, #e3eef4 100%);
+    color: #0f1c1a;
+  }
+  .dir-glass .sib {
+    background: rgba(255,255,255,0.62);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.7);
+    box-shadow: 0 8px 28px rgba(15,30,50,0.06);
+  }
+  .dir-glass .sib-eye { color: #3a5a6a; }
+  .dir-glass .sib-prose { color: #0f1c1a; }
+  .dir-glass .tile {
+    background: rgba(255,255,255,0.55);
+    border: 1px solid rgba(255,255,255,0.65);
+    overflow: hidden;
+    position: relative;
+  }
+  /* tiny gradient band per tile (the experimental detail) */
+  .dir-glass .tile::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    opacity: 0.55;
+  }
+  .dir-glass .tile.sleep::before  { background: var(--g-quality); }
+  .dir-glass .tile.rhr::before    { background: var(--g-easy); }
+  .dir-glass .tile.hrv::before    { background: var(--g-easy); }
+  .dir-glass .tile.load::before   { background: var(--g-easy); }
+  .dir-glass .tile-label { color: #3a5a6a; }
+  .dir-glass .tile-v { color: #0f1c1a; }
+  .dir-glass .tile-meta { color: #2a4252; }
+
+  .dir-glass .week {
+    background: rgba(255,255,255,0.62);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.7);
+    box-shadow: 0 8px 28px rgba(15,30,50,0.06);
+  }
+  .dir-glass .week-eye { color: #3a5a6a; }
+  .dir-glass .week-total { color: #0f1c1a; }
+  .dir-glass .day {
+    background: rgba(255,255,255,0.55);
+    border: 1px solid rgba(255,255,255,0.6);
+    overflow: hidden;
+    position: relative;
+  }
+  /* per-day-type gradient band (the experimental detail) */
+  .dir-glass .day::before {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 3px;
+    opacity: 0.55;
+  }
+  .dir-glass .day.easy::before    { background: var(--g-easy); }
+  .dir-glass .day.qual::before    { background: var(--g-quality); }
+  .dir-glass .day.long::before    { background: var(--g-long); }
+  .dir-glass .day.rest::before    { background: var(--g-phase); opacity: 0.4; }
+  .dir-glass .day-dow { color: #3a5a6a; }
+  .dir-glass .day-mi { color: #0f1c1a; }
+  .dir-glass .day-type { color: #2a4252; }
+  .dir-glass .day.today {
+    background: rgba(255,255,255,0.85);
+    border: 1.5px solid rgba(243,173,56,0.6);
+  }
+  .dir-glass .day.today .day-dow { color: #b07a18; }
+  .dir-glass .day.today .day-type { color: #b07a18; }
+  .dir-glass .day-icon.today { color: #b07a18; }
+
+  .dir-glass .coach {
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.7);
+    box-shadow: 0 8px 28px rgba(15,30,50,0.06);
+    position: relative;
+    overflow: hidden;
+  }
+  .dir-glass .coach::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: var(--g-easy);
+    opacity: 0.7;
+  }
+  .dir-glass .coach-eye { color: #3a5a6a; }
+  .dir-glass .coach-sub { color: #0f1c1a; }
+  .dir-glass .coach-prose { color: #1e2e2c; }
+
+  .dir-glass .body-section-eye { color: #3a5a6a; }
+  .dir-glass .body-card {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.65);
+    box-shadow: 0 8px 28px rgba(15,30,50,0.06);
+  }
+  .dir-glass .bc-label { color: #3a5a6a; }
+  .dir-glass .bc-title { color: #0f1c1a; }
+  .dir-glass .bc-sub { color: #2a4252; }
+
+  /* ═══════════════════════════════════════════════════════════════
+   * DIRECTION E · HYBRID / LIGHT-ON-DARK
+   * ═══════════════════════════════════════════════════════════════ */
+  .dir-hybrid {
+    background: #0a0c10;
+    color: #2b2620;
+  }
+  .dir-hybrid .sib {
+    background: #faf6ec;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-hybrid .sib-eye { color: #8a7355; }
+  .dir-hybrid .sib-prose { color: #2b2620; }
+  .dir-hybrid .tile {
+    background: #ffffff;
+    border: 1px solid rgba(120,90,40,0.08);
+  }
+  .dir-hybrid .tile-label { color: #8a7355; }
+  .dir-hybrid .tile-v { color: #2b2620; }
+  .dir-hybrid .tile-meta { color: #6a604d; }
+
+  .dir-hybrid .week {
+    background: #faf6ec;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-hybrid .week-eye { color: #8a7355; }
+  .dir-hybrid .week-total { color: #2b2620; }
+  .dir-hybrid .day {
+    background: #ffffff;
+    border: 1px solid rgba(120,90,40,0.08);
+  }
+  .dir-hybrid .day-dow { color: #8a7355; }
+  .dir-hybrid .day-mi { color: #2b2620; }
+  .dir-hybrid .day-type { color: #6a604d; }
+  .dir-hybrid .day.today {
+    background: #fff7e3;
+    border-color: rgba(243,173,56,0.5);
+  }
+  .dir-hybrid .day.today .day-dow { color: #b07a18; }
+  .dir-hybrid .day.today .day-type { color: #b07a18; }
+  .dir-hybrid .day-icon.today { color: #b07a18; }
+
+  .dir-hybrid .coach {
+    background: #faf6ec;
+    border: 1px solid rgba(120,90,40,0.10);
+  }
+  .dir-hybrid .coach-eye { color: #8a7355; }
+  .dir-hybrid .coach-sub { color: #2b2620; }
+  .dir-hybrid .coach-prose { color: #3a3026; }
+
+  .dir-hybrid .body-section-eye { color: #8a90a0; }
+  .dir-hybrid .body-card {
+    background: #ffffff;
+    border: 1px solid rgba(120,90,40,0.08);
+  }
+  .dir-hybrid .bc-label { color: #8a7355; }
+  .dir-hybrid .bc-title { color: #2b2620; }
+  .dir-hybrid .bc-sub { color: #6a604d; }
+
+  /* ─── footer ─── */
+  .footer {
+    margin-top: 120px;
+    padding-top: 40px;
+    border-top: 1px solid var(--deck-line);
+    font-size: 14px;
+    color: rgba(246,247,248,0.78);
+    line-height: 1.65;
+  }
+  .footer p { margin: 0 0 16px 0; max-width: 880px; }
+  .footer b { color: var(--deck-ink); font-weight: 700; }
+  .footer h3 {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 36px;
+    color: var(--deck-ink);
+    margin: 32px 0 18px;
+  }
+  .rationale-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 18px;
+  }
+  .rationale {
+    background: var(--deck-card);
+    border: 1px solid var(--deck-line);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .r-head {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--deck-mute);
+    margin-bottom: 8px;
+  }
+  .r-body {
+    font-size: 13.5px;
+    color: rgba(246,247,248,0.85);
+    line-height: 1.55;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── header ─── -->
+  <header class="header">
+    <div class="h-eye">FAFF · /TODAY · LIGHT EXPLORATION · 2026-05-28</div>
+    <h1 class="h-title">What if<br>it&rsquo;s not dark?</h1>
+    <p class="h-sub">
+      The current /today surface is shipped in a dark canvas, and it's beautiful &mdash; but the gut says try lighter. Same layout, same gradients, same typography. Only the canvas + cards change. Four palette directions, each rendering the full /today system so the comparison is honest: poster, sibling, week strip, coach voice, body grid. The Poster gradient is sacred and unchanged. The question is what lives behind it.
+    </p>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       DIRECTION A · CREAM / WARM PAPER
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION A &middot; CREAM</div>
+        <h2 class="d-title">Warm paper.</h2>
+      </div>
+      <p class="d-desc">
+        Off-white #f6f1e7 canvas. Cream cards. Warm-grey hairlines. The gradients pop with more saturation against the warm field than they ever do against black. Feels like a Moleskine spread that knows your splits. Reads serious, hand-built, considered &mdash; not clinical.
+      </p>
+    </div>
+
+    <div class="stage">
+      <div class="stage-inner dir-cream">
+
+        <div class="today-row1">
+          <!-- Poster -->
+          <div class="poster easy">
+            <div class="p-eye">THU &middot; MAY 28 &middot; BASE</div>
+            <h3 class="p-verb">EASY 6.1.</h3>
+            <div class="p-phase">BASE</div>
+            <div class="p-trio">
+              <div>
+                <div class="stat-v">6.1</div>
+                <div class="stat-l">PLANNED MI</div>
+              </div>
+              <div>
+                <div class="stat-v">46</div>
+                <div class="stat-l">RHR BPM</div>
+              </div>
+              <div>
+                <div class="stat-v">6.7</div>
+                <div class="stat-l">SLEEP 7D</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sibling -->
+          <div class="sib">
+            <div class="sib-eye">THE BODY &middot; TODAY</div>
+            <p class="sib-prose">If you can't chat the whole way, you're going too hard.</p>
+            <div class="sib-tiles">
+              <div class="tile sleep">
+                <span class="dot amber"></span>
+                <div class="tile-label">SLEEP</div>
+                <div class="tile-v">6.7<small>h</small></div>
+                <div class="tile-meta">7d avg</div>
+              </div>
+              <div class="tile rhr">
+                <span class="dot green"></span>
+                <div class="tile-label">RHR</div>
+                <div class="tile-v">46<small>bpm</small></div>
+                <div class="tile-meta">&minus;3 vs base</div>
+              </div>
+              <div class="tile hrv">
+                <span class="dot green"></span>
+                <div class="tile-label">HRV</div>
+                <div class="tile-v">62<small>ms</small></div>
+                <div class="tile-meta">+6 vs base</div>
+              </div>
+              <div class="tile load">
+                <span class="dot green"></span>
+                <div class="tile-label">LOAD</div>
+                <div class="tile-v">1.22</div>
+                <div class="tile-meta">sweet spot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WeekStrip -->
+        <div class="week">
+          <div class="week-head">
+            <div class="week-eye">THIS WEEK &middot; BASE</div>
+            <div class="week-total">19.7 / 43.8 mi</div>
+          </div>
+          <div class="week-days">
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day qual">
+              <div class="day-dow">W</div>
+              <div class="day-mi">7.9</div>
+              <div class="day-type">THRS</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy today">
+              <div class="day-dow">F</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon today"></div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">S</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+            </div>
+            <div class="day rest">
+              <div class="day-dow">S</div>
+              <div class="day-mi">&mdash;</div>
+              <div class="day-type">REST</div>
+            </div>
+            <div class="day long">
+              <div class="day-dow">M</div>
+              <div class="day-mi">12.1</div>
+              <div class="day-type">LONG</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Coach voice -->
+        <div class="coach">
+          <div class="coach-head">
+            <div class="coach-eye">COACH &middot; WHY THIS WORKOUT</div>
+          </div>
+          <h3 class="coach-sub">Easy run on deck.</h3>
+          <p class="coach-prose">
+            On the plate today: easy 6.1. Body's reading strong (83) &mdash; green light to run the plan. Your load's at 1.22, right in your sweet spot, and you're at 19.7 of 43.8 on the week, with Sunday's long run still to close it out. The one thing I'm actually watching this week isn't the running &mdash; it's sleep. You're about 6 hours short, and that's the lever that matters most right now. The training's in a good place; recovery's what'll make or break how it lands. Get after the sleep. Conversational pace, can't talk in sentences means you're working too hard.
+          </p>
+        </div>
+
+        <!-- BodyGrid -->
+        <div class="body-section">
+          <div class="body-section-eye">WORKOUT &middot; THE BODY TODAY</div>
+          <div class="body-grid">
+            <div class="body-card">
+              <div class="bc-label">WORKOUT BREAKDOWN</div>
+              <h4 class="bc-title">Breakdown chart wires here.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+            <div class="body-card">
+              <div class="bc-label">PHASE INTENT</div>
+              <h4 class="bc-title">Why this workout sits inside the phase.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       DIRECTION B · PEARL / COOL WHITE
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION B &middot; PEARL</div>
+        <h2 class="d-title">Cool white,<br>soft shadow.</h2>
+      </div>
+      <p class="d-desc">
+        Pure cool #f8fafc canvas. White cards lifted by a soft drop shadow instead of borders. No hairlines. This is the Strava / Apple Fitness aesthetic &mdash; clean, clinical, weightless. The gradients sit slightly more muted against the pure white but the cards themselves feel airy.
+      </p>
+    </div>
+
+    <div class="stage">
+      <div class="stage-inner dir-pearl">
+
+        <div class="today-row1">
+          <div class="poster easy">
+            <div class="p-eye">THU &middot; MAY 28 &middot; BASE</div>
+            <h3 class="p-verb">EASY 6.1.</h3>
+            <div class="p-phase">BASE</div>
+            <div class="p-trio">
+              <div>
+                <div class="stat-v">6.1</div>
+                <div class="stat-l">PLANNED MI</div>
+              </div>
+              <div>
+                <div class="stat-v">46</div>
+                <div class="stat-l">RHR BPM</div>
+              </div>
+              <div>
+                <div class="stat-v">6.7</div>
+                <div class="stat-l">SLEEP 7D</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sib">
+            <div class="sib-eye">THE BODY &middot; TODAY</div>
+            <p class="sib-prose">If you can't chat the whole way, you're going too hard.</p>
+            <div class="sib-tiles">
+              <div class="tile sleep">
+                <span class="dot amber"></span>
+                <div class="tile-label">SLEEP</div>
+                <div class="tile-v">6.7<small>h</small></div>
+                <div class="tile-meta">7d avg</div>
+              </div>
+              <div class="tile rhr">
+                <span class="dot green"></span>
+                <div class="tile-label">RHR</div>
+                <div class="tile-v">46<small>bpm</small></div>
+                <div class="tile-meta">&minus;3 vs base</div>
+              </div>
+              <div class="tile hrv">
+                <span class="dot green"></span>
+                <div class="tile-label">HRV</div>
+                <div class="tile-v">62<small>ms</small></div>
+                <div class="tile-meta">+6 vs base</div>
+              </div>
+              <div class="tile load">
+                <span class="dot green"></span>
+                <div class="tile-label">LOAD</div>
+                <div class="tile-v">1.22</div>
+                <div class="tile-meta">sweet spot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="week">
+          <div class="week-head">
+            <div class="week-eye">THIS WEEK &middot; BASE</div>
+            <div class="week-total">19.7 / 43.8 mi</div>
+          </div>
+          <div class="week-days">
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day qual">
+              <div class="day-dow">W</div>
+              <div class="day-mi">7.9</div>
+              <div class="day-type">THRS</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy today">
+              <div class="day-dow">F</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon today"></div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">S</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+            </div>
+            <div class="day rest">
+              <div class="day-dow">S</div>
+              <div class="day-mi">&mdash;</div>
+              <div class="day-type">REST</div>
+            </div>
+            <div class="day long">
+              <div class="day-dow">M</div>
+              <div class="day-mi">12.1</div>
+              <div class="day-type">LONG</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="coach">
+          <div class="coach-head">
+            <div class="coach-eye">COACH &middot; WHY THIS WORKOUT</div>
+          </div>
+          <h3 class="coach-sub">Easy run on deck.</h3>
+          <p class="coach-prose">
+            On the plate today: easy 6.1. Body's reading strong (83) &mdash; green light to run the plan. Your load's at 1.22, right in your sweet spot, and you're at 19.7 of 43.8 on the week, with Sunday's long run still to close it out. The one thing I'm actually watching this week isn't the running &mdash; it's sleep. You're about 6 hours short, and that's the lever that matters most right now. The training's in a good place; recovery's what'll make or break how it lands. Get after the sleep. Conversational pace, can't talk in sentences means you're working too hard.
+          </p>
+        </div>
+
+        <div class="body-section">
+          <div class="body-section-eye">WORKOUT &middot; THE BODY TODAY</div>
+          <div class="body-grid">
+            <div class="body-card">
+              <div class="bc-label">WORKOUT BREAKDOWN</div>
+              <h4 class="bc-title">Breakdown chart wires here.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+            <div class="body-card">
+              <div class="bc-label">PHASE INTENT</div>
+              <h4 class="bc-title">Why this workout sits inside the phase.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       DIRECTION D · GLASS / GRADIENT-WASH
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION D &middot; GLASS</div>
+        <h2 class="d-title">Translucent,<br>gradient-washed.</h2>
+      </div>
+      <p class="d-desc">
+        Pale gradient canvas (subtle green &rarr; blue wash). Cards translucent white over the wash with a frosted-glass blur. Every WeekStrip day card gets a tiny gradient band that matches its workout type at 55% opacity. Coach voice card gets a phase-edge stripe. Most experimental: the gradients aren't just inside the Poster anymore &mdash; they're a system-wide accent across every card.
+      </p>
+    </div>
+
+    <div class="stage">
+      <div class="stage-inner dir-glass">
+
+        <div class="today-row1">
+          <div class="poster easy">
+            <div class="p-eye">THU &middot; MAY 28 &middot; BASE</div>
+            <h3 class="p-verb">EASY 6.1.</h3>
+            <div class="p-phase">BASE</div>
+            <div class="p-trio">
+              <div>
+                <div class="stat-v">6.1</div>
+                <div class="stat-l">PLANNED MI</div>
+              </div>
+              <div>
+                <div class="stat-v">46</div>
+                <div class="stat-l">RHR BPM</div>
+              </div>
+              <div>
+                <div class="stat-v">6.7</div>
+                <div class="stat-l">SLEEP 7D</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sib">
+            <div class="sib-eye">THE BODY &middot; TODAY</div>
+            <p class="sib-prose">If you can't chat the whole way, you're going too hard.</p>
+            <div class="sib-tiles">
+              <div class="tile sleep">
+                <span class="dot amber"></span>
+                <div class="tile-label">SLEEP</div>
+                <div class="tile-v">6.7<small>h</small></div>
+                <div class="tile-meta">7d avg</div>
+              </div>
+              <div class="tile rhr">
+                <span class="dot green"></span>
+                <div class="tile-label">RHR</div>
+                <div class="tile-v">46<small>bpm</small></div>
+                <div class="tile-meta">&minus;3 vs base</div>
+              </div>
+              <div class="tile hrv">
+                <span class="dot green"></span>
+                <div class="tile-label">HRV</div>
+                <div class="tile-v">62<small>ms</small></div>
+                <div class="tile-meta">+6 vs base</div>
+              </div>
+              <div class="tile load">
+                <span class="dot green"></span>
+                <div class="tile-label">LOAD</div>
+                <div class="tile-v">1.22</div>
+                <div class="tile-meta">sweet spot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="week">
+          <div class="week-head">
+            <div class="week-eye">THIS WEEK &middot; BASE</div>
+            <div class="week-total">19.7 / 43.8 mi</div>
+          </div>
+          <div class="week-days">
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day qual">
+              <div class="day-dow">W</div>
+              <div class="day-mi">7.9</div>
+              <div class="day-type">THRS</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy today">
+              <div class="day-dow">F</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon today"></div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">S</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+            </div>
+            <div class="day rest">
+              <div class="day-dow">S</div>
+              <div class="day-mi">&mdash;</div>
+              <div class="day-type">REST</div>
+            </div>
+            <div class="day long">
+              <div class="day-dow">M</div>
+              <div class="day-mi">12.1</div>
+              <div class="day-type">LONG</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="coach">
+          <div class="coach-head">
+            <div class="coach-eye">COACH &middot; WHY THIS WORKOUT</div>
+          </div>
+          <h3 class="coach-sub">Easy run on deck.</h3>
+          <p class="coach-prose">
+            On the plate today: easy 6.1. Body's reading strong (83) &mdash; green light to run the plan. Your load's at 1.22, right in your sweet spot, and you're at 19.7 of 43.8 on the week, with Sunday's long run still to close it out. The one thing I'm actually watching this week isn't the running &mdash; it's sleep. You're about 6 hours short, and that's the lever that matters most right now. The training's in a good place; recovery's what'll make or break how it lands. Get after the sleep. Conversational pace, can't talk in sentences means you're working too hard.
+          </p>
+        </div>
+
+        <div class="body-section">
+          <div class="body-section-eye">WORKOUT &middot; THE BODY TODAY</div>
+          <div class="body-grid">
+            <div class="body-card">
+              <div class="bc-label">WORKOUT BREAKDOWN</div>
+              <h4 class="bc-title">Breakdown chart wires here.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+            <div class="body-card">
+              <div class="bc-label">PHASE INTENT</div>
+              <h4 class="bc-title">Why this workout sits inside the phase.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       DIRECTION E · HYBRID / LIGHT-ON-DARK
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION E &middot; HYBRID</div>
+        <h2 class="d-title">Cream cards,<br>dark canvas.</h2>
+      </div>
+      <p class="d-desc">
+        Inverse of the current state. Keep the #0a0c10 page background &mdash; but make every card cream/white. The Poster gradient still gets to dominate as the loud object, but the supporting cards become bright, paper-feeling islands floating in the dark. Highest contrast direction. Feels like a magazine spread under a black mat.
+      </p>
+    </div>
+
+    <div class="stage">
+      <div class="stage-inner dir-hybrid">
+
+        <div class="today-row1">
+          <div class="poster easy">
+            <div class="p-eye">THU &middot; MAY 28 &middot; BASE</div>
+            <h3 class="p-verb">EASY 6.1.</h3>
+            <div class="p-phase">BASE</div>
+            <div class="p-trio">
+              <div>
+                <div class="stat-v">6.1</div>
+                <div class="stat-l">PLANNED MI</div>
+              </div>
+              <div>
+                <div class="stat-v">46</div>
+                <div class="stat-l">RHR BPM</div>
+              </div>
+              <div>
+                <div class="stat-v">6.7</div>
+                <div class="stat-l">SLEEP 7D</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sib">
+            <div class="sib-eye">THE BODY &middot; TODAY</div>
+            <p class="sib-prose">If you can't chat the whole way, you're going too hard.</p>
+            <div class="sib-tiles">
+              <div class="tile sleep">
+                <span class="dot amber"></span>
+                <div class="tile-label">SLEEP</div>
+                <div class="tile-v">6.7<small>h</small></div>
+                <div class="tile-meta">7d avg</div>
+              </div>
+              <div class="tile rhr">
+                <span class="dot green"></span>
+                <div class="tile-label">RHR</div>
+                <div class="tile-v">46<small>bpm</small></div>
+                <div class="tile-meta">&minus;3 vs base</div>
+              </div>
+              <div class="tile hrv">
+                <span class="dot green"></span>
+                <div class="tile-label">HRV</div>
+                <div class="tile-v">62<small>ms</small></div>
+                <div class="tile-meta">+6 vs base</div>
+              </div>
+              <div class="tile load">
+                <span class="dot green"></span>
+                <div class="tile-label">LOAD</div>
+                <div class="tile-v">1.22</div>
+                <div class="tile-meta">sweet spot</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="week">
+          <div class="week-head">
+            <div class="week-eye">THIS WEEK &middot; BASE</div>
+            <div class="week-total">19.7 / 43.8 mi</div>
+          </div>
+          <div class="week-days">
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day qual">
+              <div class="day-dow">W</div>
+              <div class="day-mi">7.9</div>
+              <div class="day-type">THRS</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">T</div>
+              <div class="day-mi">5.8</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon check">&#10003;</div>
+            </div>
+            <div class="day easy today">
+              <div class="day-dow">F</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+              <div class="day-icon today"></div>
+            </div>
+            <div class="day easy">
+              <div class="day-dow">S</div>
+              <div class="day-mi">6.1</div>
+              <div class="day-type">EASY</div>
+            </div>
+            <div class="day rest">
+              <div class="day-dow">S</div>
+              <div class="day-mi">&mdash;</div>
+              <div class="day-type">REST</div>
+            </div>
+            <div class="day long">
+              <div class="day-dow">M</div>
+              <div class="day-mi">12.1</div>
+              <div class="day-type">LONG</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="coach">
+          <div class="coach-head">
+            <div class="coach-eye">COACH &middot; WHY THIS WORKOUT</div>
+          </div>
+          <h3 class="coach-sub">Easy run on deck.</h3>
+          <p class="coach-prose">
+            On the plate today: easy 6.1. Body's reading strong (83) &mdash; green light to run the plan. Your load's at 1.22, right in your sweet spot, and you're at 19.7 of 43.8 on the week, with Sunday's long run still to close it out. The one thing I'm actually watching this week isn't the running &mdash; it's sleep. You're about 6 hours short, and that's the lever that matters most right now. The training's in a good place; recovery's what'll make or break how it lands. Get after the sleep. Conversational pace, can't talk in sentences means you're working too hard.
+          </p>
+        </div>
+
+        <div class="body-section">
+          <div class="body-section-eye">WORKOUT &middot; THE BODY TODAY</div>
+          <div class="body-grid">
+            <div class="body-card">
+              <div class="bc-label">WORKOUT BREAKDOWN</div>
+              <h4 class="bc-title">Breakdown chart wires here.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+            <div class="body-card">
+              <div class="bc-label">PHASE INTENT</div>
+              <h4 class="bc-title">Why this workout sits inside the phase.</h4>
+              <div class="bc-sub">Sprint 03.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FOOTER · RATIONALE + RECOMMENDATION
+       ═══════════════════════════════════════════════════════════════ -->
+  <footer class="footer">
+    <h3>The four I picked.</h3>
+    <p>
+      Four directions chosen because each makes a fundamentally different argument about what the canvas does to the gradients. Cream warms them, Pearl cleans them, Glass amplifies them across the whole system, Hybrid frames them like a museum object. Two skipped because they didn't add a distinct argument.
+    </p>
+
+    <div class="rationale-grid">
+      <div class="rationale">
+        <div class="r-head">PICKED &middot; A &middot; CREAM</div>
+        <div class="r-body"><b>The warmth angle.</b> Off-white paper canvas. Distinct from B because Pearl is cold-clinical and Cream is warm-considered &mdash; very different emotional reads. The gradients gain saturation against the warm field.</div>
+      </div>
+      <div class="rationale">
+        <div class="r-head">PICKED &middot; B &middot; PEARL</div>
+        <div class="r-body"><b>The clinical angle.</b> Pure cool white with shadow lift, no hairlines. The Strava / Apple Fitness territory &mdash; instantly familiar to runners. Tests whether Faff wants to look like a friend or like a tool.</div>
+      </div>
+      <div class="rationale">
+        <div class="r-head">PICKED &middot; D &middot; GLASS</div>
+        <div class="r-body"><b>The maximalist gradient angle.</b> The brief asked specifically to lean MORE into gradients on the other cards &mdash; this direction does exactly that. Per-tile and per-day stripes turn gradient into a system-wide language, not just a Poster property.</div>
+      </div>
+      <div class="rationale">
+        <div class="r-head">PICKED &middot; E &middot; HYBRID</div>
+        <div class="r-body"><b>The "what if we&rsquo;re only half wrong" angle.</b> Maybe the dark canvas is right but the dark cards are the problem. Inverse approach &mdash; keep the dramatic page, swap to bright cards. Highest contrast of any direction.</div>
+      </div>
+      <div class="rationale">
+        <div class="r-head">SKIPPED &middot; C &middot; LIGHT GREY DASHBOARD</div>
+        <div class="r-body"><b>Too close to B.</b> Notion-grey canvas with white cards lives in the same "app dashboard" emotional register as Pearl, but Pearl earns its keep with the shadow-lift language. Light-Grey-Dashboard would mostly demonstrate the same argument B already makes.</div>
+      </div>
+      <div class="rationale">
+        <div class="r-head">SKIPPED &middot; F &middot; GRADIENT-EVERY-CARD</div>
+        <div class="r-body"><b>The brief flagged it as "probably bad."</b> Gradient on every card would gut the Poster's role as the loud object &mdash; if everything shouts, nothing carries the day-state identity. Glass already explores gradient-as-system more thoughtfully (accent bands, not full backgrounds).</div>
+      </div>
+    </div>
+
+    <h3>My read.</h3>
+    <p>
+      <b>Cream is the one.</b> The gradients are the brand soul, and they pop hardest against the warm paper canvas &mdash; more saturated, more present than they ever look against #0a0c10. The cream cards also do something Pearl can't: they feel built by a person, not a platform. Faff's voice in the Coach card is hand-built and considered, and Cream is the only canvas that reads the same way. Glass is the most fun and the most likely to be a marketing screenshot, but it's also the easiest to over-cook &mdash; the gradient-band-per-day-card detail is gorgeous in this mockup and would need real discipline to keep tasteful at production scale. Hybrid is a tempting middle path, but light-on-dark fights itself on the WeekStrip (cream cards on black makes the type cards feel like flashcards floating in a void). Pearl is correct and forgettable. Cream is correct and felt.
+    </p>
+
+    <h3>Open questions.</h3>
+    <p>
+      &mdash; Does Cream survive when the day-state is RACE or QUALITY? The warm canvas might fight the warm-orange Race gradient &mdash; needs a second pass at race-week.<br>
+      &mdash; In Direction D the per-day-card gradient strips are subtle here (3px at 55%) &mdash; should they be louder? Or should they only appear on the today-card and the upcoming long?<br>
+      &mdash; For Hybrid: does the page background stay #0a0c10 or shift to a warmer near-black to harmonise with the cream cards (e.g. #14110c)?
+    </p>
+
+    <p style="margin-top: 32px; color: var(--deck-mute);">
+      Faff &middot; 2026-05-28 &middot; /today &middot; light exploration
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>

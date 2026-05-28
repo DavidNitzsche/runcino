@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Poster · Workout Merge — 2026-05-28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #0a0c10;
+    --bg-page: #15171c;
+    --card:    #11141a;
+    --card2:   #13171f;
+    --ink:     #f6f7f8;
+    --mute:    #8a90a0;
+    --dim:     #4b505e;
+    --line:    rgba(255,255,255,0.08);
+    --line2:   rgba(255,255,255,0.04);
+
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --over:    #FC4D64;
+    --dist:    #27B4E0;
+    --rest:    #008FEC;
+    --learn:   #B084FF;
+    --race:    #FF8847;
+
+    --g-easy:    linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+    --g-quality: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #7a2828 100%);
+    --g-long:    linear-gradient(135deg, #27B4E0 0%, #1a6a9e 60%, #0c2a5e 100%);
+
+    --f-display:           'Oswald', sans-serif;
+    --f-body:              'Inter', system-ui, sans-serif;
+    --f-display-weight:    700;
+    --f-display-tracking:  -0.015em;
+    --f-display-line:      0.86;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--f-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── deck header ─── */
+  .header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 40px;
+    margin-bottom: 56px;
+  }
+  .h-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 18px;
+  }
+  .h-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 88px;
+    margin: 0 0 14px 0;
+  }
+  .h-sub {
+    font-size: 16px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    max-width: 760px;
+    margin: 0;
+  }
+
+  /* ─── direction section ─── */
+  .direction {
+    margin-top: 96px;
+  }
+  .d-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 32px;
+    align-items: end;
+  }
+  .d-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 12px;
+  }
+  .d-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    margin: 0;
+  }
+  .d-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.74);
+    margin: 0;
+  }
+  .d-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  /* ─── shared poster shell ─── */
+  .poster {
+    border-radius: 22px;
+    overflow: hidden;
+    padding: 22px 22px 22px;
+    color: #fff;
+    min-height: 380px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .poster.easy    { background: var(--g-easy); }
+  .poster.qual    { background: var(--g-quality); }
+  .poster.long    { background: var(--g-long); }
+
+  .p-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 14px;
+  }
+  .p-verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 72px;
+    margin: 0;
+    color: #fff;
+  }
+  .p-phase {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+    margin-top: 12px;
+  }
+
+  /* ─── stat trio (legacy bottom strip) ─── */
+  .stat-trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: auto;
+  }
+  .stat-cell { }
+  .stat-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 28px;
+    color: #fff;
+    font-feature-settings: "tnum";
+    line-height: 1;
+  }
+  .stat-l {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.75);
+    margin-top: 6px;
+  }
+
+  /* ─── A · STACKED list ─── */
+  .a-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 22px;
+    margin-bottom: 16px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .a-row {
+    display: grid;
+    grid-template-columns: 96px 1fr auto;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+    align-items: baseline;
+  }
+  .a-label {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.70);
+  }
+  .a-body {
+    font-family: var(--f-body);
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.95);
+  }
+  .a-tail {
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    font-feature-settings: "tnum";
+  }
+
+  /* ─── A2 / A3 · CENTERED variants ───
+   * Wrap the list in a flex:1 box so it sits in the middle of the
+   * card — between verb (top) and stat trio (anchored bottom via
+   * margin-top: auto). align-items: center vertically centers the
+   * rows in that wrap. */
+  .a-listwrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    margin: 16px 0 12px;
+  }
+  .a-listwrap > .a-list {
+    width: 100%;
+    margin: 0;
+  }
+  /* A3 · no divider lines · slightly tighter row padding to keep
+   *  visual rhythm without the hairlines. */
+  .a-list-clean { border-top: none; }
+  .a-list-clean .a-row {
+    border-bottom: none;
+    padding: 8px 0;
+  }
+
+  /* ─── B · MERGED stat row (workout IS the trio) ─── */
+  .b-mergedtrio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: auto;
+    padding-top: 22px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .b-tv {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 32px;
+    color: #fff;
+    line-height: 1;
+    font-feature-settings: "tnum";
+  }
+  .b-tl {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.78);
+    margin-top: 6px;
+  }
+  /* sub-text for the rep description on intervals */
+  .b-sub {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.78);
+    margin-top: 4px;
+  }
+
+  /* ─── C · ATTACHED band (workout in darker band fused to poster) ─── */
+  .c-wrap {
+    border-radius: 22px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .c-poster {
+    border-radius: 0;
+    min-height: 280px;
+  }
+  .c-band {
+    background: rgba(0,0,0,0.32);
+    padding: 18px 22px 20px;
+    border-top: 1px solid rgba(255,255,255,0.10);
+  }
+  .c-bandhead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .c-bh-label {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.65);
+  }
+  .c-bh-meta {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    font-feature-settings: "tnum";
+  }
+  .c-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .c-row {
+    display: grid;
+    grid-template-columns: 16px 1fr auto;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .c-bullet {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.65);
+    margin-top: 7px;
+  }
+  .c-text {
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+  }
+  .c-pace {
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    font-feature-settings: "tnum";
+  }
+
+  /* ─── caption + before block ─── */
+  .caption {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    text-align: center;
+    margin-top: 16px;
+  }
+
+  .pair-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .single {
+    grid-column: 1 / -1;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .four-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+  }
+  @media (min-width: 1100px) {
+    .four-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ─── footer ─── */
+  .footer {
+    margin-top: 96px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .footer b { color: var(--ink); font-weight: 700; }
+
+  .note {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.85);
+    margin-top: 18px;
+  }
+  .note b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── header ─── -->
+  <header class="header">
+    <div class="h-eye">FAFF · TODAY POSTER · WORKOUT-MERGE EXPLORATION · 2026-05-28</div>
+    <h1 class="h-title">The gradient<br>is doing nothing.</h1>
+    <p class="h-sub">
+      Right now the EASY 6.1 verb sits up top and the workout detail (paces, splits, HR cap, fuel checkpoints) lives 800px down in a dim grey card under the WeekStrip. That's two glances for one question — what am I running today and how.
+      Three directions for fusing them. Same gradient identity. Workout becomes the body of the Poster.
+    </p>
+  </header>
+
+  <!-- ─── DIRECTION A ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION A</div>
+        <h2 class="d-title">Detail list,<br>on the gradient.</h2>
+      </div>
+      <p class="d-desc">
+        A labeled-row breakdown sits between the verb and the stat trio. Each row is a small caps label + a body sentence + an optional tail number for tabular pace.
+        The stat trio stays at the bottom as the at-a-glance trio (banked vs body context). Maximum information density without breaking the at-a-glance read.
+      </p>
+    </div>
+
+    <div class="four-grid">
+
+      <!-- A · EASY -->
+      <div>
+        <div class="poster easy">
+          <div class="p-eye">THU · MAY 28 · BASE</div>
+          <h3 class="p-verb">EASY 6.1.</h3>
+          <div class="a-list">
+            <div class="a-row">
+              <div class="a-label">PACE</div>
+              <div class="a-body">Conversational · Z2</div>
+              <div class="a-tail">8:15&ndash;8:45/mi</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">HR CAP</div>
+              <div class="a-body">Stay aerobic</div>
+              <div class="a-tail">148 bpm</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">DURATION</div>
+              <div class="a-body">~52 min on feet</div>
+              <div class="a-tail">6.1 mi</div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">19.7</div>
+              <div class="stat-l">WEEK MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">46</div>
+              <div class="stat-l">RHR BPM</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">6.7</div>
+              <div class="stat-l">SLEEP 7D</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A · EASY</div>
+      </div>
+
+      <!-- A · INTERVALS -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">TUE · MAY 26 · BASE</div>
+          <h3 class="p-verb">INTERVALS.</h3>
+          <div class="a-list">
+            <div class="a-row">
+              <div class="a-label">WARMUP</div>
+              <div class="a-body">1.5 mi easy build</div>
+              <div class="a-tail">~12 min</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">WORK</div>
+              <div class="a-body">6 &times; 800m · 90s jog rest</div>
+              <div class="a-tail">3:02/mi</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">COOLDOWN</div>
+              <div class="a-body">1.5 mi easy</div>
+              <div class="a-tail">~13 min</div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">6.0</div>
+              <div class="stat-l">TOTAL MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">162</div>
+              <div class="stat-l">LTHR BPM</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~48m</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A · INTERVALS</div>
+      </div>
+
+      <!-- A · TEMPO -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">WED · MAY 27 · BASE</div>
+          <h3 class="p-verb">TEMPO.</h3>
+          <div class="a-list">
+            <div class="a-row">
+              <div class="a-label">WARMUP</div>
+              <div class="a-body">1.5 mi easy</div>
+              <div class="a-tail">~13 min</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">TEMPO</div>
+              <div class="a-body">3 mi · sustained &amp; controlled</div>
+              <div class="a-tail">7:15/mi</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">COOLDOWN</div>
+              <div class="a-body">1 mi easy</div>
+              <div class="a-tail">~8 min</div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">5.5</div>
+              <div class="stat-l">TOTAL MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">155</div>
+              <div class="stat-l">HR TARGET</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~44m</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A · TEMPO</div>
+      </div>
+
+      <!-- A · LONG -->
+      <div>
+        <div class="poster long">
+          <div class="p-eye">SUN · MAY 31 · BASE</div>
+          <h3 class="p-verb">LONG 12.</h3>
+          <div class="a-list">
+            <div class="a-row">
+              <div class="a-label">PACE</div>
+              <div class="a-body">Aerobic band</div>
+              <div class="a-tail">8:00&ndash;8:25/mi</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">HR CAP</div>
+              <div class="a-body">Long-day ceiling</div>
+              <div class="a-tail">145 bpm</div>
+            </div>
+            <div class="a-row">
+              <div class="a-label">FUEL</div>
+              <div class="a-body">Gel · water · gel</div>
+              <div class="a-tail">mi 4 &middot; 8 &middot; 11</div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">12</div>
+              <div class="stat-l">PLANNED MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~1:38</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">42d</div>
+              <div class="stat-l">TO RACE</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A · LONG</div>
+      </div>
+
+    </div>
+    <div class="note">
+      <b>Why this works:</b> the workout body becomes part of the gradient identity. Two glances become one. The legacy <b>stat trio</b> stays at the bottom as the at-a-glance context (banked / body / horizon) and earns its keep by adding signal the breakdown can't carry (RHR, sleep, week mileage).
+      <br><br>
+      <b>Risk:</b> dense Poster. On a phone at 390px wide the row label column has to shrink (96px → ~68px) or the rows wrap onto a second line. Manageable.
+    </div>
+  </section>
+
+  <!-- ─── DIRECTION A2 · CENTERED · WITH RULES ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION A2</div>
+        <h2 class="d-title">Centered<br>in the gradient.</h2>
+      </div>
+      <p class="d-desc">
+        Same labeled-row list — but vertically centered between the verb and the stat trio so the gradient breathes above and below the workout body. The rows feel more &quot;held&quot; in the card and the top/bottom rhythm is balanced. Rules kept for separation.
+      </p>
+    </div>
+
+    <div class="four-grid">
+
+      <!-- A2 · EASY -->
+      <div>
+        <div class="poster easy">
+          <div class="p-eye">THU · MAY 28 · BASE</div>
+          <h3 class="p-verb">EASY 6.1.</h3>
+          <div class="a-listwrap">
+            <div class="a-list">
+              <div class="a-row">
+                <div class="a-label">PACE</div>
+                <div class="a-body">Conversational · Z2</div>
+                <div class="a-tail">8:15&ndash;8:45/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">HR CAP</div>
+                <div class="a-body">Stay aerobic</div>
+                <div class="a-tail">148 bpm</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">DURATION</div>
+                <div class="a-body">~52 min on feet</div>
+                <div class="a-tail">6.1 mi</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">19.7</div>
+              <div class="stat-l">WEEK MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">46</div>
+              <div class="stat-l">RHR BPM</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">6.7</div>
+              <div class="stat-l">SLEEP 7D</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A2 · EASY</div>
+      </div>
+
+      <!-- A2 · INTERVALS -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">TUE · MAY 26 · BASE</div>
+          <h3 class="p-verb">INTERVALS.</h3>
+          <div class="a-listwrap">
+            <div class="a-list">
+              <div class="a-row">
+                <div class="a-label">WARMUP</div>
+                <div class="a-body">1.5 mi easy build</div>
+                <div class="a-tail">~12 min</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">WORK</div>
+                <div class="a-body">6 &times; 800m · 90s jog rest</div>
+                <div class="a-tail">3:02/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">COOLDOWN</div>
+                <div class="a-body">1.5 mi easy</div>
+                <div class="a-tail">~13 min</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">6.0</div>
+              <div class="stat-l">TOTAL MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">162</div>
+              <div class="stat-l">LTHR BPM</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~48m</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A2 · INTERVALS</div>
+      </div>
+
+      <!-- A2 · TEMPO -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">WED · MAY 27 · BASE</div>
+          <h3 class="p-verb">TEMPO.</h3>
+          <div class="a-listwrap">
+            <div class="a-list">
+              <div class="a-row">
+                <div class="a-label">WARMUP</div>
+                <div class="a-body">1.5 mi easy</div>
+                <div class="a-tail">~13 min</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">TEMPO</div>
+                <div class="a-body">3 mi · sustained &amp; controlled</div>
+                <div class="a-tail">7:15/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">COOLDOWN</div>
+                <div class="a-body">1 mi easy</div>
+                <div class="a-tail">~8 min</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">5.5</div>
+              <div class="stat-l">TOTAL MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">155</div>
+              <div class="stat-l">HR TARGET</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~44m</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A2 · TEMPO</div>
+      </div>
+
+      <!-- A2 · LONG -->
+      <div>
+        <div class="poster long">
+          <div class="p-eye">SUN · MAY 31 · BASE</div>
+          <h3 class="p-verb">LONG 12.</h3>
+          <div class="a-listwrap">
+            <div class="a-list">
+              <div class="a-row">
+                <div class="a-label">PACE</div>
+                <div class="a-body">Aerobic band</div>
+                <div class="a-tail">8:00&ndash;8:25/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">HR CAP</div>
+                <div class="a-body">Long-day ceiling</div>
+                <div class="a-tail">145 bpm</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">FUEL</div>
+                <div class="a-body">Gel · water · gel</div>
+                <div class="a-tail">mi 4 &middot; 8 &middot; 11</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">12</div>
+              <div class="stat-l">PLANNED MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~1:38</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">42d</div>
+              <div class="stat-l">TO RACE</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A2 · LONG</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── DIRECTION A3 · CENTERED · NO DIVIDERS ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION A3</div>
+        <h2 class="d-title">No rules.<br>Just the rows.</h2>
+      </div>
+      <p class="d-desc">
+        Same centered layout as A2 — divider lines removed. The rows breathe more like a poem than a spec sheet. Quieter, more editorial. The caps labels still carry the structure; the body type does the rest.
+      </p>
+    </div>
+
+    <div class="four-grid">
+
+      <!-- A3 · EASY -->
+      <div>
+        <div class="poster easy">
+          <div class="p-eye">THU · MAY 28 · BASE</div>
+          <h3 class="p-verb">EASY 6.1.</h3>
+          <div class="a-listwrap">
+            <div class="a-list a-list-clean">
+              <div class="a-row">
+                <div class="a-label">PACE</div>
+                <div class="a-body">Conversational · Z2</div>
+                <div class="a-tail">8:15&ndash;8:45/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">HR CAP</div>
+                <div class="a-body">Stay aerobic</div>
+                <div class="a-tail">148 bpm</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">DURATION</div>
+                <div class="a-body">~52 min on feet</div>
+                <div class="a-tail">6.1 mi</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">19.7</div>
+              <div class="stat-l">WEEK MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">46</div>
+              <div class="stat-l">RHR BPM</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">6.7</div>
+              <div class="stat-l">SLEEP 7D</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A3 · EASY</div>
+      </div>
+
+      <!-- A3 · INTERVALS -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">TUE · MAY 26 · BASE</div>
+          <h3 class="p-verb">INTERVALS.</h3>
+          <div class="a-listwrap">
+            <div class="a-list a-list-clean">
+              <div class="a-row">
+                <div class="a-label">WARMUP</div>
+                <div class="a-body">1.5 mi easy build</div>
+                <div class="a-tail">~12 min</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">WORK</div>
+                <div class="a-body">6 &times; 800m · 90s jog rest</div>
+                <div class="a-tail">3:02/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">COOLDOWN</div>
+                <div class="a-body">1.5 mi easy</div>
+                <div class="a-tail">~13 min</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">6.0</div>
+              <div class="stat-l">TOTAL MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">162</div>
+              <div class="stat-l">LTHR BPM</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~48m</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A3 · INTERVALS</div>
+      </div>
+
+      <!-- A3 · TEMPO -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">WED · MAY 27 · BASE</div>
+          <h3 class="p-verb">TEMPO.</h3>
+          <div class="a-listwrap">
+            <div class="a-list a-list-clean">
+              <div class="a-row">
+                <div class="a-label">WARMUP</div>
+                <div class="a-body">1.5 mi easy</div>
+                <div class="a-tail">~13 min</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">TEMPO</div>
+                <div class="a-body">3 mi · sustained &amp; controlled</div>
+                <div class="a-tail">7:15/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">COOLDOWN</div>
+                <div class="a-body">1 mi easy</div>
+                <div class="a-tail">~8 min</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">5.5</div>
+              <div class="stat-l">TOTAL MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">155</div>
+              <div class="stat-l">HR TARGET</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~44m</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A3 · TEMPO</div>
+      </div>
+
+      <!-- A3 · LONG -->
+      <div>
+        <div class="poster long">
+          <div class="p-eye">SUN · MAY 31 · BASE</div>
+          <h3 class="p-verb">LONG 12.</h3>
+          <div class="a-listwrap">
+            <div class="a-list a-list-clean">
+              <div class="a-row">
+                <div class="a-label">PACE</div>
+                <div class="a-body">Aerobic band</div>
+                <div class="a-tail">8:00&ndash;8:25/mi</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">HR CAP</div>
+                <div class="a-body">Long-day ceiling</div>
+                <div class="a-tail">145 bpm</div>
+              </div>
+              <div class="a-row">
+                <div class="a-label">FUEL</div>
+                <div class="a-body">Gel · water · gel</div>
+                <div class="a-tail">mi 4 &middot; 8 &middot; 11</div>
+              </div>
+            </div>
+          </div>
+          <div class="stat-trio">
+            <div class="stat-cell">
+              <div class="stat-v">12</div>
+              <div class="stat-l">PLANNED MI</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">~1:38</div>
+              <div class="stat-l">EST. TIME</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-v">42d</div>
+              <div class="stat-l">TO RACE</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">A3 · LONG</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── DIRECTION B ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION B</div>
+        <h2 class="d-title">Workout IS<br>the stat trio.</h2>
+      </div>
+      <p class="d-desc">
+        Replace the bottom stat trio entirely. The three columns are the THREE numbers the runner needs to execute &mdash; pace target, HR ceiling, distance. Body signals (RHR, sleep) move up to the Sibling MiniTileGrid where they belong.
+        Most "I want to know NOW" answer. Least information density per square inch.
+      </p>
+    </div>
+
+    <div class="four-grid">
+
+      <!-- B · EASY -->
+      <div>
+        <div class="poster easy">
+          <div class="p-eye">THU · MAY 28 · BASE</div>
+          <h3 class="p-verb">EASY 6.1.</h3>
+          <div class="p-phase">BASE</div>
+          <div class="b-mergedtrio">
+            <div>
+              <div class="b-tv">8:30<span style="font-size:13px;font-weight:600;opacity:0.7"> /mi</span></div>
+              <div class="b-tl">PACE TARGET</div>
+            </div>
+            <div>
+              <div class="b-tv">148<span style="font-size:13px;font-weight:600;opacity:0.7"> bpm</span></div>
+              <div class="b-tl">HR CAP</div>
+            </div>
+            <div>
+              <div class="b-tv">6.1<span style="font-size:13px;font-weight:600;opacity:0.7"> mi</span></div>
+              <div class="b-tl">DISTANCE</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">B · EASY</div>
+      </div>
+
+      <!-- B · INTERVALS -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">TUE · MAY 26 · BASE</div>
+          <h3 class="p-verb">6 &times; 800.</h3>
+          <div class="p-phase">INTERVALS · LTHR 162</div>
+          <div class="b-mergedtrio">
+            <div>
+              <div class="b-tv">3:02<span style="font-size:13px;font-weight:600;opacity:0.7"> /mi</span></div>
+              <div class="b-tl">REP PACE</div>
+              <div class="b-sub">~91s per rep</div>
+            </div>
+            <div>
+              <div class="b-tv">90<span style="font-size:13px;font-weight:600;opacity:0.7"> s</span></div>
+              <div class="b-tl">JOG REST</div>
+              <div class="b-sub">between reps</div>
+            </div>
+            <div>
+              <div class="b-tv">6.0<span style="font-size:13px;font-weight:600;opacity:0.7"> mi</span></div>
+              <div class="b-tl">TOTAL</div>
+              <div class="b-sub">1.5 wm + 3 + 1.5 cd</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">B · INTERVALS</div>
+      </div>
+
+      <!-- B · TEMPO -->
+      <div>
+        <div class="poster qual">
+          <div class="p-eye">WED · MAY 27 · BASE</div>
+          <h3 class="p-verb">TEMPO 3.</h3>
+          <div class="p-phase">THRESHOLD BLOCK</div>
+          <div class="b-mergedtrio">
+            <div>
+              <div class="b-tv">7:15<span style="font-size:13px;font-weight:600;opacity:0.7"> /mi</span></div>
+              <div class="b-tl">TEMPO PACE</div>
+              <div class="b-sub">±10s tolerance</div>
+            </div>
+            <div>
+              <div class="b-tv">155<span style="font-size:13px;font-weight:600;opacity:0.7"> bpm</span></div>
+              <div class="b-tl">HR TARGET</div>
+              <div class="b-sub">comfortably hard</div>
+            </div>
+            <div>
+              <div class="b-tv">5.5<span style="font-size:13px;font-weight:600;opacity:0.7"> mi</span></div>
+              <div class="b-tl">TOTAL</div>
+              <div class="b-sub">1.5 wm + 3 + 1 cd</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">B · TEMPO</div>
+      </div>
+
+      <!-- B · LONG -->
+      <div>
+        <div class="poster long">
+          <div class="p-eye">SUN · MAY 31 · BASE</div>
+          <h3 class="p-verb">LONG 12.</h3>
+          <div class="p-phase">FUEL: mi 4 · 8 · 11</div>
+          <div class="b-mergedtrio">
+            <div>
+              <div class="b-tv">8:00<span style="font-size:13px;font-weight:600;opacity:0.7">&ndash;25</span></div>
+              <div class="b-tl">PACE BAND</div>
+              <div class="b-sub">aerobic only</div>
+            </div>
+            <div>
+              <div class="b-tv">145<span style="font-size:13px;font-weight:600;opacity:0.7"> bpm</span></div>
+              <div class="b-tl">HR CAP</div>
+              <div class="b-sub">stay under</div>
+            </div>
+            <div>
+              <div class="b-tv">12<span style="font-size:13px;font-weight:600;opacity:0.7"> mi</span></div>
+              <div class="b-tl">DISTANCE</div>
+              <div class="b-sub">~1:38 est.</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">B · LONG</div>
+      </div>
+
+    </div>
+    <div class="note">
+      <b>Why this works:</b> brutally honest about what the runner needs at the lock screen. PACE · HR · DISTANCE. No filler. The gradient + verb does the emotional lift; the trio does the execution work.
+      <br><br>
+      <b>Risk:</b> body context (RHR, sleep, week mileage) disappears from the Poster. That info needs to be solid in the Sibling tiles to compensate &mdash; which it already is (4 MiniTiles are right there).
+    </div>
+  </section>
+
+  <!-- ─── DIRECTION C ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">DIRECTION C</div>
+        <h2 class="d-title">Attached<br>execution band.</h2>
+      </div>
+      <p class="d-desc">
+        The gradient hero keeps its current shape (verb + phase tag). A darker band attaches to the bottom of the same card &mdash; same radius, no gap &mdash; carrying the workout breakdown as bulleted execution steps. Reads as one object visually but separates "identity" from "instructions."
+      </p>
+    </div>
+
+    <div class="four-grid">
+
+      <!-- C · EASY -->
+      <div>
+        <div class="c-wrap easy" style="background: var(--g-easy);">
+          <div class="poster easy c-poster">
+            <div class="p-eye">THU · MAY 28 · BASE</div>
+            <h3 class="p-verb">EASY 6.1.</h3>
+            <div class="p-phase">BASE</div>
+            <div class="stat-trio">
+              <div class="stat-cell">
+                <div class="stat-v">8:30</div>
+                <div class="stat-l">PACE / MI</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">148</div>
+                <div class="stat-l">HR CAP</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">6.1</div>
+                <div class="stat-l">DISTANCE</div>
+              </div>
+            </div>
+          </div>
+          <div class="c-band">
+            <div class="c-bandhead">
+              <div class="c-bh-label">EXECUTION</div>
+              <div class="c-bh-meta">~52 min on feet</div>
+            </div>
+            <div class="c-rows">
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">Build the first mile, settle into 8:30 by mile 2</div>
+                <div class="c-pace">Z2</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">Drift HR check at mile 4 — if &gt; 148, slow it</div>
+                <div class="c-pace">148</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">Conversational the whole way; if you can't chat, ease</div>
+                <div class="c-pace">&mdash;</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">C · EASY</div>
+      </div>
+
+      <!-- C · INTERVALS -->
+      <div>
+        <div class="c-wrap" style="background: var(--g-quality);">
+          <div class="poster qual c-poster">
+            <div class="p-eye">TUE · MAY 26 · BASE</div>
+            <h3 class="p-verb">INTERVALS.</h3>
+            <div class="p-phase">6 &times; 800 · LTHR 162</div>
+            <div class="stat-trio">
+              <div class="stat-cell">
+                <div class="stat-v">3:02</div>
+                <div class="stat-l">REP PACE</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">90s</div>
+                <div class="stat-l">REST</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">6.0</div>
+                <div class="stat-l">TOTAL MI</div>
+              </div>
+            </div>
+          </div>
+          <div class="c-band">
+            <div class="c-bandhead">
+              <div class="c-bh-label">EXECUTION</div>
+              <div class="c-bh-meta">~48 min · ~6 mi</div>
+            </div>
+            <div class="c-rows">
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">Warmup &mdash; 1.5 mi easy into 4 strides</div>
+                <div class="c-pace">easy</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">6 &times; 800m at 3:02/mi · 90s jog rest between</div>
+                <div class="c-pace">3:02</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">Cooldown &mdash; 1.5 mi easy until HR settles</div>
+                <div class="c-pace">easy</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">C · INTERVALS</div>
+      </div>
+
+      <!-- C · TEMPO -->
+      <div>
+        <div class="c-wrap" style="background: var(--g-quality);">
+          <div class="poster qual c-poster">
+            <div class="p-eye">WED · MAY 27 · BASE</div>
+            <h3 class="p-verb">TEMPO.</h3>
+            <div class="p-phase">THRESHOLD BLOCK</div>
+            <div class="stat-trio">
+              <div class="stat-cell">
+                <div class="stat-v">7:15</div>
+                <div class="stat-l">PACE / MI</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">155</div>
+                <div class="stat-l">HR TARGET</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">5.5</div>
+                <div class="stat-l">TOTAL MI</div>
+              </div>
+            </div>
+          </div>
+          <div class="c-band">
+            <div class="c-bandhead">
+              <div class="c-bh-label">EXECUTION</div>
+              <div class="c-bh-meta">~44 min</div>
+            </div>
+            <div class="c-rows">
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">1.5 mi warmup, easy build</div>
+                <div class="c-pace">easy</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">3 mi sustained at 7:15/mi · find the line and ride it</div>
+                <div class="c-pace">7:15</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">1 mi cooldown · loose &amp; conversational</div>
+                <div class="c-pace">easy</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">C · TEMPO</div>
+      </div>
+
+      <!-- C · LONG -->
+      <div>
+        <div class="c-wrap" style="background: var(--g-long);">
+          <div class="poster long c-poster">
+            <div class="p-eye">SUN · MAY 31 · BASE</div>
+            <h3 class="p-verb">LONG 12.</h3>
+            <div class="p-phase">FUEL: mi 4 · 8 · 11</div>
+            <div class="stat-trio">
+              <div class="stat-cell">
+                <div class="stat-v">8:00&ndash;25</div>
+                <div class="stat-l">PACE BAND</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">145</div>
+                <div class="stat-l">HR CAP</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-v">12</div>
+                <div class="stat-l">DISTANCE</div>
+              </div>
+            </div>
+          </div>
+          <div class="c-band">
+            <div class="c-bandhead">
+              <div class="c-bh-label">EXECUTION</div>
+              <div class="c-bh-meta">~1:38 estimated</div>
+            </div>
+            <div class="c-rows">
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">First 3 mi conservative · let HR settle</div>
+                <div class="c-pace">8:20</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">Gel at mi 4 · water at 8 · gel at 11</div>
+                <div class="c-pace">fuel</div>
+              </div>
+              <div class="c-row">
+                <div class="c-bullet"></div>
+                <div class="c-text">Last 3 mi steady · no race finishes</div>
+                <div class="c-pace">aerobic</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">C · LONG</div>
+      </div>
+
+    </div>
+    <div class="note">
+      <b>Why this works:</b> the gradient hero stays clean &mdash; identity / verb / numbers / phase. The band carries the prose-y execution coaching that today lives in the Sibling. One vertical object, two textures.
+      <br><br>
+      <b>Risk:</b> the dark band visually competes with the Sibling card sitting next to it &mdash; both are dark, both have bullet points. Could feel like two cards trying to be one. Probably needs the Sibling to lose its dark MiniTiles or move them down.
+    </div>
+  </section>
+
+  <!-- ─── footer / take ─── -->
+  <footer class="footer">
+    <p>
+      <b>My read</b> — Direction B if I had to ship today. The runner's question at this surface is "what am I doing today and how" not "where am I in the week + where's my body" (Sibling + WeekStrip already answer those). B gives PACE · HR · DISTANCE in the most direct read, and the trio replacement isn't a loss because the body context lives 12 inches to the right in the Sibling MiniTiles already.
+    </p>
+    <p>
+      A is the safe-and-rich answer. C is the prose-forward answer that reads like a coach handing you a card &mdash; might be the right call if we lean into "Faff sounds like a coach not a dashboard." Pick the principle, not the layout.
+    </p>
+    <p style="margin-top:32px; color: var(--mute);">
+      Faff · 2026-05-28 · poster-workout-merge exploration
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>

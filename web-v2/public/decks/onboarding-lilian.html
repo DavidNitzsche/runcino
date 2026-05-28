@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Onboarding · Lilian — 2026-05-28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #0a0c10;
+    --bg-page: #15171c;
+    --card:    #11141a;
+    --card2:   #13171f;
+    --ink:     #f6f7f8;
+    --mute:    #8a90a0;
+    --dim:     #4b505e;
+    --line:    rgba(255,255,255,0.08);
+    --line2:   rgba(255,255,255,0.04);
+
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --over:    #FC4D64;
+    --dist:    #27B4E0;
+    --rest:    #008FEC;
+    --learn:   #B084FF;
+    --race:    #FF8847;
+
+    --g-new:   linear-gradient(135deg, #B084FF 0%, #6a4ace 60%, #2a1a5a 100%);
+    --g-done:  linear-gradient(135deg, #3EBD41 0%, #27B4E0 60%, #1a4a8e 100%);
+    --g-easy:  linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+
+    --f-display:           'Oswald', sans-serif;
+    --f-body:              'Inter', system-ui, sans-serif;
+    --f-display-weight:    700;
+    --f-display-tracking:  -0.015em;
+    --f-display-line:      0.86;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--f-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── deck header ─── */
+  .header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 40px;
+    margin-bottom: 56px;
+  }
+  .h-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 18px;
+  }
+  .h-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 88px;
+    margin: 0 0 14px 0;
+  }
+  .h-sub {
+    font-size: 16px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    max-width: 760px;
+    margin: 0;
+  }
+
+  /* ─── direction section ─── */
+  .direction {
+    margin-top: 96px;
+  }
+  .d-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 32px;
+    align-items: end;
+  }
+  .d-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 12px;
+  }
+  .d-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    margin: 0;
+  }
+  .d-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.74);
+    margin: 0;
+  }
+
+  /* ─── mockup row layout ─── */
+  .mockrow {
+    display: grid;
+    grid-template-columns: 390px 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+  .mockrow.single { grid-template-columns: 390px; justify-content: start; }
+
+  /* ─── PHONE frame (390 wide) ─── */
+  .phone {
+    width: 390px;
+    height: 760px;
+    background: var(--bg);
+    border-radius: 44px;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 60px rgba(0,0,0,0.55), 0 6px 14px rgba(0,0,0,0.35);
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: 32px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 28px;
+    background: #000;
+    border-radius: 16px;
+    z-index: 5;
+  }
+  .phone-status {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+  .phone-status .time { font-weight: 700; }
+  .phone-status .right { display: flex; gap: 6px; align-items: center; font-size: 11px; opacity: 0.85; }
+
+  /* ─── DESKTOP frame ─── */
+  .desktop {
+    background: var(--bg);
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.45);
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+    min-height: 540px;
+  }
+  .desk-chrome {
+    height: 32px;
+    background: #0d0f14;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .desk-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+  }
+  .desk-body {
+    padding: 0;
+    min-height: 508px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ─── HERO / FULL-BLEED GRADIENT BACKGROUND (used on step 1 + hero + completion) ─── */
+  .face-new {
+    background: var(--g-new);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 36px 28px 28px;
+    color: #fff;
+    position: relative;
+  }
+  .face-new.desk { padding: 80px 96px 80px; }
+
+  .face-done {
+    background: var(--g-done);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 36px 28px 28px;
+    color: #fff;
+    position: relative;
+  }
+  .face-done.desk { padding: 80px 96px 80px; }
+
+  /* eyebrow + step indicator */
+  .eyebrow {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 18px;
+  }
+  .eyebrow.dark {
+    color: var(--mute);
+  }
+  .stepdots {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 22px;
+  }
+  .stepdot {
+    width: 22px;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.22);
+  }
+  .stepdot.on { background: rgba(255,255,255,0.95); }
+
+  /* hero verb */
+  .verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    color: #fff;
+    margin: 0 0 18px 0;
+  }
+  .verb.desk { font-size: 92px; margin-bottom: 28px; }
+  .verb.big  { font-size: 64px; }
+  .verb.huge { font-size: 110px; }
+
+  .ask {
+    font-family: var(--f-body);
+    font-size: 15px;
+    line-height: 1.55;
+    color: rgba(255,255,255,0.86);
+    margin: 0 0 28px 0;
+    max-width: 320px;
+  }
+  .ask.desk { font-size: 18px; max-width: 520px; margin-bottom: 40px; }
+
+  /* ─── picker pills (Step 1 distance) ─── */
+  .pickergrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .pickergrid.desk {
+    grid-template-columns: repeat(5, 1fr);
+    max-width: 560px;
+  }
+  .pillpick {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 14px;
+    padding: 16px 14px;
+    text-align: center;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 15px;
+    color: rgba(255,255,255,0.92);
+    letter-spacing: 0.2px;
+    transition: all 0.18s ease;
+  }
+  .pillpick.on {
+    background: rgba(255,255,255,0.96);
+    color: #2a1a5a;
+    border-color: rgba(255,255,255,0.96);
+  }
+  .pillpick.wide { grid-column: span 2; }
+  .pickergrid.desk .pillpick.wide { grid-column: span 5; }
+
+  /* ─── secondary inputs (race date / goal time) ─── */
+  .inputrow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .inputrow.desk { max-width: 560px; }
+  .inputrow.single { grid-template-columns: 1fr; }
+  .inputblock {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .inputlabel {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 6px;
+  }
+  .inputvalue {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 24px;
+    color: #fff;
+    font-feature-settings: "tnum";
+    line-height: 1;
+  }
+  .inputvalue.mute { color: rgba(255,255,255,0.4); }
+  .inputvalue.body {
+    font-family: var(--f-body);
+    font-weight: 600;
+    letter-spacing: 0;
+    font-size: 17px;
+  }
+
+  /* ─── consistency callout (no-race state) ─── */
+  .consistency {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    padding: 18px 18px 18px;
+    margin-bottom: 18px;
+  }
+  .consistency .ctitle {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 24px;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .consistency .ccopy {
+    font-size: 13px;
+    color: rgba(255,255,255,0.78);
+    line-height: 1.5;
+  }
+
+  /* ─── mini-tiles (Step 2 connect signals) ─── */
+  .tiles {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .tiles.desk {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    max-width: 560px;
+  }
+  .tile {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    padding: 16px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .tiles.desk .tile {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    min-height: 138px;
+  }
+  .tile.on { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.22); }
+  .tile-left { display: flex; align-items: center; gap: 14px; }
+  .tiles.desk .tile-left { width: 100%; justify-content: space-between; margin-bottom: 14px; }
+  .tile-icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: 18px;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .tile-icon.strava { background: #FC4C02; }
+  .tile-icon.health { background: #FA2D48; }
+  .tile-icon.watch  { background: #1d1d1f; border: 1px solid rgba(255,255,255,0.22); }
+  .tile-text { display: flex; flex-direction: column; }
+  .tile-name {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 14px;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+  .tile-meta {
+    font-family: var(--f-body);
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.2px;
+  }
+  .tile-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,0.22);
+    flex-shrink: 0;
+  }
+  .tile-dot.on { background: var(--green); box-shadow: 0 0 10px rgba(62,189,65,0.6); }
+  .tiles.desk .tile-cta {
+    width: 100%;
+    margin-top: auto;
+  }
+
+  .tilepill {
+    background: rgba(255,255,255,0.96);
+    color: #2a1a5a;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+  .tilepill.connected {
+    background: rgba(62,189,65,0.18);
+    color: #d2ffce;
+    border: 1px solid rgba(62,189,65,0.5);
+  }
+
+  /* ─── step 3 inputs ─── */
+  .formblock {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  .formblock.desk { max-width: 480px; }
+  .form-row {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    padding: 14px 18px;
+  }
+  .form-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .form-label .src {
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 1.2px;
+  }
+  .form-value {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 17px;
+    color: #fff;
+    letter-spacing: 0.1px;
+  }
+
+  /* ─── primary CTA ─── */
+  .cta {
+    margin-top: auto;
+    background: #fff;
+    color: #2a1a5a;
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 22px;
+    padding: 16px;
+    border-radius: 16px;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .cta.desk {
+    max-width: 320px;
+    font-size: 26px;
+    padding: 20px 28px;
+    margin-top: 32px;
+  }
+  .cta.ghost {
+    background: rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.88);
+    border: 1px solid rgba(255,255,255,0.24);
+    margin-top: 10px;
+  }
+  .cta.done {
+    background: #fff;
+    color: #0c2a5e;
+  }
+
+  /* ─── small links / footer rows under the CTA ─── */
+  .below-cta {
+    margin-top: 14px;
+    font-family: var(--f-body);
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    text-align: center;
+    letter-spacing: 0.2px;
+  }
+  .below-cta b { color: rgba(255,255,255,0.9); font-weight: 700; }
+
+  /* ─── captions ─── */
+  .caption {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    text-align: center;
+    margin-top: 14px;
+  }
+
+  /* ─── inline data dots ─── */
+  .biglabel {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 8px;
+  }
+  .biglabel.ink { color: rgba(255,255,255,0.5); }
+
+  /* ─── completion stat strip ─── */
+  .firstday {
+    background: rgba(0,0,0,0.28);
+    border-radius: 16px;
+    padding: 16px 18px;
+    margin-top: 22px;
+  }
+  .fd-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 6px;
+  }
+  .fd-verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 38px;
+    color: #fff;
+    margin-bottom: 12px;
+  }
+  .fd-trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .fd-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 24px;
+    color: #fff;
+    font-feature-settings: "tnum";
+    line-height: 1;
+  }
+  .fd-l {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+    margin-top: 5px;
+  }
+
+  /* ─── notes between sections ─── */
+  .note {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.85);
+    margin-top: 22px;
+  }
+  .note b { color: var(--ink); }
+
+  /* ─── footer ─── */
+  .footer {
+    margin-top: 96px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .footer b { color: var(--ink); font-weight: 700; }
+  .footer a { color: var(--learn); text-decoration: none; border-bottom: 1px solid rgba(176,132,255,0.4); }
+  .footer h3 {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 28px;
+    color: var(--ink);
+    margin: 24px 0 8px;
+  }
+  .footer ul { padding-left: 18px; margin: 0 0 16px; }
+  .footer li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── header ─── -->
+  <header class="header">
+    <div class="h-eye">FAFF · ONBOARDING · LILIAN · 2026-05-28</div>
+    <h1 class="h-title">Three<br>questions in.</h1>
+    <p class="h-sub">
+      Lilian opens the app for the first time. No plan, no race, no Apple Health data. The minimum onboarding flow (locked 2026-05-28) asks her three things — goal, signals, name — and routes her into a populated /today with a real first day from the Daniels VDOT plan engine. No manual LTHR step. No LLM prose. No password gates in the design pass.
+      <br><br>
+      Same Faff design system as /today. Dark canvas, Oswald 700 for hero questions, Inter for body and labels, the new-user gradient (g-new · purple → deep) on every onboarding face. Mockups shown at iPhone width (390) and desktop (max 720 content) side by side.
+    </p>
+  </header>
+
+  <!-- ─── HERO · pre-onboarding landing ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">HERO · LANDING</div>
+        <h2 class="d-title">Welcome to<br>Faff.</h2>
+      </div>
+      <p class="d-desc">
+        Pre-onboarding screen. One verb, one CTA. No marketing prose, no testimonials, no scroll. Lilian taps the app icon and the first thing she sees is the brand at hero scale and a single way forward. Three minutes of total flow time begins here.
+      </p>
+    </div>
+
+    <div class="mockrow">
+
+      <!-- PHONE · landing -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status" style="background: transparent;">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">FAFF</div>
+              <div style="margin-top: 70px;"></div>
+              <h3 class="verb huge" style="font-size: 96px; line-height: 0.84;">RUN<br>WITH A<br>PLAN.</h3>
+              <p class="ask" style="margin-top: 32px;">
+                A daily habitat for plan-following runners. Open the app · the answer is already there.
+              </p>
+              <div class="cta">Get started</div>
+              <div class="below-cta">Already have an account? <b>Sign in</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">PHONE · 390 × 760</div>
+      </div>
+
+      <!-- DESKTOP · landing -->
+      <div>
+        <div class="desktop">
+          <div class="desk-chrome">
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+          </div>
+          <div class="desk-body">
+            <div class="face-new desk">
+              <div class="eyebrow">FAFF</div>
+              <div style="height: 60px;"></div>
+              <h3 class="verb desk huge" style="font-size: 152px;">RUN WITH<br>A PLAN.</h3>
+              <p class="ask desk" style="margin-top: 36px;">
+                A daily habitat for plan-following runners.<br>Open the app · the answer is already there.
+              </p>
+              <div class="cta desk">Get started</div>
+              <div class="below-cta" style="text-align: left; max-width: 320px; margin-top: 18px;">Already have an account? <b>Sign in</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">DESKTOP · MAX 720 CONTENT</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>CTA copy:</b> "Get started" (primary) · "Sign in" (secondary, under). <b>No</b> hero-tagline marathon — the hero verb does the work. Tested copies that didn't make it: "Welcome to Faff" (too soft), "Start training" (too transactional — that copy is reserved for step 3).
+    </div>
+  </section>
+
+  <!-- ─── STEP 1 · GOAL ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">STEP 1 · GOAL</div>
+        <h2 class="d-title">What are you<br>training for?</h2>
+      </div>
+      <p class="d-desc">
+        Five-option picker. If a race distance is picked, two secondary fields appear inline — race date (required to anchor the plan) and goal time (optional, used to bias VDOT toward target if entered, ignored if blank). Lilian picks Half · enters Sep 28 · leaves goal time blank.
+        <br><br>
+        Step indicator at top (1 of 3 dots). Hero question in Oswald. Picker pills in two columns on phone, single row on desktop.
+      </p>
+    </div>
+
+    <div class="mockrow">
+
+      <!-- PHONE · step 1 -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">STEP 1 OF 3 · GOAL</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb">Where are<br>you going?</h3>
+              <p class="ask">Pick a race or pick consistency. We'll build the plan around it.</p>
+
+              <div class="pickergrid">
+                <div class="pillpick">5K</div>
+                <div class="pillpick">10K</div>
+                <div class="pillpick on">Half</div>
+                <div class="pillpick">Marathon</div>
+                <div class="pillpick wide">No specific race</div>
+              </div>
+
+              <div class="inputrow">
+                <div class="inputblock">
+                  <div class="inputlabel">RACE DATE</div>
+                  <div class="inputvalue">Sep 28</div>
+                </div>
+                <div class="inputblock">
+                  <div class="inputlabel">GOAL TIME · OPTIONAL</div>
+                  <div class="inputvalue mute">—:—:—</div>
+                </div>
+              </div>
+
+              <div class="cta">Continue</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">PHONE · STEP 1 · HALF PICKED</div>
+      </div>
+
+      <!-- DESKTOP · step 1 -->
+      <div>
+        <div class="desktop">
+          <div class="desk-chrome">
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+          </div>
+          <div class="desk-body">
+            <div class="face-new desk">
+              <div class="eyebrow">STEP 1 OF 3 · GOAL</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb desk" style="font-size: 84px;">Where are you<br>going?</h3>
+              <p class="ask desk">Pick a race or pick consistency. We'll build the plan around it.</p>
+
+              <div class="pickergrid desk">
+                <div class="pillpick">5K</div>
+                <div class="pillpick">10K</div>
+                <div class="pillpick on">Half</div>
+                <div class="pillpick">Marathon</div>
+                <div class="pillpick">No specific race</div>
+              </div>
+
+              <div class="inputrow desk">
+                <div class="inputblock">
+                  <div class="inputlabel">RACE DATE</div>
+                  <div class="inputvalue">Sep 28, 2026</div>
+                </div>
+                <div class="inputblock">
+                  <div class="inputlabel">GOAL TIME · OPTIONAL</div>
+                  <div class="inputvalue mute">—:—:—</div>
+                </div>
+              </div>
+
+              <div class="cta desk">Continue</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">DESKTOP · STEP 1</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>CTA copy:</b> "Continue" — neutral, advances the form. Disabled until a distance is picked + (if race) a date is entered. Goal time stays optional whether filled or not.
+      <br><br>
+      <b>Why the pill grid (not a long dropdown):</b> 5 options is small enough to lay flat. Pills are tappable, visible, and let Lilian see the full menu in one read.
+    </div>
+  </section>
+
+  <!-- ─── STEP 1 EDGE · NO RACE ANCHOR ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">STEP 1 · EDGE</div>
+        <h2 class="d-title">No race.<br>Just run.</h2>
+      </div>
+      <p class="d-desc">
+        When Lilian picks "No specific race" the date + goal-time fields disappear and a quiet copy block takes their place — "Just want to run consistently. We'll build a base-fitness plan." The plan engine (Path B) generates a maintenance/base block instead of a race-anchored phase ladder.
+      </p>
+    </div>
+
+    <div class="mockrow">
+
+      <!-- PHONE · step 1 · no race -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">STEP 1 OF 3 · GOAL</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb">Where are<br>you going?</h3>
+              <p class="ask">Pick a race or pick consistency. We'll build the plan around it.</p>
+
+              <div class="pickergrid">
+                <div class="pillpick">5K</div>
+                <div class="pillpick">10K</div>
+                <div class="pillpick">Half</div>
+                <div class="pillpick">Marathon</div>
+                <div class="pillpick wide on">No specific race</div>
+              </div>
+
+              <div class="consistency">
+                <div class="ctitle">Just run consistently.</div>
+                <div class="ccopy">We'll build a base-fitness plan around your weekly rhythm. You can pick a race any time and the plan recalibrates.</div>
+              </div>
+
+              <div class="cta">Continue</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">PHONE · STEP 1 · NO RACE</div>
+      </div>
+
+      <!-- DESKTOP · step 1 · no race -->
+      <div>
+        <div class="desktop">
+          <div class="desk-chrome">
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+          </div>
+          <div class="desk-body">
+            <div class="face-new desk">
+              <div class="eyebrow">STEP 1 OF 3 · GOAL</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb desk" style="font-size: 84px;">Where are you<br>going?</h3>
+              <p class="ask desk">Pick a race or pick consistency. We'll build the plan around it.</p>
+
+              <div class="pickergrid desk">
+                <div class="pillpick">5K</div>
+                <div class="pillpick">10K</div>
+                <div class="pillpick">Half</div>
+                <div class="pillpick">Marathon</div>
+                <div class="pillpick on">No specific race</div>
+              </div>
+
+              <div class="consistency" style="max-width: 560px;">
+                <div class="ctitle">Just run consistently.</div>
+                <div class="ccopy">We'll build a base-fitness plan around your weekly rhythm. You can pick a race any time and the plan recalibrates.</div>
+              </div>
+
+              <div class="cta desk">Continue</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">DESKTOP · STEP 1 · NO RACE</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>Copy:</b> "Just run consistently." (Oswald, headline) + "We'll build a base-fitness plan around your weekly rhythm. You can pick a race any time and the plan recalibrates." (Inter body). <b>Why this matters:</b> Lilian without a race is the second-most-common new-user shape per PROJECT.md — the path can't feel like the consolation prize. The block earns its own headline.
+    </div>
+  </section>
+
+  <!-- ─── STEP 2 · SIGNALS ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">STEP 2 · SIGNALS</div>
+        <h2 class="d-title">Let Faff<br>see your runs.</h2>
+      </div>
+      <p class="d-desc">
+        Three independent integrations — Strava, Apple Health, Apple Watch — each as a mini-tile. Each tile is its own button with its own status dot. Lilian connects Strava and Apple Health, skips Apple Watch (she'll pair it later from /me). Phone shows tiles in a vertical stack; desktop lays them flat in a row.
+        <br><br>
+        Status dot is solid green when connected, hollow when not. No password prompts in this deck — the OAuth handshake itself is the implementation pass.
+      </p>
+    </div>
+
+    <div class="mockrow">
+
+      <!-- PHONE · step 2 -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">STEP 2 OF 3 · SIGNALS</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb">Connect<br>your stack.</h3>
+              <p class="ask">Connect any combination. Faff needs at least one to build your plan around real data.</p>
+
+              <div class="tiles">
+                <div class="tile on">
+                  <div class="tile-left">
+                    <div class="tile-icon strava">S</div>
+                    <div class="tile-text">
+                      <div class="tile-name">Strava</div>
+                      <div class="tile-meta">Run history · pace · routes</div>
+                    </div>
+                  </div>
+                  <div class="tilepill connected">Connected</div>
+                </div>
+                <div class="tile on">
+                  <div class="tile-left">
+                    <div class="tile-icon health">+</div>
+                    <div class="tile-text">
+                      <div class="tile-name">Apple Health</div>
+                      <div class="tile-meta">RHR · sleep · HRV · VO2max</div>
+                    </div>
+                  </div>
+                  <div class="tilepill connected">Connected</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-left">
+                    <div class="tile-icon watch">W</div>
+                    <div class="tile-text">
+                      <div class="tile-name">Apple Watch</div>
+                      <div class="tile-meta">Live HR · on-wrist coach</div>
+                    </div>
+                  </div>
+                  <div class="tilepill">Pair</div>
+                </div>
+              </div>
+
+              <div class="cta">Continue</div>
+              <div class="below-cta">Skip for now</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">PHONE · 2 OF 3 CONNECTED</div>
+      </div>
+
+      <!-- DESKTOP · step 2 -->
+      <div>
+        <div class="desktop">
+          <div class="desk-chrome">
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+          </div>
+          <div class="desk-body">
+            <div class="face-new desk">
+              <div class="eyebrow">STEP 2 OF 3 · SIGNALS</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb desk" style="font-size: 84px;">Connect<br>your stack.</h3>
+              <p class="ask desk">Connect any combination. Faff needs at least one source to build the plan around real data.</p>
+
+              <div class="tiles desk">
+                <div class="tile on">
+                  <div class="tile-left">
+                    <div class="tile-icon strava">S</div>
+                    <div class="tile-dot on"></div>
+                  </div>
+                  <div class="tile-text">
+                    <div class="tile-name">Strava</div>
+                    <div class="tile-meta">Run history · pace · routes</div>
+                  </div>
+                  <div class="tile-cta">
+                    <div class="tilepill connected" style="display: inline-block;">Connected</div>
+                  </div>
+                </div>
+                <div class="tile on">
+                  <div class="tile-left">
+                    <div class="tile-icon health">+</div>
+                    <div class="tile-dot on"></div>
+                  </div>
+                  <div class="tile-text">
+                    <div class="tile-name">Apple Health</div>
+                    <div class="tile-meta">RHR · sleep · HRV · VO2max</div>
+                  </div>
+                  <div class="tile-cta">
+                    <div class="tilepill connected" style="display: inline-block;">Connected</div>
+                  </div>
+                </div>
+                <div class="tile">
+                  <div class="tile-left">
+                    <div class="tile-icon watch">W</div>
+                    <div class="tile-dot"></div>
+                  </div>
+                  <div class="tile-text">
+                    <div class="tile-name">Apple Watch</div>
+                    <div class="tile-meta">Live HR · on-wrist coach</div>
+                  </div>
+                  <div class="tile-cta">
+                    <div class="tilepill" style="display: inline-block;">Pair</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cta desk">Continue</div>
+              <div class="below-cta" style="text-align: left; max-width: 320px;">Skip for now</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">DESKTOP · STEP 2</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>CTA copy:</b> "Continue" (advances · disabled until at least one tile shows Connected) · "Skip for now" (secondary, under). <b>Per-tile copy:</b> "Connect Strava" → "Connected" · "Connect Apple Health" → "Connected" · "Pair Apple Watch" → "Paired".
+      <br><br>
+      <b>Why the per-source meta line:</b> Lilian needs to know what each thing buys her. "Run history · pace · routes" for Strava is what she'll see and trust; "RHR · sleep · HRV · VO2max" for Health is what the body engine needs; "Live HR · on-wrist coach" for Watch is what Race Week becomes once it pairs.
+    </div>
+  </section>
+
+  <!-- ─── STEP 3 · CONFIRM ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">STEP 3 · CONFIRM + NAME</div>
+        <h2 class="d-title">Last thing.<br>Who are you?</h2>
+      </div>
+      <p class="d-desc">
+        Name auto-fills from Strava (editable). Time zone auto-detects (editable). "Start training" CTA fires the plan generation in the background and routes to /today. Everything else — LTHR derivation, VDOT calibration, phase ladder — happens server-side while the route resolves.
+      </p>
+    </div>
+
+    <div class="mockrow">
+
+      <!-- PHONE · step 3 -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">STEP 3 OF 3 · CONFIRM</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+              </div>
+              <h3 class="verb">Last thing.</h3>
+              <p class="ask">A name to call you and we'll start building.</p>
+
+              <div class="formblock">
+                <div class="form-row">
+                  <div class="form-label">NAME <span class="src">FROM STRAVA</span></div>
+                  <div class="form-value">Lilian</div>
+                </div>
+                <div class="form-row">
+                  <div class="form-label">TIME ZONE <span class="src">DETECTED</span></div>
+                  <div class="form-value">America / Los Angeles</div>
+                </div>
+                <div class="form-row">
+                  <div class="form-label">GOAL <span class="src">CONFIRMED</span></div>
+                  <div class="form-value">Half · Sep 28 · 18 weeks out</div>
+                </div>
+              </div>
+
+              <div class="cta">Start training</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">PHONE · STEP 3</div>
+      </div>
+
+      <!-- DESKTOP · step 3 -->
+      <div>
+        <div class="desktop">
+          <div class="desk-chrome">
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+          </div>
+          <div class="desk-body">
+            <div class="face-new desk">
+              <div class="eyebrow">STEP 3 OF 3 · CONFIRM</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+              </div>
+              <h3 class="verb desk" style="font-size: 84px;">Last thing.</h3>
+              <p class="ask desk">A name to call you and we'll start building.</p>
+
+              <div class="formblock desk">
+                <div class="form-row">
+                  <div class="form-label">NAME <span class="src">FROM STRAVA</span></div>
+                  <div class="form-value">Lilian</div>
+                </div>
+                <div class="form-row">
+                  <div class="form-label">TIME ZONE <span class="src">DETECTED</span></div>
+                  <div class="form-value">America / Los Angeles</div>
+                </div>
+                <div class="form-row">
+                  <div class="form-label">GOAL <span class="src">CONFIRMED</span></div>
+                  <div class="form-value">Half · Sep 28 · 18 weeks out</div>
+                </div>
+              </div>
+
+              <div class="cta desk">Start training</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">DESKTOP · STEP 3</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>CTA copy:</b> "Start training" — the verb-action that says "the plan is now real." <b>Why three fields, not five:</b> name + time zone + goal-confirm is the cheapest possible step 3. Name carries identity, time zone unlocks the day-resolver, goal-confirm is a sanity check so Lilian sees what she said in step 1.
+      <br><br>
+      <b>Background work that fires on tap:</b> Path B plan generation (algorithmic, Daniels VDOT) · Path A LTHR derivation (deferred · runs on first 14d of HR data) · phase ladder built around Sep 28. No spinner — the route transition itself is the visual feedback.
+    </div>
+  </section>
+
+  <!-- ─── COMPLETION ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">COMPLETION</div>
+        <h2 class="d-title">You're in.<br>Day one is ready.</h2>
+      </div>
+      <p class="d-desc">
+        Brief transitional screen after step 3 — Lilian sees what tomorrow looks like before /today loads. Plan generation completed in the background. The first day appears as a mini-poster (verb + stat trio) so the transition into the real product feels earned, not abrupt. Done gradient (--g-done · green → blue) — distinct from new-user purple, signals "ready."
+      </p>
+    </div>
+
+    <div class="mockrow">
+
+      <!-- PHONE · complete -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:42</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-done">
+              <div class="eyebrow">YOUR PLAN IS BUILT</div>
+              <div style="margin-top: 70px;"></div>
+              <h3 class="verb big">You're in.</h3>
+              <p class="ask">18-week half plan around Sep 28. First day below — head to /today when you're ready.</p>
+
+              <div class="firstday">
+                <div class="fd-label">TOMORROW · THU · MAY 29</div>
+                <div class="fd-verb">EASY 4.0.</div>
+                <div class="fd-trio">
+                  <div>
+                    <div class="fd-v">8:45<span style="font-size:11px;font-weight:600;opacity:0.7"> /mi</span></div>
+                    <div class="fd-l">PACE</div>
+                  </div>
+                  <div>
+                    <div class="fd-v">~35m</div>
+                    <div class="fd-l">EST. TIME</div>
+                  </div>
+                  <div>
+                    <div class="fd-v">122d</div>
+                    <div class="fd-l">TO RACE</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cta done" style="margin-top: 24px;">Go to today</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">PHONE · COMPLETION</div>
+      </div>
+
+      <!-- DESKTOP · complete -->
+      <div>
+        <div class="desktop">
+          <div class="desk-chrome">
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+            <div class="desk-dot"></div>
+          </div>
+          <div class="desk-body">
+            <div class="face-done desk">
+              <div class="eyebrow">YOUR PLAN IS BUILT</div>
+              <div style="height: 30px;"></div>
+              <h3 class="verb desk" style="font-size: 110px;">You're in.</h3>
+              <p class="ask desk">18-week half plan around Sep 28. First day below — head to /today when you're ready.</p>
+
+              <div class="firstday" style="max-width: 480px;">
+                <div class="fd-label">TOMORROW · THU · MAY 29</div>
+                <div class="fd-verb" style="font-size: 48px;">EASY 4.0.</div>
+                <div class="fd-trio">
+                  <div>
+                    <div class="fd-v" style="font-size: 28px;">8:45<span style="font-size:12px;font-weight:600;opacity:0.7"> /mi</span></div>
+                    <div class="fd-l">PACE</div>
+                  </div>
+                  <div>
+                    <div class="fd-v" style="font-size: 28px;">~35m</div>
+                    <div class="fd-l">EST. TIME</div>
+                  </div>
+                  <div>
+                    <div class="fd-v" style="font-size: 28px;">122d</div>
+                    <div class="fd-l">TO RACE</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cta desk done">Go to today</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">DESKTOP · COMPLETION</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>CTA copy:</b> "Go to today" — pure direction. <b>Why show tomorrow's day instead of saying "we'll see you tomorrow":</b> the product's whole job is "open the app, the answer is already there." Surfacing the first day on the completion screen rehearses that contract before /today even loads.
+      <br><br>
+      <b>Gradient swap:</b> new-user purple gives way to done-state green→blue. Lilian crosses the threshold from "system bootstrapping" to "system populated." Same design language; a different state.
+    </div>
+  </section>
+
+  <!-- ─── footer ─── -->
+  <footer class="footer">
+    <h3>Open design questions</h3>
+    <ul>
+      <li><b>Step 2 — minimum signal requirement?</b> The mock shows "Continue" needing at least one tile connected (so the plan engine has *something* to read). Alternative: allow zero connections + skip straight to a stub plan, then nag for connections on /today. Which fail-mode is friendlier?</li>
+      <li><b>"Skip for now" on step 2.</b> Currently a quiet under-link. Does Lilian-without-Strava get a softer route (a connect-later card pinned to /today) or a hard gate (can't continue without one)?</li>
+      <li><b>Race-date entry on phone.</b> Mock shows a static "Sep 28" — the real interaction is iOS-native date picker sheet. Does the picker open inline or in a sheet from the bottom? (Native sheet is the safe bet but the fall is busy.)</li>
+      <li><b>Completion screen — does it auto-advance?</b> Right now it has a CTA. Alternative: show for 2s then auto-route to /today. Auto-route is faster; CTA gives Lilian a beat to absorb. Recommend CTA for v1, revisit after first 50 users.</li>
+      <li><b>Goal time hint copy.</b> Step 1 says "Goal time · optional" with em-dash placeholder. Should we hint at what happens if she leaves it blank? ("We'll calibrate after your first run") might be too much, but the silence is also a bit cold.</li>
+      <li><b>Sign-in copy.</b> Hero says "Already have an account? <b>Sign in</b>". Faff's account model is Apple Sign In (per native-iOS lock). Should the link say "Sign in with Apple" upfront so Lilian knows what she's about to tap?</li>
+    </ul>
+
+    <h3>My read</h3>
+    <p>
+      The three-step shape is the right shape. Step 1 carries the emotional question (where are you going?) at hero scale and earns the entire onboarding's existence. Step 2 is a utility checkpoint — three tiles, status dots, no friction. Step 3 is the cheapest possible "confirm and go" — three rows, all auto-filled, one button. The whole flow is &lt; 90 seconds for the happy path.
+    </p>
+    <p>
+      <b>The risk to watch for:</b> Step 1's "No specific race" edge has to feel like a peer of the four race options, not a fallback. The dedicated copy block on that face (Oswald headline + body) is the call — without it, "No specific race" reads as "give up." With it, it reads as "this is a real choice."
+    </p>
+    <p>
+      <b>What this deck is not:</b> the wire-up. OAuth handshakes, Apple Sign In flow, account creation, plan-engine API contract — those all happen in a later round when this direction is picked. Right now this is one shape to react to. If the shape's right, the implementation follows.
+    </p>
+
+    <p style="margin-top:32px; color: var(--mute);">
+      Faff · 2026-05-28 · onboarding · Lilian persona · constraints per <a href="../PROJECT.md">PROJECT.md</a>
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>
