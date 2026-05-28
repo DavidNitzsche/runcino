@@ -66,6 +66,12 @@ export function resolveDayState(glance: GlanceState | null): DayState {
     return 'race_week';
   }
 
+  // 2b. skipped · runner explicitly tapped SKIP on the poster.
+  // Sits *after* race-week (the race takeover is sacred) but *before* the
+  // base-4 so the skipped surface wins over the original easy/quality/long.
+  // P-SKIP 2026-05-28 · see lib/coach/glance-state.ts → todaySkipped.
+  if (glance.todaySkipped) return 'skipped';
+
   const today = glance.weekDays.find((d) => d.date === glance.today);
   if (!today) return 'easy';
 
@@ -109,6 +115,7 @@ const GRADIENT_BY_STATE: Record<DayState, string> = {
   missed: 'g-missed',
   race_week: 'g-race',
   new_user: 'g-new',
+  skipped: 'g-skip',
 };
 
 /**
@@ -140,6 +147,8 @@ function heroVerb(state: DayState, today: GlanceWeekDay | null): string {
       return 'RACE WEEK.';
     case 'new_user':
       return 'WELCOME TO FAFF.';
+    case 'skipped':
+      return 'SKIPPED TODAY.';
   }
 }
 
@@ -252,6 +261,10 @@ function buildStatTrio(
     case 'missed':
     case 'niggle':
     case 'sick':
+    case 'skipped':
+      // P-SKIP 2026-05-28 · the skipped poster is just the verb on the
+      // gradient — no stat trio. The body tiles (sleep/RHR/HRV/load) live
+      // on the Sibling, where the user can still see what the day looked like.
     default:
       return null;
   }
@@ -273,6 +286,9 @@ const SIBLING_TITLES: Partial<Record<DayState, { main: string; suffix?: string }
   missed: { main: 'MISSED', suffix: 'CATCH UP?' },
   race_week: { main: 'RACE WEEK', suffix: 'TAPER ON' },
   new_user: { main: 'SET UP', suffix: 'GET ROLLING' },
+  // P-SKIP 2026-05-28 · sibling reassures the runner the plan continues
+  // unchanged. "TOMORROW · WE GO" — one day off is not the end of a block.
+  skipped: { main: 'TOMORROW', suffix: 'WE GO' },
 };
 
 export function buildSibling(glance: GlanceState, state: DayState): SiblingPayload {
@@ -351,6 +367,16 @@ export function buildSibling(glance: GlanceState, state: DayState): SiblingPaylo
         tiles, // placeholder · proper setup tiles come in onboarding phase
         prose: 'Connect Strava and pick a race. The rest builds from there.',
         completion_pct: 0,
+      };
+    case 'skipped':
+      // P-SKIP 2026-05-28 · the body tiles still show — sleep / RHR / HRV
+      // / load don't disappear because the runner chose to skip. The prose
+      // is the reassurance: one day off is not the end of a block.
+      return {
+        state,
+        title,
+        tiles,
+        prose: 'You called it. The plan picks back up tomorrow exactly as written. One day off is not the end of a block.',
       };
   }
 }

@@ -69,6 +69,9 @@
   --g-sick:    linear-gradient(135deg, #5a6580 0%, #3a3a55 60%, #1a1a2a 100%);
   --g-niggle:  linear-gradient(135deg, #3EBD41 0%, #2a6a3a 50%, #5a3408 100%);
   --g-new:     linear-gradient(135deg, #B084FF 0%, #6a4ace 60%, #2a1a5a 100%);
+  /* P-SKIP 2026-05-28 · "you chose this" cool slate-purple. Mirrored from
+   * /Volumes/WP/06 Claude Code/Faff/design/tokens/colors.css. */
+  --g-skip:    linear-gradient(135deg, #6B7A8F 0%, #4A4A5C 60%, #1F1F2A 100%);
 
   /* ─── typography · Oswald display + Inter body ─── */
   --f-display: 'Oswald', sans-serif;

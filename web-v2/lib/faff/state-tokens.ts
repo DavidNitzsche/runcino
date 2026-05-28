@@ -33,6 +33,10 @@ export const STATE_GRADIENT_VAR: Record<DayState, string> = {
   missed: 'var(--g-missed)',
   race_week: 'var(--g-race)',
   new_user: 'var(--g-new)',
+  // skipped: muted slate-purple ("you chose this"). Distinct from --g-missed
+  // (amber-burn, "you let time run out") and --g-sick (overcast slate,
+  // health-coded). Token: --g-skip in /design/tokens/colors.css. P-SKIP 2026-05-28.
+  skipped: 'var(--g-skip)',
 };
 
 /**
@@ -52,4 +56,5 @@ export const STATE_LABEL: Record<DayState, string> = {
   missed: 'MISSED',
   race_week: 'RACE WEEK',
   new_user: 'WELCOME',
+  skipped: 'SKIPPED',
 };

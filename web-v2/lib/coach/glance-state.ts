@@ -50,6 +50,11 @@ export interface GlanceState {
   daysToARace: number | null;
   nextARaceName: string | null;
   readiness: ReadinessBreakdown;
+  // Skip Today (P-SKIP, 2026-05-28): runner explicitly tapped SKIP on the
+  // poster. Row lives in `day_actions` (migration 114). Distinct from rest
+  // (planned), missed (passive), sick/niggle (health). Drives the `skipped`
+  // DayState in lib/faff/glance-adapter.ts → resolveDayState().
+  todaySkipped: boolean;
 }
 
 export async function loadGlanceState(userId: string): Promise<GlanceState> {
@@ -252,6 +257,17 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     ? +(loadAcute7 / loadChronic28).toFixed(2)
     : null;
 
+  // Skip Today (P-SKIP, 2026-05-28). One-row point read against day_actions
+  // (migration 114). Index on (user_id, date_iso, action) makes this ~O(1).
+  // If the table doesn't exist yet (migration not applied) we default to
+  // false so the loader doesn't hard-fail.
+  const skipRow = await pool.query(
+    `SELECT 1 FROM day_actions
+      WHERE user_id = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as any[] }));
+  const todaySkipped = skipRow.rows.length > 0;
+
   const readiness = computeReadiness({
     today, user_id: userId,
     profile: prof ?? null,
@@ -282,5 +298,6 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     cadenceBaseline,
     daysToARace, nextARaceName,
     readiness,
+    todaySkipped,
   };
 }

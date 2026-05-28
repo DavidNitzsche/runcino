@@ -17,6 +17,18 @@
   }
 }
 
+/* P-SKIP 2026-05-28 · eyebrow + skip chip share the top row. The eyebrow
+ * keeps its original baseline/typography; the chip sits opposite as an
+ * affordance. Skipping is reversible — chip flips to UNDO SKIP on the
+ * `skipped` state. */
+.eyebrowRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .eyebrow {
   font-family: var(--f-body);
   font-weight: 700;
@@ -24,7 +36,34 @@
   letter-spacing: 2.2px;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.85);
-  margin-bottom: 16px;
+}
+
+.skipChip {
+  /* Small pill, white-ish text on translucent overlay so it reads on any
+   * gradient. Inter 700wt 9px caps-tracked matches the eyebrow's family. */
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--r-pill);
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.skipChip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.skipChip:disabled {
+  cursor: progress;
+  opacity: 0.6;
 }
 
 .verb {

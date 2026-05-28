@@ -81,8 +81,10 @@ export function TodayClient({
         )}
 
         {/* BODY GRID · per-state body content (placeholders until Sprint 03
-            fully wires the per-state right column to real plan + health data) */}
-        {state !== 'new_user' && state !== 'missed' && (
+            fully wires the per-state right column to real plan + health data).
+            P-SKIP 2026-05-28: hide on `skipped` too — there's no workout to
+            unpack and the body tiles live on the Sibling already. */}
+        {state !== 'new_user' && state !== 'missed' && state !== 'skipped' && (
           <BodyGrid
             sectionHeading="WORKOUT · THE BODY"
             sectionSuffix="today"

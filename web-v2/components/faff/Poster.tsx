@@ -10,16 +10,25 @@
  * daysCountdown for RACE-WEEK).
  */
 
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import type { PosterPayload } from '@/lib/faff/types';
 import { StatTrio } from './StatTrio';
 import { STATE_GRADIENT_VAR } from '@/lib/faff/state-tokens';
 import styles from './Poster.module.css';
+
+// P-SKIP 2026-05-28 · states where the runner has a workout TO skip.
+// rest/done/race_week/sick/niggle/missed/new_user all explicitly disqualify.
+const SKIP_ELIGIBLE_STATES = new Set(['easy', 'quality', 'long']);
 
 export interface PosterProps {
   payload: PosterPayload;
 }
 
 export function Poster({ payload }: PosterProps) {
+  const router = useRouter();
+  const [skipPending, setSkipPending] = useState(false);
+
   const gradient =
     // Prefer the server-emitted token if it resolves to one we know;
     // fall back to the state-keyed map. The server's `gradient_token`
@@ -30,6 +39,31 @@ export function Poster({ payload }: PosterProps) {
   // spelled letter-by-letter (per CoachVoice.md §"Caps headline a11y").
   const verbAria = toSentenceCase(payload.verb);
 
+  // P-SKIP 2026-05-28 · the skip chip renders only when there IS a workout
+  // to skip (easy/quality/long) OR when the runner already skipped (so they
+  // can undo). Other states (rest, done, race_week, missed, new_user, sick,
+  // niggle) get no chip — the action wouldn't make semantic sense there.
+  const showSkipChip = SKIP_ELIGIBLE_STATES.has(payload.state);
+  const showUndoChip = payload.state === 'skipped';
+
+  const onSkipToggle = async (mode: 'skip' | 'undo') => {
+    if (skipPending) return;
+    setSkipPending(true);
+    try {
+      await fetch('/api/today/skip', {
+        method: mode === 'skip' ? 'POST' : 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      router.refresh();
+    } catch (err) {
+      // Surface to console for now; production telemetry comes later.
+      console.error('[poster] skip toggle failed:', err);
+    } finally {
+      setSkipPending(false);
+    }
+  };
+
   return (
     <article
       className={styles.poster}
@@ -37,7 +71,31 @@ export function Poster({ payload }: PosterProps) {
       data-state={payload.state}
       aria-labelledby="poster-headline"
     >
-      <div className={styles.eyebrow}>{payload.eyebrow}</div>
+      <div className={styles.eyebrowRow}>
+        <div className={styles.eyebrow}>{payload.eyebrow}</div>
+        {showSkipChip && (
+          <button
+            type="button"
+            className={styles.skipChip}
+            onClick={() => onSkipToggle('skip')}
+            disabled={skipPending}
+            aria-label="Skip today's workout"
+          >
+            {skipPending ? '…' : 'SKIP TODAY'}
+          </button>
+        )}
+        {showUndoChip && (
+          <button
+            type="button"
+            className={styles.skipChip}
+            onClick={() => onSkipToggle('undo')}
+            disabled={skipPending}
+            aria-label="Undo skip"
+          >
+            {skipPending ? '…' : 'UNDO SKIP'}
+          </button>
+        )}
+      </div>
 
       {payload.hero_number ? (
         <HeroNumber id="poster-headline" heroNumber={payload.hero_number} />

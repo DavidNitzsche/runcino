@@ -46,6 +46,9 @@ function siblingProse(payload: SiblingPayload): string | undefined {
     case 'missed':
     case 'race_week':
     case 'new_user':
+    // P-SKIP 2026-05-28 · skipped sibling carries its own prose
+    // ("you called it. plan picks back up tomorrow…") per glance-adapter.ts.
+    case 'skipped':
       return payload.prose;
   }
 }

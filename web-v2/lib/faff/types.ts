@@ -42,7 +42,9 @@ export type WorkoutSubLabel =
 export type DayState =
   | 'easy' | 'quality' | 'long' | 'rest'
   | 'done_nailed' | 'done_ease_off'
-  | 'niggle' | 'sick' | 'missed' | 'race_week' | 'new_user';
+  | 'niggle' | 'sick' | 'missed' | 'race_week' | 'new_user'
+  | 'skipped'; // P-SKIP 2026-05-28 — runner explicitly chose not to run today.
+               // Gradient token: --g-skip (muted slate-purple, "you chose this").
 
 export type Surface = 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me';
 
@@ -154,7 +156,8 @@ export type SiblingPayload =
   | { state: 'sick'; title: SiblingTitle; tiles: MiniTile[]; prose: string; return_condition: string }
   | { state: 'missed'; title: SiblingTitle; tiles: MiniTile[]; prose: string; recommendation: 'catch_up' | 'move_on' }
   | { state: 'race_week'; title: SiblingTitle; tiles: MiniTile[]; prose: string }
-  | { state: 'new_user'; title: SiblingTitle; tiles: Array<SetupStepTile | MiniTile>; prose: string; completion_pct: number };
+  | { state: 'new_user'; title: SiblingTitle; tiles: Array<SetupStepTile | MiniTile>; prose: string; completion_pct: number }
+  | { state: 'skipped'; title: SiblingTitle; tiles: MiniTile[]; prose: string };
 
 export interface WeekStripPayload {
   weekStart: ISODate;
