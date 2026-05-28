@@ -222,19 +222,35 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:1px;margin:0 0
                 <div class="stat"><div class="v">8:12</div><div class="l">PACE</div></div>
                 <div class="stat"><div class="v amber">148</div><div class="l">HR CAP</div></div>
               </div>
-              <!-- 8-chip strip in mental-model order -->
-              <div class="chips">
-                <span class="chip">7.2h slp</span>
-                <span class="chip over">hrv low · −7</span>
-                <span class="chip dist">12° ☁ 8am</span>
-                <span class="chip race">london 14d · 2:54 / 2:55</span>
-                <span class="chip warn">load 1.24 · build</span>
-              </div>
-              <!-- second line of context chips -->
-              <div class="chips" style="margin-top:6px">
-                <span class="chip">next hard: thu 6×800</span>
-                <span class="chip">long sun: 14mi</span>
-                <span class="chip green">82 ready</span>
+              <!-- structured context rows · grouped not piled -->
+              <div style="margin-top:18px;display:flex;flex-direction:column;gap:12px">
+                <!-- BODY row -->
+                <div style="display:grid;grid-template-columns:54px 1fr;gap:14px;align-items:baseline;padding-bottom:10px;border-bottom:1px solid var(--line2)">
+                  <div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;font-weight:700;color:var(--mute);text-transform:uppercase">BODY</div>
+                  <div style="font-family:Inter;font-size:13px;line-height:1.5;color:rgba(246,247,248,0.85)">
+                    <strong style="color:var(--ink);font-weight:600">7.2h</strong> sleep &nbsp;·&nbsp;
+                    <strong style="color:var(--over);font-weight:600">HRV low</strong> · −7 vs avg &nbsp;·&nbsp;
+                    <strong style="color:var(--ink);font-weight:600">48</strong> rhr
+                  </div>
+                </div>
+                <!-- WEEK row -->
+                <div style="display:grid;grid-template-columns:54px 1fr;gap:14px;align-items:baseline;padding-bottom:10px;border-bottom:1px solid var(--line2)">
+                  <div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;font-weight:700;color:var(--mute);text-transform:uppercase">WEEK</div>
+                  <div style="font-family:Inter;font-size:13px;line-height:1.5;color:rgba(246,247,248,0.85)">
+                    Load <strong style="color:var(--goal);font-weight:600">1.24 build</strong> &nbsp;·&nbsp;
+                    Hard <strong style="color:var(--ink);font-weight:600">Thu</strong> 6×800 &nbsp;·&nbsp;
+                    Long <strong style="color:var(--ink);font-weight:600">Sun</strong> 14mi
+                  </div>
+                </div>
+                <!-- RACE row -->
+                <div style="display:grid;grid-template-columns:54px 1fr;gap:14px;align-items:baseline">
+                  <div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;font-weight:700;color:var(--race);text-transform:uppercase">RACE</div>
+                  <div style="font-family:Inter;font-size:13px;line-height:1.5;color:rgba(246,247,248,0.85)">
+                    <strong style="color:var(--ink);font-weight:600">London</strong> · 14d &nbsp;·&nbsp;
+                    <strong style="color:var(--ink);font-weight:600">2:54</strong> pred &nbsp;·&nbsp;
+                    <strong style="color:var(--green);font-weight:600">−1:00</strong> of goal
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -283,8 +299,8 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:1px;margin:0 0
           <div class="body"><strong>"LOAD 1.24 · build"</strong>. ACWR finally has a home. Color goes amber at &gt;1.5 (overreach), green when in zone.</div>
         </div>
         <div class="delta">
-          <div class="what new">06 · 8-chip strip · locked order</div>
-          <div class="body">Order is now fixed: <em>sleep · HRV · weather · race · load · next-hard · long · readiness</em>. Matches the morning-sequence mental model from §05. Same chips every day = trustable scanning.</div>
+          <div class="what new">06 · structured context rows · not pill soup</div>
+          <div class="body">First draft was 8 pills in a bag — visually noisy, no hierarchy. <strong>v2.2 groups by category:</strong> BODY · WEEK · RACE. Each row has a small label, then inline data with bold for the key value. Reads like a briefing readout, not a chip dump. <em>Same data, ~3× less visual chaos.</em></div>
         </div>
       </div>
       <div style="padding:16px 18px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.75)">
@@ -334,22 +350,19 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:1px;margin:0 0
             <!-- expanded bottom panel -->
             <div class="btm" style="margin-top:-16px;padding:18px 16px 12px">
               <div class="handle"></div>
-              <!-- route card -->
+              <!-- workout breakdown card · what today actually looks like -->
               <div class="exp-card" style="margin-top:8px">
-                <div class="lbl"><span>ROUTE · COACH PICK</span><span class="v-sm" style="color:var(--dist)">→</span></div>
-                <div style="display:flex;gap:10px;align-items:center">
-                  <!-- mini map -->
-                  <div style="width:74px;height:48px;background:linear-gradient(135deg,#1a2530,#0f1820);border-radius:6px;position:relative;flex-shrink:0">
-                    <svg viewBox="0 0 80 50" style="width:100%;height:100%">
-                      <path d="M10 40 Q25 25, 40 20 T70 8" stroke="#3EBD41" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-                      <circle cx="10" cy="40" r="3" fill="#3EBD41"/>
-                      <circle cx="70" cy="8" r="3" fill="#FF8847"/>
-                    </svg>
-                  </div>
-                  <div style="flex:1">
-                    <div style="font-family:var(--f-display);font-size:18px;letter-spacing:0.3px;line-height:1">Regent's Canal loop</div>
-                    <div style="font-size:11px;color:var(--mute);margin-top:2px">5.9 mi · flat · shaded · canal-path</div>
-                  </div>
+                <div class="lbl"><span>WORKOUT · BREAKDOWN</span><span class="v-sm">47:30 EST</span></div>
+                <!-- segment bar -->
+                <div style="display:flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;margin-top:8px">
+                  <div style="flex:0.85;background:var(--rest);opacity:0.85"></div>
+                  <div style="flex:4.5;background:var(--green)"></div>
+                  <div style="flex:0.45;background:var(--rest);opacity:0.85"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px">
+                  <div><span style="font-family:var(--f-display);font-size:13px;color:var(--rest)">0.5 MI</span><div style="font-family:var(--f-sub);font-size:8px;color:var(--mute);letter-spacing:1px;font-weight:600;text-transform:uppercase">Warmup</div></div>
+                  <div><span style="font-family:var(--f-display);font-size:13px;color:var(--green)">4.8 MI · Z2</span><div style="font-family:var(--f-sub);font-size:8px;color:var(--mute);letter-spacing:1px;font-weight:600;text-transform:uppercase">Steady</div></div>
+                  <div><span style="font-family:var(--f-display);font-size:13px;color:var(--rest)">0.5 MI</span><div style="font-family:var(--f-sub);font-size:8px;color:var(--mute);letter-spacing:1px;font-weight:600;text-transform:uppercase">Cooldown</div></div>
                 </div>
               </div>
               <!-- HR plan card -->
