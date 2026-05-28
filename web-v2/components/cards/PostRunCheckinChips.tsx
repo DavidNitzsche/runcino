@@ -158,7 +158,6 @@ export function PostRunCheckinChips({
       <textarea
         value={niggle}
         onChange={(e) => setNiggle(e.target.value)}
-        placeholder="Trail run with my neighbor, felt great. Calf tight on cooldown. Heat was brutal. Whatever you'd tell a coach."
         rows={3}
         style={{
           width: '100%',
