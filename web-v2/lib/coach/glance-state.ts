@@ -12,6 +12,7 @@
 import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadNextARace } from './race-lookup';
+import { canonicalMileageByDay } from '@/lib/runs/merge';
 
 export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
@@ -121,22 +122,40 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
 
   // Strava actuals — ALWAYS loaded, with or without an active plan, so the
   // week strip + TodayPlannedCard always show real runs.
-  const stravaRows = (await pool.query(
-    `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
-            data->>'id' AS activity_id,
-            SUM((data->>'distanceMi')::numeric) AS mi
-       FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text
-      GROUP BY day, activity_id`,
-    [userId, weekDates[0].date, weekDates[6].date]
-  )).rows;
+  //
+  // 2026-05-27 P-DOUBLECOUNT: query-time dedupe via canonicalMileageByDay
+  // so un-flagged duplicate rows don't inflate. David hit "31.6 done"
+  // in the strip vs /log's correct "19.6" because Mon/Tue/Wed each had
+  // one extra un-merged row and this loop was summing them all. Now
+  // each day's mi is the sum of CANONICAL runs (one per physical
+  // workout cluster) so the strip agrees with /log.
+  const canonicalByDay = await canonicalMileageByDay(
+    userId, weekDates[0].date, weekDates[6].date,
+  );
+  // Still need a per-day activity_id for click-through to the run modal.
+  // Fetch the canonical IDs from canonicalByDay and resolve the first
+  // one's data->>'id' (the public Strava id) from strava_activities.
+  const allCanonicalIds = Array.from(canonicalByDay.values()).flatMap((v) => v.canonicalIds);
+  const idLookup = allCanonicalIds.length > 0
+    ? (await pool.query(
+        `SELECT id::text AS row_id, data->>'id' AS strava_id,
+                COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day
+           FROM strava_activities
+          WHERE id::text = ANY($1::text[])`,
+        [allCanonicalIds],
+      )).rows
+    : [];
+  const idByRow = new Map<string, { strava_id: string | null; day: string }>(
+    idLookup.map((r: any) => [String(r.row_id), { strava_id: r.strava_id ?? null, day: r.day }]),
+  );
   const actualByDate = new Map<string, { mi: number; id: string | null }>();
-  for (const r of stravaRows) {
-    const cur = actualByDate.get(r.day) ?? { mi: 0, id: null };
-    cur.mi += Number(r.mi);
-    if (cur.id == null || Number(r.mi) >= cur.mi - Number(r.mi)) cur.id = r.activity_id ?? cur.id;
-    actualByDate.set(r.day, cur);
+  for (const [day, info] of canonicalByDay) {
+    // Pick first canonical's public id (any will do — they're all canonical
+    // representatives of separate workouts; for a single-workout day there's
+    // only one).
+    const firstRow = info.canonicalIds[0];
+    const stravaId = firstRow ? (idByRow.get(firstRow)?.strava_id ?? firstRow) : null;
+    actualByDate.set(day, { mi: info.mi, id: stravaId });
   }
 
   weekDays = weekDates.map(({ date, dow }) => {

@@ -8,6 +8,7 @@
 import { pool } from '@/lib/db/pool';
 import type { CoachState } from '@/lib/topics/types';
 import { loadNextARace } from './race-lookup';
+import { canonicalMileageByDay } from '@/lib/runs/merge';
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
@@ -178,17 +179,15 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     const shift = dow === 0 ? -6 : 1 - dow;
     return new Date(d.getTime() + shift * 86400000).toISOString().slice(0, 10);
   })();
-  const weekRuns = await pool.query(
-    `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
-            SUM((data->>'distanceMi')::numeric) AS mi
-       FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND NOT (data ? 'mergedIntoId')
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3
-      GROUP BY day`,
-    [userId, monday, today]
-  );
-  const weekDone = Math.round(weekRuns.rows.reduce((s, r) => s + Number(r.mi), 0) * 10) / 10;
+  // 2026-05-27 P-DOUBLECOUNT: query-time dedupe so duplicate Strava/
+  // Watch rows that escaped the merge writer don't inflate weekDone.
+  // /log shows 19.6 / coach said 31.6 — root cause was SUM across
+  // un-flagged duplicates. canonicalMileageByDay clusters at read
+  // time and sums one canonical per cluster.
+  const canonicalWeek = await canonicalMileageByDay(userId, monday, today);
+  const weekDone = Math.round(
+    Array.from(canonicalWeek.values()).reduce((s, v) => s + v.mi, 0) * 10
+  ) / 10;
 
   // SLEEP last 7
   const sleep = (await pool.query(
@@ -269,27 +268,26 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   //   acute7    = avg daily distance over last 7 days   (mi/day)
   //   chronic28 = avg daily distance over last 28 days  (mi/day)
   //   ratio     = acute7 / chronic28
-  // Pulls from strava_activities (the full ingested run history). Rest
-  // days count as 0 — that's the point. We sum total miles in each
-  // window and divide by the window length, NOT by the count of runs.
-  const acwrRow = await pool.query(
-    `SELECT
-        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '7 days')::text
-                          AND  data->>'date' <  ($1::date + interval '1 day')::text
-                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS acute_sum,
-        COALESCE(SUM(CASE WHEN data->>'date' >= ($1::date - interval '28 days')::text
-                          AND  data->>'date' <  ($1::date + interval '1 day')::text
-                          THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS chronic_sum,
-        COUNT(*) FILTER (WHERE data->>'date' >= ($1::date - interval '28 days')::text)::int AS runs28
-       FROM strava_activities
-      WHERE (user_uuid = $2 OR user_uuid IS NULL)
-        AND NOT (data ? 'mergedIntoId')
-        AND (data->>'distanceMi')::numeric > 0.3`,
-    [today, userId]
-  ).catch(() => ({ rows: [] as any[] }));
-  const acuteSum   = Number(acwrRow.rows[0]?.acute_sum) || 0;
-  const chronicSum = Number(acwrRow.rows[0]?.chronic_sum) || 0;
-  const runs28     = Number(acwrRow.rows[0]?.runs28) || 0;
+  //
+  // 2026-05-27 P-DOUBLECOUNT: pulls through canonicalMileageByDay so
+  // un-merged duplicate rows don't inflate the ratio. David's ACWR
+  // was reading 1.80 because Mon/Tue/Wed each had a phantom dup
+  // adding ~6mi to the acute window. Without the dedupe, the swap
+  // card fires off ghost numbers.
+  const acwrFrom = new Date(Date.parse(today + 'T12:00:00Z') - 28 * 86400000)
+    .toISOString().slice(0, 10);
+  const canonicalAcwr = await canonicalMileageByDay(userId, acwrFrom, today);
+  const acuteCutoff = new Date(Date.parse(today + 'T12:00:00Z') - 7 * 86400000)
+    .toISOString().slice(0, 10);
+  let acuteSum = 0;
+  let chronicSum = 0;
+  let runs28 = 0;
+  for (const [day, info] of canonicalAcwr) {
+    if (info.mi <= 0.3) continue;
+    chronicSum += info.mi;
+    runs28 += info.canonicalIds.length;
+    if (day > acuteCutoff) acuteSum += info.mi;
+  }
   const loadAcute7    = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
   const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
   // Only compute the ratio when we have at least a few runs in the chronic

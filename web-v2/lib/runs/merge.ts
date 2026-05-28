@@ -190,3 +190,65 @@ export async function autoMergeRecent(
   }
   return { totalChanged };
 }
+
+/**
+ * 2026-05-27 P-DOUBLECOUNT: defensive query-time dedupe so the
+ * aggregation never trusts that mergedIntoId is correctly set. Returns
+ * a map { 'YYYY-MM-DD' → { mi, canonicalIds[] } } where each day's
+ * mi is the sum of CANONICAL runs (not duplicates).
+ *
+ * Why: the merge writer only runs from a few ingest paths. A Strava
+ * webhook (or any direct row insert that bypasses the writers) can
+ * leave duplicate rows un-flagged, and every downstream aggregation
+ * inflates. /log displays one row per day truthfully — strip and
+ * coach state were summing all un-flagged rows. David hit 31.6 done
+ * vs /log's 19.6 real because Mon/Tue/Wed each had one un-merged
+ * duplicate.
+ *
+ * Same clustering rules as autoMergeForDate, just applied at read time:
+ *  - same day (the WHERE already filters)
+ *  - start within 30 min
+ *  - distance within 15% (or one is zero — hollow watch shell)
+ *
+ * Within each cluster, sum once (pick max-distance row's distance,
+ * since that's the GPS-measured one most of the time). Returns a map
+ * keyed by date so glance-state / state-loader can lift it directly.
+ */
+export async function canonicalMileageByDay(
+  userId: string,
+  fromDate: string,
+  toDate: string,
+): Promise<Map<string, { mi: number; canonicalIds: string[] }>> {
+  const rows = (await pool.query(
+    `SELECT id::text AS id, user_uuid::text AS user_uuid, data
+       FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
+    [userId, fromDate, toDate],
+  )).rows as Row[];
+
+  const byDay = new Map<string, Row[]>();
+  for (const r of rows) {
+    const day = (r.data?.date as string)
+      ?? String(r.data?.startLocal ?? '').slice(0, 10);
+    if (!day) continue;
+    const arr = byDay.get(day) ?? [];
+    arr.push(r);
+    byDay.set(day, arr);
+  }
+
+  const out = new Map<string, { mi: number; canonicalIds: string[] }>();
+  for (const [day, dayRows] of byDay) {
+    const clusters = clusterDuplicates(dayRows);
+    let total = 0;
+    const ids: string[] = [];
+    for (const cluster of clusters) {
+      const { canonical } = pickCanonical(cluster);
+      total += distanceMi(canonical);
+      ids.push(canonical.id);
+    }
+    out.set(day, { mi: Math.round(total * 10) / 10, canonicalIds: ids });
+  }
+  return out;
+}
