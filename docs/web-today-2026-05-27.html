@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / web TODAY · translation experiment · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+
+  --g-easy:linear-gradient(135deg,#3EBD41 0%,#1f8a52 60%,#0f4a3a 100%);
+  --g-missed:linear-gradient(135deg,#F3AD38 0%,#c47812 60%,#5a3408 100%);
+
+  --f-display:'Bebas Neue','HelveticaNeue-Bold',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-sub:'Oswald','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#06080b;color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:48px 32px 160px}
+.wrap{max-width:1440px;margin:0 auto}
+
+.eyebrow{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.deck-hero{padding:24px 0 56px;border-bottom:1px solid var(--line);margin-bottom:48px}
+h1.title{font-family:var(--f-display);font-size:120px;line-height:0.88;letter-spacing:0.8px;margin:18px 0 12px;font-weight:400}
+.title .a{background:var(--g-easy);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:17px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:880px;margin-top:24px}
+.lede strong{color:var(--ink)}
+
+.section-label{font-family:var(--f-sub);font-size:12px;letter-spacing:2.4px;text-transform:uppercase;color:var(--mute);font-weight:600;margin:64px 0 16px;padding-top:24px;border-top:1px solid var(--line)}
+.section-label .name{color:var(--green);margin-left:10px}
+.section-label .name.missed{color:var(--goal)}
+h2.sec-title{font-family:var(--f-display);font-size:52px;letter-spacing:0.6px;line-height:1;margin:0 0 14px;font-weight:400}
+.sec-pitch{font-size:14px;line-height:1.6;color:rgba(246,247,248,0.75);max-width:880px;margin-bottom:32px}
+.sec-pitch strong{color:var(--ink)}
+
+/* ─── BROWSER WINDOW CHROME ─── */
+.browser{width:100%;max-width:1320px;margin:0 auto 80px;border-radius:14px;overflow:hidden;border:1px solid #2a2d34;background:#0a0c10;box-shadow:0 40px 100px rgba(0,0,0,0.55)}
+.browser-chrome{height:42px;background:#181a1d;border-bottom:1px solid #2a2d34;display:flex;align-items:center;padding:0 16px;gap:14px}
+.lights{display:flex;gap:8px}
+.lights .light{width:12px;height:12px;border-radius:50%}
+.lights .red{background:#FF5F57}
+.lights .yellow{background:#FEBC2E}
+.lights .green{background:#28C840}
+.url{flex:1;background:#0a0c10;border:1px solid #2a2d34;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;padding:0 14px;font-size:12px;color:#8a90a0;font-family:'SF Mono','Menlo',monospace;letter-spacing:0.3px;max-width:520px;margin:0 auto}
+.url .lock{font-size:11px;margin-right:8px;opacity:0.6}
+.url .domain{color:var(--ink);font-weight:500}
+.browser-tabs{display:flex;gap:6px;font-size:11px;color:var(--mute);font-family:var(--f-sub);letter-spacing:0.6px;font-weight:500}
+
+/* ─── APP CHROME · TOP NAV ─── */
+.app-nav{height:62px;background:rgba(10,12,16,0.95);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 32px;backdrop-filter:blur(20px)}
+.brand{font-family:var(--f-display);font-size:30px;letter-spacing:1.2px;line-height:1;font-weight:400;color:var(--ink)}
+.brand .dot{color:var(--race);display:inline-block;margin-left:3px}
+.nav-tabs{display:flex;gap:6px;margin-left:48px;flex:1}
+.nav-tab{font-family:var(--f-sub);font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);font-weight:600;padding:8px 16px;border-radius:8px;cursor:default}
+.nav-tab.on{color:var(--ink);background:rgba(255,255,255,0.04)}
+.nav-right{display:flex;align-items:center;gap:18px}
+.search{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 14px;width:240px;font-size:13px;color:var(--mute);font-family:Inter;display:flex;align-items:center;gap:8px}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--g-easy);display:flex;align-items:center;justify-content:center;font-family:Inter;font-weight:600;font-size:13px;color:#fff}
+
+/* ─── WEEK STRIP — wide, top of page ─── */
+.web-week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:18px 32px;background:var(--bg);border-bottom:1px solid var(--line)}
+.wday{padding:10px 14px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--line2)}
+.wday .left{display:flex;flex-direction:column;gap:2px}
+.wday .dow{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;font-weight:600;color:var(--mute);text-transform:uppercase}
+.wday .date{font-family:Inter;font-size:11px;color:var(--mute)}
+.wday .right{font-family:var(--f-display);font-size:22px;line-height:1;letter-spacing:0.3px}
+.wday.done .right{color:var(--green)}
+.wday.future .right{color:var(--mute)}
+.wday.rest .right{color:var(--dim)}
+.wday.missed .right{color:var(--goal);text-decoration:line-through;text-decoration-color:rgba(243,173,56,0.5)}
+.wday.today{outline:1.5px solid var(--ink);background:rgba(255,255,255,0.04)}
+.wday.today .dow{color:var(--ink)}
+
+/* ─── HERO BAND — full width ─── */
+.hero-band{padding:40px 48px 48px;color:#fff;position:relative;overflow:hidden;min-height:280px;display:flex;align-items:center}
+.hero-band.easy{background:var(--g-easy)}
+.hero-band.missed{background:var(--g-missed)}
+.hero-inner{width:100%;max-width:1280px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:48px;align-items:center}
+.hero-left .htag{font-family:var(--f-sub);font-size:11px;letter-spacing:2.4px;text-transform:uppercase;font-weight:600;color:rgba(255,255,255,0.85);margin-bottom:10px}
+.hero-left .verb{font-family:var(--f-display);font-size:160px;line-height:0.84;letter-spacing:0.6px;font-weight:400;color:#fff}
+.hero-left .rx{font-family:Inter;font-size:22px;font-weight:500;color:rgba(255,255,255,0.92);margin-top:18px;letter-spacing:0.1px}
+.hero-left .phase{font-family:Inter;font-size:15px;font-weight:500;color:rgba(255,255,255,0.7);margin-top:6px;font-style:italic;letter-spacing:0.1px}
+.hero-right{display:flex;flex-direction:column;align-items:flex-end;gap:14px}
+.hero-stats{display:flex;gap:32px;align-items:baseline;padding:24px 28px;background:rgba(0,0,0,0.22);border-radius:14px;border:1px solid rgba(255,255,255,0.12)}
+.hero-stats .stat{text-align:center}
+.hero-stats .v{font-family:var(--f-display);font-size:64px;line-height:1;color:#fff}
+.hero-stats .v.amber{color:#FFE38F}
+.hero-stats .l{font-family:var(--f-sub);font-size:10px;letter-spacing:2px;font-weight:600;color:rgba(255,255,255,0.7);text-transform:uppercase;margin-top:6px}
+
+/* ─── BODY — two column ─── */
+.body-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:32px;padding:40px 48px 60px;background:var(--bg)}
+.col h3{font-family:var(--f-display);font-size:32px;letter-spacing:0.5px;line-height:1;margin:0 0 18px;font-weight:400;display:flex;align-items:center;gap:14px}
+.col h3 .tag{font-family:var(--f-sub);font-size:10px;letter-spacing:1.8px;color:var(--mute);font-weight:600;text-transform:uppercase}
+
+/* card primitive */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:16px}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.card-head .lbl{font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;color:var(--mute)}
+.card-head .v{font-family:var(--f-display);font-size:18px;color:var(--ink);letter-spacing:0.3px}
+.card-head .v.amber{color:var(--goal)}
+.card-head .v.over{color:var(--over)}
+.card-head .v.green{color:var(--green)}
+
+/* workout breakdown card */
+.seg-bar{display:flex;gap:3px;height:14px;border-radius:5px;overflow:hidden;margin:8px 0 10px}
+.seg-bar .seg{background:var(--rest);opacity:0.85}
+.seg-bar .seg.steady{background:var(--green);opacity:1}
+.seg-bar .seg.tempo{background:var(--goal)}
+.seg-bar .seg.rest-jog{background:rgba(255,255,255,0.08)}
+.seg-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:8px}
+.seg-row .s{padding:10px 12px;background:rgba(255,255,255,0.02);border:1px solid var(--line2);border-radius:8px}
+.seg-row .s .n{font-family:var(--f-display);font-size:22px;letter-spacing:0.3px;line-height:1;color:var(--ink)}
+.seg-row .s .n.rest{color:var(--rest)}
+.seg-row .s .n.green{color:var(--green)}
+.seg-row .s .l{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:600;color:var(--mute);margin-top:4px;text-transform:uppercase}
+
+/* HR plan zone bar */
+.zones{display:flex;height:24px;border-radius:6px;overflow:hidden;border:1px solid var(--line2);margin-top:10px}
+.zones .z{display:flex;align-items:center;justify-content:center;font-family:var(--f-sub);font-size:10px;font-weight:700;color:rgba(255,255,255,0.5);letter-spacing:0.6px}
+.zones .z.target{color:#fff;font-size:11px}
+.z-labels{display:flex;justify-content:space-between;margin-top:6px;font-family:var(--f-sub);font-size:9px;letter-spacing:1px;color:var(--mute);font-weight:600}
+.z-labels .on{color:var(--green);font-weight:700}
+
+/* structured context rows */
+.ctx-row{display:grid;grid-template-columns:64px 1fr;gap:18px;align-items:baseline;padding:14px 0;border-bottom:1px solid var(--line2)}
+.ctx-row:last-child{border-bottom:0}
+.ctx-row .ctx-lbl{font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;font-weight:700;color:var(--mute);text-transform:uppercase}
+.ctx-row .ctx-lbl.race{color:var(--race)}
+.ctx-row .ctx-body{font-family:Inter;font-size:15px;line-height:1.55;color:rgba(246,247,248,0.85)}
+.ctx-row .ctx-body strong{color:var(--ink);font-weight:600}
+.ctx-row .ctx-body strong.over{color:var(--over)}
+.ctx-row .ctx-body strong.amber{color:var(--goal)}
+.ctx-row .ctx-body strong.green{color:var(--green)}
+
+/* sparkline */
+.spark{display:block;width:100%;height:48px;margin-top:8px}
+.spark-meta{display:flex;justify-content:space-between;margin-top:5px;font-family:var(--f-sub);font-size:9px;letter-spacing:0.9px;color:var(--mute);font-weight:600}
+
+/* phase progress */
+.phase-bar{display:flex;gap:5px;margin-top:10px;align-items:center}
+.phase-bar .ph{height:8px;border-radius:3px;background:rgba(255,255,255,0.07);flex:1;position:relative}
+.phase-bar .ph.done{background:var(--green)}
+.phase-bar .ph.cur{background:linear-gradient(90deg,var(--goal),var(--race));height:10px}
+.phase-bar .ph.cur::after{content:'';position:absolute;left:75%;top:-3px;bottom:-3px;width:3px;background:#fff;border-radius:1px}
+.phase-bar .ph.race{background:rgba(255,136,71,0.5);flex:0.5}
+.phase-labels{display:flex;justify-content:space-between;margin-top:7px;font-family:var(--f-sub);font-size:9px;letter-spacing:0.9px;font-weight:600;color:var(--mute)}
+.phase-labels .cur{color:var(--goal)}
+.phase-labels .race{color:var(--race)}
+
+/* vitals 4-tile grid */
+.vit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.vit{background:rgba(255,255,255,0.02);border:1px solid var(--line2);border-radius:8px;padding:14px;text-align:center}
+.vit .n{font-family:var(--f-display);font-size:32px;line-height:1;color:var(--ink)}
+.vit .n.green{color:var(--green)}
+.vit .n.amber{color:var(--goal)}
+.vit .n.over{color:var(--over)}
+.vit .l{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:600;color:var(--mute);text-transform:uppercase;margin-top:6px}
+
+/* treadmill toggle row */
+.treadmill{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.treadmill .desc{font-size:13px}
+.treadmill .desc strong{color:var(--ink)}
+.treadmill .desc .sub{color:var(--mute);font-size:11.5px;margin-top:2px}
+.toggle{width:44px;height:24px;border-radius:99px;background:rgba(255,255,255,0.1);position:relative}
+.toggle .knob{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:99px;background:#fff}
+
+/* MISSED · choice buttons */
+.choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:24px}
+.choice{padding:24px 26px;border-radius:14px;border:2px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.28);color:#fff;cursor:default}
+.choice.pref{background:#fff;color:#0a0c10;border-color:#fff}
+.choice .verb{font-family:var(--f-display);font-size:48px;line-height:1;letter-spacing:0.4px}
+.choice .sub{font-family:var(--f-sub);font-size:11px;letter-spacing:1.6px;text-transform:uppercase;font-weight:600;margin-top:8px;opacity:0.75}
+
+/* annotation banner */
+.note{margin:0 auto 32px;max-width:880px;padding:16px 22px;background:rgba(176,132,255,0.06);border:1px solid rgba(176,132,255,0.22);border-radius:10px;font-size:13px;line-height:1.55;color:rgba(246,247,248,0.85)}
+.note strong{color:var(--learn)}
+
+/* MISSED · context column (alt content) */
+.recco-card{background:linear-gradient(180deg,rgba(243,173,56,0.08),transparent);border:1px solid rgba(243,173,56,0.22);border-radius:14px;padding:20px 22px;margin-bottom:16px}
+.recco-card .lbl{font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--goal);font-weight:700;margin-bottom:8px}
+.recco-card .body{font-size:14px;line-height:1.55;color:rgba(246,247,248,0.88)}
+.recco-card .body strong{color:var(--ink)}
+
+/* endnote */
+.endnote{margin-top:96px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:var(--f-display);font-size:54px;letter-spacing:0.6px;margin:0 0 18px;font-weight:400}
+.endnote p{font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:780px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+.endnote p code{font-family:'Courier New',monospace;font-size:12px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO INTRO -->
+<div class="deck-hero">
+  <div class="eyebrow">faff · web today · translation experiment · 2026-05-27</div>
+  <h1 class="title">same pattern,<br>wider <span class="a">canvas.</span></h1>
+  <div class="lede">
+    iPhone v2.2 designs translated to the web. <strong>Two states rendered.</strong> The biggest translation: on web, the slide-up sheet disappears — there's enough canvas to show <em>default + expanded</em> content at once as a two-column body. Hero band runs full width. Week strip becomes a horizontal day rail. Everything else holds.
+  </div>
+  <div class="lede" style="color:rgba(246,247,248,0.6);font-size:14px;margin-top:14px">
+    Mock browser chrome. Same brand tokens (Bebas / Inter / Oswald · same gradients · same verb-noun typography). Two scenarios: <strong style="color:var(--ink)">pre-run easy default</strong> · <strong style="color:var(--ink)">missed run choice state</strong>.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- STATE 01 + 02 COMBINED · PRE-RUN EASY · WEB                     -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section-label">scenario A<span class="name">PRE-RUN EASY · WED 27 MAY · RACE 14D</span></div>
+<h2 class="sec-title">the default home.</h2>
+<div class="sec-pitch">
+  iPhone <strong>01 + 02 combined</strong>. The hero band runs full-width. Today's call (workout breakdown · HR plan · treadmill toggle) gets the wider left column. Context (BODY · WEEK · RACE rows · HRV trend · phase progress · vitals grid) lives on the right. <em>Same hierarchy as mobile — just stretched horizontally instead of stacked vertically.</em>
+</div>
+
+<div class="browser">
+  <!-- browser chrome -->
+  <div class="browser-chrome">
+    <div class="lights"><div class="light red"></div><div class="light yellow"></div><div class="light green"></div></div>
+    <div class="url"><span class="lock">🔒</span> <span class="domain">faff.run</span>/today</div>
+  </div>
+  <!-- app nav -->
+  <div class="app-nav">
+    <div class="brand">FAFF<span class="dot">.</span></div>
+    <div class="nav-tabs">
+      <div class="nav-tab on">Today</div>
+      <div class="nav-tab">Plan</div>
+      <div class="nav-tab">Races</div>
+      <div class="nav-tab">Health</div>
+      <div class="nav-tab">Me</div>
+    </div>
+    <div class="nav-right">
+      <div class="search">⌕ Search runs, races, topics…</div>
+      <div class="avatar">D</div>
+    </div>
+  </div>
+  <!-- week strip wide -->
+  <div class="web-week">
+    <div class="wday done"><div class="left"><div class="dow">M</div><div class="date">25</div></div><div class="right">4.0</div></div>
+    <div class="wday done"><div class="left"><div class="dow">T</div><div class="date">26</div></div><div class="right">6.2</div></div>
+    <div class="wday today"><div class="left"><div class="dow">W</div><div class="date">27</div></div><div class="right">5.8</div></div>
+    <div class="wday future"><div class="left"><div class="dow">T</div><div class="date">28</div></div><div class="right">6.0</div></div>
+    <div class="wday future"><div class="left"><div class="dow">F</div><div class="date">29</div></div><div class="right">3.0</div></div>
+    <div class="wday future"><div class="left"><div class="dow">S</div><div class="date">30</div></div><div class="right">8.0</div></div>
+    <div class="wday future"><div class="left"><div class="dow">S</div><div class="date">31</div></div><div class="right">14</div></div>
+  </div>
+  <!-- hero band -->
+  <div class="hero-band easy">
+    <div class="hero-inner">
+      <div class="hero-left">
+        <div class="htag">TODAY · EASY · Z2 · WED 27 MAY</div>
+        <div class="verb">RUN EASY.</div>
+        <div class="rx">Hold under 148.</div>
+        <div class="phase">Build · progressive aerobic</div>
+      </div>
+      <div class="hero-right">
+        <div class="hero-stats">
+          <div class="stat"><div class="v">5.8</div><div class="l">MI</div></div>
+          <div class="stat"><div class="v">8:12</div><div class="l">PACE</div></div>
+          <div class="stat"><div class="v amber">148</div><div class="l">HR CAP</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- body two-column -->
+  <div class="body-grid">
+    <!-- LEFT · TODAY'S RUN -->
+    <div class="col">
+      <h3>Today's run <span class="tag">· the doing</span></h3>
+      <!-- workout breakdown -->
+      <div class="card">
+        <div class="card-head"><div class="lbl">Workout · breakdown</div><div class="v">47:30 est</div></div>
+        <div class="seg-bar">
+          <div class="seg" style="flex:0.85"></div>
+          <div class="seg steady" style="flex:4.5"></div>
+          <div class="seg" style="flex:0.45"></div>
+        </div>
+        <div class="seg-row">
+          <div class="s"><div class="n rest">0.5 mi</div><div class="l">Warmup · Z1</div></div>
+          <div class="s"><div class="n green">4.8 mi · Z2</div><div class="l">Steady · 8:12 pace</div></div>
+          <div class="s"><div class="n rest">0.5 mi</div><div class="l">Cooldown · Z1</div></div>
+        </div>
+      </div>
+      <!-- HR plan -->
+      <div class="card">
+        <div class="card-head"><div class="lbl">HR plan · 100% Z2</div><div class="v amber">cap 148</div></div>
+        <div style="font-size:12px;color:var(--mute);line-height:1.5;margin-bottom:4px">Aerobic zone the whole way. If HR drifts above 148, ease pace 8s/mi until it settles.</div>
+        <div class="zones">
+          <div class="z" style="flex:0.2;background:rgba(0,143,236,0.35)">Z1</div>
+          <div class="z target" style="flex:1;background:var(--green)">Z2 · 132–148</div>
+          <div class="z" style="flex:0.25;background:rgba(243,173,56,0.3)">Z3</div>
+          <div class="z" style="flex:0.15;background:rgba(255,136,71,0.25)">Z4</div>
+          <div class="z" style="flex:0.08;background:rgba(252,77,100,0.25)">Z5</div>
+        </div>
+        <div class="z-labels">
+          <span>120</span>
+          <span class="on">132 · 148</span>
+          <span>160</span>
+          <span>170</span>
+          <span>175</span>
+        </div>
+      </div>
+      <!-- treadmill toggle -->
+      <div class="treadmill">
+        <div class="desc">
+          <strong>Treadmill mode</strong> · phone drives the belt
+          <div class="sub">Speed and incline cues · HR pulled from paired watch</div>
+        </div>
+        <div class="toggle"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <!-- RIGHT · CONTEXT -->
+    <div class="col">
+      <h3>Context <span class="tag">· the why</span></h3>
+      <!-- BODY · WEEK · RACE structured rows -->
+      <div class="card" style="padding:6px 24px 6px">
+        <div class="ctx-row"><div class="ctx-lbl">Body</div><div class="ctx-body"><strong>7.2h</strong> sleep · <strong class="over">HRV low</strong> · −7 vs avg · <strong>48</strong> rhr</div></div>
+        <div class="ctx-row"><div class="ctx-lbl">Week</div><div class="ctx-body">Load <strong class="amber">1.24 build</strong> · Hard <strong>Thu</strong> 6×800 · Long <strong>Sun</strong> 14mi</div></div>
+        <div class="ctx-row"><div class="ctx-lbl race">Race</div><div class="ctx-body"><strong>London</strong> · 14d · <strong>2:54</strong> pred · <strong class="green">−1:00</strong> of goal</div></div>
+      </div>
+      <!-- HRV 14d sparkline -->
+      <div class="card">
+        <div class="card-head"><div class="lbl">HRV · 14 days</div><div class="v over">▼ down-trend</div></div>
+        <svg viewBox="0 0 320 48" class="spark">
+          <defs><linearGradient id="hrvfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#FC4D64" stop-opacity="0.32"/><stop offset="1" stop-color="#FC4D64" stop-opacity="0"/></linearGradient></defs>
+          <path d="M0 16 L22 14 L44 10 L66 16 L88 12 L110 16 L132 20 L154 16 L176 20 L198 22 L220 26 L242 30 L264 28 L286 32 L308 38" stroke="#FC4D64" stroke-width="2" fill="none"/>
+          <path d="M0 16 L22 14 L44 10 L66 16 L88 12 L110 16 L132 20 L154 16 L176 20 L198 22 L220 26 L242 30 L264 28 L286 32 L308 38 L308 48 L0 48 Z" fill="url(#hrvfill)"/>
+          <circle cx="308" cy="38" r="4" fill="#FC4D64" stroke="#fff" stroke-width="1.5"/>
+        </svg>
+        <div class="spark-meta"><span>14 may · 45 ms</span><span>today · 38 ms</span></div>
+      </div>
+      <!-- phase progress -->
+      <div class="card">
+        <div class="card-head"><div class="lbl">Phase progress</div><div class="v">build · wk 6 / 8</div></div>
+        <div class="phase-bar">
+          <div class="ph done"></div>
+          <div class="ph cur"></div>
+          <div class="ph"></div>
+          <div class="ph"></div>
+          <div class="ph race"></div>
+        </div>
+        <div class="phase-labels"><span>Base</span><span class="cur">Build ●</span><span>Peak</span><span>Taper</span><span class="race">Race</span></div>
+      </div>
+      <!-- vitals grid -->
+      <div class="card">
+        <div class="card-head"><div class="lbl">Vitals · this morning</div><div class="v">↻ 8 min ago</div></div>
+        <div class="vit-grid">
+          <div class="vit"><div class="n green">82</div><div class="l">Ready</div></div>
+          <div class="vit"><div class="n amber">7.2h</div><div class="l">Sleep</div></div>
+          <div class="vit"><div class="n over">38</div><div class="l">HRV</div></div>
+          <div class="vit"><div class="n">48</div><div class="l">RHR</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- annotation about what changed on web -->
+<div class="note">
+  <strong>What translates · what doesn't.</strong> The <em>slide-up sheet</em> from iPhone disappears on web — both default and expanded content live side-by-side as columns. The <em>tap-hero-for-takeover</em> still works (full-bleed gradient banner with verb + countdown for race posters, on click). Mobile chip strip becomes <em>structured rows in a card</em>. Mobile interval bar becomes the same bar, just wider. Hero verb stays at hero scale — 160px Bebas Neue holds up on a 1280px viewport.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- STATE 03 · MISSED RUN · WEB                                     -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section-label">scenario B<span class="name missed">MISSED RUN · QUALITY SKIPPED TUESDAY</span></div>
+<h2 class="sec-title">the choice moment.</h2>
+<div class="sec-pitch">
+  iPhone <strong>03</strong> translated to web. Same yellow-amber gradient · same two-button hero <strong>CATCH UP / MOVE ON</strong> · same load-impact reasoning · same plan-aware default. The right column shows the consequence preview <em>and</em> the alternative side-by-side instead of stacked.
+</div>
+
+<div class="browser">
+  <div class="browser-chrome">
+    <div class="lights"><div class="light red"></div><div class="light yellow"></div><div class="light green"></div></div>
+    <div class="url"><span class="lock">🔒</span> <span class="domain">faff.run</span>/today</div>
+  </div>
+  <div class="app-nav">
+    <div class="brand">FAFF<span class="dot">.</span></div>
+    <div class="nav-tabs">
+      <div class="nav-tab on" style="color:var(--goal);background:rgba(243,173,56,0.06)">Today</div>
+      <div class="nav-tab">Plan</div>
+      <div class="nav-tab">Races</div>
+      <div class="nav-tab">Health</div>
+      <div class="nav-tab">Me</div>
+    </div>
+    <div class="nav-right">
+      <div class="search">⌕ Search runs, races, topics…</div>
+      <div class="avatar" style="background:var(--g-missed)">D</div>
+    </div>
+  </div>
+  <!-- week strip · Tue missed -->
+  <div class="web-week">
+    <div class="wday done"><div class="left"><div class="dow">M</div><div class="date">25</div></div><div class="right">4.0</div></div>
+    <div class="wday missed"><div class="left"><div class="dow" style="color:var(--goal)">T</div><div class="date">26</div></div><div class="right" style="font-size:16px">6×800</div></div>
+    <div class="wday today"><div class="left"><div class="dow">W</div><div class="date">27</div></div><div class="right">5.8</div></div>
+    <div class="wday future"><div class="left"><div class="dow">T</div><div class="date">28</div></div><div class="right">6.0</div></div>
+    <div class="wday future"><div class="left"><div class="dow">F</div><div class="date">29</div></div><div class="right">3.0</div></div>
+    <div class="wday future"><div class="left"><div class="dow">S</div><div class="date">30</div></div><div class="right">8.0</div></div>
+    <div class="wday future"><div class="left"><div class="dow">S</div><div class="date">31</div></div><div class="right">14</div></div>
+  </div>
+  <!-- MISSED hero band -->
+  <div class="hero-band missed" style="min-height:340px">
+    <div class="hero-inner">
+      <div class="hero-left">
+        <div class="htag" style="color:rgba(255,255,255,0.92)">YESTERDAY · QUALITY MISSED · 6×800</div>
+        <div class="verb" style="font-size:130px">PICK ONE.</div>
+        <div class="rx" style="font-size:18px;color:rgba(255,255,255,0.85);max-width:520px">Tuesday's 6×800 didn't happen.<br>Your call — and the plan adjusts.</div>
+      </div>
+      <div class="hero-right" style="align-items:stretch;width:100%">
+        <div class="choice-grid" style="width:100%">
+          <div class="choice">
+            <div class="verb">CATCH UP.</div>
+            <div class="sub">Today → 6×800 · easy moves to Thu</div>
+          </div>
+          <div class="choice pref">
+            <div class="verb">MOVE ON.</div>
+            <div class="sub" style="color:rgba(10,12,16,0.7)">Easy as planned · drop the missed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- body grid · MISSED context -->
+  <div class="body-grid">
+    <!-- LEFT · what happens if MOVE ON -->
+    <div class="col">
+      <h3>If you move on <span class="tag">· recommended</span></h3>
+      <div class="card">
+        <div class="card-head"><div class="lbl">Today · as planned</div><div class="v green">unchanged</div></div>
+        <div style="display:flex;align-items:baseline;gap:24px;margin-top:4px"><div style="font-family:var(--f-display);font-size:48px;line-height:1">EASY · 5.8 MI</div><div style="font-family:Inter;font-size:13px;color:var(--mute);padding-bottom:6px">8:12 pace · 148 cap · Z2 steady</div></div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:13.5px;line-height:1.55;color:rgba(246,247,248,0.78)">Sunday's long run protected. Next quality stays Thursday. <strong style="color:var(--ink)">Build week 6 stays intact.</strong></div>
+      </div>
+      <div class="recco-card">
+        <div class="lbl">Why move on</div>
+        <div class="body">You've hit <strong>6 of 7 quality sessions</strong> this block. Catching up means two hard days in three — load jumps from <strong>1.24 to 1.48</strong>. Risk &gt; benefit, especially 14 days out from London.</div>
+      </div>
+    </div>
+    <!-- RIGHT · the alternative collapsed + context -->
+    <div class="col">
+      <h3>The alternative <span class="tag">· if catch up</span></h3>
+      <div class="card">
+        <div class="card-head"><div class="lbl">Today · becomes quality</div><div class="v amber">load 1.48</div></div>
+        <div style="display:flex;align-items:baseline;gap:18px;margin-top:4px"><div style="font-family:var(--f-display);font-size:32px;line-height:1;color:var(--goal)">6 × 800m</div><div style="font-family:Inter;font-size:13px;color:var(--mute);padding-bottom:4px">@ 3:02 · 400m jog rest</div></div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;line-height:1.55;color:rgba(246,247,248,0.75)">Easy moves to Thursday. Long run on Sunday <em>may need shortening</em> if recovery isn't complete. Two quality sessions in 3 days adds real load risk.</div>
+      </div>
+      <!-- context same structured rows -->
+      <div class="card" style="padding:6px 24px 6px">
+        <div class="ctx-row"><div class="ctx-lbl">Body</div><div class="ctx-body"><strong>7.2h</strong> sleep · <strong class="over">HRV low</strong> · −7 vs avg · <strong>48</strong> rhr</div></div>
+        <div class="ctx-row"><div class="ctx-lbl">Week</div><div class="ctx-body"><strong>3 of 4</strong> quality sessions hit this block · 22.0 / 30 mi</div></div>
+        <div class="ctx-row"><div class="ctx-lbl race">Race</div><div class="ctx-body"><strong>London</strong> · 14d · <strong>2:54</strong> pred · <strong class="green">on track</strong></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── endnote ─── -->
+<div class="endnote">
+  <div class="eyebrow" style="color:var(--green);margin-bottom:12px">findings · what the experiment showed</div>
+  <h3>same skeleton.<br>different bones.</h3>
+  <p>The web translation works because the iPhone pattern was structured (hero band + week strip + structured rows + cards), not gestural. <strong>Drop the slide-up — everything else holds.</strong> Hero verb stays hero-scale. Stat strip moves into the gradient band as a glass-card stat trio. Structured rows fit naturally in a wide right column. Cards stack the same way.</p>
+  <p><strong>The MISSED state translates even better on web than on mobile.</strong> The two-button choice can sit side-by-side in the hero (instead of stacked below it), and the right column has room to show <em>both</em> the recommended outcome AND the alternative simultaneously — instead of collapsing the non-pref to a chip like we did on mobile.</p>
+  <p><strong>What we'd build:</strong> Next.js TODAY page in <code>web-v2/app/today/page.tsx</code> using the same resolver call that iPhone uses. Shared component library: <code>HeroBand</code>, <code>WeekStrip</code>, <code>WorkoutBreakdown</code>, <code>HRPlanBar</code>, <code>ContextRows</code>, <code>VitalsGrid</code>. ~6 components total. iPhone and Web stay visually identical because they share design tokens (already in <code>globals.css</code>) and reuse the verb table + resolver outputs.</p>
+  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code>docs/web-today-2026-05-27.html</code> · experiment translating iPhone v2.2 patterns to web. Nod and the next move is implementing this as the actual <code>/today</code> route in the Next.js app.</p>
+</div>
+
+<div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:var(--f-sub);font-size:11px;letter-spacing:3px">— END · 2026-05-27 · WEB TODAY · EXPERIMENT —</div>
+
+</div>
+</body>
+</html>
