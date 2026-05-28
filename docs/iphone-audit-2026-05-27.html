@@ -1,0 +1,1290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / iPhone / audit · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+
+  /* competitor colors (approximations) */
+  --runna:#FC4C02; --runna-2:#000;
+  --strava:#FC4C02; --strava-bg:#fafafa;
+  --garmin:#0288d1; --garmin-bg:#ffffff;
+  --whoop:#01a3a4; --whoop-bg:#000;
+  --af:#FE2D55; --af-bg:#000;
+  --nrc:#FA5400; --nrc-bg:#000;
+  --coros:#000000; --coros-bg:#ffffff;
+
+  --f-display:'Bebas Neue','HelveticaNeue-Bold',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-sub:'Oswald','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:64px 32px 200px}
+.wrap{max-width:1480px;margin:0 auto}
+
+/* chrome */
+.eyebrow{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.hero{padding:24px 0 64px;border-bottom:1px solid var(--line);margin-bottom:64px}
+h1.title{font-family:var(--f-display);font-size:160px;line-height:0.88;letter-spacing:0.8px;margin:18px 0 12px;font-weight:400}
+.title .a{background:linear-gradient(135deg,#FF8847,#9013FE);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:18px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:880px;margin-top:24px}
+.lede strong{color:var(--ink)}
+.lede em{color:var(--race);font-style:normal;font-weight:600}
+
+h2.sec{font-family:var(--f-display);font-size:90px;letter-spacing:1px;margin:120px 0 8px;line-height:1;font-weight:400}
+.sec-tag{font-family:var(--f-sub);font-size:11px;letter-spacing:2.4px;text-transform:uppercase;color:var(--mute);margin-bottom:32px;display:flex;gap:14px;align-items:center}
+.sec-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.sec-tag.comp .dot{background:var(--race)}
+.sec-tag.data .dot{background:var(--dist)}
+.sec-tag.brain .dot{background:var(--learn)}
+.sec-tag.pat .dot{background:var(--goal)}
+.sec-tag.edge .dot{background:var(--over)}
+.kicker{font-size:15px;line-height:1.6;color:rgba(246,247,248,0.75);max-width:860px;margin-bottom:48px}
+.kicker strong{color:var(--ink)}
+.kicker em{font-style:italic;color:rgba(246,247,248,0.55)}
+
+/* fixed TOC */
+.toc{position:fixed;top:50%;right:24px;transform:translateY(-50%);z-index:50;background:rgba(17,20,26,0.9);border:1px solid var(--line);border-radius:14px;padding:14px 16px;backdrop-filter:blur(14px);max-width:210px}
+.toc-title{font-family:var(--f-sub);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--mute);font-weight:700;margin-bottom:10px}
+.toc a{display:block;font-size:11px;color:var(--mute);text-decoration:none;padding:4px 0;border-left:2px solid transparent;padding-left:10px;transition:all 0.15s}
+.toc a:hover{color:var(--ink);border-left-color:var(--green)}
+.toc a.x{color:rgba(246,247,248,0.85);border-left-color:rgba(255,255,255,0.2)}
+
+/* iPhone frame — slightly smaller for density */
+.phone{width:300px;height:660px;background:#000;border-radius:44px;padding:10px;position:relative;box-shadow:0 30px 70px rgba(0,0,0,0.55),inset 0 0 0 1.5px #1d2028;flex-shrink:0}
+.phone-screen{width:100%;height:100%;border-radius:34px;overflow:hidden;position:relative;background:var(--bg)}
+.island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:88px;height:26px;background:#000;border-radius:16px;z-index:10}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:12px 22px 0;font-size:12px;font-weight:600;height:40px;letter-spacing:0.3px}
+.home-i{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:108px;height:4px;background:rgba(255,255,255,0.3);border-radius:3px;z-index:11}
+.phone-label{font-family:var(--f-sub);font-size:10px;letter-spacing:1.8px;text-transform:uppercase;color:var(--mute);margin-top:14px;text-align:center}
+.phone-label strong{color:var(--ink);font-weight:600}
+.phone-tag{margin-top:4px;font-size:11px;color:var(--mute);text-align:center;max-width:280px;line-height:1.5;margin-left:auto;margin-right:auto}
+
+/* competitive panel layout */
+.comp-row{display:grid;grid-template-columns:auto 1fr;gap:48px;align-items:flex-start;margin-bottom:80px;padding-top:32px;border-top:1px solid var(--line)}
+.comp-info{padding-top:8px}
+.comp-tag{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.comp-tag .logo{font-family:var(--f-display);font-size:48px;letter-spacing:0.5px;line-height:1;font-weight:400}
+.comp-tag .ver{font-family:var(--f-sub);font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);font-weight:600}
+.comp-info h4{font-family:var(--f-display);font-size:28px;letter-spacing:0.4px;line-height:1.1;font-weight:400;margin:0 0 16px;max-width:580px}
+.comp-info p{font-size:13.5px;line-height:1.65;color:rgba(246,247,248,0.8);margin:0 0 12px;max-width:580px}
+.comp-info p strong{color:var(--ink)}
+
+/* score-card per competitor */
+.scores{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:18px;margin-bottom:18px;max-width:580px}
+.score{padding:10px 8px;border-radius:8px;background:var(--card);border:1px solid var(--line);text-align:center}
+.score .l{font-family:var(--f-sub);font-size:8px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:4px}
+.score .v{font-family:var(--f-display);font-size:22px;line-height:1;letter-spacing:0.4px}
+.score.hit .v{color:var(--green)}
+.score.par .v{color:var(--goal)}
+.score.miss .v{color:var(--over)}
+.score.no .v{color:var(--dim)}
+
+.steal{background:rgba(62,189,65,0.06);border:1px solid rgba(62,189,65,0.2);border-radius:10px;padding:14px 16px;margin-top:12px;max-width:580px}
+.steal .l{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--green);font-weight:700;margin-bottom:6px}
+.steal .b{font-size:13px;line-height:1.55;color:var(--ink)}
+.avoid{background:rgba(252,77,100,0.05);border:1px solid rgba(252,77,100,0.18);border-radius:10px;padding:14px 16px;margin-top:8px;max-width:580px}
+.avoid .l{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--over);font-weight:700;margin-bottom:6px}
+.avoid .b{font-size:13px;line-height:1.55;color:var(--ink)}
+
+/* annotation arrows / callouts overlaid on phones */
+.phone-wrap{position:relative}
+.cnote{position:absolute;font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:600;color:var(--goal);text-transform:uppercase;background:rgba(10,12,16,0.92);padding:5px 10px;border-radius:99px;border:1px solid rgba(243,173,56,0.3);white-space:nowrap;z-index:5}
+.cnote.green{color:var(--green);border-color:rgba(62,189,65,0.3)}
+.cnote.red{color:var(--over);border-color:rgba(252,77,100,0.3)}
+
+/* essential chip in audit (5 must-haves recap) */
+.essentials-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:32px 0 80px;padding:32px;background:var(--bg2);border:1px solid var(--line);border-radius:18px}
+.eb{position:relative}
+.eb .n{font-family:var(--f-display);font-size:48px;line-height:1;color:rgba(255,255,255,0.18);font-weight:400}
+.eb .q{font-family:var(--f-display);font-size:20px;letter-spacing:0.4px;margin:6px 0 4px;line-height:1.1}
+.eb .d{font-size:11.5px;line-height:1.5;color:var(--mute)}
+
+/* faff data inventory table */
+.dtable{width:100%;border-collapse:collapse;margin:24px 0 64px;font-size:13px}
+.dtable th,.dtable td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.dtable th{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;font-weight:600;color:var(--mute);background:var(--bg2)}
+.dtable td.sig{font-family:var(--f-display);font-size:18px;letter-spacing:0.3px;color:var(--ink);width:20%}
+.dtable td.src{color:var(--mute);font-family:'Courier New',monospace;font-size:11px;width:18%}
+.dtable td.usage{width:18%}
+.dtable td.opp{width:44%;line-height:1.5;color:rgba(246,247,248,0.78)}
+.dtable td.usage .pill{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;text-transform:uppercase;font-weight:600;padding:3px 8px;border-radius:99px;display:inline-block}
+.dtable td.usage .pill.surf{background:rgba(62,189,65,0.16);color:var(--green)}
+.dtable td.usage .pill.partial{background:rgba(243,173,56,0.16);color:var(--goal)}
+.dtable td.usage .pill.dark{background:rgba(252,77,100,0.14);color:var(--over)}
+
+/* mental-model sequence card */
+.seq{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 28px;margin-bottom:18px}
+.seq h5{font-family:var(--f-display);font-size:28px;letter-spacing:0.5px;line-height:1;margin:0 0 6px;font-weight:400}
+.seq .ctx{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--learn);font-weight:600;margin-bottom:14px}
+.seq ol{margin:0;padding:0 0 0 18px;list-style:none;counter-reset:s}
+.seq ol li{counter-increment:s;position:relative;padding:8px 0 8px 0;border-bottom:1px solid var(--line2);font-size:13.5px;line-height:1.55;color:rgba(246,247,248,0.82)}
+.seq ol li::before{content:counter(s,decimal-leading-zero);position:absolute;left:-18px;top:8px;font-family:var(--f-sub);font-size:10px;letter-spacing:1px;font-weight:600;color:var(--mute)}
+.seq ol li:last-child{border-bottom:0}
+.seq ol li strong{color:var(--ink)}
+.seq ol li em{color:var(--race);font-style:normal;font-weight:600}
+.seq .pull{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.65)}
+.seq .pull strong{color:var(--ink)}
+
+/* pattern callouts */
+.pat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:64px}
+.pat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+.pat h4{font-family:var(--f-display);font-size:24px;letter-spacing:0.4px;line-height:1.1;margin:0 0 4px;font-weight:400}
+.pat .who{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:12px}
+.pat p{font-size:13px;line-height:1.6;color:rgba(246,247,248,0.78);margin:0 0 10px}
+.pat p strong{color:var(--ink)}
+.pat .lesson{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;color:var(--goal);font-family:var(--f-sub);font-weight:600;letter-spacing:0.4px}
+
+/* edge case grid */
+.edge-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:48px}
+.edge{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;position:relative}
+.edge .num{position:absolute;top:10px;right:14px;font-family:var(--f-display);font-size:38px;line-height:1;color:rgba(255,255,255,0.06)}
+.edge h5{font-family:var(--f-display);font-size:22px;letter-spacing:0.4px;margin:0 0 4px;line-height:1.05;font-weight:400}
+.edge .tag{font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;text-transform:uppercase;color:var(--over);font-weight:700;margin-bottom:10px}
+.edge .tag.partial{color:var(--goal)}
+.edge .tag.broken{color:var(--over)}
+.edge p{font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.78);margin:0 0 8px}
+.edge p strong{color:var(--ink)}
+.edge .fix{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);font-size:11.5px;color:var(--green);line-height:1.5;font-family:var(--f-sub);font-weight:600;letter-spacing:0.3px}
+
+/* refinement table */
+.ref-table{width:100%;border-collapse:collapse;margin:24px 0 80px}
+.ref-table th,.ref-table td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.ref-table th{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;font-weight:600;color:var(--mute);background:var(--bg2)}
+.ref-table td.area{font-family:var(--f-display);font-size:18px;color:var(--ink);width:18%}
+.ref-table td.was{color:var(--mute);width:32%;font-size:12.5px;line-height:1.5}
+.ref-table td.now{color:var(--ink);width:32%;font-size:12.5px;line-height:1.55}
+.ref-table td.now strong{color:var(--green)}
+.ref-table td.why{color:var(--mute);width:18%;font-size:11.5px;line-height:1.45}
+
+/* endnote */
+.endnote{margin-top:96px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:var(--f-display);font-size:54px;letter-spacing:0.6px;margin:0 0 18px;font-weight:400}
+.endnote p{font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:780px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+
+@media (max-width:1100px){.toc{display:none}.comp-row{grid-template-columns:1fr}.essentials-bar{grid-template-columns:repeat(2,1fr)}.edge-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- TOC -->
+<nav class="toc">
+  <div class="toc-title">Audit sections</div>
+  <a href="#frame">01 · Why audit now</a>
+  <a href="#essentials">02 · The 5-essential bar</a>
+  <a href="#comp">03 · Competitive deep-dive</a>
+  <a href="#data">04 · Faff data audit</a>
+  <a href="#brain">05 · Mental models</a>
+  <a href="#patterns">06 · Design patterns</a>
+  <a href="#edges">07 · Edge cases</a>
+  <a href="#refine">08 · v2.1 refinements</a>
+  <a href="#next">09 · Where this lands</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero" id="frame">
+  <div class="eyebrow">faff · iphone · audit · 2026-05-27</div>
+  <h1 class="title">the <span class="a">audit.</span></h1>
+  <div class="lede">
+    Three rounds of mockups put a pattern on the table — race poster spine, sliding sheet, today-first headline, gradient = state. <strong>It's close.</strong> Before we go all-in, this deck does the homework: how do other apps solve this, what does Faff already know but isn't showing, what does a runner actually think when they pick up the phone, and what real-world states does v2.1 quietly fail at. Four lenses, one refined pattern at the end.
+  </div>
+  <div class="lede" style="color:rgba(246,247,248,0.58);font-size:14px;margin-top:18px">
+    The output isn't more directions. It's <em>conviction</em> — every rule in v2.2 should trace to either a competitor's lesson, a piece of Faff data we have but ignore, a runner's actual workflow, or a known UX pattern that earns its place. No more vibes-only design moves.
+  </div>
+</div>
+
+<!-- ════════════════════ 02 · 5 ESSENTIAL BAR ════════════════════ -->
+<section id="essentials">
+  <div class="eyebrow">02 · the bar</div>
+  <h2 class="sec">the bar<br>everything clears.</h2>
+  <div class="sec-tag"><span class="dot"></span>five answers · under three seconds · every day</div>
+  <div class="kicker">From the first deck and locked in by your "core" feedback. Every app — Faff included — gets graded against these five questions. <strong>If a competitor's home screen can't answer a question without a tap, that's a miss.</strong> Most competitors miss two or three. Faff today misses on ops; v2.1 was projected to clear all five.</div>
+  <div class="essentials-bar">
+    <div class="eb"><div class="n">01</div><div class="q">Run today?</div><div class="d">Type, distance, target pace, HR. Visible without tapping.</div></div>
+    <div class="eb"><div class="n">02</div><div class="q">Body today?</div><div class="d">Readiness, sleep, HRV, RHR, niggles, ACWR. One readout, honest.</div></div>
+    <div class="eb"><div class="n">03</div><div class="q">Coach says?</div><div class="d">Why today is what it is. State-aware. (Optionally muted in v2.1.)</div></div>
+    <div class="eb"><div class="n">04</div><div class="q">Race in N?</div><div class="d">Trajectory, gap to goal, what's still wobbling. Confidence.</div></div>
+    <div class="eb"><div class="n">05</div><div class="q">Race-day ops?</div><div class="d">Bib, corral, transport, weather, drop bag. The 5am screen.</div></div>
+  </div>
+</section>
+
+<!-- ════════════════════ 03 · COMPETITIVE ════════════════════ -->
+<section id="comp">
+  <div class="eyebrow">03 · competitive</div>
+  <h2 class="sec">how the<br>others do it.</h2>
+  <div class="sec-tag comp"><span class="dot"></span>seven apps · their home screens · what each gets right and wrong</div>
+  <div class="kicker">Each app's home / today screen recreated faithfully in CSS, scored against the five essentials, with one thing to <strong style="color:var(--green)">steal</strong> and one thing to <strong style="color:var(--over)">avoid</strong>. The pattern at the end: <em>most apps confuse "open" with "engaged" — they front-load motivation, feed, or upsells when the runner just wants the answer.</em></div>
+</section>
+
+<!-- ─── COMPETITOR · RUNNA ─── -->
+<div class="comp-row">
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen" style="background:#0a0a0a">
+        <div class="island"></div>
+        <div class="sb" style="color:#fff"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <!-- Runna replica -->
+        <div style="padding:14px 18px;color:#fff">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+            <div><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:rgba(255,255,255,0.55);font-weight:600">WED 27 MAY</div><div style="font-family:Inter;font-size:22px;font-weight:800;margin-top:2px">Hi David</div></div>
+            <div style="width:32px;height:32px;border-radius:50%;background:#FC4C02;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff">D</div>
+          </div>
+          <!-- today's workout card -->
+          <div style="background:#1a1a1a;border-radius:16px;padding:18px;margin-bottom:12px">
+            <div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;color:#FC4C02;font-weight:700;margin-bottom:8px">TODAY · EASY RUN</div>
+            <div style="font-family:Inter;font-size:30px;font-weight:800;line-height:1;margin-bottom:10px">5.8 mi</div>
+            <div style="display:flex;gap:14px;font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:16px">
+              <span><strong style="color:#fff">8:12</strong> pace</span>
+              <span><strong style="color:#fff">~47:30</strong> est</span>
+            </div>
+            <div style="background:#FC4C02;color:#fff;text-align:center;padding:12px;border-radius:99px;font-family:Inter;font-size:13px;font-weight:700;letter-spacing:0.3px">START RUN</div>
+          </div>
+          <!-- weekly progress -->
+          <div style="background:#1a1a1a;border-radius:16px;padding:14px 16px;margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,0.65);margin-bottom:8px"><span>This week</span><span><strong style="color:#fff">15.0 / 27 mi</strong></span></div>
+            <div style="height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div style="width:55%;height:100%;background:#FC4C02;border-radius:3px"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,0.4);margin-top:8px"><span>M ✓</span><span>T ✓</span><span style="color:#FC4C02">W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+          </div>
+          <!-- race countdown -->
+          <div style="background:#1a1a1a;border-radius:16px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-size:11px;color:rgba(255,255,255,0.55);font-family:var(--f-sub);font-weight:600;letter-spacing:1.4px;text-transform:uppercase">London Marathon</div><div style="font-family:Inter;font-size:14px;font-weight:600;margin-top:2px">11 Jun · 14 days</div></div>
+            <div style="font-family:Inter;font-size:30px;font-weight:800;color:#FC4C02">14</div>
+          </div>
+          <!-- treadmill mode chip -->
+          <div style="margin-top:12px;display:flex;gap:8px"><div style="background:rgba(255,255,255,0.08);padding:7px 12px;border-radius:99px;font-size:11px;color:rgba(255,255,255,0.7);font-weight:500">🏠 Treadmill mode</div></div>
+        </div>
+      </div>
+      <div class="home-i"></div>
+    </div>
+    <!-- annotations -->
+    <div class="cnote" style="top:80px;left:-100px;color:var(--green);border-color:rgba(62,189,65,0.3)">workout dominant ✓</div>
+    <div class="cnote red" style="top:380px;left:-90px">no health / hrv</div>
+    <div class="cnote" style="top:510px;right:-100px">race as a chip</div>
+  </div>
+
+  <div class="comp-info">
+    <div class="comp-tag"><div class="logo" style="color:#FC4C02">RUNNA</div><div class="ver">v · most direct competitor</div></div>
+    <h4>Workout-first, plan-driven, hard to fault on the daily call — but the body is missing.</h4>
+    <p>The Runna home is a <strong>tight execution surface</strong>: today's run dominates, START RUN is the only CTA above the fold, weekly progress bar gives the arc, race countdown lives quiet at the bottom. The "what am I doing today" question is answered <em>before your thumb moves</em>.</p>
+    <p>But <strong>health is absent</strong>. No HRV. No sleep. No readiness. If you're a low-mileage runner who only wants a plan to follow, that's fine. If you actually want to know whether to <em>do</em> the plan today, you're checking another app.</p>
+    <div class="scores">
+      <div class="score hit"><div class="l">01 run</div><div class="v">✓</div></div>
+      <div class="score no"><div class="l">02 body</div><div class="v">—</div></div>
+      <div class="score miss"><div class="l">03 coach</div><div class="v">✗</div></div>
+      <div class="score par"><div class="l">04 race</div><div class="v">◐</div></div>
+      <div class="score miss"><div class="l">05 ops</div><div class="v">✗</div></div>
+    </div>
+    <div class="steal"><div class="l">steal</div><div class="b">The single START RUN button, full-width, brand color. No ambiguity about the call to action. <strong>Faff's "drag bottom up for data" is more elegant — but Runna's button removes one decision per day.</strong></div></div>
+    <div class="avoid"><div class="l">avoid</div><div class="b">Treating health as a separate tab the runner has to remember to visit. By the time someone opens Whoop or Apple Health to check HRV before a hard day, Runna has lost the moment.</div></div>
+  </div>
+</div>
+
+<!-- ─── COMPETITOR · STRAVA ─── -->
+<div class="comp-row">
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen" style="background:#fafafa">
+        <div class="island"></div>
+        <div class="sb" style="color:#000"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <!-- Strava replica -->
+        <div style="padding:14px 16px;color:#202020">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div style="font-family:Inter;font-size:22px;font-weight:800">Strava</div>
+            <div style="display:flex;gap:14px"><span style="font-size:18px;color:#666">🔔</span><span style="font-size:18px;color:#666">＋</span></div>
+          </div>
+          <!-- tabs -->
+          <div style="display:flex;gap:18px;font-family:Inter;font-size:13px;font-weight:600;border-bottom:1px solid #e5e5e5;padding-bottom:10px;margin-bottom:14px"><span style="border-bottom:2px solid #FC4C02;padding-bottom:11px;margin-bottom:-11px">For you</span><span style="color:#888">Following</span></div>
+          <!-- activity feed item -->
+          <div style="background:#fff;border-radius:8px;padding:12px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="width:36px;height:36px;border-radius:50%;background:#4CB9FF;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">JS</div><div style="flex:1"><div style="font-family:Inter;font-size:13px;font-weight:600">James Smith</div><div style="font-size:11px;color:#888">2h ago · Easy run · London</div></div></div>
+            <div style="font-family:Inter;font-size:15px;font-weight:600;margin-bottom:8px">Morning shake-out 🌅</div>
+            <div style="display:flex;gap:20px;padding:8px 0;border-top:1px solid #eee"><div><div style="font-size:10px;color:#888;font-family:var(--f-sub);letter-spacing:0.8px;text-transform:uppercase;font-weight:600">DIST</div><div style="font-family:Inter;font-size:16px;font-weight:700">4.2 mi</div></div><div><div style="font-size:10px;color:#888;font-family:var(--f-sub);letter-spacing:0.8px;text-transform:uppercase;font-weight:600">PACE</div><div style="font-family:Inter;font-size:16px;font-weight:700">7:42</div></div><div><div style="font-size:10px;color:#888;font-family:var(--f-sub);letter-spacing:0.8px;text-transform:uppercase;font-weight:600">TIME</div><div style="font-family:Inter;font-size:16px;font-weight:700">32:19</div></div></div>
+            <div style="display:flex;gap:14px;margin-top:8px;padding-top:8px;border-top:1px solid #eee;font-size:11px;color:#666"><span>♡ 8 kudos</span><span>💬 2</span></div>
+          </div>
+          <!-- another activity -->
+          <div style="background:#fff;border-radius:8px;padding:12px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="width:36px;height:36px;border-radius:50%;background:#4CC380;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">SK</div><div style="flex:1"><div style="font-family:Inter;font-size:13px;font-weight:600">Sam Kelly</div><div style="font-size:11px;color:#888">5h ago · Tempo · Hackney Marshes</div></div></div>
+            <div style="font-family:Inter;font-size:15px;font-weight:600">5 × 1k threshold work</div>
+          </div>
+          <!-- subscribe nag -->
+          <div style="background:linear-gradient(135deg,#FC4C02,#FF9500);padding:14px;border-radius:8px;color:#fff;font-family:Inter;font-size:13px;font-weight:600">Try Strava Subscription · Free trial</div>
+        </div>
+      </div>
+      <div class="home-i"></div>
+    </div>
+    <!-- annotations -->
+    <div class="cnote red" style="top:80px;left:-100px">feed first ✗</div>
+    <div class="cnote red" style="top:200px;left:-100px">no plan / today</div>
+    <div class="cnote" style="top:550px;right:-100px">premium nag</div>
+  </div>
+
+  <div class="comp-info">
+    <div class="comp-tag"><div class="logo" style="color:#FC4C02">STRAVA</div><div class="ver">v · 10.0 · the incumbent</div></div>
+    <h4>The home is a social feed. Today's workout? Not on this screen. Plan? Not at all.</h4>
+    <p>Strava's home is fundamentally a <strong>social broadcasting surface</strong>. Open the app expecting to know what to run today and you'll see what your friends did yesterday. Today's plan lives behind a tap (and a paywall). The brand has decided that <em>kudos, segments, and comments</em> are the loop they're optimizing for — not training.</p>
+    <p>For Faff this is a clarifying negative example. Strava treats running as <strong>memory + sharing</strong>; Faff treats it as <strong>plan + execution</strong>. Same data, opposite priors. The Spectator-mode flagship is the only place Faff borrows Strava's pattern — and even there it's directional, not feed-based.</p>
+    <div class="scores">
+      <div class="score miss"><div class="l">01 run</div><div class="v">✗</div></div>
+      <div class="score miss"><div class="l">02 body</div><div class="v">✗</div></div>
+      <div class="score no"><div class="l">03 coach</div><div class="v">—</div></div>
+      <div class="score miss"><div class="l">04 race</div><div class="v">✗</div></div>
+      <div class="score miss"><div class="l">05 ops</div><div class="v">✗</div></div>
+    </div>
+    <div class="steal"><div class="l">steal</div><div class="b">The card aesthetic for completed activities — clean DIST/PACE/TIME row, kudos count, route map snippet. Faff's <strong>post-run debrief panel</strong> already moves in this direction; we can borrow the visual cleanliness without the social rails.</div></div>
+    <div class="avoid"><div class="l">avoid</div><div class="b">Every part of the prioritization. Faff is a training app — the home screen should never make you wonder where today's call is. <strong>Social belongs in Spectator mode, not on the home.</strong></div></div>
+  </div>
+</div>
+
+<!-- ─── COMPETITOR · GARMIN CONNECT ─── -->
+<div class="comp-row">
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen" style="background:#fff">
+        <div class="island"></div>
+        <div class="sb" style="color:#000"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <!-- Garmin Connect replica -->
+        <div style="padding:12px 14px;color:#202020">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="font-family:Inter;font-size:18px;font-weight:700">Garmin Connect</div>
+            <span style="font-size:18px;color:#666">≡</span>
+          </div>
+          <!-- date row -->
+          <div style="font-family:var(--f-sub);font-size:11px;font-weight:600;color:#888;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:10px">WED · 27 MAY</div>
+          <!-- body battery -->
+          <div style="background:#f5f5f5;border-radius:6px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-size:11px;color:#666">Body Battery</div><div style="font-family:Inter;font-size:24px;font-weight:700;margin-top:2px">68</div><div style="font-size:10px;color:#666">Charged 68 · used 12</div></div>
+            <svg viewBox="0 0 60 60" style="width:50px;height:50px;transform:rotate(-90deg)"><circle cx="30" cy="30" r="26" stroke="#e5e5e5" stroke-width="5" fill="none"/><circle cx="30" cy="30" r="26" stroke="#0288d1" stroke-width="5" fill="none" stroke-dasharray="163" stroke-dashoffset="52"/></svg>
+          </div>
+          <!-- training status -->
+          <div style="background:#f5f5f5;border-radius:6px;padding:12px;margin-bottom:8px">
+            <div style="font-size:11px;color:#666;margin-bottom:4px">Training Status</div>
+            <div style="font-family:Inter;font-size:16px;font-weight:700;color:#0288d1">Productive ↗</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">VO₂ Max 54 · ↑ 1</div>
+          </div>
+          <!-- HRV status -->
+          <div style="background:#f5f5f5;border-radius:6px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between"><div><div style="font-size:11px;color:#666">HRV Status</div><div style="font-family:Inter;font-size:14px;font-weight:600;color:#F39800;margin-top:2px">Unbalanced</div></div><div style="text-align:right"><div style="font-family:Inter;font-size:20px;font-weight:700">38</div><div style="font-size:10px;color:#888">−7 ms</div></div></div>
+          <!-- sleep -->
+          <div style="background:#f5f5f5;border-radius:6px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between"><div><div style="font-size:11px;color:#666">Sleep Score</div><div style="font-family:Inter;font-size:14px;font-weight:600;margin-top:2px">Good · 78</div></div><div style="font-family:Inter;font-size:20px;font-weight:700">7h 12m</div></div>
+          <!-- daily summary -->
+          <div style="background:#f5f5f5;border-radius:6px;padding:12px;margin-bottom:8px"><div style="font-size:11px;color:#666;margin-bottom:6px">Steps · 3,247 / 10,000</div><div style="height:4px;background:#e5e5e5;border-radius:2px;overflow:hidden"><div style="width:32%;height:100%;background:#0288d1"></div></div></div>
+          <!-- training plan tile (small) -->
+          <div style="background:#fff;border:1px solid #e5e5e5;border-radius:6px;padding:10px;font-size:11px;color:#666"><span style="font-family:var(--f-sub);font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#888">Today's workout</span> — Easy run 5.8 mi →</div>
+        </div>
+      </div>
+      <div class="home-i"></div>
+    </div>
+    <div class="cnote" style="top:100px;left:-100px;color:var(--green);border-color:rgba(62,189,65,0.3)">body battery ✓</div>
+    <div class="cnote red" style="top:520px;left:-90px">today buried at bottom</div>
+    <div class="cnote" style="top:240px;right:-120px">HRV labeled honestly</div>
+  </div>
+
+  <div class="comp-info">
+    <div class="comp-tag"><div class="logo" style="color:#0288d1">GARMIN</div><div class="ver">v · connect · data-density king</div></div>
+    <h4>Body is the headline. Workout is the footnote. Backwards for runners, brilliant for athletes.</h4>
+    <p>Garmin Connect treats the home screen as a <strong>physiological dashboard</strong>. Body Battery first. Training Status. HRV with a real label ("Unbalanced" — not just a number). Sleep score. Steps. Today's planned workout? A one-line tile at the bottom of a scrolling list.</p>
+    <p>The data is great. The hierarchy is upside-down for anyone actually following a plan. <strong>Garmin assumes you train by feel and use the data to verify;</strong> Faff assumes you train by plan and use data to adjust. Same numbers, opposite read.</p>
+    <div class="scores">
+      <div class="score par"><div class="l">01 run</div><div class="v">◐</div></div>
+      <div class="score hit"><div class="l">02 body</div><div class="v">✓</div></div>
+      <div class="score miss"><div class="l">03 coach</div><div class="v">✗</div></div>
+      <div class="score par"><div class="l">04 race</div><div class="v">◐</div></div>
+      <div class="score miss"><div class="l">05 ops</div><div class="v">✗</div></div>
+    </div>
+    <div class="steal"><div class="l">steal</div><div class="b">The <strong>HRV labeling</strong>. Garmin doesn't just show 38 — it shows "Unbalanced" with a color. Faff's chip currently reads "−7 hrv" which is data without a verdict. We have the threshold ranges in <code style="font-family:Courier New;font-size:11px">vitals.hrv_status</code>; surface the word, not just the delta.</div></div>
+    <div class="avoid"><div class="l">avoid</div><div class="b">7 stacked cards of comparable visual weight. Garmin's home is searchable, not scannable — you can find anything but you can't <em>see</em> anything. The hero pattern in v2.1 is the antidote.</div></div>
+  </div>
+</div>
+
+<!-- ─── COMPETITOR · WHOOP ─── -->
+<div class="comp-row">
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen" style="background:#000">
+        <div class="island"></div>
+        <div class="sb" style="color:#fff"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <!-- Whoop replica -->
+        <div style="padding:14px 18px;color:#fff">
+          <div style="font-family:var(--f-sub);font-size:11px;font-weight:600;color:#666;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:8px">WED MAY 27</div>
+          <div style="font-family:Inter;font-size:14px;font-weight:600;color:#fff;margin-bottom:24px">Good morning, David.</div>
+          <!-- huge recovery -->
+          <div style="text-align:center;margin-bottom:24px">
+            <div style="font-family:var(--f-sub);font-size:10px;font-weight:600;color:#666;letter-spacing:2px;margin-bottom:10px">RECOVERY</div>
+            <div style="position:relative;display:inline-block">
+              <svg viewBox="0 0 180 180" style="width:180px;height:180px;transform:rotate(-90deg)">
+                <circle cx="90" cy="90" r="78" stroke="rgba(255,255,255,0.06)" stroke-width="8" fill="none"/>
+                <circle cx="90" cy="90" r="78" stroke="#F39800" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="490" stroke-dashoffset="200"/>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <div style="font-family:Inter;font-size:64px;font-weight:300;color:#F39800;line-height:0.9">59<span style="font-size:24px;color:#666">%</span></div>
+                <div style="font-family:var(--f-sub);font-size:9px;letter-spacing:2px;color:#888;font-weight:600;margin-top:4px">YELLOW</div>
+              </div>
+            </div>
+            <div style="font-family:Inter;font-size:13px;color:#999;margin-top:14px;max-width:220px;margin-left:auto;margin-right:auto;line-height:1.5">Your body is moderately recovered. Aim for moderate strain today.</div>
+          </div>
+          <!-- sleep + strain row -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div style="background:#0f0f0f;border:1px solid #222;border-radius:8px;padding:12px"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:#666;font-weight:600">SLEEP</div><div style="font-family:Inter;font-size:22px;font-weight:300;margin-top:4px">7:12</div><div style="font-size:10px;color:#01a3a4;margin-top:2px">↑ 89% performance</div></div>
+            <div style="background:#0f0f0f;border:1px solid #222;border-radius:8px;padding:12px"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:#666;font-weight:600">STRAIN</div><div style="font-family:Inter;font-size:22px;font-weight:300;margin-top:4px">8.4</div><div style="font-size:10px;color:#999;margin-top:2px">Optimal · 10–14</div></div>
+          </div>
+          <div style="background:#0f0f0f;border:1px solid #222;border-radius:8px;padding:12px"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:#666;font-weight:600">HRV · RHR</div><div style="display:flex;gap:14px;margin-top:4px"><div><div style="font-family:Inter;font-size:18px;font-weight:300">38<span style="font-size:11px;color:#666;margin-left:3px">ms</span></div><div style="font-size:10px;color:#FC4D64">↓ 7 vs baseline</div></div><div><div style="font-family:Inter;font-size:18px;font-weight:300">48<span style="font-size:11px;color:#666;margin-left:3px">bpm</span></div><div style="font-size:10px;color:#999">stable</div></div></div></div>
+        </div>
+      </div>
+      <div class="home-i"></div>
+    </div>
+    <div class="cnote" style="top:100px;left:-110px;color:var(--green);border-color:rgba(62,189,65,0.3)">single number ✓</div>
+    <div class="cnote red" style="top:330px;left:-100px">no workout context</div>
+    <div class="cnote" style="top:200px;right:-130px">verdict + sentence</div>
+  </div>
+
+  <div class="comp-info">
+    <div class="comp-tag"><div class="logo" style="color:#01a3a4">WHOOP</div><div class="ver">v · the recovery monolith</div></div>
+    <h4>One number. One sentence. One screen. Disciplined to the bone.</h4>
+    <p>Whoop's home is the <strong>most opinionated app in fitness</strong>. The recovery percentage gets 40% of the screen. A single advisory sentence translates it into a recommendation. Sleep + strain + HRV + RHR live below as four small tiles. Nothing else competes.</p>
+    <p>What this proves: <strong>one big number with a verdict-sentence is enough.</strong> Whoop users don't open the app for a plan — they open it for permission. Faff's design challenge is harder (we DO have a plan) but the lesson holds: the hero verb should always read as <em>permission or instruction</em>, not just a label.</p>
+    <div class="scores">
+      <div class="score no"><div class="l">01 run</div><div class="v">—</div></div>
+      <div class="score hit"><div class="l">02 body</div><div class="v">✓</div></div>
+      <div class="score par"><div class="l">03 coach</div><div class="v">◐</div></div>
+      <div class="score no"><div class="l">04 race</div><div class="v">—</div></div>
+      <div class="score no"><div class="l">05 ops</div><div class="v">—</div></div>
+    </div>
+    <div class="steal"><div class="l">steal</div><div class="b">The <strong>verdict-sentence under the hero number</strong>. "Your body is moderately recovered. Aim for moderate strain today." That's one declarative sentence keyed off the score band — <em>no LLM needed</em>. Faff's verb table should add a one-line consequence: RUN EASY. → "Hold HR under 148."</div></div>
+    <div class="avoid"><div class="l">avoid</div><div class="b">Pretending you don't have a plan. Whoop's discipline is real but it works because they're <em>only</em> a recovery score. Faff has a coach, a plan, a race — strip too far and we throw away our advantages.</div></div>
+  </div>
+</div>
+
+<!-- ─── COMPETITOR · APPLE FITNESS ─── -->
+<div class="comp-row">
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen" style="background:#000">
+        <div class="island"></div>
+        <div class="sb" style="color:#fff"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <!-- Apple Fitness replica -->
+        <div style="padding:14px 16px;color:#fff">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div><div style="font-family:Inter;font-size:13px;color:#888;font-weight:500">Wednesday, May 27</div><div style="font-family:Inter;font-size:28px;font-weight:700;letter-spacing:-0.5px">Summary</div></div>
+            <div style="width:32px;height:32px;border-radius:50%;background:#FF375F;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">D</div>
+          </div>
+          <!-- activity rings card -->
+          <div style="background:#1a1a1c;border-radius:14px;padding:18px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="position:relative;width:88px;height:88px">
+                <svg viewBox="0 0 100 100" style="width:100%;height:100%;transform:rotate(-90deg)">
+                  <circle cx="50" cy="50" r="42" stroke="#3a1620" stroke-width="6" fill="none"/>
+                  <circle cx="50" cy="50" r="42" stroke="#FF375F" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="60"/>
+                  <circle cx="50" cy="50" r="34" stroke="#0b3a26" stroke-width="6" fill="none"/>
+                  <circle cx="50" cy="50" r="34" stroke="#7FE066" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="214" stroke-dashoffset="160"/>
+                  <circle cx="50" cy="50" r="26" stroke="#063238" stroke-width="6" fill="none"/>
+                  <circle cx="50" cy="50" r="26" stroke="#00DCFA" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="163" stroke-dashoffset="40"/>
+                </svg>
+              </div>
+              <div style="flex:1">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-family:Inter;font-size:11px;color:#FF375F;font-weight:600">Move</div><div style="font-family:Inter;font-size:14px;font-weight:600">412/520 CAL</div></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-family:Inter;font-size:11px;color:#7FE066;font-weight:600">Exercise</div><div style="font-family:Inter;font-size:14px;font-weight:600">8/30 MIN</div></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-family:Inter;font-size:11px;color:#00DCFA;font-weight:600">Stand</div><div style="font-family:Inter;font-size:14px;font-weight:600">9/12 HR</div></div>
+              </div>
+            </div>
+          </div>
+          <!-- workouts -->
+          <div style="background:#1a1a1c;border-radius:14px;padding:16px;margin-bottom:12px"><div style="font-family:Inter;font-size:15px;font-weight:700;margin-bottom:6px">Workouts</div><div style="font-family:Inter;font-size:13px;color:#888">No workouts today · tap to start</div></div>
+          <!-- trends teaser -->
+          <div style="background:#1a1a1c;border-radius:14px;padding:16px"><div style="font-family:Inter;font-size:15px;font-weight:700;margin-bottom:8px">Trends</div><div style="display:flex;gap:8px"><div style="background:rgba(255,55,95,0.18);padding:4px 9px;border-radius:6px;font-size:10px;color:#FF375F;font-weight:600">▼ Move 12%</div><div style="background:rgba(127,224,102,0.18);padding:4px 9px;border-radius:6px;font-size:10px;color:#7FE066;font-weight:600">▲ Exercise 4%</div></div></div>
+        </div>
+      </div>
+      <div class="home-i"></div>
+    </div>
+    <div class="cnote" style="top:100px;left:-100px;color:var(--green);border-color:rgba(62,189,65,0.3)">rings system ✓</div>
+    <div class="cnote red" style="top:340px;left:-100px">"no workouts today"</div>
+    <div class="cnote" style="top:430px;right:-90px">trends as chips</div>
+  </div>
+
+  <div class="comp-info">
+    <div class="comp-tag"><div class="logo" style="color:#FF375F">FITNESS</div><div class="ver">v · apple · the platform default</div></div>
+    <h4>Beautiful, generic, plan-blind. Optimized for "did you move today," not "is the plan working."</h4>
+    <p>Apple Fitness sets the design bar — the rings system has shaped a decade of fitness UX. The home is <strong>scannable, clean, animated</strong>. But it treats every user identically: a casual walker and a marathoner see the same screen, with the same three rings, the same nudges, the same summary.</p>
+    <p>For Faff: <strong>Apple owns the casual user.</strong> We can't compete on "did you move." We compete on <em>"did the plan work, what does the body say, what's the next move."</em> Rings have nothing to say about a 6×800.</p>
+    <div class="scores">
+      <div class="score miss"><div class="l">01 run</div><div class="v">✗</div></div>
+      <div class="score par"><div class="l">02 body</div><div class="v">◐</div></div>
+      <div class="score no"><div class="l">03 coach</div><div class="v">—</div></div>
+      <div class="score no"><div class="l">04 race</div><div class="v">—</div></div>
+      <div class="score no"><div class="l">05 ops</div><div class="v">—</div></div>
+    </div>
+    <div class="steal"><div class="l">steal</div><div class="b">The <strong>animated state</strong>. Rings fill, numbers tick. Faff's static gradients can borrow a small motion: hero number does a brief count-up on app open. Subtle, but it signals <em>live</em>. (Avoid full-screen confetti — keep it dignified.)</div></div>
+    <div class="avoid"><div class="l">avoid</div><div class="b">The "Workouts · No workouts today" empty-state. Faff always has a call (rest IS a call). The empty-state in our app should never look like a deficiency.</div></div>
+  </div>
+</div>
+
+<!-- ─── COMPETITOR · NIKE RUN CLUB ─── -->
+<div class="comp-row">
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen" style="background:#000">
+        <div class="island"></div>
+        <div class="sb" style="color:#fff"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <!-- NRC replica -->
+        <div style="padding:14px 16px;color:#fff">
+          <div style="font-family:Inter;font-size:11px;color:#888;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:6px">RUN</div>
+          <div style="font-family:Inter;font-size:34px;font-weight:900;letter-spacing:-0.5px;line-height:1;margin-bottom:14px">Good morning,<br>David.</div>
+          <!-- start a run -->
+          <div style="background:#fff;color:#000;border-radius:99px;padding:14px;text-align:center;font-family:Inter;font-size:14px;font-weight:700;letter-spacing:0.5px;margin-bottom:14px">START A RUN ▷</div>
+          <!-- guided run card -->
+          <div style="background:linear-gradient(135deg,#FA5400,#FF8847);border-radius:14px;padding:18px;margin-bottom:12px;color:#fff">
+            <div style="font-family:Inter;font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,0.85);margin-bottom:8px">GUIDED RUN</div>
+            <div style="font-family:Inter;font-size:22px;font-weight:900;line-height:1.05;margin-bottom:6px">First Run with Coach Bennett</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.85);font-weight:500">20 min · easy pace</div>
+          </div>
+          <!-- training plan (small) -->
+          <div style="background:#1a1a1a;border-radius:14px;padding:14px;margin-bottom:8px"><div style="font-family:Inter;font-size:11px;font-weight:700;letter-spacing:1.4px;color:#888;text-transform:uppercase;margin-bottom:6px">YOUR PLAN</div><div style="font-family:Inter;font-size:14px;font-weight:600">Marathon Training · Wk 6/16</div><div style="font-size:11px;color:#888;margin-top:2px">Today: Easy 5–6 mi</div></div>
+          <!-- challenges -->
+          <div style="background:#1a1a1a;border-radius:14px;padding:14px"><div style="font-family:Inter;font-size:11px;font-weight:700;letter-spacing:1.4px;color:#888;text-transform:uppercase;margin-bottom:6px">CHALLENGE</div><div style="font-family:Inter;font-size:14px;font-weight:600">May Mileage · 100 km</div><div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:8px;overflow:hidden"><div style="width:62%;height:100%;background:#FA5400"></div></div><div style="font-size:11px;color:#888;margin-top:6px">62 / 100 km · 4 days left</div></div>
+        </div>
+      </div>
+      <div class="home-i"></div>
+    </div>
+    <div class="cnote" style="top:100px;left:-100px;color:var(--green);border-color:rgba(62,189,65,0.3)">brand voice ✓</div>
+    <div class="cnote" style="top:280px;right:-100px;color:var(--goal);border-color:rgba(243,173,56,0.3)">guided runs · monetized</div>
+    <div class="cnote red" style="top:440px;left:-100px">today range, not call</div>
+  </div>
+
+  <div class="comp-info">
+    <div class="comp-tag"><div class="logo" style="color:#FA5400">NRC</div><div class="ver">v · nike · brand-led, content-heavy</div></div>
+    <h4>The most branded fitness app. The least useful for an actual runner.</h4>
+    <p>Nike Run Club leans hard into <strong>brand voice</strong> — bold black, orange accents, "Good morning, David" headline, all-caps CTAs. The <em>marketing</em> is excellent. The training plan exists but reads as a side-effect of selling guided runs with celebrity coaches.</p>
+    <p>"Today: Easy 5–6 mi" is the call — but it's a <em>range</em>, not a number. The coach-led runs are positioned as the hero, not your plan. NRC is what Faff would be if we let the brand layer eat the product.</p>
+    <div class="scores">
+      <div class="score par"><div class="l">01 run</div><div class="v">◐</div></div>
+      <div class="score no"><div class="l">02 body</div><div class="v">—</div></div>
+      <div class="score par"><div class="l">03 coach</div><div class="v">◐</div></div>
+      <div class="score miss"><div class="l">04 race</div><div class="v">✗</div></div>
+      <div class="score miss"><div class="l">05 ops</div><div class="v">✗</div></div>
+    </div>
+    <div class="steal"><div class="l">steal</div><div class="b">The <strong>typographic confidence</strong>. NRC isn't afraid of 34px headlines, all-caps section labels, full-width buttons. Faff's Bebas headlines already nod here — we should also push <strong>section labels</strong> to all-caps Oswald and stop hedging.</div></div>
+    <div class="avoid"><div class="l">avoid</div><div class="b">Letting paid content (guided runs, challenges, products) compete with the user's actual plan. Faff has no monetization above the fold, ever. The plan is the product.</div></div>
+  </div>
+</div>
+
+<!-- ─── COMPETITOR · COROS ─── -->
+<div class="comp-row">
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen" style="background:#fff">
+        <div class="island"></div>
+        <div class="sb" style="color:#000"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <!-- Coros replica -->
+        <div style="padding:14px 16px;color:#000">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+            <div style="font-family:Inter;font-size:14px;color:#666">Wed · May 27</div>
+            <div style="display:flex;gap:14px;color:#666"><span>↻</span><span>≡</span></div>
+          </div>
+          <!-- daily readiness -->
+          <div style="background:#000;color:#fff;border-radius:12px;padding:18px;margin-bottom:10px">
+            <div style="font-family:Inter;font-size:11px;font-weight:600;color:rgba(255,255,255,0.6);letter-spacing:1.4px;text-transform:uppercase;margin-bottom:8px">DAILY READINESS</div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between"><div style="font-family:Inter;font-size:60px;font-weight:200;line-height:0.9">82</div><div style="text-align:right;padding-bottom:6px"><div style="font-family:Inter;font-size:11px;color:rgba(255,255,255,0.6)">Above baseline</div><div style="font-family:Inter;font-size:13px;font-weight:600;color:#7FD0A1;margin-top:2px">↑ Recover well</div></div></div>
+          </div>
+          <!-- training load -->
+          <div style="background:#f7f7f7;border-radius:12px;padding:14px 16px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-family:Inter;font-size:12px;font-weight:600;color:#444">Training Load</div><div style="font-family:Inter;font-size:11px;color:#666">7d / 28d</div></div><div style="display:flex;justify-content:space-between;align-items:flex-end"><div><div style="font-family:Inter;font-size:24px;font-weight:300">182</div><div style="font-size:10px;color:#888">Optimal · 120–220</div></div><svg viewBox="0 0 100 32" style="width:100px;height:30px"><path d="M0 28 L20 24 L40 18 L60 22 L80 14 L100 10" stroke="#666" stroke-width="1.5" fill="none"/></svg></div></div>
+          <!-- vitals row -->
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
+            <div style="background:#f7f7f7;border-radius:8px;padding:10px"><div style="font-size:10px;color:#888;font-family:var(--f-sub);letter-spacing:1px;font-weight:600">SLEEP</div><div style="font-family:Inter;font-size:18px;font-weight:300;margin-top:2px">7:12</div></div>
+            <div style="background:#f7f7f7;border-radius:8px;padding:10px"><div style="font-size:10px;color:#888;font-family:var(--f-sub);letter-spacing:1px;font-weight:600">HRV</div><div style="font-family:Inter;font-size:18px;font-weight:300;margin-top:2px">38</div></div>
+            <div style="background:#f7f7f7;border-radius:8px;padding:10px"><div style="font-size:10px;color:#888;font-family:var(--f-sub);letter-spacing:1px;font-weight:600">RHR</div><div style="font-family:Inter;font-size:18px;font-weight:300;margin-top:2px">48</div></div>
+          </div>
+          <!-- planned workout -->
+          <div style="background:#f7f7f7;border-radius:12px;padding:14px"><div style="font-family:Inter;font-size:11px;font-weight:700;letter-spacing:1.2px;color:#888;text-transform:uppercase;margin-bottom:4px">PLANNED TODAY</div><div style="font-family:Inter;font-size:14px;font-weight:600;margin-top:2px">Easy 5.8 mi · 8:12 target</div><div style="font-size:11px;color:#666;margin-top:2px">HR cap 148</div></div>
+        </div>
+      </div>
+      <div class="home-i"></div>
+    </div>
+    <div class="cnote" style="top:110px;left:-110px;color:var(--green);border-color:rgba(62,189,65,0.3)">readiness w/ verdict ✓</div>
+    <div class="cnote" style="top:250px;left:-110px;color:var(--green);border-color:rgba(62,189,65,0.3)">load with band</div>
+    <div class="cnote red" style="top:450px;left:-110px">workout last</div>
+  </div>
+
+  <div class="comp-info">
+    <div class="comp-tag"><div class="logo" style="color:#000;background:#000;-webkit-background-clip:initial;-webkit-text-fill-color:#000">COROS</div><div class="ver">v · the clean garmin</div></div>
+    <h4>Same data as Garmin, half the chrome. Same hierarchy mistake — body first, workout last.</h4>
+    <p>Coros is what Garmin Connect would be if it had been designed in the 2020s. <strong>Readiness with a verdict</strong> ("↑ Recover well"). <strong>Training load with a band</strong> ("Optimal · 120–220"). Vitals as a three-tile row. Today's workout as a single tile at the bottom.</p>
+    <p>Same architectural error as Garmin — the runner has to scroll to find the call. But the <strong>typography is more disciplined</strong>, the colors are calmer, and the <em>"Above baseline · Recover well"</em> verdict pairing is the strongest verbal frame in the competitive set.</p>
+    <div class="scores">
+      <div class="score par"><div class="l">01 run</div><div class="v">◐</div></div>
+      <div class="score hit"><div class="l">02 body</div><div class="v">✓</div></div>
+      <div class="score par"><div class="l">03 coach</div><div class="v">◐</div></div>
+      <div class="score no"><div class="l">04 race</div><div class="v">—</div></div>
+      <div class="score no"><div class="l">05 ops</div><div class="v">—</div></div>
+    </div>
+    <div class="steal"><div class="l">steal</div><div class="b">The <strong>two-line verdict</strong>: <em>"Above baseline · ↑ Recover well."</em> First line is the data state, second is the prescription. Faff's verb table should add this secondary line — RUN EASY. → "Hold under 148." That's three lines total: state · verb · prescription.</div></div>
+    <div class="avoid"><div class="l">avoid</div><div class="b">Putting today's workout at the bottom. The single most important question is "what am I doing today" — every layout decision should reinforce that.</div></div>
+  </div>
+</div>
+
+<!-- ─── COMPETITIVE SUMMARY ─── -->
+<div style="margin:48px 0 96px;padding:36px;background:var(--bg2);border:1px solid var(--line);border-radius:18px">
+  <div class="eyebrow" style="margin-bottom:14px">competitive summary</div>
+  <h3 style="font-family:var(--f-display);font-size:54px;letter-spacing:0.6px;line-height:1;font-weight:400;margin:0 0 14px">six lessons.</h3>
+  <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.65;color:rgba(246,247,248,0.82);max-width:880px">
+    <li style="margin-bottom:8px"><strong style="color:var(--ink)">Runna wins on workout-first.</strong> The START RUN button is one decision per day. Faff should make today's action equally unambiguous — the hero verb is doing this job already, but we could surface a thumb-anchored CTA at the bottom-sheet collapsed state.</li>
+    <li style="margin-bottom:8px"><strong style="color:var(--ink)">Strava is the negative example.</strong> Social belongs in Spectator mode, not on the home. Memory + sharing is a different product than plan + execution.</li>
+    <li style="margin-bottom:8px"><strong style="color:var(--ink)">Garmin and Coros are body-first.</strong> Both invert the hierarchy: body battery / readiness as the hero, today's workout as a footer tile. <em>Wrong for plan-following runners.</em> Faff's today-first inversion is correct — but we should keep the body chip honest (Coros's verdict pairing is the model).</li>
+    <li style="margin-bottom:8px"><strong style="color:var(--ink)">Whoop proves single-number + verdict-sentence is enough.</strong> Add a single prescriptive sentence under the verb. <em>"Hold under 148."</em> · <em>"Cap at Z2."</em> · <em>"Race pace."</em></li>
+    <li style="margin-bottom:8px"><strong style="color:var(--ink)">Apple Fitness owns casual.</strong> Don't fight it. Faff is for runners with a plan — the empty-state is "rest day," not "go for a walk."</li>
+    <li><strong style="color:var(--ink)">NRC's branding > NRC's product.</strong> Steal the typographic confidence. Avoid the brand-eating-the-utility trap.</li>
+  </ol>
+</div>
+
+<!-- ════════════════════ 04 · FAFF DATA AUDIT ════════════════════ -->
+<section id="data">
+  <div class="eyebrow">04 · what we already know</div>
+  <h2 class="sec">faff knows<br>more than it shows.</h2>
+  <div class="sec-tag data"><span class="dot"></span>inventory · what's surfaced · what's in the dark</div>
+  <div class="kicker">Recon found <strong>~40 structured signals</strong> already in the system — coach engine outputs, plan data, derived vitals, run history, race state. The home today shows ~10 of them. <em>Every signal in the "dark" column is an opportunity for the home to feel smarter without the user doing anything.</em> Most of the highest-value moves below cost zero new data work — just surfacing what's already there.</div>
+
+  <table class="dtable">
+    <thead>
+      <tr><th>Signal</th><th>Source</th><th>Today</th><th>Opportunity</th></tr>
+    </thead>
+    <tbody>
+      <!-- PLAN SIGNALS -->
+      <tr><td colspan="4" style="background:rgba(243,173,56,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--goal);font-weight:700;padding:8px 14px">— PLAN —</td></tr>
+      <tr><td class="sig">workout.type</td><td class="src">plan.json</td><td class="usage"><span class="pill surf">surfaced</span></td><td class="opp">Drives gradient + verb. Already the v2.1 spine.</td></tr>
+      <tr><td class="sig">workout.distance</td><td class="src">plan.json</td><td class="usage"><span class="pill surf">surfaced</span></td><td class="opp">Hero number. Done.</td></tr>
+      <tr><td class="sig">workout.pace_target</td><td class="src">plan.json</td><td class="usage"><span class="pill surf">surfaced</span></td><td class="opp">Stat strip. Done.</td></tr>
+      <tr><td class="sig">workout.hr_cap</td><td class="src">plan.json</td><td class="usage"><span class="pill surf">surfaced</span></td><td class="opp">Stat strip. Done.</td></tr>
+      <tr><td class="sig">workout.intervals</td><td class="src">plan.json</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Segment chart shows up only on quality days. <strong style="color:var(--ink)">Surface in the bottom expanded view always when intervals exist — including warmup/cooldown breakdown for easy days.</strong></td></tr>
+      <tr><td class="sig">workout.elevation</td><td class="src">plan.json</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp"><strong style="color:var(--ink)">Critical for treadmill mode.</strong> Already in the plan schema (gradient per segment). Surface as a hill-icon chip or in the segment chart band. The Runna gap.</td></tr>
+      <tr><td class="sig">plan.phase</td><td class="src">plan.json</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Tiny tag in hero-tag line. <strong style="color:var(--ink)">Promote on the expanded view</strong> as "BUILD WK 6/8" with a phase-progress bar (5 phases as ticks).</td></tr>
+      <tr><td class="sig">plan.next_quality</td><td class="src">plan.json</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">On easy/rest days, the bottom panel should show <em>"Next hard: Thu · 6×800"</em>. Runners are always thinking 2-3 days ahead — give them the chip.</td></tr>
+      <tr><td class="sig">plan.long_run_horizon</td><td class="src">plan.json</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp"><strong style="color:var(--ink)">"Sun · 14mi"</strong> chip on Wed/Thu/Fri. Long-run anticipation is real — the app should help you carry it through the week.</td></tr>
+
+      <!-- VITALS SIGNALS -->
+      <tr><td colspan="4" style="background:rgba(39,180,224,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--dist);font-weight:700;padding:8px 14px">— VITALS · DERIVED —</td></tr>
+      <tr><td class="sig">vitals.readiness</td><td class="src">derived</td><td class="usage"><span class="pill surf">surfaced</span></td><td class="opp">Chip. Could become a single bigger ring on the expanded view (Whoop / Coros model).</td></tr>
+      <tr><td class="sig">vitals.hrv_morning</td><td class="src">HealthKit</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Shown as delta only. <strong style="color:var(--ink)">Add the verdict word</strong> ("Balanced" / "Unbalanced" / "Low") — Garmin-style. We have the band ranges.</td></tr>
+      <tr><td class="sig">vitals.hrv_trend_14d</td><td class="src">derived</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">14-day arc as a sparkline in the expanded view. <em>Trend matters more than today's number.</em></td></tr>
+      <tr><td class="sig">vitals.load (ACWR)</td><td class="src">derived</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp"><strong style="color:var(--ink)">Hugely valuable.</strong> ACWR &gt; 1.5 = burnout risk · ACWR &lt; 0.8 = detraining. A single chip ("LOAD 1.24 · build") could replace half a coach conversation. Currently buried in Health tab.</td></tr>
+      <tr><td class="sig">vitals.sleep_quality</td><td class="src">HealthKit</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">We show hours. <strong style="color:var(--ink)">Add quality verdict</strong> — deep sleep %, sleep score. Whoop / Garmin do this.</td></tr>
+      <tr><td class="sig">vitals.niggles (active)</td><td class="src">user-logged</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp"><strong style="color:var(--ink)">Critical edge case.</strong> Active niggle should affect today's hero — RUN EASY. + "Watch L calf." That's a one-line conditional in the verb table.</td></tr>
+
+      <!-- RUN HISTORY -->
+      <tr><td colspan="4" style="background:rgba(62,189,65,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--green);font-weight:700;padding:8px 14px">— RUN HISTORY —</td></tr>
+      <tr><td class="sig">runs.last_7d_miles</td><td class="src">derived</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Week strip shows per-day mileage. Add a cumulative "<strong style="color:var(--ink)">15.8 / 42 wk</strong>" chip in expanded view.</td></tr>
+      <tr><td class="sig">runs.streak</td><td class="src">derived</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Consecutive-days-with-activity. Apple Fitness has owned this for a decade. <strong style="color:var(--ink)">Faff streak chip</strong> on the rest-day panel: "Day 23 of consistency."</td></tr>
+      <tr><td class="sig">runs.this_year_miles</td><td class="src">derived</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Year-to-date as a chip in the Phase panel (off-season). The Strava year-end recap moved their needle — quiet, persistent counters work.</td></tr>
+      <tr><td class="sig">runs.prs</td><td class="src">derived</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">5k/10k/half/full PRs. Currently invisible until you finish a workout that breaks one. <strong style="color:var(--ink)">Race week:</strong> "5k PR 18:42 · last broken 4mo ago" — context for the goal you're chasing.</td></tr>
+      <tr><td class="sig">runs.last_run.recap</td><td class="src">coach.topic</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">"Yesterday: 6×800, 5/6 hit" chip on next-day morning. Closes the loop without scrolling to Plan tab.</td></tr>
+
+      <!-- COACH TOPICS -->
+      <tr><td colspan="4" style="background:rgba(176,132,255,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--learn);font-weight:700;padding:8px 14px">— COACH ENGINE TOPICS (24 KINDS) —</td></tr>
+      <tr><td class="sig">topic · cadence_insight</td><td class="src">coach.engine</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Post-run debrief chip: "<em>178 cad · ↑ 4 vs avg</em>". One of the 24 kinds we already generate.</td></tr>
+      <tr><td class="sig">topic · sleep_deficit</td><td class="src">coach.engine</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Pre-run conditional: if sleep_deficit &gt; 1h, hero gets a watch-out chip. Doesn't need a new model — just a chip lookup.</td></tr>
+      <tr><td class="sig">topic · weather_chip</td><td class="src">coach.engine</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Race-week only today. <strong style="color:var(--ink)">Surface for any pre-run morning</strong> — "12° · light rain at 8am" replaces the need to open Weather app.</td></tr>
+      <tr><td class="sig">topic · race_trajectory</td><td class="src">coach.engine</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Race poster shows the number (2:54). <strong style="color:var(--ink)">Add the arc</strong> — last 4 weeks' trajectory as a tiny sparkline in race chip on non-race-week days.</td></tr>
+      <tr><td class="sig">topic · volume_delta</td><td class="src">coach.engine</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">"This week +18% vs last." A power-user chip in the expanded view.</td></tr>
+      <tr><td class="sig">topic · phase_context</td><td class="src">coach.engine</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Single line of phase intent — "BUILD: progressive long runs." Lives in the hero panel as a subhead under the verb.</td></tr>
+      <tr><td class="sig">topic · shoe_status</td><td class="src">coach.engine</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp"><strong style="color:var(--ink)">Hot one:</strong> "Vaporfly · 420 / 500 mi". On long-run morning, the shoe chip belongs in the bottom panel. Race week: "Race shoes · ready."</td></tr>
+      <tr><td class="sig">topic · fueling_plan</td><td class="src">coach.engine</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Race week only. <strong style="color:var(--ink)">Long-run mornings too</strong> — "Carry 2 gels · take at mi 5, 10."</td></tr>
+      <tr><td class="sig">topic · fun_fact</td><td class="src">coach.engine</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">"You've run 142 miles this month — 14% above last May." Personality without the LLM voice. Surface 1× per week max.</td></tr>
+
+      <!-- RACE -->
+      <tr><td colspan="4" style="background:rgba(255,136,71,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--race);font-weight:700;padding:8px 14px">— RACE —</td></tr>
+      <tr><td class="sig">race.predicted_finish</td><td class="src">model</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">Race poster only. <strong style="color:var(--ink)">Always available</strong> in race chip: "London 14d · 2:54 pred."</td></tr>
+      <tr><td class="sig">race.goal_delta</td><td class="src">derived</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">"2:54 pred · −1:00 of goal." The delta is more useful than the prediction.</td></tr>
+      <tr><td class="sig">race.confidence</td><td class="src">model</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Probability you hit goal — derive from trajectory variance. "78% on track." Honest, model-backed.</td></tr>
+      <tr><td class="sig">race.logistics</td><td class="src">user + ext</td><td class="usage"><span class="pill partial">partial</span></td><td class="opp">T−3d only. Bib/corral/transport — could pre-populate ~14d out as a chip strip.</td></tr>
+
+      <!-- PROFILE / MISC -->
+      <tr><td colspan="4" style="background:rgba(255,255,255,0.04);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--mute);font-weight:700;padding:8px 14px">— PROFILE / MISC —</td></tr>
+      <tr><td class="sig">profile.thresholds</td><td class="src">profile</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Max HR, LTHR, RHR — drives every zone. <strong style="color:var(--ink)">Quiet display</strong> in the expanded view: "Z2 = 132–148." Removes "what does Z2 mean for me" confusion.</td></tr>
+      <tr><td class="sig">profile.gap</td><td class="src">coach.engine</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">If user hasn't set a max HR, the topic surfaces. <strong style="color:var(--ink)">Embed in expanded view</strong> with a one-tap fix instead of a buried profile tab.</td></tr>
+      <tr><td class="sig">spectator.circle_size</td><td class="src">spectator</td><td class="usage"><span class="pill dark">dark</span></td><td class="opp">Race-week chip: "7 tracking you Sunday." Already designed in v1; just needs the data plumbing.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- key takeaways -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:80px">
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--dist);margin-bottom:10px">finding 01</div>
+      <h4 style="font-family:var(--f-display);font-size:30px;letter-spacing:0.4px;line-height:1.05;margin:0 0 12px;font-weight:400">15 of ~40 signals<br>are dark.</h4>
+      <p style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.78);margin:0">Most are zero-cost surfacing — they're produced by code already running. The home screen is leaving signal on the table.</p>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--green);margin-bottom:10px">finding 02</div>
+      <h4 style="font-family:var(--f-display);font-size:30px;letter-spacing:0.4px;line-height:1.05;margin:0 0 12px;font-weight:400">The expanded view<br>is the unlock.</h4>
+      <p style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.78);margin:0">v2.1's drag-up sheet is the right home for dark signals. Hero stays clean — the runner with discipline gets the answer. The drill-down is for the runner with curiosity.</p>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--learn);margin-bottom:10px">finding 03</div>
+      <h4 style="font-family:var(--f-display);font-size:30px;letter-spacing:0.4px;line-height:1.05;margin:0 0 12px;font-weight:400">Coach topics<br>= chip library.</h4>
+      <p style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.78);margin:0">The 24 topic kinds the engine produces can each become a chip with the LLM voice stripped. The chip strip is where the coach lives in v2.1 — invisibly.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ 05 · MENTAL MODELS ════════════════════ -->
+<section id="brain">
+  <div class="eyebrow">05 · how runners think</div>
+  <h2 class="sec">the actual<br>sequences.</h2>
+  <div class="sec-tag brain"><span class="dot"></span>six moments · what runs through the head · what the app should answer</div>
+  <div class="kicker">Reasoning-led, not primary-research. But the sequences below are the ones any plan-following runner runs through every week — distilled from common workflows, training-app forum complaints, and patterns visible in our own usage. <strong>The point isn't novelty — it's that the home screen should respect this order.</strong></div>
+
+  <!-- 01 morning -->
+  <div class="seq">
+    <h5>01 · the morning sequence</h5>
+    <div class="ctx">Wake · 6:00–7:00 am · still in bed · phone within reach</div>
+    <ol>
+      <li><strong>What day is it?</strong> Mental model: "is this an easy day or a hard day?" — sets the emotional tone for getting out of bed.</li>
+      <li><strong>How does my body feel?</strong> <em>Before reading any number</em>, the runner does a quick self-scan. Then they want the data to confirm or contradict that gut read.</li>
+      <li><strong>What did I sleep?</strong> First number checked. If awful, the whole day reshuffles.</li>
+      <li><strong>HRV?</strong> Confirms or denies the sleep read. Second number checked.</li>
+      <li><strong>What's the call?</strong> Now they want today's workout. <em>By this point they've already decided whether they want to do it.</em></li>
+      <li><strong>How does the weather look?</strong> Cold means an extra layer. Rain means an indoor backup. Often the rate-limiting decision.</li>
+    </ol>
+    <div class="pull"><strong>Implication for the home:</strong> open with the workout (already done in v2.1), but the chip strip should include sleep + HRV + weather <em>by default</em>, not just on rest days. The runner is asking these questions whether or not the app cooperates.</div>
+  </div>
+
+  <!-- 02 pre-run -->
+  <div class="seq">
+    <h5>02 · the pre-run sequence</h5>
+    <div class="ctx">Kitted up · 10 min before going out · standing in the hallway</div>
+    <ol>
+      <li><strong>What pace am I holding?</strong> The number they say out loud while tying shoes. They want to lock it in.</li>
+      <li><strong>What's the HR cap?</strong> The discipline number. The one to glance at on the watch when they think they're going too hard.</li>
+      <li><strong>How long is this?</strong> Set a mental clock. "Back in 50 minutes."</li>
+      <li><strong>Anything weird I should know?</strong> Niggle? Different route? Wind direction? Coach note?</li>
+      <li><strong>Watch ready?</strong> Glance at the watch face. Should already show today's workout if paired correctly.</li>
+    </ol>
+    <div class="pull"><strong>Implication for the home:</strong> the three stat numbers (distance · pace · cap) are the bedrock. <em>Don't add a fourth.</em> The v2.1 stat strip is right. But the "anything weird" beat is missing — a single one-line consequence sentence under the verb (Whoop / Coros pattern) closes this gap.</div>
+  </div>
+
+  <!-- 03 post-run -->
+  <div class="seq">
+    <h5>03 · the post-run sequence</h5>
+    <div class="ctx">Back home · sweaty · 5 min after finishing · phone in hand</div>
+    <ol>
+      <li><strong>Did I hit it?</strong> First question, always. Pace + distance vs target.</li>
+      <li><strong>HR — was I in zone?</strong> The honest read on whether the run was the run that was planned. Easy days drift up, hard days drift down.</li>
+      <li><strong>What did the splits look like?</strong> Curiosity bait. Were they even, was the back half stronger, where did it fall apart.</li>
+      <li><strong>How am I supposed to feel about this?</strong> The verdict moment. <em>Faff's NAILED IT / GOOD ENOUGH / STEADY verb table is exactly this signal.</em></li>
+      <li><strong>What's tomorrow?</strong> Pre-load. The runner is already thinking about recovery + next.</li>
+    </ol>
+    <div class="pull"><strong>Implication for the home:</strong> the v2.1 post-run state is the strongest of all six day-states. Verb-as-verdict + stat strip + rep grid + tomorrow chip already nails this sequence. <em>The screenshot opportunity is real</em> — runners want to share this moment.</div>
+  </div>
+
+  <!-- 04 race day -->
+  <div class="seq">
+    <h5>04 · the race-day sequence</h5>
+    <div class="ctx">Race morning · 4:30–5:30 am · half-asleep · adrenaline starting</div>
+    <ol>
+      <li><strong>What time is it?</strong> First panic check. Did I oversleep?</li>
+      <li><strong>What's the weather?</strong> Decides the kit. Most urgent decision before anything else.</li>
+      <li><strong>Where am I going?</strong> Transportation + corral + start time. Logistics dominate.</li>
+      <li><strong>Is my bib pinned?</strong> Final-check items. Drop bag packed, gels in pocket, watch charged.</li>
+      <li><strong>Who's tracking me?</strong> Emotional anchor. Family at mile 13? Friends at finish?</li>
+      <li><strong>Goal time?</strong> Mental re-anchor. They already know but they want to see it written down.</li>
+      <li><strong>Coach pep talk?</strong> Optional. <em>Some runners want it, some want silence.</em></li>
+    </ol>
+    <div class="pull"><strong>Implication for the home:</strong> race week takeover (T ≤ 3d) is correct. The order of chips matters — weather first, transport second, logistics third, spectator fourth. v2.1 had them in roughly this order; <em>lock it in by data, not guess</em>.</div>
+  </div>
+
+  <!-- 05 rest day -->
+  <div class="seq">
+    <h5>05 · the rest day sequence</h5>
+    <div class="ctx">Day off · morning · no rush · sometimes ambivalent</div>
+    <ol>
+      <li><strong>Wait, am I supposed to run today?</strong> The "did I forget" gut-check. Doubt-driven.</li>
+      <li><strong>Show me I'm not slacking.</strong> Streaks, weekly mileage, last 3 workouts hit — emotional reassurance.</li>
+      <li><strong>What's the body doing?</strong> Sleep, HRV, RHR — confirm the rest is needed and working.</li>
+      <li><strong>What's coming?</strong> Tomorrow + the long run + the next quality. Anticipation builds.</li>
+      <li><strong>Am I racing soon?</strong> Race countdown for context — "the rest day is part of the taper."</li>
+    </ol>
+    <div class="pull"><strong>Implication for the home:</strong> the rest day panel is the most <em>emotionally loaded</em> screen in the app. Runners need permission, not just a label. v2.1's REST. + vitals + tomorrow chip is right, but missing the <strong style="color:var(--ink)">streak + weekly mileage</strong> reassurance from the data audit. Add those to the rest-day expanded view.</div>
+  </div>
+
+  <!-- 06 off-plan -->
+  <div class="seq">
+    <h5>06 · the off-plan sequence (injury, illness, life)</h5>
+    <div class="ctx">Something is wrong · the plan no longer applies · the app feels accusatory</div>
+    <ol>
+      <li><strong>I can't run.</strong> Maybe sick. Maybe injured. Maybe traveling. Maybe work blew up.</li>
+      <li><strong>Will the app yell at me?</strong> Fear: streak broken, plan derailed, "you missed" guilt.</li>
+      <li><strong>Can I tell the app why?</strong> Niggle, illness, travel — the runner wants to be honest with the system.</li>
+      <li><strong>What now?</strong> Modified plan? Just rest? Cross-train? The runner wants permission to adjust without shame.</li>
+      <li><strong>When can I come back?</strong> The hope question. "Three days of rest and I'm back on Thursday's tempo?"</li>
+    </ol>
+    <div class="pull"><strong>Implication for the home:</strong> <em>v2.1 quietly fails here.</em> The promotion resolver doesn't have an "off-plan" state. Niggle / sick / traveling / missed-yesterday all collapse to the planned day's verb. <strong style="color:var(--ink)">This is the single biggest gap — covered in detail in the edge-cases section below.</strong></div>
+  </div>
+</section>
+
+<!-- ════════════════════ 06 · DESIGN PATTERNS ════════════════════ -->
+<section id="patterns">
+  <div class="eyebrow">06 · what earned its place</div>
+  <h2 class="sec">patterns we<br>can lean on.</h2>
+  <div class="sec-tag pat"><span class="dot"></span>six apps from outside running · each solves a piece v2.1 needs</div>
+  <div class="kicker">v2.1's sliding sheet, tap-to-takeover, gradient-as-state aren't new ideas. They're patterns proven elsewhere. The point of this section: <strong>each move v2.1 makes should map to an established UX pattern that already works at scale.</strong> Skeptics get reassured; we don't have to invent anything; the implementation cost drops because there's prior art.</div>
+
+  <div class="pat-grid">
+    <!-- 01 Apple Maps slide -->
+    <div class="pat">
+      <h4>Apple Maps · the three-detent sheet</h4>
+      <div class="who">iOS native · 2018-present · billions of users</div>
+      <p>Maps shows the map (the hero — your context) with a bottom sheet that has three snap points: <strong>collapsed</strong> (search bar peeking, map breathes), <strong>medium</strong> (search + recents), <strong>expanded</strong> (full search results). <em>Drag to change focus, never lose the map.</em></p>
+      <p>The detent set <code style="font-family:Courier New;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">[.height(60), .medium, .large]</code> is exactly what v2.1's bottom panel needs — only the content differs.</p>
+      <div class="lesson">→ v2.1 inherits this directly. SwiftUI's <em>presentationDetents</em> ships it for free.</div>
+    </div>
+
+    <!-- 02 Apple Music mini → full -->
+    <div class="pat">
+      <h4>Apple Music · mini player → now playing</h4>
+      <div class="who">iOS native · ubiquitous tap-to-expand pattern</div>
+      <p>The mini player lives at the bottom of every tab — a thin sliver showing the current track. <strong>Tap it once</strong> and it animates into a full-screen now-playing surface. Album art fills, controls expand, lyrics appear below. <strong>Swipe down</strong> to return to mini.</p>
+      <p>The cognitive trick: the user always knows what's playing without having to navigate to find it, and the "expand to focus" move feels native because the entire iOS muscle memory expects it.</p>
+      <div class="lesson">→ v2.1's tap-hero-for-takeover should match this animation exactly. Springs from current rect, no fade.</div>
+    </div>
+
+    <!-- 03 Robinhood price -->
+    <div class="pat">
+      <h4>Robinhood · same screen, different lens</h4>
+      <div class="who">2013-present · finance · context-mode switching</div>
+      <p>The portfolio screen has one number — your total. Tap a time-range chip (1D · 1W · 1M · 3M · YTD · 1Y · ALL) and the <em>same screen</em> rerenders with that period's data. <strong>Same hierarchy. Different lens.</strong> The chart, the % change, the "Today's gainers" — all keyed off the active mode.</p>
+      <p>For Faff this validates the resolver model: <em>the home doesn't change shape based on day-state — it changes content</em>. Quality day, easy day, race week — same three bands, different gradient + verb + chips.</p>
+      <div class="lesson">→ The resolver isn't picking a layout. It's picking the <em>content for one layout</em>.</div>
+    </div>
+
+    <!-- 04 NYT briefing -->
+    <div class="pat">
+      <h4>NYT · the morning briefing</h4>
+      <div class="who">2014-present · daily-news editorial pattern</div>
+      <p>Open the app and the first card is "<strong>Your Wednesday Briefing</strong>" — date, weather, a hero illustration, and three or four bullet items. Below it, the rest of the feed. The briefing is <em>opinionated</em> — it tells you what matters today.</p>
+      <p>v2.1's hero panel is doing the same job — it's the daily briefing for the runner. The verb is the headline. The chips are the bullets. The bottom panel is "more if you want it."</p>
+      <div class="lesson">→ Faff is a fitness app written like a daily newspaper. Lean into the editorial framing — section labels in caps, "Wednesday" not "Today."</div>
+    </div>
+
+    <!-- 05 Citymapper -->
+    <div class="pat">
+      <h4>Citymapper · purpose per surface</h4>
+      <div class="who">2011-present · transit · context-aware single-screens</div>
+      <p>Open Citymapper and the entire UI is bent toward one purpose: <em>getting from A to B</em>. There's no "feed." There's no "explore." A search bar, your saved places, time-aware home/work tiles. When you're on a journey, the entire app becomes a turn-by-turn surface.</p>
+      <p>The lesson is restraint: a successful single-purpose app refuses to be a Swiss army knife. <strong>Faff's home should refuse to be a feed.</strong> No "discover plans." No "trending workouts." Just today's call, the body, the race horizon, and the chip ladder of context.</p>
+      <div class="lesson">→ When tempted to add a feed module, ask: would Citymapper add a feed of routes? No.</div>
+    </div>
+
+    <!-- 06 Things 3 -->
+    <div class="pat">
+      <h4>Things 3 · today vs upcoming</h4>
+      <div class="who">2017-present · macOS/iOS · cult-followed task manager</div>
+      <p>Things 3 splits the world into temporal lenses: <strong>Today</strong> (what's actually happening), <strong>Upcoming</strong> (the next few days), <strong>Anytime</strong> (the backlog), <strong>Someday</strong> (vague). Each lens is its own list — same data, different framing.</p>
+      <p>The unintuitive design move: the <em>same</em> task can appear in Today and Upcoming, viewed through different lenses. v2.1's tab structure is similar — <strong>Today</strong> is the lens for now, <strong>Plan</strong> is the lens for the cycle, <strong>Races</strong> is the lens for the horizon. Same plan data, three time-frames.</p>
+      <div class="lesson">→ The 5-tab IA is right. Each tab is a temporal lens, not a separate feature.</div>
+    </div>
+  </div>
+
+  <!-- pattern stack summary -->
+  <div style="margin:32px 0 80px;padding:32px;background:var(--bg2);border:1px solid var(--line);border-radius:18px">
+    <div class="eyebrow" style="margin-bottom:14px">pattern stack — what we're really building</div>
+    <h3 style="font-family:var(--f-display);font-size:54px;letter-spacing:0.6px;line-height:1;font-weight:400;margin:0 0 14px">a maps-style sheet,<br>over a music-style hero,<br>with NYT framing.</h3>
+    <p style="font-size:14px;line-height:1.65;color:rgba(246,247,248,0.82);max-width:880px;margin:0">Each piece is proven. The novelty isn't in any single pattern — it's in the <strong style="color:var(--ink)">combination applied to running</strong>. Apple Maps' sheet, Apple Music's tap-to-expand, Robinhood's content-by-mode, NYT's daily-briefing voice, Citymapper's single-purpose restraint, Things 3's temporal lensing. <em>Six familiar moves, stacked.</em> The runner already knows how each one works in isolation.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 07 · EDGE CASES ════════════════════ -->
+<section id="edges">
+  <div class="eyebrow">07 · what v2.1 quietly fails at</div>
+  <h2 class="sec">the honest<br>edge cases.</h2>
+  <div class="sec-tag edge"><span class="dot"></span>twelve states the resolver doesn't cleanly handle today</div>
+  <div class="kicker">v2.1's promotion resolver works beautifully for <strong>"normal training week, plan being followed."</strong> Below: twelve states that exist in real-world running where the resolver either picks the wrong panel, picks none, or silently lies. Each one is either <span class="kbd" style="background:rgba(243,173,56,0.2);color:var(--goal);font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;padding:2px 8px;border-radius:99px">PARTIAL</span> (handled badly) or <span class="kbd" style="background:rgba(252,77,100,0.18);color:var(--over);font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;padding:2px 8px;border-radius:99px">BROKEN</span> (not handled at all). Fixes proposed for each. <em>This is the most useful section in the audit.</em></div>
+
+  <div class="edge-grid">
+    <!-- 01 missed yesterday -->
+    <div class="edge">
+      <div class="num">01</div>
+      <div class="tag broken">BROKEN · MISSED RUN</div>
+      <h5>I skipped yesterday's run.</h5>
+      <p>Tuesday was a quality day. You skipped it. Wednesday morning the resolver shows <strong>"RUN EASY"</strong> as if nothing happened.</p>
+      <p>The plan is now lying to you — the easy day was contingent on the quality day having been done.</p>
+      <div class="fix">→ Add MISSED state. Hero: "CATCH UP." or "MOVE ON." (user picks once). Yellow-amber gradient.</div>
+    </div>
+
+    <!-- 02 niggle flagged -->
+    <div class="edge">
+      <div class="num">02</div>
+      <div class="tag broken">BROKEN · NIGGLE</div>
+      <h5>Active niggle, doing the run anyway.</h5>
+      <p>You logged a tight L calf last night. This morning the resolver still says <strong>"RUN EASY"</strong> — same workout, no acknowledgment.</p>
+      <p>The niggle data is in the system, just not in the resolver's input set.</p>
+      <div class="fix">→ Verb modifier: "RUN EASY. — Watch L calf." Adds a one-line subhead under the verb when niggles.active &gt; 0.</div>
+    </div>
+
+    <!-- 03 sick -->
+    <div class="edge">
+      <div class="num">03</div>
+      <div class="tag broken">BROKEN · SICK</div>
+      <h5>I'm sick — can't run.</h5>
+      <p>No explicit "sick" state exists. Runner has to manually skip every day and the home keeps showing the planned workout like a guilt-trip.</p>
+      <p>HRV crashed, RHR elevated — the data already knows.</p>
+      <div class="fix">→ Detect (HRV ↓25%+ for 2 days · RHR ↑8+) → propose SICK state. Verb: "REST. — Body's fighting something." Auto-pauses streak.</div>
+    </div>
+
+    <!-- 04 traveling -->
+    <div class="edge">
+      <div class="num">04</div>
+      <div class="tag partial">PARTIAL · TRAVEL</div>
+      <h5>I'm in a different time zone.</h5>
+      <p>Wednesday in London = 4am Wednesday morning back home. The plan thinks "today" by phone-local time, but jet-lagged HRV is suppressed and pace targets need adjustment.</p>
+      <div class="fix">→ Detect tz shift via HealthKit location. Camp-mode panel triggers (already in v1 deck). Vitals get a "ADAPTING · D2/5" subhead.</div>
+    </div>
+
+    <!-- 05 multi-race -->
+    <div class="edge">
+      <div class="num">05</div>
+      <div class="tag partial">PARTIAL · MULTI-RACE</div>
+      <h5>I have two races on the calendar.</h5>
+      <p>A-race London June 11. B-race Hackney Half June 28. C-race parkrun every Saturday. Which one does the chip show?</p>
+      <p>Resolver currently picks the soonest. That's right for race-week but wrong for a planning lens — you want to see both.</p>
+      <div class="fix">→ Race chip becomes "London 14d · Hackney 31d". Two values, comma-separated, both linkable.</div>
+    </div>
+
+    <!-- 06 new user -->
+    <div class="edge">
+      <div class="num">06</div>
+      <div class="tag broken">BROKEN · NEW USER</div>
+      <h5>I just signed up. No plan yet.</h5>
+      <p>No race. No phase. No vitals history. The resolver has nothing to render — the home is half-empty for the first week of usage.</p>
+      <p>The first-run experience needs its own gradient/state.</p>
+      <div class="fix">→ ONBOARDING state. Hero: "WELCOME." with a 4-step setup (race? threshold? sync watch? first run). Same pattern, different content.</div>
+    </div>
+
+    <!-- 07 doubles -->
+    <div class="edge">
+      <div class="num">07</div>
+      <div class="tag broken">BROKEN · DOUBLES</div>
+      <h5>I have two runs scheduled today.</h5>
+      <p>AM easy 4mi + PM hills 6mi. One verb? One stat strip? The resolver picks one workout and the second one disappears.</p>
+      <div class="fix">→ Multi-workout state. Hero: "AM RUN." / "PM RUN." with a toggle, each with its own stat strip. Or stacked card-on-card.</div>
+    </div>
+
+    <!-- 08 failed quality -->
+    <div class="edge">
+      <div class="num">08</div>
+      <div class="tag partial">PARTIAL · FAILED SESSION</div>
+      <h5>I cut the workout short.</h5>
+      <p>Started 6×800, did 3, called it. Resolver post-run state currently flips to NAILED IT or GOOD ENOUGH based on the data — but cut-short is its own verb that v2.1 named ("SOMETHING NEXT TIME") and then never built logic for.</p>
+      <div class="fix">→ Result schema needs cut_short boolean. Verb maps to "CUT SHORT. — Body talked. Listen." with amber-red gradient.</div>
+    </div>
+
+    <!-- 09 no HR -->
+    <div class="edge">
+      <div class="num">09</div>
+      <div class="tag partial">PARTIAL · NO HR</div>
+      <h5>Watch dead, ran by feel.</h5>
+      <p>No HR data means no zone analysis. Post-run verdict can't be computed honestly. Resolver currently fills in NAILED IT/STEADY off pace + distance only.</p>
+      <div class="fix">→ Verb table needs an "incomplete data" branch. "PACED IT." (no HR) or "BY FEEL." — honest about what we can't say.</div>
+    </div>
+
+    <!-- 10 plan deviation -->
+    <div class="edge">
+      <div class="num">10</div>
+      <div class="tag broken">BROKEN · DEVIATION</div>
+      <h5>I ran something different.</h5>
+      <p>Plan said easy 5.8 mi. You ran a tempo 4mi instead. Resolver flips to post-run with a green NAILED IT because <em>pace + distance close enough</em> — but you literally did the wrong workout.</p>
+      <div class="fix">→ Detect workout-type mismatch (plan.type vs actual.derived_type). Verb: "DIFFERENT DAY." Color: cyan. No guilt, no fake congrats.</div>
+    </div>
+
+    <!-- 11 too many rest -->
+    <div class="edge">
+      <div class="num">11</div>
+      <div class="tag partial">PARTIAL · OFF PATTERN</div>
+      <h5>I've rested 3 days in a row.</h5>
+      <p>Plan had 1 rest, runner extended to 3. Day 4 morning the resolver still shows the planned workout for that day, but the user needs a re-entry plan, not the originally-scheduled tempo.</p>
+      <div class="fix">→ Detect rest_streak &gt; planned_rest + 1. State: RE-ENTRY. Verb: "BACK IN." Suggest dropping intensity 1 tier for 1-2 days.</div>
+    </div>
+
+    <!-- 12 no race -->
+    <div class="edge">
+      <div class="num">12</div>
+      <div class="tag partial">PARTIAL · OFF-SEASON</div>
+      <h5>I just finished my goal race.</h5>
+      <p>London was last weekend. Now what? Resolver knows there's no upcoming race but doesn't know whether to celebrate, recover, or pivot to base.</p>
+      <div class="fix">→ POST-RACE state for 7-14d. Hero: "RECOVER." with finisher chip — your race time, your PR delta. After 14d, transition to phase panel for the off-season.</div>
+    </div>
+  </div>
+
+  <!-- edge case summary -->
+  <div style="padding:32px;background:rgba(252,77,100,0.04);border:1px solid rgba(252,77,100,0.18);border-radius:18px;margin-bottom:64px">
+    <div class="eyebrow" style="color:var(--over);margin-bottom:14px">summary · what this means for v2.1</div>
+    <h3 style="font-family:var(--f-display);font-size:48px;letter-spacing:0.5px;line-height:1.05;font-weight:400;margin:0 0 16px">we need ~12 day-states.<br>not 6.</h3>
+    <p style="font-size:14px;line-height:1.65;color:rgba(246,247,248,0.82);max-width:880px;margin:0 0 12px">v2.1's six gradients (easy / quality / long / done / rest / race) cover the happy path. The edges above need at least <strong style="color:var(--ink)">six more states</strong>: MISSED · NIGGLE · SICK · NEW USER · DOUBLES · POST-RACE. Plus modifiers (cut-short, no-HR, plan-deviation) that change the verdict logic without needing their own gradient.</p>
+    <p style="font-size:14px;line-height:1.65;color:rgba(246,247,248,0.82);max-width:880px;margin:0"><strong style="color:var(--ink)">The good news:</strong> the resolver is a pure function. Adding a state is a new clause in the decision tree, not a new screen. Adding a verb modifier is a new row in the lookup. The slide-sheet substrate doesn't change. <em>v2.1 scales — we just have to build out the table honestly.</em></p>
+  </div>
+</section>
+
+<!-- ════════════════════ 08 · REFINEMENTS ════════════════════ -->
+<section id="refine">
+  <div class="eyebrow">08 · v2.1 → v2.2</div>
+  <h2 class="sec">the refined<br>pattern.</h2>
+  <div class="sec-tag"><span class="dot"></span>was → now · each delta traces to a finding above</div>
+  <div class="kicker">Every line below cites which section of the audit it comes from. <strong>No vibes-only changes.</strong> The pattern's spine stays — three bands, gradient = state, draggable sheet, tap-to-takeover. What changes: which states exist, what fills the hero, what populates the chip strip, what lives in the expanded view.</div>
+
+  <table class="ref-table">
+    <thead>
+      <tr><th style="width:18%">Area</th><th style="width:32%">v2.1 was</th><th style="width:32%">v2.2 now</th><th style="width:18%">Why</th></tr>
+    </thead>
+    <tbody>
+      <!-- HERO PANEL -->
+      <tr><td colspan="4" style="background:rgba(255,136,71,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--race);font-weight:700;padding:8px 14px">— HERO PANEL —</td></tr>
+      <tr>
+        <td class="area">Verb table</td>
+        <td class="was">~12 verbs across pre-run and post-run states. Single hero line.</td>
+        <td class="now"><strong>~30 verbs</strong> covering all 12 day-states + modifier suffixes. Two lines: <strong>VERB</strong> + one prescription line under (Whoop/Coros pattern).</td>
+        <td class="why">Whoop · Coros · §03</td>
+      </tr>
+      <tr>
+        <td class="area">Verb modifier</td>
+        <td class="was">None. Niggle / no-HR / cut-short collapsed to base verb.</td>
+        <td class="now">Suffix slot. <em>RUN EASY. — Watch L calf.</em> · <em>PACED IT. — No HR data.</em> · <em>CUT SHORT. — Body talked.</em></td>
+        <td class="why">edges §07</td>
+      </tr>
+      <tr>
+        <td class="area">HRV verdict</td>
+        <td class="was">"−7 hrv" — delta only, no label.</td>
+        <td class="now">"<strong>HRV LOW</strong> · −7" — label from <code>vitals.hrv_status</code> bands.</td>
+        <td class="why">Garmin · Coros · §03</td>
+      </tr>
+      <tr>
+        <td class="area">Phase subhead</td>
+        <td class="was">Tiny tag, easy to miss.</td>
+        <td class="now">One-line phase intent under hero verb on Easy/Long days: "<em>Build · progressive aerobic.</em>"</td>
+        <td class="why">data audit §04</td>
+      </tr>
+
+      <!-- CHIP STRIP -->
+      <tr><td colspan="4" style="background:rgba(39,180,224,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--dist);font-weight:700;padding:8px 14px">— CHIP STRIP (bottom panel, default state) —</td></tr>
+      <tr>
+        <td class="area">Default chips</td>
+        <td class="was">readiness · HRV delta · race countdown. Variable order.</td>
+        <td class="now"><strong>Fixed order keyed off morning sequence (§05):</strong> sleep · HRV-with-verdict · weather · race · streak (if rest day) · shoe-status (if long-run).</td>
+        <td class="why">mental-model §05</td>
+      </tr>
+      <tr>
+        <td class="area">Race chip</td>
+        <td class="was">"london d−14" — distance only.</td>
+        <td class="now">"<strong>london 14d · 2:54 / 2:55</strong>" — predicted + goal delta. Two races? "<strong>london 14d · hackney 31d</strong>".</td>
+        <td class="why">data audit · edges §07</td>
+      </tr>
+      <tr>
+        <td class="area">Streak chip</td>
+        <td class="was">Not surfaced.</td>
+        <td class="now">Rest-day panel adds "<strong>day 23 of consistency</strong>" — emotional reassurance the rest-day workflow needs.</td>
+        <td class="why">data audit · §05.05</td>
+      </tr>
+      <tr>
+        <td class="area">Load chip</td>
+        <td class="was">ACWR buried in Health tab.</td>
+        <td class="now">"<strong>load 1.24 · build</strong>" surfaces on pre-quality and pre-long days. ACWR &gt; 1.5 triggers an amber chip.</td>
+        <td class="why">data audit §04</td>
+      </tr>
+      <tr>
+        <td class="area">Coach topics → chips</td>
+        <td class="was">Topics rendered as full cards on Web; iPhone shows briefing prose.</td>
+        <td class="now"><strong>24 topic kinds → chip lookup library</strong>. Each topic produces a 3-5 word chip. No LLM prose on the home; the engine drives the data, the chip strip displays it.</td>
+        <td class="why">data audit · core feedback</td>
+      </tr>
+
+      <!-- EXPANDED VIEW -->
+      <tr><td colspan="4" style="background:rgba(176,132,255,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--learn);font-weight:700;padding:8px 14px">— EXPANDED VIEW (drag bottom up) —</td></tr>
+      <tr>
+        <td class="area">Route preview</td>
+        <td class="was">Not present.</td>
+        <td class="now"><strong>Suggested route</strong> (canal loop / flat / hills) drawn as a tiny map snippet. Coach picks based on workout type — Atlas concept from v1, but contained.</td>
+        <td class="why">v1 explorations · §05.02</td>
+      </tr>
+      <tr>
+        <td class="area">Vitals trend</td>
+        <td class="was">Today's vitals as a row.</td>
+        <td class="now">14-day HRV sparkline + sleep trend. <strong>Trend beats spot reading.</strong></td>
+        <td class="why">data audit · Garmin §03</td>
+      </tr>
+      <tr>
+        <td class="area">Phase progress</td>
+        <td class="was">Not surfaced.</td>
+        <td class="now">5-phase tick bar showing where in the cycle you are (BASE · BUILD ● PEAK · TAPER · RACE). One tap reveals weekly mileage arc.</td>
+        <td class="why">data audit §04</td>
+      </tr>
+      <tr>
+        <td class="area">Long-run elevation</td>
+        <td class="was">Not surfaced anywhere.</td>
+        <td class="now">Elevation profile for the day's route (when known). <strong>For treadmill mode: incline-per-segment chart. The Runna gap.</strong></td>
+        <td class="why">data audit · Runna §03</td>
+      </tr>
+
+      <!-- DAY-STATES -->
+      <tr><td colspan="4" style="background:rgba(252,77,100,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--over);font-weight:700;padding:8px 14px">— DAY-STATES (gradient × verb mapping) —</td></tr>
+      <tr>
+        <td class="area">State count</td>
+        <td class="was">6 states · 6 gradients.</td>
+        <td class="now"><strong>12 states.</strong> Adds: MISSED · NIGGLE · SICK · NEW USER · DOUBLES · POST-RACE. Each gets its gradient.</td>
+        <td class="why">edges §07</td>
+      </tr>
+      <tr>
+        <td class="area">MISSED state</td>
+        <td class="was">Doesn't exist.</td>
+        <td class="now">Yellow-amber gradient. Verb: "<strong>CATCH UP.</strong>" or "<strong>MOVE ON.</strong>" Runner picks once; the choice modifies the plan.</td>
+        <td class="why">edges §07.01</td>
+      </tr>
+      <tr>
+        <td class="area">SICK state</td>
+        <td class="was">Doesn't exist.</td>
+        <td class="now">Detected (HRV ↓25% · RHR ↑8 for 2d) → muted-grey gradient. Verb: "<strong>REST.</strong> — Body's fighting something." Streak auto-pauses.</td>
+        <td class="why">edges §07.03</td>
+      </tr>
+      <tr>
+        <td class="area">NEW USER</td>
+        <td class="was">Empty-ish home for first week.</td>
+        <td class="now">ONBOARDING state. Hero: "<strong>WELCOME.</strong>" 4-step setup (race · threshold · watch · first run) lives in the expanded view.</td>
+        <td class="why">edges §07.06</td>
+      </tr>
+      <tr>
+        <td class="area">DOUBLES</td>
+        <td class="was">Resolver picks one workout.</td>
+        <td class="now">Hero: "<strong>AM RUN.</strong>" / "<strong>PM RUN.</strong>" toggle. Two stat strips. Common during marathon build.</td>
+        <td class="why">edges §07.07</td>
+      </tr>
+      <tr>
+        <td class="area">POST-RACE</td>
+        <td class="was">Race countdown disappears at T+1.</td>
+        <td class="now">7-14d POST-RACE state. Hero: "<strong>RECOVER.</strong>" with finisher chip — your race time, your PR delta. Then transitions to phase panel.</td>
+        <td class="why">edges §07.12</td>
+      </tr>
+
+      <!-- GESTURES -->
+      <tr><td colspan="4" style="background:rgba(243,173,56,0.06);font-family:var(--f-sub);font-size:10px;letter-spacing:2px;color:var(--goal);font-weight:700;padding:8px 14px">— GESTURES —</td></tr>
+      <tr>
+        <td class="area">Bottom sheet</td>
+        <td class="was">3 snap points. Functional but under-specified.</td>
+        <td class="now">Apple Maps detents: <code style="font-family:Courier New;font-size:11px">[.height(60), .fraction(0.32), .fraction(0.85)]</code>. Snap to nearest on release with iOS-spring physics.</td>
+        <td class="why">patterns §06.01</td>
+      </tr>
+      <tr>
+        <td class="area">Tap hero</td>
+        <td class="was">"Expands to full screen takeover."</td>
+        <td class="now">Apple Music animation — springs from current rect, no fade, swipe-down to dismiss. Auto-dismiss at 8s stillness.</td>
+        <td class="why">patterns §06.02</td>
+      </tr>
+      <tr>
+        <td class="area">Pull-to-refresh</td>
+        <td class="was">Not specified.</td>
+        <td class="now">Explicitly NONE. Resolver auto-runs on foreground + push invalidation. Pull-to-refresh implies stale data; v2.2 never is.</td>
+        <td class="why">central store §v1</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- v2.2 stack visualization -->
+  <div style="padding:36px;background:var(--bg2);border:1px solid var(--line);border-radius:18px;margin-bottom:64px">
+    <div class="eyebrow" style="margin-bottom:14px">v2.2 in one sentence</div>
+    <div style="font-family:var(--f-display);font-size:62px;letter-spacing:0.6px;line-height:1.0;font-weight:400">12 states · 30 verbs · two-line hero · 8-chip strip · sliding expanded view · zero LLM on the home.</div>
+    <p style="font-size:13.5px;line-height:1.65;color:rgba(246,247,248,0.75);max-width:880px;margin:24px 0 0">Same spine as v2.1. <strong style="color:var(--ink)">Wider state coverage, sharper verbs, more honest signals on the chip strip, richer drill-down.</strong> The runner sees the same simple home — but the home gets smarter when life intrudes.</p>
+  </div>
+</section>
+
+<!-- ════════════════════ 09 · WHERE THIS LANDS ════════════════════ -->
+<section id="next">
+  <div class="eyebrow">09 · the verdict</div>
+  <h2 class="sec">where this<br>lands.</h2>
+  <div class="sec-tag"><span class="dot"></span>what we learned · what to build · what to leave alone</div>
+
+  <!-- four-lens recap -->
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-bottom:48px">
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--race);margin-bottom:10px">competitive (§03)</div>
+      <p style="font-size:13.5px;line-height:1.65;color:rgba(246,247,248,0.85);margin:0 0 8px"><strong style="color:var(--ink)">v2.1's hierarchy was right.</strong> Today-first beats body-first (Garmin/Coros are wrong for plan-runners). The Whoop / Coros verdict-pairing pattern earns a place — add a prescription line. Treadmill mode without elevation (Runna) is malpractice. Strava is the negative example.</p>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--dist);margin-bottom:10px">data audit (§04)</div>
+      <p style="font-size:13.5px;line-height:1.65;color:rgba(246,247,248,0.85);margin:0 0 8px"><strong style="color:var(--ink)">~15 dark signals.</strong> ACWR, streak, year-to-date, race trajectory arc, shoe status, weather chip, phase intent — all produced by code that's already running. Zero new data work. The expanded sheet is where they belong.</p>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--learn);margin-bottom:10px">mental models (§05)</div>
+      <p style="font-size:13.5px;line-height:1.65;color:rgba(246,247,248,0.85);margin:0 0 8px"><strong style="color:var(--ink)">The runner is asking in this order:</strong> what kind of day · body state · workout call · weather / niggles · next moves. Default chip order should match. Off-plan moments need their own states — biggest gap in v2.1.</p>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--goal);margin-bottom:10px">design patterns (§06)</div>
+      <p style="font-size:13.5px;line-height:1.65;color:rgba(246,247,248,0.85);margin:0 0 8px"><strong style="color:var(--ink)">Nothing in v2.1 is unprecedented.</strong> The sheet is Apple Maps. The takeover is Apple Music. The content-by-mode is Robinhood. The voice is NYT. The single-purpose restraint is Citymapper. Six patterns, all proven, stacked on top of running.</p>
+    </div>
+  </div>
+
+  <!-- the verdict -->
+  <div style="background:linear-gradient(180deg,rgba(62,189,65,0.06),transparent);border:1.5px solid rgba(62,189,65,0.22);border-radius:18px;padding:36px;margin-bottom:48px">
+    <div class="eyebrow" style="color:var(--green);margin-bottom:14px">the verdict</div>
+    <h3 style="font-family:var(--f-display);font-size:64px;letter-spacing:0.7px;line-height:1;font-weight:400;margin:0 0 18px">v2.1 was right.<br>now make it complete.</h3>
+    <p style="font-size:15px;line-height:1.65;color:rgba(246,247,248,0.85);max-width:880px;margin:0 0 14px">The spine of v2.1 — three bands, gradient = state, draggable sheet, today-first headline, tap-to-takeover — <strong style="color:var(--ink)">survived all four lenses</strong>. Competitive validates the hierarchy. Data audit shows the spine has headroom. Mental models match the layout. Design patterns confirm the gestures.</p>
+    <p style="font-size:15px;line-height:1.65;color:rgba(246,247,248,0.85);max-width:880px;margin:0">v2.2 is <strong style="color:var(--ink)">depth, not redesign.</strong> Double the state count. Triple the verb table. Add the prescription line. Surface the 15 dark signals into the chip strip and expanded view. Lock the chip order to mental-model order. Sweat the edge cases. Keep everything else.</p>
+  </div>
+
+  <!-- build order -->
+  <div style="margin-bottom:48px">
+    <div class="eyebrow" style="margin-bottom:14px">build order · 3 sprints</div>
+    <table class="ref-table">
+      <thead>
+        <tr><th style="width:18%">Sprint</th><th style="width:42%">What ships</th><th style="width:40%">Outcome</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="area">Sprint 01</td>
+          <td class="now"><strong>Spine</strong> — 7 gradients, base verb table (~12), 3-detent sheet, today/quality/long/done/rest/race/phase resolver. Chip strip with the v2.1 set.</td>
+          <td class="why" style="font-size:13px;line-height:1.55;color:rgba(246,247,248,0.78)">Shippable home screen. Matches v2.1. Lays the rails for everything else.</td>
+        </tr>
+        <tr>
+          <td class="area">Sprint 02</td>
+          <td class="now"><strong>Depth</strong> — full 12-state resolver, ~30 verb table with modifiers, prescription line, chip library wired to all 24 coach topic kinds, expanded-view content (route · trend · phase · elevation).</td>
+          <td class="why" style="font-size:13px;line-height:1.55;color:rgba(246,247,248,0.78)">v2.2 spec done. Honest at edge cases. The home gets smarter without changing shape.</td>
+        </tr>
+        <tr>
+          <td class="area">Sprint 03</td>
+          <td class="now"><strong>Polish</strong> — tap-to-takeover with Apple Music animation, hero number count-up on app open, full-bleed race poster, screenshot-ready post-run debrief.</td>
+          <td class="why" style="font-size:13px;line-height:1.55;color:rgba(246,247,248,0.78)">App Store-worthy. Lockscreen moments. The "fucking app" feel from your original brief.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- not in scope -->
+  <div style="padding:28px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;margin-bottom:64px">
+    <div class="eyebrow" style="color:var(--mute);margin-bottom:12px">what this audit deliberately didn't answer</div>
+    <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:rgba(246,247,248,0.78)">
+      <li><strong style="color:var(--ink)">Whole-app IA.</strong> The 5-tab structure (Today · Plan · Races · Health · Me) is assumed correct. Things 3 / Citymapper patterns suggest it is — but if you want to interrogate that, it's a separate audit.</li>
+      <li><strong style="color:var(--ink)">Coach voice tab.</strong> v2.1 deferred the LLM coach to its own tab (Confidant chat). This audit doesn't redesign that tab. Worth a dedicated pass once the home is locked.</li>
+      <li><strong style="color:var(--ink)">Spectator mode rendering.</strong> Flagship feature from v1 — exists as a concept, hasn't been re-audited in this pass. The pattern carries (hero panel + chip strip), but the spectator-side surface needs its own pass.</li>
+      <li><strong style="color:var(--ink)">Treadmill mode rendering.</strong> The takeover screens from v1 still hold — just need elevation surfaced, which the data audit confirms is one missed signal away.</li>
+      <li><strong style="color:var(--ink)">Watch face refinements.</strong> Out of scope. The watch has its own design language (NumberFace per memory). The audit only intersects where the watch surfaces during a run.</li>
+    </ul>
+  </div>
+
+  <!-- endnote -->
+  <div class="endnote">
+    <div class="eyebrow" style="color:var(--green);margin-bottom:12px">monday's start line</div>
+    <h3>start sprint 01.</h3>
+    <p>The audit converges. <strong>The spine survives, the deltas are scoped, the build order is sequential.</strong> Sprint 01 ships v2.1-equivalent functionality on the resolver rails — the architectural investment pays off in sprints 02 and 03 where every refinement above becomes a clause in the resolver or a row in the verb table.</p>
+    <p>What you actually have to decide: <strong style="color:var(--ink)">do we ship sprint 01 first and review</strong> before committing to the deeper work? Or commit to the full v2.2 spec and ship all three sprints as one push? I'd vote for review-after-sprint-01 — the home is the front door, getting it 80% right and shipping beats getting it 100% right behind a feature flag for two months.</p>
+    <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">docs/iphone-audit-2026-05-27.html</code> · supersedes v2.1 for the home spec · v1 explorations + v2 dial-ins still relevant for the surfaces this audit didn't touch (Spectator, Treadmill, Live Run, Race-Day Ops). Nod and I start porting <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">native-v2/Faff/Faff/Views/TodayView.swift</code> to the resolver rails.</p>
+  </div>
+
+  <div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:var(--f-sub);font-size:11px;letter-spacing:3px">— END · 2026-05-27 · IPHONE AUDIT · FOUR LENSES —</div>
+</section>
+
+
+</div>
+</body>
+</html>
