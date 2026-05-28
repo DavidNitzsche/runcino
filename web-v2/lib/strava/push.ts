@@ -156,6 +156,25 @@ export async function pushRunToStrava(
         );
         return { pushId, status: 'duplicate' };
       }
+      // 2026-05-27 P-STRAVA-401: 401 from Strava /uploads almost always
+      // means the OAuth grant lacks `activity:write` (legacy grant from
+      // before that scope was added) OR the user has revoked the app.
+      // Either way, the fix is the same: re-OAuth. Surface a typed
+      // error code so the UI can render "Reconnect Strava" instead of
+      // an opaque "401". Also mark the connector_tokens row as needing
+      // reconnect so the connection card on /settings reflects truth.
+      if (resp.status === 401) {
+        await markFailed(pushId, `401 (likely missing activity:write scope): ${txt.slice(0, 400)}`);
+        await pool.query(
+          `UPDATE connector_tokens
+              SET last_sync_status = 'error',
+                  last_sync_error  = 'PUSH_401_REAUTH_REQUIRED',
+                  updated_at       = NOW()
+            WHERE user_id = $1 AND provider = 'strava'`,
+          [userId]
+        ).catch(() => {});
+        return { pushId, status: 'failed', error: 'REAUTH_REQUIRED' };
+      }
       await markFailed(pushId, `${resp.status}: ${txt.slice(0, 500)}`);
       return { pushId, status: 'failed', error: `${resp.status}` };
     }

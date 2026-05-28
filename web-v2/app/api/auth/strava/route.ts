@@ -98,8 +98,17 @@ async function callback(req: NextRequest) {
   const refreshToken = tokens.refresh_token;
   const expiresAt = tokens.expires_at ? new Date(tokens.expires_at * 1000).toISOString() : null;
   const athleteId = String(tokens.athlete?.id ?? '');
+  // 2026-05-27 P-STRAVA-401: capture scope string so we can detect when
+  // a re-auth is needed for new permissions (e.g. older grants without
+  // activity:write would 401 on push). Strava returns scope as either
+  // a CSV string or, for some flows, undefined — fall back to the
+  // scope we requested.
+  const grantedScope = (typeof tokens.scope === 'string' && tokens.scope.length > 0)
+    ? tokens.scope
+    : 'read,activity:read_all,activity:write';
 
   try {
+    // 1. Legacy profile.* columns (kept in sync until they're dropped).
     await pool.query(
       `UPDATE profile
           SET strava_athlete_id    = $1,
@@ -110,10 +119,35 @@ async function callback(req: NextRequest) {
         WHERE user_uuid = $5`,
       [athleteId, accessToken, refreshToken, expiresAt, state],
     );
+    // 2. connector_tokens — THE source of truth getStravaToken reads
+    //    first. Without this UPSERT, a user who re-OAuths to pick up
+    //    a new scope (e.g. activity:write) would see no change because
+    //    the stale connector_tokens row would keep being returned.
+    //    David's 401 on push was exactly this: his connector_tokens row
+    //    predated activity:write being added, refresh kept the original
+    //    scopes, uploads kept 401-ing.
+    await pool.query(
+      `INSERT INTO connector_tokens (
+          user_id, provider, provider_user_id, scope,
+          access_token, refresh_token, expires_at,
+          connected_at, disconnected_at, updated_at
+        )
+        VALUES ($1, 'strava', $2, $3, $4, $5, $6::timestamptz, NOW(), NULL, NOW())
+        ON CONFLICT (user_id, provider) DO UPDATE
+          SET provider_user_id = EXCLUDED.provider_user_id,
+              scope            = EXCLUDED.scope,
+              access_token     = EXCLUDED.access_token,
+              refresh_token    = EXCLUDED.refresh_token,
+              expires_at       = EXCLUDED.expires_at,
+              connected_at     = NOW(),
+              disconnected_at  = NULL,
+              updated_at       = NOW()`,
+      [state, athleteId, grantedScope, accessToken, refreshToken, expiresAt],
+    );
   } catch (e: any) {
     return NextResponse.json({ error: `persist failed: ${e?.message}` }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, athlete_id: athleteId, expires_at: expiresAt });
+  return NextResponse.json({ ok: true, athlete_id: athleteId, expires_at: expiresAt, scope: grantedScope });
 }
 
 async function disconnect(req: NextRequest) {

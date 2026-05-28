@@ -69,14 +69,39 @@ export function StravaPushButton({
     }
   }
 
+  /**
+   * 2026-05-27 P-STRAVA-401: when Strava returns 401, the OAuth grant
+   * is missing activity:write (or was revoked). One-tap re-OAuth: pop a
+   * window to the connect URL, return user to the same place.
+   */
+  async function reconnect() {
+    try {
+      const r = await fetch('/api/auth/strava?action=connect');
+      const j = await r.json().catch(() => ({}));
+      if (j?.url) {
+        window.location.href = j.url;
+      } else {
+        setState({ kind: 'error', message: 'connect failed' });
+      }
+    } catch {
+      setState({ kind: 'error', message: 'connect failed' });
+    }
+  }
+
   const busy = state.kind === 'busy';
   const success = state.kind === 'ok' || state.kind === 'dup';
   const errored = state.kind === 'error';
+  // 2026-05-27 P-STRAVA-401: typed reauth error from push.ts. Surface
+  // a "Reconnect" CTA instead of an opaque "401" — David: "401" alone
+  // is meaningless. Clicking goes through the OAuth flow which now
+  // UPSERTs connector_tokens with current scopes (incl. activity:write).
+  const needsReauth = errored && (state as { message: string }).message === 'REAUTH_REQUIRED';
 
   const label =
     state.kind === 'busy'  ? 'Pushing…'
     : state.kind === 'ok'  ? 'On Strava'
     : state.kind === 'dup' ? 'On Strava'
+    : needsReauth ? 'Reconnect Strava'
     : state.kind === 'error' ? 'Retry'
     : 'Strava';
 
@@ -101,9 +126,11 @@ export function StravaPushButton({
     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
       <button
         type="button"
-        onClick={push}
+        onClick={needsReauth ? reconnect : push}
         disabled={busy || success}
-        title="Push run to Strava"
+        title={needsReauth
+          ? "Strava revoked or missing 'activity:write' scope — reconnect to push"
+          : "Push run to Strava"}
         style={{
           background: bg,
           color: fg,
@@ -130,9 +157,14 @@ export function StravaPushButton({
         </svg>
         {label}
       </button>
-      {errored && (
+      {errored && !needsReauth && (
         <span style={{ fontSize: 10, color: 'var(--over)', letterSpacing: '0.3px' }}>
           {(state as { kind: 'error'; message: string }).message}
+        </span>
+      )}
+      {needsReauth && (
+        <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '0.3px' }}>
+          tap to re-grant write access
         </span>
       )}
     </div>
