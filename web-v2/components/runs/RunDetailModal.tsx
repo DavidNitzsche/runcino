@@ -1345,39 +1345,86 @@ function HrSummaryFallback({
         </div>
       )}
 
-      {/* BPM SCALE — AVG, PEAK, LTHR markers */}
-      {(hrAvg != null || hrMax != null) && (
-        <div style={{ marginTop: hasZoneData ? 16 : 4 }}>
-          <div style={{ position: 'relative', height: 28 }}>
-            {/* base track */}
-            <div style={{
-              position: 'absolute', left: 0, right: 0, top: 12, height: 4, borderRadius: 2,
-              background: 'linear-gradient(90deg, rgba(0,143,236,0.35), rgba(62,189,65,0.45) 40%, rgba(243,173,56,0.5) 70%, rgba(252,77,100,0.55) 100%)',
-            }}/>
-            {/* LTHR marker */}
-            {lthr != null && lthr >= axisMin && lthr <= axisMax && (
-              <div style={{ position: 'absolute', left: `${pctOnAxis(lthr)}%`, top: 0, transform: 'translateX(-50%)' }}>
-                <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.35)', margin: '4px auto 0' }}/>
-                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.3px', fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>LTHR {lthr}</div>
-              </div>
-            )}
-            {/* AVG marker */}
-            {hrAvg != null && hrAvg >= axisMin && hrAvg <= axisMax && (
-              <div style={{ position: 'absolute', left: `${pctOnAxis(hrAvg)}%`, top: 0, transform: 'translateX(-50%)' }}>
-                <div style={{ width: 2, height: 16, background: '#fff', margin: '4px auto 0', borderRadius: 1 }}/>
-                <div style={{ fontSize: 9, color: '#fff', letterSpacing: '0.3px', fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>AVG {hrAvg}</div>
-              </div>
-            )}
-            {/* PEAK marker */}
-            {hrMax != null && hrMax >= axisMin && hrMax <= axisMax && (
-              <div style={{ position: 'absolute', left: `${pctOnAxis(hrMax)}%`, top: 0, transform: 'translateX(-50%)' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#FC4D64', margin: '11px auto 0', boxShadow: '0 0 0 2px rgba(252,77,100,0.25)' }}/>
-                <div style={{ fontSize: 9, color: '#FC4D64', letterSpacing: '0.3px', fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap' }}>PEAK {hrMax}</div>
+      {/* BPM SCALE — AVG, PEAK, LTHR markers + collision-staggered labels.
+          2026-05-27: David flagged the labels collide when AVG/PEAK/LTHR
+          cluster (e.g. avg 140 / peak 153 / LTHR 162 on a narrow card).
+          Refactored: ticks-only on the track, labels rendered in a
+          separate row underneath with vertical stagger when neighbours
+          would overlap. Three-row max (ticks + label row A + label row B). */}
+      {(hrAvg != null || hrMax != null) && (() => {
+        // Collect markers in left-to-right order with their style + label.
+        type Marker = { id: 'lthr' | 'avg' | 'peak'; pct: number; label: string; color: string; tickColor: string; bold: boolean };
+        const markers: Marker[] = [];
+        if (lthr != null && lthr >= axisMin && lthr <= axisMax) {
+          markers.push({ id: 'lthr', pct: pctOnAxis(lthr), label: `LTHR ${lthr}`, color: 'rgba(255,255,255,0.55)', tickColor: 'rgba(255,255,255,0.35)', bold: false });
+        }
+        if (hrAvg != null && hrAvg >= axisMin && hrAvg <= axisMax) {
+          markers.push({ id: 'avg', pct: pctOnAxis(hrAvg), label: `AVG ${hrAvg}`, color: '#fff', tickColor: '#fff', bold: true });
+        }
+        if (hrMax != null && hrMax >= axisMin && hrMax <= axisMax) {
+          markers.push({ id: 'peak', pct: pctOnAxis(hrMax), label: `PEAK ${hrMax}`, color: '#FC4D64', tickColor: '#FC4D64', bold: true });
+        }
+        markers.sort((a, b) => a.pct - b.pct);
+        // Assign each marker to row A or B based on horizontal distance
+        // from the previous label. <14% of axis width → must go on the
+        // other row so labels don't collide.
+        const rows: Record<string, 'A' | 'B'> = {};
+        let lastA: number | null = null;
+        let lastB: number | null = null;
+        for (const m of markers) {
+          const aClear = lastA == null || (m.pct - lastA) >= 14;
+          const bClear = lastB == null || (m.pct - lastB) >= 14;
+          // Prefer row A; spill to B only when A would collide.
+          if (aClear) { rows[m.id] = 'A'; lastA = m.pct; }
+          else if (bClear) { rows[m.id] = 'B'; lastB = m.pct; }
+          else { rows[m.id] = 'A'; lastA = m.pct; }  // overflow — pick anyway
+        }
+        const labelRowB = Object.values(rows).includes('B');
+
+        return (
+          <div style={{ marginTop: hasZoneData ? 16 : 4 }}>
+            {/* Track + tick row (28px tall) */}
+            <div style={{ position: 'relative', height: 28 }}>
+              {/* base track */}
+              <div style={{
+                position: 'absolute', left: 0, right: 0, top: 12, height: 4, borderRadius: 2,
+                background: 'linear-gradient(90deg, rgba(0,143,236,0.35), rgba(62,189,65,0.45) 40%, rgba(243,173,56,0.5) 70%, rgba(252,77,100,0.55) 100%)',
+              }}/>
+              {markers.map((m) => (
+                <div key={m.id} style={{ position: 'absolute', left: `${m.pct}%`, top: 0, transform: 'translateX(-50%)' }}>
+                  {m.id === 'peak' ? (
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: m.tickColor, margin: '11px auto 0', boxShadow: `0 0 0 2px ${m.tickColor}40` }}/>
+                  ) : (
+                    <div style={{ width: m.bold ? 2 : 1, height: 16, background: m.tickColor, margin: '4px auto 0', borderRadius: 1 }}/>
+                  )}
+                </div>
+              ))}
+            </div>
+            {/* Label row A — anchored to ticks, no collisions within row */}
+            <div style={{ position: 'relative', height: 14, marginTop: 2 }}>
+              {markers.filter((m) => rows[m.id] === 'A').map((m) => (
+                <div key={m.id} style={{
+                  position: 'absolute', left: `${m.pct}%`, transform: 'translateX(-50%)',
+                  fontSize: 9, fontWeight: 700, letterSpacing: '0.3px',
+                  color: m.color, whiteSpace: 'nowrap',
+                }}>{m.label}</div>
+              ))}
+            </div>
+            {/* Label row B — only renders when a marker had to spill */}
+            {labelRowB && (
+              <div style={{ position: 'relative', height: 14, marginTop: 2 }}>
+                {markers.filter((m) => rows[m.id] === 'B').map((m) => (
+                  <div key={m.id} style={{
+                    position: 'absolute', left: `${m.pct}%`, transform: 'translateX(-50%)',
+                    fontSize: 9, fontWeight: 700, letterSpacing: '0.3px',
+                    color: m.color, whiteSpace: 'nowrap',
+                  }}>{m.label}</div>
+                ))}
               </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Honest one-liner */}
       <div style={{ marginTop: 10, fontSize: 11, color: 'var(--mute)', lineHeight: 1.5 }}>

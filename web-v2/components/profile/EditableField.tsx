@@ -52,11 +52,39 @@ export function EditableField({
   const [pending, startPending] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
+  // P-PROFILE-HEIGHT 2026-05-27: dedicated ft + in dual-input for the
+  // height_cm field. Single-number cm entry felt wrong (and forced US
+  // users to mentally convert). Two fields side-by-side, save converts
+  // to cm via *2.54 + rounds. Other number fields stay single-input.
+  const isHeight = field === 'height_cm';
+  const initialHeight = (() => {
+    if (!isHeight || currentValue == null) return { ft: '', inch: '' };
+    const cm = Number(currentValue);
+    if (!Number.isFinite(cm) || cm <= 0) return { ft: '', inch: '' };
+    const totalInches = Math.round(cm / 2.54);
+    return { ft: String(Math.floor(totalInches / 12)), inch: String(totalInches % 12) };
+  })();
+  const [heightFt, setHeightFt] = useState<string>(initialHeight.ft);
+  const [heightInch, setHeightInch] = useState<string>(initialHeight.inch);
+
   function save() {
     setErr(null);
-    const send: any = kind === 'number' ? Number(value) : value;
-    if (kind === 'number' && (!Number.isFinite(send) || send <= 0)) {
-      setErr('Enter a positive number'); return;
+    let send: any;
+    if (isHeight) {
+      const ft = Number(heightFt);
+      const inch = Number(heightInch) || 0;
+      if (!Number.isFinite(ft) || ft <= 0) {
+        setErr('Enter feet (e.g. 5)'); return;
+      }
+      if (inch < 0 || inch >= 12) {
+        setErr('Inches must be 0–11'); return;
+      }
+      send = Math.round((ft * 12 + inch) * 2.54);
+    } else {
+      send = kind === 'number' ? Number(value) : value;
+      if (kind === 'number' && (!Number.isFinite(send) || send <= 0)) {
+        setErr('Enter a positive number'); return;
+      }
     }
     startPending(async () => {
       try {
@@ -181,6 +209,30 @@ export function EditableField({
           <option value="">(select)</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
+      ) : isHeight ? (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <input
+            autoFocus
+            type="number"
+            min={3} max={8}
+            value={heightFt}
+            onChange={(e) => setHeightFt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+            placeholder="ft"
+            style={{ ...inputStyle(), width: 64, textAlign: 'center' }}
+          />
+          <span style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)' }}>ft</span>
+          <input
+            type="number"
+            min={0} max={11}
+            value={heightInch}
+            onChange={(e) => setHeightInch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+            placeholder="in"
+            style={{ ...inputStyle(), width: 72, textAlign: 'center' }}
+          />
+          <span style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)' }}>in</span>
+        </div>
       ) : (
         <input
           autoFocus
