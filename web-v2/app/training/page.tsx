@@ -1,9 +1,9 @@
-import { TopNav } from '@/components/layout/TopNav';
 import { PhaseStrip } from '@/components/training/PhaseStrip';
 import { PlanArc } from '@/components/training/PlanArc';
 import { WeekAhead } from '@/components/training/WeekAhead';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { GeneratePlanCTA, RegeneratePlanButton } from '@/components/plan/GeneratePlanButton';
+import { FaffPageShell } from '@/components/faff/FaffPageShell';
 import { loadTrainingState } from '@/lib/coach/training-state';
 import { loadRacesState } from '@/lib/coach/races-state';
 
@@ -23,21 +23,17 @@ export default async function TrainingPage() {
   const currentWeek = training.weeks.find((w) => w.isCurrent);
   const totalWeeks = training.weeks.length;
 
-  return (
-    <main>
-      <TopNav />
-      <div style={{ padding: '40px 40px 80px', maxWidth: 1600, margin: '0 auto' }}>
-        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 56, lineHeight: 1, margin: 0, letterSpacing: '0.5px' }}>
-          {training.race && currentWeek
-            ? `${training.race.days_to_race} days to ${training.race.name}.`
-            : 'Training.'}
-        </h1>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 12, marginBottom: 28 }}>
-          {training.currentPhase ?? 'NO PLAN'}
-          {currentWeek ? ` · WEEK ${currentWeek.idx}${totalWeeks ? ` OF ${totalWeeks}` : ''}` : ''}
-          {training.weekPlanned != null ? ` · ${training.weekPlanned} MI PLANNED` : ''}
-        </div>
+  const title = training.race && currentWeek
+    ? `${training.race.days_to_race} days to ${training.race.name}.`
+    : 'Training.';
+  const eyebrowParts = [
+    training.currentPhase ?? 'NO PLAN',
+    currentWeek ? `WEEK ${currentWeek.idx}${totalWeeks ? ` OF ${totalWeeks}` : ''}` : null,
+    training.weekPlanned != null ? `${training.weekPlanned} MI PLANNED` : null,
+  ].filter(Boolean);
 
+  return (
+    <FaffPageShell title={title} eyebrow={eyebrowParts.join(' · ')} maxWidth={1600}>
         <PhaseStrip
           phases={training.phases}
           currentPhase={training.currentPhase}
@@ -108,8 +104,7 @@ export default async function TrainingPage() {
             <BriefingLoader surface="training" renderCards={false} />
           </div>
         </div>
-      </div>
-    </main>
+    </FaffPageShell>
   );
 }
 

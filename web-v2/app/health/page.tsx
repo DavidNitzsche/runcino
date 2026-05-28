@@ -1,8 +1,8 @@
-import { TopNav } from '@/components/layout/TopNav';
 import { BarChart } from '@/components/charts/HealthBars';
 import { ReadinessBreakdownView } from '@/components/readiness/ReadinessBreakdown';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { LearnCardTrigger } from '@/components/learn/LearnModal';
+import { FaffPageShell } from '@/components/faff/FaffPageShell';
 import { loadHealthState, type HealthState } from '@/lib/coach/health-state';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
@@ -24,16 +24,11 @@ export default async function HealthPage() {
     : health.watchMode === 'green' ? "Everything's green." : 'Health.';
 
   return (
-    <main>
-      <TopNav />
-      <div style={{ padding: '40px 40px 80px', maxWidth: 1440, margin: '0 auto' }}>
-        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 56, lineHeight: 1, margin: 0, color: headlineColor, letterSpacing: '0.5px' }}>
-          {headlineText}
-        </h1>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 12, marginBottom: 28 }}>
-          LONG-TERM PATTERNS · 30-DAY VIEW · WATCH MODE: {health.watchMode.toUpperCase()}
-        </div>
-
+    <FaffPageShell
+      title={headlineText}
+      titleColor={headlineColor}
+      eyebrow={`LONG-TERM PATTERNS · 30-DAY VIEW · WATCH MODE: ${health.watchMode.toUpperCase()}`}
+    >
         {/* Coach voice — loads async */}
         <div style={{
           background: health.watchMode === 'watch-red'
@@ -133,8 +128,7 @@ export default async function HealthPage() {
             sub="spm · 60-day running baseline · target band 170–180 spm"
           />
         </Grid2>
-      </div>
-    </main>
+    </FaffPageShell>
   );
 }
 

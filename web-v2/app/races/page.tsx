@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { TopNav } from '@/components/layout/TopNav';
+import { FaffPageShell } from '@/components/faff/FaffPageShell';
 import { loadRacesState, type RaceRow } from '@/lib/coach/races-state';
 import { AddRaceButton } from '@/components/races/RaceCrudUI';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
@@ -11,22 +11,18 @@ const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-99
 export default async function RacesPage() {
   const races = await loadRacesState(DAVID_USER_ID);
 
-  return (
-    <main>
-      <TopNav />
-      <div style={{ padding: '40px 40px 80px', maxWidth: 1440, margin: '0 auto' }}>
-        <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 56, lineHeight: 1, margin: 0, letterSpacing: '0.5px' }}>
-          {races.aRace ? 'Races.' : "What's next?"}
-        </h1>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 12, marginBottom: 28 }}>
-          {races.aRaces.length > 0
-            ? `${races.aRaces.length} A-RACE${races.aRaces.length === 1 ? '' : 'S'} · `
-            : 'NO A-RACE SET · '}
-          {races.upcomingBs.length} B-RACE{races.upcomingBs.length === 1 ? '' : 'S'} ·{' '}
-          {races.upcomingCs.length} C-RACE{races.upcomingCs.length === 1 ? '' : 'S'} ·{' '}
-          {races.totalPast} PAST
-        </div>
+  const title = races.aRace ? 'Races.' : "What's next?";
+  const eyebrow = [
+    races.aRaces.length > 0
+      ? `${races.aRaces.length} A-RACE${races.aRaces.length === 1 ? '' : 'S'}`
+      : 'NO A-RACE SET',
+    `${races.upcomingBs.length} B-RACE${races.upcomingBs.length === 1 ? '' : 'S'}`,
+    `${races.upcomingCs.length} C-RACE${races.upcomingCs.length === 1 ? '' : 'S'}`,
+    `${races.totalPast} PAST`,
+  ].join(' · ');
 
+  return (
+    <FaffPageShell title={title} eyebrow={eyebrow}>
         {/* Coach voice opens the page — loads async */}
         <div style={{
           background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
@@ -73,8 +69,7 @@ export default async function RacesPage() {
             </div>
           </>
         )}
-      </div>
-    </main>
+    </FaffPageShell>
   );
 }
 

@@ -1,0 +1,72 @@
+/* FaffPageShell · shared page chrome for /training, /races, /health,
+ * /log, /profile. Mirrors the locked display recipe (Oswald 700,
+ * -0.015em tracking, 0.86 line-height) so headers look the same across
+ * surfaces. */
+
+.shell {
+  margin: 0 auto;
+  /* Children pages own their bottom padding (LogTable, profile grids,
+   * etc. set their own rhythm). The shell only owns the header band. */
+}
+
+.band {
+  padding: 40px 40px 24px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.title {
+  /* Display recipe · Oswald 700 + -0.015em tracking + 0.86 line-height
+   * (per design/tokens/typography.css §"THE DISPLAY RECIPE"). Mirrors
+   * Poster.module.css .verb so the secondary surfaces inherit the same
+   * hero treatment as /today's main verb. */
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  letter-spacing: var(--f-display-tracking);
+  line-height: var(--f-display-line-height);
+  font-size: clamp(48px, 7vw, 80px);
+  color: var(--ink);
+  margin: 0;
+  /* Long titles like "Everything's green." wrap on word boundary,
+   * never ellipsis, never break inside a word. */
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.accent {
+  flex-shrink: 0;
+  /* Sit on the title's optical baseline — small visual offset to avoid
+   * looking like the accent is floating above the cap height. */
+  margin-top: 4px;
+}
+
+.eyebrow {
+  font-family: var(--f-body);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--mute);
+  margin-top: 14px;
+}
+
+.subhead {
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--mute);
+  letter-spacing: 0.2px;
+  margin-top: 8px;
+}
+
+.content {
+  /* Pages control their own internal padding/grid — the shell stops at
+   * the band's bottom edge. */
+  padding: 0 40px 80px;
+}

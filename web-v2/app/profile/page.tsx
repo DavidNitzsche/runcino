@@ -1,9 +1,9 @@
-import { TopNav } from '@/components/layout/TopNav';
 import { ProfileGapInput } from '@/components/profile/ProfileGapInput';
 import { EditableField } from '@/components/profile/EditableField';
 import { AddShoeButton, ShoeEditCard } from '@/components/profile/ShoeCrudUI';
 import { SettingsLinkTrigger } from '@/components/settings/SettingsModal';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
+import { FaffPageShell } from '@/components/faff/FaffPageShell';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 
@@ -17,40 +17,41 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const profile = await loadProfileState(DAVID_USER_ID);
   const initials = (profile.identity.full_name ?? 'DN').split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
 
+  const eyebrowParts = [
+    profile.identity.full_name ?? 'IDENTITY',
+    profile.identity.sex ?? null,
+    profile.identity.age != null ? String(profile.identity.age) : null,
+    profile.identity.city ?? null,
+  ].filter(Boolean);
+
+  const avatarAccent = (
+    <div style={{
+      width: 96, height: 96, borderRadius: '50%',
+      background: 'linear-gradient(135deg, var(--learn), var(--race))',
+      color: '#1a0f33',
+      fontFamily: 'var(--f-display)', fontSize: 40,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: '1px',
+    }}>
+      {initials}
+    </div>
+  );
+
   return (
-    <main>
-      <TopNav />
-      <div style={{ padding: '40px 40px 80px', maxWidth: 1440, margin: '0 auto' }}>
-        {/* IDENTITY */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 28, marginBottom: 44 }}>
-          <div style={{
-            width: 120, height: 120, borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--learn), var(--race))',
-            color: '#1a0f33',
-            fontFamily: 'var(--f-display)', fontSize: 52,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: '1px',
-            flexShrink: 0,
-          }}>
-            {initials}
+    <FaffPageShell
+      title="Profile."
+      eyebrow={eyebrowParts.join(' · ').toUpperCase()}
+      accent={avatarAccent}
+    >
+        {/* Training-for line — kept under the band, between identity + coach */}
+        {profile.nextARace && (
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', marginBottom: 24 }}>
+            Training for{' '}
+            <span style={{ color: 'var(--race)', fontWeight: 600 }}>
+              {profile.nextARace.name} · {profile.nextARace.days_to_race} days
+            </span>
+            {profile.nextARace.goal ? ` · goal ${profile.nextARace.goal}` : ''}
           </div>
-          <div>
-            <h1 style={{ fontFamily: 'var(--f-display)', fontSize: 72, lineHeight: 0.95, margin: 0, letterSpacing: '0.5px' }}>
-              {profile.identity.full_name ?? 'Runner'}
-            </h1>
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 15, color: 'rgba(246,247,248,0.60)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 12, fontWeight: 600 }}>
-              {profile.identity.sex ?? '—'} · {profile.identity.age ?? '—'} · {profile.identity.city ?? '—'}
-            </div>
-            {profile.nextARace && (
-              <div style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', marginTop: 10 }}>
-                Training for{' '}
-                <span style={{ color: 'var(--race)', fontWeight: 600 }}>
-                  {profile.nextARace.name} · {profile.nextARace.days_to_race} days
-                </span>
-                {profile.nextARace.goal ? ` · goal ${profile.nextARace.goal}` : ''}
-              </div>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Audit 2026-05-27: PROFILE_IDENTITY prompt existed but no
             BriefingLoader was rendering it. Coach intro now actually shows. */}
@@ -237,8 +238,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginTop: 14, lineHeight: 1.55 }}>
           Click any shoe to edit mileage or retire. Coach only chimes in here when there's a real flag.
         </div>
-      </div>
-    </main>
+    </FaffPageShell>
   );
 }
 
