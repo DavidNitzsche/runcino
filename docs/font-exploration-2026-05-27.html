@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / font exploration · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Inter+Tight:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Archivo:wght@400;500;600;700;800;900&family=Archivo+Black&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#06080b;color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{font-family:'Inter',-apple-system,system-ui,sans-serif;padding:48px 32px 200px}
+.wrap{max-width:1440px;margin:0 auto}
+
+/* Deck chrome — use Inter for navigation/meta */
+.eyebrow{font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.deck-hero{padding:24px 0 56px;border-bottom:1px solid var(--line);margin-bottom:64px}
+h1.title{font-family:'Bebas Neue',sans-serif;font-size:140px;line-height:0.88;letter-spacing:0.8px;margin:18px 0 12px;font-weight:400}
+.title .a{background:linear-gradient(135deg,#3EBD41 0%,#27B4E0 30%,#B084FF 60%,#FF8847 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:17px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:880px;margin-top:24px}
+.lede strong{color:var(--ink)}
+.lede em{color:var(--race);font-style:normal;font-weight:600}
+
+h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;margin:96px 0 8px;line-height:1;font-weight:400}
+.sec-tag{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:2.2px;text-transform:uppercase;color:var(--mute);font-weight:600;margin-bottom:32px;display:flex;align-items:center;gap:12px}
+.sec-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.kicker{font-size:15px;line-height:1.6;color:rgba(246,247,248,0.75);max-width:920px;margin-bottom:48px}
+.kicker strong{color:var(--ink)}
+
+/* ─── PROBLEM PANEL — current INTERVALS card with annotations ─── */
+.problem-panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:32px;margin-bottom:80px}
+.problem-panel .lbl{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.8px;color:var(--mute);font-weight:600;text-transform:uppercase;margin-bottom:14px}
+
+/* ─── FONT SPEC ROW ─── */
+.font-row{margin:48px 0;padding:36px 0;border-top:1px solid var(--line)}
+.font-row-head{display:flex;justify-content:space-between;align-items:flex-end;gap:48px;margin-bottom:28px}
+.font-row-head .left h3{font-family:'Bebas Neue',sans-serif;font-size:60px;letter-spacing:0.5px;line-height:1;margin:0;font-weight:400}
+.font-row-head .left h3 .name-in-font{display:inline-block;margin-left:6px}
+.font-row-head .left .meta{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.6px;color:var(--mute);font-weight:600;text-transform:uppercase;margin-top:8px;display:flex;gap:14px;align-items:center}
+.font-row-head .left .meta .tag{font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.4px;padding:3px 9px;border-radius:99px;background:rgba(255,255,255,0.06);color:var(--ink);font-weight:600;text-transform:uppercase}
+.font-row-head .left .meta .tag.display{background:rgba(255,136,71,0.16);color:var(--race)}
+.font-row-head .left .meta .tag.body{background:rgba(62,189,65,0.16);color:var(--green)}
+.font-row-head .left .meta .tag.mono{background:rgba(39,180,224,0.14);color:var(--dist)}
+.font-row-head .left .blurb{font-size:13.5px;line-height:1.55;color:rgba(246,247,248,0.7);max-width:680px;margin-top:14px}
+.font-row-head .left .blurb strong{color:var(--ink)}
+.font-row-head .right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
+.font-row-head .right .verdict{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.6px;font-weight:700;padding:6px 12px;border-radius:99px;text-transform:uppercase}
+.font-row-head .right .verdict.keep{background:rgba(62,189,65,0.16);color:var(--green)}
+.font-row-head .right .verdict.replace{background:rgba(252,77,100,0.14);color:var(--over)}
+.font-row-head .right .verdict.maybe{background:rgba(243,173,56,0.14);color:var(--goal)}
+.font-row-head .right .url{font-family:'Geist Mono',monospace;font-size:11px;color:var(--mute);background:rgba(255,255,255,0.04);padding:3px 9px;border-radius:5px}
+
+/* size ladder */
+.ladder{display:grid;grid-template-columns:1.5fr 1fr;gap:24px;align-items:start}
+.ladder-left{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}
+.ladder-right{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+
+.size-sample{padding:14px 0;border-bottom:1px solid var(--line2);display:grid;grid-template-columns:80px 1fr;gap:20px;align-items:baseline}
+.size-sample:last-child{border-bottom:0}
+.size-sample .size-label{font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase;line-height:1.2;padding-top:6px}
+.size-sample .size-label small{display:block;font-size:8.5px;letter-spacing:1px;color:var(--dim);font-weight:500;margin-top:2px}
+.size-sample .sample{line-height:1;color:var(--ink)}
+
+/* numeric sample card */
+.numeric-card{padding:0}
+.numeric-card .nh{font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase;margin-bottom:14px}
+.numeric-sample{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line2)}
+.numeric-sample:last-child{border-bottom:0;padding-bottom:0;margin-bottom:0}
+.numeric-sample .item{display:flex;flex-direction:column;gap:4px}
+.numeric-sample .v{line-height:1;color:var(--ink)}
+.numeric-sample .l{font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:1.2px;color:var(--mute);font-weight:600;text-transform:uppercase}
+
+/* Tile-style sample inside ladder right column */
+.tile-sample{background:rgba(255,255,255,0.025);border:1px solid var(--line2);border-radius:10px;padding:14px;margin-top:14px}
+.tile-sample .tlbl{font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase;margin-bottom:6px}
+.tile-sample .tv{font-size:30px;line-height:1;color:var(--ink)}
+.tile-sample .tm{font-size:11px;line-height:1.45;color:rgba(246,247,248,0.6);margin-top:6px}
+.tile-sample .tm strong{color:rgba(246,247,248,0.9)}
+
+/* recommendation cards */
+.rec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:32px 0 80px}
+.rec{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}
+.rec .role{font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.8px;color:var(--learn);font-weight:700;margin-bottom:14px;text-transform:uppercase}
+.rec h4{font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:0.5px;line-height:1;margin:0 0 8px;font-weight:400}
+.rec .when{font-size:13px;line-height:1.55;color:rgba(246,247,248,0.78);margin:0 0 14px}
+.rec .when strong{color:var(--ink)}
+.rec .sizes{display:flex;flex-direction:column;gap:5px;padding-top:14px;border-top:1px solid var(--line)}
+.rec .sizes .row{display:flex;justify-content:space-between;font-size:12px;font-family:'Inter',sans-serif;font-weight:500;color:rgba(246,247,248,0.75)}
+.rec .sizes .row code{font-family:'Geist Mono',monospace;font-size:10.5px;background:rgba(255,255,255,0.04);padding:1px 5px;border-radius:3px;color:var(--ink)}
+
+/* before/after */
+.before-after{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:32px 0 80px}
+.ba{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;position:relative}
+.ba .ba-label{position:absolute;top:14px;right:14px;font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:1.6px;font-weight:700;padding:4px 10px;border-radius:99px;text-transform:uppercase}
+.ba.before .ba-label{background:rgba(252,77,100,0.14);color:var(--over)}
+.ba.after .ba-label{background:rgba(62,189,65,0.16);color:var(--green)}
+
+/* common workout-card-mockup styling — used in problem panel + before/after */
+.wc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 24px}
+.wc .wc-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.wc .wc-head .wc-lbl{letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);font-weight:600}
+.wc .wc-head .wc-v{}
+.wc .seg-bar{display:flex;gap:2px;height:14px;border-radius:5px;overflow:hidden;margin:6px 0 6px}
+.wc .seg-bar div{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;letter-spacing:0.6px}
+.wc .seg-meta{display:flex;justify-content:space-between;margin-bottom:14px;color:var(--mute);font-weight:600}
+.wc .rep-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:14px}
+.wc .rep{padding:10px 8px;background:rgba(243,173,56,0.08);border:1px solid rgba(243,173,56,0.22);border-radius:6px;text-align:center}
+.wc .rep .rl{font-weight:700;color:var(--goal)}
+.wc .rep .rv{color:var(--ink);line-height:1;margin-top:4px}
+.wc .rep .rd{color:var(--mute);margin-top:2px}
+.wc .footer-row{display:flex;gap:14px;padding-top:14px;border-top:1px solid var(--line2)}
+.wc .footer-row .fcol{flex:1}
+.wc .footer-row .fl{letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase}
+.wc .footer-row .fv{margin-top:3px;line-height:1}
+
+/* BEFORE-card sizes (current stack) */
+.ba.before .wc .wc-head .wc-lbl{font-family:'Oswald',sans-serif;font-size:10px}
+.ba.before .wc .wc-head .wc-v{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:0.3px;color:var(--goal)}
+.ba.before .wc .seg-bar div{font-family:'Oswald',sans-serif;font-size:8px}
+.ba.before .wc .seg-meta{font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:0.6px}
+.ba.before .wc .rep .rl{font-family:'Oswald',sans-serif;font-size:8px;letter-spacing:1.2px}
+.ba.before .wc .rep .rv{font-family:'Bebas Neue',sans-serif;font-size:18px}
+.ba.before .wc .rep .rd{font-size:9px}
+.ba.before .wc .footer-row .fl{font-family:'Oswald',sans-serif;font-size:9px}
+.ba.before .wc .footer-row .fv{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--ink)}
+.ba.before .wc .footer-row .fv.amber{color:var(--goal)}
+
+/* AFTER-card sizes (proposed stack) */
+.ba.after .wc .wc-head .wc-lbl{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:1.2px}
+.ba.after .wc .wc-head .wc-v{font-family:'Inter',sans-serif;font-size:16px;font-weight:600;color:var(--goal);font-variant-numeric:tabular-nums}
+.ba.after .wc .seg-bar div{font-family:'Inter',sans-serif;font-size:9px;font-weight:700;letter-spacing:0.4px}
+.ba.after .wc .seg-meta{font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:0.1px}
+.ba.after .wc .rep .rl{font-family:'Inter',sans-serif;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.ba.after .wc .rep .rv{font-family:'Inter',sans-serif;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.2px}
+.ba.after .wc .rep .rd{font-family:'Inter',sans-serif;font-size:10px;font-weight:500}
+.ba.after .wc .footer-row .fl{font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.ba.after .wc .footer-row .fv{font-family:'Inter',sans-serif;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);letter-spacing:-0.2px}
+.ba.after .wc .footer-row .fv.amber{color:var(--goal)}
+
+/* endnote */
+.endnote{margin-top:120px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:'Bebas Neue',sans-serif;font-size:54px;letter-spacing:0.6px;margin:0 0 18px;font-weight:400}
+.endnote p{font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:880px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+.endnote p code{font-family:'Geist Mono',monospace;font-size:12px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px}
+
+@media (max-width:1100px){.ladder{grid-template-columns:1fr}.rec-grid{grid-template-columns:1fr}.before-after{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO -->
+<div class="deck-hero">
+  <div class="eyebrow">faff · font exploration · 2026-05-27</div>
+  <h1 class="title">when type<br><span class="a">breaks down.</span></h1>
+  <div class="lede">
+    Bebas Neue is heroic at <strong>90px+</strong>. It does what no other free font does — shouts. But the same condensed letterforms that make <em>RUN EASY.</em> work at 120px <strong>start to crumble below 14px</strong>, exactly where workout details, tile labels, and rep tables need to live. Oswald has the same problem. Inter holds up at small sizes but lacks the heroic feel up top.
+  </div>
+  <div class="lede" style="color:rgba(246,247,248,0.58);font-size:14px;margin-top:14px">
+    Below: the problem on a real card · twelve candidate fonts run through a size ladder · pairing rules · a proposed FAFF stack that fixes the legibility gap without losing the brand voice up top.
+  </div>
+</div>
+
+<!-- ════════════════════ THE PROBLEM ════════════════════ -->
+<section>
+  <div class="eyebrow">01 · the problem</div>
+  <h2 class="sec">where type<br>falls apart.</h2>
+  <div class="sec-tag"><span class="dot" style="background:var(--over)"></span>current stack: Bebas + Inter + Oswald · works heroic, fails detail</div>
+  <div class="kicker">The INTERVALS workout-breakdown card below uses our current stack as-rendered today. <strong>Where it works:</strong> the big rep numbers (3:02 at 18px Bebas) hold up. <strong>Where it falls apart:</strong> the WU/CD segment labels at 8px Oswald, the "1.5 mi · ~13 min" callouts at 9px Oswald, the per-rep "R1/R2/R3" labels at 8px Oswald, and the footer row's mixed small-text. The screen invites you to look closer · the type rejects the look.</div>
+
+  <div class="problem-panel">
+    <div class="lbl">Current INTERVALS card · screenshot from system-propagation deck</div>
+    <div class="ba before" style="background:transparent;border:0;padding:0">
+      <div class="wc">
+        <div class="wc-head"><div class="wc-lbl">Workout · 6 × 800m</div><div class="wc-v">6.0 mi · ~48 min</div></div>
+        <div class="seg-bar">
+          <div style="flex:3;background:var(--rest);opacity:0.85">WU</div>
+          <div style="flex:1.2;background:var(--goal)">1</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">2</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">3</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">4</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">5</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">6</div>
+          <div style="flex:3;background:var(--rest);opacity:0.85">CD</div>
+        </div>
+        <div class="seg-meta"><span>1.5 mi · ~13 min</span><span style="color:var(--goal)">6 × 800m work · ~22 min</span><span>1.5 mi · ~13 min</span></div>
+        <div class="rep-grid">
+          <div class="rep"><div class="rl">R1</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R2</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R3</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R4</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R5</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R6</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+        </div>
+        <div class="footer-row">
+          <div class="fcol"><div class="fl">Rest interval</div><div class="fv">400m jog · ~2:30</div></div>
+          <div class="fcol"><div class="fl">HR target</div><div class="fv amber">168 · Z3 upper</div></div>
+          <div class="fcol"><div class="fl">Pace context</div><div class="fv">6:08/mi · 10k</div></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:24px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding-top:24px;border-top:1px solid var(--line)">
+      <div><div style="font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.6px;color:var(--over);font-weight:700;text-transform:uppercase;margin-bottom:6px">Problem 01 · condensed at small</div><p style="font-size:12px;line-height:1.55;color:rgba(246,247,248,0.75);margin:0">Bebas Neue + Oswald are both <strong style="color:var(--ink)">condensed</strong>. At &lt;14px the narrow letterforms blur together. "3:02" at 18px is fine but "800m" at 9px reads like static.</p></div>
+      <div><div style="font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.6px;color:var(--over);font-weight:700;text-transform:uppercase;margin-bottom:6px">Problem 02 · no tabular nums</div><p style="font-size:12px;line-height:1.55;color:rgba(246,247,248,0.75);margin:0">Bebas digits aren't tabular — the 3:02 across six tiles doesn't align cleanly. <strong style="color:var(--ink)">Data tables need fixed-width digits.</strong></p></div>
+      <div><div style="font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.6px;color:var(--over);font-weight:700;text-transform:uppercase;margin-bottom:6px">Problem 03 · all-caps fatigue</div><p style="font-size:12px;line-height:1.55;color:rgba(246,247,248,0.75);margin:0">Bebas is caps-only. Used everywhere it shouts everywhere — robs the actual hero verbs of their punch. <strong style="color:var(--ink)">Reserve impact for impact moments.</strong></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ TYPE PRIMER ════════════════════ -->
+<section>
+  <div class="eyebrow">02 · type primer</div>
+  <h2 class="sec">three jobs.<br>three fonts.</h2>
+  <div class="sec-tag"><span class="dot" style="background:var(--learn)"></span>display · body · mono — never one font doing all three</div>
+  <div class="kicker">Any serious type system splits into three roles. <strong>Display</strong> for the moments that should sing — hero verbs, race countdowns, single-number takeovers. <strong>Body</strong> for everything you actually read — descriptions, labels, prose, tile metadata. <strong>Mono / tabular</strong> for data alignment — tile grids, splits tables, code-like data where columns must line up. Pick the best font for each job, don't try to make one font do all three.</div>
+</section>
+
+<!-- ════════════════════ DISPLAY CANDIDATES ════════════════════ -->
+<section>
+  <div class="eyebrow">03 · display candidates</div>
+  <h2 class="sec">the hero<br>fonts.</h2>
+  <div class="sec-tag"><span class="dot" style="background:var(--race)"></span>used at ≥24px · the impact moments</div>
+</section>
+
+<!-- ─── BEBAS NEUE ─── -->
+<div class="font-row">
+  <div class="font-row-head">
+    <div class="left">
+      <h3>BEBAS NEUE <span style="font-family:'Bebas Neue';font-weight:400" class="name-in-font">— "BEBAS NEUE"</span></h3>
+      <div class="meta"><span class="tag display">display</span><span>Condensed sans · all-caps · regular only</span></div>
+      <div class="blurb">Our current display. <strong>Shouts unlike anything else free.</strong> 124px RUN EASY. is the brand voice — keep it. But at &lt;20px the condensed letterforms blur, and the all-caps-only nature makes it claustrophobic in long contexts.</div>
+    </div>
+    <div class="right">
+      <span class="verdict keep">KEEP · ≥24px only</span>
+      <span class="url">--f-display</span>
+    </div>
+  </div>
+  <div class="ladder">
+    <div class="ladder-left">
+      <div class="size-sample"><div class="size-label">Hero<small>140px / 0.85lh</small></div><div class="sample" style="font-family:'Bebas Neue';font-size:140px;line-height:0.85;letter-spacing:0.5px">RUN EASY.</div></div>
+      <div class="size-sample"><div class="size-label">Large<small>80px</small></div><div class="sample" style="font-family:'Bebas Neue';font-size:80px;line-height:1;letter-spacing:0.5px">NAILED IT.</div></div>
+      <div class="size-sample"><div class="size-label">Medium<small>40px</small></div><div class="sample" style="font-family:'Bebas Neue';font-size:40px;line-height:1;letter-spacing:0.5px">14 DAYS · LONDON</div></div>
+      <div class="size-sample"><div class="size-label">Small<small>22px</small></div><div class="sample" style="font-family:'Bebas Neue';font-size:22px;line-height:1;letter-spacing:0.4px">REGENT'S CANAL · 5.9 MI · FLAT</div></div>
+      <div class="size-sample"><div class="size-label">Tiny<small>14px</small></div><div class="sample" style="font-family:'Bebas Neue';font-size:14px;line-height:1.1;letter-spacing:0.3px">SOMETHING SMALL BLURS AT THIS SCALE</div></div>
+      <div class="size-sample"><div class="size-label">Micro<small>10px</small></div><div class="sample" style="font-family:'Bebas Neue';font-size:10px;line-height:1.2;letter-spacing:0.4px;color:var(--mute)">REST · HR TARGET · PACE CONTEXT — UNREADABLE</div></div>
+    </div>
+    <div class="ladder-right">
+      <div class="numeric-card">
+        <div class="nh">Numeric samples · digits</div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Bebas Neue';font-size:48px">3:02</div><div class="l">48px</div></div><div class="item"><div class="v" style="font-family:'Bebas Neue';font-size:32px">1.24</div><div class="l">32px</div></div></div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Bebas Neue';font-size:22px">169 · 8:12</div><div class="l">22px · still OK</div></div><div class="item"><div class="v" style="font-family:'Bebas Neue';font-size:14px;color:var(--mute)">7.2h · 38ms · 48</div><div class="l">14px · blurs</div></div></div>
+        <div class="tile-sample">
+          <div class="tlbl" style="font-family:'Bebas Neue';letter-spacing:1.4px">PACE · TARGET</div>
+          <div class="tv" style="font-family:'Bebas Neue';color:var(--goal)">8:25</div>
+          <div class="tm" style="font-family:'Bebas Neue';font-size:13px;letter-spacing:0.6px;text-transform:uppercase">VS 8:12 · 13S SOFT</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ARCHIVO BLACK ─── -->
+<div class="font-row">
+  <div class="font-row-head">
+    <div class="left">
+      <h3>ARCHIVO BLACK <span style="font-family:'Archivo Black'" class="name-in-font">— "Archivo Black"</span></h3>
+      <div class="meta"><span class="tag display">display</span><span>Wide black sans · mixed case · 900 weight only</span></div>
+      <div class="blurb">A <strong>wide impactful alternative</strong> to Bebas. Mixed-case capable so you can write "Nailed it." or "GO LONG" both. Heavier strokes hold up better at medium sizes (40-60px) than Bebas does. Less condensed, more architectural.</div>
+    </div>
+    <div class="right">
+      <span class="verdict maybe">MAYBE · runner-up display</span>
+      <span class="url">--f-display-alt</span>
+    </div>
+  </div>
+  <div class="ladder">
+    <div class="ladder-left">
+      <div class="size-sample"><div class="size-label">Hero<small>140px / 0.85lh</small></div><div class="sample" style="font-family:'Archivo Black';font-size:128px;line-height:0.9;letter-spacing:-2px">Run Easy.</div></div>
+      <div class="size-sample"><div class="size-label">Large<small>80px</small></div><div class="sample" style="font-family:'Archivo Black';font-size:72px;line-height:0.95;letter-spacing:-1px">Nailed It.</div></div>
+      <div class="size-sample"><div class="size-label">Medium<small>40px</small></div><div class="sample" style="font-family:'Archivo Black';font-size:40px;line-height:1;letter-spacing:-0.5px">14 days · London</div></div>
+      <div class="size-sample"><div class="size-label">Small<small>22px</small></div><div class="sample" style="font-family:'Archivo Black';font-size:22px;line-height:1.1">Regent's Canal · 5.9 mi · flat</div></div>
+      <div class="size-sample"><div class="size-label">Tiny<small>14px</small></div><div class="sample" style="font-family:'Archivo Black';font-size:14px;line-height:1.25">Still legible at small sizes</div></div>
+    </div>
+    <div class="ladder-right">
+      <div class="numeric-card">
+        <div class="nh">Numeric samples</div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Archivo Black';font-size:48px;letter-spacing:-1px">3:02</div><div class="l">48px</div></div><div class="item"><div class="v" style="font-family:'Archivo Black';font-size:32px;letter-spacing:-0.5px">1.24</div><div class="l">32px</div></div></div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Archivo Black';font-size:22px">8:12</div><div class="l">22px · solid</div></div><div class="item"><div class="v" style="font-family:'Archivo Black';font-size:14px;color:var(--mute)">7.2h</div><div class="l">14px · OK</div></div></div>
+        <div class="tile-sample">
+          <div class="tlbl">Pace · target</div>
+          <div class="tv" style="font-family:'Archivo Black';color:var(--goal);letter-spacing:-0.5px">8:25</div>
+          <div class="tm">vs 8:12. <strong>13s soft.</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SPACE GROTESK ─── -->
+<div class="font-row">
+  <div class="font-row-head">
+    <div class="left">
+      <h3>SPACE GROTESK <span style="font-family:'Space Grotesk';font-weight:700" class="name-in-font">— Space Grotesk</span></h3>
+      <div class="meta"><span class="tag display">display</span><span>Geometric · 5 weights · slight character</span></div>
+      <div class="blurb">More <strong>technical character</strong> than Bebas or Archivo. Slightly Bauhaus-influenced. Works at every size from hero down to body. Could carry the display role <em>and</em> body if we wanted a one-font system (less ideal but possible).</div>
+    </div>
+    <div class="right">
+      <span class="verdict maybe">MAYBE · technical-leaning brand</span>
+      <span class="url">--f-display-tech</span>
+    </div>
+  </div>
+  <div class="ladder">
+    <div class="ladder-left">
+      <div class="size-sample"><div class="size-label">Hero<small>120px / 700wt</small></div><div class="sample" style="font-family:'Space Grotesk';font-size:120px;line-height:0.92;letter-spacing:-3px;font-weight:700">Run Easy.</div></div>
+      <div class="size-sample"><div class="size-label">Large<small>72px / 700wt</small></div><div class="sample" style="font-family:'Space Grotesk';font-size:72px;line-height:0.98;letter-spacing:-2px;font-weight:700">Nailed It.</div></div>
+      <div class="size-sample"><div class="size-label">Medium<small>40px / 600wt</small></div><div class="sample" style="font-family:'Space Grotesk';font-size:40px;line-height:1.05;letter-spacing:-1px;font-weight:600">14 days · London</div></div>
+      <div class="size-sample"><div class="size-label">Small<small>22px / 600wt</small></div><div class="sample" style="font-family:'Space Grotesk';font-size:22px;line-height:1.2;font-weight:600">Regent's Canal · 5.9 mi · flat</div></div>
+      <div class="size-sample"><div class="size-label">Tiny<small>14px / 500wt</small></div><div class="sample" style="font-family:'Space Grotesk';font-size:14px;line-height:1.4;font-weight:500">Clean and readable at every size</div></div>
+    </div>
+    <div class="ladder-right">
+      <div class="numeric-card">
+        <div class="nh">Numeric · with character</div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Space Grotesk';font-size:48px;font-weight:700;letter-spacing:-1.5px">3:02</div><div class="l">48px</div></div><div class="item"><div class="v" style="font-family:'Space Grotesk';font-size:32px;font-weight:700;letter-spacing:-1px">1.24</div><div class="l">32px</div></div></div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Space Grotesk';font-size:22px;font-weight:700">8:12</div><div class="l">22px · sharp</div></div><div class="item"><div class="v" style="font-family:'Space Grotesk';font-size:14px;font-weight:500;color:var(--mute)">7.2h · 38ms</div><div class="l">14px · good</div></div></div>
+        <div class="tile-sample">
+          <div class="tlbl" style="font-family:'Space Grotesk';font-weight:600">Pace · target</div>
+          <div class="tv" style="font-family:'Space Grotesk';font-weight:700;color:var(--goal);letter-spacing:-1px">8:25</div>
+          <div class="tm" style="font-family:'Space Grotesk';font-weight:500">vs 8:12. <strong style="font-weight:700">13s soft.</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ BODY CANDIDATES ════════════════════ -->
+<section style="margin-top:80px">
+  <div class="eyebrow">04 · body candidates</div>
+  <h2 class="sec">the workhorse<br>fonts.</h2>
+  <div class="sec-tag"><span class="dot" style="background:var(--green)"></span>used at 11–22px · everything you read</div>
+</section>
+
+<!-- ─── INTER ─── -->
+<div class="font-row">
+  <div class="font-row-head">
+    <div class="left">
+      <h3>INTER <span style="font-family:'Inter';font-weight:700" class="name-in-font">— Inter</span></h3>
+      <div class="meta"><span class="tag body">body</span><span>Neutral sans · 9 weights · tabular nums · variable</span></div>
+      <div class="blurb">Our current body. <strong>The most legible neutral sans on the web.</strong> Tabular-num OpenType feature solves data alignment. 9 weights cover everything. <em>This stays.</em> The play: also use Inter at heavy weights (700-800) for small labels where we currently use Oswald.</div>
+    </div>
+    <div class="right">
+      <span class="verdict keep">KEEP · workhorse</span>
+      <span class="url">--f-body</span>
+    </div>
+  </div>
+  <div class="ladder">
+    <div class="ladder-left">
+      <div class="size-sample"><div class="size-label">Body large<small>22px / 600wt</small></div><div class="sample" style="font-family:'Inter';font-size:22px;line-height:1.3;font-weight:600;letter-spacing:-0.2px">Easy 5.8 in pure Z2.</div></div>
+      <div class="size-sample"><div class="size-label">Body<small>15px / 500wt</small></div><div class="sample" style="font-family:'Inter';font-size:15px;line-height:1.55;font-weight:500">HRV came in at 38 — down 7 from your trailing average. Sleep was fine, body's just asking for the easy day we promised it.</div></div>
+      <div class="size-sample"><div class="size-label">Body small<small>13px / 500wt</small></div><div class="sample" style="font-family:'Inter';font-size:13px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.78)">Negative split tendency — mile 3 the fastest. Negligible spread (18s) — body found its rhythm.</div></div>
+      <div class="size-sample"><div class="size-label">Label small<small>11px / 700wt</small></div><div class="sample" style="font-family:'Inter';font-size:11px;line-height:1.4;font-weight:700;letter-spacing:0.6px;text-transform:uppercase">Pace · target · current pace · drift</div></div>
+      <div class="size-sample"><div class="size-label">Micro<small>9px / 700wt</small></div><div class="sample" style="font-family:'Inter';font-size:9px;line-height:1.5;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mute)">R1 R2 R3 R4 R5 R6 — STILL CLEAN AT 9PX</div></div>
+    </div>
+    <div class="ladder-right">
+      <div class="numeric-card">
+        <div class="nh">Numeric · with tabular-nums</div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Inter';font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-1.5px">3:02</div><div class="l">48px tabular</div></div><div class="item"><div class="v" style="font-family:'Inter';font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-1px">1.24</div><div class="l">32px tabular</div></div></div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Inter';font-size:22px;font-weight:700;font-variant-numeric:tabular-nums">8:12 · 169</div><div class="l">22px aligns</div></div><div class="item"><div class="v" style="font-family:'Inter';font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--mute)">7.2h · 38 · 48</div><div class="l">14px aligns</div></div></div>
+        <div class="tile-sample">
+          <div class="tlbl" style="font-family:'Inter';font-weight:600;letter-spacing:1.2px">Pace · target</div>
+          <div class="tv" style="font-family:'Inter';font-weight:700;font-variant-numeric:tabular-nums;color:var(--goal);letter-spacing:-0.5px">8:25</div>
+          <div class="tm" style="font-family:'Inter';font-weight:500">vs 8:12. <strong style="font-weight:700">13s soft.</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── GEIST ─── -->
+<div class="font-row">
+  <div class="font-row-head">
+    <div class="left">
+      <h3>GEIST <span style="font-family:'Geist';font-weight:700" class="name-in-font">— Geist</span></h3>
+      <div class="meta"><span class="tag body">body</span><span>Modern sans · 9 weights · Vercel's font · tabular nums</span></div>
+      <div class="blurb">Newer · more <strong>technical character</strong> than Inter without being weird. Designed alongside Geist Mono — they pair perfectly. Slightly more contemporary feeling. Could replace Inter wholesale if we want a brand-distinctive body.</div>
+    </div>
+    <div class="right">
+      <span class="verdict maybe">MAYBE · if we want distinct</span>
+      <span class="url">--f-body-alt</span>
+    </div>
+  </div>
+  <div class="ladder">
+    <div class="ladder-left">
+      <div class="size-sample"><div class="size-label">Body large<small>22px / 600wt</small></div><div class="sample" style="font-family:'Geist';font-size:22px;line-height:1.3;font-weight:600;letter-spacing:-0.3px">Easy 5.8 in pure Z2.</div></div>
+      <div class="size-sample"><div class="size-label">Body<small>15px / 500wt</small></div><div class="sample" style="font-family:'Geist';font-size:15px;line-height:1.55;font-weight:500">HRV came in at 38 — down 7 from your trailing average. Sleep was fine, body's just asking for the easy day we promised it.</div></div>
+      <div class="size-sample"><div class="size-label">Body small<small>13px / 500wt</small></div><div class="sample" style="font-family:'Geist';font-size:13px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.78)">Negative split tendency — mile 3 the fastest. Negligible spread (18s) — body found its rhythm.</div></div>
+      <div class="size-sample"><div class="size-label">Label small<small>11px / 700wt</small></div><div class="sample" style="font-family:'Geist';font-size:11px;line-height:1.4;font-weight:700;letter-spacing:0.6px;text-transform:uppercase">Pace · target · current pace · drift</div></div>
+      <div class="size-sample"><div class="size-label">Micro<small>9px / 700wt</small></div><div class="sample" style="font-family:'Geist';font-size:9px;line-height:1.5;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mute)">R1 R2 R3 R4 R5 R6 — STILL CLEAN AT 9PX</div></div>
+    </div>
+    <div class="ladder-right">
+      <div class="numeric-card">
+        <div class="nh">Numeric · pairs with Geist Mono</div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Geist';font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-1.5px">3:02</div><div class="l">48px tabular</div></div><div class="item"><div class="v" style="font-family:'Geist';font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-1px">1.24</div><div class="l">32px tabular</div></div></div>
+        <div class="numeric-sample"><div class="item"><div class="v" style="font-family:'Geist';font-size:22px;font-weight:700;font-variant-numeric:tabular-nums">8:12 · 169</div><div class="l">22px</div></div><div class="item"><div class="v" style="font-family:'Geist';font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--mute)">7.2h · 38 · 48</div><div class="l">14px</div></div></div>
+        <div class="tile-sample">
+          <div class="tlbl" style="font-family:'Geist';font-weight:600;letter-spacing:1.2px">Pace · target</div>
+          <div class="tv" style="font-family:'Geist';font-weight:700;font-variant-numeric:tabular-nums;color:var(--goal);letter-spacing:-0.5px">8:25</div>
+          <div class="tm" style="font-family:'Geist';font-weight:500">vs 8:12. <strong style="font-weight:700">13s soft.</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MONO CANDIDATES ════════════════════ -->
+<section style="margin-top:80px">
+  <div class="eyebrow">05 · mono / tabular candidates</div>
+  <h2 class="sec">the data<br>fonts.</h2>
+  <div class="sec-tag"><span class="dot" style="background:var(--dist)"></span>used in tables and data-aligned tiles — every digit the same width</div>
+</section>
+
+<!-- ─── GEIST MONO ─── -->
+<div class="font-row">
+  <div class="font-row-head">
+    <div class="left">
+      <h3>GEIST MONO <span style="font-family:'Geist Mono';font-weight:500" class="name-in-font">— Geist Mono</span></h3>
+      <div class="meta"><span class="tag mono">mono</span><span>Modern fixed-width · 7 weights · pairs with Geist + Inter</span></div>
+      <div class="blurb"><strong>The data-table answer.</strong> Modern, neutral, no weird character. Designed for code but works beautifully as a tabular display in product UI. Pairs cleanly with both Inter and Geist — column-aligning rep grids, splits tables, sync timestamps.</div>
+    </div>
+    <div class="right">
+      <span class="verdict keep">KEEP · for tabular data</span>
+      <span class="url">--f-mono</span>
+    </div>
+  </div>
+  <div class="ladder">
+    <div class="ladder-left">
+      <div class="size-sample"><div class="size-label">Large<small>32px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:32px;line-height:1;font-weight:500;letter-spacing:-0.5px">3:02 · 3:04 · 3:01</div></div>
+      <div class="size-sample"><div class="size-label">Medium<small>22px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:22px;line-height:1.2;font-weight:500">8:25 · 169 · 7.2h</div></div>
+      <div class="size-sample"><div class="size-label">Body<small>14px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:14px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.85)">workout.type = intervals · 6×800m @ 3:02 · 400m jog rest</div></div>
+      <div class="size-sample"><div class="size-label">Small<small>11px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:11px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.7)">HRV ↓7 vs avg · RHR steady · sleep 7.2h · load 1.24</div></div>
+      <div class="size-sample"><div class="size-label">Micro<small>9px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:9px;line-height:1.55;font-weight:500;color:var(--mute);letter-spacing:0.1px">resolver.day_state = "easy" · plan.phase = "build"</div></div>
+    </div>
+    <div class="ladder-right">
+      <div class="numeric-card">
+        <div class="nh">Splits alignment · 6 reps</div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:14px">
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R1</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:02</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R2</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:04</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R3</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:02</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R4</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:01</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R5</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--goal);margin-top:4px;letter-spacing:-0.5px">3:06</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R6</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:00</div></div>
+        </div>
+        <p style="font-size:12px;color:rgba(246,247,248,0.65);line-height:1.55;margin:0">Every digit the same width. <strong style="color:var(--ink)">3:02 and 3:04 align column-by-column.</strong> A 1 takes the same space as a 5 — eye can scan vertically across the row.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ THE PROPOSED STACK ════════════════════ -->
+<section style="margin-top:80px">
+  <div class="eyebrow">06 · the proposed stack</div>
+  <h2 class="sec">three fonts.<br>three jobs.<br>one system.</h2>
+  <div class="sec-tag"><span class="dot"></span>display for impact · Inter for body and small · Geist Mono for data</div>
+  <div class="kicker">Keep Bebas Neue for what it's great at — the heroic moments. Promote <strong>Inter</strong> to handle small labels (replacing Oswald entirely) by leaning on its 700-800 weights with letter-spacing. Add <strong>Geist Mono</strong> for tabular data — rep grids, splits tables, anywhere digits must align column-to-column. <em>Three fonts. Clear roles. No condensed letterforms below 24px.</em></div>
+
+  <div class="rec-grid">
+    <div class="rec">
+      <div class="role" style="color:var(--race)">DISPLAY</div>
+      <h4 style="font-family:'Bebas Neue'">BEBAS NEUE</h4>
+      <p class="when"><strong>Use for impact moments only.</strong> Hero verbs (RUN EASY. · NAILED IT.) · race-week countdowns · big single numbers · poster eyebrows when caps-tracked. <em>Hard floor: 24px.</em> Below that, never.</p>
+      <div class="sizes">
+        <div class="row"><span>Hero verb</span><code>≥ 90px</code></div>
+        <div class="row"><span>Section headers</span><code>54-80px</code></div>
+        <div class="row"><span>Card titles</span><code>24-48px</code></div>
+        <div class="row" style="color:var(--over)"><span>Smaller than 24px</span><code style="background:rgba(252,77,100,0.14);color:var(--over)">never</code></div>
+      </div>
+    </div>
+    <div class="rec" style="border-color:rgba(62,189,65,0.2)">
+      <div class="role" style="color:var(--green)">BODY + LABELS</div>
+      <h4 style="font-family:'Inter';font-weight:800">Inter</h4>
+      <p class="when"><strong>Workhorse for everything readable.</strong> Body prose · tile metadata · descriptions · chip labels · small caps-tracked tags. Use weight + letter-spacing to differentiate roles. <em>Inter at 700wt + 1.2px letter-spacing replaces Oswald entirely</em> — same caps-tracked feel, way more legible at small sizes.</p>
+      <div class="sizes">
+        <div class="row"><span>Headlines (no Bebas)</span><code>22-30px · 700wt</code></div>
+        <div class="row"><span>Body paragraph</span><code>14-15px · 500wt</code></div>
+        <div class="row"><span>Tile values (non-data)</span><code>16-22px · 700wt</code></div>
+        <div class="row"><span>Small labels (was Oswald)</span><code>10-11px · 700wt · +1.2ls</code></div>
+        <div class="row"><span>Micro tags</span><code>9px · 700wt · +1.4ls</code></div>
+      </div>
+    </div>
+    <div class="rec" style="border-color:rgba(39,180,224,0.2)">
+      <div class="role" style="color:var(--dist)">TABULAR DATA</div>
+      <h4 style="font-family:'Geist Mono';font-weight:600">Geist Mono</h4>
+      <p class="when"><strong>For data alignment.</strong> Rep grids · splits tables · per-mile pace columns · sync timestamps · code-like data display. Every digit the same width — eyes scan rows and columns cleanly. Pairs beautifully with both Bebas (above) and Inter (everywhere else).</p>
+      <div class="sizes">
+        <div class="row"><span>Rep grid values</span><code>18-22px · 500wt</code></div>
+        <div class="row"><span>Splits / table data</span><code>13-16px · 500wt</code></div>
+        <div class="row"><span>Inline numbers</span><code>11-13px · 500wt</code></div>
+        <div class="row"><span>Code / IDs</span><code>10-12px · 400wt</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- pairing rules -->
+  <div style="background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:36px;margin-bottom:80px">
+    <div class="eyebrow" style="margin-bottom:14px">pairing rules</div>
+    <h3 style="font-family:'Bebas Neue';font-size:48px;letter-spacing:0.5px;line-height:1;margin:0 0 16px;font-weight:400">When to use which.</h3>
+    <ol style="margin:0;padding-left:22px;font-family:'Inter';font-size:14px;line-height:1.75;color:rgba(246,247,248,0.82);max-width:920px">
+      <li style="margin-bottom:6px"><strong style="color:var(--ink)">Bebas above the fold.</strong> Hero verbs, poster headlines, countdown numbers, section titles. Anywhere the goal is impact.</li>
+      <li style="margin-bottom:6px"><strong style="color:var(--ink)">Inter for everything in between.</strong> Body prose, tile metadata, chip labels — even the small caps-tracked tags that used to be Oswald. <em>Inter at 700wt with 1-1.4px letter-spacing reads cleaner than Oswald at every size we use.</em></li>
+      <li style="margin-bottom:6px"><strong style="color:var(--ink)">Geist Mono only where data aligns.</strong> Rep grids, splits, mile-by-mile pace tables, sync timestamps. Don't use mono for narrative prose — it'll feel like a terminal.</li>
+      <li style="margin-bottom:6px"><strong style="color:var(--ink)">Inter <code style="font-family:'Geist Mono';font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px">font-variant-numeric: tabular-nums</code></strong> for any number 14px or smaller that lives inline with text. Inter has tabular figures built-in — turn them on.</li>
+      <li><strong style="color:var(--ink)">Drop Oswald entirely.</strong> Every place it currently lives (small labels, sub-headers, eyebrows) → Inter at 700wt with letter-spacing. Less condensed, more legible, fewer fonts to load.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ════════════════════ BEFORE / AFTER ════════════════════ -->
+<section>
+  <div class="eyebrow">07 · before + after</div>
+  <h2 class="sec">the intervals<br>card · refit.</h2>
+  <div class="sec-tag"><span class="dot"></span>same data · same layout · new font stack</div>
+  <div class="kicker">Side-by-side. <strong>Left:</strong> current stack (Bebas + Oswald everywhere). <strong>Right:</strong> proposed (Bebas only for the workout name at the top, Inter for all labels, Geist Mono for the rep-grid values). <em>Same component. Significantly more readable.</em></div>
+
+  <div class="before-after">
+    <div class="ba before">
+      <div class="ba-label">Before · current stack</div>
+      <div class="wc">
+        <div class="wc-head"><div class="wc-lbl">Workout · 6 × 800m</div><div class="wc-v">6.0 mi · ~48 min</div></div>
+        <div class="seg-bar">
+          <div style="flex:3;background:var(--rest);opacity:0.85">WU</div>
+          <div style="flex:1.2;background:var(--goal)">1</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">2</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">3</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">4</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">5</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">6</div>
+          <div style="flex:3;background:var(--rest);opacity:0.85">CD</div>
+        </div>
+        <div class="seg-meta"><span>1.5 mi · ~13 min</span><span style="color:var(--goal)">6 × 800m work · ~22 min</span><span>1.5 mi · ~13 min</span></div>
+        <div class="rep-grid">
+          <div class="rep"><div class="rl">R1</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R2</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R3</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R4</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R5</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R6</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+        </div>
+        <div class="footer-row">
+          <div class="fcol"><div class="fl">Rest interval</div><div class="fv">400m jog · ~2:30</div></div>
+          <div class="fcol"><div class="fl">HR target</div><div class="fv amber">168 · Z3 upper</div></div>
+          <div class="fcol"><div class="fl">Pace context</div><div class="fv">6:08/mi · 10k</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="ba after">
+      <div class="ba-label">After · proposed stack</div>
+      <div class="wc">
+        <div class="wc-head"><div class="wc-lbl">Workout · 6 × 800m</div><div class="wc-v">6.0 mi · ~48 min</div></div>
+        <div class="seg-bar">
+          <div style="flex:3;background:var(--rest);opacity:0.85">WU</div>
+          <div style="flex:1.2;background:var(--goal)">1</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">2</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">3</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">4</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">5</div>
+          <div style="flex:0.6;background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1.2;background:var(--goal)">6</div>
+          <div style="flex:3;background:var(--rest);opacity:0.85">CD</div>
+        </div>
+        <div class="seg-meta"><span>1.5 mi · ~13 min</span><span style="color:var(--goal)">6 × 800m work · ~22 min</span><span>1.5 mi · ~13 min</span></div>
+        <div class="rep-grid">
+          <div class="rep"><div class="rl">R1</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R2</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R3</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R4</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R5</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+          <div class="rep"><div class="rl">R6</div><div class="rv">3:02</div><div class="rd">800m</div></div>
+        </div>
+        <div class="footer-row">
+          <div class="fcol"><div class="fl">Rest interval</div><div class="fv">400m jog · ~2:30</div></div>
+          <div class="fcol"><div class="fl">HR target</div><div class="fv amber">168 · Z3 upper</div></div>
+          <div class="fcol"><div class="fl">Pace context</div><div class="fv">6:08/mi · 10k</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px;margin-bottom:48px">
+    <div style="font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:14px">What changed · same data</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px">
+      <div>
+        <p style="font-family:'Inter';font-size:13px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0 0 10px"><strong style="color:var(--ink)">Header label.</strong> Was Oswald 10px caps-tracked. Now Inter 11px 600wt caps-tracked + 1.2px letter-spacing. <em>Cleaner counter spaces, every letter visible.</em></p>
+        <p style="font-family:'Inter';font-size:13px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0 0 10px"><strong style="color:var(--ink)">Header value.</strong> Was Bebas 18px ("6.0 mi · ~48 min"). Now Inter 16px 600wt with tabular-nums. <em>Numbers align, no condensed crush.</em></p>
+        <p style="font-family:'Inter';font-size:13px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0"><strong style="color:var(--ink)">Segment labels (WU/CD/1-6).</strong> Was Oswald 8px. Now Inter 9px 700wt + 0.4px letter-spacing. <em>Higher contrast strokes.</em></p>
+      </div>
+      <div>
+        <p style="font-family:'Inter';font-size:13px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0 0 10px"><strong style="color:var(--ink)">Per-rep "R1/R2/..." labels.</strong> Was Oswald 8px. Now Inter 9px 700wt caps + 1px letter-spacing. <em>Easier to scan at a glance.</em></p>
+        <p style="font-family:'Inter';font-size:13px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0 0 10px"><strong style="color:var(--ink)">Rep values (3:02).</strong> Was Bebas 18px (no tabular). Now Inter 18px 700wt with tabular-nums. <em>Every digit same width, column scan works.</em></p>
+        <p style="font-family:'Inter';font-size:13px;line-height:1.6;color:rgba(246,247,248,0.85);margin:0"><strong style="color:var(--ink)">Footer values.</strong> Was Bebas 18px. Now Inter 17px 700wt with tabular-nums. <em>Less condensed, more honest numbers.</em></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ ENDNOTE ════════════════════ -->
+<div class="endnote">
+  <div class="eyebrow" style="color:var(--green);margin-bottom:12px">implementation · what changes</div>
+  <h3>two new tokens · one font dropped.</h3>
+  <p><strong>Add:</strong> Geist Mono as <code>--f-mono</code>. Add inter weights 700 and 800 to the existing Inter load (they're already on Google Fonts CDN, just need to specify them).</p>
+  <p><strong>Drop:</strong> Oswald entirely. Every place it currently lives — small labels, sub-headers, eyebrows, chips — switches to Inter at 700wt with letter-spacing 1.2-1.4px. Same caps-tracked feel, no condensed-letterform crush.</p>
+  <p><strong>Restrict:</strong> Bebas Neue to ≥24px sizes only. Below that, switch to Inter at 700wt. Mostly affects card titles and small headers that were trying to be Bebas at 14-18px.</p>
+  <p><strong>Adopt:</strong> Geist Mono for any data table, rep grid, splits chart, or place where digits must align column-to-column. Use <code>font-variant-numeric: tabular-nums</code> on Inter for inline numbers smaller than 14px.</p>
+  <p style="margin-top:20px"><strong>Net effect:</strong> brand voice up top stays loud · the detail layer down below stops crushing · data finally aligns. Same emotional range, more honest at every size.</p>
+  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code>docs/font-exploration-2026-05-27.html</code> · companion to the system-propagation deck · loads candidate fonts via Google Fonts CDN. Refits the INTERVALS card as a before/after — same effect can be applied to every other tile, chip, label, and data table in the system.</p>
+</div>
+
+<div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:'Oswald';font-size:11px;letter-spacing:3px">— END · 2026-05-27 · FONT EXPLORATION —</div>
