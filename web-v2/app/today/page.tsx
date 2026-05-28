@@ -2,6 +2,7 @@ import { TopNav } from '@/components/layout/TopNav';
 import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigger';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { WeekStrip } from '@/components/today/WeekStrip';
+import { TodayPlannedCard } from '@/components/today/TodayPlannedCard';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -104,9 +105,16 @@ export default async function TodayPage() {
             </div>
           </div>
 
-          {/* RIGHT: cards rail loads async */}
+          {/* RIGHT: today's workout / run. Self-aware: if ran → DoneRunBar
+              (link to run modal). If rest → rest acknowledgement. Else →
+              TodayPlannedCard with the planned workout details. 2026-05-27:
+              swapped from <BriefingCardsOnly /> (LLM topic cards, always
+              empty under the deterministic path) — David: "lets just make
+              a fucking TODAY dashboard page that knows wtf is going on." */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <BriefingCardsOnly />
+            {glance?.weekDays && glance.today && (
+              <TodayPlannedCard today={glance.today} weekDays={glance.weekDays} />
+            )}
           </div>
         </div>
 
@@ -140,11 +148,6 @@ export default async function TodayPage() {
       `}</style>
     </main>
   );
-}
-
-// Right-rail cards — cards only, no coach voice.
-function BriefingCardsOnly() {
-  return <BriefingLoader surface="today" renderCoach={false} renderCards={true} />;
 }
 
 function MicroStat({ k, v, delta, color }: { k: string; v: string; delta: string; color: string }) {
