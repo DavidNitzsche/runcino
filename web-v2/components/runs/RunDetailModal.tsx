@@ -13,6 +13,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { RunDetail, PhaseBreakdown } from '@/lib/coach/run-state';
 import { RouteSparkline } from './RouteSparkline';
 import { FormStatButton } from './FormTipModal';
+import { StravaPushButton } from './StravaPushButton';
 
 export function RunDetailTrigger({
   activityId,
@@ -235,8 +236,17 @@ export function RunDetailBody({
           <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 38, margin: '4px 0 6px', letterSpacing: '0.5px', lineHeight: 1, color: 'var(--ink)' }}>
             {d.name ?? `${d.distance_mi.toFixed(1)} MI ${(d.type ?? 'run').toUpperCase()}`}
           </h2>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 18, fontWeight: 600 }}>
-            {sourceLabel}{d.type ? ` · ${d.type}` : ''}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            marginBottom: 18,
+          }}>
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 600 }}>
+              {sourceLabel}{d.type ? ` · ${d.type}` : ''}
+            </div>
+            {/* P-STRAVA-MANUAL-PUSH 2026-05-27: paired with the source
+                label since the action is "this came from X, push to
+                Strava." Hidden when source already IS Strava. */}
+            {d.id && <StravaPushButton runId={d.id} source={d.source} />}
           </div>
 
           {/* Hero stats — 4 most important numbers */}
@@ -247,6 +257,15 @@ export function RunDetailBody({
             {d.hr_avg != null && <BigStat v={String(d.hr_avg)} u="avg hr"   color="var(--over)" />}
           </div>
         </>
+      )}
+
+      {/* P-STRAVA-MANUAL-PUSH 2026-05-27 — also expose the push action
+          in inline mode (DayDetailModal embeds RunDetailBody this way).
+          Non-inline already gets the button next to the source label. */}
+      {inline && d.id && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <StravaPushButton runId={d.id} source={d.source} />
+        </div>
       )}
 
       {/* Secondary stats row — what didn't fit above */}
