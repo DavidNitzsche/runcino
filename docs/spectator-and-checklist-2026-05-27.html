@@ -19,7 +19,7 @@
 
   --f-display:'Bebas Neue',sans-serif;
   --f-body:'Inter',-apple-system,system-ui,sans-serif;
-  --f-mono:'Geist Mono',monospace;
+  --f-mono:'Inter',sans-serif;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#06080b;color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
@@ -459,7 +459,7 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:0.8px;margin:9
             <!-- live run status bar -->
             <div style="padding:14px 18px;border-bottom:1px solid var(--line);background:rgba(10,12,16,0.6);display:flex;justify-content:space-between;align-items:center;backdrop-filter:blur(6px)">
               <div><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:var(--green);font-weight:700;text-transform:uppercase">● Running · live</div><div style="font-family:Inter;font-size:11px;color:var(--mute);margin-top:2px">14.0 mi · 1:32:14 elapsed</div></div>
-              <div style="text-align:right;font-family:'Geist Mono',monospace;font-size:16px;color:var(--ink);font-weight:600">6:34<span style="font-size:10px;color:var(--mute)">/mi</span></div>
+              <div style="text-align:right;font-family:'Inter',sans-serif;font-size:16px;color:var(--ink);font-weight:600">6:34<span style="font-size:10px;color:var(--mute)">/mi</span></div>
             </div>
             <!-- bump notification dominant -->
             <div style="padding:24px 22px">
@@ -641,7 +641,7 @@ h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:0.8px;margin:9
   <p><strong>Spectator mode</strong> is the feature Faff wins on. Strava can't ship it without breaking their feed model — they're committed to public posts. No one else has the watch-takeover integration. The web tracker is the wedge (Mum doesn't need to download anything), the watch bump is the moat (only works if Faff owns the watch face). <strong>Once the spectator graph exists, the network effect compounds</strong> — every runner brings their circle, and crews start watching each other.</p>
   <p><strong>The checklist modal</strong> answers the "where do items come from" question with three sources: smart suggestions from race data, bulk templates from past races, manual custom items. The differentiator: <strong>auto-check</strong>. When the watch is plugged in Sat 9pm, "watch charged" ticks itself. When GPS detects you at the expo, "bib picked up" ticks. <em>The checklist gets shorter as race day approaches without you doing the work.</em></p>
   <p><strong>Build order:</strong> Spectator (circle mgmt → live tracker → bump composer → watch takeover) is sprint 04. Checklist modal is part of race detail page in sprint 03. Auto-check integrations come incrementally with Strava + HealthKit + GPS hooks. The substrate (poster + sibling + tiles) is already there — these surfaces just compose existing components.</p>
-  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code>docs/spectator-and-checklist-2026-05-27.html</code> · companion to system-propagation deck. Spectator panel is the flagship feature. Checklist modal answers a direct interaction question. Both lock into the existing component library — same tiles, same gradient tokens, same Inter+Bebas+Geist Mono stack.</p>
+  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code>docs/spectator-and-checklist-2026-05-27.html</code> · companion to system-propagation deck. Spectator panel is the flagship feature. Checklist modal answers a direct interaction question. Both lock into the existing component library — same tiles, same gradient tokens, same Bebas + Inter (with tabular-nums for data) two-font stack.</p>
 </div>
 
 <div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:Inter;font-size:11px;letter-spacing:3px">— END · 2026-05-27 · SPECTATOR + CHECKLIST —</div>

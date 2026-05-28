@@ -423,46 +423,58 @@ h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;m
   </div>
 </div>
 
-<!-- ════════════════════ MONO CANDIDATES ════════════════════ -->
+<!-- ════════════════════ TABULAR DATA · INTER WITH TABULAR-NUMS ════════════════════ -->
 <section style="margin-top:80px">
-  <div class="eyebrow">05 · mono / tabular candidates</div>
-  <h2 class="sec">the data<br>fonts.</h2>
-  <div class="sec-tag"><span class="dot" style="background:var(--dist)"></span>used in tables and data-aligned tiles — every digit the same width</div>
+  <div class="eyebrow">05 · data alignment · the elegant fix</div>
+  <h2 class="sec">data should<br>still be pretty.</h2>
+  <div class="sec-tag"><span class="dot" style="background:var(--dist)"></span>no mono font · just turn on Inter's tabular-nums feature</div>
+  <div class="kicker">First instinct was to add a mono font (Geist Mono) for data alignment. <strong>Better answer:</strong> Inter already has tabular figures built into its OpenType — turn them on with <code style="font-family:'Inter';font-size:12px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;font-weight:600">font-variant-numeric: tabular-nums</code> and every digit becomes the same width. Columns align cleanly. Font stays beautiful. <em>One less font in the stack.</em></div>
 </section>
 
-<!-- ─── GEIST MONO ─── -->
+<!-- ─── INTER WITH TABULAR NUMS ─── -->
 <div class="font-row">
   <div class="font-row-head">
     <div class="left">
-      <h3>GEIST MONO <span style="font-family:'Geist Mono';font-weight:500" class="name-in-font">— Geist Mono</span></h3>
-      <div class="meta"><span class="tag mono">mono</span><span>Modern fixed-width · 7 weights · pairs with Geist + Inter</span></div>
-      <div class="blurb"><strong>The data-table answer.</strong> Modern, neutral, no weird character. Designed for code but works beautifully as a tabular display in product UI. Pairs cleanly with both Inter and Geist — column-aligning rep grids, splits tables, sync timestamps.</div>
+      <h3>INTER · TABULAR-NUMS <span style="font-family:'Inter';font-weight:700;font-variant-numeric:tabular-nums" class="name-in-font">— 3:02 · 3:04 · 3:01</span></h3>
+      <div class="meta"><span class="tag" style="background:rgba(39,180,224,0.14);color:var(--dist)">data</span><span>Same font · OpenType feature flag · zero new fonts to load</span></div>
+      <div class="blurb"><strong>The answer is no new font.</strong> Inter has tabular figures via OpenType. Enable the feature on any number 14px or smaller (or anywhere alignment matters) — digits align column-to-column · font stays pretty · stack stays clean. <em>Mono fonts read "code editor"; Inter with tabular-nums reads "designed product."</em></div>
     </div>
     <div class="right">
-      <span class="verdict keep">KEEP · for tabular data</span>
-      <span class="url">--f-mono</span>
+      <span class="verdict keep">USE EVERYWHERE</span>
+      <span class="url">tabular-nums</span>
     </div>
   </div>
   <div class="ladder">
     <div class="ladder-left">
-      <div class="size-sample"><div class="size-label">Large<small>32px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:32px;line-height:1;font-weight:500;letter-spacing:-0.5px">3:02 · 3:04 · 3:01</div></div>
-      <div class="size-sample"><div class="size-label">Medium<small>22px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:22px;line-height:1.2;font-weight:500">8:25 · 169 · 7.2h</div></div>
-      <div class="size-sample"><div class="size-label">Body<small>14px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:14px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.85)">workout.type = intervals · 6×800m @ 3:02 · 400m jog rest</div></div>
-      <div class="size-sample"><div class="size-label">Small<small>11px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:11px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.7)">HRV ↓7 vs avg · RHR steady · sleep 7.2h · load 1.24</div></div>
-      <div class="size-sample"><div class="size-label">Micro<small>9px / 500wt</small></div><div class="sample" style="font-family:'Geist Mono';font-size:9px;line-height:1.55;font-weight:500;color:var(--mute);letter-spacing:0.1px">resolver.day_state = "easy" · plan.phase = "build"</div></div>
+      <div class="size-sample"><div class="size-label">Without<small>proportional</small></div><div class="sample" style="font-family:'Inter';font-size:24px;line-height:1.2;font-weight:600">3:02 · 3:04 · 3:01 · 3:11</div></div>
+      <div class="size-sample"><div class="size-label">With<small>tabular-nums</small></div><div class="sample" style="font-family:'Inter';font-size:24px;line-height:1.2;font-weight:600;font-variant-numeric:tabular-nums">3:02 · 3:04 · 3:01 · 3:11</div></div>
+      <div class="size-sample"><div class="size-label">Large<small>32px / 700wt</small></div><div class="sample" style="font-family:'Inter';font-size:32px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.5px">8:25 · 169 · 7.2h</div></div>
+      <div class="size-sample"><div class="size-label">Body<small>14px / 500wt</small></div><div class="sample" style="font-family:'Inter';font-size:14px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.85);font-variant-numeric:tabular-nums">Workout · 6 × 800m @ 3:02 · 400m jog rest</div></div>
+      <div class="size-sample"><div class="size-label">Small<small>11px / 500wt</small></div><div class="sample" style="font-family:'Inter';font-size:11px;line-height:1.55;font-weight:500;color:rgba(246,247,248,0.7);font-variant-numeric:tabular-nums">HRV ↓7 vs avg · RHR steady · sleep 7.2h · load 1.24</div></div>
     </div>
     <div class="ladder-right">
       <div class="numeric-card">
-        <div class="nh">Splits alignment · 6 reps</div>
+        <div class="nh">Splits alignment · 6 reps · Inter tabular-nums</div>
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:14px">
-          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R1</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:02</div></div>
-          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R2</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:04</div></div>
-          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R3</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:02</div></div>
-          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R4</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:01</div></div>
-          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R5</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--goal);margin-top:4px;letter-spacing:-0.5px">3:06</div></div>
-          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R6</div><div style="font-family:'Geist Mono';font-size:18px;font-weight:500;color:var(--ink);margin-top:4px;letter-spacing:-0.5px">3:00</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R1</div><div style="font-family:'Inter';font-size:18px;font-weight:700;color:var(--ink);margin-top:4px;letter-spacing:-0.3px;font-variant-numeric:tabular-nums">3:02</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R2</div><div style="font-family:'Inter';font-size:18px;font-weight:700;color:var(--ink);margin-top:4px;letter-spacing:-0.3px;font-variant-numeric:tabular-nums">3:04</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R3</div><div style="font-family:'Inter';font-size:18px;font-weight:700;color:var(--ink);margin-top:4px;letter-spacing:-0.3px;font-variant-numeric:tabular-nums">3:02</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R4</div><div style="font-family:'Inter';font-size:18px;font-weight:700;color:var(--ink);margin-top:4px;letter-spacing:-0.3px;font-variant-numeric:tabular-nums">3:01</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R5</div><div style="font-family:'Inter';font-size:18px;font-weight:700;color:var(--goal);margin-top:4px;letter-spacing:-0.3px;font-variant-numeric:tabular-nums">3:06</div></div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px 6px;border-radius:5px;text-align:center"><div style="font-family:'Inter';font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">R6</div><div style="font-family:'Inter';font-size:18px;font-weight:700;color:var(--ink);margin-top:4px;letter-spacing:-0.3px;font-variant-numeric:tabular-nums">3:00</div></div>
         </div>
-        <p style="font-size:12px;color:rgba(246,247,248,0.65);line-height:1.55;margin:0">Every digit the same width. <strong style="color:var(--ink)">3:02 and 3:04 align column-by-column.</strong> A 1 takes the same space as a 5 — eye can scan vertically across the row.</p>
+        <p style="font-size:12px;color:rgba(246,247,248,0.65);line-height:1.55;margin:0 0 14px">Every digit the same width. Columns align. <strong style="color:var(--ink)">No mono font · no terminal vibe.</strong></p>
+        <!-- predicted splits table sample -->
+        <div style="border-top:1px solid var(--line);padding-top:14px">
+          <div style="font-family:'Oswald',sans-serif;font-size:9.5px;letter-spacing:1.5px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:10px">Predicted splits · same font, aligned columns</div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:14px;align-items:baseline;font-family:'Inter';font-size:13px"><span style="color:var(--mute);font-weight:600;letter-spacing:1px;font-size:10px;text-transform:uppercase">5K</span><span style="height:1px;background:var(--line);align-self:center"></span><span style="font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)">20:58</span></div>
+            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:14px;align-items:baseline;font-family:'Inter';font-size:13px"><span style="color:var(--mute);font-weight:600;letter-spacing:1px;font-size:10px;text-transform:uppercase">10K</span><span style="height:1px;background:var(--line);align-self:center"></span><span style="font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)">41:30</span></div>
+            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:14px;align-items:baseline;font-family:'Inter';font-size:13px"><span style="color:var(--mute);font-weight:600;letter-spacing:1px;font-size:10px;text-transform:uppercase">Half</span><span style="height:1px;background:var(--line);align-self:center"></span><span style="font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)">1:27:18</span></div>
+            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:14px;align-items:baseline;font-family:'Inter';font-size:13px"><span style="color:var(--mute);font-weight:600;letter-spacing:1px;font-size:10px;text-transform:uppercase">20mi</span><span style="height:1px;background:var(--line);align-self:center"></span><span style="font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)">2:13:10</span></div>
+            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:14px;align-items:baseline;font-family:'Inter';font-size:13px"><span style="color:var(--race);font-weight:700;letter-spacing:1px;font-size:10px;text-transform:uppercase">Finish</span><span style="height:1px;background:rgba(255,136,71,0.2);align-self:center"></span><span style="font-weight:700;font-variant-numeric:tabular-nums;color:var(--race)">2:54:30</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -471,9 +483,9 @@ h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;m
 <!-- ════════════════════ THE PROPOSED STACK ════════════════════ -->
 <section style="margin-top:80px">
   <div class="eyebrow">06 · the proposed stack</div>
-  <h2 class="sec">three fonts.<br>three jobs.<br>one system.</h2>
-  <div class="sec-tag"><span class="dot"></span>display for impact · Inter for body and small · Geist Mono for data</div>
-  <div class="kicker">Keep Bebas Neue for what it's great at — the heroic moments. Promote <strong>Inter</strong> to handle small labels (replacing Oswald entirely) by leaning on its 700-800 weights with letter-spacing. Add <strong>Geist Mono</strong> for tabular data — rep grids, splits tables, anywhere digits must align column-to-column. <em>Three fonts. Clear roles. No condensed letterforms below 24px.</em></div>
+  <h2 class="sec">two fonts.<br>three jobs.<br>one system.</h2>
+  <div class="sec-tag"><span class="dot"></span>Bebas for impact · Inter for everything else · tabular-nums for data alignment</div>
+  <div class="kicker">Smallest possible stack. <strong>Bebas Neue</strong> for impact moments only. <strong>Inter</strong> does <em>everything else</em> — body prose, small labels (replacing Oswald), AND tabular data (with the OpenType <code style="font-family:Inter;font-size:12px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;font-weight:600">tabular-nums</code> feature toggled on for any digits that need to align). Data still pretty. Two fonts to load. <em>Maximum brand consistency.</em></div>
 
   <div class="rec-grid">
     <div class="rec">
@@ -490,7 +502,7 @@ h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;m
     <div class="rec" style="border-color:rgba(62,189,65,0.2)">
       <div class="role" style="color:var(--green)">BODY + LABELS</div>
       <h4 style="font-family:'Inter';font-weight:800">Inter</h4>
-      <p class="when"><strong>Workhorse for everything readable.</strong> Body prose · tile metadata · descriptions · chip labels · small caps-tracked tags. Use weight + letter-spacing to differentiate roles. <em>Inter at 700wt + 1.2px letter-spacing replaces Oswald entirely</em> — same caps-tracked feel, way more legible at small sizes.</p>
+      <p class="when"><strong>The workhorse.</strong> Body prose · tile metadata · descriptions · chip labels · small caps-tracked tags. Use weight + letter-spacing to differentiate roles. <em>Inter at 700wt + 1.2px letter-spacing replaces Oswald entirely</em> — same caps-tracked feel, way more legible at small sizes.</p>
       <div class="sizes">
         <div class="row"><span>Headlines (no Bebas)</span><code>22-30px · 700wt</code></div>
         <div class="row"><span>Body paragraph</span><code>14-15px · 500wt</code></div>
@@ -500,14 +512,14 @@ h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;m
       </div>
     </div>
     <div class="rec" style="border-color:rgba(39,180,224,0.2)">
-      <div class="role" style="color:var(--dist)">TABULAR DATA</div>
-      <h4 style="font-family:'Geist Mono';font-weight:600">Geist Mono</h4>
-      <p class="when"><strong>For data alignment.</strong> Rep grids · splits tables · per-mile pace columns · sync timestamps · code-like data display. Every digit the same width — eyes scan rows and columns cleanly. Pairs beautifully with both Bebas (above) and Inter (everywhere else).</p>
+      <div class="role" style="color:var(--dist)">TABULAR DATA · SAME FONT</div>
+      <h4 style="font-family:'Inter';font-weight:700;font-variant-numeric:tabular-nums">Inter · tabular-nums</h4>
+      <p class="when"><strong>Same font, OpenType feature on.</strong> Rep grids · splits tables · per-mile pace columns · finish times · any place digits must align. Inter has tabular figures built-in — turn them on with one CSS line. <em>Data stays pretty. Stack stays small.</em></p>
       <div class="sizes">
-        <div class="row"><span>Rep grid values</span><code>18-22px · 500wt</code></div>
-        <div class="row"><span>Splits / table data</span><code>13-16px · 500wt</code></div>
-        <div class="row"><span>Inline numbers</span><code>11-13px · 500wt</code></div>
-        <div class="row"><span>Code / IDs</span><code>10-12px · 400wt</code></div>
+        <div class="row"><span>Rep grid values</span><code>18-22px · 700wt · tnum</code></div>
+        <div class="row"><span>Splits / table data</span><code>13-16px · 600wt · tnum</code></div>
+        <div class="row"><span>Inline numbers</span><code>11-13px · 600wt · tnum</code></div>
+        <div class="row"><span>Big finish times</span><code>48px+ · 700wt · tnum</code></div>
       </div>
     </div>
   </div>
@@ -519,8 +531,7 @@ h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;m
     <ol style="margin:0;padding-left:22px;font-family:'Inter';font-size:14px;line-height:1.75;color:rgba(246,247,248,0.82);max-width:920px">
       <li style="margin-bottom:6px"><strong style="color:var(--ink)">Bebas above the fold.</strong> Hero verbs, poster headlines, countdown numbers, section titles. Anywhere the goal is impact.</li>
       <li style="margin-bottom:6px"><strong style="color:var(--ink)">Inter for everything in between.</strong> Body prose, tile metadata, chip labels — even the small caps-tracked tags that used to be Oswald. <em>Inter at 700wt with 1-1.4px letter-spacing reads cleaner than Oswald at every size we use.</em></li>
-      <li style="margin-bottom:6px"><strong style="color:var(--ink)">Geist Mono only where data aligns.</strong> Rep grids, splits, mile-by-mile pace tables, sync timestamps. Don't use mono for narrative prose — it'll feel like a terminal.</li>
-      <li style="margin-bottom:6px"><strong style="color:var(--ink)">Inter <code style="font-family:'Geist Mono';font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px">font-variant-numeric: tabular-nums</code></strong> for any number 14px or smaller that lives inline with text. Inter has tabular figures built-in — turn them on.</li>
+      <li style="margin-bottom:6px"><strong style="color:var(--ink)">Inter <code style="font-family:'Inter';font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px;font-weight:600">font-variant-numeric: tabular-nums</code></strong> for any data table or grid where digits must align column-to-column. Same font as the rest of the app · stays pretty · no mono terminal vibe. Inter has tabular figures built-in — just turn them on.</li>
       <li><strong style="color:var(--ink)">Drop Oswald entirely.</strong> Every place it currently lives (small labels, sub-headers, eyebrows) → Inter at 700wt with letter-spacing. Less condensed, more legible, fewer fonts to load.</li>
     </ol>
   </div>
@@ -531,7 +542,7 @@ h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;m
   <div class="eyebrow">07 · before + after</div>
   <h2 class="sec">the intervals<br>card · refit.</h2>
   <div class="sec-tag"><span class="dot"></span>same data · same layout · new font stack</div>
-  <div class="kicker">Side-by-side. <strong>Left:</strong> current stack (Bebas + Oswald everywhere). <strong>Right:</strong> proposed (Bebas only for the workout name at the top, Inter for all labels, Geist Mono for the rep-grid values). <em>Same component. Significantly more readable.</em></div>
+  <div class="kicker">Side-by-side. <strong>Left:</strong> current stack (Bebas + Oswald everywhere). <strong>Right:</strong> proposed (Bebas only for the workout name at the top, <strong>Inter for everything else</strong> — labels at 700wt + letter-spacing, rep-grid values with <code style="font-family:Inter;font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px;font-weight:600">tabular-nums</code> on). <em>Same component. Significantly more readable. Data stays pretty.</em></div>
 
   <div class="before-after">
     <div class="ba before">
@@ -626,12 +637,11 @@ h2.sec{font-family:'Bebas Neue',sans-serif;font-size:84px;letter-spacing:0.8px;m
 <!-- ════════════════════ ENDNOTE ════════════════════ -->
 <div class="endnote">
   <div class="eyebrow" style="color:var(--green);margin-bottom:12px">implementation · what changes</div>
-  <h3>two new tokens · one font dropped.</h3>
-  <p><strong>Add:</strong> Geist Mono as <code>--f-mono</code>. Add inter weights 700 and 800 to the existing Inter load (they're already on Google Fonts CDN, just need to specify them).</p>
+  <h3>two fonts · one OpenType feature.</h3>
   <p><strong>Drop:</strong> Oswald entirely. Every place it currently lives — small labels, sub-headers, eyebrows, chips — switches to Inter at 700wt with letter-spacing 1.2-1.4px. Same caps-tracked feel, no condensed-letterform crush.</p>
   <p><strong>Restrict:</strong> Bebas Neue to ≥24px sizes only. Below that, switch to Inter at 700wt. Mostly affects card titles and small headers that were trying to be Bebas at 14-18px.</p>
-  <p><strong>Adopt:</strong> Geist Mono for any data table, rep grid, splits chart, or place where digits must align column-to-column. Use <code>font-variant-numeric: tabular-nums</code> on Inter for inline numbers smaller than 14px.</p>
-  <p style="margin-top:20px"><strong>Net effect:</strong> brand voice up top stays loud · the detail layer down below stops crushing · data finally aligns. Same emotional range, more honest at every size.</p>
+  <p><strong>Adopt:</strong> <code>font-variant-numeric: tabular-nums</code> on Inter for any data table, rep grid, splits chart, finish time, or place where digits must align column-to-column. <strong>No mono font needed.</strong> Inter has tabular figures built into its OpenType — one CSS line and every digit becomes the same width while the font stays pretty.</p>
+  <p><strong>Net effect:</strong> brand voice up top stays loud · the detail layer down below stops crushing · data aligns without going code-editor. <em>Two-font stack: Bebas + Inter.</em> Cleaner system, same emotional range.</p>
   <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code>docs/font-exploration-2026-05-27.html</code> · companion to the system-propagation deck · loads candidate fonts via Google Fonts CDN. Refits the INTERVALS card as a before/after — same effect can be applied to every other tile, chip, label, and data table in the system.</p>
 </div>
 
