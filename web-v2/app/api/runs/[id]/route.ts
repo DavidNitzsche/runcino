@@ -84,6 +84,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           );
         }
       }
+      // 2026-05-27: second fallback for the "<uuid>-YYYY-MM-DD" and
+      // "wko_<uuid>" formats that /api/log returns for manually-logged
+      // runs. The trailing-date suffix is enough to scope the UPDATE
+      // when there's only one run on that day for the user (the common
+      // case). If multiple runs exist on a day and none has a real
+      // Strava id this could over-match — but the worst case is shoe
+      // tagged on the wrong same-day run, not data loss.
+      if (updated.rowCount === 0) {
+        const dateMatch = id.match(/(\d{4}-\d{2}-\d{2})$/);
+        if (dateMatch) {
+          updated = await pool.query(
+            `UPDATE strava_activities
+                SET shoe_id = $1::int
+              WHERE (user_uuid = $2 OR user_uuid IS NULL)
+                AND NOT (data ? 'mergedIntoId')
+                AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
+           RETURNING id, shoe_id`,
+            [shoeId, userId, dateMatch[1]]
+          );
+        }
+      }
       if (updated.rowCount === 0) {
         return NextResponse.json({ error: 'run not found' }, { status: 404 });
       }

@@ -74,49 +74,59 @@ export function StravaPushButton({
   const errored = state.kind === 'error';
 
   const label =
-    state.kind === 'busy'  ? 'PUSHING…'
-    : state.kind === 'ok'  ? 'PUSHED TO STRAVA ↗'
-    : state.kind === 'dup' ? 'ALREADY ON STRAVA ↗'
-    : state.kind === 'error' ? 'RETRY PUSH'
-    : 'PUSH TO STRAVA';
+    state.kind === 'busy'  ? 'Pushing…'
+    : state.kind === 'ok'  ? 'On Strava'
+    : state.kind === 'dup' ? 'On Strava'
+    : state.kind === 'error' ? 'Retry'
+    : 'Strava';
 
-  const bg = success ? 'rgba(252,89,52,0.15)'
-    : errored ? 'rgba(252,77,100,0.12)'
-    : 'rgba(252,89,52,0.10)';
-  const fg = success ? '#FC5934'
-    : errored ? 'var(--over)'
-    : '#FC5934';
-  const border = success ? 'rgba(252,89,52,0.35)'
-    : errored ? 'rgba(252,77,100,0.35)'
-    : 'rgba(252,89,52,0.25)';
+  // 2026-05-27: David flagged the previous styling as "weird ass semi
+  // transparent red/pink." Switched to real Strava orange (#FC4C02),
+  // solid-filled, smaller footprint — designed to sit in the modal
+  // header's top-right corner next to the close (X) button rather
+  // than mid-modal. Title-case label so it doesn't shout.
+  const STRAVA = '#FC4C02';
+  const STRAVA_HOVER = '#E54300';
+  const bg = errored ? 'rgba(252,77,100,0.12)'
+    : success ? 'rgba(252,76,2,0.15)'
+    : STRAVA;
+  const fg = errored ? 'var(--over)'
+    : success ? STRAVA
+    : '#fff';
+  const border = errored ? 'rgba(252,77,100,0.4)'
+    : success ? 'rgba(252,76,2,0.4)'
+    : 'transparent';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
       <button
         type="button"
         onClick={push}
         disabled={busy || success}
+        title="Push run to Strava"
         style={{
           background: bg,
           color: fg,
           border: `1px solid ${border}`,
-          borderRadius: 999,
-          padding: '6px 14px',
-          fontFamily: 'var(--f-label)',
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: '1.2px',
+          borderRadius: 8,
+          padding: '6px 11px',
+          fontFamily: 'var(--f-body)',
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: '0.1px',
           cursor: busy || success ? 'default' : 'pointer',
           opacity: busy ? 0.7 : 1,
           display: 'inline-flex', alignItems: 'center', gap: 6,
           transition: 'background .12s',
+          height: 30,
+          lineHeight: 1,
         }}
-        onMouseEnter={(e) => { if (!busy && !success && !errored) e.currentTarget.style.background = 'rgba(252,89,52,0.18)'; }}
+        onMouseEnter={(e) => { if (!busy && !success && !errored) e.currentTarget.style.background = STRAVA_HOVER; }}
         onMouseLeave={(e) => { if (!busy && !success && !errored) e.currentTarget.style.background = bg; }}
       >
-        {/* Tiny Strava-like icon */}
-        <svg width="9" height="11" viewBox="0 0 9 11" fill="currentColor" style={{ flexShrink: 0 }}>
-          <path d="M3.5 0 0 7h2L3.5 4 5 7h2L3.5 0zm2 8L7 11 8.5 8H7l-1.5 1L4 8H5.5z"/>
+        {/* Strava chevron logo (mark-only, no wordmark). 2 stacked chevrons. */}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }} aria-label="Strava">
+          <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/>
         </svg>
         {label}
       </button>

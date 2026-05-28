@@ -233,21 +233,22 @@ export function RunDetailBody({
     <>
       {!inline && (
         <>
-          <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 38, margin: '4px 0 6px', letterSpacing: '0.5px', lineHeight: 1, color: 'var(--ink)' }}>
-            {d.name ?? `${d.distance_mi.toFixed(1)} MI ${(d.type ?? 'run').toUpperCase()}`}
-          </h2>
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-            marginBottom: 18,
-          }}>
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 600 }}>
-              {sourceLabel}{d.type ? ` · ${d.type}` : ''}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h2 style={{ fontFamily: 'var(--f-display)', fontSize: 38, margin: '4px 0 6px', letterSpacing: '0.5px', lineHeight: 1, color: 'var(--ink)' }}>
+                {d.name ?? `${d.distance_mi.toFixed(1)} MI ${(d.type ?? 'run').toUpperCase()}`}
+              </h2>
+              <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 600 }}>
+                {sourceLabel}{d.type ? ` · ${d.type}` : ''}
+              </div>
             </div>
-            {/* P-STRAVA-MANUAL-PUSH 2026-05-27: paired with the source
-                label since the action is "this came from X, push to
-                Strava." Hidden when source already IS Strava. */}
+            {/* P-STRAVA-MANUAL-PUSH 2026-05-27 (restyled): top-right of
+                the modal header. Real Strava orange, solid fill, chevron
+                logo. David: "that button placement is insane. Top right
+                maybe and with a Strava logo?" */}
             {d.id && <StravaPushButton runId={d.id} source={d.source} />}
           </div>
+          <div style={{ marginBottom: 18 }} />
 
           {/* Hero stats — 4 most important numbers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>

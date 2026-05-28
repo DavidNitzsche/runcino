@@ -131,9 +131,23 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
   // Fix: shift the check-in timestamp by the same -7h offset before
   // slicing, so both dates live in the same reference frame.
   const PDT_SHIFT_MS = 7 * 3600000;
-  const recent = state.recentCheckIns.slice(0, 2).map((c) => {
-    const checkInDay = new Date(new Date(c.ts).getTime() - PDT_SHIFT_MS)
+  // 2026-05-27: dedupe by day BEFORE slicing. David hit "SOLID (today) ·
+  // SOLID (today)" in the breakdown because two check-ins on the same
+  // day (morning + evening "feeling better now") both got the "(today)"
+  // label and the joined string echoed itself. Keep the most recent
+  // rating per day — recentCheckIns arrives most-recent-first, so the
+  // first hit for a given day is the keeper. THEN slice to 2 entries
+  // (= 2 distinct days max).
+  const seenDays = new Set<string>();
+  const dedupedByDay = [];
+  for (const c of state.recentCheckIns) {
+    const day = new Date(new Date(c.ts).getTime() - PDT_SHIFT_MS)
       .toISOString().slice(0, 10);
+    if (seenDays.has(day)) continue;
+    seenDays.add(day);
+    dedupedByDay.push({ c, day });
+  }
+  const recent = dedupedByDay.slice(0, 2).map(({ c, day: checkInDay }) => {
     const daysAgo = Math.max(0, Math.round(
       (Date.parse(todayIso + 'T12:00:00Z') -
        Date.parse(checkInDay + 'T12:00:00Z')) / 86400000
