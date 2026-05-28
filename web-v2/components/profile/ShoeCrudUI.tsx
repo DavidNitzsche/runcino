@@ -161,14 +161,19 @@ export function ShoeEditCard({ shoe }: { shoe: ShoeCardData }) {
 
   const barColor = shoe.pctUsed >= 80 ? 'var(--over)' : shoe.pctUsed >= 60 ? 'var(--goal)' : 'var(--green)';
   const desaturate = shoe.retired ? 'saturate(0.3)' : 'none';
-  const background = shoeBackground(shoe.color, shoe.color2);
+  // 2026-05-27 David: "this isnt working with the color. just make
+  // simple cards for now" — dropped the per-shoe gradient background.
+  // All cards now use the standard dark card surface so they read as
+  // a clean grid. Color stripe + edit modal still know each shoe's
+  // color for future re-use; we just don't paint the whole card with it.
 
   return (
     <>
       <button
         onClick={() => setOpenModal(true)}
         style={{
-          background,
+          background: '#1f2226',
+          border: '1px solid var(--line2)',
           padding: 18,
           textAlign: 'left',
           cursor: 'pointer',
@@ -176,40 +181,37 @@ export function ShoeEditCard({ shoe }: { shoe: ShoeCardData }) {
           width: '100%',
           overflow: 'hidden',
           filter: desaturate,
-          border: 'none',
           borderRadius: 14,
           color: 'inherit', font: 'inherit',
-          transition: 'transform .08s, filter .12s',
+          transition: 'transform .08s, background .12s, border .12s',
           minHeight: 150,
         }}
         onMouseEnter={(e) => {
-          if (!shoe.retired) e.currentTarget.style.filter = 'brightness(1.10)';
+          if (!shoe.retired) e.currentTarget.style.background = '#24272c';
           e.currentTarget.style.transform = 'translateY(-1px)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.filter = desaturate;
+          e.currentTarget.style.background = '#1f2226';
           e.currentTarget.style.transform = 'translateY(0)';
         }}
       >
         <div style={{
           fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)',
           lineHeight: 1.15, letterSpacing: '0.3px',
-          textShadow: shoe.color ? '0 1px 4px rgba(0,0,0,0.5)' : 'none',
         }}>{shoe.name}</div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 12 }}>
           <span style={{
             fontFamily: 'var(--f-display)', fontSize: 30, color: barColor,
             letterSpacing: '0.5px',
-            textShadow: shoe.color ? '0 1px 4px rgba(0,0,0,0.5)' : 'none',
           }}>{shoe.mileage}</span>
-          <span style={{ fontSize: 12, color: shoe.color ? 'rgba(255,255,255,0.75)' : 'var(--mute)' }}>
+          <span style={{ fontSize: 12, color: 'var(--mute)' }}>
             / {shoe.cap} mi
           </span>
         </div>
 
         <div style={{
-          height: 4, background: 'rgba(0,0,0,0.35)',
+          height: 4, background: 'rgba(255,255,255,0.06)',
           borderRadius: 2, marginTop: 8, overflow: 'hidden',
         }}>
           <div style={{ height: '100%', width: `${Math.min(100, shoe.pctUsed)}%`, background: barColor }} />
@@ -220,9 +222,9 @@ export function ShoeEditCard({ shoe }: { shoe: ShoeCardData }) {
             {shoe.runTypes.slice(0, 3).map((p) => (
               <span key={p} style={{
                 fontFamily: 'var(--f-label)', fontSize: 9, letterSpacing: '0.8px',
-                color: shoe.color ? 'rgba(255,255,255,0.85)' : 'var(--mute)',
+                color: 'var(--mute)',
                 padding: '3px 7px',
-                background: shoe.color ? 'rgba(0,0,0,0.30)' : 'rgba(255,255,255,0.04)',
+                background: 'rgba(255,255,255,0.04)',
                 borderRadius: 4, fontWeight: 700,
               }}>{p.toUpperCase()}</span>
             ))}
