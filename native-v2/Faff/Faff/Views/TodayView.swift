@@ -1,13 +1,16 @@
 //
 //  TodayView.swift
 //
-//  iPhone TODAY screen — structured workout card + week strip lead;
-//  coach prose follows; topic cards (gels, race horizon, etc.) drop
-//  below. This is the layout fix for "wall of text on the phone."
+//  iPhone TODAY surface — Faff v3 layout (2026-05-28 cutover).
 //
-//  Also pushes today's workout to the watch on every successful refresh
-//  (not just app start) so the watch picks up plan edits without the
-//  phone being relaunched.
+//  Mirrors the web /today design:
+//    1. PosterCard — gradient hero with state-keyed verb + stat trio
+//    2. SiblingCard — dark dashboard card with body tiles (sleep/RHR/HRV/load)
+//    3. WeekStripV3 — 7-day strip with accent bars + 4-char vocab
+//    4. CoachSlot — coach prose paragraph (kept · preserves working coach voice)
+//
+//  Existing data plumbing (.task loadAll, AppCache reads, briefing →
+//  CoachSlot wiring) is unchanged. Only the visual shell swaps.
 //
 
 import SwiftUI
@@ -16,16 +19,10 @@ struct TodayView: View {
     // Initial values come from the last successful response on disk via
     // AppCache. First-ever launch reads nil; every subsequent launch
     // paints real (slightly stale) content the instant the view appears.
-    // The .task hook below refreshes from the server and writes new
-    // bytes back to the cache for next time.
     @State private var briefing: Briefing? =
         AppCache.read(.todayBriefing, as: Briefing.self)
     @State private var workout: WatchWorkout? =
         AppCache.read(.todayWorkout, as: TodayWorkoutWrapper.self)?.workout
-    /// Kept for the rest-day-message fallback (loadAll still pulls the
-    /// plan to know if today is a planned rest day). UI no longer shows
-    /// the week strip on this surface — Training owns the multi-day
-    /// view now.
     @State private var planWeek: PlanWeek? =
         AppCache.read(.planWeek, as: PlanWeek.self)
     @State private var error: String?
@@ -36,70 +33,64 @@ struct TodayView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Date label sits under the iOS large title — drops
-                    // the redundant "faff" wordmark since the tab bar +
-                    // app icon already identify the app.
-                    Text(todayLabel())
-                        .font(.label(11)).tracking(1.2)
-                        .foregroundStyle(Theme.mute)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 0)
-
-                    // 2026-05-27 restructure: TODAY is now PURE today.
-                    // The healthStatusStrip ("HEALTH · IMPORTING / SYNCED 3
-                    // runs · 31 vitals") was leaking backend state to the
-                    // user — "should just work" instead. The WeekStripView
-                    // also moved out of here: David said "TODAY should be
-                    // a pure today tab with todays run and coach" — the
-                    // multi-day plan view lives on the TRAINING tab now.
-
-                if let error {
-                    errorBlock(error)
-                }
-
-                // 1) Today's structured workout — leads the scroll.
-                if let workout {
-                    WorkoutTodayCard(workout: workout)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                } else if let restMessage = restDayMessage {
-                    restBlock(restMessage)
-                        .transition(.opacity)
-                }
-
-                // 2) Coach prose slot — skeleton while loading, snaps in
-                //    when the brief arrives. Never blocks the screen.
-                CoachSlot(
-                    briefing: briefing,
-                    surface: "today",
-                    askPrompt: briefing.map { askPrompt(for: $0.mode) },
-                    onCheckIn: { rating in
-                        guard let b = briefing else { return false }
-                        do {
-                            try await API.checkin(rating: rating.rawValue,
-                                                   briefingId: "\(b.surface)|\(b.mode)")
-                            Task { await loadAll() }
-                            return true
-                        } catch {
-                            return false
-                        }
+                    if let error {
+                        errorBlock(error)
                     }
-                )
 
-                // 3) Topic cards — fueling / race horizon / readiness
-                //    detail / gap-fill prompts.
-                    if let briefing, !briefing.topics.isEmpty {
-                        VStack(spacing: 10) {
-                            ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
-                                TopicRenderer(topic: topic)
+                    let state = FaffAdapter.resolveDayState(
+                        plan: planWeek,
+                        briefing: briefing,
+                        workout: workout
+                    )
+
+                    // 1. Poster · gradient hero
+                    PosterCard(payload: FaffAdapter.buildPoster(
+                        state: state,
+                        plan: planWeek,
+                        readiness: readiness,
+                        workout: workout
+                    ))
+
+                    // 2. Sibling · body dashboard
+                    SiblingCard(payload: FaffAdapter.buildSibling(
+                        state: state,
+                        readiness: readiness,
+                        plan: planWeek
+                    ))
+
+                    // 3. WeekStrip · 7-day arc
+                    WeekStripV3(
+                        payload: FaffAdapter.buildWeekStrip(plan: planWeek),
+                        phaseLabel: nil
+                    )
+
+                    // 4. Coach prose slot — skeleton while loading, snaps
+                    //    in when the brief arrives. Never blocks the screen.
+                    CoachSlot(
+                        briefing: briefing,
+                        surface: "today",
+                        askPrompt: briefing.map { askPrompt(for: $0.mode) },
+                        onCheckIn: { rating in
+                            guard let b = briefing else { return false }
+                            do {
+                                try await API.checkin(
+                                    rating: rating.rawValue,
+                                    briefingId: "\(b.surface)|\(b.mode)"
+                                )
+                                Task { await loadAll() }
+                                return true
+                            } catch {
+                                return false
                             }
                         }
-                        .padding(.horizontal, 24)
-                        .transition(.opacity)
-                    }
+                    )
                 }
+                .padding(.horizontal, 16)
                 .padding(.bottom, 40)
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: workout?.workoutId)
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: briefing?.lead)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85),
+                           value: workout?.workoutId)
+                .animation(.spring(response: 0.45, dampingFraction: 0.85),
+                           value: briefing?.lead)
             }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Today")
@@ -114,27 +105,17 @@ struct TodayView: View {
             }
             .task { await loadAll() }
             .refreshable { await loadAll() }
-            // Haptic ping when the run-card lands so the refresh feels alive.
+            // Haptic ping when content lands so the refresh feels alive.
             .sensoryFeedback(.success, trigger: workout?.workoutId)
         }
     }
 
-    // Health status strip removed 2026-05-27: David said "We dont want
-    // to see behind the scenes / the backend. It should all just work."
-    // HK import still runs silently via FaffApp.scenePhase observer +
-    // the loadAll() background task below; user just doesn't see chatter.
-
-    // App bar removed in iPhone-rebuild — replaced by NavigationStack
-    // large title + ReadinessRing in the toolbar's topBarTrailing slot.
-
     // MARK: - Load
-
-    /// Fan out the three calls in parallel so the screen paints fast.
-    /// Once the workout JSON is in hand, immediately push it to the watch
-    /// so the watch reflects any plan edit without a phone relaunch.
+    //
+    // Fan out the four calls in parallel so the screen paints fast.
+    // Once the workout JSON is in hand, immediately push it to the watch
+    // so the watch reflects any plan edit without a phone relaunch.
     private func loadAll() async {
-        // No global loading flag — each piece renders the instant it
-        // lands. CoachSlot shows a skeleton while `briefing` is nil.
         async let bRes = (try? await API.briefing(surface: "today"))
         async let wRes = (try? await API.fetchWatchWorkout())
         async let pRes = (try? await API.fetchPlanWeek())
@@ -149,7 +130,9 @@ struct TodayView: View {
         self.workout = w
         self.planWeek = p
         self.readiness = r ?? nil
-        self.error = (b == nil && w == nil && p == nil) ? "Couldn't reach the coach. Pull to refresh." : nil
+        self.error = (b == nil && w == nil && p == nil)
+            ? "Couldn't reach the coach. Pull to refresh."
+            : nil
 
         // Push the freshly-fetched workout to the watch so the watch picks
         // up plan edits without the user having to relaunch the iPhone app.
@@ -158,49 +141,11 @@ struct TodayView: View {
         // Quiet HK workout import — pulls any HKWorkout that hit the phone
         // since the last refresh (e.g. a run done in Apple Watch Workouts
         // app, not Faff). Only runs if Health auth was previously granted;
-        // never prompts here. After import lands, /api/ingest/workout busts
-        // the briefing cache so the next refresh picks up the new run.
+        // never prompts here.
         Task { await HealthKitImporter.shared.importIfConnected(daysBack: 3) }
     }
 
     // MARK: - Subviews
-
-    private func restBlock(_ msg: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("REST DAY")
-                .font(.label(11)).tracking(1.6)
-                .foregroundStyle(Theme.learn)
-            Text(msg).font(.body(14)).foregroundStyle(Theme.ink.opacity(0.85)).lineSpacing(2)
-        }
-        .padding(18)
-        .background(Theme.learn.opacity(0.06))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.rCard)
-                .stroke(Theme.learn.opacity(0.22), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
-        .padding(.horizontal, 24)
-    }
-
-    /// Today is a rest day if /api/watch/today returned no workout. We
-    /// surface the message from that endpoint; if it didn't ship one,
-    /// fall back to a sane default.
-    private var restDayMessage: String? {
-        // workout==nil but planWeek loaded successfully and today is in it
-        // and today.type == "rest" → show rest block.
-        guard workout == nil else { return nil }
-        if let today = planWeek?.days.first(where: { $0.is_today }),
-           today.type == "rest" {
-            return "No workout on the calendar today. Recover hard — that's the work."
-        }
-        return nil
-    }
-
-    private func todayLabel() -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "E · MMM d"
-        return fmt.string(from: Date()).uppercased()
-    }
 
     private func askPrompt(for mode: String) -> String {
         switch mode {
@@ -222,7 +167,6 @@ struct TodayView: View {
         .background(Theme.over.opacity(0.04))
         .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.over.opacity(0.22), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
-        .padding(.horizontal, 24)
     }
 }
 

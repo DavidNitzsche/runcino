@@ -1,32 +1,43 @@
 //
 //  Fonts.swift
 //
-//  Two families total — matched to the Apple Watch app aesthetic
-//  David approved 2026-05-26. Bebas Neue dropped (too condensed/stencil
-//  even at hero size).
+//  Two families total — Oswald display + Inter body (v3 lock-in 2026-05-28).
 //
-//    .display(size)  — HelveticaNeue-Bold. Hero numbers + headlines.
-//    .label(size)    — HelveticaNeue-Bold. Small caps + chip + eyebrow.
+//    .display(size)  — Oswald-Bold. Hero numbers + headlines.
+//    .label(size)    — Inter-Bold caps-tracked. Small caps + chip + eyebrow.
 //    .body(size, w)  — Inter at the chosen weight. Paragraph copy.
 //
-//  display + label share a font now; size + tracking differentiate them.
+//  v3 swap (2026-05-28 cutover): display moved HelveticaNeue-Bold → Oswald
+//  to match the web design system (shared/tokens.json v1.4.0). Existing
+//  view callsites picking up `Font.display(...)` automatically render in
+//  Oswald — no per-view edits required. Fallback chain keeps the app safe
+//  if the TTFs aren't bundled (clean degrade to system bold).
 //
 
 import SwiftUI
 
 extension Font {
-    /// Display font — HelveticaNeue-Bold. Hero numbers + headlines at any size.
-    /// Built-in on every iOS device since iOS 4 — no bundling needed.
+    /// Display font — Oswald-Bold. Hero numbers + headlines at any size.
+    /// Falls back to HelveticaNeue-Bold (built-in) then system bold if the
+    /// Oswald TTF didn't bundle into the build.
     static func display(_ size: CGFloat) -> Font {
+        if UIFont(name: "Oswald-Bold", size: size) != nil {
+            return .custom("Oswald-Bold", size: size)
+        }
         if UIFont(name: "HelveticaNeue-Bold", size: size) != nil {
             return .custom("HelveticaNeue-Bold", size: size)
         }
         return .system(size: size, weight: .bold)
     }
 
-    /// Label font — HelveticaNeue-Bold. Small caps + chip + eyebrow text.
-    /// Same family as .display intentionally — single source of truth.
+    /// Label font — Inter-Bold (caps-tracked usage downstream).
+    /// v3 swap: was HelveticaNeue-Bold; now matches the web's
+    /// caps-tracked labels (Inter 700wt + letter-spacing) so the iPhone
+    /// + web read with the same letterforms at small caps sizes.
     static func label(_ size: CGFloat) -> Font {
+        if UIFont(name: "Inter-Bold", size: size) != nil {
+            return .custom("Inter-Bold", size: size)
+        }
         if UIFont(name: "HelveticaNeue-Bold", size: size) != nil {
             return .custom("HelveticaNeue-Bold", size: size)
         }

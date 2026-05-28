@@ -29,6 +29,18 @@ targets:
       - path: Faff/Faff
         excludes:
           - "**/.DS_Store"
+          # Fonts handled by the dedicated entry below to ensure
+          # xcodegen places them in Copy Bundle Resources.
+          - "Resources/Fonts/**"
+      # v3 typography (2026-05-28 cutover) — TTFs ride in as a separate
+      # source group so xcodegen wires them into Copy Bundle Resources
+      # without a custom buildPhase block. .ttf files are auto-routed to
+      # the resources phase by xcodegen's file-type heuristic.
+      - path: Faff/Faff/Resources/Fonts
+        type: folder
+        buildPhase: resources
+        excludes:
+          - "**/.DS_Store"
     info:
       path: Faff/Faff/Info.plist
       properties:
@@ -45,6 +57,17 @@ targets:
         # Restoring with an honest "watch-only" framing.
         NSHealthShareUsageDescription: "Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan."
         NSHealthUpdateUsageDescription: "Faff Watch writes completed workouts to Apple Health so your training history stays in one place."
+        # v3 fonts registration · TTFs live in Faff/Faff/Resources/Fonts.
+        # Must match the actual filenames in Copy Bundle Resources or
+        # iOS skips them at registration time.
+        UIAppFonts:
+          - Oswald-Regular.ttf
+          - Oswald-Medium.ttf
+          - Oswald-Bold.ttf
+          - Inter-Regular.ttf
+          - Inter-Medium.ttf
+          - Inter-SemiBold.ttf
+          - Inter-Bold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: run.faff.app
