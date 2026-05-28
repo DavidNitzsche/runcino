@@ -52,7 +52,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'shoe_id must be integer or null' }, { status: 400 });
     }
     try {
-      const updated = await pool.query(
+      // First try the direct match (real Strava activityId in data.id /
+      // data.activityId, or the table's row id).
+      let updated = await pool.query(
         `UPDATE strava_activities
             SET shoe_id = $1::int
           WHERE (user_uuid = $2 OR user_uuid IS NULL)
@@ -60,6 +62,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
        RETURNING id, shoe_id`,
         [shoeId, userId, id]
       );
+      // 2026-05-27: synthetic-id fallback. Watch-synced runs without a
+      // first-party Strava id are referenced by "YYYY-MM-DD-mi" — that
+      // matches the GET fallback in loadRunDetail. Without this, PATCH
+      // silently 404'd on those runs and the shoe never persisted even
+      // though the UI optimistically showed it as assigned. David:
+      // "I selected it, clicked off, came back. not there."
+      if (updated.rowCount === 0) {
+        const m = id.match(/^(\d{4}-\d{2}-\d{2})-([\d.]+)$/);
+        if (m) {
+          const [, date, mi] = m;
+          updated = await pool.query(
+            `UPDATE strava_activities
+                SET shoe_id = $1::int
+              WHERE (user_uuid = $2 OR user_uuid IS NULL)
+                AND NOT (data ? 'mergedIntoId')
+                AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
+                AND ABS((data->>'distanceMi')::numeric - $4::numeric) < 0.05
+           RETURNING id, shoe_id`,
+            [shoeId, userId, date, mi]
+          );
+        }
+      }
       if (updated.rowCount === 0) {
         return NextResponse.json({ error: 'run not found' }, { status: 404 });
       }

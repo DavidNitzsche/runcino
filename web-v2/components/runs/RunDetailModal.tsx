@@ -113,19 +113,31 @@ export function RunDetailModal({
   }, [activityId, prefetchedData, prefetchedShoes]);
 
   /** Update run.shoe_id via PATCH /api/runs/[id]. Optimistic — the server
-   *  recomputes shoes.mileage on success, refresh of /profile reflects it. */
+   *  recomputes shoes.mileage on success, refresh of /profile reflects it.
+   *  2026-05-27: silent-fail used to hide cases where the run id format
+   *  didn't match the PATCH WHERE clause (synthetic uuid-date ids on
+   *  watch-synced runs). Now we revert the optimistic update + log so
+   *  the user can see something went wrong instead of "selected, came
+   *  back, not there." */
   async function pickShoe(shoeId: number | null) {
     if (!data) return;
+    const prevShoeId = data.shoe_id;
     setData({ ...data, shoe_id: shoeId });
     try {
-      await fetch(`/api/runs/${encodeURIComponent(activityId)}`, {
+      const r = await fetch(`/api/runs/${encodeURIComponent(activityId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shoe_id: shoeId }),
       });
-    } catch {
-      // best-effort; we don't roll back the optimistic update — the server
-      // is the source of truth and a refresh will reconcile if it failed.
+      if (!r.ok) {
+        const detail = await r.text().catch(() => '');
+        console.error(`[RunDetailModal] shoe assign failed: HTTP ${r.status} for activityId=${activityId} :: ${detail}`);
+        // Revert so the picker reflects DB truth.
+        setData({ ...data, shoe_id: prevShoeId });
+      }
+    } catch (e: any) {
+      console.error('[RunDetailModal] shoe assign threw:', e?.message ?? e);
+      setData({ ...data, shoe_id: prevShoeId });
     }
   }
 

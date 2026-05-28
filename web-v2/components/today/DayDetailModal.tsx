@@ -148,15 +148,23 @@ function CompletedRunBody({ day, detail }: { day: GlanceWeekDay; detail: RunDeta
 
   async function pickShoe(shoeId: number | null) {
     if (!localDetail || !day.activityId) return;
+    const prevShoeId = localDetail.shoe_id;
     setLocalDetail({ ...localDetail, shoe_id: shoeId });
     try {
-      await fetch(`/api/runs/${encodeURIComponent(day.activityId)}`, {
+      const r = await fetch(`/api/runs/${encodeURIComponent(day.activityId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shoe_id: shoeId }),
       });
-    } catch {
-      // best-effort optimistic update; refresh reconciles if it fails.
+      if (!r.ok) {
+        const detail = await r.text().catch(() => '');
+        console.error(`[DayDetailModal] shoe assign failed: HTTP ${r.status} for activityId=${day.activityId} :: ${detail}`);
+        // Revert so the picker matches DB truth on reopen.
+        setLocalDetail({ ...localDetail, shoe_id: prevShoeId });
+      }
+    } catch (e: any) {
+      console.error('[DayDetailModal] shoe assign threw:', e?.message ?? e);
+      setLocalDetail({ ...localDetail, shoe_id: prevShoeId });
     }
   }
 
