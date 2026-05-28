@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / race day timeline · the full arc · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+  --g-race:linear-gradient(135deg,#FF8847 0%,#E85D26 50%,#7a2828 100%);
+  --g-night:linear-gradient(135deg,#2a3552 0%,#1a1a3a 60%,#0a0a1a 100%);
+  --g-done:linear-gradient(135deg,#3EBD41 0%,#27B4E0 60%,#1a4a8e 100%);
+  --g-pr:linear-gradient(135deg,#3EBD41 0%,#F3AD38 35%,#FF8847 70%,#9013FE 100%);
+  --f-display:'Bebas Neue',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-mono:'Geist Mono',monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#06080b;color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:48px 32px 200px}
+.wrap{max-width:1480px;margin:0 auto}
+
+.eyebrow{font-family:Inter;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--mute)}
+.deck-hero{padding:24px 0 56px;border-bottom:1px solid var(--line);margin-bottom:64px}
+h1.title{font-family:var(--f-display);font-size:140px;line-height:0.88;letter-spacing:0.8px;margin:18px 0 12px;font-weight:400}
+.title .a{background:var(--g-race);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:17px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:880px;margin-top:24px}
+.lede strong{color:var(--ink)}
+.lede em{color:var(--race);font-style:normal;font-weight:600}
+
+/* timeline rail */
+.timeline-rail{display:flex;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 32px;margin-bottom:80px;position:relative;overflow:hidden}
+.timeline-rail::before{content:'';position:absolute;left:32px;right:32px;top:50%;height:2px;background:linear-gradient(90deg,var(--rest),var(--green),var(--goal),var(--race),var(--learn));opacity:0.3}
+.tr-stop{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;z-index:1}
+.tr-stop .dot{width:14px;height:14px;border-radius:50%;background:var(--ink);border:3px solid var(--bg);box-shadow:0 0 0 1px var(--line)}
+.tr-stop.race .dot{background:var(--race);box-shadow:0 0 10px var(--race),0 0 0 1px var(--race)}
+.tr-stop .time{font-family:var(--f-mono);font-size:10px;font-weight:600;color:var(--mute);letter-spacing:0.3px}
+.tr-stop .label{font-family:Inter;font-size:9.5px;letter-spacing:1px;font-weight:700;text-transform:uppercase;color:var(--ink)}
+
+/* moment block */
+.moment{margin:80px 0;padding:48px 0 0;border-top:1px solid var(--line)}
+.moment-head{display:flex;justify-content:space-between;align-items:flex-end;gap:32px;margin-bottom:32px}
+.moment-head .left h3{font-family:var(--f-display);font-size:64px;letter-spacing:0.5px;line-height:1;margin:0;font-weight:400;display:flex;align-items:baseline;gap:18px}
+.moment-head .left h3 .n{font-family:var(--f-mono);font-size:24px;color:var(--mute);font-weight:600;vertical-align:18px}
+.moment-head .left .blurb{font-size:14px;line-height:1.6;color:rgba(246,247,248,0.72);max-width:680px;margin-top:10px}
+.moment-head .left .blurb strong{color:var(--ink)}
+.moment-head .left .blurb em{color:var(--race);font-style:normal;font-weight:600}
+.moment-head .right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+.moment-head .right .clock{font-family:var(--f-mono);font-size:28px;font-weight:600;color:var(--race);font-variant-numeric:tabular-nums;letter-spacing:-0.5px}
+.moment-head .right .timeloc{font-family:Inter;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mute);font-weight:700}
+
+/* surfaces row */
+.surfaces{display:flex;gap:36px;justify-content:center;flex-wrap:wrap;margin-bottom:24px}
+.surface{display:flex;flex-direction:column;align-items:center}
+.surface-label{font-family:Inter;font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);margin-top:14px;font-weight:700}
+.surface-label strong{color:var(--ink)}
+.surface-tag{font-family:Inter;font-size:11.5px;color:var(--mute);text-align:center;max-width:300px;line-height:1.5;margin-top:4px}
+
+/* phone */
+.phone{width:300px;height:640px;background:#000;border-radius:44px;padding:10px;position:relative;box-shadow:0 30px 70px rgba(0,0,0,0.6),inset 0 0 0 1.5px #1d2028;flex-shrink:0}
+.phone-screen{width:100%;height:100%;background:var(--bg);border-radius:34px;overflow:hidden;position:relative}
+.island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:88px;height:26px;background:#000;border-radius:16px;z-index:10}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:12px 22px 0;font-size:12px;font-weight:600;color:var(--ink);height:40px;letter-spacing:0.3px;font-family:Inter}
+.home-i{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:108px;height:4px;background:rgba(255,255,255,0.3);border-radius:3px;z-index:11}
+
+/* watch */
+.watch{width:180px;height:218px;background:#000;border-radius:38px;padding:16px;border:3px solid #1a1c20;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;color:#fff;box-shadow:0 20px 50px rgba(0,0,0,0.5);position:relative}
+.watch .wtime{position:absolute;top:12px;right:16px;font-family:Inter;font-size:10px;letter-spacing:0.4px;color:#fff;font-weight:600}
+
+/* spectator-side mini browser */
+.spec-browser{width:380px;background:#0a0c10;border-radius:10px;overflow:hidden;border:1px solid #2a2d34;box-shadow:0 30px 70px rgba(0,0,0,0.5);flex-shrink:0}
+.spec-chrome{height:28px;background:#181a1d;border-bottom:1px solid #2a2d34;display:flex;align-items:center;padding:0 10px;gap:8px}
+.spec-chrome .l{width:8px;height:8px;border-radius:50%}
+.spec-chrome .url{flex:1;background:#0a0c10;border:1px solid #2a2d34;height:18px;border-radius:4px;display:flex;align-items:center;padding:0 10px;font-size:9px;color:#8a90a0;font-family:var(--f-mono);justify-content:center}
+.spec-content{padding:0;background:var(--bg);min-height:300px}
+
+/* rules block */
+.what-happens{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;margin-top:24px}
+.what-happens .lbl{font-family:Inter;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--learn);font-weight:700;margin-bottom:14px}
+.what-happens-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.wh-col h5{font-family:var(--f-display);font-size:22px;letter-spacing:0.4px;margin:0 0 10px;font-weight:400;line-height:1.05}
+.wh-col p{font-size:12.5px;line-height:1.6;color:rgba(246,247,248,0.78);margin:0 0 8px}
+.wh-col p strong{color:var(--ink)}
+.wh-col p code{font-family:var(--f-mono);font-size:11px;background:rgba(255,255,255,0.05);padding:1px 5px;border-radius:3px;color:var(--ink)}
+
+/* endnote */
+.endnote{margin-top:120px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:var(--f-display);font-size:54px;letter-spacing:0.6px;margin:0 0 18px;font-weight:400}
+.endnote p{font-family:Inter;font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:880px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+.endnote p code{font-family:var(--f-mono);font-size:12px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px}
+
+@media (max-width:1100px){.what-happens-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO -->
+<div class="deck-hero">
+  <div class="eyebrow">faff · race day timeline · the full arc · 2026-05-27</div>
+  <h1 class="title">the day this<br><span class="a">all leads to.</span></h1>
+  <div class="lede">
+    Eight weeks of training compresses to one Sunday. Faff has been preparing for this day since you opened the app. Every surface — TODAY, RACES, PROFILE, Spectator, Watch — coordinates around the runner's experience. <strong>Below: the full arc, hour by hour, surface by surface.</strong> From the anxious Saturday night through crossing the line to the auto-generated debrief two weeks later.
+  </div>
+</div>
+
+<!-- TIMELINE RAIL -->
+<div class="timeline-rail">
+  <div class="tr-stop"><div class="dot"></div><div class="time">T−12h</div><div class="label">Night before</div></div>
+  <div class="tr-stop"><div class="dot"></div><div class="time">T−4h</div><div class="label">Race morning</div></div>
+  <div class="tr-stop"><div class="dot"></div><div class="time">T−30m</div><div class="label">Pre-gun</div></div>
+  <div class="tr-stop race"><div class="dot"></div><div class="time">T+0</div><div class="label">GUN</div></div>
+  <div class="tr-stop"><div class="dot"></div><div class="time">T+1:30</div><div class="label">Mid-race</div></div>
+  <div class="tr-stop race"><div class="dot"></div><div class="time">T+2:54</div><div class="label">FINISH</div></div>
+  <div class="tr-stop"><div class="dot"></div><div class="time">T+1h</div><div class="label">Cool down</div></div>
+  <div class="tr-stop"><div class="dot"></div><div class="time">+1d</div><div class="label">Recovery</div></div>
+  <div class="tr-stop"><div class="dot"></div><div class="time">+14d</div><div class="label">Debrief</div></div>
+</div>
+
+<!-- ════════════════════ MOMENT 01 · NIGHT BEFORE ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">01</span>NIGHT BEFORE</h3>
+      <div class="blurb">Saturday 9pm. Final checklist sweep. Kit on the bedroom floor. <strong>Faff's job here:</strong> reduce decision fatigue, finalize logistics, calm the nerves. Phone shows tomorrow's takeover. Watch is charging. Last reminders go out.</div>
+    </div>
+    <div class="right"><div class="clock">21:00</div><div class="timeloc">Sat 10 Jun · London hotel</div></div>
+  </div>
+
+  <div class="surfaces">
+    <!-- runner phone -->
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>21:00</span><span>●●● 5G ▮</span></div>
+          <div style="padding:0;height:calc(100% - 40px);background:var(--g-night);position:relative">
+            <div style="padding:20px 22px 32px;color:#fff">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase;margin-bottom:6px">Sat 10 Jun · 21:00 · the night before</div>
+              <div style="font-family:var(--f-display);font-size:88px;line-height:0.86;color:#fff">SLEEP<br>NOW.</div>
+              <div style="font-family:Inter;font-size:14px;color:rgba(255,255,255,0.85);font-weight:500;margin-top:18px;line-height:1.5">Alarm at 05:30. Cab at 06:30. Gun at 09:35. Everything is ready.</div>
+            </div>
+            <div style="background:var(--bg);margin-top:-16px;border-radius:24px 24px 0 0;padding:20px 22px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px"><div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Final checklist · 5 of 5 ✓</div><span style="font-family:Inter;font-size:9.5px;color:var(--green);font-weight:700;letter-spacing:1px;text-transform:uppercase">All set</span></div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">✓</span><span style="color:rgba(246,247,248,0.78);font-family:Inter;font-weight:500">Bib pinned · kit laid out</span></div></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">✓</span><span style="color:rgba(246,247,248,0.78);font-family:Inter;font-weight:500">6 gels packed · pacing band</span></div></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">✓</span><span style="color:rgba(246,247,248,0.78);font-family:Inter;font-weight:500">Watch charging · 84% → 100%</span></div></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">✓</span><span style="color:rgba(246,247,248,0.78);font-family:Inter;font-weight:500">Cab booked · 06:30 lobby</span></div></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:4px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">✓</span><span style="color:rgba(246,247,248,0.78);font-family:Inter;font-weight:500">Alarm set · 05:30 + backup 05:35</span></div></div>
+              </div>
+              <div style="margin-top:16px;padding:12px 14px;background:rgba(176,132,255,0.06);border:1px solid rgba(176,132,255,0.18);border-radius:8px">
+                <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:4px">Tracking tomorrow</div>
+                <div style="font-family:Inter;font-size:12px;color:rgba(246,247,248,0.85);line-height:1.5"><strong>7 people</strong> · live tracking auto-on at 09:35 · bumps enabled</div>
+              </div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Runner</strong> · phone · /today</div>
+      <div class="surface-tag">SLEEP NOW. verb. Final checklist all ✓ — the work is done. Spectator panel locked in.</div>
+    </div>
+
+    <!-- watch charging -->
+    <div class="surface" style="align-self:center">
+      <div class="watch" style="background:#000;border-color:rgba(62,189,65,0.4);box-shadow:0 0 30px rgba(62,189,65,0.2)">
+        <div class="wtime">21:00</div>
+        <div style="font-size:36px;line-height:1;margin-bottom:12px">⚡</div>
+        <div style="font-family:var(--f-display);font-size:32px;color:#fff;line-height:0.95">CHARGING</div>
+        <div style="font-family:Inter;font-size:11px;color:rgba(255,255,255,0.7);font-weight:600;margin-top:8px">84% → 100% · ~25min</div>
+        <div style="margin-top:14px;padding:5px 10px;background:rgba(62,189,65,0.18);border-radius:99px;font-family:Inter;font-size:9px;color:var(--green);letter-spacing:1px;font-weight:700;text-transform:uppercase">Race ready · auto-launches gun 09:35</div>
+      </div>
+      <div class="surface-label"><strong>Watch</strong> · race face armed</div>
+      <div class="surface-tag">Watch detects it's race-eve · auto-loads tomorrow's workout face · charges to 100% before 9:30pm.</div>
+    </div>
+
+    <!-- spectator side · invite confirmed -->
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen" style="background:linear-gradient(180deg,#15171c 0%,#0a0c10 50%)">
+          <div class="island"></div>
+          <div class="sb"><span>21:00</span><span>●●● Wi-Fi ▮</span></div>
+          <div style="padding:18px 22px;color:#fff">
+            <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:6px">Spectator · Mum</div>
+            <div style="font-family:var(--f-display);font-size:44px;line-height:1;letter-spacing:0.3px;margin-bottom:14px">Tracking confirmed.</div>
+            <div style="background:rgba(255,136,71,0.08);border:1px solid rgba(255,136,71,0.3);border-radius:14px;padding:18px 20px;margin-bottom:14px">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--race);font-weight:700;text-transform:uppercase">David's race · tomorrow</div>
+              <div style="font-family:var(--f-display);font-size:34px;color:#fff;line-height:1.05;margin-top:6px;letter-spacing:0.3px">LONDON<br>MARATHON</div>
+              <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.15)"><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase">Gun</div><div style="font-family:'Bebas Neue';font-size:22px;color:#fff;line-height:1">09:35</div></div><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase">Goal</div><div style="font-family:'Bebas Neue';font-size:22px;color:#fff;line-height:1">2:55</div></div><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase">~Finish</div><div style="font-family:'Bebas Neue';font-size:22px;color:#fff;line-height:1">12:30 PM</div></div></div>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:14px">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:6px">Reminder · tomorrow morning</div>
+              <div style="font-family:Inter;font-size:12px;color:rgba(246,247,248,0.85);line-height:1.5">Faff will text you at <strong>09:30</strong> when David's about to start. Live tracker opens automatically.</div>
+            </div>
+            <div style="background:rgba(176,132,255,0.06);border:1px solid rgba(176,132,255,0.22);border-radius:12px;padding:14px 18px">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:6px">Quick bumps · pre-set</div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap"><span style="font-size:20px">🔥</span><span style="font-size:20px">💪</span><span style="font-size:20px">❤️</span><span style="font-size:20px">⚡</span><span style="font-size:20px">🏃‍♂️</span></div>
+              <div style="font-family:Inter;font-size:10.5px;color:var(--mute);margin-top:8px;line-height:1.5">Tap any of these tomorrow → land on David's watch in &lt;2 sec.</div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Spectator</strong> · Mum's phone</div>
+      <div class="surface-tag">Confirmation that tracking is set. Reminder will fire 5min before gun. Pre-set bumps ready.</div>
+    </div>
+  </div>
+
+  <div class="what-happens">
+    <div class="lbl">What Faff does automatically · 21:00</div>
+    <div class="what-happens-grid">
+      <div class="wh-col"><h5>Locks the screen.</h5><p>TODAY page goes into <strong>night-before mode</strong>. Single verb. No coach advice. No HRV interpretation. <strong>The work is done · sleep is the call.</strong></p></div>
+      <div class="wh-col"><h5>Charges the watch.</h5><p>Watch detects race-eve from paired phone state · prompts plug-in if not already on cable. Charges to 100% by 9:30pm · auto-loads tomorrow's race-day workout face.</p></div>
+      <div class="wh-col"><h5>Sends spectator confirmations.</h5><p>Every member of the circle gets a push: <strong>"David runs London tomorrow at 9:35. Live tracker opens at 9:30. Bump him."</strong> No app required for spectators · web link works.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 02 · RACE MORNING ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">02</span>RACE MORNING</h3>
+      <div class="blurb">05:30 alarm. The 5am screen we designed for race-day ops <em>is the only screen that matters now.</em> Logistics dominant · weather confirmed · cab in 12 min · pre-fuel countdown · spectator panel quietly populated.</div>
+    </div>
+    <div class="right"><div class="clock">05:47</div><div class="timeloc">Sun 11 Jun · T−3:48</div></div>
+  </div>
+
+  <div class="surfaces">
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>05:47</span><span>●●● 5G ▮</span></div>
+          <div style="padding:0;height:calc(100% - 40px)">
+            <div style="background:var(--g-race);padding:18px 22px;color:#fff">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.6px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,0.85);margin-bottom:4px">Race morning · London</div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px"><div><div style="font-family:var(--f-display);font-size:38px;line-height:1">GUN IN</div><div style="font-family:'Bebas Neue';font-size:64px;line-height:0.9;letter-spacing:2px;font-variant-numeric:tabular-nums">3:48</div></div><div style="text-align:right"><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.2px;color:rgba(255,255,255,0.85);font-weight:700;text-transform:uppercase">Bib · corral</div><div style="font-family:'Bebas Neue';font-size:42px;color:#fff;line-height:0.95;letter-spacing:1px">2147 · B</div></div></div>
+            </div>
+            <div style="padding:14px 18px;background:rgba(62,189,65,0.08);border-bottom:1px solid var(--line)">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--green);font-weight:700;text-transform:uppercase">▶ Now</div>
+              <div style="font-family:Inter;font-size:14px;font-weight:600;color:var(--ink);margin-top:3px">Black cab in 12 min · front door pickup</div>
+              <div style="font-family:Inter;font-size:11px;color:var(--mute);margin-top:3px">Driver M. Bashir · 020-7-•••-4892 · arriving 06:00</div>
+            </div>
+            <div style="padding:12px 18px;display:flex;flex-direction:column;gap:6px">
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Weather · 09:35</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:600;margin-top:1px"><span style="font-family:'Geist Mono';font-weight:600">12°</span> · light cloud · 8mph SW</div></div><span style="font-family:Inter;font-size:9px;color:var(--green);background:rgba(62,189,65,0.16);padding:3px 8px;border-radius:99px;font-weight:700;letter-spacing:0.6px">Good</span></div>
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 12px"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Fueling · next</div><span style="font-family:Inter;font-size:9px;color:var(--goal);background:rgba(243,173,56,0.16);padding:3px 8px;border-radius:99px;font-weight:700;letter-spacing:0.6px">in 13 min</span></div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500;margin-top:2px">2 slices toast + honey + ½ banana</div></div>
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 12px"><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:5px">Drop bag</div><div style="display:flex;gap:4px;flex-wrap:wrap"><span style="font-family:Inter;font-size:9px;color:var(--green);background:rgba(62,189,65,0.14);padding:3px 8px;border-radius:99px;font-weight:700;letter-spacing:0.4px">✓ throwaway top</span><span style="font-family:Inter;font-size:9px;color:var(--green);background:rgba(62,189,65,0.14);padding:3px 8px;border-radius:99px;font-weight:700;letter-spacing:0.4px">✓ post shoes</span><span style="font-family:Inter;font-size:9px;color:var(--green);background:rgba(62,189,65,0.14);padding:3px 8px;border-radius:99px;font-weight:700;letter-spacing:0.4px">✓ recovery</span></div></div>
+              <div style="background:rgba(176,132,255,0.06);border:1px solid rgba(176,132,255,0.22);border-radius:8px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase">Tracking you today</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:600;margin-top:1px">7 people · Mum, Dad, Sam, +4</div></div><span style="font-family:Inter;font-size:9px;color:var(--learn);background:rgba(176,132,255,0.16);padding:3px 8px;border-radius:99px;font-weight:700;letter-spacing:0.6px">Auto-live at 09:30</span></div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Runner</strong> · phone · 5am screen</div>
+      <div class="surface-tag">The race-day ops page from v1 explorations. Logistics dominant. Coach silent. Cab incoming.</div>
+    </div>
+
+    <div class="surface" style="align-self:center">
+      <div class="watch">
+        <div class="wtime">05:47</div>
+        <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--race);font-weight:700;text-transform:uppercase;margin-bottom:4px">Race day</div>
+        <div style="font-family:var(--f-display);font-size:34px;color:#fff;line-height:0.95">LONDON</div>
+        <div style="font-family:var(--f-display);font-size:60px;color:var(--race);line-height:0.9;margin-top:6px;letter-spacing:2px;font-variant-numeric:tabular-nums">3:48</div>
+        <div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase;margin-top:6px">Until gun</div>
+        <div style="margin-top:14px;padding:5px 10px;background:rgba(255,136,71,0.18);border-radius:99px;font-family:Inter;font-size:9px;color:var(--race);letter-spacing:1px;font-weight:700;text-transform:uppercase">Bib 2147 · Corral B</div>
+      </div>
+      <div class="surface-label"><strong>Watch</strong> · race-day face</div>
+      <div class="surface-tag">Race countdown big and clear. Bib + corral always one wrist glance away. Auto-loaded by Faff overnight.</div>
+    </div>
+  </div>
+
+  <div class="what-happens">
+    <div class="lbl">What Faff does automatically · 05:47</div>
+    <div class="what-happens-grid">
+      <div class="wh-col"><h5>Phone wakes to RACE.</h5><p>TODAY tab auto-locks to race-day-ops layout. <strong>No daily training screen</strong> — the race is what's happening. Logistics ladder dominates.</p></div>
+      <div class="wh-col"><h5>Fueling cues fire.</h5><p>Pre-race nutrition plan auto-counts down · "2 slices toast in 13 min." Faff knows the gut needs 3h to clear before gun.</p></div>
+      <div class="wh-col"><h5>Cab confirms.</h5><p>If transport was booked through Faff, driver info auto-populates. ETA syncs from the rideshare API. Otherwise it's a manual reminder.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 03 · PRE-GUN ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">03</span>PRE-GUN · CORRAL</h3>
+      <div class="blurb">09:05. Standing in Corral B. Warmup done. Throwaway top still on. Phone in drop bag in 3 minutes. <strong>Final moment with the phone</strong> — last bump composer check, watch primed for gun, spectators getting notified.</div>
+    </div>
+    <div class="right"><div class="clock">09:05</div><div class="timeloc">Sun 11 Jun · T−30min</div></div>
+  </div>
+
+  <div class="surfaces">
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>09:05</span><span>●●● 5G ▮</span></div>
+          <div style="padding:0;height:calc(100% - 40px)">
+            <div style="background:var(--g-race);padding:24px 22px;color:#fff;position:relative">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.6px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,0.85);margin-bottom:4px">Corral B · waiting</div>
+              <div style="font-family:var(--f-display);font-size:120px;line-height:0.86;letter-spacing:2px;font-variant-numeric:tabular-nums">30<span style="font-size:48px;letter-spacing:1px"> MIN</span></div>
+              <div style="font-family:Inter;font-size:14px;color:rgba(255,255,255,0.9);font-weight:500;margin-top:14px">Phone in drop bag at 09:08. Then it's you and the watch.</div>
+            </div>
+            <div style="background:var(--bg);margin-top:-16px;border-radius:24px 24px 0 0;padding:18px 22px">
+              <div style="background:rgba(176,132,255,0.07);border:1px solid rgba(176,132,255,0.22);border-radius:12px;padding:14px 16px;margin-bottom:14px">
+                <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:8px">●●● Live · 7 spectators standing by</div>
+                <div style="display:flex;gap:-4px"><div style="width:28px;height:28px;border-radius:50%;background:var(--green);color:#fff;font-family:Inter;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);margin-right:-4px">M</div><div style="width:28px;height:28px;border-radius:50%;background:var(--race);color:#fff;font-family:Inter;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);margin-right:-4px">D</div><div style="width:28px;height:28px;border-radius:50%;background:var(--dist);color:#fff;font-family:Inter;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);margin-right:-4px">J</div><div style="width:28px;height:28px;border-radius:50%;background:var(--learn);color:#fff;font-family:Inter;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);margin-right:-4px">S</div><div style="width:28px;height:28px;border-radius:50%;background:var(--goal);color:#fff;font-family:Inter;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)">+3</div></div>
+                <div style="font-family:Inter;font-size:11.5px;color:var(--mute);margin-top:8px;line-height:1.5"><strong style="color:var(--ink)">All notified.</strong> Mum at home. Dad at finish line. James + Sam at mile 13. Live tracker pages open in 25 min.</div>
+              </div>
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px">
+                <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:8px">Pre-race coach · one line</div>
+                <div style="font-family:Inter;font-size:13px;color:rgba(246,247,248,0.88);line-height:1.55;font-style:italic">"You've done the work. Today is collection day. First mile slower than feels right."</div>
+              </div>
+              <div style="background:rgba(255,255,255,0.02);border:1px solid var(--line2);border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+                <div><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Watch readiness</div><div style="font-family:Inter;font-size:13px;color:var(--green);font-weight:600;margin-top:1px">100% battery · workout face armed</div></div>
+                <span style="font-family:Inter;font-size:9px;color:var(--green);background:rgba(62,189,65,0.16);padding:4px 9px;border-radius:99px;font-weight:700;letter-spacing:0.6px">Auto-start at gun</span>
+              </div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Runner</strong> · last phone moment</div>
+      <div class="surface-tag">Big countdown · spectators visible · single line of pre-race coach voice (rare cameo) · watch armed.</div>
+    </div>
+
+    <div class="surface" style="align-self:center">
+      <div class="watch">
+        <div class="wtime">09:05</div>
+        <div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:var(--race);font-weight:700;text-transform:uppercase">Corral B</div>
+        <div style="font-family:var(--f-display);font-size:80px;color:#fff;line-height:0.9;margin-top:4px;font-variant-numeric:tabular-nums">30:00</div>
+        <div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase;margin-top:4px">Until gun</div>
+        <div style="margin-top:14px;padding:8px 12px;background:var(--race);border-radius:99px;font-family:Inter;font-size:10px;color:#fff;letter-spacing:1.2px;font-weight:700;text-transform:uppercase">▶ Ready to start</div>
+      </div>
+      <div class="surface-label"><strong>Watch</strong> · pre-gun</div>
+      <div class="surface-tag">Big 30:00 countdown · gun-launch button armed · auto-fires at 09:35 when GPS detects motion across the start line.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 04 · GUN ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">04</span>GUN · 09:35</h3>
+      <div class="blurb">The horn. Crowd surges. <strong>Faff fires every relevant system in one frame</strong>: watch starts the workout, GPS broadcasts to the spectator graph, "David started" notification goes out, the live tracker opens automatically on every spectator's phone. <em>The whole network lights up.</em></div>
+    </div>
+    <div class="right"><div class="clock">09:35</div><div class="timeloc">Sun 11 Jun · T+0</div></div>
+  </div>
+
+  <div class="surfaces">
+    <div class="surface">
+      <div class="watch" style="border-color:var(--race);box-shadow:0 0 40px rgba(255,136,71,0.4)">
+        <div class="wtime">09:35</div>
+        <div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--race);font-weight:700;text-transform:uppercase">● Live · started</div>
+        <div style="font-family:var(--f-display);font-size:48px;color:#fff;line-height:0.95;margin-top:4px;font-variant-numeric:tabular-nums">0:00:12</div>
+        <div style="margin-top:10px"><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase">Pace</div><div style="font-family:var(--f-display);font-size:32px;color:#fff;line-height:0.95">7:42</div></div>
+        <div style="margin-top:6px"><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase">HR</div><div style="font-family:var(--f-display);font-size:32px;color:var(--green);line-height:0.95">152</div></div>
+      </div>
+      <div class="surface-label"><strong>Runner</strong> · watch · seconds in</div>
+      <div class="surface-tag">Workout started automatically at GPS-detected motion across start. Phone in drop bag. <strong>It's you and the watch now.</strong></div>
+    </div>
+
+    <div class="surface">
+      <div class="spec-browser" style="width:380px">
+        <div class="spec-chrome"><div class="l" style="background:#FF5F57"></div><div class="l" style="background:#FEBC2E"></div><div class="l" style="background:#28C840"></div><div class="url">faff.run/track/dh-london</div></div>
+        <div class="spec-content" style="padding:0;color:#fff">
+          <div style="padding:18px 20px;background:linear-gradient(180deg,rgba(176,132,255,0.12),transparent);border-bottom:1px solid var(--line)">
+            <div style="display:flex;align-items:center;gap:10px"><div style="width:38px;height:38px;border-radius:50%;background:var(--g-race);color:#fff;display:flex;align-items:center;justify-content:center;font-family:Inter;font-weight:700;font-size:14px;border:2px solid var(--ink)">D</div><div><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:var(--green);font-weight:700;text-transform:uppercase">● Live · just started</div><div style="font-family:var(--f-display);font-size:24px;color:#fff;line-height:1.05">DAVID IS RUNNING.</div></div></div>
+          </div>
+          <div style="padding:18px 20px;text-align:center">
+            <div style="font-family:'Bebas Neue';font-size:64px;color:#fff;line-height:0.95;font-variant-numeric:tabular-nums">0:00:42</div>
+            <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-top:4px">Elapsed · mile 0.1 of 26.2</div>
+            <div style="margin-top:14px;padding:8px 14px;background:rgba(255,136,71,0.18);border-radius:99px;font-family:Inter;font-size:10px;color:var(--race);letter-spacing:1px;font-weight:700;display:inline-block;text-transform:uppercase">Goal · 2:55:00 · Arriving ~12:30 PM</div>
+          </div>
+          <div style="padding:0 20px 20px"><div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:8px">Quick bump</div><div style="display:flex;gap:6px"><div style="flex:1;aspect-ratio:1;background:var(--card);border:1.5px solid var(--line);border-radius:10px;font-size:24px;display:flex;align-items:center;justify-content:center">🔥</div><div style="flex:1;aspect-ratio:1;background:var(--card);border:1.5px solid var(--line);border-radius:10px;font-size:24px;display:flex;align-items:center;justify-content:center">💪</div><div style="flex:1;aspect-ratio:1;background:var(--card);border:1.5px solid var(--line);border-radius:10px;font-size:24px;display:flex;align-items:center;justify-content:center">❤️</div><div style="flex:1;aspect-ratio:1;background:var(--card);border:1.5px solid var(--line);border-radius:10px;font-size:24px;display:flex;align-items:center;justify-content:center">⚡</div><div style="flex:1;aspect-ratio:1;background:var(--card);border:1.5px solid var(--line);border-radius:10px;font-size:24px;display:flex;align-items:center;justify-content:center">🏃</div></div></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Spectator</strong> · live tracker just opened</div>
+      <div class="surface-tag">Auto-opens at gun time. Live tracking begins. Bumps available immediately. Mum's already lining up the first 🔥.</div>
+    </div>
+  </div>
+
+  <div class="what-happens">
+    <div class="lbl">What Faff does automatically · gun moment</div>
+    <div class="what-happens-grid">
+      <div class="wh-col"><h5>Watch auto-starts.</h5><p>GPS detects you crossing the start mat · workout begins · paired phone in drop bag stays asleep until you reunite.</p></div>
+      <div class="wh-col"><h5>Spectators light up.</h5><p>Push notification to all 7: <strong>"David started London."</strong> Live tracker page opens automatically on their phones if they had the link bookmarked.</p></div>
+      <div class="wh-col"><h5>Prediction model spins up.</h5><p>Live predicted-finish model starts updating every mile · pulls from current pace × course profile × your historical fade pattern. <strong>The 2:53:42 prediction we saw mid-race comes from here.</strong></p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 05 · MID-RACE ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">05</span>MID-RACE · MILE 14</h3>
+      <div class="blurb">11:05. Just past Tower Bridge. Halfway done. Heart rate locked at 168 · pace holding at 6:36. <strong>Mum just sent ❤️</strong> from her kitchen 4,000 miles away. It lands on your wrist 0.4 seconds later. <em>The moat in action.</em></div>
+    </div>
+    <div class="right"><div class="clock">11:05</div><div class="timeloc">Sun 11 Jun · T+1:30 · Mi 14</div></div>
+  </div>
+
+  <div class="surfaces">
+    <!-- watch · bump arriving -->
+    <div class="surface">
+      <div class="watch" style="border-color:var(--learn);box-shadow:0 0 40px rgba(176,132,255,0.45)">
+        <div class="wtime">11:05</div>
+        <div style="font-size:54px;line-height:1;margin-bottom:6px">❤️</div>
+        <div style="font-family:var(--f-display);font-size:24px;letter-spacing:0.5px;color:#fff;line-height:1;margin-bottom:5px">I LOVE YOU</div>
+        <div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:rgba(255,255,255,0.75);font-weight:700;text-transform:uppercase">— Mum</div>
+        <div style="margin-top:12px;padding:4px 9px;border:1.5px solid var(--learn);border-radius:99px;font-family:Inter;font-size:8.5px;color:var(--learn);letter-spacing:1px;font-weight:700;text-transform:uppercase">Bump · 4s</div>
+      </div>
+      <div class="surface-label"><strong>Watch</strong> · bump landed</div>
+      <div class="surface-tag">4-second haptic takeover at mile 14. You grin into mile 15. Returns to pace face automatically.</div>
+    </div>
+
+    <!-- spectator -->
+    <div class="surface">
+      <div class="spec-browser">
+        <div class="spec-chrome"><div class="l" style="background:#FF5F57"></div><div class="l" style="background:#FEBC2E"></div><div class="l" style="background:#28C840"></div><div class="url">faff.run/track/dh-london</div></div>
+        <div class="spec-content" style="padding:0;color:#fff">
+          <div style="padding:14px 18px;background:linear-gradient(180deg,rgba(176,132,255,0.10),transparent);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--green);font-weight:700;text-transform:uppercase">● Live · mile 14 of 26.2</div><div style="font-family:var(--f-display);font-size:22px;color:#fff;line-height:1.05;margin-top:2px">DAVID · MILE 14</div></div>
+            <div style="text-align:right"><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:var(--mute);font-weight:700;text-transform:uppercase">Elapsed</div><div style="font-family:var(--f-mono);font-size:18px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums">1:32:14</div></div>
+          </div>
+          <div style="padding:18px;background:rgba(62,189,65,0.06);border-bottom:1px solid var(--line);text-align:center">
+            <div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:4px">Predicted finish</div>
+            <div style="font-family:'Bebas Neue';font-size:48px;color:var(--green);line-height:1;font-variant-numeric:tabular-nums">2:53:42</div>
+            <div style="font-family:Inter;font-size:11px;color:var(--green);font-weight:600;margin-top:4px">−1:18 of goal · arriving 12:29 PM</div>
+          </div>
+          <div style="padding:14px 18px;border-bottom:1px solid var(--line)">
+            <div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:6px">Current</div>
+            <div style="display:flex;justify-content:space-between;gap:14px"><div><div style="font-family:'Geist Mono';font-size:18px;color:#fff;font-weight:600;font-variant-numeric:tabular-nums">6:36</div><div style="font-family:Inter;font-size:9px;color:var(--mute);font-weight:600">Avg pace</div></div><div><div style="font-family:'Geist Mono';font-size:18px;color:var(--green);font-weight:600;font-variant-numeric:tabular-nums">6:31</div><div style="font-family:Inter;font-size:9px;color:var(--mute);font-weight:600">Last mile</div></div><div><div style="font-family:'Geist Mono';font-size:18px;color:var(--race);font-weight:600;font-variant-numeric:tabular-nums">168</div><div style="font-family:Inter;font-size:9px;color:var(--mute);font-weight:600">HR</div></div></div>
+          </div>
+          <div style="padding:14px 18px"><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:8px">●●● 5 bumps sent this run</div>
+            <div style="display:flex;flex-direction:column;gap:5px"><div style="display:flex;align-items:center;gap:8px;background:rgba(176,132,255,0.08);border-radius:99px;padding:5px 10px"><span style="font-size:14px">❤️</span><span style="font-family:Inter;font-size:11px">Mum · "I love you"</span><span style="font-family:Inter;font-size:9px;color:var(--mute);margin-left:auto;font-weight:600">just now</span></div><div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.02);border-radius:99px;padding:5px 10px"><span style="font-size:14px">🔥</span><span style="font-family:Inter;font-size:11px">Mum · "GO ON SON"</span><span style="font-family:Inter;font-size:9px;color:var(--mute);margin-left:auto;font-weight:600">12s</span></div><div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.02);border-radius:99px;padding:5px 10px"><span style="font-size:14px">💪</span><span style="font-family:Inter;font-size:11px">Sam · "ahead of 2:55!"</span><span style="font-family:Inter;font-size:9px;color:var(--mute);margin-left:auto;font-weight:600">38s</span></div></div></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Mum's screen</strong> · live tracker</div>
+      <div class="surface-tag">Mum just hit ❤️. Sees the prediction beating goal by 1:18. Texting Dad: "He's flying."</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 06 · THE FINISH ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">06</span>THE FINISH · THE MOMENT</h3>
+      <div class="blurb">12:29:32 PM. <strong>The line.</strong> Watch detects you cross. PR detection fires (sub-2:55, never broken). Spectator panel explodes — 7 push notifications go out simultaneously. Dad screams at the finish line. <em>Every Faff surface coordinates around this single instant.</em></div>
+    </div>
+    <div class="right"><div class="clock">12:29:32</div><div class="timeloc">Sun 11 Jun · T+2:54:32 · FINISH</div></div>
+  </div>
+
+  <!-- THE BIG MOMENT — Watch + Phone wake-up + Spectator celebration -->
+  <div class="surfaces">
+    <!-- watch — the celebration -->
+    <div class="surface">
+      <div class="watch" style="background:linear-gradient(135deg,#3EBD41 0%,#F3AD38 35%,#FF8847 70%,#9013FE 100%);border-color:var(--ink);box-shadow:0 0 60px rgba(255,136,71,0.5)">
+        <div class="wtime" style="color:#fff">12:29</div>
+        <div style="font-size:48px;line-height:1;margin-bottom:6px">🏁</div>
+        <div style="font-family:var(--f-display);font-size:30px;letter-spacing:0.4px;color:#fff;line-height:0.95">FINISHED.</div>
+        <div style="font-family:'Bebas Neue';font-size:42px;color:#fff;line-height:0.9;margin-top:8px;font-variant-numeric:tabular-nums">2:54:32</div>
+        <div style="margin-top:8px;padding:5px 11px;background:rgba(0,0,0,0.4);border-radius:99px;font-family:Inter;font-size:9px;color:#fff;letter-spacing:1.2px;font-weight:700;text-transform:uppercase">★ NEW PR · −1:28</div>
+      </div>
+      <div class="surface-label"><strong>Watch · the moment</strong></div>
+      <div class="surface-tag">Detects mat-cross · PR detection fires · gradient flares · 6-second celebration takeover with haptic burst.</div>
+    </div>
+
+    <!-- phone — back in pocket from drop bag pickup, but full bleed when retrieved -->
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen" style="background:var(--g-pr)">
+          <div class="island"></div>
+          <div class="sb"><span>12:32</span><span style="color:#fff">●●● 5G ▮</span></div>
+          <div style="padding:0;height:calc(100% - 40px);color:#fff;position:relative">
+            <div style="padding:28px 22px 0">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.85);font-weight:700;text-transform:uppercase;margin-bottom:6px">London Marathon · finished 3 min ago</div>
+              <div style="font-family:var(--f-display);font-size:120px;line-height:0.84;letter-spacing:0.6px;color:#fff">NEW<br>BEST.</div>
+              <div style="font-family:'Bebas Neue';font-size:96px;line-height:0.95;color:#fff;margin-top:24px;letter-spacing:1px;font-variant-numeric:tabular-nums">2:54:32</div>
+              <div style="display:flex;gap:14px;margin-top:18px"><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.75);font-weight:700;text-transform:uppercase">vs goal</div><div style="font-family:'Bebas Neue';font-size:28px;color:#fff;line-height:0.95;margin-top:2px">−0:28</div></div><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.75);font-weight:700;text-transform:uppercase">vs prev PR</div><div style="font-family:'Bebas Neue';font-size:28px;color:#fff;line-height:0.95;margin-top:2px">−1:28</div></div><div><div style="font-family:Inter;font-size:9px;letter-spacing:1.2px;color:rgba(255,255,255,0.75);font-weight:700;text-transform:uppercase">Place</div><div style="font-family:'Bebas Neue';font-size:28px;color:#fff;line-height:0.95;margin-top:2px">847 / 42K</div></div></div>
+            </div>
+            <div style="position:absolute;bottom:32px;left:22px;right:22px"><div style="background:rgba(0,0,0,0.4);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:14px 18px"><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:rgba(255,255,255,0.7);font-weight:700;text-transform:uppercase;margin-bottom:6px">Auto-shared with your circle</div><div style="font-family:Inter;font-size:12.5px;color:rgba(255,255,255,0.92);line-height:1.5">7 people just got the result. Dad's at the finish line — find him →</div></div></div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Phone · drop bag pickup</strong></div>
+      <div class="surface-tag">Full-bleed gradient celebration. NEW BEST. verb. Stats. Auto-shared. <strong>The screenshot every runner takes.</strong></div>
+    </div>
+
+    <!-- spectator celebration -->
+    <div class="surface">
+      <div class="spec-browser">
+        <div class="spec-chrome"><div class="l" style="background:#FF5F57"></div><div class="l" style="background:#FEBC2E"></div><div class="l" style="background:#28C840"></div><div class="url">faff.run/track/dh-london</div></div>
+        <div class="spec-content" style="padding:0;color:#fff">
+          <div style="background:var(--g-pr);padding:28px 22px;text-align:center;color:#fff">
+            <div style="font-size:54px;line-height:1;margin-bottom:8px">🎉</div>
+            <div style="font-family:var(--f-display);font-size:54px;letter-spacing:0.5px;line-height:0.95">DAVID<br>FINISHED.</div>
+            <div style="font-family:'Bebas Neue';font-size:72px;color:#fff;line-height:0.95;margin-top:18px;font-variant-numeric:tabular-nums;letter-spacing:1px">2:54:32</div>
+            <div style="margin-top:10px;padding:5px 14px;background:rgba(0,0,0,0.35);border-radius:99px;font-family:Inter;font-size:10px;color:#fff;letter-spacing:1.4px;font-weight:700;display:inline-block;text-transform:uppercase">★ NEW PR · −1:28</div>
+          </div>
+          <div style="padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Place</div><div style="font-family:'Bebas Neue';font-size:24px;color:#fff;line-height:1;font-variant-numeric:tabular-nums">847</div></div>
+            <div><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">M30-34</div><div style="font-family:'Bebas Neue';font-size:24px;color:#fff;line-height:1;font-variant-numeric:tabular-nums">128</div></div>
+            <div><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Negative split</div><div style="font-family:'Bebas Neue';font-size:24px;color:var(--green);line-height:1;font-variant-numeric:tabular-nums">−0:12</div></div>
+          </div>
+          <div style="padding:16px 18px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase">Final bumps from your circle</div><span style="font-family:Inter;font-size:11px;color:var(--learn);font-weight:700">14 total</span></div><div style="display:flex;gap:6px;flex-wrap:wrap"><div style="background:rgba(176,132,255,0.1);padding:5px 10px;border-radius:99px;font-family:Inter;font-size:11px;display:flex;align-items:center;gap:5px"><span>🎉</span><span>Mum</span></div><div style="background:rgba(176,132,255,0.1);padding:5px 10px;border-radius:99px;font-family:Inter;font-size:11px;display:flex;align-items:center;gap:5px"><span>🏃‍♂️</span><span>James</span></div><div style="background:rgba(176,132,255,0.1);padding:5px 10px;border-radius:99px;font-family:Inter;font-size:11px;display:flex;align-items:center;gap:5px"><span>🔥</span><span>Sam</span></div><div style="background:rgba(176,132,255,0.1);padding:5px 10px;border-radius:99px;font-family:Inter;font-size:11px;display:flex;align-items:center;gap:5px"><span>❤️</span><span>Dad</span></div></div></div>
+          <div style="padding:14px 18px;background:rgba(62,189,65,0.06);border-top:1px solid var(--line);text-align:center"><div style="font-family:Inter;font-size:11px;color:rgba(246,247,248,0.85);font-weight:500">Dad is at the finish line · <strong style="color:var(--ink)">find him at the Mall, section 4</strong> →</div></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Mum's screen · finish</strong></div>
+      <div class="surface-tag">Celebration takes the whole screen. Final time + PR badge + place + negative split. Dad at finish, where to find him.</div>
+    </div>
+  </div>
+
+  <div class="what-happens">
+    <div class="lbl">What Faff does in the 4 seconds after the line · simultaneous</div>
+    <div class="what-happens-grid">
+      <div class="wh-col"><h5>PR detection · auto.</h5><p>Watch detects mat-cross + workout duration < previous PR · fires PR celebration sequence. <strong>Confetti haptic burst. Gradient flare. Verb table picks NEW BEST.</strong> No coach LLM call · pure rule.</p></div>
+      <div class="wh-col"><h5>Spectator push · all 7.</h5><p>"David finished London · 2:54:32 · NEW PR" pushes to every circle member. <strong>Same notification, no exceptions.</strong> Live tracker updates to celebration mode. Bump composer disables (race over).</p></div>
+      <div class="wh-col"><h5>Auto-share moment.</h5><p>Faff generates a shareable card with finish time + PR + course profile. <strong>One tap to send to non-Faff friends.</strong> Image is pre-rendered with gradient + Bebas verb + Geist Mono finish time.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 07 · COOL DOWN ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">07</span>COOL DOWN · 1H POST</h3>
+      <div class="blurb">13:30 PM. Foil blanket. Heart rate finally dropping. Family hugs done. <strong>Phone shows the debrief inline on TODAY</strong> — DONE state has auto-promoted with the race result as the headline. Splits chart already populated. Coach's first words. Recovery countdown begins.</div>
+    </div>
+    <div class="right"><div class="clock">13:30</div><div class="timeloc">Sun 11 Jun · T+4h · cooling</div></div>
+  </div>
+
+  <div class="surfaces">
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>13:30</span><span>●●● 5G ▮</span></div>
+          <div style="padding:0;height:calc(100% - 40px)">
+            <div style="background:var(--g-done);padding:20px 22px;color:#fff">
+              <div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:rgba(255,255,255,0.85);font-weight:700;text-transform:uppercase;margin-bottom:4px">Race · completed · 4h ago · ★ NEW PR</div>
+              <div style="font-family:var(--f-display);font-size:96px;line-height:0.86;color:#fff">NAILED<br>IT.</div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:20px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.18)"><div><div style="font-family:'Bebas Neue';font-size:34px;color:#fff;line-height:1;font-variant-numeric:tabular-nums">26.2</div><div style="font-family:Inter;font-size:9px;letter-spacing:1.6px;color:rgba(255,255,255,0.7);font-weight:700;margin-top:3px">MI</div></div><div><div style="font-family:'Bebas Neue';font-size:34px;color:#fff;line-height:1;font-variant-numeric:tabular-nums">2:54:32</div><div style="font-family:Inter;font-size:9px;letter-spacing:1.6px;color:rgba(255,255,255,0.7);font-weight:700;margin-top:3px">TIME</div></div><div><div style="font-family:'Bebas Neue';font-size:34px;color:#fff;line-height:1;font-variant-numeric:tabular-nums">163</div><div style="font-family:Inter;font-size:9px;letter-spacing:1.6px;color:rgba(255,255,255,0.7);font-weight:700;margin-top:3px">AVG HR</div></div></div>
+            </div>
+            <div style="background:var(--bg);margin-top:-14px;border-radius:22px 22px 0 0;padding:18px 22px">
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Negative split</div><div style="font-family:'Geist Mono';font-size:14px;color:var(--green);font-weight:600;font-variant-numeric:tabular-nums">−0:12</div></div><div style="font-family:Inter;font-size:11px;color:rgba(246,247,248,0.7);margin-top:4px;line-height:1.5">2nd half <strong style="color:var(--ink)">12 sec faster</strong> than 1st. Discipline held.</div></div>
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Recovery</div><div style="font-family:'Geist Mono';font-size:14px;color:var(--dist);font-weight:600;font-variant-numeric:tabular-nums">14 days</div></div><div style="font-family:Inter;font-size:11px;color:rgba(246,247,248,0.7);margin-top:4px;line-height:1.5"><strong style="color:var(--ink)">No running until Sat.</strong> Walk, eat, hydrate, sleep.</div></div>
+              <div style="background:rgba(176,132,255,0.06);border:1px solid rgba(176,132,255,0.22);border-radius:10px;padding:12px 14px"><div style="font-family:Inter;font-size:9px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:5px">Now</div><div style="font-family:Inter;font-size:12px;color:rgba(246,247,248,0.85);line-height:1.5;font-style:italic">"Water · electrolytes · 500cal in next 30 min. Find Dad. Hug Mum on FaceTime. The training paid off."</div></div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Runner</strong> · TODAY in DONE state</div>
+      <div class="surface-tag">TODAY auto-promotes to DONE+PR for 6h. Headline · stats · negative split highlight · recovery countdown · immediate care.</div>
+    </div>
+
+    <div class="surface" style="align-self:center">
+      <div class="watch">
+        <div class="wtime">13:30</div>
+        <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--green);font-weight:700;text-transform:uppercase">Recovery</div>
+        <div style="font-family:var(--f-display);font-size:54px;color:#fff;line-height:0.95;margin-top:6px">REST.</div>
+        <div style="font-family:Inter;font-size:13px;color:rgba(255,255,255,0.85);font-weight:600;margin-top:8px">Walk if you want.</div>
+        <div style="margin-top:14px;padding:5px 11px;background:rgba(62,189,65,0.18);border-radius:99px;font-family:Inter;font-size:9px;color:var(--green);letter-spacing:1px;font-weight:700;text-transform:uppercase">No tracking · 14 days</div>
+      </div>
+      <div class="surface-label"><strong>Watch</strong> · rest mode</div>
+      <div class="surface-tag">Workout tracking suspended. Watch knows recovery has started. Won't suggest a run until Sat +6 days.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 08 · NEXT DAY ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">08</span>NEXT DAY · MONDAY</h3>
+      <div class="blurb">Monday 7am. Sore. Stairs feel impossible. TODAY page is calm — <strong>POST-RACE state</strong> running for the next 14 days. No new plan. No quality sessions. Just recovery and gentle reflection on yesterday's effort.</div>
+    </div>
+    <div class="right"><div class="clock">07:14</div><div class="timeloc">Mon 12 Jun · +1 day</div></div>
+  </div>
+
+  <div class="surfaces">
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>07:14</span><span>●●● 5G ▮</span></div>
+          <div style="padding:0;height:calc(100% - 40px)">
+            <div style="background:linear-gradient(135deg,#3EBD41 0%,#1f8a52 60%,#0f4a3a 100%);padding:24px 22px 28px;color:#fff">
+              <div style="font-family:Inter;font-size:9.5px;letter-spacing:1.4px;color:rgba(255,255,255,0.85);font-weight:700;text-transform:uppercase;margin-bottom:6px">Post-race · day 1 of 14</div>
+              <div style="font-family:var(--f-display);font-size:88px;line-height:0.86;color:#fff">RECOVER.</div>
+              <div style="font-family:Inter;font-size:14px;color:rgba(255,255,255,0.92);font-weight:500;margin-top:18px;line-height:1.5">London is behind you. <strong>2:54:32 · PR.</strong> Walk if you want. Otherwise — nothing.</div>
+            </div>
+            <div style="background:var(--bg);margin-top:-16px;border-radius:24px 24px 0 0;padding:20px 22px">
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase">Body · today</div><span style="font-family:Inter;font-size:9px;color:var(--over);background:rgba(252,77,100,0.14);padding:3px 8px;border-radius:99px;font-weight:700;letter-spacing:0.6px">Sore</span></div><div style="display:flex;gap:14px;margin-top:8px"><div><div style="font-family:'Geist Mono';font-size:18px;color:var(--over);font-weight:600;font-variant-numeric:tabular-nums">28</div><div style="font-family:Inter;font-size:9px;color:var(--mute);font-weight:600">HRV · low</div></div><div><div style="font-family:'Geist Mono';font-size:18px;color:var(--over);font-weight:600;font-variant-numeric:tabular-nums">58</div><div style="font-family:Inter;font-size:9px;color:var(--mute);font-weight:600">RHR · high</div></div><div><div style="font-family:'Geist Mono';font-size:18px;color:var(--green);font-weight:600;font-variant-numeric:tabular-nums">8.4h</div><div style="font-family:Inter;font-size:9px;color:var(--mute);font-weight:600">Sleep · deep</div></div></div></div>
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px"><div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--green);font-weight:700;text-transform:uppercase;margin-bottom:5px">Today · nothing</div><div style="font-family:Inter;font-size:12px;color:rgba(246,247,248,0.78);line-height:1.5">Walking is fine. <strong style="color:var(--ink)">No running.</strong> Pool day · light stretch · big meal.</div></div>
+              <div style="background:rgba(255,136,71,0.06);border:1px solid rgba(255,136,71,0.18);border-radius:10px;padding:12px 14px"><div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--race);font-weight:700;text-transform:uppercase;margin-bottom:5px">14-day recovery countdown</div><div style="display:flex;gap:3px;margin:8px 0 6px"><div style="height:6px;flex:1;background:var(--race);border-radius:3px"></div><div style="height:6px;flex:1;background:rgba(255,255,255,0.08);border-radius:3px"></div><div style="height:6px;flex:1;background:rgba(255,255,255,0.08);border-radius:3px"></div><div style="height:6px;flex:1;background:rgba(255,255,255,0.08);border-radius:3px"></div><div style="height:6px;flex:1;background:rgba(255,255,255,0.08);border-radius:3px"></div><div style="height:6px;flex:1;background:rgba(255,255,255,0.08);border-radius:3px"></div><div style="height:6px;flex:1;background:rgba(255,255,255,0.08);border-radius:3px"></div></div><div style="font-family:Inter;font-size:11px;color:var(--mute);line-height:1.5"><strong style="color:var(--ink)">First easy run: Sat (day 6).</strong> First quality: 14 days. Off-season starts in 14 days.</div></div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Runner</strong> · Mon morning</div>
+      <div class="surface-tag">POST-RACE state running. Body honesty (HRV down, RHR up — expected). Nothing today. Countdown to first run.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ MOMENT 09 · 14-DAY DEBRIEF ════════════════════ -->
+<div class="moment">
+  <div class="moment-head">
+    <div class="left">
+      <h3><span class="n">09</span>DEBRIEF · 14 DAYS LATER</h3>
+      <div class="blurb">Sunday 25 Jun. Recovery done. Race is properly in the past. <strong>RACES tab still has London but it's now POST-RACE</strong> with the full debrief surface unlocked — complete splits, course-knowledge validation, what worked, what to take into the next block.</div>
+    </div>
+    <div class="right"><div class="clock">+14d</div><div class="timeloc">Sun 25 Jun · race · in the books</div></div>
+  </div>
+
+  <div class="surfaces">
+    <div class="surface">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="island"></div>
+          <div class="sb"><span>09:14</span><span>●●● 5G ▮</span></div>
+          <div style="padding:0;height:calc(100% - 40px)">
+            <div style="background:linear-gradient(135deg,#FF8847 0%,#9013FE 100%);padding:22px 22px 26px;color:#fff">
+              <div style="font-family:Inter;font-size:9.5px;letter-spacing:1.6px;color:rgba(255,255,255,0.85);font-weight:700;text-transform:uppercase;margin-bottom:4px">Marathon · london · 11 Jun · in the books</div>
+              <div style="font-family:var(--f-display);font-size:64px;line-height:0.95">LONDON.</div>
+              <div style="font-family:'Bebas Neue';font-size:64px;color:#fff;line-height:0.95;margin-top:14px;font-variant-numeric:tabular-nums">2:54:32</div>
+              <div style="display:flex;gap:8px;margin-top:14px"><span style="font-family:Inter;font-size:9.5px;letter-spacing:1px;color:#fff;background:rgba(0,0,0,0.3);padding:4px 10px;border-radius:99px;font-weight:700;text-transform:uppercase">★ NEW PR</span><span style="font-family:Inter;font-size:9.5px;letter-spacing:1px;color:#fff;background:rgba(0,0,0,0.3);padding:4px 10px;border-radius:99px;font-weight:700;text-transform:uppercase">−1:28 vs prev</span><span style="font-family:Inter;font-size:9.5px;letter-spacing:1px;color:#fff;background:rgba(0,0,0,0.3);padding:4px 10px;border-radius:99px;font-weight:700;text-transform:uppercase">Negative split</span></div>
+            </div>
+            <div style="background:var(--bg);margin-top:-12px;border-radius:20px 20px 0 0;padding:18px 22px">
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:10px">What worked</div>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><span style="color:rgba(246,247,248,0.85);font-family:Inter;font-weight:500">Held back through Tower Bridge</span><span style="font-family:'Geist Mono';font-size:11px;color:var(--green);font-weight:600">6:38</span></div><div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><span style="color:rgba(246,247,248,0.85);font-family:Inter;font-weight:500">Pre-race fueling timing</span><span style="font-family:'Geist Mono';font-size:11px;color:var(--green);font-weight:600">−05:30</span></div><div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><span style="color:rgba(246,247,248,0.85);font-family:Inter;font-weight:500">Negative split discipline</span><span style="font-family:'Geist Mono';font-size:11px;color:var(--green);font-weight:600">−0:12</span></div></div>
+              <div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:10px">For next time</div>
+              <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><span style="color:rgba(246,247,248,0.85);font-family:Inter;font-weight:500">Canary Wharf mental dip</span><span style="font-family:'Geist Mono';font-size:11px;color:var(--goal);font-weight:600">Mi 17-18</span></div><div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><span style="color:rgba(246,247,248,0.85);font-family:Inter;font-weight:500">Gel #3 timing · slightly late</span><span style="font-family:'Geist Mono';font-size:11px;color:var(--goal);font-weight:600">Mi 19 vs 18</span></div></div>
+              <div style="margin-top:14px;padding:12px 14px;background:rgba(176,132,255,0.06);border:1px solid rgba(176,132,255,0.22);border-radius:8px"><div style="font-family:Inter;font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:4px">Next race?</div><div style="font-family:Inter;font-size:11.5px;color:rgba(246,247,248,0.78);line-height:1.5"><strong style="color:var(--ink)">Berlin in 12 weeks?</strong> Sub-2:50 is on the table. Tap to start a new plan →</div></div>
+            </div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+      <div class="surface-label"><strong>Runner</strong> · race detail · in books</div>
+      <div class="surface-tag">RACES tab still has London. Full debrief unlocked. "What worked" + "for next time" honest read. Next race teased.</div>
+    </div>
+  </div>
+
+  <div class="what-happens">
+    <div class="lbl">What Faff does over the 14 days · slow burn</div>
+    <div class="what-happens-grid">
+      <div class="wh-col"><h5>POST-RACE state holds.</h5><p>TODAY page stays in RECOVER mode for 14 days. <strong>Detailed body checks daily</strong> · HRV/RHR trending back to baseline · Faff knows when you're truly recovered (not just feeling-recovered).</p></div>
+      <div class="wh-col"><h5>Debrief auto-writes.</h5><p>"What worked" and "for next time" are derived from your splits + course-knowledge data + pre-race plan. <strong>Compares actual to predicted</strong> by section. Heuristic + LLM hybrid — no random insights.</p></div>
+      <div class="wh-col"><h5>Next race nudge.</h5><p>Once your HRV/RHR baseline returns (typically day 10-14), Faff suggests a next race based on this performance. <strong>Sub-2:50 in 12 weeks</strong> is a Faff-calculated stretch goal. Tap to start a new plan from there.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ ENDNOTE ════════════════════ -->
+<div class="endnote">
+  <div class="eyebrow" style="color:var(--green);margin-bottom:12px">why this matters · the emotional payoff</div>
+  <h3>nine moments.<br>one network.<br>your people.</h3>
+  <p><strong>Race day is when Faff stops being an app and becomes a thread between the runner and the people who love them.</strong> Every surface coordinates around the gun. The watch goes from training-face to race-face. The phone hands off to the spectator graph. Mum's screen lights up on cue. The bump-to-watch loop closes the network. <em>The finish line is the moment all 8 weeks earn back their cost.</em></p>
+  <p><strong>What this proves about the system:</strong> the pattern propagates. <em>Same poster · sibling · gradient · verb table</em> work for night-before mode, race-morning ops, mid-race live, the finish celebration, and the 14-day debrief. <strong>No new components.</strong> The resolver just adds T+/T− based states that auto-promote on the right day · with the right intensity · for the right amount of time.</p>
+  <p><strong>What still gets built:</strong> watch GPS-based start detection (auto-fires at mat-cross), PR detection sequence (gradient flare + 6-sec haptic burst), auto-shareable finish card (pre-rendered image generation), 14-day POST-RACE state (TODAY auto-lock), debrief writer (heuristic + LLM hybrid). <em>All compose existing components.</em></p>
+  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code>docs/race-day-timeline-2026-05-27.html</code> · the emotional peak surface · ties every Faff feature to a single day's arc. Spectator panel makes race day shared · the watch-takeover bump is the moat · the PR detection moment is the screenshot every runner takes. Build sprint 04 + 05 ships this end-to-end.</p>
+</div>
+
+<div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:Inter;font-size:11px;letter-spacing:3px">— END · 2026-05-27 · RACE DAY · NINE MOMENTS —</div>
