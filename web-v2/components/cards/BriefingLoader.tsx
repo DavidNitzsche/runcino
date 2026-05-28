@@ -122,9 +122,11 @@ export function BriefingLoader({
           voice={briefing.voice}
           briefingId={`${briefing._state?.user_id ?? ''}|${briefing._state?.today ?? ''}|${briefing.surface}`}
           askPrompt={askPrompt ?? askPromptFor(briefing.mode)}
-          // Check-in chips ONLY on /today, and only in modes where it makes
-          // sense as a check-in moment. Other surfaces are read-only voice.
-          showCheckin={surface === 'today' && CHECKIN_MODES.has(briefing.mode)}
+          // 2026-05-27: check-in UI off for now. David: "remove the
+          // how'd the run go and all tap ratings etc for now." We'll
+          // bring it back as chips/sliders only (no free-text) once
+          // the deterministic /today is stable.
+          showCheckin={false}
           // #150 — post-run uses the new workout-type-aware two-axis chips.
           // Other check-in modes (pre-run, rest-day) keep the legacy 3-chip set.
           checkinMode={briefing.mode === 'post-run' ? 'post_run' : 'legacy'}

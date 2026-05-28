@@ -103,66 +103,99 @@ function postRun(state: CoachState): { lead: string; voice: string[] } {
     return preRun(state);
   }
 
-  // 1. LEAD — characterize the run in one short sentence
-  const zoneSummary = zoneCharacter(state, run.hr);
-  const lead = run.pace
-    ? `${zoneSummary} at ${run.pace} pace.`
-    : `${run.mi.toFixed(1)} mi logged.`;
+  // 1. LEAD — single sentence, characterize the run honestly
+  const lead = postRunLead(state, run);
 
-  // 2. WHERE WE STAND — three beats: run quality, load, sleep
+  // 2. RUN QUALITY — HR vs zone band + cadence delta if notable
   const v1 = describeRunQuality(state, run);
+
+  // 3. WHERE YOU STAND — load + week + sleep, with attitude
   const v2 = describeLoadAndVolume(state);
 
-  // 3. WHAT TO DO — next workout + (optional) recovery nudge if load is hot
+  // 4. WHAT'S NEXT — tomorrow with a directive
   const v3 = describeWhatNext(state);
 
   const voice = [v1, v2, v3].filter(Boolean);
   return { lead, voice };
 }
 
-function zoneCharacter(state: CoachState, hr: number | null): string {
-  if (hr == null || state.profile?.lthr == null) return 'Run banked';
+/** Lead is short, declarative, names what kind of effort that was. */
+function postRunLead(state: CoachState, run: NonNullable<CoachState['latest_activity']>): string {
+  const zone = zoneOf(state, run.hr);
+  const paceFragment = run.pace ? ` at ${run.pace}` : '';
+  switch (zone) {
+    case 'below-z2': return `Recovery shake-out${paceFragment}.`;
+    case 'z2':       return `Z2 aerobic${paceFragment}.`;
+    case 'z2-top':   return `Top-Z2 effort${paceFragment}.`;
+    case 'z3':       return `Z3 tempo${paceFragment}.`;
+    case 'z4':       return `Threshold push${paceFragment}.`;
+    case 'z5':       return `VO2 effort${paceFragment}.`;
+    default:         return `${run.mi.toFixed(1)} mi logged${paceFragment}.`;
+  }
+}
+
+type ZoneLabel = 'below-z2' | 'z2' | 'z2-top' | 'z3' | 'z4' | 'z5' | 'unknown';
+
+function zoneOf(state: CoachState, hr: number | null): ZoneLabel {
+  if (hr == null || state.profile?.lthr == null) return 'unknown';
   const lthr = state.profile.lthr;
-  // Friel zones from LTHR — keep aligned with lib/training/zones.ts
   const z2lo = Math.round(lthr * 0.81);
+  const z2mid = Math.round(lthr * 0.85);
   const z2hi = Math.round(lthr * 0.89);
   const z3hi = Math.round(lthr * 0.93);
   const z4hi = Math.round(lthr * 0.99);
-  if (hr < z2lo) return 'Below-Z2 effort';
-  if (hr <= z2hi) return 'Mid-Z2 hold';
-  if (hr <= z3hi) return 'Z3 tempo effort';
-  if (hr <= z4hi) return 'Z4 threshold push';
-  return 'Z5+ effort';
+  if (hr < z2lo)  return 'below-z2';
+  if (hr <= z2mid) return 'z2';
+  if (hr <= z2hi)  return 'z2-top';
+  if (hr <= z3hi)  return 'z3';
+  if (hr <= z4hi)  return 'z4';
+  return 'z5';
 }
 
 function describeRunQuality(state: CoachState, run: NonNullable<CoachState['latest_activity']>): string {
   const parts: string[] = [];
+
   if (run.hr != null && state.profile?.lthr != null) {
     const lthr = state.profile.lthr;
     const z2lo = Math.round(lthr * 0.81);
     const z2hi = Math.round(lthr * 0.89);
-    if (run.hr >= z2lo && run.hr <= z2hi) {
-      parts.push(`Held ${run.hr} bpm the whole ${run.mi.toFixed(1)} mi, right inside the Z2 band (${z2lo}-${z2hi}).`);
-    } else if (run.hr > z2hi && run.hr <= Math.round(lthr * 0.93)) {
-      parts.push(`Ran ${run.hr} bpm average — top of Z2 into Z3 (band ${z2lo}-${z2hi}). Slight aerobic push.`);
-    } else if (run.hr < z2lo) {
-      parts.push(`Average ${run.hr} bpm sat below your Z2 floor of ${z2lo} — very easy effort.`);
-    } else {
-      parts.push(`Average ${run.hr} bpm — above the Z2 ceiling of ${z2hi}. Hard effort logged.`);
+    const zone = zoneOf(state, run.hr);
+
+    switch (zone) {
+      case 'z2':
+        parts.push(`${run.hr} bpm the whole ${run.mi.toFixed(1)} mi, dead center of your Z2 (${z2lo}-${z2hi}). Aerobic system did the work.`);
+        break;
+      case 'z2-top':
+        parts.push(`${run.hr} bpm average, top of Z2 (band ${z2lo}-${z2hi}). Slight push but still aerobic.`);
+        break;
+      case 'below-z2':
+        parts.push(`${run.hr} bpm average sat under your Z2 floor of ${z2lo}. Very easy, basically a shake-out.`);
+        break;
+      case 'z3':
+        parts.push(`${run.hr} bpm average put you in Z3 (above your Z2 ceiling of ${z2hi}). Tempo work — not free.`);
+        break;
+      case 'z4':
+        parts.push(`${run.hr} bpm — Z4 threshold territory. Hard session, treat tomorrow as recovery.`);
+        break;
+      case 'z5':
+        parts.push(`${run.hr} bpm — VO2 ceiling. That cost something.`);
+        break;
+      default:
+        parts.push(`${run.hr} bpm across ${run.mi.toFixed(1)} mi.`);
     }
   } else if (run.hr != null) {
-    parts.push(`Held ${run.hr} bpm average across ${run.mi.toFixed(1)} mi.`);
+    parts.push(`${run.hr} bpm across ${run.mi.toFixed(1)} mi.`);
   } else {
-    parts.push(`${run.mi.toFixed(1)} mi logged${run.pace ? ` at ${run.pace} pace` : ''}.`);
+    parts.push(`${run.mi.toFixed(1)} mi logged${run.pace ? ` at ${run.pace}` : ''}.`);
   }
 
-  // Cadence — only mention when notable (within or outside ±4 spm from baseline)
+  // Cadence — only mention when meaningfully different from baseline
   if (run.cadence != null && state.cadenceBaseline != null) {
     const delta = run.cadence - state.cadenceBaseline;
     if (delta >= 4) {
-      parts.push(`Cadence ${run.cadence} spm, ${delta} above your ${state.cadenceBaseline} baseline.`);
+      parts.push(`Cadence ${run.cadence} spm, ${delta} above your ${state.cadenceBaseline} baseline. Form was locked in.`);
     } else if (delta <= -4) {
-      parts.push(`Cadence ${run.cadence} spm, ${-delta} below your ${state.cadenceBaseline} baseline.`);
+      parts.push(`Cadence ${run.cadence} spm, ${-delta} below your ${state.cadenceBaseline} baseline. Stride got long, watch it next time.`);
     }
   }
 
@@ -174,37 +207,47 @@ function describeRunQuality(state: CoachState, run: NonNullable<CoachState['late
 function preRun(state: CoachState): { lead: string; voice: string[] } {
   const today = state.todayWorkout;
 
+  // Lead — name the session. Type + distance is enough.
   let lead: string;
-  if (!today || today.type === 'rest' || today.mi === 0) {
-    lead = 'Nothing on the plan today.';
+  if (!today || today.mi === 0) {
+    lead = 'Open day. Nothing scheduled.';
+  } else if (today.type === 'rest') {
+    lead = 'Rest day.';
   } else {
-    lead = `${capitalize(today.type)}${today.mi > 0 ? ` · ${today.mi.toFixed(1)} mi` : ''}${today.label ? ` · ${today.label}` : ''}.`;
+    const mi = today.mi.toFixed(1);
+    lead = `${capitalize(today.type)} ${mi}${today.label ? ` · ${today.label}` : ''}.`;
   }
 
   const v1 = describeReadinessForToday(state);
   const v2 = describeLoadAndVolume(state);
-  const v3 = describeWhatToDoForPlannedDay(state);
+  const v3 = describePrescriptionForToday(state);
 
   return { lead, voice: [v1, v2, v3].filter(Boolean) };
 }
 
 function describeReadinessForToday(state: CoachState): string {
   const r = computeReadiness(state);
-  if (r.score >= 80) return `Readiness ${r.score}. System is green — body's absorbing the work.`;
-  if (r.score >= 65) return `Readiness ${r.score}. Solid green, run as planned.`;
-  if (r.score >= 50) return `Readiness ${r.score}. Amber — feasible but watch the signals.`;
-  if (r.score >= 35) return `Readiness ${r.score}. Low — strongly consider an easier session.`;
-  return `Readiness ${r.score}. Deep red — rest or shake-out only.`;
+  if (r.score >= 80) return `Readiness ${r.score}. Green across the board. Run the plan.`;
+  if (r.score >= 65) return `Readiness ${r.score}. Solid green. Plan stands.`;
+  if (r.score >= 50) return `Readiness ${r.score}. Amber. Run the session but listen to the body — back off if it fights back.`;
+  if (r.score >= 35) return `Readiness ${r.score}. Low. Drop the intensity, hold the volume.`;
+  return `Readiness ${r.score}. Red. Recovery or rest today.`;
 }
 
-function describeWhatToDoForPlannedDay(state: CoachState): string {
+function describePrescriptionForToday(state: CoachState): string {
   const today = state.todayWorkout;
-  if (!today) return 'No workout queued today.';
-  if (today.type === 'rest') return 'Rest day — protect tomorrow.';
+  if (!today) return '';
   if (state.activeNiggle) {
-    return `Active niggle: ${state.activeNiggle.body_part} (${state.activeNiggle.severity ?? 'mild'}). Honor it — ease back if it flares.`;
+    const n = state.activeNiggle;
+    return `Active niggle on the ${n.body_part}${n.severity ? ` (${n.severity})` : ''}. Honor it. Ease back the second it talks louder.`;
   }
-  return `Target: ${today.mi.toFixed(1)} mi${today.label ? ' (' + today.label + ')' : ''}.`;
+  if (today.type === 'rest') return 'Protect tomorrow. No bonus miles, no junk volume.';
+  if (today.type === 'easy') return 'Conversational pace. If you can\'t talk in full sentences, you\'re working too hard.';
+  if (today.type === 'long') return 'Patient first half. The back half is the workout.';
+  if (today.type === 'tempo') return 'Comfortably hard. Not race effort.';
+  if (today.type === 'threshold') return 'Lock the target pace early. Don\'t chase splits, chase consistency.';
+  if (today.type === 'intervals') return 'Hit the targets. Full recovery between, no shortcuts.';
+  return '';
 }
 
 /* ─────────────────────── MODE: REST-DAY ─────────────────────────────── */
@@ -212,13 +255,20 @@ function describeWhatToDoForPlannedDay(state: CoachState): string {
 function restDay(state: CoachState): { lead: string; voice: string[] } {
   const lead = 'Rest day.';
   const v1 = state.sleep7Deficit >= 3
-    ? `Sleep is ${state.sleep7Deficit.toFixed(1)}h short this week. Prioritize getting under tonight.`
-    : `Sleep deficit is manageable (${state.sleep7Deficit.toFixed(1)}h). Hold the routine.`;
+    ? `Sleep's ${state.sleep7Deficit.toFixed(1)}h short. Get the bank back tonight.`
+    : `Body's earning the work. Let it.`;
   const v2 = describeLoadAndVolume(state);
   const v3 = state.nextWorkout
-    ? `Next: ${capitalize(state.nextWorkout.type)} on ${dayName(state.nextWorkout.date)} (${state.nextWorkout.mi.toFixed(1)} mi).`
-    : 'No upcoming workout queued.';
-  return { lead, voice: [v1, v2, v3] };
+    ? whatNextSentence(state.nextWorkout)
+    : '';
+  return { lead, voice: [v1, v2, v3].filter(Boolean) };
+}
+
+/** Shared with restDay — uses dayName for non-tomorrow references. */
+function whatNextSentence(w: NonNullable<CoachState['nextWorkout']>): string {
+  const mi = w.mi.toFixed(1);
+  const when = dayName(w.date);
+  return `Next up ${when}: ${w.type} ${mi}${w.label ? ` (${w.label})` : ''}.`;
 }
 
 /* ─────────────────────── MODE: RACE-DAY ─────────────────────────────── */
@@ -226,10 +276,10 @@ function restDay(state: CoachState): { lead: string; voice: string[] } {
 function raceDay(state: CoachState): { lead: string; voice: string[] } {
   const race = state.nextARace;
   if (!race) return preRun(state);
-  const lead = `Race day: ${race.name ?? 'A-race'}.`;
-  const v1 = race.goal ? `Goal: ${race.goal}.` : 'Race the plan you trained for.';
-  const v2 = 'Pace plan first 5k conservative. Trust the work in the chronic block.';
-  const v3 = 'Fuel early. Run from your zones, not your watch pace.';
+  const lead = `Race day. ${race.name ?? 'A-race'}.`;
+  const v1 = race.goal ? `Goal on the line: ${race.goal}.` : 'Race the plan you trained for.';
+  const v2 = 'Conservative first 5k. The discipline early buys the finish.';
+  const v3 = 'Fuel before you think you need it. Race from your zones, not your watch pace.';
   return { lead, voice: [v1, v2, v3] };
 }
 
@@ -238,37 +288,44 @@ function raceDay(state: CoachState): { lead: string; voice: string[] } {
 function describeLoadAndVolume(state: CoachState): string {
   const parts: string[] = [];
 
-  // Load (ACWR)
+  // Load (ACWR) — with attitude per band
   if (state.loadAcwr != null) {
+    const r = state.loadAcwr.toFixed(2);
     if (state.loadAcwr >= 1.5) {
-      parts.push(`Load ratio ${state.loadAcwr.toFixed(2)} — above Gabbett's 1.5 spike line.`);
+      parts.push(`Load's at ${r}, past the 1.5 spike line. Body's accumulating faster than it's absorbing. Back off this week.`);
     } else if (state.loadAcwr >= 1.3) {
-      parts.push(`Load ratio ${state.loadAcwr.toFixed(2)} — top of the sweet-spot band.`);
+      parts.push(`Load's at ${r}, top of the productive band. Right where adaptation happens.`);
     } else if (state.loadAcwr >= 0.8) {
-      parts.push(`Load ratio ${state.loadAcwr.toFixed(2)} — sweet spot.`);
+      parts.push(`Load's at ${r}, sweet spot. Body's absorbing the work.`);
+    } else if (state.loadAcwr >= 0.5) {
+      parts.push(`Load's at ${r}, under-loaded. Room to add volume.`);
     } else {
-      parts.push(`Load ratio ${state.loadAcwr.toFixed(2)} — under-loaded, room to add volume.`);
+      parts.push(`Load's at ${r}, well under. Detraining territory if this holds.`);
     }
   }
 
-  // Volume vs plan
+  // Volume vs plan — frame trajectory, not just numbers
   if (state.weekPlanned != null && state.weekDone != null) {
     const delta = state.weekDone - state.weekPlanned;
-    if (Math.abs(delta) >= 2) {
-      const dir = delta > 0 ? 'over' : 'under';
-      parts.push(`Week so far: ${state.weekDone.toFixed(1)} of ${state.weekPlanned.toFixed(1)} planned (${Math.abs(delta).toFixed(1)} mi ${dir}).`);
+    const done = state.weekDone.toFixed(1);
+    const planned = state.weekPlanned.toFixed(1);
+    if (Math.abs(delta) < 2) {
+      parts.push(`Week: ${done} of ${planned}, on pace.`);
+    } else if (delta >= 2) {
+      parts.push(`Week: ${done} of ${planned}, running ${delta.toFixed(1)} ahead.`);
     } else {
-      parts.push(`Week so far: ${state.weekDone.toFixed(1)} of ${state.weekPlanned.toFixed(1)} planned — on track.`);
+      // Under plan — usually means days remaining will catch up.
+      parts.push(`Week: ${done} of ${planned}, ${Math.abs(delta).toFixed(1)} still to come.`);
     }
   } else if (state.weekDone != null && state.weekDone > 0) {
-    parts.push(`Week so far: ${state.weekDone.toFixed(1)} mi.`);
+    parts.push(`Week: ${state.weekDone.toFixed(1)} so far.`);
   }
 
-  // Sleep
+  // Sleep — directive, not just diagnostic
   if (state.sleep7Deficit >= 5) {
-    parts.push(`Sleep is ${state.sleep7Deficit.toFixed(1)}h short for the week.`);
+    parts.push(`Sleep's ${state.sleep7Deficit.toFixed(1)}h short for the week. Get under early tonight.`);
   } else if (state.sleep7Deficit >= 2) {
-    parts.push(`Sleep ${state.sleep7Deficit.toFixed(1)}h under target.`);
+    parts.push(`Sleep ${state.sleep7Deficit.toFixed(1)}h under target. Don't let it drift.`);
   }
 
   return parts.join(' ');
@@ -277,11 +334,34 @@ function describeLoadAndVolume(state: CoachState): string {
 /* ─────────────────────── SHARED: WHAT NEXT ──────────────────────────── */
 
 function describeWhatNext(state: CoachState): string {
-  if (state.nextWorkout) {
-    const w = state.nextWorkout;
-    return `Tomorrow: ${capitalize(w.type)} · ${w.mi.toFixed(1)} mi${w.label ? ` (${w.label})` : ''}.`;
+  const w = state.nextWorkout;
+  if (!w) return '';
+  const type = w.type;
+  const mi = w.mi.toFixed(1);
+  // Each type gets a short directive after the call-out — runner-speak,
+  // not coach-corporate.
+  switch (type) {
+    case 'easy':
+      return `Tomorrow: easy ${mi}. Keep it conversational.`;
+    case 'long':
+      return `Tomorrow: long run, ${mi}. Patient first half, earn the back half.`;
+    case 'tempo':
+      return `Tomorrow: tempo ${mi}. Comfortably hard, not race effort.`;
+    case 'threshold':
+      return `Tomorrow: threshold session, ${mi}${w.label ? ` (${w.label})` : ''}. Lock the pace early.`;
+    case 'intervals':
+      return `Tomorrow: intervals${w.label ? ` (${w.label})` : ''}. Hit the targets, full recovery between.`;
+    case 'race':
+      return `Tomorrow: race day. Trust the work.`;
+    case 'recovery':
+      return `Tomorrow: recovery ${mi}. Slow on purpose.`;
+    case 'shakeout':
+      return `Tomorrow: shake-out ${mi}. Loose legs, nothing more.`;
+    case 'rest':
+      return `Tomorrow: rest. Earn it by actually resting.`;
+    default:
+      return `Tomorrow: ${type} · ${mi} mi${w.label ? ` (${w.label})` : ''}.`;
   }
-  return '';
 }
 
 /* ─────────────────────── SWAP PROPOSAL RULE ─────────────────────────── */
