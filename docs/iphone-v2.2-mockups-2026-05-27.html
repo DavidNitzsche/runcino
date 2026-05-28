@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / iPhone / v2.2 use cases · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+
+  --g-easy:linear-gradient(135deg,#3EBD41 0%,#1f8a52 60%,#0f4a3a 100%);
+  --g-quality:linear-gradient(135deg,#F3AD38 0%,#E85D26 60%,#8a2828 100%);
+  --g-long:linear-gradient(135deg,#27B4E0 0%,#1a6a9e 60%,#0c3a5e 100%);
+  --g-done:linear-gradient(135deg,#3EBD41 0%,#27B4E0 60%,#1a4a8e 100%);
+  --g-rest:linear-gradient(135deg,#008FEC 0%,#4a3a8e 60%,#1c1a3a 100%);
+  --g-race:linear-gradient(135deg,#FF8847 0%,#E85D26 50%,#8a2828 100%);
+  --g-missed:linear-gradient(135deg,#F3AD38 0%,#c47812 60%,#5a3408 100%);
+
+  --f-display:'Bebas Neue','HelveticaNeue-Bold',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-sub:'Oswald','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:64px 32px 200px}
+.wrap{max-width:1480px;margin:0 auto}
+
+.eyebrow{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.hero-intro{padding:24px 0 64px;border-bottom:1px solid var(--line);margin-bottom:64px}
+h1.title{font-family:var(--f-display);font-size:140px;line-height:0.88;letter-spacing:0.8px;margin:18px 0 12px;font-weight:400}
+.title .a{background:var(--g-easy);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:18px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:840px;margin-top:24px}
+.lede strong{color:var(--ink)}
+
+h2.sec{font-family:var(--f-display);font-size:80px;letter-spacing:1px;margin:0 0 8px;line-height:1;font-weight:400}
+.sec-tag{font-family:var(--f-sub);font-size:11px;letter-spacing:2.4px;text-transform:uppercase;color:var(--mute);margin-bottom:32px;display:flex;gap:14px;align-items:center}
+.sec-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.sec-tag.b .dot{background:var(--learn)}
+.sec-tag.c .dot{background:var(--goal)}
+
+/* big phone — hero scale */
+.bigphone{width:380px;height:824px;background:#000;border-radius:54px;padding:12px;position:relative;box-shadow:0 40px 90px rgba(0,0,0,0.6),inset 0 0 0 2px #1d2028;flex-shrink:0}
+.bigphone .screen{width:100%;height:100%;border-radius:44px;overflow:hidden;position:relative;background:var(--bg)}
+.bigphone .island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:108px;height:32px;background:#000;border-radius:18px;z-index:10}
+.bigphone .sb{display:flex;justify-content:space-between;align-items:center;padding:15px 28px 0;font-size:14px;font-weight:600;color:var(--ink);height:46px;letter-spacing:0.3px}
+.bigphone .home-i{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:130px;height:5px;background:rgba(255,255,255,0.32);border-radius:3px;z-index:11}
+
+/* week strip */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:9px 18px 10px;background:var(--bg);border-bottom:1px solid var(--line)}
+.day{padding:6px 0 7px;text-align:center;border-radius:7px;position:relative}
+.day .dow{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:600;color:var(--mute)}
+.day .mi{font-family:var(--f-display);font-size:15px;line-height:1;margin-top:3px}
+.day.done .mi{color:var(--green)}
+.day.future .mi{color:var(--mute)}
+.day.rest .mi{color:var(--dim)}
+.day.missed .mi{color:var(--goal);text-decoration:line-through;text-decoration-color:rgba(243,173,56,0.5)}
+.day.today{outline:1.5px solid var(--ink);background:rgba(255,255,255,0.03)}
+.day.today .dow{color:var(--ink)}
+
+/* hero panel */
+.hero-panel{padding:26px 24px 32px;color:#fff;position:relative;overflow:hidden}
+.hero-panel.easy{background:var(--g-easy)}
+.hero-panel.missed{background:var(--g-missed)}
+.hero-tag{font-family:var(--f-sub);font-size:10px;letter-spacing:2.4px;text-transform:uppercase;font-weight:600;color:rgba(255,255,255,0.85);margin-bottom:8px}
+.hero-verb{font-family:var(--f-display);font-size:104px;line-height:0.84;letter-spacing:0.4px;font-weight:400;color:#fff}
+.hero-verb.tall{font-size:124px}
+.hero-prescription{font-family:Inter;font-size:16px;font-weight:500;color:rgba(255,255,255,0.9);margin-top:14px;letter-spacing:0.1px}
+.hero-phase{font-family:Inter;font-size:13px;font-weight:500;color:rgba(255,255,255,0.7);margin-top:6px;font-style:italic;letter-spacing:0.1px}
+
+/* bottom panel */
+.btm{background:var(--bg);margin-top:-22px;border-radius:26px 26px 0 0;padding:24px 24px 14px;position:relative;border-top:1px solid var(--line)}
+.handle{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:48px;height:5px;border-radius:3px;background:rgba(255,255,255,0.22)}
+
+/* stat strip */
+.stats{display:flex;justify-content:space-between;align-items:baseline;padding:12px 0 14px;border-bottom:1px solid var(--line);margin-top:6px}
+.stat .v{font-family:var(--f-display);font-size:44px;line-height:1;color:var(--ink)}
+.stat .v.amber{color:var(--goal)}
+.stat .v.green{color:var(--green)}
+.stat .v.over{color:var(--over)}
+.stat .v.dist{color:var(--dist)}
+.stat .l{font-family:var(--f-sub);font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600;color:var(--mute);margin-top:5px}
+
+/* chip strip */
+.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:14px}
+.chip{font-family:var(--f-sub);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;padding:5px 10px;border-radius:99px;background:rgba(255,255,255,0.06);color:var(--mute);white-space:nowrap}
+.chip.race{background:rgba(255,136,71,0.16);color:var(--race)}
+.chip.green{background:rgba(62,189,65,0.16);color:var(--green)}
+.chip.warn{background:rgba(243,173,56,0.16);color:var(--goal)}
+.chip.over{background:rgba(252,77,100,0.14);color:var(--over)}
+.chip.dist{background:rgba(39,180,224,0.14);color:var(--dist)}
+.chip.learn{background:rgba(176,132,255,0.15);color:var(--learn)}
+.chip.ink{background:rgba(255,255,255,0.1);color:var(--ink)}
+
+/* tab bar */
+.tab-bar{position:absolute;bottom:0;left:0;right:0;height:80px;background:rgba(10,12,16,0.96);border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:flex-start;padding-top:11px;backdrop-filter:blur(20px)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim);font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;font-weight:600}
+.tab.on{color:var(--ink)}
+.tab.on .ico{color:var(--green)}
+.tab.on.missed .ico{color:var(--goal)}
+.tab .ico{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.scr{padding:0;height:calc(100% - 46px - 80px);overflow:hidden;position:relative}
+
+/* use-case section */
+.uc{margin:80px 0;padding:48px 0 0;border-top:1px solid var(--line)}
+.uc-head{display:flex;justify-content:space-between;align-items:flex-end;gap:48px;margin-bottom:48px}
+.uc-head h3{font-family:var(--f-display);font-size:74px;letter-spacing:1.2px;margin:0;line-height:1;font-weight:400}
+.uc-head h3 .n{font-family:var(--f-display);font-size:24px;color:var(--mute);margin-right:14px;letter-spacing:2px;vertical-align:18px}
+.uc-pitch{flex:1;max-width:680px;font-size:14px;line-height:1.6;color:rgba(246,247,248,0.8)}
+.uc-pitch strong{color:var(--ink)}
+
+/* the row — phone + annotation panel */
+.uc-row{display:grid;grid-template-columns:auto 1fr;gap:64px;align-items:flex-start}
+
+/* annotation column */
+.anno{padding-top:24px}
+.anno h4{font-family:var(--f-display);font-size:32px;letter-spacing:0.5px;line-height:1.05;margin:0 0 16px;font-weight:400}
+.delta-list{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
+.delta{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.delta .what{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;color:var(--green);margin-bottom:6px}
+.delta .what.new{color:var(--learn)}
+.delta .what.warn{color:var(--goal)}
+.delta .body{font-size:13px;line-height:1.55;color:rgba(246,247,248,0.85)}
+.delta .body strong{color:var(--ink)}
+.delta .body code{font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 5px;border-radius:4px}
+
+/* small phone in expanded section */
+.phone-wrap{position:relative}
+.cnote{position:absolute;font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:600;text-transform:uppercase;background:rgba(10,12,16,0.92);padding:5px 10px;border-radius:99px;border:1.5px solid;white-space:nowrap;z-index:5;color:var(--learn);border-color:rgba(176,132,255,0.35)}
+.cnote.green{color:var(--green);border-color:rgba(62,189,65,0.35)}
+.cnote.warn{color:var(--goal);border-color:rgba(243,173,56,0.35)}
+.cnote.race{color:var(--race);border-color:rgba(255,136,71,0.35)}
+
+/* expanded-view interior cards */
+.exp-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px}
+.exp-card .lbl{font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;text-transform:uppercase;font-weight:600;color:var(--mute);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.exp-card .lbl .v-sm{font-family:var(--f-display);font-size:14px;color:var(--ink);letter-spacing:0.3px}
+
+/* compressed hero (when bottom is expanded) */
+.hero-compressed{padding:12px 22px 14px;color:#fff;position:relative}
+.hero-compressed.easy{background:var(--g-easy)}
+.hero-compressed-row{display:flex;justify-content:space-between;align-items:baseline}
+.hero-compressed .lbl{font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;font-weight:600;color:rgba(255,255,255,0.85);text-transform:uppercase}
+.hero-compressed .v{font-family:var(--f-display);font-size:32px;letter-spacing:0.4px;line-height:1;color:#fff}
+.hero-compressed .stats-inline{font-family:var(--f-display);font-size:20px;color:#fff;line-height:1}
+
+/* dual-button hero for MISSED */
+.choice-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}
+.choice{background:rgba(0,0,0,0.3);border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;padding:14px 16px;color:#fff}
+.choice.pref{background:rgba(255,255,255,0.95);color:#0a0c10;border-color:#fff}
+.choice .verb{font-family:var(--f-display);font-size:32px;line-height:1;letter-spacing:0.4px}
+.choice .sub{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;text-transform:uppercase;font-weight:600;margin-top:6px;color:inherit;opacity:0.7}
+
+/* endnote */
+.endnote{margin-top:120px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:var(--f-display);font-size:54px;letter-spacing:0.6px;margin:0 0 18px;font-weight:400}
+.endnote p{font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:780px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+
+@media (max-width:1100px){.uc-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO -->
+<div class="hero-intro">
+  <div class="eyebrow">faff · iphone · v2.2 · three use cases · 2026-05-27</div>
+  <h1 class="title">show me<br>the <span class="a">deltas.</span></h1>
+  <div class="lede">
+    Audit converged. Three use cases rendered hero-scale to validate the v2.2 spec before sprint 01 starts. <strong>Same spine as v2.1.</strong> What's new: prescription line under verb, HRV verdict label, 8-chip strip in mental-model order, phase subhead, expanded-view drill-down, MISSED-state handling.
+  </div>
+  <div class="lede" style="color:rgba(246,247,248,0.58);font-size:14px;margin-top:18px">
+    Each phone is annotated with callouts pointing to specific deltas. Delta cards on the right trace every change back to the audit section that justified it.
+  </div>
+</div>
+
+<!-- ─── UC 01 · PRE-RUN EASY WITH v2.2 POLISH ─── -->
+<section class="uc">
+  <div class="uc-head">
+    <h3><span class="n">01</span>PRE-RUN EASY · DEFAULT SNAP</h3>
+    <div class="uc-pitch">
+      Wednesday morning. The everyday home. <strong>Eight chips in mental-model order</strong>, prescription line under the verb, HRV with its verdict label, phase subhead. Same gradient + verb as v2.1 — but the screen now answers <em>more questions before your thumb moves</em>.
+    </div>
+  </div>
+
+  <div class="uc-row">
+    <!-- the phone -->
+    <div class="phone-wrap">
+      <div class="bigphone">
+        <div class="screen">
+          <div class="island"></div>
+          <div class="sb"><span>6:42</span><span>●●● 5G ▮</span></div>
+          <div class="scr">
+            <!-- week strip -->
+            <div class="week">
+              <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+              <div class="day done"><div class="dow">T</div><div class="mi">6.2</div></div>
+              <div class="day today"><div class="dow">W</div><div class="mi">5.8</div></div>
+              <div class="day future"><div class="dow">T</div><div class="mi">6.0</div></div>
+              <div class="day future"><div class="dow">F</div><div class="mi">3.0</div></div>
+              <div class="day future"><div class="dow">S</div><div class="mi">8.0</div></div>
+              <div class="day future"><div class="dow">S</div><div class="mi">14</div></div>
+            </div>
+            <!-- hero panel -->
+            <div class="hero-panel easy">
+              <div class="hero-tag">TODAY · EASY · Z2 · WED 27 MAY</div>
+              <div class="hero-verb">RUN<br>EASY.</div>
+              <div class="hero-prescription">Hold under 148.</div>
+              <div class="hero-phase">Build · progressive aerobic</div>
+            </div>
+            <!-- bottom panel default snap -->
+            <div class="btm" style="padding-top:26px">
+              <div class="handle"></div>
+              <div class="stats">
+                <div class="stat"><div class="v">5.8</div><div class="l">MI</div></div>
+                <div class="stat"><div class="v">8:12</div><div class="l">PACE</div></div>
+                <div class="stat"><div class="v amber">148</div><div class="l">HR CAP</div></div>
+              </div>
+              <!-- 8-chip strip in mental-model order -->
+              <div class="chips">
+                <span class="chip">7.2h slp</span>
+                <span class="chip over">hrv low · −7</span>
+                <span class="chip dist">12° ☁ 8am</span>
+                <span class="chip race">london 14d · 2:54 / 2:55</span>
+                <span class="chip warn">load 1.24 · build</span>
+              </div>
+              <!-- second line of context chips -->
+              <div class="chips" style="margin-top:6px">
+                <span class="chip">next hard: thu 6×800</span>
+                <span class="chip">long sun: 14mi</span>
+                <span class="chip green">82 ready</span>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab on"><div class="ico">▣</div>Today</div>
+            <div class="tab"><div class="ico">═</div>Plan</div>
+            <div class="tab"><div class="ico">◇</div>Races</div>
+            <div class="tab"><div class="ico">♡</div>Health</div>
+            <div class="tab"><div class="ico">○</div>Me</div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+
+      <!-- annotations -->
+      <div class="cnote green" style="top:170px;left:-80px">verb · same</div>
+      <div class="cnote" style="top:240px;left:-130px">prescription line · NEW</div>
+      <div class="cnote warn" style="top:285px;left:-130px">phase subhead · NEW</div>
+      <div class="cnote" style="top:480px;right:-130px">HRV verdict label · NEW</div>
+      <div class="cnote race" style="top:520px;right:-130px">predicted / goal · NEW</div>
+      <div class="cnote warn" style="top:560px;right:-130px">ACWR surfaced · NEW</div>
+    </div>
+
+    <!-- annotation column -->
+    <div class="anno">
+      <h4>Six v2.2 deltas, one screen.</h4>
+      <div class="delta-list">
+        <div class="delta">
+          <div class="what new">01 · prescription line · new</div>
+          <div class="body"><strong>"Hold under 148."</strong> One declarative sentence under the verb, keyed off workout type + HR cap. Whoop / Coros pattern. <em>Lookup table, not LLM.</em></div>
+        </div>
+        <div class="delta">
+          <div class="what new">02 · phase subhead · new</div>
+          <div class="body"><strong>"Build · progressive aerobic."</strong> Phase context surfaces right under the prescription. From <code>plan.phase_intent</code> — already in the data, never shown before.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">03 · HRV verdict label · new</div>
+          <div class="body">Chip reads <strong>"HRV LOW · −7"</strong> not just "−7 hrv". Verdict from <code>vitals.hrv_status</code> band lookup. Garmin's move, finally borrowed.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">04 · race chip · predicted / goal</div>
+          <div class="body"><strong>"london 14d · 2:54 / 2:55"</strong>. Days + predicted vs goal. The trajectory chip from the data audit. <em>One chip carries three numbers.</em></div>
+        </div>
+        <div class="delta">
+          <div class="what new">05 · load surfaced</div>
+          <div class="body"><strong>"LOAD 1.24 · build"</strong>. ACWR finally has a home. Color goes amber at &gt;1.5 (overreach), green when in zone.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">06 · 8-chip strip · locked order</div>
+          <div class="body">Order is now fixed: <em>sleep · HRV · weather · race · load · next-hard · long · readiness</em>. Matches the morning-sequence mental model from §05. Same chips every day = trustable scanning.</div>
+        </div>
+      </div>
+      <div style="padding:16px 18px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.75)">
+        <strong style="color:var(--ink);font-family:var(--f-display);font-size:18px;letter-spacing:0.4px;display:block;margin-bottom:6px">What's unchanged.</strong>
+        Three-band layout. Gradient = easy state. RUN EASY verb. Bebas typography. Stat strip. Tab bar. <em>The runner with v2.1 muscle memory won't notice a thing — except the screen now answers more.</em>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── UC 02 · EXPANDED VIEW DRILL-DOWN ─── -->
+<section class="uc">
+  <div class="uc-head">
+    <h3><span class="n">02</span>DRAG UP · EXPANDED VIEW</h3>
+    <div class="uc-pitch">
+      Same Wednesday. <strong>Dragged the bottom sheet to expanded snap.</strong> Hero compresses to a 12% band — verb + key stats inline, gradient still glowing. The rest of the screen fills with depth: <em>suggested route, HR plan, 14-day HRV sparkline, phase progress, vitals grid, treadmill toggle, race trajectory.</em> Everything from the data audit that was "dark" now has a home.
+    </div>
+  </div>
+
+  <div class="uc-row">
+    <div class="phone-wrap">
+      <div class="bigphone">
+        <div class="screen">
+          <div class="island"></div>
+          <div class="sb"><span>6:43</span><span>●●● 5G ▮</span></div>
+          <div class="scr">
+            <!-- week strip -->
+            <div class="week">
+              <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+              <div class="day done"><div class="dow">T</div><div class="mi">6.2</div></div>
+              <div class="day today"><div class="dow">W</div><div class="mi">5.8</div></div>
+              <div class="day future"><div class="dow">T</div><div class="mi">6.0</div></div>
+              <div class="day future"><div class="dow">F</div><div class="mi">3.0</div></div>
+              <div class="day future"><div class="dow">S</div><div class="mi">8.0</div></div>
+              <div class="day future"><div class="dow">S</div><div class="mi">14</div></div>
+            </div>
+            <!-- compressed hero -->
+            <div class="hero-compressed easy">
+              <div class="hero-compressed-row">
+                <div>
+                  <div class="lbl">TODAY · EASY · Z2</div>
+                  <div class="v" style="margin-top:2px">RUN EASY.</div>
+                </div>
+                <div class="stats-inline" style="text-align:right">5.8 · 8:12 · 148</div>
+              </div>
+            </div>
+            <!-- expanded bottom panel -->
+            <div class="btm" style="margin-top:-16px;padding:18px 16px 12px">
+              <div class="handle"></div>
+              <!-- route card -->
+              <div class="exp-card" style="margin-top:8px">
+                <div class="lbl"><span>ROUTE · COACH PICK</span><span class="v-sm" style="color:var(--dist)">→</span></div>
+                <div style="display:flex;gap:10px;align-items:center">
+                  <!-- mini map -->
+                  <div style="width:74px;height:48px;background:linear-gradient(135deg,#1a2530,#0f1820);border-radius:6px;position:relative;flex-shrink:0">
+                    <svg viewBox="0 0 80 50" style="width:100%;height:100%">
+                      <path d="M10 40 Q25 25, 40 20 T70 8" stroke="#3EBD41" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                      <circle cx="10" cy="40" r="3" fill="#3EBD41"/>
+                      <circle cx="70" cy="8" r="3" fill="#FF8847"/>
+                    </svg>
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-family:var(--f-display);font-size:18px;letter-spacing:0.3px;line-height:1">Regent's Canal loop</div>
+                    <div style="font-size:11px;color:var(--mute);margin-top:2px">5.9 mi · flat · shaded · canal-path</div>
+                  </div>
+                </div>
+              </div>
+              <!-- HR plan card -->
+              <div class="exp-card">
+                <div class="lbl"><span>HR PLAN · 100% Z2</span><span class="v-sm" style="color:var(--goal)">CAP 148</span></div>
+                <!-- zone bar with target Z2 highlighted -->
+                <div style="display:flex;height:18px;border-radius:5px;overflow:hidden;margin-top:6px;border:1px solid var(--line2);position:relative">
+                  <div style="flex:0.2;background:var(--rest);opacity:0.35"></div>
+                  <div style="flex:1;background:var(--green);display:flex;align-items:center;justify-content:center;font-family:var(--f-sub);font-size:9px;font-weight:700;color:#fff;letter-spacing:0.6px">Z2 · 132–148</div>
+                  <div style="flex:0.25;background:var(--goal);opacity:0.3"></div>
+                  <div style="flex:0.15;background:var(--race);opacity:0.25"></div>
+                  <div style="flex:0.08;background:var(--over);opacity:0.25"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:5px"><span style="font-family:var(--f-sub);font-size:8px;letter-spacing:1px;color:var(--mute);font-weight:600">Z1</span><span style="font-family:var(--f-sub);font-size:8px;letter-spacing:1px;color:var(--green);font-weight:700">Z2 TARGET</span><span style="font-family:var(--f-sub);font-size:8px;letter-spacing:1px;color:var(--mute);font-weight:600">Z3</span><span style="font-family:var(--f-sub);font-size:8px;letter-spacing:1px;color:var(--mute);font-weight:600">Z4</span><span style="font-family:var(--f-sub);font-size:8px;letter-spacing:1px;color:var(--mute);font-weight:600">Z5</span></div>
+              </div>
+              <!-- vitals trend · 14d HRV sparkline -->
+              <div class="exp-card">
+                <div class="lbl"><span>HRV · 14 DAYS</span><span class="v-sm" style="color:var(--over)">▼ DOWN-TREND</span></div>
+                <svg viewBox="0 0 320 40" style="width:100%;height:36px">
+                  <defs><linearGradient id="hrvfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#FC4D64" stop-opacity="0.3"/><stop offset="1" stop-color="#FC4D64" stop-opacity="0"/></linearGradient></defs>
+                  <path d="M0 14 L22 12 L44 8 L66 14 L88 10 L110 14 L132 18 L154 14 L176 18 L198 20 L220 22 L242 26 L264 24 L286 28 L308 32" stroke="#FC4D64" stroke-width="2" fill="none"/>
+                  <path d="M0 14 L22 12 L44 8 L66 14 L88 10 L110 14 L132 18 L154 14 L176 18 L198 20 L220 22 L242 26 L264 24 L286 28 L308 32 L308 40 L0 40 Z" fill="url(#hrvfill)"/>
+                  <circle cx="308" cy="32" r="3.5" fill="#FC4D64" stroke="#fff" stroke-width="1.5"/>
+                </svg>
+                <div style="display:flex;justify-content:space-between;margin-top:4px;font-family:var(--f-sub);font-size:8px;letter-spacing:0.8px;color:var(--mute);font-weight:600">
+                  <span>14 MAY · 45 ms</span><span>TODAY · 38 ms</span>
+                </div>
+              </div>
+              <!-- phase progress -->
+              <div class="exp-card">
+                <div class="lbl"><span>PHASE PROGRESS</span><span class="v-sm">BUILD · WK 6 / 8</span></div>
+                <div style="display:flex;gap:4px;margin-top:8px;align-items:center">
+                  <div style="flex:1;height:6px;background:var(--green);border-radius:2px"></div>
+                  <div style="flex:1;height:8px;background:linear-gradient(90deg,var(--goal),var(--race));border-radius:2px;position:relative"><div style="position:absolute;left:75%;top:-3px;bottom:-3px;width:3px;background:#fff;border-radius:1px"></div></div>
+                  <div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:2px"></div>
+                  <div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:2px"></div>
+                  <div style="flex:0.4;height:6px;background:rgba(255,136,71,0.4);border-radius:2px"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:5px;font-family:var(--f-sub);font-size:8px;letter-spacing:0.9px;font-weight:600;color:var(--mute)">
+                  <span>BASE</span><span style="color:var(--goal)">BUILD ●</span><span>PEAK</span><span>TAPER</span><span style="color:var(--race)">RACE</span>
+                </div>
+              </div>
+              <!-- vitals 4-tile grid -->
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px">
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center"><div style="font-family:var(--f-display);font-size:20px;color:var(--green);line-height:1">82</div><div style="font-family:var(--f-sub);font-size:7.5px;letter-spacing:1.2px;font-weight:600;color:var(--mute);margin-top:3px">READY</div></div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center"><div style="font-family:var(--f-display);font-size:20px;color:var(--goal);line-height:1">7.2h</div><div style="font-family:var(--f-sub);font-size:7.5px;letter-spacing:1.2px;font-weight:600;color:var(--mute);margin-top:3px">SLEEP</div></div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center"><div style="font-family:var(--f-display);font-size:20px;color:var(--over);line-height:1">38</div><div style="font-family:var(--f-sub);font-size:7.5px;letter-spacing:1.2px;font-weight:600;color:var(--mute);margin-top:3px">HRV</div></div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center"><div style="font-family:var(--f-display);font-size:20px;color:var(--ink);line-height:1">48</div><div style="font-family:var(--f-sub);font-size:7.5px;letter-spacing:1.2px;font-weight:600;color:var(--mute);margin-top:3px">RHR</div></div>
+              </div>
+              <!-- treadmill toggle -->
+              <div class="exp-card" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px">
+                <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.5px;color:var(--mute);font-weight:600;text-transform:uppercase">Indoor?</div><div style="font-size:12px;margin-top:2px"><strong>Treadmill mode</strong> · 5.0–6.5 mph · 1.0% incline</div></div>
+                <div style="width:38px;height:22px;border-radius:99px;background:rgba(255,255,255,0.1);position:relative"><div style="position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:99px;background:#fff"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab on"><div class="ico">▣</div>Today</div>
+            <div class="tab"><div class="ico">═</div>Plan</div>
+            <div class="tab"><div class="ico">◇</div>Races</div>
+            <div class="tab"><div class="ico">♡</div>Health</div>
+            <div class="tab"><div class="ico">○</div>Me</div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+
+      <!-- annotations -->
+      <div class="cnote green" style="top:140px;left:-110px">hero · compressed</div>
+      <div class="cnote" style="top:205px;left:-120px">drag handle visible</div>
+      <div class="cnote" style="top:260px;right:-110px">route · coach-picked</div>
+      <div class="cnote warn" style="top:360px;right:-100px">HR plan band</div>
+      <div class="cnote" style="top:455px;right:-110px">14d trend sparkline</div>
+      <div class="cnote race" style="top:530px;right:-110px">phase progress ticks</div>
+      <div class="cnote" style="top:660px;left:-110px">treadmill toggle</div>
+    </div>
+
+    <!-- annotation column -->
+    <div class="anno">
+      <h4>The drill-down. Drag up, depth appears.</h4>
+      <div class="delta-list">
+        <div class="delta">
+          <div class="what new">01 · hero compresses</div>
+          <div class="body">From 50% to 12% of screen. Verb shrinks to 32px, stats inline. <strong>The gradient stays</strong> — color anchors what state you're in even at compressed size.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">02 · suggested route</div>
+          <div class="body"><strong>"Regent's Canal loop · 5.9 mi · flat"</strong> — coach picks based on workout type. Easy days get flat shaded routes; tempo days get tracks; long days get loops with right total elevation. Atlas concept from v1, contained.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">03 · HR zone band</div>
+          <div class="body">5-zone bar with <strong>Z2 visually highlighted</strong>. Cap 148 written into the corner. Replaces "what does Z2 mean for me?" with an answer: Z2 = 132–148.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">04 · 14-day HRV sparkline</div>
+          <div class="body">Trend beats spot reading. <strong>The downward arc</strong> is what tells you to be honest about today, not just the single number 38. Trailing 14d sparkline with start/end labels.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">05 · phase progress ticks</div>
+          <div class="body">5 segments — BASE · BUILD · PEAK · TAPER · RACE. Current position pin-marked at 75% of BUILD. Where you are in the cycle, glanceable.</div>
+        </div>
+        <div class="delta">
+          <div class="what">06 · vitals grid · existing</div>
+          <div class="body">Carried over from v2.1's chip strip — but here as small tiles. Same data, denser format because you're already in depth mode.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">07 · treadmill toggle</div>
+          <div class="body">Inline toggle. Flip it and the panel re-renders with <strong>speed × incline pair</strong> instead of pace × HR. Surfaces in the expanded view because it's a power-user move — but accessible from today's home in two taps.</div>
+        </div>
+      </div>
+      <div style="padding:16px 18px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.75)">
+        <strong style="color:var(--ink);font-family:var(--f-display);font-size:18px;letter-spacing:0.4px;display:block;margin-bottom:6px">Why the slide matters.</strong>
+        Every piece of content above costs zero new data work — it's already in the system. The slide is the surface that lets us <em>show more without making the home feel busier</em>. Default snap stays clean; depth lives on demand.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── UC 03 · MISSED RUN EDGE CASE ─── -->
+<section class="uc">
+  <div class="uc-head">
+    <h3><span class="n">03</span>MISSED · NEW DAY-STATE</h3>
+    <div class="uc-pitch">
+      Tuesday's quality didn't happen — life got in the way. v2.1 would have shown <em>"RUN EASY"</em> like nothing was wrong. <strong>v2.2 catches it.</strong> Yellow-amber gradient, hero becomes a two-button choice: <em>catch up</em> or <em>move on</em>. Pick once, plan rebalances. <em>No guilt, no fake congratulations — just an honest decision moment.</em>
+    </div>
+  </div>
+
+  <div class="uc-row">
+    <div class="phone-wrap">
+      <div class="bigphone">
+        <div class="screen">
+          <div class="island"></div>
+          <div class="sb"><span>6:42</span><span>●●● 5G ▮</span></div>
+          <div class="scr">
+            <!-- week strip with missed Tuesday -->
+            <div class="week">
+              <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+              <div class="day missed"><div class="dow" style="color:var(--goal)">T</div><div class="mi">6×800</div></div>
+              <div class="day today"><div class="dow">W</div><div class="mi">5.8</div></div>
+              <div class="day future"><div class="dow">T</div><div class="mi">6.0</div></div>
+              <div class="day future"><div class="dow">F</div><div class="mi">3.0</div></div>
+              <div class="day future"><div class="dow">S</div><div class="mi">8.0</div></div>
+              <div class="day future"><div class="dow">S</div><div class="mi">14</div></div>
+            </div>
+            <!-- MISSED hero -->
+            <div class="hero-panel missed">
+              <div class="hero-tag" style="color:rgba(255,255,255,0.92)">YESTERDAY · QUALITY MISSED</div>
+              <div class="hero-verb" style="font-size:90px">PICK<br>ONE.</div>
+              <div class="hero-prescription" style="font-size:14px;color:rgba(255,255,255,0.85);margin-top:14px;line-height:1.5">Tuesday's 6×800 didn't happen.<br>Your call — and the plan adjusts.</div>
+              <!-- two-button choice -->
+              <div class="choice-row" style="grid-template-columns:1fr 1fr;gap:8px;margin-top:20px">
+                <div class="choice">
+                  <div class="verb">CATCH UP.</div>
+                  <div class="sub">today becomes quality · easy → thu</div>
+                </div>
+                <div class="choice pref">
+                  <div class="verb">MOVE ON.</div>
+                  <div class="sub" style="color:rgba(10,12,16,0.65)">easy as planned · drop the missed</div>
+                </div>
+              </div>
+            </div>
+            <!-- bottom panel showing consequences -->
+            <div class="btm" style="margin-top:-16px;padding-top:24px">
+              <div class="handle"></div>
+              <div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);font-weight:600;text-transform:uppercase;margin-bottom:10px;margin-top:6px">IF YOU MOVE ON · <span style="color:var(--ink)">RECOMMENDED</span></div>
+              <!-- the "after" picture -->
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:8px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-family:var(--f-display);font-size:22px;letter-spacing:0.4px">EASY · 5.8 MI</div><div style="font-family:var(--f-sub);font-size:10px;color:var(--green);letter-spacing:1.2px;font-weight:600">AS PLANNED</div></div>
+                <div style="font-size:11.5px;color:var(--mute);line-height:1.5">Sunday's long run protected. Next quality stays Thursday. <strong style="color:var(--ink)">Build week 6 stays intact.</strong></div>
+              </div>
+              <!-- why this is the recommendation -->
+              <div style="background:rgba(243,173,56,0.06);border:1px solid rgba(243,173,56,0.22);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+                <div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:var(--goal);font-weight:700;margin-bottom:4px">WHY MOVE ON</div>
+                <div style="font-size:11.5px;line-height:1.5">You've hit 6 of 7 quality sessions this block. Catching up means two hard days in three — load goes from 1.24 to 1.48. <strong style="color:var(--ink)">Risk &gt; benefit.</strong></div>
+              </div>
+              <!-- alternative shown collapsed -->
+              <div style="background:rgba(255,255,255,0.02);border:1px solid var(--line2);border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+                <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:var(--mute);font-weight:600;text-transform:uppercase">If catch up</div><div style="font-size:11.5px;color:rgba(246,247,248,0.7);margin-top:2px">Today → 6×800 · pushes load to 1.48 · easy moves to Thu</div></div>
+                <div style="font-family:var(--f-sub);font-size:9px;color:var(--mute);font-weight:600">↗</div>
+              </div>
+              <!-- chips -->
+              <div class="chips" style="margin-top:12px">
+                <span class="chip warn">load 1.24 · build</span>
+                <span class="chip race">london 14d</span>
+                <span class="chip">3 of 4 wk quality hit</span>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab on missed"><div class="ico">▣</div>Today</div>
+            <div class="tab"><div class="ico">═</div>Plan</div>
+            <div class="tab"><div class="ico">◇</div>Races</div>
+            <div class="tab"><div class="ico">♡</div>Health</div>
+            <div class="tab"><div class="ico">○</div>Me</div>
+          </div>
+          <div class="home-i"></div>
+        </div>
+      </div>
+
+      <!-- annotations -->
+      <div class="cnote warn" style="top:110px;left:-130px">Tue · missed indicator</div>
+      <div class="cnote warn" style="top:200px;left:-130px">amber gradient · NEW state</div>
+      <div class="cnote warn" style="top:310px;left:-150px">two-button hero</div>
+      <div class="cnote green" style="top:420px;right:-100px">recommended choice</div>
+      <div class="cnote" style="top:560px;right:-130px">consequence preview</div>
+      <div class="cnote" style="top:660px;right:-130px">load-impact warning</div>
+    </div>
+
+    <div class="anno">
+      <h4>The honest decision moment.</h4>
+      <div class="delta-list">
+        <div class="delta">
+          <div class="what new">01 · new state · MISSED</div>
+          <div class="body">12th day-state in the resolver. Detected when <code>plan.scheduled_workout</code> exists for prior day and <code>actual.run</code> is null. <strong>Yellow-amber gradient</strong> — not red. This isn't punishment, it's a choice.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">02 · two-button hero</div>
+          <div class="body">First time the hero panel renders <em>a choice</em> instead of a verb. <strong>CATCH UP</strong> or <strong>MOVE ON</strong>. Default-recommended button is filled white (the pref move); alternative is outlined. One tap commits.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">03 · plan-aware default</div>
+          <div class="body">Recommendation isn't fixed — it's keyed off load + quality-hit-rate this block. If load is already high → recommend MOVE ON. If quality streak is weak → recommend CATCH UP. <em>Resolver clause, ~6 lines of code.</em></div>
+        </div>
+        <div class="delta">
+          <div class="what new">04 · consequence preview</div>
+          <div class="body">Bottom panel shows what the recommended choice <strong>actually does</strong> — the plan after. Sunday's long protected. Build week intact. Removes the "wait, what just happened to my plan?" panic.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">05 · load-impact reasoning</div>
+          <div class="body">The "WHY MOVE ON" callout shows the math: <em>"6 of 7 quality hit. Catching up pushes load to 1.48."</em> Honest, citable, no LLM. Data-driven advice rendered as text.</div>
+        </div>
+        <div class="delta">
+          <div class="what new">06 · alternative collapsed</div>
+          <div class="body">The non-recommended choice stays visible but secondary — collapsed card with the consequence. Tap to expand if curious. Defaults are loud; alternatives are quiet.</div>
+        </div>
+        <div class="delta">
+          <div class="what warn">07 · week strip · missed indicator</div>
+          <div class="body">Tuesday now shows <strong>6×800 in strikethrough amber</strong>. The week-strip is the only place this stays visible after the choice — a quiet artifact of the decision.</div>
+        </div>
+      </div>
+      <div style="padding:16px 18px;background:rgba(243,173,56,0.05);border:1px solid rgba(243,173,56,0.22);border-radius:12px;font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.85)">
+        <strong style="color:var(--ink);font-family:var(--f-display);font-size:18px;letter-spacing:0.4px;display:block;margin-bottom:6px">Why this matters.</strong>
+        Real-world training is full of missed workouts. v2.1 quietly lied about them. v2.2 owns them. <em>The MISSED state alone is probably the most retention-relevant move in the entire spec</em> — it's the screen that turns "shit, I broke the plan" into "okay, here's what we do."
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ CLOSING ═══════════════════ -->
+<div class="endnote">
+  <div class="eyebrow" style="color:var(--green);margin-bottom:12px">where this lands</div>
+  <h3>this is what sprint 02 ships.</h3>
+  <p>Three use cases validate the v2.2 spec. <strong>Sprint 01</strong> ships the v2.1-equivalent (spine + 7 gradients + base verbs). <strong>Sprint 02</strong> ships these three — prescription line, expanded view, MISSED state — plus the other 5 new day-states and the modifier suffix system.</p>
+  <p>The prescription line + HRV verdict label + race chip with goal delta are <strong>three lines of code</strong> in the verb-rendering layer. The expanded view is <strong>one new SwiftUI view</strong> that composes existing components. The MISSED state is <strong>one new clause in the resolver</strong> plus the two-button choice component (reusable for future "user picks once" moments).</p>
+  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">docs/iphone-v2.2-mockups-2026-05-27.html</code> · companion to the audit · validates the deltas before sprint 01 starts. Nod and I start porting <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">native-v2/Faff/Faff/Views/TodayView.swift</code> to the resolver rails.</p>
+</div>
+
+<div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:var(--f-sub);font-size:11px;letter-spacing:3px">— END · 2026-05-27 · v2.2 · THREE USE CASES —</div>
+
+
+</div>
+</body>
+</html>
