@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / iPhone / core dial-in · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+  --grad-race:linear-gradient(135deg,#FF8847 0%,#FC4D64 100%);
+  --grad-phase:linear-gradient(135deg,#9013FE 0%,#008FEC 100%);
+  --grad-done:linear-gradient(135deg,#3EBD41 0%,#27B4E0 100%);
+  --grad-rest:linear-gradient(135deg,#008FEC 0%,#3a3a5a 100%);
+  --grad-long:linear-gradient(135deg,#27B4E0 0%,#3a4070 100%);
+  --grad-quality:linear-gradient(135deg,#F3AD38 0%,#FC4D64 100%);
+  --f-display:'Bebas Neue','HelveticaNeue-Bold',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-sub:'Oswald','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:64px 32px 200px}
+.wrap{max-width:1440px;margin:0 auto}
+
+/* deck chrome */
+.eyebrow{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.hero{padding:24px 0 64px;border-bottom:1px solid var(--line);margin-bottom:64px}
+h1.title{font-family:var(--f-display);font-size:140px;line-height:0.88;letter-spacing:0.8px;margin:18px 0 12px;font-weight:400}
+.title .a{color:var(--race)}
+.title .b{background:var(--grad-phase);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:18px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:840px;margin-top:24px}
+.lede strong{color:var(--ink)}
+.lede em{color:var(--race);font-style:normal;font-weight:600}
+
+h2.sec{font-family:var(--f-display);font-size:74px;letter-spacing:1px;margin:120px 0 8px;line-height:1;font-weight:400}
+.sec-tag{font-family:var(--f-sub);font-size:11px;letter-spacing:2.4px;text-transform:uppercase;color:var(--mute);margin-bottom:40px;display:flex;gap:14px;align-items:center}
+.sec-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--race)}
+.kicker{font-size:15px;line-height:1.6;color:rgba(246,247,248,0.72);max-width:820px;margin-bottom:48px}
+.kicker strong{color:var(--ink)}
+
+/* iPhone frame */
+.phone{width:340px;height:736px;background:#000;border-radius:48px;padding:11px;position:relative;box-shadow:0 30px 70px rgba(0,0,0,0.6),inset 0 0 0 1.5px #1d2028;flex-shrink:0}
+.phone-screen{width:100%;height:100%;background:var(--bg);border-radius:38px;overflow:hidden;position:relative}
+.island{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:102px;height:30px;background:#000;border-radius:18px;z-index:10}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:14px 26px 0;font-size:13px;font-weight:600;color:var(--ink);height:44px;letter-spacing:0.3px}
+.home-i{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:124px;height:4.5px;background:rgba(255,255,255,0.32);border-radius:3px;z-index:11}
+.phone-label{font-family:var(--f-sub);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--mute);margin-top:14px;text-align:center}
+.phone-label strong{color:var(--ink);font-weight:600}
+.phone-tag{margin-top:4px;font-size:11px;color:var(--mute);text-align:center;max-width:300px;line-height:1.5}
+
+/* layout */
+.row{display:flex;gap:32px;flex-wrap:wrap;justify-content:flex-start;align-items:flex-start;margin-bottom:64px}
+.uc-head{margin:60px 0 24px;padding:24px 0 18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-end;gap:48px}
+.uc-head h3{font-family:var(--f-display);font-size:54px;letter-spacing:1px;margin:0;line-height:1;font-weight:400}
+.uc-head h3 .n{font-family:var(--f-display);font-size:22px;color:var(--mute);margin-right:14px;letter-spacing:2px;vertical-align:14px}
+.uc-pitch{flex:1;max-width:620px;font-size:13.5px;line-height:1.6;color:rgba(246,247,248,0.78)}
+.uc-pitch strong{color:var(--ink)}
+.uc-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* tab bar (iPhone bottom) */
+.tab-bar{position:absolute;bottom:0;left:0;right:0;height:80px;background:rgba(10,12,16,0.96);border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:flex-start;padding-top:11px;backdrop-filter:blur(20px)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim);font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;font-weight:600}
+.tab.on{color:var(--ink)}
+.tab.on .ico{color:var(--green)}
+.tab .ico{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:16px}
+
+/* inner content padding */
+.scr{padding:0;height:calc(100% - 44px - 80px);overflow:hidden;position:relative}
+
+/* week strip (top, always) */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:8px 16px 10px;border-bottom:1px solid var(--line)}
+.day{padding:6px 0 7px;text-align:center;border-radius:7px;position:relative}
+.day .dow{font-family:var(--f-sub);font-size:8.5px;letter-spacing:1.4px;font-weight:600;color:var(--mute)}
+.day .mi{font-family:var(--f-display);font-size:15px;line-height:1;margin-top:3px}
+.day.done .mi{color:var(--green)}
+.day.up .mi{color:var(--ink)}
+.day.future .mi{color:var(--mute)}
+.day.rest .mi{color:var(--dim)}
+.day.today{outline:1.5px solid var(--ink);background:rgba(255,255,255,0.03)}
+.day.today .dow{color:var(--ink)}
+.day.race{outline:1.5px solid var(--race)}
+.day.race .dow{color:var(--race)}
+.day.race .mi{color:var(--race)}
+
+/* top context panel (the sliding card) */
+.top-panel{padding:24px 22px 28px;color:#fff;position:relative;overflow:hidden}
+.top-panel .panel-tag{font-family:var(--f-sub);font-size:10px;letter-spacing:2.5px;text-transform:uppercase;font-weight:600;color:rgba(255,255,255,0.85);margin-bottom:8px}
+.top-panel.race{background:var(--grad-race)}
+.top-panel.phase{background:var(--grad-phase)}
+.top-panel.done{background:var(--grad-done)}
+.top-panel.rest{background:var(--grad-rest)}
+.top-panel.long{background:var(--grad-long)}
+.top-panel.quality{background:var(--grad-quality)}
+
+.panel-h{font-family:var(--f-display);font-size:64px;line-height:0.86;letter-spacing:0.6px;font-weight:400}
+.panel-h.big{font-size:88px}
+.panel-h.huge{font-size:110px}
+.panel-meta{display:flex;align-items:baseline;gap:10px;margin-top:14px}
+.panel-meta .n{font-family:var(--f-display);font-size:54px;line-height:1;color:#fff}
+.panel-meta .l{font-family:var(--f-sub);font-size:11px;letter-spacing:2px;font-weight:600;color:rgba(255,255,255,0.85);text-transform:uppercase}
+
+/* bottom panel — today */
+.btm{background:var(--bg);margin-top:-20px;border-radius:24px 24px 0 0;padding:20px 22px 14px;position:relative;border-top:1px solid var(--line)}
+.btm.full{margin-top:0;border-radius:0;border-top:0}
+
+.btm-tag{font-family:var(--f-sub);font-size:10px;letter-spacing:2.4px;text-transform:uppercase;font-weight:600;color:var(--green);margin-bottom:6px}
+.btm-tag.warn{color:var(--goal)}
+.btm-tag.rest{color:var(--rest)}
+.btm-tag.race{color:var(--race)}
+.btm-tag.done{color:var(--green)}
+
+.verb{font-family:var(--f-display);font-size:88px;line-height:0.85;letter-spacing:0.5px;color:var(--ink);font-weight:400;margin-bottom:4px}
+.verb.giant{font-size:120px}
+.verb.lg{font-size:96px}
+
+/* stat strip */
+.stats{display:flex;justify-content:space-between;align-items:baseline;margin:14px 0 6px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.stat .v{font-family:var(--f-display);font-size:36px;line-height:1;color:var(--ink)}
+.stat .v.amber{color:var(--goal)}
+.stat .v.green{color:var(--green)}
+.stat .v.over{color:var(--over)}
+.stat .v.dist{color:var(--dist)}
+.stat .l{font-family:var(--f-sub);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;color:var(--mute);margin-top:5px}
+
+/* data row (replaces coach prose) */
+.data-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
+.chip{font-family:var(--f-sub);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,0.06);color:var(--mute)}
+.chip.green{background:rgba(62,189,65,0.16);color:var(--green)}
+.chip.warn{background:rgba(243,173,56,0.16);color:var(--goal)}
+.chip.over{background:rgba(252,77,100,0.14);color:var(--over)}
+.chip.dist{background:rgba(39,180,224,0.14);color:var(--dist)}
+.chip.race{background:rgba(255,136,71,0.16);color:var(--race)}
+.chip.learn{background:rgba(176,132,255,0.15);color:var(--learn)}
+.chip.ink{background:rgba(255,255,255,0.1);color:var(--ink)}
+
+/* secondary block */
+.sub-block{margin-top:14px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.sub-block.tight{padding:10px 12px}
+.sub-block .lbl{font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;text-transform:uppercase;font-weight:600;color:var(--mute);margin-bottom:4px}
+.sub-block .body{font-size:12px;line-height:1.5;color:var(--ink)}
+
+/* pattern diagram */
+.diagram{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:36px;margin-bottom:64px;display:grid;grid-template-columns:1fr 1.2fr;gap:48px;align-items:center}
+.diagram .sketch{display:flex;flex-direction:column;gap:8px}
+.diagram .lay{position:relative;background:#000;border-radius:36px;overflow:hidden;border:1.5px solid #1d2028;aspect-ratio:9/19.5;max-width:240px;margin:0 auto}
+.diagram .lay .ws{height:7%;background:#15171c;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:var(--f-sub);font-size:7.5px;letter-spacing:1.4px;color:var(--mute);font-weight:600}
+.diagram .lay .ctx{flex:1;height:42%;background:var(--grad-race);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:18px;color:#fff;letter-spacing:0.4px}
+.diagram .lay .now{height:43%;background:var(--bg);padding:14px 16px;display:flex;flex-direction:column;justify-content:center;border-top:14px solid var(--bg);margin-top:-14px;border-radius:18px 18px 0 0}
+.diagram .lay .now .verb{font-size:38px;color:var(--ink);font-family:var(--f-display);line-height:0.9}
+.diagram .lay .now .ns{font-family:var(--f-sub);font-size:8px;color:var(--mute);letter-spacing:1.4px;font-weight:600;margin-top:6px;letter-spacing:1.4px}
+.diagram .lay .tb{height:8%;background:rgba(10,12,16,0.9);border-top:1px solid var(--line)}
+.diagram .labels{display:flex;flex-direction:column;gap:18px}
+.diagram h4{font-family:var(--f-display);font-size:30px;letter-spacing:0.5px;margin:0 0 8px;line-height:1.05;font-weight:400}
+.diagram p{font-size:13.5px;line-height:1.6;color:rgba(246,247,248,0.78);margin:0}
+.diagram p strong{color:var(--ink)}
+
+/* legend */
+.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+.legend .item{padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.legend .item .swatch{height:34px;border-radius:8px;margin-bottom:10px}
+.legend .item .swatch.race{background:var(--grad-race)}
+.legend .item .swatch.phase{background:var(--grad-phase)}
+.legend .item .swatch.done{background:var(--grad-done)}
+.legend .item .swatch.rest{background:var(--grad-rest)}
+.legend .item .swatch.long{background:var(--grad-long)}
+.legend .item .swatch.quality{background:var(--grad-quality)}
+.legend .item .h{font-family:var(--f-display);font-size:18px;letter-spacing:0.4px;line-height:1;margin-bottom:4px}
+.legend .item .desc{font-size:11.5px;line-height:1.45;color:var(--mute)}
+
+/* language note */
+.lang-block{background:var(--bg2);border:1px solid var(--line);border-radius:18px;padding:40px;margin-top:32px}
+.lang-block h3{font-family:var(--f-display);font-size:48px;letter-spacing:0.6px;margin:0 0 8px;font-weight:400;line-height:1}
+.lang-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:24px}
+.lang-grid .col h4{font-family:var(--f-display);font-size:20px;letter-spacing:0.4px;margin:0 0 12px;font-weight:400}
+.lang-grid table{width:100%;border-collapse:collapse;font-size:12.5px}
+.lang-grid td{padding:7px 0;border-bottom:1px solid var(--line2);vertical-align:top}
+.lang-grid td:first-child{font-family:var(--f-sub);font-size:10px;letter-spacing:1.3px;text-transform:uppercase;font-weight:600;color:var(--mute);width:38%}
+.lang-grid td:last-child{font-family:var(--f-display);font-size:18px;color:var(--ink);letter-spacing:0.3px}
+.lang-grid td:last-child em{color:var(--mute);font-style:normal;font-size:10px;font-family:var(--f-sub);font-weight:600;letter-spacing:1.2px;margin-left:6px}
+
+/* endnote */
+.endnote{margin-top:96px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:var(--f-display);font-size:48px;letter-spacing:0.6px;margin:0 0 18px;font-weight:400}
+.endnote p{font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:780px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ════════════════════ HERO ════════════════════ -->
+<div class="hero">
+  <div class="eyebrow">faff · iphone · core dial-in · v2 · 2026-05-27</div>
+  <h1 class="title">the <span class="a">race poster</span><br>is the <span class="b">core</span>.</h1>
+  <div class="lede">
+    Round one had twelve directions. <strong>You picked one signal:</strong> the Race Poster's sliding-panel pattern. Top panel carries the context — <em>race countdown, training phase, post-run debrief, recovery state</em> — and slides over a bottom panel that's always <em>"what today actually is."</em> Below: that pattern flexed across six day-states, no coach prose, hero verb-noun typography, week strip up top.
+  </div>
+  <div class="lede" style="color:rgba(246,247,248,0.58);font-size:14px">
+    Coach voice removed — language pulled from plan, schedule, and vitals. Big numbers, dark canvas. Tactical's week strip lives at the very top, always visible. The screen is a card stack: <strong>week → context → today → tabs</strong>. Open the app and the answer is already there.
+  </div>
+</div>
+
+<!-- ════════════════════ PATTERN ════════════════════ -->
+<section>
+  <div class="eyebrow">the pattern</div>
+  <h2 class="sec">three cards.<br>one screen.</h2>
+  <div class="sec-tag"><span class="dot"></span>top context slides over today · today never moves</div>
+
+  <div class="diagram">
+    <div class="lay">
+      <div class="ws">WEEK STRIP · ALWAYS</div>
+      <div class="ctx">CONTEXT</div>
+      <div class="now">
+        <div class="verb">TODAY</div>
+        <div class="ns">5.8 MI · 8:12 · 148</div>
+      </div>
+      <div class="tb"></div>
+    </div>
+    <div class="labels">
+      <div>
+        <h4>01 · Week strip on top.</h4>
+        <p>7 days, current day outlined, mileage per day. The arc of your week visible without thinking. <strong>Never collapses, never moves.</strong></p>
+      </div>
+      <div>
+        <h4>02 · Context panel slides.</h4>
+        <p>Gradient block. Carries whatever's most relevant <em>today</em> — race countdown, phase position, vitals, last run's headline. Six variants below.</p>
+      </div>
+      <div>
+        <h4>03 · Today is the floor.</h4>
+        <p>Dark canvas. Verb-noun hero (<strong>EASY · WORK · NAILED IT · REST</strong>), three big numbers, chip data row. The thing you came to read.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- legend of context panels -->
+  <div class="eyebrow" style="margin-bottom:14px">six context panels</div>
+  <div class="legend">
+    <div class="item"><div class="swatch race"></div><div class="h">Race · A-race in sight</div><div class="desc">Orange-red gradient. Race name + days-to-go. Default for build / peak / taper / race-week.</div></div>
+    <div class="item"><div class="swatch quality"></div><div class="h">Quality · today's the work</div><div class="desc">Amber-red gradient. Today's intervals or tempo block. Loud — this is the session that matters.</div></div>
+    <div class="item"><div class="swatch long"></div><div class="h">Long · the weekend block</div><div class="desc">Cyan-blue gradient. Calm. The long run rides alone. Distance and effort, no fuss.</div></div>
+    <div class="item"><div class="swatch done"></div><div class="h">Post-run · nailed or missed</div><div class="desc">Green-cyan gradient. Yesterday/today's completed run as the headline. Auto-replaces race panel for ~6 hours.</div></div>
+    <div class="item"><div class="swatch rest"></div><div class="h">Rest · the body talks</div><div class="desc">Deep-blue gradient. Vitals as the panel — sleep, HRV, RHR. The day off has a job.</div></div>
+    <div class="item"><div class="swatch phase"></div><div class="h">Phase · off-race horizon</div><div class="desc">Purple-blue gradient. No A-race. Phase + cycle mileage + streak. The panel for fitness/habit users.</div></div>
+  </div>
+</section>
+
+<!-- USE CASES INSERTED BELOW -->
+<!-- ════════════════════ USE CASES ════════════════════ -->
+<section>
+  <div class="eyebrow">six day-states</div>
+  <h2 class="sec">one week,<br>one app.</h2>
+  <div class="sec-tag"><span class="dot"></span>same pattern · different headline each day</div>
+  <div class="kicker">Wednesday 27 May. A-race London Marathon, <strong>14 days out</strong>. Build week 6 of 8. We're watching the same training week roll through the same app — but the <em>headline</em> changes each day. The bottom panel is always "today's action." The top panel is "what today's about."</div>
+</section>
+
+<!-- ─── UC 01 · TUE · EASY · race headline ─── -->
+<div class="uc-head">
+  <h3><span class="n">01</span>TUE · EASY · RACE HEADLINE</h3>
+  <div class="uc-pitch">
+    Routine easy day during build week. Today is a normal aerobic deposit — nothing dramatic. So the <strong>race countdown</strong> takes the top panel: it's the most useful context for everything you do this week. Below: <strong>EASY</strong>, big, with the three numbers that matter.
+    <div class="uc-tags"><span class="chip race">race panel</span><span class="chip">d−14</span><span class="chip green">today: easy z2</span></div>
+  </div>
+</div>
+<div class="row">
+  <div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="island"></div>
+        <div class="sb"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <div class="scr">
+          <!-- WEEK STRIP -->
+          <div class="week">
+            <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">6.2</div></div>
+            <div class="day today up"><div class="dow">W</div><div class="mi">5.8</div></div>
+            <div class="day future"><div class="dow">T</div><div class="mi">·</div></div>
+            <div class="day future"><div class="dow">F</div><div class="mi">3.0</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">8.0</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">14</div></div>
+          </div>
+          <!-- TOP PANEL: RACE -->
+          <div class="top-panel race">
+            <div class="panel-tag">A-RACE · BUILD WK 6 / 8</div>
+            <div class="panel-h big">LONDON<br>MARATHON</div>
+            <div class="panel-meta">
+              <div class="n">14</div>
+              <div class="l">DAYS · 11 JUN · ON TRACK 2:54</div>
+            </div>
+          </div>
+          <!-- BOTTOM: TODAY -->
+          <div class="btm">
+            <div class="btm-tag">TODAY · EASY · Z2</div>
+            <div class="verb">RUN<br>EASY.</div>
+            <div class="stats">
+              <div class="stat"><div class="v">5.8</div><div class="l">MI</div></div>
+              <div class="stat"><div class="v">8:12</div><div class="l">PACE</div></div>
+              <div class="stat"><div class="v amber">148</div><div class="l">HR CAP</div></div>
+            </div>
+            <div class="data-row">
+              <span class="chip green">82 ready</span>
+              <span class="chip over">−7 hrv</span>
+              <span class="chip">7.2h slp</span>
+              <span class="chip">48 rhr</span>
+            </div>
+          </div>
+        </div>
+        <div class="tab-bar">
+          <div class="tab on"><div class="ico">▣</div>Today</div>
+          <div class="tab"><div class="ico">═</div>Plan</div>
+          <div class="tab"><div class="ico">◇</div>Races</div>
+          <div class="tab"><div class="ico">♡</div>Health</div>
+          <div class="tab"><div class="ico">○</div>Me</div>
+        </div>
+        <div class="home-i"></div>
+      </div>
+    </div>
+    <div class="phone-label"><strong>Tue 26 May</strong> · easy 5.8 · race 14d</div>
+    <div class="phone-tag">Race owns the top — most useful framing during build week. Today is a routine easy deposit.</div>
+  </div>
+
+  <!-- explanation column -->
+  <div style="flex:1;max-width:480px;padding-top:20px">
+    <div class="lang-block" style="background:transparent;border:1px solid var(--line);padding:24px">
+      <div class="eyebrow" style="margin-bottom:14px">where the language comes from</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600;width:40%">LONDON · 14 days</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">from <code style="font-family:Courier New;font-size:11px">race.name</code> + <code style="font-family:Courier New;font-size:11px">race.date</code></td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600">build wk 6/8</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">from <code style="font-family:Courier New;font-size:11px">plan.phase</code> + week index</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600">on track 2:54</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">trajectory model — current fitness → predicted finish</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600">RUN EASY</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">verb lookup table from <code style="font-family:Courier New;font-size:11px">workout.type</code></td></tr>
+        <tr><td style="padding:8px 0;font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600">82 / −7 / 7.2 / 48</td><td style="padding:8px 0;color:rgba(246,247,248,0.85)">raw vitals — no interpretation</td></tr>
+      </table>
+      <div style="font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.7);margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">No LLM. No narrative. <strong style="color:var(--ink)">Templates + data + the plan.</strong> The verb is from a 30-row lookup table keyed off the workout type and effort tag. Race chips read straight off the race record. Vitals are the numbers themselves — the reader does the math.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── UC 02 · WED · QUALITY · workout headline ─── -->
+<div class="uc-head">
+  <h3><span class="n">02</span>WED · QUALITY · TODAY OWNS THE TOP</h3>
+  <div class="uc-pitch">
+    Today's the work — 6×800m intervals. When a hard session is on the schedule, the <strong>workout</strong> takes the top panel and the race countdown shrinks to a chip. The framing flips: <em>today's not about the race — today IS the race.</em> Same pattern, different headline.
+    <div class="uc-tags"><span class="chip warn">quality panel</span><span class="chip">intervals · 6×800</span><span class="chip race">race d−13 → chip</span></div>
+  </div>
+</div>
+<div class="row">
+  <div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="island"></div>
+        <div class="sb"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <div class="scr">
+          <div class="week">
+            <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">6.2</div></div>
+            <div class="day done"><div class="dow">W</div><div class="mi">5.8</div></div>
+            <div class="day today up"><div class="dow">T</div><div class="mi">6.0</div></div>
+            <div class="day future"><div class="dow">F</div><div class="mi">3.0</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">8.0</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">14</div></div>
+          </div>
+          <!-- TOP: QUALITY -->
+          <div class="top-panel quality">
+            <div class="panel-tag">QUALITY · INTERVALS</div>
+            <div class="panel-h huge">WORK<br>DAY.</div>
+            <div class="panel-meta">
+              <div class="n">6×800</div>
+              <div class="l">@ 3:02 · 400m JOG REST</div>
+            </div>
+          </div>
+          <!-- BOTTOM: TODAY breakdown -->
+          <div class="btm">
+            <div class="btm-tag warn">TODAY · 6.0 MI · ~48 MIN</div>
+            <div class="verb">INTERVALS.</div>
+            <div class="stats">
+              <div class="stat"><div class="v">6:08</div><div class="l">REP PACE</div></div>
+              <div class="stat"><div class="v">2:30</div><div class="l">REST</div></div>
+              <div class="stat"><div class="v amber">Z3</div><div class="l">EFFORT</div></div>
+            </div>
+            <!-- segment strip -->
+            <div style="display:flex;gap:2px;margin-top:8px;height:6px;border-radius:3px;overflow:hidden">
+              <div style="flex:3;background:var(--rest)"></div>
+              <div style="flex:2;background:var(--goal)"></div>
+              <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+              <div style="flex:2;background:var(--goal)"></div>
+              <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+              <div style="flex:2;background:var(--goal)"></div>
+              <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+              <div style="flex:2;background:var(--goal)"></div>
+              <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+              <div style="flex:2;background:var(--goal)"></div>
+              <div style="flex:1;background:rgba(255,255,255,0.08)"></div>
+              <div style="flex:2;background:var(--goal)"></div>
+              <div style="flex:3;background:var(--rest)"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:5px;font-family:var(--f-sub);font-size:8.5px;letter-spacing:1.2px;font-weight:600;color:var(--mute)">
+              <span>WU</span><span>1</span><span>R</span><span>2</span><span>R</span><span>3</span><span>R</span><span>4</span><span>R</span><span>5</span><span>R</span><span>6</span><span>CD</span>
+            </div>
+            <div class="data-row" style="margin-top:14px">
+              <span class="chip race">london d−13</span>
+              <span class="chip green">82 ready</span>
+              <span class="chip">go time 6:30am</span>
+            </div>
+          </div>
+        </div>
+        <div class="tab-bar">
+          <div class="tab on"><div class="ico">▣</div>Today</div>
+          <div class="tab"><div class="ico">═</div>Plan</div>
+          <div class="tab"><div class="ico">◇</div>Races</div>
+          <div class="tab"><div class="ico">♡</div>Health</div>
+          <div class="tab"><div class="ico">○</div>Me</div>
+        </div>
+        <div class="home-i"></div>
+      </div>
+    </div>
+    <div class="phone-label"><strong>Thu 28 May</strong> · 6×800m · race 13d</div>
+    <div class="phone-tag">Quality session promotes itself to the headline. Race countdown shrinks to a chip. The work IS today.</div>
+  </div>
+
+  <div style="flex:1;max-width:480px;padding-top:20px">
+    <div class="sub-block" style="background:transparent;border:1px solid var(--line);padding:24px">
+      <div class="eyebrow" style="margin-bottom:14px">promotion rule</div>
+      <p style="font-size:13.5px;line-height:1.6;color:rgba(246,247,248,0.82);margin:0 0 14px">The top panel runs an <strong>auto-promotion rule</strong> keyed off the workout type:</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--goal);font-weight:600;width:42%">quality · tempo · intervals</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">→ workout takes the panel</td></tr>
+        <tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dist);font-weight:600">long run · ≥ 12mi</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">→ long takes the panel</td></tr>
+        <tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--rest);font-weight:600">rest · cross-train</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">→ vitals take the panel</td></tr>
+        <tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--green);font-weight:600">just finished run · 6hr window</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">→ post-run takes the panel</td></tr>
+        <tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--race);font-weight:600">race d ≤ 3</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);color:rgba(246,247,248,0.85)">→ race locks the panel until race-end</td></tr>
+        <tr><td style="padding:8px 12px 8px 0;font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600">default</td><td style="padding:8px 0;color:rgba(246,247,248,0.85)">→ race countdown (if any) · else phase</td></tr>
+      </table>
+      <p style="font-size:12px;line-height:1.55;color:var(--mute);margin:18px 0 0">All deterministic. No model picks the panel — the plan picks it.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─── UC 03 · POST-RUN SWAP ─── -->
+<div class="uc-head">
+  <h3><span class="n">03</span>THU · POST-RUN · DONE OWNS THE TOP</h3>
+  <div class="uc-pitch">
+    You just finished the intervals. The app opens to <strong>NAILED IT</strong> as the top panel for a 6-hour window — debrief is the most useful framing right now. Race countdown still chips below. Tomorrow morning the panel reverts. This is the moment that becomes a screenshot.
+    <div class="uc-tags"><span class="chip green">done panel</span><span class="chip">auto · 6h ttl</span><span class="chip">replaces race</span></div>
+  </div>
+</div>
+<div class="row">
+  <div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="island"></div>
+        <div class="sb"><span>7:34</span><span>●●● 5G ▮</span></div>
+        <div class="scr">
+          <div class="week">
+            <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">6.2</div></div>
+            <div class="day done"><div class="dow">W</div><div class="mi">5.8</div></div>
+            <div class="day today done"><div class="dow">T</div><div class="mi">6.04</div></div>
+            <div class="day future"><div class="dow">F</div><div class="mi">3.0</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">8.0</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">14</div></div>
+          </div>
+          <!-- TOP: DONE -->
+          <div class="top-panel done">
+            <div class="panel-tag">QUALITY · COMPLETED · 0:48 AGO</div>
+            <div class="panel-h huge">NAILED<br>IT.</div>
+            <div class="panel-meta">
+              <div class="n">6/6</div>
+              <div class="l">REPS · AVG 3:02 · 1S OFF</div>
+            </div>
+          </div>
+          <!-- BOTTOM: stats -->
+          <div class="btm">
+            <div class="btm-tag done">DEBRIEF · 6 × 800M</div>
+            <div class="stats">
+              <div class="stat"><div class="v">6.04</div><div class="l">MI</div></div>
+              <div class="stat"><div class="v">48:12</div><div class="l">TIME</div></div>
+              <div class="stat"><div class="v green">157</div><div class="l">AVG HR</div></div>
+            </div>
+            <!-- rep results -->
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-top:12px">
+              <div style="background:var(--card);border-top:2px solid var(--green);border-radius:6px;padding:5px 0;text-align:center"><div style="font-family:var(--f-display);font-size:14px;line-height:1">3:02</div><div style="font-family:var(--f-sub);font-size:7px;letter-spacing:1px;color:var(--mute);margin-top:2px;font-weight:600">R1</div></div>
+              <div style="background:var(--card);border-top:2px solid var(--green);border-radius:6px;padding:5px 0;text-align:center"><div style="font-family:var(--f-display);font-size:14px;line-height:1">3:04</div><div style="font-family:var(--f-sub);font-size:7px;letter-spacing:1px;color:var(--mute);margin-top:2px;font-weight:600">R2</div></div>
+              <div style="background:var(--card);border-top:2px solid var(--green);border-radius:6px;padding:5px 0;text-align:center"><div style="font-family:var(--f-display);font-size:14px;line-height:1">3:02</div><div style="font-family:var(--f-sub);font-size:7px;letter-spacing:1px;color:var(--mute);margin-top:2px;font-weight:600">R3</div></div>
+              <div style="background:var(--card);border-top:2px solid var(--green);border-radius:6px;padding:5px 0;text-align:center"><div style="font-family:var(--f-display);font-size:14px;line-height:1">3:01</div><div style="font-family:var(--f-sub);font-size:7px;letter-spacing:1px;color:var(--mute);margin-top:2px;font-weight:600">R4</div></div>
+              <div style="background:var(--card);border-top:2px solid var(--goal);border-radius:6px;padding:5px 0;text-align:center"><div style="font-family:var(--f-display);font-size:14px;line-height:1">3:06</div><div style="font-family:var(--f-sub);font-size:7px;letter-spacing:1px;color:var(--mute);margin-top:2px;font-weight:600">R5</div></div>
+              <div style="background:var(--card);border-top:2px solid var(--green);border-radius:6px;padding:5px 0;text-align:center"><div style="font-family:var(--f-display);font-size:14px;line-height:1">3:00</div><div style="font-family:var(--f-sub);font-size:7px;letter-spacing:1px;color:var(--mute);margin-top:2px;font-weight:600">R6</div></div>
+            </div>
+            <div class="data-row" style="margin-top:14px">
+              <span class="chip green">z3 71%</span>
+              <span class="chip">cad 178</span>
+              <span class="chip race">london d−13</span>
+              <span class="chip">→ apple health</span>
+            </div>
+          </div>
+        </div>
+        <div class="tab-bar">
+          <div class="tab on"><div class="ico">▣</div>Today</div>
+          <div class="tab"><div class="ico">═</div>Plan</div>
+          <div class="tab"><div class="ico">◇</div>Races</div>
+          <div class="tab"><div class="ico">♡</div>Health</div>
+          <div class="tab"><div class="ico">○</div>Me</div>
+        </div>
+        <div class="home-i"></div>
+      </div>
+    </div>
+    <div class="phone-label"><strong>Thu 28 May · 7:34pm</strong> · finished 48m ago</div>
+    <div class="phone-tag">Post-run promotes itself for 6 hours. NAILED IT replaces the race poster. Reverts at midnight.</div>
+  </div>
+
+  <!-- promotion timeline -->
+  <div style="flex:1;max-width:480px;padding-top:20px">
+    <div class="sub-block" style="background:transparent;border:1px solid var(--line);padding:24px">
+      <div class="eyebrow" style="margin-bottom:14px">promotion verbs · post-run</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--green);font-weight:600;width:38%">all targets hit</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-display);font-size:22px;letter-spacing:0.4px">NAILED IT.</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--green);font-weight:600">easy run · HR in zone</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-display);font-size:22px;letter-spacing:0.4px">STEADY.</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--goal);font-weight:600">pace miss · HR fine</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-display);font-size:22px;letter-spacing:0.4px">GOOD ENOUGH.</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--goal);font-weight:600">long run completed</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-display);font-size:22px;letter-spacing:0.4px">DISTANCE BANKED.</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--over);font-weight:600">HR over · pace off</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-display);font-size:22px;letter-spacing:0.4px">EASE OFF TOMORROW.</td></tr>
+        <tr><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--race);font-weight:600">PR / fastest split</td><td style="padding:8px 0;border-bottom:1px solid var(--line2);font-family:var(--f-display);font-size:22px;letter-spacing:0.4px">NEW BEST.</td></tr>
+        <tr><td style="padding:8px 0;font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);font-weight:600">cut short · DNF</td><td style="padding:8px 0;font-family:var(--f-display);font-size:22px;letter-spacing:0.4px;color:var(--mute)">SOMETHING NEXT TIME.</td></tr>
+      </table>
+      <p style="font-size:12px;line-height:1.55;color:var(--mute);margin:18px 0 0">~12 verb phrases keyed off plan-hit, HR-in-zone, pace-delta, distance-delta. <strong style="color:var(--ink)">No LLM picks the verb — a rule does.</strong> Same data → same verb every time. Predictable, trustable, ownable.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─── UC 04 · REST DAY · vitals headline ─── -->
+<div class="uc-head">
+  <h3><span class="n">04</span>FRI · REST · VITALS OWN THE TOP</h3>
+  <div class="uc-pitch">
+    Programmed rest day. The bottom panel is <strong>REST</strong> — clean, calm, deliberate. The top panel becomes the <strong>vitals readout</strong>: sleep, HRV, RHR. The body talks. Tomorrow's workout previewed below as a chip — you're not in the dark about what's coming.
+    <div class="uc-tags"><span class="chip rest">vitals panel</span><span class="chip">rest day</span><span class="chip dist">tomorrow chip</span></div>
+  </div>
+</div>
+<div class="row">
+  <div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="island"></div>
+        <div class="sb"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <div class="scr">
+          <div class="week">
+            <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">6.2</div></div>
+            <div class="day done"><div class="dow">W</div><div class="mi">5.8</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">6.0</div></div>
+            <div class="day today rest"><div class="dow">F</div><div class="mi">·</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">8.0</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">14</div></div>
+          </div>
+          <!-- TOP: REST · vitals -->
+          <div class="top-panel rest">
+            <div class="panel-tag">VITALS · BODY REPORT</div>
+            <div class="panel-h">RECOVERING.</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px">
+              <div><div style="font-family:var(--f-display);font-size:44px;color:#fff;line-height:0.9">7.4</div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;font-weight:600;color:rgba(255,255,255,0.78);margin-top:5px">SLEEP · +0.2</div></div>
+              <div><div style="font-family:var(--f-display);font-size:44px;color:#fff;line-height:0.9">42</div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;font-weight:600;color:rgba(255,255,255,0.78);margin-top:5px">HRV · ▲ +4</div></div>
+              <div><div style="font-family:var(--f-display);font-size:44px;color:#fff;line-height:0.9">46</div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;font-weight:600;color:rgba(255,255,255,0.78);margin-top:5px">RHR · ▼ −2</div></div>
+            </div>
+          </div>
+          <!-- BOTTOM: REST -->
+          <div class="btm">
+            <div class="btm-tag rest">TODAY · REST DAY</div>
+            <div class="verb giant">REST.</div>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.6;color:rgba(246,247,248,0.78)">
+              Yesterday's 6×800 cost you. Today's the rebuild. <strong style="color:var(--ink)">No run.</strong> Walk if you want. Stretch. Eat. Sleep again.
+            </div>
+            <div class="sub-block tight" style="margin-top:14px;border-color:var(--line)">
+              <div class="lbl" style="color:var(--dist)">TOMORROW · SAT</div>
+              <div class="body"><strong style="font-family:var(--f-display);font-size:18px;letter-spacing:0.3px">EASY · 3 MI</strong> &nbsp;<span style="color:var(--mute);font-size:11px">9:00 pace · pre-long shakeout</span></div>
+            </div>
+            <div class="data-row" style="margin-top:12px">
+              <span class="chip race">london d−12</span>
+              <span class="chip">long run sun</span>
+            </div>
+          </div>
+        </div>
+        <div class="tab-bar">
+          <div class="tab on"><div class="ico">▣</div>Today</div>
+          <div class="tab"><div class="ico">═</div>Plan</div>
+          <div class="tab"><div class="ico">◇</div>Races</div>
+          <div class="tab"><div class="ico">♡</div>Health</div>
+          <div class="tab"><div class="ico">○</div>Me</div>
+        </div>
+        <div class="home-i"></div>
+      </div>
+    </div>
+    <div class="phone-label"><strong>Fri 29 May</strong> · rest · race 12d</div>
+    <div class="phone-tag">Vitals get the panel — the body's the headline today. Tomorrow + race-day chip below. Permission to do nothing.</div>
+  </div>
+
+  <!-- copy column -->
+  <div style="flex:1;max-width:480px;padding-top:20px">
+    <div class="sub-block" style="background:transparent;border:1px solid var(--line);padding:24px">
+      <div class="eyebrow" style="margin-bottom:14px">why rest is its own panel</div>
+      <p style="font-size:13.5px;line-height:1.6;color:rgba(246,247,248,0.82);margin:0 0 14px">Most apps make rest days feel like a void. <strong style="color:var(--ink)">Faff makes them a feature.</strong> The vitals panel gives the rest day a job — show the body's response to yesterday's work — and the next-day chip prevents "wait, what's tomorrow?" anxiety.</p>
+      <p style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.7);margin:0 0 14px">The single verb <strong style="color:var(--ink)">REST.</strong> is enough. No motivation, no inspiration, no "embrace the recovery." Just the call.</p>
+      <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line)">
+        <div class="eyebrow" style="margin-bottom:10px">data flowing in</div>
+        <div style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:rgba(246,247,248,0.78);font-family:var(--f-sub);font-weight:500">
+          <div>▸ <code style="font-family:Courier New;font-size:11px">vitals.sleep_hours</code> · live from HealthKit</div>
+          <div>▸ <code style="font-family:Courier New;font-size:11px">vitals.hrv_morning</code> · HealthKit + 14d rolling avg</div>
+          <div>▸ <code style="font-family:Courier New;font-size:11px">vitals.rhr</code> · HealthKit + trend delta</div>
+          <div>▸ <code style="font-family:Courier New;font-size:11px">plan.tomorrow</code> · from the saved plan</div>
+          <div>▸ <code style="font-family:Courier New;font-size:11px">race.next.days_out</code></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── UC 05 · LONG RUN ─── -->
+<div class="uc-head">
+  <h3><span class="n">05</span>SUN · LONG · DISTANCE IS THE HEADLINE</h3>
+  <div class="uc-pitch">
+    The Sunday long run. Calm cyan panel, a single number — <strong>14</strong> — and a paced range below. The long is its own day. Race countdown still chips at the bottom but doesn't compete. No interval chart, no zone math up top — long runs are simple: <em>cover the distance, hold the effort.</em>
+    <div class="uc-tags"><span class="chip dist">long panel</span><span class="chip">14 mi</span><span class="chip">~1:55</span></div>
+  </div>
+</div>
+<div class="row">
+  <div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="island"></div>
+        <div class="sb"><span>7:14</span><span>●●● 5G ▮</span></div>
+        <div class="scr">
+          <div class="week">
+            <div class="day done"><div class="dow">M</div><div class="mi">4.0</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">6.2</div></div>
+            <div class="day done"><div class="dow">W</div><div class="mi">5.8</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">6.0</div></div>
+            <div class="day done rest"><div class="dow">F</div><div class="mi">·</div></div>
+            <div class="day done"><div class="dow">S</div><div class="mi">3.0</div></div>
+            <div class="day today up"><div class="dow">S</div><div class="mi">14</div></div>
+          </div>
+          <!-- TOP: LONG -->
+          <div class="top-panel long">
+            <div class="panel-tag">LONG RUN · BUILD</div>
+            <div style="display:flex;align-items:flex-end;gap:18px;margin-top:8px">
+              <div style="font-family:var(--f-display);font-size:170px;line-height:0.82;letter-spacing:1px;color:#fff;font-weight:400">14</div>
+              <div style="padding-bottom:14px"><div style="font-family:var(--f-sub);font-size:14px;letter-spacing:2.5px;font-weight:600;color:rgba(255,255,255,0.85);text-transform:uppercase">MILES</div><div style="font-family:var(--f-display);font-size:30px;color:#fff;line-height:1;margin-top:4px">~1:55</div></div>
+            </div>
+            <div style="margin-top:14px;display:flex;align-items:baseline;gap:14px">
+              <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:rgba(255,255,255,0.75);font-weight:600;text-transform:uppercase">PACE BAND</div><div style="font-family:var(--f-display);font-size:30px;color:#fff;line-height:1;margin-top:3px">8:00 – 8:30</div></div>
+            </div>
+          </div>
+          <!-- BOTTOM: TODAY -->
+          <div class="btm">
+            <div class="btm-tag">TODAY · LONG · Z2 STEADY</div>
+            <div class="verb">GO LONG.</div>
+            <div class="stats">
+              <div class="stat"><div class="v">14</div><div class="l">MI</div></div>
+              <div class="stat"><div class="v">8:15</div><div class="l">AVG TGT</div></div>
+              <div class="stat"><div class="v amber">155</div><div class="l">HR CAP</div></div>
+            </div>
+            <!-- mile checkpoints -->
+            <div style="margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px">
+              <div class="lbl" style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;text-transform:uppercase;font-weight:600;color:var(--mute);margin-bottom:6px">CHECKPOINTS</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;font-size:11px">
+                <div><span style="font-family:var(--f-display);font-size:14px">MI 4</span><span style="color:var(--mute);font-size:9px;margin-left:4px">fuel</span></div>
+                <div><span style="font-family:var(--f-display);font-size:14px">MI 8</span><span style="color:var(--mute);font-size:9px;margin-left:4px">fuel</span></div>
+                <div><span style="font-family:var(--f-display);font-size:14px">MI 11</span><span style="color:var(--mute);font-size:9px;margin-left:4px">fuel</span></div>
+                <div><span style="font-family:var(--f-display);font-size:14px;color:var(--dist)">MI 14</span><span style="color:var(--mute);font-size:9px;margin-left:4px">done</span></div>
+              </div>
+            </div>
+            <div class="data-row" style="margin-top:12px">
+              <span class="chip race">london d−10</span>
+              <span class="chip">last long: 12mi</span>
+              <span class="chip dist">+2mi vs last</span>
+            </div>
+          </div>
+        </div>
+        <div class="tab-bar">
+          <div class="tab on"><div class="ico">▣</div>Today</div>
+          <div class="tab"><div class="ico">═</div>Plan</div>
+          <div class="tab"><div class="ico">◇</div>Races</div>
+          <div class="tab"><div class="ico">♡</div>Health</div>
+          <div class="tab"><div class="ico">○</div>Me</div>
+        </div>
+        <div class="home-i"></div>
+      </div>
+    </div>
+    <div class="phone-label"><strong>Sun 31 May</strong> · 14mi long · race 10d</div>
+    <div class="phone-tag">Single hero number. No intervals chart. Long runs need stillness, not stats. Fuel checkpoints inline.</div>
+  </div>
+
+  <div style="flex:1;max-width:480px;padding-top:20px">
+    <div class="sub-block" style="background:transparent;border:1px solid var(--line);padding:24px">
+      <div class="eyebrow" style="margin-bottom:14px">design discipline · long is different</div>
+      <p style="font-size:13.5px;line-height:1.6;color:rgba(246,247,248,0.82);margin:0 0 14px">Quality days look like work because they <em>are</em> work — interval bars, rep counts, target paces stacked. <strong style="color:var(--ink)">Long days deserve the opposite.</strong> One number. One range. The pre-long screen should feel like the moment before you tie your shoes, not a wall of data.</p>
+      <p style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.7);margin:0">The cyan-blue gradient says calm. The 170px <strong>14</strong> says <em>that's the thing.</em> Mile checkpoints replace the rep block — they're not segments to hit, they're moments to fuel.</p>
+      <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line)">
+        <div class="eyebrow" style="margin-bottom:8px">verb table · long days</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--mute);font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:600;text-transform:uppercase">distance ≥ 16</span><span style="font-family:var(--f-display);font-size:20px;letter-spacing:0.3px">GO BIG.</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--mute);font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:600;text-transform:uppercase">long · 12 – 15</span><span style="font-family:var(--f-display);font-size:20px;letter-spacing:0.3px">GO LONG.</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--mute);font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:600;text-transform:uppercase">long · with finish-fast</span><span style="font-family:var(--f-display);font-size:20px;letter-spacing:0.3px">LONG + FAST.</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--mute);font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:600;text-transform:uppercase">long · with hills</span><span style="font-family:var(--f-display);font-size:20px;letter-spacing:0.3px">CLIMBING DAY.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── UC 06 · RACE DAY TAKEOVER ─── -->
+<div class="uc-head">
+  <h3><span class="n">06</span>RACE WEEK · TAKEOVER</h3>
+  <div class="uc-pitch">
+    T−3 days. The race-day operations panel <strong>locks</strong> the top — no other context can promote past it. The bottom panel becomes the logistics surface: bib, transport, weather, fueling, drop bag, spectator panel. <em>This is the screen you open at 5am race morning.</em> Same pattern. Different stakes.
+    <div class="uc-tags"><span class="chip race">race locked</span><span class="chip">no promotion</span><span class="chip">logistics surface</span></div>
+  </div>
+</div>
+<div class="row">
+  <div>
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="island"></div>
+        <div class="sb"><span>6:42</span><span>●●● 5G ▮</span></div>
+        <div class="scr">
+          <div class="week">
+            <div class="day done"><div class="dow">M</div><div class="mi">3.0</div></div>
+            <div class="day done"><div class="dow">T</div><div class="mi">4.0</div></div>
+            <div class="day today up"><div class="dow">W</div><div class="mi">3.0</div></div>
+            <div class="day future"><div class="dow">T</div><div class="mi">2.0</div></div>
+            <div class="day future"><div class="dow">F</div><div class="mi">·</div></div>
+            <div class="day future"><div class="dow">S</div><div class="mi">3.0</div></div>
+            <div class="day race"><div class="dow">S</div><div class="mi">26.2</div></div>
+          </div>
+          <!-- TOP: RACE LOCKED -->
+          <div class="top-panel race">
+            <div class="panel-tag">RACE WEEK · LOCKED IN</div>
+            <div class="panel-h huge">LONDON.</div>
+            <div class="panel-meta" style="margin-top:18px">
+              <div class="n" style="font-size:88px">3</div>
+              <div class="l" style="font-size:13px">DAYS · GUN 09:35 BLUE START</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:18px">
+              <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:8px 12px"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:rgba(255,255,255,0.85);font-weight:600">BIB</div><div style="font-family:var(--f-display);font-size:24px;line-height:1;color:#fff;margin-top:2px">2147</div></div>
+              <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:8px 12px"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:rgba(255,255,255,0.85);font-weight:600">CORRAL</div><div style="font-family:var(--f-display);font-size:24px;line-height:1;color:#fff;margin-top:2px">B</div></div>
+              <div style="background:rgba(0,0,0,0.25);border-radius:10px;padding:8px 12px"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:rgba(255,255,255,0.85);font-weight:600">PRED</div><div style="font-family:var(--f-display);font-size:24px;line-height:1;color:#fff;margin-top:2px">2:54</div></div>
+            </div>
+          </div>
+          <!-- BOTTOM: logistics -->
+          <div class="btm">
+            <div class="btm-tag race">RACE-DAY OPS</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+                <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:var(--mute);font-weight:600;text-transform:uppercase">WEATHER · SUN 09:35</div><div style="font-size:13px;margin-top:2px"><span style="font-family:var(--f-display);font-size:18px;color:var(--dist)">12°</span> ☁ · 8mph SW</div></div>
+                <span class="chip green">good</span>
+              </div>
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px">
+                <div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:var(--mute);font-weight:600;text-transform:uppercase;margin-bottom:5px">CHECKLIST</div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap">
+                  <span class="chip green">✓ bib picked up</span>
+                  <span class="chip green">✓ kit laid out</span>
+                  <span class="chip warn">⌚ charge watch</span>
+                </div>
+              </div>
+              <div style="background:rgba(176,132,255,0.08);border:1px solid rgba(176,132,255,0.22);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+                <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.6px;color:var(--learn);font-weight:600;text-transform:uppercase">TRACKING YOU</div><div style="font-size:13px;margin-top:2px;color:var(--ink)"><strong>7 people</strong> · Mum, Dad, Sam, +4</div></div>
+                <div style="display:flex"><div style="width:22px;height:22px;border-radius:99px;background:var(--green);border:2px solid var(--bg);font-size:9px;color:#fff;display:flex;align-items:center;justify-content:center;margin-right:-6px;font-weight:600">M</div><div style="width:22px;height:22px;border-radius:99px;background:var(--race);border:2px solid var(--bg);font-size:9px;color:#fff;display:flex;align-items:center;justify-content:center;margin-right:-6px;font-weight:600">D</div><div style="width:22px;height:22px;border-radius:99px;background:var(--learn);border:2px solid var(--bg);font-size:9px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600">+5</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tab-bar">
+          <div class="tab on"><div class="ico">▣</div>Today</div>
+          <div class="tab"><div class="ico">═</div>Plan</div>
+          <div class="tab"><div class="ico">◇</div>Races</div>
+          <div class="tab"><div class="ico">♡</div>Health</div>
+          <div class="tab"><div class="ico">○</div>Me</div>
+        </div>
+        <div class="home-i"></div>
+      </div>
+    </div>
+    <div class="phone-label"><strong>Thu 4 Jun</strong> · race week · race 3d</div>
+    <div class="phone-tag">Race owns the top, locks all promotion. Bottom turns into logistics. The 5am screen, materializing 72 hours early.</div>
+  </div>
+
+  <div style="flex:1;max-width:480px;padding-top:20px">
+    <div class="sub-block" style="background:transparent;border:1px solid var(--line);padding:24px">
+      <div class="eyebrow" style="margin-bottom:14px">why race locks the panel</div>
+      <p style="font-size:13.5px;line-height:1.6;color:rgba(246,247,248,0.82);margin:0 0 14px">From T−72h to gun, <strong style="color:var(--ink)">the race overrides everything.</strong> No "today's a tempo" panel can pop up over the top — the user is already operating in race-mode emotionally, the app should match. Even a missed run promoted itself only via a footer chip during race week.</p>
+      <p style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.7);margin:0 0 14px">The bottom panel transforms from "today's workout" to "today's logistics" — the same slot, repurposed. Bib, weather, checklist, spectator panel. Same pattern, different content.</p>
+      <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.55;color:rgba(246,247,248,0.7)">
+        <strong style="color:var(--ink);font-family:var(--f-display);font-size:18px;letter-spacing:0.4px">The promotion priority:</strong>
+        <ol style="margin:8px 0 0;padding-left:20px;font-family:var(--f-sub);font-size:11px;letter-spacing:0.8px;font-weight:500">
+          <li>Race day · T ≤ 0 — full takeover</li>
+          <li>Race week · T ≤ 3d — race locks panel</li>
+          <li>Post-run · ≤ 6h — done panel</li>
+          <li>Quality / Long session today — workout panel</li>
+          <li>Rest day — vitals panel</li>
+          <li>Build week with race — race panel</li>
+          <li>No race — phase panel</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ WHAT CHANGED ════════════════════ -->
+<section style="margin-top:120px">
+  <div class="eyebrow">vs v1</div>
+  <h2 class="sec">what got<br>locked.</h2>
+  <div class="sec-tag"><span class="dot"></span>v1 had 12 directions · v2 has one</div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:32px">
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--race);margin-bottom:10px">in</div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.55">
+        <div>▸ <strong>Race Poster sliding-panel</strong> — the spine</div>
+        <div>▸ <strong>Week strip up top</strong>, always — from Tactical</div>
+        <div>▸ <strong>Hero verb-noun</strong> like NAILED IT / RUN EASY</div>
+        <div>▸ <strong>Dark canvas</strong> + big numbers</div>
+        <div>▸ <strong>Six context panels</strong> — race / quality / long / done / rest / phase</div>
+        <div>▸ <strong>Auto-promotion rules</strong> — plan picks the panel, not the user</div>
+        <div>▸ <strong>Data-driven language</strong> — templates + lookups, no LLM prose</div>
+      </div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--mute);margin-bottom:10px">out</div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.55;color:rgba(246,247,248,0.7)">
+        <div>▸ Coach prose ("HRV down 7, cap at 148")</div>
+        <div>▸ Brutalist white-on-black aesthetic</div>
+        <div>▸ Confidant chat-as-home (deferred)</div>
+        <div>▸ Atlas map-led home (deferred)</div>
+        <div>▸ Kinetic / Stadium / Noir directions</div>
+        <div>▸ 24-topic LLM briefing on the home screen</div>
+        <div>▸ Multi-direction toggles</div>
+      </div>
+    </div>
+    <div style="background:rgba(176,132,255,0.05);border:1px solid rgba(176,132,255,0.18);border-radius:14px;padding:24px">
+      <div class="eyebrow" style="color:var(--learn);margin-bottom:10px">deferred · later</div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.55;color:rgba(246,247,248,0.78)">
+        <div>▸ <strong>Coach voice</strong> returns as a tab (Confidant chat)</div>
+        <div>▸ <strong>Spectator mode</strong> — flagship · still v1.1</div>
+        <div>▸ <strong>Treadmill mode</strong> — phone takeover · v1.2</div>
+        <div>▸ <strong>Live run</strong> — full-bleed during a run · v1.1</div>
+        <div>▸ <strong>Central store</strong> — SwiftData mirror · v1 foundation</div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(176,132,255,0.18);font-size:12px;color:var(--mute)">All of these still ride the same Race Poster spine. The pattern scales — they just live on different tabs.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ ENDNOTE ════════════════════ -->
+<div class="endnote">
+  <div class="eyebrow" style="color:var(--green);margin-bottom:12px">what we build monday</div>
+  <h3>this is the spine.</h3>
+  <p><strong>Today tab v2.</strong> Implement the card stack: week strip (existing component, just promoted to a fixed top position) → context panel (new — six variants with the gradient set + a deterministic promotion resolver) → bottom workout panel (verb-noun head + 3-stat strip + chip row). Tab bar untouched.</p>
+  <p><strong>The promotion resolver is the load-bearing piece.</strong> It takes the day's state — today's planned workout, hours since last completed run, race horizon, vitals — and returns one of six panel variants. Pure function. Testable. Zero LLM dependency. Same inputs → same panel every time.</p>
+  <p><strong>The verb-noun lookup is ~30 rows.</strong> Keyed off <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">workout.type</code> × <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">workout.intent</code> for pre-run and <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">result.plan_hit</code> × <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">result.hr_in_zone</code> × <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">result.pace_delta</code> for post-run. Hand-curated. Easy to tune. Brand voice without the brand-voice infrastructure.</p>
+  <p><strong>Coach voice comes back later</strong> — when it does, it doesn't fight the home screen. It lives in its own tab (Confidant pattern from v1) where the chat is the surface. Home stays glanceable. That separation is the real lesson from this pass.</p>
+  <p style="margin-top:24px;font-size:13px;color:var(--mute)">Deck: <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">docs/iphone-core-2026-05-27.html</code> · v1 explorations preserved at <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">docs/iphone-explorations-2026-05-27.html</code>. Nod and I rip out the deferred surfaces from the v1 deck and start porting native-v2's Today tab to this spine.</p>
+</div>
+
+<div style="text-align:center;padding:64px 0 0;color:var(--dim);font-family:var(--f-sub);font-size:11px;letter-spacing:3px">— END · 2026-05-27 · CORE DIAL-IN —</div>
+
+<!-- INSERT:UC -->
+
+</div>
+</body>
+</html>
