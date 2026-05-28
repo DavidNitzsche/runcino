@@ -40,6 +40,12 @@ export interface GlanceState {
   sleep7Deficit: number;
   rhrCurrent: number | null;
   rhrBaseline: number | null;
+  // 2026-05-27 P-AT-A-GLANCE: HRV + ACWR were computed inside this
+  // function but not exposed on the interface. The new AtAGlanceCard
+  // needs them as tile data, so surface them.
+  hrvCurrent: number | null;
+  hrvBaseline: number | null;
+  loadAcwr: number | null;
   cadenceBaseline: number | null;
   daysToARace: number | null;
   nextARaceName: string | null;
@@ -270,7 +276,10 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     greetingName: prof?.full_name?.split(/\s+/)[0] ?? 'David',
     weekDone, weekPlanned, weekDays, phaseLabel,
     sleep7Avg, sleep7Deficit,
-    rhrCurrent, rhrBaseline, cadenceBaseline,
+    rhrCurrent, rhrBaseline,
+    hrvCurrent, hrvBaseline,
+    loadAcwr,
+    cadenceBaseline,
     daysToARace, nextARaceName,
     readiness,
   };

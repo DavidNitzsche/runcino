@@ -3,6 +3,7 @@ import { ReadinessChipTrigger } from '@/components/readiness/ReadinessChipTrigge
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 import { WeekStrip } from '@/components/today/WeekStrip';
 import { TodayPlannedCard } from '@/components/today/TodayPlannedCard';
+import { AtAGlanceCard } from '@/components/today/AtAGlanceCard';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -105,32 +106,25 @@ export default async function TodayPage() {
             </div>
           </div>
 
-          {/* RIGHT: today's workout / run. Self-aware: if ran → DoneRunBar
-              (link to run modal). If rest → rest acknowledgement. Else →
-              TodayPlannedCard with the planned workout details. 2026-05-27:
-              swapped from <BriefingCardsOnly /> (LLM topic cards, always
-              empty under the deterministic path) — David: "lets just make
-              a fucking TODAY dashboard page that knows wtf is going on." */}
+          {/* RIGHT: AT A GLANCE tile grid + today's planned/done card.
+              2026-05-27 P-AT-A-GLANCE: David picked Direction D from the
+              mockup deck — 2×3 status-dot tile grid for sleep / HRV /
+              RHR / load / week / race. Stacked above the planned card so
+              the body state reads at the top of the right column. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {glance && <AtAGlanceCard glance={glance} />}
             {glance?.weekDays && glance.today && (
               <TodayPlannedCard today={glance.today} weekDays={glance.weekDays} />
             )}
           </div>
         </div>
 
-        {glance && (
-          <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-            <MicroStat k="SLEEP · 7N" v={glance.sleep7Avg != null ? `${glance.sleep7Avg.toFixed(1)}h` : '—'}
-                       delta={glance.sleep7Avg != null && glance.sleep7Avg < 7.5 ? `−${(7.5 - glance.sleep7Avg).toFixed(1)} vs target` : 'at target'}
-                       color={glance.sleep7Avg != null && glance.sleep7Avg < 7.5 ? 'var(--goal)' : 'var(--green)'} />
-            <MicroStat k="RHR"
-                       v={glance.rhrCurrent != null ? `${glance.rhrCurrent}` : '—'}
-                       delta={glance.rhrCurrent != null && glance.rhrBaseline != null ? `${glance.rhrCurrent - glance.rhrBaseline >= 0 ? '+' : ''}${glance.rhrCurrent - glance.rhrBaseline} vs baseline` : ''}
-                       color={glance.rhrCurrent != null && glance.rhrBaseline != null && (glance.rhrCurrent - glance.rhrBaseline) >= 5 ? 'var(--over)' : 'var(--green)'} />
-            <MicroStat k="CADENCE · 60D" v={glance.cadenceBaseline != null ? `${glance.cadenceBaseline} spm` : '—'} delta="60d baseline" color="var(--green)" />
-            <MicroStat k="WEEK MI"       v={glance.weekDone != null && glance.weekPlanned != null ? `${glance.weekDone} / ${glance.weekPlanned}` : '—'} delta="this week" color="var(--rest)" />
-          </div>
-        )}
+        {/* 2026-05-27 P-AT-A-GLANCE: removed the four-up MicroStat row.
+            Sleep / RHR / week mi are now in the AT A GLANCE tile grid
+            in the right column; cadence (60d baseline) was a stale
+            display, drop until we have a real cadence trend tile to
+            show. The MicroStat helper component is kept in the file for
+            now in case we re-introduce it for a different surface. */}
 
         {glanceError && (
           <div className="card" style={{ marginTop: 24, padding: 18, background: 'rgba(252,77,100,0.04)', borderColor: 'rgba(252,77,100,0.22)' }}>
