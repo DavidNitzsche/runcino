@@ -1,0 +1,122 @@
+/* MiniTileGrid · spec at design/components/MiniTileGrid.md */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.tile {
+  position: relative;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 12px 14px;
+  min-height: 76px;
+}
+
+.tileAction {
+  border: 1.5px solid rgba(243, 173, 56, 0.4);
+}
+
+.tileInactive {
+  opacity: 0.5;
+}
+
+.dot {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.dotGreen {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(62, 189, 65, 0.55);
+}
+.dotAmber {
+  background: var(--goal);
+  box-shadow: 0 0 6px rgba(243, 173, 56, 0.55);
+}
+.dotOver {
+  background: var(--over);
+  box-shadow: 0 0 6px rgba(252, 77, 100, 0.55);
+}
+.dotDist {
+  background: var(--dist);
+  box-shadow: 0 0 6px rgba(39, 180, 224, 0.55);
+}
+.dotNone {
+  display: none;
+}
+
+.label {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--mute);
+  margin-bottom: 6px;
+}
+
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.value {
+  /* Display recipe — tile value, Oswald 700 + -0.015em tracking + 0.86
+   * line-height per design/tokens/typography.css §"THE DISPLAY RECIPE". */
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  font-size: 26px;
+  letter-spacing: var(--f-display-tracking);
+  line-height: var(--f-display-line-height);
+  color: var(--ink);
+}
+
+.valueUnit {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--mute);
+  margin-left: 2px;
+}
+
+.valueDefault {
+  color: var(--ink);
+}
+.valueAmber {
+  color: var(--goal);
+}
+.valueGreen {
+  color: var(--green);
+}
+.valueOver {
+  color: var(--over);
+}
+.valueRace {
+  color: var(--race);
+}
+.valueDist {
+  color: var(--dist);
+}
+
+.meta {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: rgba(246, 247, 248, 0.6);
+  margin-top: 7px;
+}
+
+.meta strong {
+  font-weight: 600;
+  color: rgba(246, 247, 248, 0.9);
+}

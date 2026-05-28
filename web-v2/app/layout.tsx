@@ -18,11 +18,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Inter is the only web font we load now — HelveticaNeue resolves
-         *  from the OS on Apple platforms and falls back to system bold
-         *  elsewhere. Bebas Neue dropped 2026-05-26. */}
+        {/* v3 typography (2026-05-28): Oswald 700 for display, Inter for body.
+         *  HelveticaNeue-Bold dropped — Oswald handles hero kerning natively.
+         *  Both families load via globals.css @import as well; preload here
+         *  to avoid FOUT on first paint. */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Oswald:wght@500;600;700&display=swap"
           rel="stylesheet"
         />
       </head>

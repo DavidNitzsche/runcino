@@ -1,0 +1,89 @@
+/* BCard · spec at design/components/BCard.md */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tight {
+  padding: 14px 16px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tight .header {
+  margin-bottom: 8px;
+}
+
+.label {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+/* Header value · sub-display numeric impact recipe (Inter 700wt
+   tabular-nums) per typography.css size ladder. Explicitly NOT the
+   display recipe — BCard headers carry data, not impact. */
+.value {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+  .value {
+    font-size: 22px;
+  }
+}
+
+.valueDefault {
+  color: var(--ink);
+}
+.valueAmber {
+  color: var(--goal);
+}
+.valueGreen {
+  color: var(--green);
+}
+.valueOver {
+  color: var(--over);
+}
+.valueRace {
+  color: var(--race);
+}
+.valueDist {
+  color: var(--dist);
+}
+
+.content {
+  display: block;
+  color: var(--ink);
+}
+
+.footnote {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line2);
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--mute);
+}

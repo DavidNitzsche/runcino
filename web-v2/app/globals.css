@@ -1,56 +1,88 @@
 /*
- * faff.run · v2 design tokens
+ * faff.run · v3 design tokens · LIFTED FROM Faff/apps/web 2026-05-28
  *
- * Canonical reference: docs/coach/mockups/deck-v1-2026-05-25.html
- * Every value below appears in that deck. Changes here must be reflected
- * in the deck, and vice versa. This is one source of truth.
+ * Canonical source: /Volumes/WP/06 Claude Code/Faff/design/tokens/*.css
+ * → mirrored here for Runcino/web-v2 production deploy.
+ *
+ * v3 changes vs. v2:
+ *   · Display font: HelveticaNeue-Bold → Oswald 700 (locked 2026-05-28)
+ *   · Body font: Inter (unchanged)
+ *   · Added: HR zone palette (--zone-1..5)
+ *   · Added: 12 state gradients (--g-easy, --g-quality, --g-long, ...)
+ *   · Added: display recipe tokens (--f-display-weight/tracking/line-height)
+ *
+ * Existing v2 token names are preserved so legacy component CSS keeps
+ * working (--bg, --bg-page, --card, --ink, --mute, --line, --green,
+ * --goal, --over, --dist, --rest, --learn, --race, --f-display, --f-label,
+ * --f-body, --r-card, --r-pill, --r-input).
+ *
+ * Cardinal Rule #4 · Single source of truth.
  */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Oswald:wght@500;600;700&display=swap');
+
 :root {
-  /* Canvas */
+  /* ─── canvas ─── */
   --bg:      #0a0c10;
   --bg-page: #15171c;
+  --bg2:     #15171c;
   --card:    #11141a;
   --card-2:  #13171f;
+  --card2:   #13171f;
 
-  /* Ink */
+  /* ─── ink ─── */
   --ink:    #f6f7f8;
   --mute:   #8a90a0;
   --dim:    #4b505e;
 
-  /* Lines */
+  /* ─── lines ─── */
   --line:   rgba(255,255,255,0.08);
   --line-2: rgba(255,255,255,0.04);
+  --line2:  rgba(255,255,255,0.04);
 
-  /* Watch-face palette — semantic */
-  --green:  #3EBD41;  /* solid/good/ready */
-  --goal:   #F3AD38;  /* watch/amber/effort */
-  --over:   #FC4D64;  /* over/alert/below baseline */
-  --dist:   #27B4E0;  /* distance/coastal/cool */
-  --rest:   #008FEC;  /* rest/recovery */
-  --learn:  #B084FF;  /* explainer/insight */
-  --race:   #FF8847;  /* race/peak/horizon */
+  /* ─── semantic palette ─── */
+  --green:  #3EBD41;  /* solid / good / ready / DONE */
+  --goal:   #F3AD38;  /* watch / amber / QUALITY */
+  --over:   #FC4D64;  /* over / alert / below baseline */
+  --dist:   #27B4E0;  /* distance / cool / LONG */
+  --rest:   #008FEC;  /* rest / recovery / REST */
+  --learn:  #B084FF;  /* explainer / insight / PHASE */
+  --race:   #FF8847;  /* race / peak / horizon / RACE WEEK */
 
-  /* Typography (David approved 2026-05-26)
-   *
-   * Two families total, matched to the Apple Watch app aesthetic:
-   *   --f-display: hero numbers + headlines (≥18px). HelveticaNeue-Bold —
-   *                Bebas was too condensed/stencil; this reads cleaner
-   *                at every size while still feeling editorial.
-   *   --f-label:   small caps labels, chip text, eyebrows (<18px).
-   *                Same family as display — single source of truth for
-   *                all "non-body" text. Size + tracking does the work.
-   *   --f-body:    paragraph copy + form fields + everything else.
-   *                Inter at the chosen weight.
-   *
-   * Rule: ALL CAPS / caps-tracked / hero number → display OR label by size.
-   *       everything else → body.
-   */
-  --f-display: 'HelveticaNeue-Bold', 'Helvetica Neue', 'Helvetica', system-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-  --f-label:   'HelveticaNeue-Bold', 'Helvetica Neue Bold', 'SF Compact Text', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-  --f-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* ─── HR zone palette · sequential intensity ramp ─── */
+  --zone-1: #5B7CB8;  /* Z1 recovery · slate-blue */
+  --zone-2: #48B3B5;  /* Z2 aerobic · teal */
+  --zone-3: #8FC04A;  /* Z3 tempo · chartreuse */
+  --zone-4: #E89B3A;  /* Z4 threshold · warm amber */
+  --zone-5: #D63E4E;  /* Z5 VO2max · deep red */
 
-  /* Surface radii */
+  /* ─── state gradients · one per day-state ─── */
+  --g-easy:    linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+  --g-quality: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #7a2828 100%);
+  --g-long:    linear-gradient(135deg, #27B4E0 0%, #1a6a9e 60%, #0c2a5e 100%);
+  --g-rest:    linear-gradient(135deg, #008FEC 0%, #4a3a8e 60%, #1c1a3a 100%);
+  --g-done:    linear-gradient(135deg, #3EBD41 0%, #27B4E0 60%, #1a4a8e 100%);
+  --g-race:    linear-gradient(135deg, #FF8847 0%, #E85D26 50%, #7a2828 100%);
+  --g-phase:   linear-gradient(135deg, #B084FF 0%, #6a4ace 60%, #2a1a5a 100%);
+  --g-missed:  linear-gradient(135deg, #F3AD38 0%, #c47812 60%, #5a3408 100%);
+  --g-ease:    linear-gradient(135deg, #F3AD38 0%, #7a4a26 60%, #2a1a18 100%);
+  --g-sick:    linear-gradient(135deg, #5a6580 0%, #3a3a55 60%, #1a1a2a 100%);
+  --g-niggle:  linear-gradient(135deg, #3EBD41 0%, #2a6a3a 50%, #5a3408 100%);
+  --g-new:     linear-gradient(135deg, #B084FF 0%, #6a4ace 60%, #2a1a5a 100%);
+
+  /* ─── typography · Oswald display + Inter body ─── */
+  --f-display: 'Oswald', sans-serif;
+  --f-body:    'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* --f-label kept for v2 components that still reference it; same as body
+   * with caps-tracked usage downstream. */
+  --f-label:   'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ─── display recipe · use together for hero impact ─── */
+  --f-display-weight:      700;
+  --f-display-tracking:    -0.015em;
+  --f-display-line-height: 0.86;
+
+  /* ─── radii ─── */
   --r-card:  18px;
   --r-pill:  999px;
   --r-input: 10px;

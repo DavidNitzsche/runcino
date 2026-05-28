@@ -1,0 +1,344 @@
+/* Poster · spec at design/components/Poster.md */
+
+.poster {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-card);
+  padding: 24px 26px 22px;
+  min-height: 340px;
+  color: #fff;
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .poster {
+    min-height: 420px;
+  }
+}
+
+.eyebrow {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 2.2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 16px;
+}
+
+.verb {
+  /* Display recipe · Oswald 700 + -0.015em tracking + 0.86 line-height
+   * (per design/tokens/typography.css §"THE DISPLAY RECIPE"). All four
+   * tokens applied together — partial application loses Oswald's
+   * intended optical character. */
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  line-height: var(--f-display-line-height);
+  letter-spacing: var(--f-display-tracking);
+  color: #fff;
+  margin: 0;
+  /* Never-truncate guarantee · per framework.md §3.3 + audit findings
+   * §4 (INTERVALS truncation P0). Allow soft wrap on word boundaries;
+   * NEVER ellipsis; NEVER break inside a word. The Poster's parent
+   * `overflow: hidden` is for the gradient — the responsive `clamp()`
+   * formula below guarantees the verb never reaches the clip edge. */
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  /* Default fluid size · short-verb tier · clamp(min, fluid, max)
+   * per framework.md §3.2 + poster-type.md §3.1. */
+  font-size: clamp(56px, 18vw, 88px);
+}
+
+/* Per-length classification · data-verb-length attribute set by
+ * Poster.tsx based on payload.verb shape (see Poster.tsx classifyVerbLength).
+ * The framework distinguishes single-word verbs (no wrap point) from
+ * space-broken verbs (can wrap on a space) at the same character bucket.
+ *
+ *   medium-singleword · 7-10 chars, no spaces (INTERVALS., THRESHOLD., …)
+ *     Cannot wrap · clamps must guarantee single-line fit at every tier.
+ *
+ *   medium · 7-10 chars with at least one space (NAILED IT., RUN EASY., …)
+ *     Can wrap to 2 lines on narrow viewports · slightly more generous clamp.
+ *
+ *   long / very-long · 11+ chars · wrap to 2 lines on phone tiers ·
+ *     get the 0.92 line-height bump per framework §2.1 (Oswald-tuned)
+ *     to keep ascenders off the previous line.
+ *
+ * Audit finding §4 (P0): `INTERVALS.` was clipping on phone-SE because
+ * the static 88px ladder rendered ~290px wide inside a ~275px Poster
+ * container. The medium-singleword tier gets the tightest clamps; the
+ * other medium gets a touch more headroom because spaces let it wrap.
+ *
+ * Multi-line line-height bump per framework §2.1 (Oswald-era): any verb
+ * that CAN wrap (medium, long, very-long) carries line-height 0.92 so
+ * the second line's ascenders don't crash into the first line's
+ * descenders / punctuation. medium-singleword stays at the display
+ * recipe's 0.86 (cannot wrap, so the multi-line concern doesn't apply).
+ */
+.verb[data-verb-length="medium-singleword"] {
+  /* INTERVALS., THRESHOLD., SHAKEOUT., WELCOME., etc. */
+  font-size: clamp(52px, 15vw, 80px);
+}
+
+.verb[data-verb-length="medium"] {
+  /* NAILED IT., RUN EASY., PICK ONE., BACK OFF., LOCKED IN., etc. */
+  font-size: clamp(56px, 16vw, 88px);
+  line-height: 0.92;
+}
+
+.verb[data-verb-length="long"],
+.verb[data-verb-length="very-long"] {
+  font-size: clamp(56px, 17vw, 88px);
+  line-height: 0.92;
+}
+
+@media (min-width: 768px) {
+  .verb {
+    font-size: clamp(80px, 12vw, 110px);
+  }
+  .verb[data-verb-length="medium-singleword"] {
+    font-size: clamp(72px, 11vw, 100px);
+  }
+  .verb[data-verb-length="medium"] {
+    font-size: clamp(80px, 12vw, 110px);
+  }
+  .verb[data-verb-length="long"],
+  .verb[data-verb-length="very-long"] {
+    font-size: clamp(80px, 12vw, 110px);
+  }
+}
+
+@media (min-width: 1100px) {
+  /* Web round 2 fix 2026-05-28 · Poster container at desktop viewports
+   * is tighter than first-pass math assumed because today.module.css
+   * caps .main at max-width: 1180px. Container trace:
+   *   .main width = min(viewport, 1180px), padding 24px each side
+   *   → content area = 1132px max
+   *   .hero grid cols 1fr 1fr with 20px gap (≥1024px breakpoint)
+   *   → per-column = (1132 - 20) / 2 = 556px max
+   *   .poster padding 24px 26px 22px (26px each side)
+   *   → Poster usable text width = 556 - 52 = 504px at all desktop tiers
+   *
+   * Clamp values below were originally derived from in-browser
+   * measurement (Chrome MCP, Inter 900, -0.06em tracking, 504px
+   * container) · see handoff 2026-05-28-web-to-project-lead-poster-fit-
+   * proper.md §4 for the per-verb measurement table. Under the v1
+   * Oswald lock-in the clamps still hold as safe upper bounds — Oswald
+   * is condensed and renders ~75-80% the width of Inter 900 at the
+   * same point size, so every v1 verb fits comfortably with margin to
+   * spare. A future Oswald-specific re-measure could tighten these
+   * but the current values are a conservative safety net. */
+  .verb {
+    font-size: clamp(96px, 9vw, 120px);
+  }
+  .verb[data-verb-length="medium-singleword"] {
+    /* Empirical browser measurement at 504px container · widest 10-char
+     * single-word verb is `THRESHOLD.` at ~474px @ 80px font (only
+     * 30px margin). Dropping the max to 72px gives THRESHOLD. ~427px
+     * → ≥77px margin · INTERVALS. ~397px → ≥107px margin. The 6vw
+     * fluid range still scales up between 1100-1200px viewports. */
+    font-size: clamp(64px, 6vw, 72px);
+  }
+  .verb[data-verb-length="medium"] {
+    /* Space-broken verbs (NAILED IT., RUN EASY., PICK ONE., RACE PACE.,
+     * NEW YORK., WORK DAY., LOCKED IN., NEW BEST., BACK OFF., RUN LONG.).
+     * Empirical at 504px container · widest 10-char space-broken verb is
+     * NEW YORK. at ~477px @ 88px (only 27px margin). Dropping max to 80px
+     * gives every v1 space-broken medium verb ≥50px margin single-line.
+     * Space-wrap is still the safety net if a future longer variant lands. */
+    font-size: clamp(72px, 7vw, 80px);
+  }
+  .verb[data-verb-length="long"],
+  .verb[data-verb-length="very-long"] {
+    /* Worst case · `EASE OFF TOMORROW.` (very-long, 18 chars). After
+     * the natural 2-line wrap, the second line is `TOMORROW.` —
+     * empirically the widest constituent word at 80px renders ~484px,
+     * which leaves only ~20px margin in the 504px desktop container.
+     * Dropping the max to 72px gives TOMORROW. ~435px → ≥69px margin.
+     * Long verbs (DISTANCE BANKED., WELCOME BACK.) have shorter
+     * constituent words and fit comfortably here too. */
+    font-size: clamp(64px, 6.5vw, 72px);
+  }
+}
+
+.verbSuffix {
+  display: block;
+  font-family: var(--f-body);
+  font-style: italic;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 8px;
+}
+
+.phaseTag {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 14px;
+}
+
+.prose {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.88);
+  margin: 14px 0 0;
+  /* Audit finding §1 row 8 (P2 per handoff): `60ch` reads more
+   * comfortably than `92%` for long prose · avoids the awkward narrow
+   * second-line on wider viewports while keeping reasonable wrap on
+   * phone where 92% of container is narrower than 60ch anyway. */
+  max-width: 60ch;
+}
+
+.heroNumber {
+  /* Audit finding §5 (P0): the previous implementation read as three
+   * disconnected pieces (`14 / MILES / ~1:58`) because the unit and
+   * duration carried `align-self: flex-end` + `padding-bottom` which
+   * pushed them BELOW the value's baseline instead of riding it.
+   * Per framework.md §2.3: hero number + unit + secondary share a
+   * baseline; the dramatic size delta IS the hierarchy. */
+  display: flex;
+  align-items: baseline;
+  gap: 8px; /* tighter unit-hug · was 12px · audit §5.3 */
+  margin-top: -4px;
+  flex-wrap: nowrap;
+}
+
+.heroNumberValue {
+  /* Display recipe — hero number for LONG state (e.g. "14 miles"). */
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  font-size: clamp(96px, 26vw, 120px);
+  line-height: var(--f-display-line-height);
+  letter-spacing: var(--f-display-tracking);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+  .heroNumberValue {
+    font-size: clamp(120px, 18vw, 140px);
+  }
+}
+
+.heroNumberUnit {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+  /* Audit §5.3 fix: no align-self / no padding-bottom · ride the value's
+   * baseline (the flex container's align-items: baseline handles this). */
+}
+
+.heroNumberDuration {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: 0.2px;
+  color: rgba(255, 255, 255, 0.75);
+  /* Right-anchored peer · pushes to the right edge as the duration
+   * sibling, baseline-aligned with the unit. */
+  margin-left: auto;
+  /* Audit §5.3 fix: no align-self / no padding-bottom · ride the unit's
+   * baseline via the flex container's align-items: baseline. */
+}
+
+.daysCountdown {
+  /* Audit finding §7 (P2): the 12px gap reads awkward on single-digit
+   * countdowns (`3 DAYS · Sun Jun 4`) — the visual emptiness pulls the
+   * label off the hero number. 8px tightens the unit-hug per the same
+   * pattern as .heroNumber (§5.3). */
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.daysNumber {
+  /* Display recipe — race-week countdown (e.g. "14", "3", "GUN"). */
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  font-size: 96px;
+  line-height: var(--f-display-line-height);
+  letter-spacing: var(--f-display-tracking);
+  color: #fff;
+}
+
+.daysLabel {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 2.2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.daysDate {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  margin-left: auto;
+}
+
+.choiceRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+.choiceButton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Audit finding §1 row 12 (P2): the label-to-sub gap could tighten by
+   * 2px per framework §2.6 — the sub reads more as a child of the label
+   * when the gap is tighter (was 4px). */
+  gap: 2px;
+  padding: 16px 18px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--r-input);
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.choiceRecommended {
+  background: #fff;
+  color: var(--bg);
+  border-color: #fff;
+}
+
+.choiceLabel {
+  /* Display recipe at choice-button scale (MISSED state buttons). */
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  font-size: 26px;
+  line-height: var(--f-display-line-height);
+  letter-spacing: var(--f-display-tracking);
+}
+
+.choiceSub {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  color: inherit;
+  opacity: 0.78;
+}

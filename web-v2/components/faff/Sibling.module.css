@@ -1,0 +1,67 @@
+/* Sibling · spec at design/components/Sibling.md */
+
+.sibling {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 22px 24px;
+  min-height: 340px;
+}
+
+/* Title row · two-piece per Sibling.md §Render spec. The <h2> is a
+   flex row so `main` (display recipe) and `suffix` (caps-tracked Inter)
+   sit inline, baseline-aligned, with the suffix as the modifier reading. */
+.title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  line-height: 1;
+  margin: 0 0 16px;
+}
+
+/* Title main · display recipe at card-title scale · the state label
+   (e.g. "EASY RUN"). Oswald 700 + -0.015em tracking + 0.86 line-height
+   per design/tokens/typography.css §"THE DISPLAY RECIPE". */
+.titleMain {
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  font-size: 24px;
+  line-height: var(--f-display-line-height);
+  letter-spacing: var(--f-display-tracking);
+  color: var(--ink);
+}
+
+@media (min-width: 768px) {
+  .titleMain {
+    font-size: 28px;
+  }
+}
+
+/* Title suffix · Inter 700wt 9px UPPERCASE caps-tracked. Re-uses the
+   same caps-tracked pattern as WeekStrip phaseLabel / BCard eyebrow:
+   var(--f-body) + 700wt + uppercase + tight letter-spacing + var(--mute). */
+.titleSuffix {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.prose {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(246, 247, 248, 0.82);
+  margin: 0 0 18px;
+}
+
+.prose strong {
+  color: var(--ink);
+  font-weight: 600;
+}

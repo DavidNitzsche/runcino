@@ -1,0 +1,87 @@
+/* StatTrio · spec at design/components/StatTrio.md */
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  padding-top: 16px;
+  margin-top: auto;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.row[data-size='poster'] .stat:nth-child(2) {
+  align-items: center;
+}
+
+.row[data-size='poster'] .stat:nth-child(3) {
+  align-items: flex-end;
+}
+
+/* 2-stat variant · second stat flushes right (per spec layout block) */
+.row .stat:nth-child(2):last-child {
+  align-items: flex-end;
+}
+
+.value {
+  /* Display recipe — Oswald 700 + -0.015em tracking + 0.86 line-height
+   * per design/tokens/typography.css §"THE DISPLAY RECIPE". */
+  font-family: var(--f-display);
+  font-weight: var(--f-display-weight);
+  font-size: 36px;
+  line-height: var(--f-display-line-height);
+  letter-spacing: var(--f-display-tracking);
+  color: #fff;
+}
+
+.label {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 4px;
+}
+
+.compact .value {
+  font-size: 24px;
+}
+
+.compact .label {
+  font-size: 8px;
+  letter-spacing: 1.4px;
+}
+
+/* Lighter tints on gradient overlay (spec §"Render spec" — the canonical
+ * --goal/--over/--green are too saturated against the poster gradient).
+ * These are designer-set scoped values, NOT new tokens. They live here
+ * because they're scoped to the gradient-overlay context. If two more
+ * components need the same tint set, promote to tokens.
+ */
+.valueDefault {
+  color: #fff;
+}
+.valueAmber {
+  color: #ffe38f;
+}
+.valueGreen {
+  color: #a5e0a1;
+}
+.valueOver {
+  color: #ffb0b8;
+}
+.valueRace {
+  color: #ffc4a8;
+}
+.valueDist {
+  color: #9fd8ee;
+}

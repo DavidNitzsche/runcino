@@ -188,7 +188,10 @@ export function PacePlanElevation({
               key={`lbl-${seg.miStart}`}
               x={cx} y={H_total - 6}
               textAnchor="middle"
-              fontFamily="HelveticaNeue-Bold, -apple-system, sans-serif"
+              // v3 cutover 2026-05-28 — was HelveticaNeue-Bold; SVG can't read
+              // CSS vars, so reference Oswald directly + system fallback chain.
+              fontFamily="'Oswald', 'Inter', -apple-system, sans-serif"
+              fontWeight={700}
               fontSize={9}
               fill={toneColor[seg.tone]}
               letterSpacing={1.2}

@@ -1,0 +1,51 @@
+/* BodyGrid · spec at design/components/BodyGrid.md */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.headingLabel {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.headingSuffix {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--mute);
+  opacity: 0.78;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

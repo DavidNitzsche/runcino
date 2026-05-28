@@ -1,0 +1,38 @@
+/* CoachVoice · spec at design/components/CoachVoice.md */
+
+.paragraph {
+  font-family: var(--f-body);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(246, 247, 248, 0.86);
+  margin: 16px 0 20px;
+  /* No indent, no first-line cap, no opening quote treatment. The
+   * doctrine reads the paragraph as one spoken line.
+   */
+}
+
+.stat {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  /* Slightly brighter than ambient prose · ~10% alpha bump. The eye
+   * lands on the stat without the stat shouting (invariant 4).
+   */
+  color: rgba(246, 247, 248, 0.96);
+}
+
+.statDefault {
+  color: rgba(246, 247, 248, 0.96);
+}
+
+.statAmber {
+  /* Matches the StatTrio lighter amber on gradients · scoped overlay
+   * tint per spec §"Stat color override". Used only when the engine
+   * flags a callout-band stat.
+   */
+  color: #ffe38f;
+}
+
+.statOver {
+  color: #ffb0b8;
+}

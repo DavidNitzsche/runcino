@@ -1,0 +1,217 @@
+/* WeekStrip · spec at design/components/WeekStrip.md */
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.label {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 2.2px;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.phaseLabel {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--mute);
+  opacity: 0.78;
+}
+
+/* Header total mileage · sub-display numeric impact recipe (Inter 700wt
+   tabular-nums) — explicitly NOT the display recipe per WeekStrip.md.
+   The display recipe is reserved for hero impact (verb, big tile values);
+   the header mileage row reads as data, not impact. */
+.total {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink);
+  line-height: 1;
+  letter-spacing: 0.2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--card2);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 10px 6px 8px;
+  /* Min-height bumped to accommodate the two-line content (mileage on top
+     + type label on bottom) per Round 4 spec — every card carries both
+     lines, including rest days (—/REST). */
+  min-height: 92px;
+  overflow: hidden;
+}
+
+.dayToday {
+  outline: 1.5px solid var(--ink);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Future day · 0.5 opacity on the two-line content ONLY (mileage + type
+   label). The accent bar stays full saturation per WeekStrip.md render
+   spec row "Future day opacity". Implemented by dropping opacity on the
+   .dow / .mileage / .typeLabel children (not the whole .day), so the
+   accent bar above keeps reading the day type at full strength. */
+.dayFuture .dow,
+.dayFuture .mileage,
+.dayFuture .typeLabel {
+  opacity: 0.5;
+}
+
+/* Missed · drained absence per WeekStrip.md §"Per-state visual treatment"
+   → Missed (locked 2026-05-28). Treatment:
+     · accent bar drained to 0.35 opacity (the at-a-glance "didn't happen")
+     · mileage strikethrough · color → --mute (no longer --ink)
+     · type label fades to --mute at 0.6 opacity (label drops in lock-step)
+     · — glyph in the top-right check slot (same size as check)
+   No red, no alarm tones — the loud "PICK ONE." framing lives on the
+   full-page missed state in design/resolver/states.md §09. The strip
+   card is the quiet historical scar. */
+.dayMissed .mileage {
+  color: var(--mute);
+  text-decoration: line-through;
+  /* Audit finding §1 row 30 (P2): browser default `auto` thickness on a
+   * 16px Inter 700wt number renders ~1px — visually thinner than the
+   * digit strokes (~2px). 1.5px matches the digit-stroke weight so the
+   * strike feels strong enough to convey the missed state. Pin the
+   * color explicitly so it inherits --mute (some browsers default to
+   * currentColor anyway, but spec'd is safer). */
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: var(--mute);
+}
+
+.dayMissed .typeLabel {
+  color: var(--mute);
+  opacity: 0.6;
+}
+
+.accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+
+/* Missed accent bar · drained to 0.35 opacity. Same color token as the
+   day type's full-sat bar (e.g. --green for easy missed, --goal for
+   quality missed) — only opacity changes. Selector targets the .accent
+   span inside a .dayMissed card. */
+.dayMissed .accent {
+  opacity: 0.35;
+}
+
+.dow {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--mute);
+  margin-top: 8px;
+}
+
+/* Top line · planned mileage. Inter 700wt tabular at ~16px (sub-display
+   numeric impact recipe per typography ladder); see WeekStrip.md render
+   spec "Planned mileage (TOP line)". Rest days render '—' so the 7-day
+   rhythm stays consistent. */
+.mileage {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.2px;
+  color: var(--ink);
+  line-height: 1;
+  margin-top: 2px;
+}
+
+/* Bottom line · type label · caps-tracked. Same recipe as Sibling's
+   `.titleSuffix` + WeekStrip's `.phaseLabel` (consistent caps-tracked
+   DNA per WeekStrip.md). Closed vocabulary, server-emitted. */
+.typeLabel {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--mute);
+  line-height: 1;
+  margin-top: 4px;
+}
+
+/* Today's outlined card lifts the type label out of mute → ink (per spec
+   "Type label color · today"). Mileage is already ink so it doesn't need
+   the override. */
+.dayToday .typeLabel {
+  color: var(--ink);
+}
+
+.check {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--green);
+  position: absolute;
+  top: 6px;
+  right: 8px;
+}
+
+/* Missed glyph · em-dash sits in the same top-right slot as the Done check
+   badge (per WeekStrip.md render spec row "Missed glyph"). Same size as
+   .check; color --mute at 0.6 opacity per the locked treatment. Paired
+   with the strikethrough mileage as the explicit "did not happen" cue. */
+.missedGlyph {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--mute);
+  opacity: 0.6;
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  line-height: 1;
+}
+
+.empty {
+  width: 100%;
+  text-align: center;
+  padding: 22px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--mute);
+}
