@@ -220,7 +220,17 @@ function DayTile({ day, onClick }: { day: GlanceWeekDay; onClick: () => void }) 
   const dom = parseInt(day.date.slice(-2), 10);
 
   const showDash = (isRest && !ran) || (isUnplanned && !ran);
-  const miColor = isRest || isUnplanned ? 'var(--dim)' : 'var(--ink)';
+  // 2026-05-27 P-WEEKSTRIP-V2: David's mockup shows the mileage number
+  // in the SAME color as the strip — DONE = green, EASY = purple, LONG
+  // = cyan-blue, REST = dim. Pulls the eye to the day's identity
+  // before reading the number.
+  const miColor = (isRest || isUnplanned) ? 'var(--dim)'
+    : ran ? 'var(--green)'
+    : (day.plannedType === 'long' || day.plannedType === 'race')
+      ? (day.plannedType === 'race' ? 'var(--race)' : 'var(--dist)')
+    : (day.plannedType === 'easy' || day.plannedType === 'shakeout') ? 'var(--learn)'
+    : QUALITY.has(day.plannedType) ? 'var(--goal)'
+    : 'var(--ink)';
 
   return (
     <button
@@ -234,7 +244,7 @@ function DayTile({ day, onClick }: { day: GlanceWeekDay; onClick: () => void }) 
         boxShadow: day.isToday ? 'inset 0 0 0 2px var(--green)' : 'inset 0 0 0 1px var(--line)',
         cursor: 'pointer', border: 'none',
         transition: 'transform .08s, filter .12s',
-        minHeight: 110,
+        minHeight: 130,
         display: 'flex', flexDirection: 'column',
       }}
       onMouseEnter={(e) => {
@@ -287,11 +297,11 @@ function DayTile({ day, onClick }: { day: GlanceWeekDay; onClick: () => void }) 
           }}>{dom}</div>
         </div>
 
-        {/* Mileage */}
+        {/* Mileage — bumped 26 → 34 for the bigger-tile mockup vibe. */}
         <div style={{
-          fontFamily: 'var(--f-display)', fontSize: 26, fontWeight: 800,
-          lineHeight: 1.05, letterSpacing: '0.2px',
-          color: miColor, marginTop: 4,
+          fontFamily: 'var(--f-display)', fontSize: 34, fontWeight: 900,
+          lineHeight: 1, letterSpacing: '-0.01em',
+          color: miColor, marginTop: 6,
         }}>
           {showDash ? '—' : displayMi.toFixed(displayMi % 1 === 0 ? 0 : 1)}
         </div>
