@@ -79,9 +79,28 @@ function clusterDuplicates(rows: Row[]): Row[][] {
     for (const cluster of clusters) {
       const head = cluster[0];
       const dt = Math.abs(startMs(row) - startMs(head));
-      if (dt > 30 * 60 * 1000) continue;
       const distA = distanceMi(head);
       const distB = distanceMi(row);
+
+      // 2026-05-27 P-DOUBLECOUNT-TIGHTER: same-day rows with nearly
+      // identical distances are duplicates regardless of start time.
+      // David's case: Mon shows 12.3 done in the strip vs /log's 6.2.
+      // That's two ~6.15 rows. The original 30-min window missed them
+      // because Faff-watch-app timestamps differ from Apple-Watch-
+      // Workout timestamps (one stamps start-of-run, the other stamps
+      // session-write). Real same-day doubles essentially never have
+      // distances within 5% of each other.
+      if (distA > 0 && distB > 0) {
+        const ratio = Math.abs(distA - distB) / Math.max(distA, distB);
+        if (ratio <= 0.05) {
+          cluster.push(row);
+          added = true;
+          break;
+        }
+      }
+
+      // Original rule: tight start-time window + looser distance.
+      if (dt > 30 * 60 * 1000) continue;
       // If either is 0 (e.g. a hollow watch shell), treat distance as
       // matching — start time + same date is enough signal.
       if (distA === 0 || distB === 0) {
