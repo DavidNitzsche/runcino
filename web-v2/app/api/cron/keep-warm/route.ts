@@ -116,24 +116,37 @@ export async function POST(req: NextRequest) {
       runLoader('health',   () => loadHealthState(userId)),
       runLoader('profile',  () => loadProfileState(userId)),
     ]);
-    // 2026-05-27 P-KEEPWARM-SECONDARY: in addition to the DB state
-    // loaders above, also pre-warm the briefing CACHE for every
-    // LLM-backed surface. generateBriefing returns instantly when
-    // cache is fresh (the common case), and regenerates exactly once
-    // per invalidation event (day rollover, version bump, mutation).
-    // Net effect: David never sees "Faffing on..." on a surface
-    // he hasn't visited recently, because the cron warmed it.
+    // 2026-05-27 P-KEEPWARM-SECONDARY (revised after cron timeout):
+    // Pre-warm the briefing CACHE for every LLM-backed surface, but
+    // FIRE-AND-FORGET. The previous version awaited 6 generateBriefing
+    // calls per user, which on a cold cache (day rollover, version
+    // bump) could collectively exceed the 30s cron edge timeout —
+    // GitHub Action killed the request and the warmer never finished.
+    //
+    // Now: state loaders above (fast DB reads) stay awaited; brief
+    // regens are kicked off in the background and the endpoint
+    // returns immediately. The warmed cache lands a few seconds
+    // later regardless of when the cron caller hung up.
     //
     // Cost in steady state: ~0 (cache hits). Cost after a daily
-    // invalidation: ~5 LLM calls × active users (one per surface).
-    await Promise.all([
-      runLoader('brief:today',    () => generateBriefing(userId, 'today')),
-      runLoader('brief:todayIos', () => generateBriefing(userId, 'today', undefined, true)),
-      runLoader('brief:training', () => generateBriefing(userId, 'training')),
-      runLoader('brief:races',    () => generateBriefing(userId, 'races')),
-      runLoader('brief:health',   () => generateBriefing(userId, 'health')),
-      runLoader('brief:profile',  () => generateBriefing(userId, 'profile')),
-    ]);
+    // invalidation: ~5 LLM calls × active users — same as before,
+    // just non-blocking.
+    const briefRegens = [
+      () => generateBriefing(userId, 'today'),
+      () => generateBriefing(userId, 'today', undefined, true),
+      () => generateBriefing(userId, 'training'),
+      () => generateBriefing(userId, 'races'),
+      () => generateBriefing(userId, 'health'),
+      () => generateBriefing(userId, 'profile'),
+    ];
+    for (const fn of briefRegens) {
+      // Promise.race-style swallow so a slow LLM call doesn't crash
+      // the process; logged but not awaited.
+      void fn().catch((e: any) => {
+        console.error(`[keep-warm] brief regen failed for ${userId}:`, e?.message ?? e);
+      });
+    }
+    loaders['briefs_kicked_off'] = briefRegens.length;
     const ok = Object.values(loaders).every((v) => typeof v === 'number');
     perUser.push({ user_id: userId, ms: Date.now() - us, ok, loaders });
   }
