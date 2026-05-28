@@ -357,24 +357,30 @@ h2.sec{font-family:var(--f-display);font-size:76px;letter-spacing:0.8px;margin:9
   </div>
 </div>
 
-<!-- ═══ PAGE 02 · RUN DETAIL ═══ -->
+<!-- ═══ PAGE 02 · RUN DETAIL · == TODAY IN DONE STATE ═══ -->
 <div class="page-block">
   <div class="page-head">
     <div class="left">
-      <h3><span class="n">02</span>RUN DETAIL · DID I HIT IT</h3>
-      <div class="blurb">Tap a completed run anywhere in the app → land here. <strong>Question:</strong> <em>did I hit the workout, and what does the body say after?</em> Done-gradient poster with the result verb · sibling shows the run dashboard · body grid breaks down splits + HR + form.</div>
+      <h3><span class="n">02</span>RUN DETAIL · = TODAY · DONE STATE</h3>
+      <div class="blurb"><strong>This isn't a separate page.</strong> It's the TODAY page when post-run state is active — you just finished a run, the page auto-promotes to show the result. URL stays <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.05);padding:1px 5px;border-radius:3px">/today</code> · TODAY tab stays active. <em>Same content also renders at <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.05);padding:1px 5px;border-radius:3px">/runs/[id]</code> as a permalink</em> — for sharing a debrief, linking from history, or revisiting an older run from LOG. One render, two entry points.</div>
     </div>
     <div class="right">
       <div class="swatch" style="background:var(--g-done)"></div>
       <div class="pill" style="color:var(--green)">G-DONE · green → cyan</div>
-      <div class="url">faff.run/runs/abc123</div>
+      <div class="url">faff.run/today</div>
     </div>
+  </div>
+
+  <!-- IA clarity callout -->
+  <div style="background:rgba(176,132,255,0.05);border:1px solid rgba(176,132,255,0.22);border-radius:12px;padding:16px 22px;margin-bottom:18px">
+    <div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.8px;text-transform:uppercase;color:var(--learn);font-weight:700;margin-bottom:6px">Where this lives in the IA</div>
+    <p style="font-size:13px;line-height:1.6;color:rgba(246,247,248,0.82);margin:0"><strong style="color:var(--ink)">From TODAY:</strong> finish a run → page auto-promotes to DONE for ~6 hours → you see this. No new page, no nav change. <strong style="color:var(--ink)">From LOG / history:</strong> tap a run row → opens <code style="font-family:'Courier New',monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px">/runs/[id]</code> with the same render but ME tab active and a "← Today / Log" breadcrumb. <strong style="color:var(--ink)">From a shared link:</strong> the permalink renders standalone — no nav highlighted, "← Faff home" back arrow.</p>
   </div>
 
   <div class="browser">
     <div class="bchrome">
       <div class="lights"><div class="l red"></div><div class="l yellow"></div><div class="l green"></div></div>
-      <div class="url-bar"><span class="lock">🔒</span><span class="domain">faff.run</span>/runs/wed-easy-5-86mi</div>
+      <div class="url-bar"><span class="lock">🔒</span><span class="domain">faff.run</span>/today</div>
     </div>
     <div class="appnav">
       <div class="brand">FAFF<span class="dot">.</span></div>
@@ -555,6 +561,109 @@ h2.sec{font-family:var(--f-display);font-size:76px;letter-spacing:0.8px;margin:9
       </div>
     </div>
 
+    <!-- COURSE PREVIEW — new section, the dive-in -->
+    <div style="padding:0 24px 4px;background:var(--bg)">
+      <h5 style="font-family:var(--f-display);font-size:24px;letter-spacing:0.4px;line-height:1;margin:8px 0 14px;font-weight:400;display:flex;align-items:baseline;gap:10px">Course knowledge <span style="font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.6px;color:var(--mute);font-weight:600;text-transform:uppercase">· the route · gpx + elevation</span></h5>
+    </div>
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:14px;padding:0 24px 14px;background:var(--bg)">
+      <!-- GPX + elevation LEFT card -->
+      <div class="bcard" style="margin-bottom:0">
+        <div class="bhead"><div class="lbl">London Marathon · 26.2 mi</div><div class="v">+436 / −418 ft</div></div>
+        <!-- GPX route shape -->
+        <div style="height:160px;background:linear-gradient(135deg,#1a2530 0%,#0f1820 100%);border-radius:8px;position:relative;overflow:hidden;margin-bottom:14px">
+          <svg viewBox="0 0 400 160" style="position:absolute;inset:0;width:100%;height:100%">
+            <defs>
+              <pattern id="grid" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+                <path d="M0 16 L32 16 M16 0 L16 32" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+              </pattern>
+              <linearGradient id="route-grad" x1="0" x2="1"><stop offset="0" stop-color="#3EBD41"/><stop offset="0.6" stop-color="#F3AD38"/><stop offset="1" stop-color="#FF8847"/></linearGradient>
+            </defs>
+            <rect width="400" height="160" fill="url(#grid)"/>
+            <!-- Thames-like river -->
+            <path d="M0 110 Q60 105, 100 95 Q160 80, 220 92 Q280 108, 320 100 Q360 92, 400 95" stroke="rgba(39,180,224,0.35)" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <!-- London Marathon-ish route shape -->
+            <path d="M50 130 L80 130 L100 120 L110 95 L130 85 L160 80 L185 65 L210 55 L235 40 L260 35 L285 45 L300 60 L290 80 L270 95 L255 110 L240 125 L260 135 L290 125 L320 110 L355 95" stroke="url(#route-grad)" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- Start marker -->
+            <circle cx="50" cy="130" r="7" fill="#3EBD41" stroke="#0a0c10" stroke-width="2.5"/>
+            <text x="50" y="148" font-family="Oswald" font-size="8" fill="#3EBD41" text-anchor="middle" font-weight="700" letter-spacing="0.5">START · GREENWICH</text>
+            <!-- Mile markers -->
+            <circle cx="130" cy="85" r="3" fill="#fff" stroke="#F3AD38" stroke-width="1.5"/>
+            <text x="130" y="76" font-family="Oswald" font-size="8" fill="#F3AD38" text-anchor="middle" font-weight="700">10</text>
+            <circle cx="235" cy="40" r="3" fill="#fff" stroke="#FF8847" stroke-width="1.5"/>
+            <text x="235" y="31" font-family="Oswald" font-size="8" fill="#FF8847" text-anchor="middle" font-weight="700">20</text>
+            <!-- Finish marker -->
+            <circle cx="355" cy="95" r="7" fill="#FF8847" stroke="#0a0c10" stroke-width="2.5"/>
+            <text x="355" y="113" font-family="Oswald" font-size="8" fill="#FF8847" text-anchor="middle" font-weight="700" letter-spacing="0.5">FINISH · MALL</text>
+          </svg>
+          <!-- floating chips -->
+          <div style="position:absolute;top:10px;left:10px;background:rgba(10,12,16,0.85);backdrop-filter:blur(6px);padding:5px 10px;border-radius:99px;font-family:var(--f-sub);font-size:10px;letter-spacing:1px;color:var(--ink);font-weight:600"><span style="color:var(--green)">●</span> GPX LOADED</div>
+          <div style="position:absolute;top:10px;right:10px;background:rgba(10,12,16,0.85);backdrop-filter:blur(6px);padding:5px 10px;border-radius:99px;font-family:var(--f-sub);font-size:10px;letter-spacing:1px;color:var(--ink);font-weight:600">FAST FLAT · NET DOWNHILL</div>
+        </div>
+        <!-- Elevation profile -->
+        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--line2);border-radius:8px;padding:12px 14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div style="font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase">Elevation profile</div><div style="font-family:var(--f-sub);font-size:9.5px;color:var(--mute);font-weight:600">net −18ft · runnable</div></div>
+          <svg viewBox="0 0 400 64" style="width:100%;height:60px">
+            <defs><linearGradient id="elev-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#F3AD38" stop-opacity="0.32"/><stop offset="1" stop-color="#F3AD38" stop-opacity="0"/></linearGradient></defs>
+            <line x1="0" y1="34" x2="400" y2="34" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3,3"/>
+            <text x="396" y="30" font-family="Oswald" font-size="7" fill="rgba(255,255,255,0.3)" text-anchor="end" letter-spacing="0.6">SEA LEVEL</text>
+            <!-- elevation curve - London-ish: slight downhill start, climb at Tower Bridge, downhill to mile 22, finish flat -->
+            <path d="M0 34 L20 32 L40 38 L60 42 L80 40 L100 36 L120 30 L140 24 L160 28 L180 32 L200 24 L220 18 L240 22 L260 28 L280 30 L300 36 L320 40 L340 44 L360 40 L380 36 L400 34" stroke="#F3AD38" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <path d="M0 34 L20 32 L40 38 L60 42 L80 40 L100 36 L120 30 L140 24 L160 28 L180 32 L200 24 L220 18 L240 22 L260 28 L280 30 L300 36 L320 40 L340 44 L360 40 L380 36 L400 34 L400 64 L0 64 Z" fill="url(#elev-fill)"/>
+            <!-- mile markers along the bottom -->
+            <text x="0" y="60" font-family="Oswald" font-size="7" fill="var(--mute)" font-weight="600">0</text>
+            <text x="80" y="60" font-family="Oswald" font-size="7" fill="var(--mute)" font-weight="600">5</text>
+            <text x="160" y="60" font-family="Oswald" font-size="7" fill="var(--mute)" font-weight="600">10</text>
+            <text x="240" y="60" font-family="Oswald" font-size="7" fill="var(--mute)" font-weight="600">15</text>
+            <text x="320" y="60" font-family="Oswald" font-size="7" fill="var(--mute)" font-weight="600">20</text>
+            <text x="400" y="60" font-family="Oswald" font-size="7" fill="var(--race)" text-anchor="end" font-weight="700">26.2</text>
+          </svg>
+        </div>
+        <!-- pace strategy by mile -->
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line2)">
+          <div style="font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:10px">Pace strategy · by section</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+            <div style="padding:10px 12px;background:rgba(62,189,65,0.06);border-left:3px solid var(--green);border-radius:0 6px 6px 0"><div style="font-family:var(--f-sub);font-size:8.5px;letter-spacing:1px;color:var(--green);font-weight:700">MI 0–6</div><div style="font-family:var(--f-display);font-size:18px;color:var(--ink);line-height:1;margin-top:4px">6:45 pace</div><div style="font-size:10px;color:var(--mute);margin-top:2px">Hold back · don't bank time</div></div>
+            <div style="padding:10px 12px;background:rgba(39,180,224,0.06);border-left:3px solid var(--dist);border-radius:0 6px 6px 0"><div style="font-family:var(--f-sub);font-size:8.5px;letter-spacing:1px;color:var(--dist);font-weight:700">MI 6–13</div><div style="font-family:var(--f-display);font-size:18px;color:var(--ink);line-height:1;margin-top:4px">6:38 pace</div><div style="font-size:10px;color:var(--mute);margin-top:2px">Settle into MP. Tower Bridge.</div></div>
+            <div style="padding:10px 12px;background:rgba(243,173,56,0.06);border-left:3px solid var(--goal);border-radius:0 6px 6px 0"><div style="font-family:var(--f-sub);font-size:8.5px;letter-spacing:1px;color:var(--goal);font-weight:700">MI 13–20</div><div style="font-family:var(--f-display);font-size:18px;color:var(--ink);line-height:1;margin-top:4px">6:38 pace</div><div style="font-size:10px;color:var(--mute);margin-top:2px">Docklands. Mental loop. Hold.</div></div>
+            <div style="padding:10px 12px;background:rgba(255,136,71,0.08);border-left:3px solid var(--race);border-radius:0 6px 6px 0"><div style="font-family:var(--f-sub);font-size:8.5px;letter-spacing:1px;color:var(--race);font-weight:700">MI 20–26.2</div><div style="font-family:var(--f-display);font-size:18px;color:var(--ink);line-height:1;margin-top:4px">6:30 pace</div><div style="font-size:10px;color:var(--mute);margin-top:2px">Negative split. Empty the tank.</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Course knowledge RIGHT card -->
+      <div class="bcard" style="margin-bottom:0">
+        <div class="bhead"><div class="lbl">Course intel · what to know</div><div class="v race">4 segments</div></div>
+        <!-- aid stations -->
+        <div style="margin-bottom:14px">
+          <div style="font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:8px">Aid stations · gel + water</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--dist);background:rgba(39,180,224,0.12);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 3</span>
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--dist);background:rgba(39,180,224,0.12);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 6 · GEL</span>
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--dist);background:rgba(39,180,224,0.12);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 9</span>
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--dist);background:rgba(39,180,224,0.12);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 12 · GEL</span>
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--dist);background:rgba(39,180,224,0.12);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 15</span>
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--dist);background:rgba(39,180,224,0.12);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 18 · GEL</span>
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--dist);background:rgba(39,180,224,0.12);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 21</span>
+            <span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;font-weight:700;color:var(--race);background:rgba(255,136,71,0.16);padding:4px 8px;border-radius:99px;text-transform:uppercase">MI 24 · LAST GEL</span>
+          </div>
+        </div>
+        <!-- key segments -->
+        <div style="margin-bottom:14px;padding-top:14px;border-top:1px solid var(--line2)">
+          <div style="font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:8px">Key segments</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><div><span style="font-family:var(--f-display);font-size:14px;color:var(--ink);letter-spacing:0.3px">Tower Bridge</span><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Mi 12 · biggest crowd moment</div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;color:var(--goal);font-weight:700">+18FT</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><div><span style="font-family:var(--f-display);font-size:14px;color:var(--ink);letter-spacing:0.3px">Canary Wharf</span><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Mi 16–18 · twisty, quiet</div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;color:var(--mute);font-weight:700">FLAT</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><div><span style="font-family:var(--f-display);font-size:14px;color:var(--ink);letter-spacing:0.3px">Embankment</span><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Mi 23 · final push</div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;color:var(--green);font-weight:700">DOWN</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><div><span style="font-family:var(--f-display);font-size:14px;color:var(--ink);letter-spacing:0.3px">The Mall</span><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Mi 26 · finish straight</div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;color:var(--race);font-weight:700">FINISH</span></div>
+          </div>
+        </div>
+        <!-- crowd / pacing notes -->
+        <div style="padding:12px 14px;background:rgba(176,132,255,0.05);border:1px solid rgba(176,132,255,0.18);border-radius:8px">
+          <div style="font-family:var(--f-sub);font-size:9.5px;letter-spacing:1.6px;color:var(--learn);font-weight:700;text-transform:uppercase;margin-bottom:6px">Notes from your block</div>
+          <p style="font-size:11.5px;line-height:1.5;color:rgba(246,247,248,0.78);margin:0">London is net-downhill but Tower Bridge crowd makes mile 12 feel like a sprint. <strong style="color:var(--ink)">Hold back early</strong> — the temptation is real. Course rewards patience.</p>
+        </div>
+      </div>
+    </div>
+
     <div class="page-body">
       <div class="col">
         <h5>Training remaining <span class="stag">· the path</span></h5>
@@ -590,16 +699,16 @@ h2.sec{font-family:var(--f-display);font-size:76px;letter-spacing:0.8px;margin:9
 
   <div class="rules">
     <div class="rule">
-      <div class="rt race">poster</div>
-      <div class="rb">Race name = the verb. <strong>Days-to-go is the headline number</strong>, not the goal time. Stat trio = bib · corral · goal. Gradient <code>g-race</code>. From T-3d the page transitions to RACE WEEK TAKEOVER (Today tab takes the same poster, full lock).</div>
+      <div class="rt race">poster + sibling</div>
+      <div class="rb">Race name = verb. <strong>Days-to-go is the headline number.</strong> Stat trio = bib · corral · goal. Sibling holds the 6-tile trajectory (prediction · confidence · longest run · race-pace · taper countdown · spectator count). From T-3d this page's pattern also takes over TODAY.</div>
     </div>
     <div class="rule">
-      <div class="rt green">sibling</div>
-      <div class="rb">"Trajectory" — prediction, confidence, longest run, last race-pace session, taper countdown, spectator count. <strong>Same 6-tile template as Plan's trajectory</strong> but reweighted toward race-readiness signals.</div>
+      <div class="rt dist">body · top row</div>
+      <div class="rb">Left = "training remaining" with key sessions colored by type. Right = "race-day ops" — weather · checklist · spectator panel. Both columns deepen as the race approaches.</div>
     </div>
     <div class="rule">
-      <div class="rt dist">body</div>
-      <div class="rb">Left = "training remaining" — colored bands per session type (green=easy, amber=quality, blue=long, orange=race). Right = "race-day ops" — weather · checklist · spectator panel. <strong>Both columns deepen as the race approaches.</strong></div>
+      <div class="rt race">body · course row</div>
+      <div class="rb"><strong>NEW · course knowledge.</strong> Left card holds the GPX route + elevation profile + pace strategy by section (4 colored bands). Right card holds aid stations (gel marks), key segments (Tower Bridge · Canary Wharf · Embankment · The Mall), and your-block-specific notes. <strong>Goes deep without making the top of the page busy.</strong></div>
     </div>
   </div>
 </div>
@@ -741,71 +850,205 @@ h2.sec{font-family:var(--f-display);font-size:76px;letter-spacing:0.8px;margin:9
   </div>
 </div>
 
-<!-- ═══ PAGES 05 + 06 · LOG + PROFILE (compact) ═══ -->
+<!-- ═══ PAGE 05 · LOG (compact) ═══ -->
 <div class="page-block">
   <div class="page-head">
     <div class="left">
-      <h3><span class="n">05+06</span>LOG + PROFILE</h3>
-      <div class="blurb">Two lighter surfaces. <strong>LOG</strong> asks <em>what have I done?</em> — totals + history feed. <strong>PROFILE</strong> asks <em>who am I in the system?</em> — identity, thresholds, shoes, niggles. Same poster + sibling pattern · just compressed because they're consulted less often.</div>
+      <h3><span class="n">05</span>LOG · WHAT I'VE DONE</h3>
+      <div class="blurb">History surface. <strong>Question:</strong> <em>what's the body of work behind me?</em> Year-to-date totals + chronological feed grouped by week. Compressed because consulted less often than TODAY.</div>
     </div>
     <div class="right">
-      <div class="pill">two pages · same pattern</div>
+      <div class="swatch" style="background:var(--g-log)"></div>
+      <div class="pill">G-LOG · muted slate</div>
+      <div class="url">faff.run/log</div>
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-    <!-- LOG -->
-    <div class="browser" style="margin:0">
-      <div class="bchrome">
-        <div class="lights"><div class="l red"></div><div class="l yellow"></div><div class="l green"></div></div>
-        <div class="url-bar" style="font-size:10px"><span class="lock">🔒</span><span class="domain">faff.run</span>/log</div>
-      </div>
-      <div style="padding:18px 22px;background:var(--bg)">
-        <div class="poster log" style="padding:22px 24px 20px;min-height:auto;border-radius:12px">
-          <div class="htag">YOUR HISTORY · 2026 YTD</div>
-          <div class="verb med">872 MI.</div>
-          <div class="phase-tag">142 runs · 4 races · 1 marathon · 3 PRs</div>
-          <div class="stat-trio" style="padding-top:14px">
-            <div><div class="v">42</div><div class="l">MI · THIS WK</div></div>
-            <div><div class="v">142</div><div class="l">MI · MONTH</div></div>
-            <div><div class="v amber">5:47</div><div class="l">5K PR</div></div>
-          </div>
+  <div class="browser">
+    <div class="bchrome">
+      <div class="lights"><div class="l red"></div><div class="l yellow"></div><div class="l green"></div></div>
+      <div class="url-bar"><span class="lock">🔒</span><span class="domain">faff.run</span>/log</div>
+    </div>
+    <div class="appnav">
+      <div class="brand">FAFF<span class="dot">.</span></div>
+      <div class="nav-tabs"><div class="nav-tab">Today</div><div class="nav-tab">Plan</div><div class="nav-tab">Races</div><div class="nav-tab">Health</div><div class="nav-tab on">Me</div></div>
+      <div class="nav-right"><div class="avatar" style="background:var(--g-log)">D</div></div>
+    </div>
+    <div style="padding:20px 24px;background:var(--bg)">
+      <div class="poster log" style="border-radius:14px;min-height:auto">
+        <div class="htag">YOUR HISTORY · 2026 YTD</div>
+        <div class="verb med">872 MI.</div>
+        <div class="phase-tag">142 runs · 4 races · 1 marathon · 3 PRs this year</div>
+        <div class="stat-trio">
+          <div><div class="v">42</div><div class="l">MI · THIS WK</div></div>
+          <div><div class="v">142</div><div class="l">MI · MONTH</div></div>
+          <div><div class="v amber">5:47</div><div class="l">5K PR</div></div>
         </div>
-        <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:14px">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);font-weight:700">Recent runs</div><div style="font-family:var(--f-sub);font-size:9.5px;color:var(--mute);font-weight:600">last 7 days</div></div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:600;color:var(--green)">WED</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink)">Easy 5.86mi · NAILED IT</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">8:25 pace · 100% Z2 · 140 avg HR</div></div><div style="font-family:var(--f-display);font-size:14px;color:var(--green)">DONE</div></div>
-            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:600;color:var(--green)">TUE</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink)">Easy 6.2mi · STEADY</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">8:30 pace · 95% Z2 · 142 avg HR</div></div><div style="font-family:var(--f-display);font-size:14px;color:var(--green)">DONE</div></div>
-            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:600;color:var(--green)">MON</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink)">Easy 4.0mi · STEADY</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">8:18 pace · 100% Z2 · 139 avg HR</div></div><div style="font-family:var(--f-display);font-size:14px;color:var(--green)">DONE</div></div>
-            <div style="display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;padding:6px 0"><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:600;color:var(--goal)">SUN</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink)">Long 12mi · DISTANCE BANKED</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">8:08 pace · 100% Z2 · 145 avg HR</div></div><div style="font-family:var(--f-display);font-size:14px;color:var(--green)">DONE</div></div>
-          </div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);font-weight:700">Recent runs · last 7 days</div><div style="font-family:var(--f-sub);font-size:9.5px;color:var(--green);font-weight:600">4 DONE · 31.2 mi</div></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:grid;grid-template-columns:80px 1fr 80px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;font-weight:700;color:var(--green)">WED 27</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Easy 5.86mi · NAILED IT</div><div style="font-size:11px;color:var(--mute);margin-top:1px">8:25 pace · 100% Z2 · 140 avg HR · 169 cad</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:16px;color:var(--green);line-height:1">DONE</div><div style="font-family:var(--f-sub);font-size:8.5px;color:var(--mute);margin-top:2px;letter-spacing:1px">→ open</div></div></div>
+          <div style="display:grid;grid-template-columns:80px 1fr 80px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;font-weight:700;color:var(--green)">TUE 26</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Easy 6.2mi · STEADY</div><div style="font-size:11px;color:var(--mute);margin-top:1px">8:30 pace · 95% Z2 · 142 avg HR · 168 cad</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:16px;color:var(--green);line-height:1">DONE</div><div style="font-family:var(--f-sub);font-size:8.5px;color:var(--mute);margin-top:2px;letter-spacing:1px">→ open</div></div></div>
+          <div style="display:grid;grid-template-columns:80px 1fr 80px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;font-weight:700;color:var(--green)">MON 25</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Easy 4.0mi · STEADY</div><div style="font-size:11px;color:var(--mute);margin-top:1px">8:18 pace · 100% Z2 · 139 avg HR · 170 cad</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:16px;color:var(--green);line-height:1">DONE</div><div style="font-family:var(--f-sub);font-size:8.5px;color:var(--mute);margin-top:2px;letter-spacing:1px">→ open</div></div></div>
+          <div style="display:grid;grid-template-columns:80px 1fr 80px;gap:10px;align-items:center;padding:8px 0"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;font-weight:700;color:var(--dist)">SUN 24</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Long 12.0mi · DISTANCE BANKED</div><div style="font-size:11px;color:var(--mute);margin-top:1px">8:08 pace · 100% Z2 · 145 avg HR · 167 cad</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:16px;color:var(--green);line-height:1">DONE</div><div style="font-family:var(--f-sub);font-size:8.5px;color:var(--mute);margin-top:2px;letter-spacing:1px">→ open</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rules">
+    <div class="rule">
+      <div class="rt">poster</div>
+      <div class="rb">Verb = total mileage YTD (or pick the proudest number). Stat trio = current week mi · this month mi · a current PR. Phase-tag describes the year: number of runs · races · PRs.</div>
+    </div>
+    <div class="rule">
+      <div class="rt green">body</div>
+      <div class="rb">Chronological feed grouped by week. Each row uses the post-run verb table (NAILED IT · STEADY · BANKED · etc). Tap a row → opens run detail at <code>/runs/[id]</code> permalink.</div>
+    </div>
+    <div class="rule">
+      <div class="rt dist">drill-in</div>
+      <div class="rb">From any run row, you land on the run detail render (same component as TODAY's DONE state). Breadcrumb: <strong>← Log</strong>. The runs become permalinks for sharing.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAGE 06 · PROFILE · FLESHED OUT ═══ -->
+<div class="page-block">
+  <div class="page-head">
+    <div class="left">
+      <h3><span class="n">06</span>PROFILE · WHO + SETTINGS</h3>
+      <div class="blurb"><strong>The "everything about you" surface.</strong> Question: <em>who am I, what's connected, how does Faff behave for me?</em> Identity poster + sibling thresholds · then a body grid of every setting that needs a home — connected accounts, notifications, equipment, spectator circle, niggles, training preferences, privacy. <em>This is where account-level concerns live so they don't pollute TODAY.</em></div>
+    </div>
+    <div class="right">
+      <div class="swatch" style="background:var(--g-easy)"></div>
+      <div class="pill">G-NEUTRAL · identity</div>
+      <div class="url">faff.run/me</div>
+    </div>
+  </div>
+
+  <div class="browser">
+    <div class="bchrome">
+      <div class="lights"><div class="l red"></div><div class="l yellow"></div><div class="l green"></div></div>
+      <div class="url-bar"><span class="lock">🔒</span><span class="domain">faff.run</span>/me</div>
+    </div>
+    <div class="appnav">
+      <div class="brand">FAFF<span class="dot">.</span></div>
+      <div class="nav-tabs"><div class="nav-tab">Today</div><div class="nav-tab">Plan</div><div class="nav-tab">Races</div><div class="nav-tab">Health</div><div class="nav-tab on green">Me</div></div>
+      <div class="nav-right"><div class="avatar" style="background:var(--g-easy)">D</div></div>
+    </div>
+
+    <!-- identity + thresholds hero -->
+    <div class="hero-top">
+      <div class="poster easy">
+        <div class="htag">DAVID HARTLEY · MARATHONER · LONDON 2026</div>
+        <div class="verb">DAVID.</div>
+        <div class="phase-tag">5'10" · 154 lbs · 32 · UK · joined Jan 2025</div>
+        <div class="stat-trio">
+          <div><div class="v">182</div><div class="l">MAX HR</div></div>
+          <div><div class="v">154</div><div class="l">LTHR</div></div>
+          <div><div class="v amber">48</div><div class="l">RHR · BASELINE</div></div>
+        </div>
+      </div>
+      <div class="sibling">
+        <h4>Training zones <span class="stag">· yours, derived</span></h4>
+        <div class="prose">Zones derived from <strong>LTHR 154</strong> using the Friel model. <strong style="color:var(--ink)">Recalculated weekly</strong> from your last 14 days of HR + pace data.</div>
+        <div class="mtiles">
+          <div class="mtile"><div class="mdot dist"></div><div class="mlbl">Z1 · recovery</div><div class="mv dist">&lt;132</div><div class="mmeta">Walk · easy jog.</div></div>
+          <div class="mtile"><div class="mdot green"></div><div class="mlbl">Z2 · aerobic</div><div class="mv green">132–148</div><div class="mmeta">Easy days. <strong>Bread + butter.</strong></div></div>
+          <div class="mtile"><div class="mdot warn"></div><div class="mlbl">Z3 · tempo</div><div class="mv amber">149–162</div><div class="mmeta">Steady-state.</div></div>
+          <div class="mtile"><div class="mdot over"></div><div class="mlbl">Z4 · threshold</div><div class="mv over">163–172</div><div class="mmeta">LT work.</div></div>
+          <div class="mtile"><div class="mdot over"></div><div class="mlbl">Z5 · VO2max</div><div class="mv over">173+</div><div class="mmeta">Intervals · ~5k pace.</div></div>
+          <div class="mtile"><div class="mdot"></div><div class="mlbl">Pace · MP</div><div class="mv">6:38</div><div class="mmeta">Marathon target.</div></div>
         </div>
       </div>
     </div>
 
-    <!-- PROFILE -->
-    <div class="browser" style="margin:0">
-      <div class="bchrome">
-        <div class="lights"><div class="l red"></div><div class="l yellow"></div><div class="l green"></div></div>
-        <div class="url-bar" style="font-size:10px"><span class="lock">🔒</span><span class="domain">faff.run</span>/me</div>
-      </div>
-      <div style="padding:18px 22px;background:var(--bg)">
-        <div class="poster easy" style="padding:22px 24px 20px;min-height:auto;border-radius:12px">
-          <div class="htag">DAVID · MARATHONER · LONDON 2026</div>
-          <div class="verb med">DAVID.</div>
-          <div class="phase-tag">5'10" · 154 lbs · 32 · Strava + Apple Watch synced</div>
-          <div class="stat-trio" style="padding-top:14px">
-            <div><div class="v">182</div><div class="l">MAX HR</div></div>
-            <div><div class="v">154</div><div class="l">LTHR</div></div>
-            <div><div class="v amber">48</div><div class="l">RHR</div></div>
+    <!-- big body grid · settings -->
+    <div class="page-body">
+      <div class="col">
+        <h5>Account + connections <span class="stag">· the plumbing</span></h5>
+
+        <!-- connected services -->
+        <div class="bcard">
+          <div class="bhead"><div class="lbl">Connected accounts</div><div class="v green">3 synced</div></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,76,2,0.06);border:1px solid rgba(255,76,2,0.18);border-radius:8px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:7px;background:#FC4C02;display:flex;align-items:center;justify-content:center;font-family:Inter;font-weight:800;color:#fff;font-size:14px">S</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Strava</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Auto-import runs · 142 synced</div></div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:700;color:var(--green);background:rgba(62,189,65,0.15);padding:3px 8px;border-radius:99px;text-transform:uppercase">● Live</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,55,95,0.06);border:1px solid rgba(255,55,95,0.18);border-radius:8px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:7px;background:#FF375F;display:flex;align-items:center;justify-content:center;font-family:Inter;font-weight:800;color:#fff;font-size:14px">♥</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Apple Health</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Sleep · HRV · RHR · workouts</div></div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:700;color:var(--green);background:rgba(62,189,65,0.15);padding:3px 8px;border-radius:99px;text-transform:uppercase">● Live</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.2);border:1px solid var(--line2);border-radius:8px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:7px;background:#000;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:Inter;font-weight:800;color:#fff;font-size:14px">⌚</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Apple Watch · Ultra 2</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">FaffWatch installed · live workouts</div></div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:700;color:var(--green);background:rgba(62,189,65,0.15);padding:3px 8px;border-radius:99px;text-transform:uppercase">● Paired</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid var(--line2);border-radius:8px;opacity:0.6"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:7px;background:#0288d1;display:flex;align-items:center;justify-content:center;font-family:Inter;font-weight:800;color:#fff;font-size:14px">G</div><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Garmin Connect</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Not connected</div></div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;font-weight:700;color:var(--mute);background:rgba(255,255,255,0.04);padding:3px 8px;border-radius:99px;text-transform:uppercase">+ Connect</span></div>
           </div>
         </div>
-        <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:14px">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px"><div style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mute);font-weight:700">Equipment</div><div style="font-family:var(--f-sub);font-size:9.5px;color:var(--mute);font-weight:600">2 shoes · race-ready</div></div>
+
+        <!-- equipment -->
+        <div class="bcard">
+          <div class="bhead"><div class="lbl">Equipment · shoe rotation</div><div class="v">2 active · race-ready</div></div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line2)"><div><div style="font-family:Inter;font-size:13px;color:var(--ink)">Saucony Endorphin Pro 4</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Race · purchased 2 mo ago</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:16px;color:var(--green)">42 mi</div><div style="font-size:9px;color:var(--mute);font-family:var(--f-sub);letter-spacing:1px">/300 max</div></div></div>
-            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line2)"><div><div style="font-family:Inter;font-size:13px;color:var(--ink)">Saucony Endorphin Speed 4</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">Daily · build phase</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:16px;color:var(--goal)">312 mi</div><div style="font-size:9px;color:var(--mute);font-family:var(--f-sub);letter-spacing:1px">/500 max</div></div></div>
-            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0"><div><div style="font-family:Inter;font-size:13px;color:var(--ink)">Niggles · active</div><div style="font-size:10.5px;color:var(--mute);margin-top:1px">No flags</div></div><div style="font-family:var(--f-display);font-size:16px;color:var(--green)">0</div></div>
+            <div style="padding:10px 12px;background:rgba(62,189,65,0.04);border-radius:7px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Saucony Endorphin Pro 4</div><div style="font-size:10.5px;color:var(--race);margin-top:1px;font-family:var(--f-sub);letter-spacing:1px;font-weight:600;text-transform:uppercase">RACE · LONDON</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:18px;color:var(--green);line-height:1">42<span style="font-size:11px;color:var(--mute);margin-left:2px">mi</span></div></div></div><div style="height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden"><div style="width:14%;height:100%;background:var(--green);border-radius:3px"></div></div><div style="font-size:9.5px;color:var(--mute);margin-top:4px;font-family:var(--f-sub);letter-spacing:0.8px;font-weight:600">14% OF 300 MI · 258 LEFT</div></div>
+            <div style="padding:10px 12px;background:rgba(243,173,56,0.04);border-radius:7px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Saucony Endorphin Speed 4</div><div style="font-size:10.5px;color:var(--goal);margin-top:1px;font-family:var(--f-sub);letter-spacing:1px;font-weight:600;text-transform:uppercase">DAILY · BUILD</div></div><div style="text-align:right"><div style="font-family:var(--f-display);font-size:18px;color:var(--goal);line-height:1">312<span style="font-size:11px;color:var(--mute);margin-left:2px">mi</span></div></div></div><div style="height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden"><div style="width:62%;height:100%;background:var(--goal);border-radius:3px"></div></div><div style="font-size:9.5px;color:var(--mute);margin-top:4px;font-family:var(--f-sub);letter-spacing:0.8px;font-weight:600">62% OF 500 MI · ROTATE BY AUG</div></div>
+          </div>
+          <div style="margin-top:10px;font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:600;text-transform:uppercase">+ Add a shoe</div>
+        </div>
+
+        <!-- spectator circle -->
+        <div class="bcard">
+          <div class="bhead"><div class="lbl">Spectator circle</div><div class="v learn">7 people</div></div>
+          <p style="font-size:12px;color:rgba(246,247,248,0.7);line-height:1.5;margin:0 0 12px">People who can watch your live runs + send bumps to your watch. <strong style="color:var(--ink)">Auto-on for races · opt-in for training runs.</strong></p>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div style="display:flex;align-items:center;gap:10px"><div style="width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;font-family:Inter;font-weight:600;font-size:11px;display:flex;align-items:center;justify-content:center">M</div><div><div style="font-family:Inter;font-size:12.5px;color:var(--ink);font-weight:500">Mum</div><div style="font-size:10px;color:var(--mute)">123 bumps · 4 races tracked</div></div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--green);font-weight:700">FAMILY</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div style="display:flex;align-items:center;gap:10px"><div style="width:26px;height:26px;border-radius:50%;background:var(--race);color:#fff;font-family:Inter;font-weight:600;font-size:11px;display:flex;align-items:center;justify-content:center">D</div><div><div style="font-family:Inter;font-size:12.5px;color:var(--ink);font-weight:500">Dad</div><div style="font-size:10px;color:var(--mute)">87 bumps · 4 races tracked</div></div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--green);font-weight:700">FAMILY</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div style="display:flex;align-items:center;gap:10px"><div style="width:26px;height:26px;border-radius:50%;background:var(--dist);color:#fff;font-family:Inter;font-weight:600;font-size:11px;display:flex;align-items:center;justify-content:center">J</div><div><div style="font-family:Inter;font-size:12.5px;color:var(--ink);font-weight:500">James (training partner)</div><div style="font-size:10px;color:var(--mute)">54 bumps · also a Faff user</div></div></div><span style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--dist);font-weight:700">CREW</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><div style="font-size:11.5px;color:var(--mute);font-family:Inter">+4 others · tap to manage</div><span style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:700;text-transform:uppercase">+ Invite</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <h5>Behavior + privacy <span class="stag">· your defaults</span></h5>
+
+        <!-- notifications -->
+        <div class="bcard">
+          <div class="bhead"><div class="lbl">Notifications</div><div class="v">4 channels</div></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Daily briefing · 06:00</div><div style="font-size:11px;color:var(--mute);margin-top:1px">Push notification with today's call</div></div><div style="width:38px;height:22px;background:var(--green);border-radius:99px;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px"></div></div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Spectator bumps to watch</div><div style="font-size:11px;color:var(--mute);margin-top:1px">Mid-run haptic when someone bumps</div></div><div style="width:38px;height:22px;background:var(--green);border-radius:99px;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px"></div></div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Race week countdown</div><div style="font-size:11px;color:var(--mute);margin-top:1px">D-3 · D-1 · race morning</div></div><div style="width:38px;height:22px;background:var(--green);border-radius:99px;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px"></div></div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Weekly summary · Sun</div><div style="font-size:11px;color:var(--mute);margin-top:1px">Mileage + key sessions hit</div></div><div style="width:38px;height:22px;background:rgba(255,255,255,0.08);border-radius:99px;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px"></div></div></div>
+          </div>
+        </div>
+
+        <!-- niggles & health -->
+        <div class="bcard">
+          <div class="bhead"><div class="lbl">Niggles + medical</div><div class="v green">0 active</div></div>
+          <p style="font-size:11.5px;color:var(--mute);line-height:1.5;margin:0 0 12px">Active niggles modify the workout verb on TODAY. <strong style="color:var(--ink)">History informs the resolver.</strong></p>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line2);font-size:12px"><div><span style="color:var(--ink);font-family:Inter;font-weight:500">L calf · tightness</span><div style="font-size:10px;color:var(--mute);margin-top:1px">Last flared 12 days ago · resolved in 3</div></div><span style="font-family:var(--f-sub);font-size:9px;color:var(--green);font-weight:700;letter-spacing:1px">RESOLVED</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line2);font-size:12px"><div><span style="color:var(--ink);font-family:Inter;font-weight:500">R IT band · twinge</span><div style="font-size:10px;color:var(--mute);margin-top:1px">3 occurrences this year</div></div><span style="font-family:var(--f-sub);font-size:9px;color:var(--mute);font-weight:700;letter-spacing:1px">RECURRING</span></div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:11.5px;color:var(--mute)"><span>Allergies · pre-race meal</span><span style="color:var(--ink);font-family:var(--f-sub);font-size:10px;font-weight:600">none</span></div>
+          </div>
+          <div style="margin-top:10px;font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;color:var(--learn);font-weight:600;text-transform:uppercase">+ Log a niggle</div>
+        </div>
+
+        <!-- training preferences -->
+        <div class="bcard">
+          <div class="bhead"><div class="lbl">Training preferences</div><div class="v">6 set</div></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase">Units</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500;margin-top:3px">Miles · °C · ms</div></div>
+            <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase">Pace format</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500;margin-top:3px">min/mi · 0:00</div></div>
+            <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase">Week starts</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500;margin-top:3px">Monday</div></div>
+            <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase">HR zones · model</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500;margin-top:3px">Friel · LTHR-based</div></div>
+            <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase">Available days</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500;margin-top:3px">M T W T F Sa Su</div></div>
+            <div><div style="font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:600;text-transform:uppercase">Long-run day</div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500;margin-top:3px">Sunday · AM</div></div>
+          </div>
+        </div>
+
+        <!-- privacy & data -->
+        <div class="bcard">
+          <div class="bhead"><div class="lbl">Privacy + data</div><div class="v">3 settings</div></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Public profile</div><div style="font-size:11px;color:var(--mute);margin-top:1px">Off · only your circle can see</div></div><div style="width:38px;height:22px;background:rgba(255,255,255,0.08);border-radius:99px;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px"></div></div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line2)"><div><div style="font-family:Inter;font-size:13px;color:var(--ink);font-weight:500">Anonymized model training</div><div style="font-size:11px;color:var(--mute);margin-top:1px">Help improve Faff predictions</div></div><div style="width:38px;height:22px;background:var(--green);border-radius:99px;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px"></div></div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:12px"><span style="color:var(--mute);font-family:Inter">Export · delete · backup</span><div style="display:flex;gap:8px"><span style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;color:var(--learn);font-weight:600;text-transform:uppercase">Export</span><span style="font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;color:var(--over);font-weight:600;text-transform:uppercase">Delete</span></div></div>
           </div>
         </div>
       </div>
@@ -814,16 +1057,16 @@ h2.sec{font-family:var(--f-display);font-size:76px;letter-spacing:0.8px;margin:9
 
   <div class="rules">
     <div class="rule">
-      <div class="rt">log</div>
-      <div class="rb">Poster verb = total mileage (year-to-date). Stat trio = week/month mi + a PR. Below: chronological feed of recent runs · each row uses the post-run verb table (NAILED IT · STEADY · etc).</div>
+      <div class="rt">poster + sibling</div>
+      <div class="rb">Poster verb = name as identity. Stat trio = thresholds (max HR · LTHR · RHR). Sibling holds the derived zone table — 6 tiles showing Z1–Z5 + marathon-pace. <strong>Same body-derived intelligence as Health, framed as "yours."</strong></div>
     </div>
     <div class="rule">
-      <div class="rt learn">profile</div>
-      <div class="rb">Poster verb = name as identity. Stat trio = thresholds (max HR · LTHR · RHR). Equipment list with mileage progress bars. <strong>Same pattern, content reframed.</strong></div>
+      <div class="rt learn">body · left</div>
+      <div class="rb">"Account + connections" — connected services (Strava · Apple Health · watch · Garmin) with sync status, shoe rotation with mileage progress, spectator circle with bump history. <strong>The plumbing.</strong></div>
     </div>
     <div class="rule">
-      <div class="rt green">both</div>
-      <div class="rb">Compressed because consulted less. <strong>No body grid below — single combined "section" card under the poster.</strong> Pattern still locked: poster + (sibling-as-list-card). Less visual weight, same structure.</div>
+      <div class="rt green">body · right</div>
+      <div class="rb">"Behavior + privacy" — notifications (4 channels with toggles), niggle history with allergies, training preferences (6 settings — units, week start, HR model, available days), privacy + data (export, delete, anonymized model). <strong>Every account-level setting in one body grid.</strong></div>
     </div>
   </div>
 </div>
