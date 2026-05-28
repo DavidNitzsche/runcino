@@ -14,12 +14,20 @@
  *     days: Array<{
  *       date_iso: string, dow: number, type: string,
  *       distance_mi: number, sub_label: string | null,
- *       is_today: boolean, is_past: boolean
+ *       is_today: boolean, is_past: boolean,
+ *       completedRunId: string | null,  // Phase 17 — real strava id when day has a logged run
+ *       done_mi: number | null          // Phase 17 — canonical completed mileage for the day
  *     }>
  *   }
+ *
+ * 2026-05-28 Phase 17 — `completedRunId` + `done_mi` added so the iPhone
+ * WeekStrip can retire its `is_past && type != "rest"` heuristic. We mirror
+ * the canonicalMileageByDay → strava_id resolution from glance-state.ts
+ * (see lines 138-170) so the strip agrees with /log on dedupe.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { canonicalMileageByDay } from '@/lib/runs/merge';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -74,19 +82,61 @@ export async function GET(req: NextRequest) {
     [dateParam, daysSinceMonday]
   )).rows[0].d;
 
+  // 2026-05-28 Phase 17 — Resolve completed strava activity per day so the
+  // iPhone WeekStrip can show real DONE checkmarks instead of the
+  // `is_past && type != "rest"` heuristic. Mirrors glance-state.ts so the
+  // strip agrees with /log on dedupe.
+  //
+  // Best-effort: if the strava table is empty or the helper fails, we still
+  // emit a valid response with completedRunId=null + done_mi=null per day.
+  let actualByDate = new Map<string, { mi: number; id: string | null }>();
+  try {
+    const canonicalByDay = await canonicalMileageByDay(userId, weekStart, weekEnd);
+    const allCanonicalIds = Array.from(canonicalByDay.values()).flatMap((v) => v.canonicalIds);
+    const idLookup = allCanonicalIds.length > 0
+      ? (await pool.query(
+          `SELECT id::text AS row_id, data->>'id' AS strava_id,
+                  COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day
+             FROM strava_activities
+            WHERE id::text = ANY($1::text[])`,
+          [allCanonicalIds],
+        )).rows
+      : [];
+    const idByRow = new Map<string, { strava_id: string | null; day: string }>(
+      idLookup.map((r: any) => [String(r.row_id), { strava_id: r.strava_id ?? null, day: r.day }]),
+    );
+    for (const [day, info] of canonicalByDay) {
+      const firstRow = info.canonicalIds[0];
+      const stravaId = firstRow ? (idByRow.get(firstRow)?.strava_id ?? firstRow) : null;
+      actualByDate.set(day, { mi: info.mi, id: stravaId });
+    }
+  } catch {
+    // Swallow — leaves actualByDate empty so the response falls back to
+    // null/null per day. The WeekStrip just won't show DONE marks.
+    actualByDate = new Map();
+  }
+
   return NextResponse.json({
     plan_id: plan.id,
     week_start_iso: weekStart,
     week_end_iso: weekEnd,
     today_iso: today,
-    days: rows.map((r: any) => ({
-      date_iso: r.date_iso,
-      dow: r.dow,
-      type: r.type,
-      distance_mi: Number(r.distance_mi) || 0,
-      sub_label: r.sub_label,
-      is_today: r.date_iso === today,
-      is_past: r.date_iso < today,
-    })),
+    days: rows.map((r: any) => {
+      const actual = actualByDate.get(r.date_iso);
+      return {
+        date_iso: r.date_iso,
+        dow: r.dow,
+        type: r.type,
+        distance_mi: Number(r.distance_mi) || 0,
+        sub_label: r.sub_label,
+        is_today: r.date_iso === today,
+        is_past: r.date_iso < today,
+        // Phase 17 — real signal, retires the iOS `is_past && type != "rest"`
+        // heuristic in FaffAdapter.buildWeekStrip. Emit even for rest days
+        // (recovery jogs can be logged on rest days).
+        completedRunId: actual?.id ?? null,
+        done_mi: actual ? actual.mi : null,
+      };
+    }),
   });
 }

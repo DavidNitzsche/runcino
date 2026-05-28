@@ -457,23 +457,22 @@ enum FaffAdapter {
                     plannedType: d.type,
                     plannedLabel: d.sub_label
                 ),
-                // PlanDay doesn't carry a completed-run id today; the
-                // resolveDayState path handles the today + done case
-                // separately via the briefing's `post-run` mode. Past
-                // completed days light up via is_past + plannedType==easy
-                // assumption — the proper wiring lands when /api/plan/week
-                // adds a `completedRunId` field.
-                completedRunId: d.is_past && d.type != "rest" ? d.date_iso : nil,
+                // Phase 17 (2026-05-28) — heuristic retired. The server now
+                // resolves the canonical strava activity per day via
+                // canonicalMileageByDay (mirroring glance-state.ts), so DONE
+                // checkmarks reflect a real logged run instead of
+                // `is_past && type != "rest"`.
+                completedRunId: d.completedRunId,
                 isToday: d.is_today,
                 isFuture: !d.is_today && !d.is_past
             )
         }
 
         let plannedSum = days.reduce(0.0) { $0 + ($1.plannedDistance ?? 0) }
-        // Completed-mi rollup: we don't have run-by-run mileage on PlanDay,
-        // so render 0 for now. The header just reads "0 / N mi" until the
-        // run feed lands.
-        let completedSum = 0.0
+        // Phase 17 (2026-05-28) — completed-mi rollup. PlanDay now carries
+        // `done_mi` (canonical, dedupe'd) so the WeekStrip header agrees
+        // with /log and stops reading "0 / N mi" for non-empty weeks.
+        let completedSum = plan.days.reduce(0.0) { $0 + ($1.done_mi ?? 0) }
 
         return WeekStripPayload(
             weekStart: plan.week_start_iso ?? todayIso,

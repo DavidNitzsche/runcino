@@ -478,6 +478,12 @@ struct PlanDay: Decodable, Identifiable {
     let sub_label: String?
     let is_today: Bool
     let is_past: Bool
+    // Phase 17 (2026-05-28) — real signals from /api/plan/week. Replaces
+    // the FaffAdapter heuristic `is_past && type != "rest"` for DONE
+    // checkmarks, and unblocks the WeekStrip header's `X / N mi` rollup.
+    // Both optional — server emits null when no canonical run that day.
+    let completedRunId: String?
+    let done_mi: Double?
 }
 
 // MARK: - Readiness (P27.2)
