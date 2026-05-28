@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FAFF / app mockups · all pages · 2026-05-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c10; --bg2:#15171c; --card:#11141a; --card2:#13171f;
+  --ink:#f6f7f8; --mute:#8a90a0; --dim:#4b505e;
+  --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.04);
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0; --rest:#008FEC; --learn:#B084FF; --race:#FF8847;
+
+  --f-display:'HelveticaNeue-Bold','Inter',sans-serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --f-sub:'Oswald','Inter',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{padding:64px 32px 200px}
+.wrap{max-width:1640px;margin:0 auto}
+
+/* hero */
+.eyebrow{font-family:var(--f-sub);font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+.hero{padding:24px 0 56px;border-bottom:1px solid var(--line);margin-bottom:56px}
+h1.title{font-family:var(--f-display);font-size:120px;line-height:0.88;letter-spacing:-0.02em;margin:18px 0 12px;font-weight:900}
+.title .a{background:linear-gradient(135deg,#3EBD41,#27B4E0);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.lede{font-size:17px;line-height:1.55;color:rgba(246,247,248,0.78);max-width:920px;margin-top:24px}
+.lede strong{color:var(--ink)}
+
+h2.sec{font-family:var(--f-display);font-size:88px;letter-spacing:-0.02em;margin:128px 0 8px;line-height:1;font-weight:900}
+h2.sec .a{color:var(--green)}
+.sec-tag{font-family:var(--f-sub);font-size:11px;letter-spacing:2.4px;text-transform:uppercase;color:var(--mute);margin-bottom:18px;display:flex;gap:14px;align-items:center}
+.sec-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.sec-tag.training .dot{background:var(--goal)}
+.sec-tag.races .dot{background:var(--race)}
+.sec-tag.health .dot{background:var(--learn)}
+.sec-tag.profile .dot{background:var(--dist)}
+.kicker{font-size:15px;line-height:1.6;color:rgba(246,247,248,0.78);max-width:880px;margin-bottom:36px}
+.kicker strong{color:var(--ink)}
+
+/* the canvas — full page mockup wrapper */
+.canvas{background:var(--bg);border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:48px;box-shadow:0 30px 80px rgba(0,0,0,0.5)}
+.canvas-label{font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--mute);margin:0 0 12px 6px;font-weight:600}
+.canvas-label strong{color:var(--ink);font-weight:700}
+
+/* top nav */
+.topnav{padding:14px 28px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.topnav .logo{font-family:var(--f-display);font-size:18px;letter-spacing:0.4px;font-weight:900;color:var(--ink)}
+.topnav .navlinks{display:flex;gap:24px;font-family:var(--f-body);font-size:11px;letter-spacing:1.6px;font-weight:700;color:var(--mute);text-transform:uppercase}
+.topnav .navlinks .active{color:var(--ink);border-bottom:2px solid var(--green);padding-bottom:2px}
+.topnav .navlinks .active.training{border-color:var(--goal)}
+.topnav .navlinks .active.races{border-color:var(--race)}
+.topnav .navlinks .active.health{border-color:var(--learn)}
+.topnav .navlinks .active.profile{border-color:var(--dist)}
+.topnav .search{display:flex;gap:14px;align-items:center}
+.topnav .searchbox{background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:6px 14px;font-size:11px;color:var(--mute);width:240px}
+.topnav .avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--green),#1d5524);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:12px;font-weight:900}
+
+/* week strip — reused across surfaces */
+.weekstrip{padding:18px 28px;background:var(--bg);border-bottom:1px solid var(--line)}
+.ws-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;font-family:var(--f-sub);font-size:11px;font-weight:700;color:var(--mute);letter-spacing:1.6px;text-transform:uppercase}
+.ws-head .tot{color:var(--green);font-size:13px}
+.ws-head .tot small{color:var(--mute);font-weight:600;font-size:10px;text-transform:none;letter-spacing:0.3px;margin-left:6px}
+.ws-days{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+.ws-day{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 8px;position:relative;overflow:hidden;text-align:center;min-height:130px;display:flex;flex-direction:column;justify-content:flex-start}
+.ws-day .strip{position:absolute;top:0;left:0;right:0;height:3px}
+.ws-day .strip.easy{background:var(--learn)}
+.ws-day .strip.long{background:var(--dist)}
+.ws-day .strip.rest{background:rgba(255,255,255,0.1)}
+.ws-day .strip.done{background:var(--green)}
+.ws-day .strip.quality{background:var(--goal)}
+.ws-day .strip.race{background:var(--race)}
+.ws-day.today{border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+.ws-day .d{font-family:var(--f-sub);font-size:10px;color:var(--mute);letter-spacing:1px;font-weight:700;text-transform:uppercase;margin-top:8px}
+.ws-day .dn{font-family:var(--f-body);font-size:10px;color:var(--mute);margin-top:2px;font-weight:500}
+.ws-day .mi{font-family:var(--f-display);font-size:32px;line-height:1;margin:10px 0 6px;font-weight:900;letter-spacing:-0.01em}
+.ws-day .mi.done{color:var(--green)}
+.ws-day .mi.easy{color:var(--learn)}
+.ws-day .mi.long{color:var(--dist)}
+.ws-day .mi.quality{color:var(--goal)}
+.ws-day .mi.race{color:var(--race)}
+.ws-day .mi.rest{color:var(--dim)}
+.ws-day .lbl{font-family:var(--f-sub);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700}
+.ws-day .lbl.easy{color:var(--learn)}
+.ws-day .lbl.long{color:var(--dist)}
+.ws-day .lbl.quality{color:var(--goal)}
+.ws-day .lbl.race{color:var(--race)}
+.ws-day .lbl.rest{color:var(--mute)}
+.ws-day .lbl.done{color:var(--green)}
+.ws-day .check{position:absolute;top:6px;right:8px;width:16px;height:16px;border-radius:50%;background:var(--green);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:900}
+
+/* main page content */
+.page{padding:32px 28px 40px}
+.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:24px}
+
+/* coach voice card */
+.coach{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px;min-height:300px}
+.coach .eyebr{font-family:var(--f-body);font-size:10px;font-weight:700;letter-spacing:1.6px;color:var(--green);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.coach .eyebr .pulse{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.coach h2{font-family:var(--f-display);font-size:40px;letter-spacing:-0.015em;line-height:1;margin:0 0 18px;font-weight:900}
+.coach .voice{font-family:var(--f-body);font-size:14px;line-height:1.65;color:rgba(246,247,248,0.85);max-width:560px}
+
+/* AT A GLANCE — reused */
+.glance{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;margin-bottom:14px}
+.glance .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px}
+.glance .head .t{font-family:var(--f-display);font-size:20px;font-weight:900;letter-spacing:-0.005em;line-height:1}
+.glance .head .sub{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);text-transform:uppercase;font-weight:600}
+.glance .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.tile{background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:14px 16px;position:relative}
+.tile .lbl{font-family:var(--f-sub);font-size:9px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-bottom:6px}
+.tile .lbl.race{color:var(--race)}
+.tile .v{font-family:var(--f-display);font-size:26px;line-height:1;font-weight:900;letter-spacing:-0.01em}
+.tile .v.warn{color:var(--goal)}
+.tile .v.bad{color:var(--over)}
+.tile .v.good{color:var(--green)}
+.tile .v.cool{color:var(--dist)}
+.tile .v.race{color:var(--race)}
+.tile .m{font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:6px;line-height:1.4}
+.tile .m strong{color:var(--ink)}
+.tile .dot{position:absolute;top:14px;right:14px;width:8px;height:8px;border-radius:50%}
+.tile .dot.bad{background:var(--over)}
+.tile .dot.warn{background:var(--goal)}
+.tile .dot.good{background:var(--green)}
+
+/* planned card (right column, /today) */
+.planned{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 24px}
+.planned .eyebr{font-family:var(--f-body);font-size:10px;font-weight:700;letter-spacing:1.6px;color:var(--green);text-transform:uppercase;margin-bottom:6px}
+.planned .h{font-family:var(--f-display);font-size:26px;letter-spacing:-0.005em;line-height:1;margin:0 0 12px;font-weight:900}
+.planned .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.planned .stats .s{background:var(--bg2);border-radius:10px;padding:10px 12px}
+.planned .stats .s .l{font-family:var(--f-sub);font-size:9px;color:var(--mute);letter-spacing:1.2px;font-weight:600;text-transform:uppercase}
+.planned .stats .s .v{font-family:var(--f-display);font-size:20px;line-height:1;margin-top:4px;font-weight:900}
+.planned .footer{font-family:var(--f-body);font-size:12px;color:rgba(246,247,248,0.7)}
+
+/* ───── /PLAN-SPECIFIC ───────────────────────── */
+.phase-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px}
+.phase{padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;position:relative;overflow:hidden}
+.phase.active{border-color:var(--goal);background:linear-gradient(180deg,rgba(243,173,56,0.08),var(--card))}
+.phase .strip{position:absolute;top:0;left:0;right:0;height:3px}
+.phase.base .strip{background:var(--dist)}
+.phase.build .strip{background:var(--goal)}
+.phase.peak .strip{background:var(--over)}
+.phase.taper .strip{background:var(--rest)}
+.phase.race .strip{background:var(--race)}
+.phase .l{font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;color:var(--mute);font-weight:700;text-transform:uppercase;margin-top:6px}
+.phase.active .l{color:var(--goal)}
+.phase .n{font-family:var(--f-display);font-size:18px;line-height:1;margin-top:4px;font-weight:900}
+.phase .d{font-family:var(--f-body);font-size:10px;color:var(--mute);margin-top:6px}
+.phase .progress{position:absolute;bottom:0;left:0;height:3px;background:var(--goal)}
+
+.weeks-list{display:flex;flex-direction:column;gap:10px}
+.wk-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center}
+.wk-card.current{border-color:var(--green);background:linear-gradient(180deg,rgba(62,189,65,0.04),var(--card))}
+.wk-card .num{font-family:var(--f-display);font-size:32px;line-height:1;font-weight:900;color:var(--mute);min-width:50px}
+.wk-card.current .num{color:var(--green)}
+.wk-card .name{font-family:var(--f-display);font-size:17px;letter-spacing:-0.005em;font-weight:900;line-height:1.1;margin-bottom:4px}
+.wk-card .sched{font-family:var(--f-body);font-size:12px;color:var(--mute);line-height:1.4}
+.wk-card .sched strong{color:var(--ink);font-weight:600}
+.wk-card .mi-block{text-align:right;font-family:var(--f-display)}
+.wk-card .mi-block .mi{font-size:22px;line-height:1;font-weight:900}
+.wk-card .mi-block .plan{font-size:11px;font-family:var(--f-sub);color:var(--mute);letter-spacing:1px;font-weight:600;text-transform:uppercase;margin-top:4px}
+.wk-card .mi-block .mi.done{color:var(--green)}
+.wk-card .mi-block .mi.planned{color:var(--ink)}
+
+/* ───── /RACES-SPECIFIC ──────────────────────── */
+.race-hero{background:linear-gradient(135deg,#6b2010 0%,#c23922 60%,#FF5847 100%);border-radius:20px;padding:36px 32px;margin-bottom:24px;position:relative;overflow:hidden}
+.race-hero .eyebr{font-family:var(--f-sub);font-size:11px;font-weight:700;letter-spacing:1.8px;color:rgba(255,255,255,0.85);text-transform:uppercase;margin-bottom:14px}
+.race-hero h2{font-family:var(--f-display);font-size:72px;line-height:0.95;letter-spacing:-0.025em;margin:0 0 8px;color:#fff;font-weight:900}
+.race-hero .meta{display:flex;gap:32px;margin-top:18px;color:rgba(255,255,255,0.92);font-family:var(--f-body)}
+.race-hero .meta .it{font-size:13px}
+.race-hero .meta .it .l{font-family:var(--f-sub);font-size:10px;letter-spacing:1.4px;font-weight:600;text-transform:uppercase;color:rgba(255,255,255,0.7);margin-bottom:4px}
+.race-hero .meta .it .v{font-family:var(--f-display);font-size:22px;font-weight:900;letter-spacing:-0.005em;line-height:1}
+
+.race-list-h{font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--mute);font-weight:700;margin:28px 0 12px}
+.race-row{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px;display:grid;grid-template-columns:auto 1fr auto auto;gap:18px;align-items:center;margin-bottom:8px}
+.race-row .tier{font-family:var(--f-display);font-size:20px;font-weight:900;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.race-row .tier.A{background:var(--race);color:#fff}
+.race-row .tier.B{background:rgba(243,173,56,0.16);color:var(--goal)}
+.race-row .tier.C{background:rgba(255,255,255,0.06);color:var(--mute)}
+.race-row .name{font-family:var(--f-display);font-size:17px;letter-spacing:-0.005em;font-weight:900;line-height:1.1;margin-bottom:4px}
+.race-row .dets{font-family:var(--f-body);font-size:12px;color:var(--mute);line-height:1.4}
+.race-row .when{text-align:right;font-family:var(--f-display)}
+.race-row .when .d{font-size:20px;font-weight:900;line-height:1}
+.race-row .when .w{font-size:10px;font-family:var(--f-sub);color:var(--mute);text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-weight:600}
+.race-row .pred{text-align:right;min-width:120px}
+.race-row .pred .v{font-family:var(--f-display);font-size:17px;font-weight:900;line-height:1}
+.race-row .pred .v.good{color:var(--green)}
+.race-row .pred .l{font-size:10px;font-family:var(--f-sub);color:var(--mute);text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-weight:600}
+
+/* past races */
+.race-past{opacity:0.7}
+.race-past .when{color:var(--mute)}
+
+/* ───── /HEALTH-SPECIFIC ─────────────────────── */
+.health-hero{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 32px;margin-bottom:24px;display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center}
+.h-ring{width:140px;height:140px;border-radius:50%;background:conic-gradient(var(--green) 0% 78%, rgba(255,255,255,0.06) 78% 100%);display:flex;align-items:center;justify-content:center;position:relative}
+.h-ring::before{content:'';position:absolute;width:118px;height:118px;background:var(--card);border-radius:50%}
+.h-ring-i{position:relative;text-align:center}
+.h-ring-i .v{font-family:var(--f-display);font-size:48px;line-height:1;color:var(--green);font-weight:900;letter-spacing:-0.01em}
+.h-ring-i .l{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);text-transform:uppercase;font-weight:700;margin-top:4px}
+.h-hero-meta .lbl{font-family:var(--f-sub);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--mute);margin-bottom:10px;font-weight:600}
+.h-hero-meta h2{font-family:var(--f-display);font-size:52px;line-height:1;letter-spacing:-0.02em;margin:0 0 12px;font-weight:900}
+.h-hero-meta .desc{font-family:var(--f-body);font-size:14px;line-height:1.5;color:rgba(246,247,248,0.8);max-width:560px}
+
+.metric-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.metric{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 24px}
+.metric .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.metric .top .lbl{font-family:var(--f-sub);font-size:10px;letter-spacing:1.6px;color:var(--mute);font-weight:700;text-transform:uppercase}
+.metric .top .delta{font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:700}
+.metric .top .delta.bad{color:var(--over)}
+.metric .top .delta.good{color:var(--green)}
+.metric .top .delta.warn{color:var(--goal)}
+.metric .big{font-family:var(--f-display);font-size:42px;line-height:1;font-weight:900;letter-spacing:-0.015em;margin-bottom:6px}
+.metric .big.bad{color:var(--over)}
+.metric .big.warn{color:var(--goal)}
+.metric .big.good{color:var(--green)}
+.metric .big.cool{color:var(--dist)}
+.metric .ctx{font-family:var(--f-body);font-size:12px;color:var(--mute);line-height:1.5;margin-bottom:14px}
+.metric .spark{height:48px;display:block;width:100%}
+
+/* ───── /ME-SPECIFIC ─────────────────────────── */
+.identity-card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 32px;margin-bottom:24px;display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center}
+.id-avatar{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,var(--dist),#143752);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:42px;font-weight:900;color:#fff}
+.id-content .nm{font-family:var(--f-display);font-size:42px;line-height:1;letter-spacing:-0.015em;margin:0 0 6px;font-weight:900}
+.id-content .meta{font-family:var(--f-body);font-size:13px;color:var(--mute);margin-bottom:14px}
+.id-content .anchors{display:flex;gap:20px;flex-wrap:wrap}
+.id-content .anchors .a{display:flex;gap:6px;align-items:baseline}
+.id-content .anchors .a .l{font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;color:var(--mute);font-weight:700;text-transform:uppercase}
+.id-content .anchors .a .v{font-family:var(--f-display);font-size:18px;font-weight:900;letter-spacing:-0.005em}
+
+.section-h{font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--mute);font-weight:700;margin:28px 0 12px}
+
+.shoe-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.shoe{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;overflow:hidden;position:relative}
+.shoe.race{background:linear-gradient(135deg,rgba(255,136,71,0.08),var(--card))}
+.shoe.race::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--race)}
+.shoe .nm{font-family:var(--f-display);font-size:16px;letter-spacing:-0.005em;line-height:1.1;margin-bottom:8px;font-weight:900}
+.shoe .mileage-bar{height:6px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:hidden;margin:10px 0 6px}
+.shoe .mileage-fill{height:100%;background:var(--green);border-radius:99px}
+.shoe .mileage-fill.warn{background:var(--goal)}
+.shoe .mileage-fill.bad{background:var(--over)}
+.shoe .mileage-fill.race{background:var(--race)}
+.shoe .mi{font-family:var(--f-body);font-size:11px;color:var(--mute);font-weight:500}
+.shoe .mi strong{color:var(--ink);font-weight:700}
+.shoe .badge{position:absolute;top:14px;right:14px;font-family:var(--f-sub);font-size:9px;letter-spacing:1px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:99px}
+.shoe .badge.race{background:var(--race);color:#fff}
+
+.conn-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.conn{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}
+.conn .lf{display:flex;gap:14px;align-items:center}
+.conn .ico{width:28px;height:28px;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:14px;font-weight:900}
+.conn .ico.strava{background:#FC4C02;color:#fff}
+.conn .ico.apple{background:#fff;color:#000}
+.conn .nm{font-family:var(--f-display);font-size:14px;font-weight:900;letter-spacing:-0.005em}
+.conn .sub{font-family:var(--f-body);font-size:11px;color:var(--mute);margin-top:2px}
+.conn .status{font-family:var(--f-sub);font-size:10px;letter-spacing:1.2px;font-weight:700;text-transform:uppercase;color:var(--green)}
+.conn .status.dim{color:var(--mute)}
+
+/* endnote */
+.endnote{margin-top:96px;padding:48px;background:var(--card);border:1px solid var(--line);border-radius:24px}
+.endnote h3{font-family:var(--f-display);font-size:54px;letter-spacing:-0.015em;margin:0 0 18px;font-weight:900}
+.endnote p{font-size:15px;line-height:1.65;color:rgba(246,247,248,0.78);max-width:880px;margin:0 0 14px}
+.endnote p strong{color:var(--ink)}
+.endnote ul{font-size:14px;line-height:1.7;color:rgba(246,247,248,0.78);max-width:880px;padding-left:18px}
+.endnote ul strong{color:var(--ink)}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="eyebrow">faff · all surfaces · 2026-05-27</div>
+  <h1 class="title">the rest of the <span class="a">app.</span></h1>
+  <div class="lede">
+    /today is the reference. Same design language across <strong>/plan</strong>, <strong>/races</strong>,
+    <strong>/health</strong>, and <strong>/me</strong> — color-coded scoreboard tiles, AT A GLANCE grids,
+    big display numbers, status dots, consistent typography. The runner learns the visual system once on
+    /today and reads every other surface for free.
+  </div>
+</div>
+
+<!-- ═══════════════════════════ 01 · /TODAY (reference) ═══════════════════════════ -->
+<h2 class="sec">01 · /today</h2>
+<div class="sec-tag"><span class="dot"></span>reference — already shipped</div>
+<div class="kicker">
+  The pattern we're applying everywhere: TopNav, week strip (color-coded mileage), two-col main (coach
+  voice + AT A GLANCE tile grid stacked above planned/done card).
+</div>
+<div class="canvas-label">01 · <strong>/today</strong> · post-run easy day</div>
+<div class="canvas">
+  <div class="topnav">
+    <div class="logo">FAFF</div>
+    <div class="navlinks">
+      <span class="active">today</span><span>plan</span><span>races</span><span>health</span><span>me</span>
+    </div>
+    <div class="search"><div class="searchbox">⌕ Search runs, races…</div><div class="avatar">D</div></div>
+  </div>
+  <div class="weekstrip">
+    <div class="ws-head"><span>this week · base</span><span class="tot">19.7 / 43.8 MI</span></div>
+    <div class="ws-days">
+      <div class="ws-day"><span class="strip done"></span><div class="d">MON</div><div class="dn">25</div><div class="mi done">6.2</div><div class="lbl done">DONE</div><div class="check">✓</div></div>
+      <div class="ws-day"><span class="strip done"></span><div class="d">TUE</div><div class="dn">26</div><div class="mi done">7.6</div><div class="lbl done">DONE</div><div class="check">✓</div></div>
+      <div class="ws-day today"><span class="strip done"></span><div class="d">WED</div><div class="dn">27</div><div class="mi done">5.9</div><div class="lbl done">DONE</div><div class="check">✓</div></div>
+      <div class="ws-day"><span class="strip easy"></span><div class="d">THU</div><div class="dn">28</div><div class="mi easy">6.1</div><div class="lbl easy">EASY</div></div>
+      <div class="ws-day"><span class="strip easy"></span><div class="d">FRI</div><div class="dn">29</div><div class="mi easy">6.1</div><div class="lbl easy">EASY</div></div>
+      <div class="ws-day"><span class="strip rest"></span><div class="d">SAT</div><div class="dn">30</div><div class="mi rest">—</div><div class="lbl rest">REST</div></div>
+      <div class="ws-day"><span class="strip long"></span><div class="d">SUN</div><div class="dn">31</div><div class="mi long">12.1</div><div class="lbl long">LONG</div></div>
+    </div>
+  </div>
+  <div class="page">
+    <div class="cols">
+      <div class="coach">
+        <div class="eyebr"><span class="pulse"></span>coach</div>
+        <h2>EASY RUN DONE</h2>
+        <div class="voice">
+          Nice work today — clean easy run. You sat at 141 average across 5.9 mi, right in the middle of
+          your Z2 band, exactly where an easy day should live. Cadence ticked up to 167, a hair quicker
+          than usual — good sign, nothing to chase. Your load's at 1.42, right in your sweet spot, with
+          Sunday's long run still to close it out. The one thing I'm actually watching this week isn't the
+          running — it's sleep. You're about 6 hours short. Easy 6.1 tomorrow, keep it relaxed.
+        </div>
+      </div>
+      <div>
+        <div class="glance">
+          <div class="head"><span class="t">At a glance</span><span class="sub">the why</span></div>
+          <div class="grid">
+            <div class="tile"><span class="dot warn"></span><div class="lbl">sleep · 7n</div><div class="v warn">7.2h</div><div class="m">−1.1 vs target. <strong>6th short night</strong>.</div></div>
+            <div class="tile"><span class="dot bad"></span><div class="lbl">hrv</div><div class="v bad">38ms</div><div class="m">−7 vs avg. <strong>Trending down</strong>.</div></div>
+            <div class="tile"><span class="dot good"></span><div class="lbl">rhr</div><div class="v good">48</div><div class="m">+0 vs baseline. Steady.</div></div>
+            <div class="tile"><span class="dot warn"></span><div class="lbl">load · acwr</div><div class="v warn">1.42</div><div class="m">Build band. <strong>1.5 = spike line</strong>.</div></div>
+            <div class="tile"><span class="dot good"></span><div class="lbl">week mi</div><div class="v good">19.7 / 43.8</div><div class="m">On pace. Sun long run to close.</div></div>
+            <div class="tile"><div class="lbl race">race · 81d</div><div class="v race">London</div><div class="m">To race day.</div></div>
+          </div>
+        </div>
+        <div class="planned">
+          <div class="eyebr">today · easy run</div>
+          <div class="h">DONE · 5.9 MI</div>
+          <div class="stats">
+            <div class="s"><div class="l">pace</div><div class="v">8:26</div></div>
+            <div class="s"><div class="l">time</div><div class="v">49:26</div></div>
+            <div class="s"><div class="l">avg hr</div><div class="v">141</div></div>
+          </div>
+          <div class="footer">Tap for splits, route, HR zones, form data.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════ 02 · /PLAN ═══════════════════════════ -->
+<h2 class="sec">02 · /<span class="a" style="color:var(--goal)">plan</span></h2>
+<div class="sec-tag training"><span class="dot"></span>your training plan — phase, week, what's ahead</div>
+<div class="kicker">
+  PLAN owns the macro view. Top: phase strip (BASE · BUILD · PEAK · TAPER · RACE) with current position.
+  Middle: current week strip (same component as /today). Bottom: list of weeks in the plan, current week
+  highlighted, completed weeks with their actual mileage in green, future weeks with planned mileage in
+  white. One screen tells you where you are in the cycle and what's coming.
+</div>
+<div class="canvas-label">02 · <strong>/plan</strong> · build phase, week 6 of 8</div>
+<div class="canvas">
+  <div class="topnav">
+    <div class="logo">FAFF</div>
+    <div class="navlinks">
+      <span>today</span><span class="active training">plan</span><span>races</span><span>health</span><span>me</span>
+    </div>
+    <div class="search"><div class="searchbox">⌕ Search runs, races…</div><div class="avatar">D</div></div>
+  </div>
+  <div class="page">
+    <!-- Phase hero -->
+    <div style="margin-bottom:24px">
+      <div style="font-family:var(--f-sub);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--mute);margin-bottom:8px;font-weight:600">London Marathon plan · 16 wk · 81 days to race</div>
+      <h2 style="font-family:var(--f-display);font-size:72px;letter-spacing:-0.025em;line-height:1;margin:0 0 18px;font-weight:900">BUILD · WEEK 6 OF 8</h2>
+      <div class="phase-strip">
+        <div class="phase base"><span class="strip"></span><div class="l">Base</div><div class="n">8 wk</div><div class="d">Done</div></div>
+        <div class="phase build active"><span class="strip"></span><div class="l">Build</div><div class="n">6 of 8</div><div class="d">In progress</div><div class="progress" style="width:75%"></div></div>
+        <div class="phase peak"><span class="strip"></span><div class="l">Peak</div><div class="n">4 wk</div><div class="d">Ahead</div></div>
+        <div class="phase taper"><span class="strip"></span><div class="l">Taper</div><div class="n">3 wk</div><div class="d">Ahead</div></div>
+        <div class="phase race"><span class="strip"></span><div class="l">Race</div><div class="n">1 day</div><div class="d">Sunday Sep 14</div></div>
+      </div>
+    </div>
+
+    <!-- Current week strip -->
+    <div class="weekstrip" style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:0 -28px 24px;padding-left:28px;padding-right:28px">
+      <div class="ws-head"><span>this week · build wk 6</span><span class="tot">19.7 / 43.8 MI</span></div>
+      <div class="ws-days">
+        <div class="ws-day"><span class="strip done"></span><div class="d">MON</div><div class="dn">25</div><div class="mi done">6.2</div><div class="lbl done">DONE</div><div class="check">✓</div></div>
+        <div class="ws-day"><span class="strip done"></span><div class="d">TUE</div><div class="dn">26</div><div class="mi done">7.6</div><div class="lbl done">DONE</div><div class="check">✓</div></div>
+        <div class="ws-day today"><span class="strip done"></span><div class="d">WED</div><div class="dn">27</div><div class="mi done">5.9</div><div class="lbl done">DONE</div><div class="check">✓</div></div>
+        <div class="ws-day"><span class="strip easy"></span><div class="d">THU</div><div class="dn">28</div><div class="mi easy">6.1</div><div class="lbl easy">EASY</div></div>
+        <div class="ws-day"><span class="strip easy"></span><div class="d">FRI</div><div class="dn">29</div><div class="mi easy">6.1</div><div class="lbl easy">EASY</div></div>
+        <div class="ws-day"><span class="strip rest"></span><div class="d">SAT</div><div class="dn">30</div><div class="mi rest">—</div><div class="lbl rest">REST</div></div>
+        <div class="ws-day"><span class="strip long"></span><div class="d">SUN</div><div class="dn">31</div><div class="mi long">12.1</div><div class="lbl long">LONG</div></div>
+      </div>
+    </div>
+
+    <div style="font-family:var(--f-sub);font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--mute);font-weight:700;margin-bottom:12px">Build phase weeks</div>
+    <div class="weeks-list">
+      <div class="wk-card">
+        <div class="num">01</div>
+        <div><div class="name">Aggressive ramp · first quality block</div><div class="sched">Easy <strong>4×</strong> · Threshold <strong>4×1mi</strong> · Long <strong>10mi</strong></div></div>
+        <div class="mi-block"><div class="mi done">38.4</div><div class="plan">of 38</div></div>
+      </div>
+      <div class="wk-card">
+        <div class="num">02</div>
+        <div><div class="name">Threshold push, recovery week prep</div><div class="sched">Easy <strong>4×</strong> · Cruise <strong>5×1k</strong> · Long <strong>12mi</strong></div></div>
+        <div class="mi-block"><div class="mi done">42.1</div><div class="plan">of 41</div></div>
+      </div>
+      <div class="wk-card">
+        <div class="num">03</div>
+        <div><div class="name">Recovery week — back the volume off</div><div class="sched">Easy <strong>5×</strong> · No quality · Long <strong>10mi</strong></div></div>
+        <div class="mi-block"><div class="mi done">32.8</div><div class="plan">of 33</div></div>
+      </div>
+      <div class="wk-card">
+        <div class="num">04</div>
+        <div><div class="name">Quality intensification — VO2 step</div><div class="sched">Easy <strong>4×</strong> · VO2 <strong>5×3min</strong> · Long <strong>14mi</strong></div></div>
+        <div class="mi-block"><div class="mi done">44.2</div><div class="plan">of 44</div></div>
+      </div>
+      <div class="wk-card">
+        <div class="num">05</div>
+        <div><div class="name">Threshold + long, depth build</div><div class="sched">Easy <strong>4×</strong> · Threshold <strong>6×1mi</strong> · Long <strong>16mi</strong></div></div>
+        <div class="mi-block"><div class="mi done">47.6</div><div class="plan">of 47</div></div>
+      </div>
+      <div class="wk-card current">
+        <div class="num">06</div>
+        <div><div class="name">CURRENT · 6×800 + race-pace long</div><div class="sched">Easy <strong>4×</strong> · Intervals <strong>6×800m</strong> @ 3:02 · Long <strong>12.1mi</strong> w/ race pace</div></div>
+        <div class="mi-block"><div class="mi planned">19.7</div><div class="plan">of 43.8</div></div>
+      </div>
+      <div class="wk-card">
+        <div class="num">07</div>
+        <div><div class="name">Peak threshold block — push the band</div><div class="sched">Easy <strong>4×</strong> · Threshold <strong>4×2k</strong> · Long <strong>16mi</strong> @ steady</div></div>
+        <div class="mi-block"><div class="mi planned">48.0</div><div class="plan">planned</div></div>
+      </div>
+      <div class="wk-card">
+        <div class="num">08</div>
+        <div><div class="name">Build closeout — last hard week before PEAK</div><div class="sched">Easy <strong>4×</strong> · Race-pace tempo · Long <strong>18mi</strong></div></div>
+        <div class="mi-block"><div class="mi planned">52.0</div><div class="plan">planned</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════ 03 · /RACES ═══════════════════════════ -->
+<h2 class="sec">03 · /<span class="a" style="color:var(--race)">races</span></h2>
+<div class="sec-tag races"><span class="dot"></span>race calendar — next A on top, B/C below, past in archive</div>
+<div class="kicker">
+  RACES owns the goal posts. Top: race-orange gradient hero of the next A-race with countdown, predicted
+  time, and goal delta. Below: tiered list — A races in orange, B in amber, C in dim. Past races with results
+  in a separate archive section. Tap any race to drill into pacing strategy, course details, packing list.
+</div>
+<div class="canvas-label">03 · <strong>/races</strong> · London is the A, 2 Bs ahead, 1 past race</div>
+<div class="canvas">
+  <div class="topnav">
+    <div class="logo">FAFF</div>
+    <div class="navlinks">
+      <span>today</span><span>plan</span><span class="active races">races</span><span>health</span><span>me</span>
+    </div>
+    <div class="search"><div class="searchbox">⌕ Search runs, races…</div><div class="avatar">D</div></div>
+  </div>
+  <div class="page">
+    <div class="race-hero">
+      <div class="eyebr">a-race · london marathon</div>
+      <h2>81 DAYS<br>TO LONDON.</h2>
+      <div class="meta">
+        <div class="it"><div class="l">distance</div><div class="v">26.2 mi</div></div>
+        <div class="it"><div class="l">goal</div><div class="v">sub-2:55</div></div>
+        <div class="it"><div class="l">predicted</div><div class="v">2:54</div></div>
+        <div class="it"><div class="l">trajectory</div><div class="v" style="color:#3EBD41">−1:00 ahead</div></div>
+      </div>
+    </div>
+
+    <div class="race-list-h">Upcoming · A races</div>
+    <div class="race-row">
+      <div class="tier A">A</div>
+      <div>
+        <div class="name">London Marathon</div>
+        <div class="dets">Sep 14 · 26.2 mi · Goal sub-2:55</div>
+      </div>
+      <div class="when"><div class="d">81d</div><div class="w">Sep 14</div></div>
+      <div class="pred"><div class="v good">2:54</div><div class="l">pred · 1:00 ahead</div></div>
+    </div>
+
+    <div class="race-list-h">Upcoming · B races (tune-ups)</div>
+    <div class="race-row">
+      <div class="tier B">B</div>
+      <div>
+        <div class="name">Hackney Half Marathon</div>
+        <div class="dets">Jul 12 · 13.1 mi · Race-pace tune-up</div>
+      </div>
+      <div class="when"><div class="d">45d</div><div class="w">Jul 12</div></div>
+      <div class="pred"><div class="v">1:24:30</div><div class="l">pred</div></div>
+    </div>
+    <div class="race-row">
+      <div class="tier B">B</div>
+      <div>
+        <div class="name">Big Half (Greenwich)</div>
+        <div class="dets">Aug 24 · 13.1 mi · Final race-week prep</div>
+      </div>
+      <div class="when"><div class="d">28d</div><div class="w">Aug 24</div></div>
+      <div class="pred"><div class="v">1:22:15</div><div class="l">pred</div></div>
+    </div>
+
+    <div class="race-list-h" style="color:var(--mute);margin-top:36px">Past · this season</div>
+    <div class="race-row race-past">
+      <div class="tier C">C</div>
+      <div>
+        <div class="name">Hyde Park parkrun · April 19</div>
+        <div class="dets">5K · Fitness check during BASE</div>
+      </div>
+      <div class="when"><div class="d">38d ago</div><div class="w">Apr 19</div></div>
+      <div class="pred"><div class="v" style="color:var(--green)">18:42</div><div class="l">finished</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════ 04 · /HEALTH ═══════════════════════════ -->
+<h2 class="sec">04 · /<span class="a" style="color:var(--learn)">health</span></h2>
+<div class="sec-tag health"><span class="dot"></span>body trends — readiness, sleep, HRV, RHR, VO2</div>
+<div class="kicker">
+  HEALTH owns the body data. Top: today's readiness ring + verdict ("strong morning" / "watch the signals").
+  Below: 2×2 (or 2×3) grid of metric cards — each one has the big current value, a 14-day sparkline, and a
+  one-line context. Same visual language as the AT A GLANCE tiles on /today, just upsized for the dedicated
+  surface. Trend beats spot reading.
+</div>
+<div class="canvas-label">04 · <strong>/health</strong> · today's read + trends</div>
+<div class="canvas">
+  <div class="topnav">
+    <div class="logo">FAFF</div>
+    <div class="navlinks">
+      <span>today</span><span>plan</span><span>races</span><span class="active health">health</span><span>me</span>
+    </div>
+    <div class="search"><div class="searchbox">⌕ Search runs, races…</div><div class="avatar">D</div></div>
+  </div>
+  <div class="page">
+    <div class="health-hero">
+      <div class="h-ring"><div class="h-ring-i"><div class="v">78</div><div class="l">ready</div></div></div>
+      <div class="h-hero-meta">
+        <div class="lbl">today · readiness</div>
+        <h2>STRONG MORNING.</h2>
+        <div class="desc">All four pillars green or amber. Sleep is the only signal pulling the score down — recover the bank tonight and tomorrow opens at 85+. No reason to pull back on today's session.</div>
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="top">
+          <span class="lbl">sleep · 14d trend</span>
+          <span class="delta warn">−1.1h vs target</span>
+        </div>
+        <div class="big warn">7.2h</div>
+        <div class="ctx">Six nights under target this stretch. Bedtime drift is the pattern — getting in 30 min later than two weeks ago.</div>
+        <svg class="spark" viewBox="0 0 400 48" preserveAspectRatio="none">
+          <polyline points="0,18 28,16 56,22 84,20 112,24 140,18 168,26 196,22 224,28 252,24 280,30 308,26 336,32 364,28 400,32"
+            fill="none" stroke="#F3AD38" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="0,12 400,12" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="3 3"/>
+        </svg>
+      </div>
+
+      <div class="metric">
+        <div class="top">
+          <span class="lbl">hrv · 14d trend</span>
+          <span class="delta bad">−7ms vs avg</span>
+        </div>
+        <div class="big bad">38ms</div>
+        <div class="ctx">Steady downward arc since last Monday. Correlates with sleep deficit. Recovery isn't keeping up — tonight's the lever.</div>
+        <svg class="spark" viewBox="0 0 400 48" preserveAspectRatio="none">
+          <polyline points="0,12 28,14 56,13 84,15 112,16 140,17 168,20 196,18 224,22 252,24 280,26 308,28 336,30 364,32 400,34"
+            fill="none" stroke="#FC4D64" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="metric">
+        <div class="top">
+          <span class="lbl">resting hr · 14d</span>
+          <span class="delta good">at baseline</span>
+        </div>
+        <div class="big good">48</div>
+        <div class="ctx">Steady at your baseline of 48. The body is handling the work — no aerobic strain signal yet.</div>
+        <svg class="spark" viewBox="0 0 400 48" preserveAspectRatio="none">
+          <polyline points="0,22 28,20 56,22 84,21 112,22 140,20 168,21 196,22 224,21 252,20 280,22 308,21 336,22 364,20 400,22"
+            fill="none" stroke="#3EBD41" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="metric">
+        <div class="top">
+          <span class="lbl">vo2 max · 60d</span>
+          <span class="delta good">+1.8 vs 60d ago</span>
+        </div>
+        <div class="big cool">54.2</div>
+        <div class="ctx">Holding peak band, slight upward trend through BUILD phase. Your aerobic ceiling is climbing as planned.</div>
+        <svg class="spark" viewBox="0 0 400 48" preserveAspectRatio="none">
+          <polyline points="0,32 28,30 56,30 84,28 112,28 140,26 168,26 196,24 224,24 252,22 280,22 308,20 336,18 364,16 400,14"
+            fill="none" stroke="#27B4E0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="metric">
+        <div class="top">
+          <span class="lbl">weight · 30d trend</span>
+          <span class="delta good">−1.2 lb vs 30d</span>
+        </div>
+        <div class="big good">156.8</div>
+        <div class="ctx">Slow steady drop in the right direction for race weight. On track for ~154 by race day.</div>
+        <svg class="spark" viewBox="0 0 400 48" preserveAspectRatio="none">
+          <polyline points="0,12 28,14 56,16 84,15 112,18 140,17 168,20 196,19 224,22 252,21 280,24 308,23 336,26 364,25 400,28"
+            fill="none" stroke="#3EBD41" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="metric">
+        <div class="top">
+          <span class="lbl">load · acwr 28d</span>
+          <span class="delta warn">building band</span>
+        </div>
+        <div class="big warn">1.42</div>
+        <div class="ctx">In the productive 1.3–1.5 band where adaptation happens. 1.5 is Gabbett's spike line — getting close, hold the line.</div>
+        <svg class="spark" viewBox="0 0 400 48" preserveAspectRatio="none">
+          <polyline points="0,32 28,30 56,28 84,28 112,26 140,24 168,22 196,20 224,18 252,18 280,16 308,16 336,14 364,12 400,12"
+            fill="none" stroke="#F3AD38" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="0,8 400,8" stroke="rgba(252,77,100,0.6)" stroke-width="1" stroke-dasharray="3 3"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════ 05 · /ME ═══════════════════════════ -->
+<h2 class="sec">05 · /<span class="a" style="color:var(--dist)">me</span></h2>
+<div class="sec-tag profile"><span class="dot"></span>identity · gear · connections · settings</div>
+<div class="kicker">
+  ME owns the runner record. Identity card up top with name, paces, zones. Shoe rotation with mileage bars
+  (color-coded by life-remaining). Data connections (Strava, Apple Watch, etc.) with sync status. Settings
+  link at the bottom for unit toggles, plan prefs, notification controls.
+</div>
+<div class="canvas-label">05 · <strong>/me</strong> · profile + gear + connections</div>
+<div class="canvas">
+  <div class="topnav">
+    <div class="logo">FAFF</div>
+    <div class="navlinks">
+      <span>today</span><span>plan</span><span>races</span><span>health</span><span class="active profile">me</span>
+    </div>
+    <div class="search"><div class="searchbox">⌕ Search runs, races…</div><div class="avatar">D</div></div>
+  </div>
+  <div class="page">
+    <div class="identity-card">
+      <div class="id-avatar">D</div>
+      <div class="id-content">
+        <div class="nm">David Nitzsche</div>
+        <div class="meta">38 · Los Angeles · Advanced · London Marathon block</div>
+        <div class="anchors">
+          <div class="a"><span class="l">vdot</span><span class="v">53</span></div>
+          <div class="a"><span class="l">lthr</span><span class="v">172</span></div>
+          <div class="a"><span class="l">max hr</span><span class="v">186</span></div>
+          <div class="a"><span class="l">rhr</span><span class="v">48</span></div>
+          <div class="a"><span class="l">marathon pr</span><span class="v">2:56:18</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-h">Shoe rotation</div>
+    <div class="shoe-grid">
+      <div class="shoe">
+        <div class="nm">Nike Vomero Plus</div>
+        <div class="mileage-bar"><div class="mileage-fill" style="width:38%"></div></div>
+        <div class="mi"><strong>190</strong> of 500 mi · easy days</div>
+      </div>
+      <div class="shoe">
+        <div class="nm">Saucony Endorphin Speed 4</div>
+        <div class="mileage-bar"><div class="mileage-fill warn" style="width:72%"></div></div>
+        <div class="mi"><strong>290</strong> of 400 mi · quality days</div>
+      </div>
+      <div class="shoe race">
+        <span class="badge race">RACE</span>
+        <div class="nm">Nike Vaporfly Next% 3</div>
+        <div class="mileage-bar"><div class="mileage-fill race" style="width:18%"></div></div>
+        <div class="mi"><strong>27</strong> of 150 mi · race day</div>
+      </div>
+      <div class="shoe">
+        <div class="nm">Hoka Bondi 9</div>
+        <div class="mileage-bar"><div class="mileage-fill" style="width:46%"></div></div>
+        <div class="mi"><strong>230</strong> of 500 mi · recovery days</div>
+      </div>
+      <div class="shoe">
+        <div class="nm">Saucony Triumph 23</div>
+        <div class="mileage-bar"><div class="mileage-fill bad" style="width:88%"></div></div>
+        <div class="mi"><strong>440</strong> of 500 mi · rotation closing</div>
+      </div>
+      <div class="shoe">
+        <div class="nm">+ Add shoe</div>
+        <div class="mi" style="margin-top:18px;color:var(--mute)">Track a new pair</div>
+      </div>
+    </div>
+
+    <div class="section-h">Connections</div>
+    <div class="conn-grid">
+      <div class="conn">
+        <div class="lf">
+          <div class="ico strava">S</div>
+          <div><div class="nm">Strava</div><div class="sub">Auto-push runs · last sync 8m ago</div></div>
+        </div>
+        <span class="status">Connected</span>
+      </div>
+      <div class="conn">
+        <div class="lf">
+          <div class="ico apple"></div>
+          <div><div class="nm">Apple Watch</div><div class="sub">HealthKit · HRV, sleep, RHR, VO2</div></div>
+        </div>
+        <span class="status">Connected</span>
+      </div>
+      <div class="conn">
+        <div class="lf">
+          <div class="ico" style="background:#000;color:#fff">G</div>
+          <div><div class="nm">Garmin Connect</div><div class="sub">Not connected — optional</div></div>
+        </div>
+        <span class="status dim">Connect</span>
+      </div>
+      <div class="conn">
+        <div class="lf">
+          <div class="ico" style="background:#01a3a4;color:#fff">W</div>
+          <div><div class="nm">Whoop</div><div class="sub">Not connected — optional</div></div>
+        </div>
+        <span class="status dim">Connect</span>
+      </div>
+    </div>
+
+    <div class="section-h">Settings</div>
+    <div class="conn-grid">
+      <div class="conn">
+        <div class="lf">
+          <div class="ico" style="background:var(--bg2);color:var(--ink);font-size:18px">⚙</div>
+          <div><div class="nm">Preferences</div><div class="sub">Units, notifications, week start</div></div>
+        </div>
+        <span class="status dim">→</span>
+      </div>
+      <div class="conn">
+        <div class="lf">
+          <div class="ico" style="background:var(--bg2);color:var(--ink);font-size:18px">⛛</div>
+          <div><div class="nm">Plan settings</div><div class="sub">Auto-regen, swap defaults, doctrine</div></div>
+        </div>
+        <span class="status dim">→</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════ ENDNOTE ═══════════════════════════ -->
+<div class="endnote">
+  <h3>the visual system.</h3>
+  <p>
+    One language across all five surfaces. The runner learns it once on /today and reads every other
+    surface for free. Specifically:
+  </p>
+  <ul>
+    <li><strong>Color = state.</strong> Green = done / good / strong. Amber = quality / building / warn.
+      Cyan = long / cool data. Purple = easy. Orange = race. Red = bad / spike. Always the same meaning.</li>
+    <li><strong>Display font does the lifting.</strong> Helvetica Neue Bold at 32-80px for any number
+      worth reading. Inter at 12-15px for prose. Oswald uppercase at 9-11px for labels and eyebrows.</li>
+    <li><strong>Status dots beat sentences.</strong> A red dot in the corner of a tile says everything a
+      sentence does in 1/30th the time. Use them everywhere the user needs to scan.</li>
+    <li><strong>Scoreboard headlines.</strong> EASY RUN DONE / BUILD WEEK 6 OF 8 / 81 DAYS TO LONDON /
+      STRONG MORNING / DAVID NITZSCHE. Caps, big, declarative.</li>
+    <li><strong>Top nav stays minimal.</strong> Five tabs, no overflow. Active tab gets the
+      surface-appropriate accent color underneath (green / amber / orange / purple / cyan).</li>
+    <li><strong>Two-column main where there's a "now" and an "around it".</strong> /today and /me lean
+      two-col. /plan and /races and /health lean one-col-with-stacks because their content is sequential.</li>
+  </ul>
+  <p style="margin-top:24px;color:var(--mute);font-size:13px">
+    Ship order from here: /plan first (phase + week list lives close to plan-aware coach moves we already
+    have), then /races (race-orange identity), then /health (sparklines need 14d data assembled), then /me
+    (mostly existing components re-skinned). Each one is a 2-4 hour ship if we don't redesign mid-flight.
+  </p>
+</div>
+
+</div>
+</body>
+</html>
