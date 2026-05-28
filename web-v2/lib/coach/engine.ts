@@ -283,6 +283,47 @@ export async function generateBriefing(
       p.tone = r.days_to_race <= 7 ? 'race_week'
         : r.days_to_race <= 21 ? 'sharpening' : 'building';
     }
+    // P-RIGHT-RAIL-TOPICS 2026-05-27 — new kinds enriched from state.
+    if (t.kind === 'niggle' && state.activeNiggle) {
+      const n = state.activeNiggle;
+      p.body_part = n.body_part;
+      p.severity = n.severity;
+      p.description = n.description;
+      p.days_ago = n.days_ago;
+    }
+    if (t.kind === 'load_ramp' && state.loadAcwr != null && state.loadAcute7 != null && state.loadChronic28 != null) {
+      const a = state.loadAcwr;
+      p.acwr = a;
+      p.acute_mi_per_day = state.loadAcute7;
+      p.chronic_mi_per_day = state.loadChronic28;
+      p.band = a < 0.8 ? 'detraining'
+        : a < 1.0 ? 'building'
+        : a <= 1.3 ? 'sweet_spot'
+        : a <= 1.5 ? 'elevated'
+                   : 'spike';
+    }
+    if (t.kind === 'weekly_volume') {
+      p.done_mi = state.weekDone ?? 0;
+      p.planned_mi = weekTotalPlannedMi(state) ?? state.weekPlanned ?? 0;
+      p.projected_mi = weekProjectedTotalMi(state) ?? p.done_mi;
+      p.phase_label = state.phaseLabel;
+    }
+    if (t.kind === 'long_run_horizon') {
+      const today = state.today;
+      const longDay = (state.currentWeekDays ?? []).find(
+        (d: any) => d.date >= today && d.type === 'long' && d.mi > 0,
+      );
+      if (longDay) {
+        p.date = longDay.date;
+        p.dow = DOW_NAMES[longDay.dow];
+        p.mi = longDay.mi;
+        p.label = longDay.label ?? 'long';
+        p.days_away = Math.max(0, Math.round(
+          (Date.parse(longDay.date + 'T12:00:00Z') -
+           Date.parse(today + 'T12:00:00Z')) / 86400000
+        ));
+      }
+    }
   }
 
   // Drop topics that would duplicate other surfaces (run_recap on /today

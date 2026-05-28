@@ -45,10 +45,14 @@ function resolveToday(state: CoachState): ResolvedMode {
   else mode = 'pre-run';
 
   // Candidate topics per mode. Prereqs will filter further.
+  // 2026-05-27 P-RIGHT-RAIL-TOPICS — added niggle, load_ramp,
+  // weekly_volume, long_run_horizon to /today so the right rail can
+  // surface a card for each major beat the coach talks about.
+  const todayCommon: TopicKind[] = ['niggle', 'load_ramp', 'weekly_volume', 'long_run_horizon'];
   const candidates: Record<string, TopicKind[]> = {
-    'post-run':  ['run_recap', 'sleep_deficit', 'next_workout', 'race_horizon', 'cadence_experiment', 'profile_gap'],
-    'pre-run':   ['next_workout', 'sleep_deficit', 'watch_list', 'race_horizon', 'profile_gap'],
-    'rest-day':  ['next_workout', 'fun_fact', 'race_horizon'],
+    'post-run':  ['run_recap', 'sleep_deficit', 'next_workout', 'race_horizon', 'cadence_experiment', 'profile_gap', ...todayCommon],
+    'pre-run':   ['next_workout', 'sleep_deficit', 'watch_list', 'race_horizon', 'profile_gap', ...todayCommon],
+    'rest-day':  ['next_workout', 'fun_fact', 'race_horizon', ...todayCommon],
     'race-day':  ['race_horizon'],
   };
 

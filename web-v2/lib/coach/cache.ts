@@ -60,13 +60,12 @@ const SIGNATURE_SENTINEL = 'event-driven';
 //        144)" reads clinical and treats a forgiving aerobic intent
 //        like a tight target. Say "mid-Z2" or "held in aerobic zone."
 //        Quote bpm only when it adds signal the zone name can't.
-// v12-option-c-niggle-lead 2026-05-27: free-text check-ins are now
-// the primary input; extractor LLM surfaces niggle + context_factors
-// + mood/energy as structured signals that flow into the coach via
-// the new activeNiggle HARD FACT and getCheckIns enrichment. Also:
-// post-run LEAD must be about THE RUN (no "spike week" hedging in
-// headline), and spike/ACWR jargon must be glossed inline first use.
-export const PROMPT_VERSION = 'v12-option-c-niggle-lead';
+// v13-right-rail-topics 2026-05-27: four new topic kinds (niggle,
+// load_ramp, weekly_volume, long_run_horizon) added to /today
+// candidate lists + a "if voice mentions X, emit X topic" doctrine
+// so the right rail surfaces a card for every beat the coach
+// references in voice. Bump invalidates briefs written under v12.
+export const PROMPT_VERSION = 'v13-right-rail-topics';
 
 // The cache key is the surface, optionally suffixed with `:ios` for the
 // compact-voice variant. We pass it as a string so the engine controls

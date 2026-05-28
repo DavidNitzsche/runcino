@@ -168,3 +168,160 @@ export function FunFactCard({ payload }: {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// P-RIGHT-RAIL-TOPICS 2026-05-27 — new cards so the right rail can
+// surface a tile for everything the coach mentions in voice.
+// ─────────────────────────────────────────────────────────────────────
+
+export function NiggleCard({ payload, coach_note }: {
+  payload: { body_part: string; severity: 'mild' | 'moderate' | 'flare' | null; description: string; days_ago: number };
+  coach_note: string | null;
+}) {
+  const sevColor = payload.severity === 'flare' ? 'var(--over)'
+    : payload.severity === 'moderate' ? 'var(--goal)'
+    : 'var(--mute)';
+  const when = payload.days_ago === 0 ? 'today'
+    : payload.days_ago === 1 ? 'yesterday'
+    : `${payload.days_ago}d ago`;
+  return (
+    <div className="card">
+      <div className="card-eyebrow" style={{ color: 'var(--over)' }}>
+        WATCHING · {payload.body_part.toUpperCase()}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
+        <span style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', letterSpacing: '0.4px' }}>
+          {payload.severity ? payload.severity.toUpperCase() : 'FLAGGED'}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--mute)', letterSpacing: '0.5px' }}>· {when}</span>
+      </div>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.75)', lineHeight: 1.5, marginTop: 6, fontStyle: 'italic' }}>
+        "{payload.description}"
+      </div>
+      <div style={{ marginTop: 10, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+        <div style={{ height: '100%', width: payload.severity === 'flare' ? '100%' : payload.severity === 'moderate' ? '60%' : '30%', background: sevColor, borderRadius: 2 }} />
+      </div>
+      {coach_note && <div className="coach-note">{coach_note}</div>}
+    </div>
+  );
+}
+
+export function LoadRampCard({ payload, coach_note }: {
+  payload: { acwr: number; acute_mi_per_day: number; chronic_mi_per_day: number; band: 'detraining' | 'building' | 'sweet_spot' | 'elevated' | 'spike' };
+  coach_note: string | null;
+}) {
+  const BAND_LABEL: Record<string, string> = {
+    detraining: 'DETRAINING',
+    building:   'BUILDING',
+    sweet_spot: 'SWEET SPOT',
+    elevated:   'ELEVATED',
+    spike:      'SPIKE',
+  };
+  const BAND_COLOR: Record<string, string> = {
+    detraining: 'var(--rest)',
+    building:   'var(--green)',
+    sweet_spot: 'var(--green)',
+    elevated:   'var(--goal)',
+    spike:      'var(--over)',
+  };
+  const bandColor = BAND_COLOR[payload.band] ?? 'var(--mute)';
+  // Marker position on a 0–2.0 ratio scale.
+  const markerPct = Math.max(0, Math.min(100, (payload.acwr / 2) * 100));
+  return (
+    <div className="card">
+      <div className="card-eyebrow" style={{ color: bandColor }}>
+        LOAD · {BAND_LABEL[payload.band]}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+        <span style={{ fontFamily: 'var(--f-display)', fontSize: 32, color: bandColor, letterSpacing: '0.4px', lineHeight: 1 }}>
+          {payload.acwr.toFixed(2)}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--mute)', letterSpacing: '0.5px' }}>ACWR</span>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 4, letterSpacing: '0.3px' }}>
+        acute {payload.acute_mi_per_day.toFixed(1)} · chronic {payload.chronic_mi_per_day.toFixed(1)} mi/day
+      </div>
+      <div style={{ marginTop: 12, position: 'relative', height: 22 }}>
+        {/* Scale track 0–2 */}
+        <div style={{
+          position: 'absolute', left: 0, right: 0, top: 10, height: 3, borderRadius: 2,
+          background: 'linear-gradient(90deg, rgba(0,143,236,0.30) 0%, rgba(62,189,65,0.5) 40%, rgba(62,189,65,0.5) 65%, rgba(243,173,56,0.55) 75%, rgba(252,77,100,0.6) 100%)',
+        }}/>
+        {/* Spike line marker at 1.5 */}
+        <div style={{ position: 'absolute', left: '75%', top: 6, width: 1, height: 11, background: 'rgba(255,255,255,0.4)' }}/>
+        <div style={{ position: 'absolute', left: '75%', top: 18, transform: 'translateX(-50%)', fontSize: 8, color: 'rgba(255,255,255,0.55)', fontWeight: 700, letterSpacing: '0.4px' }}>1.5</div>
+        {/* You marker */}
+        <div style={{ position: 'absolute', left: `${markerPct}%`, top: 5, transform: 'translateX(-50%)', width: 5, height: 13, background: bandColor, borderRadius: 2, boxShadow: `0 0 0 2px ${bandColor}30` }}/>
+      </div>
+      {coach_note && <div className="coach-note">{coach_note}</div>}
+    </div>
+  );
+}
+
+export function WeeklyVolumeCard({ payload, coach_note }: {
+  payload: { done_mi: number; projected_mi: number; planned_mi: number; phase_label: string | null };
+  coach_note: string | null;
+}) {
+  const overPlanBy = Math.round((payload.projected_mi - payload.planned_mi) * 10) / 10;
+  const ahead = overPlanBy >= 3;
+  const behind = overPlanBy <= -3;
+  const accent = ahead ? 'var(--goal)' : behind ? 'var(--mute)' : 'var(--green)';
+  const donePct = payload.projected_mi > 0
+    ? Math.min(100, (payload.done_mi / payload.projected_mi) * 100)
+    : 0;
+  return (
+    <div className="card">
+      <div className="card-eyebrow" style={{ color: accent }}>
+        THIS WEEK{payload.phase_label ? ` · ${payload.phase_label.toUpperCase()}` : ''}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+        <span style={{ fontFamily: 'var(--f-display)', fontSize: 32, color: 'var(--ink)', letterSpacing: '0.4px', lineHeight: 1 }}>
+          {payload.done_mi.toFixed(1)}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--mute)' }}>/ {payload.projected_mi.toFixed(1)} mi</span>
+      </div>
+      <div style={{ marginTop: 10, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${donePct}%`, background: accent }}/>
+      </div>
+      {ahead && (
+        <div style={{ fontSize: 11, color: 'var(--goal)', marginTop: 6, letterSpacing: '0.3px' }}>
+          +{overPlanBy.toFixed(1)} mi above the {payload.planned_mi.toFixed(1)} planned
+        </div>
+      )}
+      {behind && (
+        <div style={{ fontSize: 11, color: 'var(--mute)', marginTop: 6, letterSpacing: '0.3px' }}>
+          {overPlanBy.toFixed(1)} mi under the {payload.planned_mi.toFixed(1)} planned
+        </div>
+      )}
+      {coach_note && <div className="coach-note">{coach_note}</div>}
+    </div>
+  );
+}
+
+export function LongRunHorizonCard({ payload, coach_note }: {
+  payload: { date: string; dow: string; mi: number; label: string | null; days_away: number };
+  coach_note: string | null;
+}) {
+  const when = payload.days_away === 0 ? 'TODAY'
+    : payload.days_away === 1 ? 'TOMORROW'
+    : `IN ${payload.days_away} DAYS`;
+  return (
+    <div className="card">
+      <div className="card-eyebrow" style={{ color: 'var(--dist)' }}>
+        LONG RUN · {payload.dow.toUpperCase()} · {when}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 18, alignItems: 'center', marginTop: 4 }}>
+        <div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
+            {payload.label ? payload.label.toUpperCase() : 'LONG'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, color: 'var(--dist)' }}>
+          <span style={{ fontFamily: 'var(--f-display)', fontSize: 60, lineHeight: 0.95, letterSpacing: '0.5px' }}>{payload.mi.toFixed(1)}</span>
+          <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>MI</span>
+        </div>
+      </div>
+      {coach_note && <div className="coach-note">{coach_note}</div>}
+    </div>
+  );
+}

@@ -188,6 +188,48 @@ export const WatchListPayload = z.object({
   })),
 });
 
+// 2026-05-27 P-RIGHT-RAIL-TOPICS — new topic kinds so the right rail
+// can surface a card for everything the coach talks about in voice.
+//
+// niggle: the runner has an active body issue (calf tight, etc.) the
+// coach is tracking. Card surfaces the body part + severity + days
+// since first logged + a "RESOLVED" affordance.
+export const NigglePayload = z.object({
+  body_part: z.string(),
+  severity: z.enum(['mild', 'moderate', 'flare']).nullable(),
+  description: z.string(),
+  days_ago: z.number(),
+});
+
+// load_ramp: ACWR + spike-line context. Shows where the runner sits
+// in the Gabbett band: detraining / building / sweet-spot / elevated /
+// spike. Visual: horizontal scale with a marker.
+export const LoadRampPayload = z.object({
+  acwr: z.number(),
+  acute_mi_per_day: z.number(),
+  chronic_mi_per_day: z.number(),
+  band: z.enum(['detraining', 'building', 'sweet_spot', 'elevated', 'spike']),
+});
+
+// weekly_volume: done / projected / planned. Mirrors the strip header
+// but as a standalone card the coach can reference.
+export const WeeklyVolumePayload = z.object({
+  done_mi: z.number(),
+  projected_mi: z.number(),
+  planned_mi: z.number(),
+  phase_label: z.string().nullable(),
+});
+
+// long_run_horizon: countdown to the next long run on the calendar.
+// Card shows day-of-week, miles, sub_label, days-away.
+export const LongRunHorizonPayload = z.object({
+  date: z.string(),                  // ISO date
+  dow: z.string(),                   // "Sunday"
+  mi: z.number(),
+  label: z.string().nullable(),
+  days_away: z.number(),
+});
+
 /* ────────────────────────── Topic registry ────────────────────────── */
 
 export type Topic =
@@ -198,7 +240,11 @@ export type Topic =
   | { kind: 'cadence_experiment';  payload: z.infer<typeof CadenceExperimentPayload>;  coach_note: string | null }
   | { kind: 'profile_gap';         payload: z.infer<typeof ProfileGapPayload>;         coach_note: null }
   | { kind: 'fun_fact';            payload: z.infer<typeof FunFactPayload>;            coach_note: null }
-  | { kind: 'watch_list';          payload: z.infer<typeof WatchListPayload>;          coach_note: string | null };
+  | { kind: 'watch_list';          payload: z.infer<typeof WatchListPayload>;          coach_note: string | null }
+  | { kind: 'niggle';              payload: z.infer<typeof NigglePayload>;             coach_note: string | null }
+  | { kind: 'load_ramp';           payload: z.infer<typeof LoadRampPayload>;           coach_note: string | null }
+  | { kind: 'weekly_volume';       payload: z.infer<typeof WeeklyVolumePayload>;       coach_note: string | null }
+  | { kind: 'long_run_horizon';    payload: z.infer<typeof LongRunHorizonPayload>;     coach_note: string | null };
 
 export type TopicKind = Topic['kind'];
 
@@ -242,6 +288,19 @@ export const TopicPrereqs: Record<TopicKind, (s: CoachState) => boolean> = {
                         (s.rhrCurrent - s.rhrBaseline) >= 5;
     const sleepShort  = s.sleep7Deficit >= 3.0;
     return rhrElevated || sleepShort;
+  },
+
+  // P-RIGHT-RAIL-TOPICS 2026-05-27
+  niggle: (s) => s.activeNiggle != null,
+  load_ramp: (s) => s.loadAcwr != null && s.loadAcute7 != null && s.loadChronic28 != null,
+  weekly_volume: (s) => s.weekDone != null && s.weekPlanned != null && s.weekPlanned > 0,
+  long_run_horizon: (s) => {
+    // Eligible when there's a long run scheduled in this week's plan
+    // ahead of (or on) today.
+    const today = s.today;
+    return (s.currentWeekDays ?? []).some(
+      (d: any) => d.date >= today && d.type === 'long' && d.mi > 0
+    );
   },
 };
 
