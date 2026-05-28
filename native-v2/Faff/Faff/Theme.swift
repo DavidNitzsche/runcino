@@ -120,6 +120,13 @@ enum Theme {
             colors: [Color(hex: 0xB084FF), Color(hex: 0x6A4ACE), Color(hex: 0x2A1A5A)],
             startPoint: .topLeading, endPoint: .bottomTrailing
         )
+        // P-SKIP (Phase 12 · 2026-05-28). Slate-purple gradient for the
+        // explicit "I am skipping today" state. Mirrors --g-skip in
+        // web-v2/app/globals.css (#6B7A8F → #4A4A5C → #1F1F2A · 135°).
+        static let skip = LinearGradient(
+            colors: [Color(hex: 0x6B7A8F), Color(hex: 0x4A4A5C), Color(hex: 0x1F1F2A)],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
     }
 
     // MARK: - Typography (v3 · Oswald 700 display + Inter body)

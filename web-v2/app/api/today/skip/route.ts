@@ -1,6 +1,7 @@
 /**
- * POST   /api/today/skip   { date? }  — record an explicit skip for `date` (default today)
- * DELETE /api/today/skip   { date? }  — undo the skip
+ * GET    /api/today/skip               — { skipped: boolean, date }
+ * POST   /api/today/skip   { date? }   — record an explicit skip for `date` (default today)
+ * DELETE /api/today/skip   { date? }   — undo the skip
  *
  * "Skip" = "the plan said run today and I'm actively choosing not to. Not
  * sick, not injured, just skipping." Distinct from rest (plan-prescribed),
@@ -11,6 +12,12 @@
  * (matches app/api/checkin/route.ts:25). `today` is computed with the same
  * -7h offset as lib/coach/glance-state.ts:56 so the API and the glance
  * loader agree on what "today" means.
+ *
+ * The GET handler (added Phase 12 · 2026-05-28) lets the iPhone hydrate
+ * `todaySkipped` without re-running the full glance-state loader. The
+ * web client doesn't need it (the glance loader already carries the bit
+ * inline), but iOS reads /api/briefing + /api/plan/week + /api/readiness
+ * separately and needs a small dedicated endpoint for this signal.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
@@ -36,6 +43,27 @@ async function readBody(req: NextRequest): Promise<SkipBody> {
     return JSON.parse(text) as SkipBody;
   } catch {
     return {};
+  }
+}
+
+export async function GET(req: NextRequest) {
+  // Optional ?date=YYYY-MM-DD override (matches the POST/DELETE body
+  // shape). Defaults to today using the same -7h offset as
+  // lib/coach/glance-state.ts:56 so iPhone and web agree on "today".
+  const dateParam = req.nextUrl.searchParams.get('date');
+  const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayIso();
+
+  try {
+    const row = await pool.query(
+      `SELECT 1 FROM day_actions
+        WHERE user_id = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
+      [DAVID_USER_ID, date],
+    );
+    return NextResponse.json({ skipped: row.rows.length > 0, date });
+  } catch (err: any) {
+    // Migration not applied yet → degrade to `skipped: false` rather than
+    // 500ing. Same posture as glance-state.ts:268.
+    return NextResponse.json({ skipped: false, date });
   }
 }
 

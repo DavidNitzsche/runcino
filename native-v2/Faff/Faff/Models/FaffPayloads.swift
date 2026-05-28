@@ -21,11 +21,16 @@ import SwiftUI
 
 // MARK: - Enums
 
-/// 11-state day enum — mirrors `DayState` in web-v2/lib/faff/types.ts.
+/// 12-state day enum — mirrors `DayState` in web-v2/lib/faff/types.ts.
+/// `.skipped` (Phase 12 · 2026-05-28) is the explicit "runner tapped SKIP
+/// TODAY on the poster" surface — distinct from rest (plan-prescribed),
+/// missed (passive), or sick/niggle (health). See web-v2/db/migrations/
+/// 114_day_actions.sql + web-v2/app/api/today/skip/route.ts.
 enum FaffDayState: String, Codable {
     case easy, quality, long, rest
     case done_nailed, done_ease_off
     case niggle, sick, missed, race_week, new_user
+    case skipped
 }
 
 /// Status dot color · mirrors `DotColor` in web-v2/lib/faff/types.ts.

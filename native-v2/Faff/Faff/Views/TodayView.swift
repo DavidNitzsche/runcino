@@ -28,6 +28,12 @@ struct TodayView: View {
     @State private var error: String?
     @State private var readiness: ReadinessSnapshot? =
         AppCache.read(.readiness, as: ReadinessSnapshot.self)
+    // P-SKIP (Phase 12 · 2026-05-28). Mirror of the web "is today
+    // skipped?" signal. Hydrated by GET /api/today/skip on every
+    // loadAll() — see API.fetchTodaySkipped + the SKIP/UNDO SKIP
+    // chip overlay below.
+    @State private var todaySkipped: Bool = false
+    @State private var skipBusy: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -40,16 +46,30 @@ struct TodayView: View {
                     let state = FaffAdapter.resolveDayState(
                         plan: planWeek,
                         briefing: briefing,
-                        workout: workout
+                        workout: workout,
+                        skipped: todaySkipped
                     )
 
                     // 1. Poster · gradient hero
+                    //
+                    // P-SKIP (Phase 12) · the SKIP / UNDO SKIP chip is
+                    // rendered as a topTrailing overlay on the PosterCard.
+                    // PosterCard stays pure (no callbacks) — TodayView owns
+                    // the network call + the @State + the haptic. Mirrors
+                    // web Poster.tsx:76-97 (eyebrow row · trailing button).
                     PosterCard(payload: FaffAdapter.buildPoster(
                         state: state,
                         plan: planWeek,
                         readiness: readiness,
                         workout: workout
                     ))
+                    .overlay(alignment: .topTrailing) {
+                        if showSkipChip(for: state) {
+                            skipChip(currentState: state)
+                                .padding(.top, 16)
+                                .padding(.trailing, 18)
+                        }
+                    }
 
                     // 2. Sibling · body dashboard
                     SiblingCard(payload: FaffAdapter.buildSibling(
@@ -107,6 +127,9 @@ struct TodayView: View {
             .refreshable { await loadAll() }
             // Haptic ping when content lands so the refresh feels alive.
             .sensoryFeedback(.success, trigger: workout?.workoutId)
+            // P-SKIP (Phase 12) · second haptic on skip toggle. Mirrors
+            // the web router.refresh() vibe — the tap feels alive.
+            .sensoryFeedback(.success, trigger: todaySkipped)
         }
     }
 
@@ -120,16 +143,22 @@ struct TodayView: View {
         async let wRes = (try? await API.fetchWatchWorkout())
         async let pRes = (try? await API.fetchPlanWeek())
         async let rRes = (try? await API.fetchReadiness())
+        // P-SKIP (Phase 12) · fan out the skip status read alongside the
+        // other 4 calls so the SKIP / UNDO SKIP surface is correct on
+        // every refresh.
+        async let sRes = (try? await API.fetchTodaySkipped())
 
         let b = await bRes
         let w = await wRes
         let p = await pRes
         let r = await rRes
+        let s = await sRes
 
         self.briefing = b
         self.workout = w
         self.planWeek = p
         self.readiness = r ?? nil
+        self.todaySkipped = s ?? false
         self.error = (b == nil && w == nil && p == nil)
             ? "Couldn't reach the coach. Pull to refresh."
             : nil
@@ -143,6 +172,60 @@ struct TodayView: View {
         // app, not Faff). Only runs if Health auth was previously granted;
         // never prompts here.
         Task { await HealthKitImporter.shared.importIfConnected(daysBack: 3) }
+    }
+
+    // MARK: - Skip chip (P-SKIP · Phase 12 · 2026-05-28)
+    //
+    // Renders only when there is a workout to skip (easy / quality / long)
+    // OR when the runner already skipped (so they can UNDO). Mirrors web
+    // Poster.tsx:22 — `SKIP_ELIGIBLE_STATES = { 'easy','quality','long' }`
+    // plus the separate `state === 'skipped'` undo branch.
+    private func showSkipChip(for state: FaffDayState) -> Bool {
+        switch state {
+        case .easy, .quality, .long, .skipped: return true
+        default: return false
+        }
+    }
+
+    @ViewBuilder
+    private func skipChip(currentState: FaffDayState) -> some View {
+        let isSkipped = currentState == .skipped
+        let chipText = skipBusy ? "…" : (isSkipped ? "UNDO SKIP" : "SKIP TODAY")
+        Button {
+            guard !skipBusy else { return }
+            Task { await toggleSkip(currentlySkipped: isSkipped) }
+        } label: {
+            Text(chipText)
+                .font(.body(9, weight: .bold))
+                .tracking(1.4)
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.15))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(skipBusy)
+        .accessibilityLabel(isSkipped ? "Undo skip" : "Skip today's workout")
+    }
+
+    private func toggleSkip(currentlySkipped: Bool) async {
+        skipBusy = true
+        defer { skipBusy = false }
+        do {
+            if currentlySkipped {
+                try await API.deleteSkipToday()
+                self.todaySkipped = false
+            } else {
+                try await API.postSkipToday()
+                self.todaySkipped = true
+            }
+        } catch {
+            // Network blip → silently re-fetch the truth from the server.
+            // No alert; the chip will reflect the actual state after the
+            // refresh below.
+        }
+        await loadAll()
     }
 
     // MARK: - Subviews

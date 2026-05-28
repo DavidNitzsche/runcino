@@ -46,6 +46,19 @@ export async function GET(req: NextRequest) {
         weight: i.weight,
         meaning: i.meaning,
       })),
+      // Phase 12 (2026-05-28) · per-metric values for the iPhone
+      // Sibling MiniTiles. Without these the SLEEP / RHR / HRV / LOAD
+      // tiles render `—` (see Faff/Util/FaffAdapter.swift → bodyTiles).
+      // Web doesn't read these from this endpoint — its glance loader
+      // already carries them inline — so adding them is non-breaking
+      // for every existing caller (web reads { score, band, label,
+      // inputs } only).
+      sleep7Avg: state.sleep7Avg ?? null,
+      rhrCurrent: state.rhrCurrent ?? null,
+      rhrBaseline: state.rhrBaseline ?? null,
+      hrvCurrent: state.hrvCurrent ?? null,
+      hrvBaseline: state.hrvBaseline ?? null,
+      loadAcwr: state.loadAcwr ?? null,
     });
   } catch (err: any) {
     console.error('[api/readiness] failed:', err);

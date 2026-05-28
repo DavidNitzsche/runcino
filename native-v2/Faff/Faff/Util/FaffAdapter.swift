@@ -27,6 +27,11 @@ enum FaffAdapter {
     /// Priority order (locked 2026-05-28):
     ///   1. new_user · no plan attached
     ///   2. race_week · daysToRace ≤ 7  (deferred · no race signal in PlanWeek)
+    ///   2b. skipped · runner explicitly tapped SKIP on the poster — sits
+    ///      *after* race-week (race takeover is sacred) but *before* the
+    ///      base-4 so the skipped surface wins over the original
+    ///      easy/quality/long for today. Mirrors
+    ///      web-v2/lib/faff/glance-adapter.ts:73.
     ///   3. done_nailed · ran today (≥ 0.5 mi recorded — we approximate via
     ///      the absence of a planned workout + presence of a logged run;
     ///      `briefing.mode == "post-run"` is the strongest signal we have
@@ -35,7 +40,8 @@ enum FaffAdapter {
     static func resolveDayState(
         plan: PlanWeek?,
         briefing: Briefing?,
-        workout: WatchWorkout?
+        workout: WatchWorkout?,
+        skipped: Bool = false
     ) -> FaffDayState {
         // 1. new_user · no plan or empty plan
         guard let plan, !plan.days.isEmpty else { return .new_user }
@@ -50,6 +56,10 @@ enum FaffAdapter {
         if briefing?.mode == "race-week" || briefing?.mode == "race-day" {
             return .race_week
         }
+
+        // 2b. skipped · explicit skip wins over the original base-4 surface
+        // for today (but sits behind race-week + done, like the web).
+        if skipped { return .skipped }
 
         // 6. base 4 · keyed off today's plan row
         let today = plan.days.first(where: { $0.is_today })
@@ -86,6 +96,7 @@ enum FaffAdapter {
         case .missed:        return Theme.Gradient.missed
         case .race_week:     return Theme.Gradient.race
         case .new_user:      return Theme.Gradient.new
+        case .skipped:       return Theme.Gradient.skip
         }
     }
 
@@ -114,6 +125,7 @@ enum FaffAdapter {
         case .missed:        return "MISSED THE TARGETS."
         case .race_week:     return "RACE WEEK."
         case .new_user:      return "WELCOME TO FAFF."
+        case .skipped:       return "SKIPPED TODAY."
         }
     }
 
@@ -184,6 +196,11 @@ enum FaffAdapter {
                 ]
             case .new_user, .missed, .niggle, .sick:
                 return nil
+            case .skipped:
+                // P-SKIP (Phase 12) · skipped poster is verb + gradient only,
+                // no stat trio. Mirrors glance-adapter.ts:264-269 — the body
+                // tiles (sleep/RHR/HRV/load) live on the Sibling.
+                return nil
             }
         }()
 
@@ -253,6 +270,11 @@ enum FaffAdapter {
                 return "Yesterday is gone. Catch up or move on — both protect the plan."
             case .new_user:
                 return "Connect Strava and pick a race. The rest builds from there."
+            case .skipped:
+                // P-SKIP (Phase 12) · reassurance prose. Mirrors
+                // glance-adapter.ts:378-380 — one day off is not the end of
+                // a block. Plan picks back up tomorrow exactly as written.
+                return "You called it. The plan picks back up tomorrow exactly as written. One day off is not the end of a block."
             }
         }()
 
@@ -283,60 +305,104 @@ enum FaffAdapter {
             return FaffSiblingTitle(main: "RACE WEEK", suffix: "TAPER ON")
         case .new_user:
             return FaffSiblingTitle(main: "SET UP", suffix: "GET ROLLING")
+        case .skipped:
+            // P-SKIP (Phase 12) · "TOMORROW · WE GO" mirrors
+            // glance-adapter.ts:291.
+            return FaffSiblingTitle(main: "TOMORROW", suffix: "WE GO")
         }
     }
 
-    /// SLEEP / RHR / HRV / LOAD tiles. The iPhone's ReadinessSnapshot
-    /// only carries score + label + band right now, so we surface 4
-    /// placeholder tiles that key off the readiness band. When the
-    /// inputs slice lands (HK-fed sleep / RHR / HRV), the tile values
-    /// flip from `—` to real numbers without any caller change.
+    /// SLEEP / RHR / HRV / LOAD tiles.
+    ///
+    /// Phase 12 (2026-05-28) — mirrors `bodyTiles()` in
+    /// web-v2/lib/faff/glance-adapter.ts:384-443. The web adapter
+    /// derives delta-based amber / over coloring from the same
+    /// (current, baseline) pairs we now decode in ReadinessSnapshot:
+    ///
+    ///   · SLEEP: amber when 7d avg < 7h, else green.
+    ///   · RHR  : amber when current ≥ baseline + 5 (elevated).
+    ///   · HRV  : amber when current ≤ baseline − 8 (suppressed).
+    ///   · LOAD : amber < 0.8 (detrain risk), over > 1.3 (spike risk),
+    ///            else green (sweet spot).
+    ///
+    /// Tiles render only when their underlying values are present —
+    /// no `—` placeholders. Empty array when no health data has
+    /// synced yet (matches the web behavior of skipping a tile when
+    /// its inputs are nil).
     private static func bodyTiles(readiness: ReadinessSnapshot?) -> [FaffMiniTile] {
-        let band = (readiness?.band ?? "").lowercased()
-        let dot: FaffDotColor = band == "green" ? .green
-                              : band == "yellow" ? .amber
-                              : band == "red"    ? .over
-                              : .none
+        var tiles: [FaffMiniTile] = []
 
-        // Until per-metric readiness lands, the 4 tiles re-state the
-        // readiness signal at metric granularity so the dashboard reads
-        // honestly. Each value renders as `—` when no data — no fake
-        // placeholder numbers (Cardinal Rule #6 · the only honest answer
-        // is the truth).
-        return [
-            FaffMiniTile(
+        // SLEEP · 7d avg hours. Web threshold: <7h = amber.
+        if let s = readiness?.sleep7Avg {
+            let isLow = s < 7
+            tiles.append(FaffMiniTile(
                 label: "SLEEP",
-                value: "—",
+                value: String(format: "%.1f", s),
                 valueUnit: "h",
+                valueColor: isLow ? .amber : .green,
                 meta: "7d avg",
                 metaStrong: nil,
-                dot: dot
-            ),
-            FaffMiniTile(
+                dot: isLow ? .amber : .green
+            ))
+        }
+
+        // RHR · current bpm + signed delta vs baseline.
+        // Web threshold: delta ≥ +5 bpm = amber.
+        if let cur = readiness?.rhrCurrent, let base = readiness?.rhrBaseline {
+            let delta = cur - base
+            let elevated = delta >= 5
+            let sign = delta >= 0 ? "+" : ""
+            tiles.append(FaffMiniTile(
                 label: "RHR",
-                value: "—",
+                value: "\(cur)",
                 valueUnit: "bpm",
-                meta: "vs base",
+                valueColor: elevated ? .amber : .default,
+                meta: "\(sign)\(delta) vs base",
                 metaStrong: nil,
-                dot: dot
-            ),
-            FaffMiniTile(
+                dot: elevated ? .amber : .green
+            ))
+        }
+
+        // HRV · current ms + signed delta vs baseline.
+        // Web threshold: delta ≤ −8 ms = amber (suppressed).
+        if let cur = readiness?.hrvCurrent, let base = readiness?.hrvBaseline {
+            let delta = cur - base
+            let suppressed = delta <= -8
+            let sign = delta >= 0 ? "+" : ""
+            tiles.append(FaffMiniTile(
                 label: "HRV",
-                value: "—",
+                value: "\(cur)",
                 valueUnit: "ms",
-                meta: "vs base",
+                valueColor: suppressed ? .amber : .default,
+                meta: "\(sign)\(delta) vs base",
                 metaStrong: nil,
-                dot: dot
-            ),
-            FaffMiniTile(
+                dot: suppressed ? .amber : .green
+            ))
+        }
+
+        // LOAD · ACWR (acute:chronic workload ratio).
+        // Web thresholds: > 1.3 = over (spike risk), < 0.8 = amber
+        // (detrain risk), 0.8–1.3 = green (sweet spot).
+        if let acwr = readiness?.loadAcwr {
+            let hot = acwr > 1.3
+            let cold = acwr < 0.8
+            let metaText = hot ? "spike risk"
+                         : cold ? "detrain risk"
+                         : "sweet spot"
+            let color: FaffValueColor = hot ? .over : (cold ? .amber : .green)
+            let dotColor: FaffDotColor = hot ? .over : (cold ? .amber : .green)
+            tiles.append(FaffMiniTile(
                 label: "LOAD",
-                value: readiness?.score.map { "\($0)" } ?? "—",
+                value: String(format: "%.2f", acwr),
                 valueUnit: nil,
-                meta: readiness?.label ?? "—",
+                valueColor: color,
+                meta: metaText,
                 metaStrong: nil,
-                dot: dot
-            ),
-        ]
+                dot: dotColor
+            ))
+        }
+
+        return tiles
     }
 
     // ──────────────────────────────────────────────────────────────────

@@ -292,6 +292,57 @@ enum API {
         return decoded
     }
 
+    // MARK: - P-SKIP · Skip Today (Phase 12, 2026-05-28)
+    //
+    // Mirrors web-v2/app/api/today/skip/route.ts (POST + DELETE + GET).
+    // The GET handler is added in Phase 12 so the iPhone can hydrate
+    // todaySkipped without a separate /briefing round-trip.
+
+    private struct SkipResponse: Decodable {
+        let skipped: Bool
+        let date: String
+    }
+
+    /// GET /api/today/skip → returns whether today is currently marked
+    /// as skipped. Defaults to false on any network / decode error so
+    /// the UI doesn't lie about a skip the user didn't make.
+    static func fetchTodaySkipped() async throws -> Bool {
+        let url = baseURL.appendingPathComponent("api/today/skip")
+        let (data, resp) = try await URLSession.shared.data(from: url)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return false
+        }
+        let decoded = try? JSONDecoder().decode(SkipResponse.self, from: data)
+        return decoded?.skipped ?? false
+    }
+
+    /// POST /api/today/skip → mark today as skipped. Server uses
+    /// `process.env.DEFAULT_USER_ID` and the same -7h "today" offset
+    /// as the glance loader (lib/coach/glance-state.ts:56).
+    static func postSkipToday() async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/today/skip"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Empty body — server picks today by default.
+        req.httpBody = "{}".data(using: .utf8)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+    }
+
+    /// DELETE /api/today/skip → undo today's skip.
+    static func deleteSkipToday() async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/today/skip"))
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = "{}".data(using: .utf8)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+    }
+
     /// Full /profile state — identity + physiology + connections — shaped
     /// identically to web's ProfileState. Replaces hardcoded values in
     /// ProfileView. See web-v2/app/api/profile/state/route.ts.
@@ -434,12 +485,25 @@ struct PlanDay: Decodable, Identifiable {
 // /api/readiness returns null score when there's not enough data yet
 // (e.g. fresh install before HK has synced). UI must degrade gracefully —
 // don't lie with a placeholder number.
+//
+// Phase 12 (2026-05-28) · added per-metric values (sleep7Avg, rhrCurrent,
+// rhrBaseline, hrvCurrent, hrvBaseline, loadAcwr) so the Sibling
+// MiniTiles can render real numbers + deltas instead of `—`. All
+// optional — server emits null when no health data. Mirrors the
+// glance-adapter.ts `bodyTiles()` field surface.
 struct ReadinessSnapshot: Decodable {
     let score: Int?
     let band: String?
     let label: String?
-    // inputs intentionally omitted on the iPhone for now — used by the
-    // /health readiness modal on web. iPhone shows just the ring + label.
+    // Per-metric readiness inputs — additive in Phase 12. Used by
+    // FaffAdapter.bodyTiles() to mirror glance-adapter.ts:384-443
+    // (the SLEEP / RHR / HRV / LOAD MiniTile recipes).
+    let sleep7Avg: Double?
+    let rhrCurrent: Int?
+    let rhrBaseline: Int?
+    let hrvCurrent: Int?
+    let hrvBaseline: Int?
+    let loadAcwr: Double?
 }
 
 // MARK: - P29 Settings + Profile
