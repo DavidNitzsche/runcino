@@ -26,7 +26,11 @@ struct FaffApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
-                .preferredColorScheme(.dark)
+                // Paper overhaul 2026-05-29: the app is now a warm-paper
+                // (light) surface, so system chrome — status bar, tab bar,
+                // sheets, keyboard — must render light too. Revert to .dark
+                // alongside flipping Theme's Paper.→Dark. aliases (Rule #8).
+                .preferredColorScheme(.light)
                 .background(Theme.bgPage.ignoresSafeArea())
                 // Wire the WatchConnectivity bridge + kick the HealthKit
                 // importer in ONE .task — build 78 had two stacked .task
@@ -110,31 +114,34 @@ struct RootTabView: View {
     @State private var selectedTab: Tab = .today
 
     enum Tab: String, CaseIterable, Identifiable {
-        // 2026-05-27: dropped to 5 tabs (iOS max without an auto-"More")
-        // after David asked to promote Health and demote Log. Log + Tips
-        // now live as actions inside ProfileView so they're still one
-        // tap away from anywhere.
-        case today, training, races, health, profile
+        // Paper overhaul 2026-05-29: collapsed 5 tabs → 3 (TODAY / PLAN / ME)
+        // to mirror the web 3-tab nav. The race-destination path lives in
+        // PLAN (TrainingView), with Races reachable from there. Health, Log
+        // + Tips fold into ME (ProfileView) as one-tap sheets — same demote
+        // the web did (Races → /plan strip, Health → /today chips + link).
+        case today, plan, me
         var id: String { rawValue }
-        var label: String { rawValue.capitalized }
+        var label: String {
+            switch self {
+            case .today: return "Today"
+            case .plan:  return "Plan"
+            case .me:    return "Me"
+            }
+        }
         var systemImage: String {
             switch self {
-            case .today:    return "house.fill"
-            case .training: return "calendar"
-            case .races:    return "trophy.fill"
-            case .health:   return "heart.fill"
-            case .profile:  return "person.fill"
+            case .today: return "house.fill"
+            case .plan:  return "map.fill"     // the path to the finish line
+            case .me:    return "person.fill"
             }
         }
     }
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            TodayView()    .tabItem { Label("Today",    systemImage: Tab.today.systemImage) }    .tag(Tab.today)
-            TrainingView() .tabItem { Label("Training", systemImage: Tab.training.systemImage) } .tag(Tab.training)
-            RacesView()    .tabItem { Label("Races",    systemImage: Tab.races.systemImage) }    .tag(Tab.races)
-            HealthView()   .tabItem { Label("Health",   systemImage: Tab.health.systemImage) }   .tag(Tab.health)
-            ProfileView()  .tabItem { Label("Profile",  systemImage: Tab.profile.systemImage) }  .tag(Tab.profile)
+            TodayView()    .tabItem { Label(Tab.today.label, systemImage: Tab.today.systemImage) } .tag(Tab.today)
+            TrainingView() .tabItem { Label(Tab.plan.label,  systemImage: Tab.plan.systemImage) }  .tag(Tab.plan)
+            ProfileView()  .tabItem { Label(Tab.me.label,    systemImage: Tab.me.systemImage) }    .tag(Tab.me)
         }
         .tint(Theme.green)
     }

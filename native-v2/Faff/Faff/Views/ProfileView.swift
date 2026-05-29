@@ -37,6 +37,11 @@ struct ProfileView: View {
     // here now as actions that push a sheet.
     @State private var showLogSheet = false
     @State private var showTipsSheet = false
+    // Paper overhaul 2026-05-29 · 5→3 tab collapse (Today/Plan/Me): Health
+    // lost its primary tab. It folds into ME here as a one-tap sheet —
+    // same pattern as Log/Tips — so the readiness/body surface stays one
+    // tap away. (Web equivalent: Health demoted to a /today link + chips.)
+    @State private var showHealthSheet = false
     @StateObject private var tokenStore = TokenStore.shared
     // Hydrate from AppCache so identity + physiology + connections all
     // paint instantly on first tap after launch. Refresh in background.
@@ -130,6 +135,9 @@ struct ProfileView: View {
                     // tap away.
                     SectionLabel("ACTIONS")
                     VStack(spacing: 10) {
+                        Button { showHealthSheet = true } label: {
+                            actionRow(icon: "waveform.path.ecg", label: "Health", sub: "Readiness · sleep · HRV · resting HR")
+                        }.buttonStyle(.plain)
                         Button { showLogSheet = true } label: {
                             actionRow(icon: "list.bullet.rectangle.fill", label: "Run log", sub: "Every run, chronologically")
                         }.buttonStyle(.plain)
@@ -194,6 +202,11 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showTipsSheet) {
                 TipsView()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showHealthSheet) {
+                HealthView()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }

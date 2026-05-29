@@ -28,29 +28,92 @@ import SwiftUI
 // MARK: - Theme (top-level — backwards-compatible flat surface)
 
 enum Theme {
-    // ───── Canvas (v2 names · preserved) ─────
-    static let bg      = Color(red: 0.039, green: 0.047, blue: 0.063)   // #0a0c10
-    static let bgPage  = Color(red: 0.082, green: 0.090, blue: 0.110)   // #15171c
-    static let card    = Color(red: 0.067, green: 0.078, blue: 0.102)   // #11141a
-    static let card2   = Color(red: 0.075, green: 0.090, blue: 0.122)   // #13171f
+    // ═════ ACTIVE SKIN · paper overhaul (2026-05-29) ═════
+    //
+    // The flat tokens below ALIAS the active skin. This is the iOS mirror
+    // of the web `[data-skin="paper"]` swap in web-v2/app/globals.css.
+    //
+    // Cardinal Rule #8 — dark stays revertable via token swap: BOTH full
+    // palettes live below (`Paper` + `Dark`). To revert the whole app to the
+    // original dark theme, flip these 16 aliases from `Paper.` → `Dark.`
+    // (and FaffApp's `.preferredColorScheme(.light)` back to `.dark`).
+    // Nothing else references raw colours — every View reads `Theme.bg` etc.
+    //
+    // NOTE (mirrors globals.css): only the NEUTRALS + the semantic palette
+    // swap. The 13 state Gradients below are intentionally NOT re-tuned —
+    // they're saturated enough to read on warm paper and carry the Poster
+    // accent + race-week wash on both skins.
+
+    // ───── Canvas ─────
+    static let bg      = Paper.bg
+    static let bgPage  = Paper.bgPage
+    static let card    = Paper.card
+    static let card2   = Paper.card2
 
     // ───── Ink ─────
-    static let ink   = Color(red: 0.965, green: 0.969, blue: 0.973)     // #f6f7f8
-    static let mute  = Color(red: 0.541, green: 0.565, blue: 0.627)     // #8a90a0
-    static let dim   = Color(red: 0.294, green: 0.314, blue: 0.369)     // #4b505e
+    static let ink   = Paper.ink
+    static let mute  = Paper.mute
+    static let dim   = Paper.dim
 
     // ───── Lines ─────
-    static let line  = Color.white.opacity(0.08)
-    static let line2 = Color.white.opacity(0.04)
+    static let line  = Paper.line
+    static let line2 = Paper.line2
 
     // ───── Semantic palette ─────
-    static let green  = Color(red: 0.243, green: 0.741, blue: 0.255)    // #3EBD41 DONE
-    static let goal   = Color(red: 0.953, green: 0.678, blue: 0.220)    // #F3AD38 QUALITY
-    static let over   = Color(red: 0.988, green: 0.302, blue: 0.392)    // #FC4D64 over/alert
-    static let dist   = Color(red: 0.153, green: 0.706, blue: 0.878)    // #27B4E0 LONG
-    static let rest   = Color(red: 0.000, green: 0.561, blue: 0.925)    // #008FEC REST
-    static let learn  = Color(red: 0.690, green: 0.518, blue: 1.000)    // #B084FF PHASE
-    static let race   = Color(red: 1.000, green: 0.533, blue: 0.278)    // #FF8847 RACE WEEK
+    static let green  = Paper.green
+    static let goal   = Paper.goal
+    static let over   = Paper.over
+    static let dist   = Paper.dist
+    static let rest   = Paper.rest
+    static let learn  = Paper.learn
+    static let race   = Paper.race
+
+    // ───── PAPER skin · warm spec-sheet (ACTIVE) ─────
+    // Values traced 1:1 to the `[data-skin="paper"]` block in globals.css.
+    enum Paper {
+        static let bg      = Color(hex: 0xECE7DD)   // recessed paper
+        static let bgPage  = Color(hex: 0xF2EFE9)   // THE canvas · warm paper
+        static let card    = Color(hex: 0xF7F4EE)   // raised paper card
+        static let card2   = Color(hex: 0xFBFAF6)   // lightest paper (top layer)
+
+        static let ink   = Color(hex: 0x14110D)     // near-black warm
+        static let mute  = Color(hex: 0x6B6358)     // warm grey label
+        static let dim   = Color(hex: 0xA9A093)     // faint warm grey
+
+        static let line  = Color(hex: 0x14110D).opacity(0.14)
+        static let line2 = Color(hex: 0x14110D).opacity(0.07)
+
+        static let green  = Color(hex: 0x1E9E47)    // ON TRACK / DONE (deepened)
+        static let goal   = Color(hex: 0xC2791A)    // WATCH / QUALITY (deepened)
+        static let over   = Color(hex: 0xD8344C)    // OFF TRACK / alert (deepened)
+        static let dist   = Color(hex: 0x1789B0)    // LONG / distance (deepened)
+        static let rest   = Color(hex: 0x1268C9)    // REST (deepened)
+        static let learn  = Color(hex: 0x7A4FD0)    // PHASE / insight (deepened)
+        static let race   = Color(hex: 0xDD5F22)    // RACE WEEK / horizon (deepened)
+    }
+
+    // ───── DARK skin · original v3 (REVERT TARGET · Cardinal Rule #8) ─────
+    enum Dark {
+        static let bg      = Color(hex: 0x0A0C10)
+        static let bgPage  = Color(hex: 0x15171C)
+        static let card    = Color(hex: 0x11141A)
+        static let card2   = Color(hex: 0x13171F)
+
+        static let ink   = Color(hex: 0xF6F7F8)
+        static let mute  = Color(hex: 0x8A90A0)
+        static let dim   = Color(hex: 0x4B505E)
+
+        static let line  = Color.white.opacity(0.08)
+        static let line2 = Color.white.opacity(0.04)
+
+        static let green  = Color(hex: 0x3EBD41)    // DONE
+        static let goal   = Color(hex: 0xF3AD38)    // QUALITY
+        static let over   = Color(hex: 0xFC4D64)    // over/alert
+        static let dist   = Color(hex: 0x27B4E0)    // LONG
+        static let rest   = Color(hex: 0x008FEC)    // REST
+        static let learn  = Color(hex: 0xB084FF)    // PHASE
+        static let race   = Color(hex: 0xFF8847)    // RACE WEEK
+    }
 
     // ───── Radii ─────
     static let rCard:  CGFloat = 18

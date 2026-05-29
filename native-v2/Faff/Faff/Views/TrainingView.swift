@@ -35,6 +35,12 @@ struct TrainingView: View {
     /// first launch. From then on we paint real content and let
     /// `.task` refresh silently in the background.
     @State private var loading: Bool = AppCache.readRaw(.trainingState) == nil
+    /// Paper overhaul 2026-05-29 · 5→3 tab collapse (Today/Plan/Me): Races
+    /// lost its primary tab and now lives under PLAN. A top-bar flag opens
+    /// the full races surface as a sheet — always reachable, including in
+    /// the no-active-plan state (the scroll body is empty there). (Web
+    /// equivalent: the race-destination strip on /plan.)
+    @State private var showRacesSheet = false
 
     var body: some View {
         NavigationStack {
@@ -107,6 +113,19 @@ struct TrainingView: View {
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Training")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showRacesSheet = true } label: {
+                        Label("Races", systemImage: "flag.checkered")
+                    }
+                    .tint(Theme.race)
+                }
+            }
+            .sheet(isPresented: $showRacesSheet) {
+                RacesView()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
             .task { await load() }
             .refreshable { await load() }
         }
