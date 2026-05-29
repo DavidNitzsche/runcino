@@ -2,8 +2,13 @@
  * OnboardingShell — modal-style wrapper for the Lilian flow.
  *
  * Owns:
- *   · Full-viewport gradient face (g-new on landing/goal/signals/confirm,
- *     g-done on completion).
+ *   · Full-viewport gradient face. Goal-dependent · user feedback
+ *     2026-05-28 retired the purple (g-new) default. Mapping now:
+ *       · landing (no pick yet) → g-race  (orange · default assumption: racing)
+ *       · goal=5k/10k/half/marathon → g-race (stays orange)
+ *       · goal=none (just run consistently) → g-long (blue · aerobic identity)
+ *       · goal=tt (time-trial under N) → g-quality (amber/orange · interval identity)
+ *       · completion → matches whatever they picked (carries momentum)
  *   · Brand wordmark + back link in a thin top strip (no TopNav — the
  *     flow is intentionally a modal experience).
  *   · Step indicator (progress dots · 3 segments · highlights current).
@@ -18,10 +23,19 @@
 import Link from 'next/link';
 import type { OnboardingState } from '@/lib/onboarding/state';
 
+/** Goal-intent · drives the face gradient. */
+export type OnboardingIntent =
+  | 'landing'      // no pick yet · default = race-orange
+  | 'race'         // picked 5k/10k/half/marathon
+  | 'consistency'  // picked "no specific race · just run"
+  | 'tt-goal';     // picked a time-trial goal (1mi / 5k / 10k under X)
+
 export interface OnboardingShellProps {
   state: OnboardingState;
   /** Variant decides which face gradient renders. */
   variant: 'new' | 'done';
+  /** Goal-intent picked so far · drives the gradient color. */
+  intent?: OnboardingIntent;
   /** Where the small "← Back" link in the top strip should go. */
   backHref?: string;
   /** Step number for the indicator (1, 2, 3, null on landing/done). */
@@ -29,10 +43,35 @@ export interface OnboardingShellProps {
   children: React.ReactNode;
 }
 
+/** Resolve gradient token per (variant, intent). Completion mirrors the
+ *  intent the runner picked so the momentum carries through. */
+function gradientFor(variant: 'new' | 'done', intent: OnboardingIntent): string {
+  // Completion carries the intent's color forward — the runner finishes on
+  // the same vibe they picked. Falls back to g-done (green→teal) when
+  // intent is still landing (shouldn't normally happen).
+  if (variant === 'done') {
+    switch (intent) {
+      case 'race':         return 'var(--g-race)';
+      case 'consistency':  return 'var(--g-long)';
+      case 'tt-goal':      return 'var(--g-quality)';
+      case 'landing':
+      default:             return 'var(--g-done)';
+    }
+  }
+  // All other steps · the in-flow gradient follows the intent.
+  switch (intent) {
+    case 'race':         return 'var(--g-race)';
+    case 'consistency':  return 'var(--g-long)';
+    case 'tt-goal':      return 'var(--g-quality)';
+    case 'landing':
+    default:             return 'var(--g-race)'; // default = race-orange (the assumption)
+  }
+}
+
 export function OnboardingShell({
-  state: _state, variant, backHref, stepNumber, children,
+  state: _state, variant, intent = 'landing', backHref, stepNumber, children,
 }: OnboardingShellProps) {
-  const faceBg = variant === 'done' ? 'var(--g-done)' : 'var(--g-new)';
+  const faceBg = gradientFor(variant, intent);
 
   return (
     <main style={{

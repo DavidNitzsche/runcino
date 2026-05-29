@@ -1,16 +1,17 @@
 /**
  * /onboarding · Lilian onboarding flow (locked 2026-05-28).
  *
- * Five screens (URL-driven, no sessionStorage):
- *   - landing  · /onboarding              · LandingHero
- *   - goal     · /onboarding?step=goal    · Step1Goal
- *   - signals  · /onboarding?step=signals · Step2Signals
- *   - confirm  · /onboarding?step=confirm · Step3Confirm
- *   - done     · /onboarding?step=done    · CompletionScreen
+ * Six screens (URL-driven, no sessionStorage):
+ *   - landing       · /onboarding                       · LandingHero
+ *   - goal          · /onboarding?step=goal             · Step1Goal
+ *   - goal-details  · /onboarding?step=goal-details     · Step1bGoalDetails (no-race only)
+ *   - signals       · /onboarding?step=signals          · Step2Signals
+ *   - confirm       · /onboarding?step=confirm          · Step3Confirm
+ *   - done          · /onboarding?step=done             · CompletionScreen
  *
  * Per-step temp state lives in `searchParams`. Final write happens on
  * "Start training" → POST /api/onboarding/complete → profile.* columns
- * (migration 115_profile_onboarding.sql).
+ * (migrations 115 + 118).
  *
  * Design source: docs/2026-05-28-onboarding-lilian.html
  */
@@ -24,6 +25,7 @@ import {
 import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
 import { LandingHero } from '@/components/onboarding/LandingHero';
 import { Step1Goal } from '@/components/onboarding/Step1Goal';
+import { Step1bGoalDetails } from '@/components/onboarding/Step1bGoalDetails';
 import { Step2Signals } from '@/components/onboarding/Step2Signals';
 import { Step3Confirm } from '@/components/onboarding/Step3Confirm';
 import { CompletionScreen } from '@/components/onboarding/CompletionScreen';
@@ -40,14 +42,22 @@ export default async function OnboardingPage({
   const sp = await searchParams;
   const state = parseOnboardingParams(sp);
 
-  // Server-side enrichment: if landing on /signals, check whether the
-  // runner is actually already Strava-connected (so the tile flips green
-  // even if they didn't come back through the OAuth callback). Cheap.
-  if (state.step === 'signals') {
+  // Server-side enrichment: if landing on /signals OR /goal-details, check
+  // whether the runner is actually already Strava-connected (so the tile
+  // flips green / Strava history card renders without forcing OAuth bounce).
+  if (state.step === 'signals' || state.step === 'goal-details') {
     try {
       const connected = await hasStravaConnection(DAVID_USER_ID);
       if (connected) state.stravaConnected = true;
     } catch {/* non-fatal */}
+  }
+
+  // Pre-compute Strava-derived avg weekly mi + longest recent run for the
+  // Step 1b history card. Only when actually on that step + actually
+  // connected — keeps the landing/goal pages cheap.
+  let stravaHistory: { avgWeeklyMi: number; longestRecentMi: number } | null = null;
+  if (state.step === 'goal-details' && state.stravaConnected) {
+    stravaHistory = await loadStravaHistorySummary(DAVID_USER_ID).catch(() => null);
   }
 
   // Server-side enrichment for /confirm: pre-fill the name from profile
@@ -80,13 +90,29 @@ export default async function OnboardingPage({
     );
   }
 
+  if (state.step === 'goal-details') {
+    return (
+      <OnboardingShell
+        state={state}
+        variant="new"
+        stepNumber={1}
+        backHref={buildOnboardingHref(state, { step: 'goal' })}
+      >
+        <Step1bGoalDetails initial={state} stravaHistory={stravaHistory} />
+      </OnboardingShell>
+    );
+  }
+
   if (state.step === 'signals') {
     return (
       <OnboardingShell
         state={state}
         variant="new"
         stepNumber={2}
-        backHref={buildOnboardingHref(state, { step: 'goal' })}
+        backHref={buildOnboardingHref(state, {
+          // Bounce back to the right prior step for the no-race path.
+          step: state.distance === 'none' ? 'goal-details' : 'goal',
+        })}
       >
         <Step2Signals initial={state} />
       </OnboardingShell>
@@ -159,6 +185,43 @@ async function loadFirstNameGuess(userId: string): Promise<string | null> {
   } catch { /* swallow */ }
 
   return null;
+}
+
+/**
+ * Compute Strava-derived running-history summary for the Step 1b card.
+ *
+ *   - avgWeeklyMi   = total miles in the last 28 days / 4 (rounded int).
+ *   - longestRecentMi = single largest run distance in the last 28 days.
+ *
+ * Reads the same `strava_activities` table the coach state loaders use,
+ * filters out merged-duplicate activities. Defensive — returns null on
+ * any DB error or empty result so the UI falls back to the chip groups.
+ */
+async function loadStravaHistorySummary(
+  userId: string
+): Promise<{ avgWeeklyMi: number; longestRecentMi: number } | null> {
+  try {
+    const r = await pool.query(
+      `SELECT
+          COALESCE(SUM((data->>'distanceMi')::numeric), 0)  AS total_mi,
+          COALESCE(MAX((data->>'distanceMi')::numeric), 0)  AS max_mi
+         FROM strava_activities
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND NOT (data ? 'mergedIntoId')
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))
+              >= (CURRENT_DATE - INTERVAL '28 days')::text`,
+      [userId]
+    );
+    const totalMi = Number(r.rows[0]?.total_mi) || 0;
+    const maxMi = Number(r.rows[0]?.max_mi) || 0;
+    if (totalMi <= 0) return null;
+    return {
+      avgWeeklyMi: Math.max(1, Math.round(totalMi / 4)),
+      longestRecentMi: Math.max(1, Math.round(maxMi)),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // Hint to the OnboardingState type that landing-step IS a valid value
