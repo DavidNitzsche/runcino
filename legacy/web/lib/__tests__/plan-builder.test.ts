@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildPlan, autoDetectLevel, peakVolumeForLevel, peakLongRunForLevel } from '../../coach/plan-builder';
+import { buildPlan, autoDetectLevel, peakVolumeForLevel, peakLongRunForLevel, parseTTTimeBucket } from '../../coach/plan-builder';
 import type { CoachState } from '../coach-state';
 
 function makeState(weeklyAvg4w: number, longestTrainingMi: number, todayISO: string): CoachState {
@@ -235,5 +235,141 @@ describe('buildPlan, maintenance mode', () => {
       expect(long!.distanceMi).toBeGreaterThan(0);
       expect(long!.distanceMi).toBeLessThanOrEqual(13);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 28 · onboarding goals → maintenance-branch overrides.
+// Locks Lilian's no-race path (migration 118) through buildPlan: a
+// runner who picked "No specific race" + supplied weekly target +
+// history floor + TT goal should land on a plan that respects all
+// three, even with zero Strava cache.
+// ─────────────────────────────────────────────────────────────────────
+
+describe('parseTTTimeBucket', () => {
+  it('parses 5K range midpoint to seconds', () => {
+    expect(parseTTTimeBucket('5k', '22-25')).toBe(Math.round((22 * 60 + 25 * 60) / 2));
+  });
+  it('parses 10K range midpoint', () => {
+    expect(parseTTTimeBucket('10k', '40-45')).toBe(Math.round((40 * 60 + 45 * 60) / 2));
+  });
+  it('parses mile MM:SS midpoint', () => {
+    // (5:00 + 6:00)/2 = 5:30 = 330s
+    expect(parseTTTimeBucket('1mi', '5:00-6:00')).toBe(330);
+  });
+  it('parses "Under X" as the boundary', () => {
+    expect(parseTTTimeBucket('5k', 'Under 20:00')).toBe(20 * 60);
+    expect(parseTTTimeBucket('10k', 'Under 40')).toBe(40 * 60);
+  });
+  it('parses "X+" as the boundary', () => {
+    expect(parseTTTimeBucket('5k', '32+')).toBe(32 * 60);
+  });
+  it('returns null on garbage', () => {
+    expect(parseTTTimeBucket('5k', 'whatever')).toBe(null);
+  });
+});
+
+describe('buildPlan · maintenance · onboarding goals (migration 118)', () => {
+  it('honours weeklyMiTarget as the peak weekly mileage', async () => {
+    // Strava cache says 12 mpw, but the runner declared a 35 mpw target.
+    // The plan peak should land near the target, not the cache.
+    const state = makeState(12, 6, TODAY);
+    const plan = await buildPlan({
+      state,
+      prefs: { longRunDow: 6, qualityDows: [3], restDow: 1 },
+      onboardingGoals: {
+        ttDistance: null,
+        ttTimeBucket: null,
+        weeklyMiTarget: 35,
+        weeklyFrequency: 5,
+        historyAvgWeeklyMi: null,
+        historyLongestRecentMi: null,
+        historyYearsRunning: null,
+      },
+      todayISO: TODAY,
+    });
+    expect(plan.mode).toBe('maintenance');
+    const peakWeek = Math.max(...plan.weeks.map(w => w.workouts.reduce((s, x) => s + x.distanceMi, 0)));
+    // Maintenance holds ~peak flat (Daniels §13) — within ±10% of target.
+    expect(peakWeek).toBeGreaterThanOrEqual(30);
+    expect(peakWeek).toBeLessThanOrEqual(40);
+  });
+
+  it('uses historyAvgWeeklyMi as the cold-start floor when Strava is empty', async () => {
+    // 0 mi from Strava but runner says "I run ~20 mi/wk."
+    const state = makeState(0, 0, TODAY);
+    const plan = await buildPlan({
+      state,
+      prefs: { longRunDow: 6, qualityDows: [3], restDow: 1 },
+      onboardingGoals: {
+        ttDistance: null,
+        ttTimeBucket: null,
+        weeklyMiTarget: null,
+        weeklyFrequency: null,
+        historyAvgWeeklyMi: 20,
+        historyLongestRecentMi: null,
+        historyYearsRunning: null,
+      },
+      todayISO: TODAY,
+    });
+    // Week 0 (start) should be ≥ 20 mpw, not the 8 mpw floor.
+    const w0 = plan.weeks[0].workouts.reduce((s, x) => s + x.distanceMi, 0);
+    expect(w0).toBeGreaterThanOrEqual(18);  // 20 ± rounding
+  });
+
+  it('uses historyLongestRecentMi as the long-run floor', async () => {
+    const state = makeState(0, 0, TODAY);
+    const plan = await buildPlan({
+      state,
+      prefs: { longRunDow: 6, qualityDows: [3], restDow: 1 },
+      onboardingGoals: {
+        ttDistance: null,
+        ttTimeBucket: null,
+        weeklyMiTarget: 25,
+        weeklyFrequency: 4,
+        historyAvgWeeklyMi: 20,
+        historyLongestRecentMi: 12,
+        historyYearsRunning: null,
+      },
+      todayISO: TODAY,
+    });
+    const longs = plan.weeks.flatMap(w => w.workouts.filter(x => x.isLong));
+    const maxLong = Math.max(...longs.map(l => l.distanceMi));
+    // Long floor = 50% of 12 = 6 mi. Plan should reach at least 6 somewhere.
+    expect(maxLong).toBeGreaterThanOrEqual(5);
+  });
+
+  it('falls through to default behavior when onboardingGoals is omitted', async () => {
+    // Regression guard: existing maintenance callers must keep working.
+    const state = makeState(25, 10, TODAY);
+    const plan = await buildPlan({
+      state,
+      prefs: { longRunDow: 6, qualityDows: [3], restDow: 1, level: 'intermediate' },
+      todayISO: TODAY,
+    });
+    expect(plan.mode).toBe('maintenance');
+    expect(plan.weeks.length).toBe(16);
+  });
+
+  it('cold-start with everything null still produces a valid plan (no crash)', async () => {
+    // Migration 118 · "No specific race" + no goal-details data.
+    // Hits constraint #4: cold-start must fall through, not crash.
+    const state = makeState(0, 0, TODAY);
+    const plan = await buildPlan({
+      state,
+      prefs: { longRunDow: 6, qualityDows: [3], restDow: 1 },
+      onboardingGoals: {
+        ttDistance: null, ttTimeBucket: null,
+        weeklyMiTarget: null, weeklyFrequency: null,
+        historyAvgWeeklyMi: null, historyLongestRecentMi: null,
+        historyYearsRunning: null,
+      },
+      todayISO: TODAY,
+    });
+    expect(plan.mode).toBe('maintenance');
+    expect(plan.weeks.length).toBe(16);
+    // 8 mpw floor still applies.
+    const w0 = plan.weeks[0].workouts.reduce((s, x) => s + x.distanceMi, 0);
+    expect(w0).toBeGreaterThanOrEqual(7);
   });
 });

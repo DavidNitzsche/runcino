@@ -35,7 +35,7 @@ import {
 import { PLAN_TEMPLATES, type PlanDistance } from './doctrine/plan_templates';
 import { THRESHOLD_SESSION_PROGRESSION, STRENGTH_SCHEDULE } from './doctrine/workouts';
 import { RACE_WEEK_TEMPLATES } from './doctrine/race_week';
-import { vdotSnapshot, pacesFromVdot, type DanielsPaceSet } from '../lib/vdot';
+import { vdotSnapshot, pacesFromVdot, vdotFromRace, type DanielsPaceSet } from '../lib/vdot';
 
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 
@@ -51,6 +51,52 @@ export interface BuildPlanRace {
   priority: 'A' | 'B' | 'C';
 }
 
+/**
+ * Onboarding goals captured on the "No specific race" path (migration
+ * 118 · /api/onboarding/complete). Every field is optional so the
+ * builder can fall through to its existing behavior when nothing was
+ * provided (race-anchored path, mid-build runner, etc).
+ *
+ * Values mirror the profile columns persisted by the no-race
+ * Step 1b · goal-details screen.
+ */
+export interface OnboardingGoals {
+  /** From profile.tt_goal_distance + tt_goal_time.
+   *  Optional time-trial target — drives a build toward a TT effort
+   *  during the first 8 weeks of a maintenance plan when both are set.
+   *  Daniels Running Formula §VDOT table is the anchor: a 22-25 5K
+   *  bucket → midpoint 23:30 → table lookup → VDOT seed. */
+  ttDistance: '1mi' | '5k' | '10k' | null;
+  /** Bucketed chip value (e.g. "22-25"). Builder translates the bucket
+   *  to a target time using `parseTTTimeBucket()` (midpoint of the
+   *  range, in seconds). */
+  ttTimeBucket: string | null;
+
+  /** From profile.weekly_mileage_target + weekly_frequency.
+   *  When set, weeklyMiTarget becomes the peak weekly mileage (instead
+   *  of auto-derived from history); weeklyFrequency hints at the
+   *  number of run days but is honored upstream by callers that
+   *  derive `prefs.qualityDows`. The builder itself reads only the
+   *  prefs that were passed in. */
+  weeklyMiTarget: number | null;
+  weeklyFrequency: number | null;
+
+  /** From profile.history_avg_weekly_mi (chip midpoint) — used as a
+   *  cold-start floor when `state.volume.weeklyAvg4w` is 0 (no Strava
+   *  history yet). */
+  historyAvgWeeklyMi: number | null;
+  /** From profile.history_longest_recent_mi (chip midpoint) — used as
+   *  the long-run floor when state.volume.longestTrainingRunLast28Mi
+   *  is 0, mirroring the recent-long anchor rule in Research/00a
+   *  §"The 10% rule, reconsidered". */
+  historyLongestRecentMi: number | null;
+  /** From profile.history_years_running — coarse experience hint.
+   *  Currently unused inside the builder (kept on the interface for
+   *  forward-compat: an upstream caller can use it to bump the
+   *  auto-detected level). */
+  historyYearsRunning: '<1' | '1-3' | '3-7' | '7+' | null;
+}
+
 export interface BuildPlanInputs {
   state: CoachState;
   prefs: {
@@ -60,9 +106,84 @@ export interface BuildPlanInputs {
     level?: Level;
   };
   race?: BuildPlanRace;
+  /** No-race-path onboarding inputs (migration 118). Read only by the
+   *  maintenance branch — the race-anchored path uses the race table
+   *  and ignores these. See `OnboardingGoals` for the field mapping. */
+  onboardingGoals?: OnboardingGoals;
   todayISO?: string;
   planId?: string;
   userId?: string;
+}
+
+/**
+ * Translate a `TT_TIME_LADDERS` bucket value (e.g. "22-25", "Under 5:00",
+ * "Under 40", "5:00-6:00", "8:00+") to a target time in seconds — the
+ * midpoint of the range when both ends are present, the boundary when
+ * one side is open-ended. Returns null when the bucket is unparseable.
+ *
+ * Buckets used by the chip ladders (see lib/onboarding/state.ts):
+ *   1mi: 'Under 5:00' | '5:00-6:00' | '6:00-7:00' | '7:00-8:00' | '8:00+'
+ *   5k:  'Under 20:00' | '20-22' | '22-25' | '25-28' | '28-32' | '32+'
+ *   10k: 'Under 40' | '40-45' | '45-50' | '50-60' | '60+'
+ *
+ *  The mile bucket uses MM:SS strings; the 5K/10K buckets use minute
+ *  integers. We detect format with a colon presence.
+ */
+export function parseTTTimeBucket(
+  ttDistance: 'mile' | '5k' | '10k' | '1mi',
+  bucket: string,
+): number | null {
+  const b = bucket.trim();
+  if (!b) return null;
+
+  // Silence the unused-arg lint (kept for future per-distance sanity
+  // bounds, e.g. clamp to plausible mile / 5K / 10K times).
+  void ttDistance;
+
+  // Boundary handling — "Under X" returns X, "X+" returns X. We treat
+  // these as conservative reads (don't credit fitness the runner hasn't
+  // earned with an open bucket).
+  const toSeconds = (s: string): number | null => {
+    s = s.trim();
+    if (s.length === 0) return null;
+    // MM:SS form (mile bucket).
+    const colon = s.match(/^(\d+):(\d{2})$/);
+    if (colon) return (+colon[1]) * 60 + (+colon[2]);
+    // Plain minutes (5K/10K buckets).
+    const mins = s.match(/^(\d+(?:\.\d+)?)$/);
+    if (mins) return Math.round(parseFloat(mins[1]) * 60);
+    return null;
+  };
+
+  // "Under X" or "X+" — boundary.
+  const under = b.match(/^Under\s+(.+)$/i);
+  if (under) {
+    const t = toSeconds(under[1]);
+    return t;
+  }
+  const plus = b.match(/^(.+)\+$/);
+  if (plus) {
+    const t = toSeconds(plus[1]);
+    return t;
+  }
+  // "X-Y" — midpoint.
+  const range = b.match(/^([\d.:]+)-([\d.:]+)$/);
+  if (range) {
+    const lo = toSeconds(range[1]);
+    const hi = toSeconds(range[2]);
+    if (lo == null || hi == null) return null;
+    return Math.round((lo + hi) / 2);
+  }
+  // Fall through: try as a single value.
+  return toSeconds(b);
+}
+
+/** Map a TT distance chip value to the canonical distance-in-miles the
+ *  VDOT table understands. */
+function ttDistanceMi(d: 'mile' | '5k' | '10k' | '1mi'): number {
+  if (d === '1mi' || d === 'mile') return 1;
+  if (d === '5k') return 3.107;
+  return 6.214; // 10k
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -387,7 +508,7 @@ export function weekShape(
 // ─────────────────────────────────────────────────────────────────
 
 export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
-  const { state, prefs, race } = inputs;
+  const { state, prefs, race, onboardingGoals } = inputs;
   const todayISO = inputs.todayISO ?? state.now;
   const userId   = inputs.userId  ?? 'me';
   const planId   = inputs.planId  ?? newId();
@@ -405,8 +526,39 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
   const raceDist = race?.distanceMi ?? 13.1;
 
   // VDOT-derived Daniels pace bands (null when no race result is available).
+  // Maintenance branch · cold-start: if the runner has no race history
+  // but seeded a time-trial goal during onboarding (migration 118), we
+  // derive paces from the TT bucket midpoint via Daniels Running Formula
+  // §VDOT table. This is conservative — the runner's stated bucket time
+  // is what they think they can hit, not a verified result, so we never
+  // overwrite a real vdotSnap when one exists.
   const vdotSnap = vdotSnapshot(state);
-  const paces: DanielsPaceSet | null = vdotSnap ? pacesFromVdot(vdotSnap.vdot) : null;
+  let paces: DanielsPaceSet | null = vdotSnap ? pacesFromVdot(vdotSnap.vdot) : null;
+  if (
+    paces == null &&
+    mode === 'maintenance' &&
+    onboardingGoals?.ttDistance &&
+    onboardingGoals?.ttTimeBucket
+  ) {
+    const ttSec = parseTTTimeBucket(onboardingGoals.ttDistance, onboardingGoals.ttTimeBucket);
+    if (ttSec != null && ttSec > 0) {
+      const distMi = ttDistanceMi(onboardingGoals.ttDistance);
+      const ttVdot = vdotFromRace(distMi, ttSec);
+      if (ttVdot != null) {
+        paces = pacesFromVdot(ttVdot);
+      }
+    }
+  }
+
+  // Friel LTHR from profile (Research/03 §6 · 30-min TT field method).
+  // Drives the HR ceilings emitted into workout_spec so /runs/[id]
+  // WorkoutBreakdown and /today Poster A3 breakdown rows can show real HR
+  // caps instead of placeholder bpm strings. Null when the runner hasn't
+  // set a manual LTHR — downstream emits null HR fields and the renderer
+  // falls back to its existing placeholder. Path A auto-derivation
+  // (Phase 32 follow-up) will lift this from manual-only to also-from-
+  // data; this round just consumes whatever profile.lthr already carries.
+  const lthr: number | null = state.recovery.lthrBpm ?? null;
 
   // Plan window
   const startMonday = startOfWeekMonday(today);
@@ -428,21 +580,80 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
 
   const phaseSlices = planPhases(totalWeeks, mode);
 
-  // Volume targets
-  const peakMpwTarget = mode === 'race-prep'
-    ? peakVolumeForLevel(raceDist, level)
-    : Math.max(8, state.volume.weeklyAvg4w);
+  // ── Maintenance-branch overrides (onboarding goals, migration 118) ─
+  // When the runner picked "No specific race" but supplied weekly /
+  // history targets through Step 1b · goal-details, honor those numbers
+  // instead of auto-deriving everything from Strava cache. The race-
+  // anchored path is intentionally untouched (race table + doctrine
+  // template remain the source of truth there).
+  //
+  // Cite: Daniels Running Formula §13 · "Periodization" — maintenance
+  // weeks hold ~peak with a small cutback every third week, so anchoring
+  // the peak to a runner-stated target is the cleanest single dial.
 
-  const peakLongTarget = mode === 'race-prep'
-    ? peakLongRunForLevel(raceDist, level)
-    : Math.max(4, round1(state.volume.longestTrainingRunLast28Mi * 0.5));
+  // Volume targets
+  let peakMpwTarget: number;
+  if (mode === 'race-prep') {
+    peakMpwTarget = peakVolumeForLevel(raceDist, level);
+  } else if (onboardingGoals?.weeklyMiTarget != null && onboardingGoals.weeklyMiTarget > 0) {
+    // Honor the runner's stated weekly mileage target as the peak.
+    // weeklyVolumeCurve applies the 0.82× cutback every third week.
+    peakMpwTarget = Math.max(8, onboardingGoals.weeklyMiTarget);
+  } else {
+    peakMpwTarget = Math.max(8, state.volume.weeklyAvg4w);
+  }
+
+  let peakLongTarget: number;
+  if (mode === 'race-prep') {
+    peakLongTarget = peakLongRunForLevel(raceDist, level);
+  } else {
+    // Maintenance: 50% of the longest training run in the recent window
+    // (Research/00a §"The 10% rule, reconsidered" — never anchor off a
+    // race effort). When there's no recent training data but the runner
+    // reported a historical longest in onboarding, use that as a floor
+    // so a 12mi-history runner doesn't get a 4mi-long plan.
+    const recentLongest = round1(state.volume.longestTrainingRunLast28Mi * 0.5);
+    const historyLongest = onboardingGoals?.historyLongestRecentMi != null
+      ? round1(onboardingGoals.historyLongestRecentMi * 0.5)
+      : 0;
+    peakLongTarget = Math.max(4, recentLongest, historyLongest);
+  }
+
+  // Cold-start handling for the maintenance branch:
+  // (a) state.volume.weeklyAvg4w <= 0 + onboardingGoals.historyAvgWeeklyMi set
+  //     → use the runner-reported number as the starting volume.
+  //     Daniels §13 anchors maintenance ramps off "what the runner is
+  //     already running" — a fresh-onboarder with no Strava yet but a
+  //     declared "I run ~20 mi/wk" should land on 20, not 8.
+  // (b) Otherwise existing behavior (weeklyAvg4w, floor 8).
+  const stravaMpw = state.volume.weeklyAvg4w;
+  const seedMpw = mode === 'maintenance' && stravaMpw <= 0
+      && onboardingGoals?.historyAvgWeeklyMi != null
+      && onboardingGoals.historyAvgWeeklyMi > 0
+    ? onboardingGoals.historyAvgWeeklyMi
+    : stravaMpw;
+  const actualMpw = Math.max(8, seedMpw);
 
   // When the user explicitly sets their level, honour the level's minimum
   // starting volume, avoids embarrassingly tiny runs from stale Strava data.
-  const actualMpw = Math.max(8, state.volume.weeklyAvg4w);
-  const startMpw = prefs.level != null
+  let startMpw = prefs.level != null
     ? Math.max(actualMpw, levelMinStartMpw(raceDist, level))
     : actualMpw;
+
+  // Maintenance branch · weeklyVolumeCurve holds flat at startMpw (not
+  // peakMpwTarget), so a runner who picked a 35 mpw target with only
+  // 12 mpw of stale Strava history would otherwise stay at 12. Lift
+  // startMpw to the runner-stated target in maintenance mode so the
+  // flat hold lands on the requested volume. Daniels §13 — maintenance
+  // weeks ARE peak weeks (no ramp), the runner's stated number is the
+  // single dial.
+  if (
+    mode === 'maintenance' &&
+    onboardingGoals?.weeklyMiTarget != null &&
+    onboardingGoals.weeklyMiTarget > 0
+  ) {
+    startMpw = Math.max(startMpw, onboardingGoals.weeklyMiTarget);
+  }
 
   const curve = weeklyVolumeCurve(totalWeeks, startMpw, peakMpwTarget, phaseSlices);
 
@@ -610,7 +821,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         // Migration 120 (2026-05-28): structured spec for WorkoutBreakdown +
         // Poster A3 breakdown rows. null when no VDOT (runner has no race
         // result yet); downstream falls back to label-only render.
-        workoutSpec: buildWorkoutSpec(effectiveType, subLabel, distances[jsDow], paces),
+        workoutSpec: buildWorkoutSpec(effectiveType, subLabel, distances[jsDow], paces, lthr),
         originalDateISO: dateISO,
         originalType: effectiveType,
         originalDistanceMi: distances[jsDow],
@@ -735,18 +946,35 @@ function buildWorkoutSpec(
   subLabel: string | null,
   distanceMi: number,
   paceSet: DanielsPaceSet | null,
+  lthr: number | null,
 ): WorkoutSpec | null {
   if (!paceSet) return null;
+
+  // LTHR-anchored HR ceilings per Friel zones (Research/03 §6):
+  //   easy      → ~88% LTHR (Z2 ceiling, aerobic)
+  //   long      → ~85% LTHR (long-day cap — more conservative than Z2
+  //                because aerobic drift on multi-hour days outpaces HR
+  //                zone midpoints)
+  //   recovery  → ~75% LTHR (Z1 ceiling, strict aerobic)
+  //   tempo/mp  → ~92% LTHR (Z3 mid-band, sub-LT steady)
+  //   threshold → emit LTHR directly so renderers can show the anchor
+  //                alongside the rep pace (Z5a sits at 100–102% LTHR)
+  // Null when no LTHR set — renderers fall back to placeholders.
+  const easyHrCap     = lthr != null ? Math.round(lthr * 0.88) : null;
+  const longHrCap     = lthr != null ? Math.round(lthr * 0.85) : null;
+  const recoveryHrCap = lthr != null ? Math.round(lthr * 0.75) : null;
+  const tempoHrTarget = lthr != null ? Math.round(lthr * 0.92) : null;
 
   switch (type) {
     case 'easy': {
       // Easy: Daniels E pace band + optional fuel beyond ~8 mi.
+      // HR cap = ~88% LTHR (Z2 ceiling, Friel · Research/03 §6).
       const fuelMi = distanceMi >= 8 ? [Math.round(distanceMi / 2)] : undefined;
       return {
         kind: 'easy',
         pace_target_s_per_mi_lo: paceSet.E.lowS,
         pace_target_s_per_mi_hi: paceSet.E.highS,
-        hr_cap_bpm: null,        // LTHR not threaded to plan-builder yet
+        hr_cap_bpm: easyHrCap,
         ...(fuelMi ? { fuel_mi: fuelMi } : {}),
       };
     }
@@ -754,13 +982,17 @@ function buildWorkoutSpec(
     case 'long': {
       // Long: Daniels E pace band + fuel checkpoints every ~4 mi.
       // (Research/22 §5 · "fuel early, fuel often.")
+      // HR cap = ~85% LTHR (long-day ceiling, more conservative than the
+      // Z2 cap because aerobic drift on multi-hour days outpaces HR-zone
+      // midpoint targets). Research/03 §6.
       const checkpoints: number[] = [];
       if (distanceMi >= 4) {
         for (let mi = 4; mi <= Math.floor(distanceMi); mi += 4) checkpoints.push(mi);
       }
       // Progression-style long runs (HM Finish / Progression) build to T
       // pace at the end — emit a progression spec instead so the chart
-      // shows the fade-in. Research/22 §3.
+      // shows the fade-in. Research/22 §3. The progression cap stays at
+      // the long-day ceiling (HR drifts up naturally as pace climbs).
       if (subLabel === 'Long Run · Progression' || subLabel === 'Long Run · HM Finish') {
         const progDist = Math.max(2, Math.round(distanceMi / 3));
         const wm = Math.max(1, Math.round((distanceMi - progDist) * 0.5));
@@ -772,14 +1004,14 @@ function buildWorkoutSpec(
           prog_start_s_per_mi: paceSet.E.lowS,
           prog_end_s_per_mi: paceSet.T.lowS,
           cooldown_mi: cd,
-          hr_cap_bpm: null,
+          hr_cap_bpm: longHrCap,
         };
       }
       return {
         kind: 'long',
         pace_target_s_per_mi_lo: paceSet.E.lowS,
         pace_target_s_per_mi_hi: paceSet.E.highS,
-        hr_cap_bpm: null,
+        hr_cap_bpm: longHrCap,
         fuel_mi: checkpoints,
       };
     }
@@ -794,10 +1026,19 @@ function buildWorkoutSpec(
       //   'HM Threshold Blocks'    → 2×3mi @ HM pace · 120s jog
       //   'HM Continuous Tempo'    → 4mi continuous (tempo spec)
       //   'Threshold Touch'        → 2×1.5mi · 90s jog
+      //
+      // HR anchor: emit LTHR directly so the renderer shows
+      // "LTHR · 162 bpm" alongside the rep pace target. Cruise intervals
+      // sit at Friel Z5a (100–102% LTHR · Research/03 §6) — surfacing
+      // LTHR lets the runner gut-check rep HR against the anchor.
       const warmupMi = 1.5;
       const cooldownMi = 1;
       const repPaceS = paceCenter(paceSet.T) ?? paceSet.T.lowS;
       if (subLabel === 'HM Continuous Tempo') {
+        // Tempo: sustained sub-T effort · HR target ≈ 92% LTHR (Friel Z3
+        // mid · Research/03 §6 · "Tempo, sub-LT steady"). Sits below
+        // threshold-cruise reps because the continuous block is held
+        // longer than rep duration.
         const tempoMi = Math.max(2, distanceMi - warmupMi - cooldownMi);
         return {
           kind: 'tempo',
@@ -805,7 +1046,7 @@ function buildWorkoutSpec(
           tempo_distance_mi: +tempoMi.toFixed(1),
           tempo_pace_s_per_mi: repPaceS,
           cooldown_mi: cooldownMi,
-          hr_target_bpm: null,
+          hr_target_bpm: tempoHrTarget,
         };
       }
       if (subLabel === 'HM Cruise Intervals') {
@@ -817,7 +1058,7 @@ function buildWorkoutSpec(
           rep_pace_s_per_mi: repPaceS,
           rep_rest_s: 90,
           cooldown_mi: cooldownMi,
-          lthr_bpm: null,
+          lthr_bpm: lthr,
         };
       }
       if (subLabel === 'HM Threshold Blocks') {
@@ -829,7 +1070,7 @@ function buildWorkoutSpec(
           rep_pace_s_per_mi: repPaceS,
           rep_rest_s: 120,
           cooldown_mi: cooldownMi,
-          lthr_bpm: null,
+          lthr_bpm: lthr,
         };
       }
       if (subLabel === 'Threshold Touch') {
@@ -841,7 +1082,7 @@ function buildWorkoutSpec(
           rep_pace_s_per_mi: repPaceS,
           rep_rest_s: 90,
           cooldown_mi: cooldownMi,
-          lthr_bpm: null,
+          lthr_bpm: lthr,
         };
       }
       // Default cruise intervals (BASE).
@@ -853,7 +1094,7 @@ function buildWorkoutSpec(
         rep_pace_s_per_mi: repPaceS,
         rep_rest_s: 60,
         cooldown_mi: cooldownMi,
-        lthr_bpm: null,
+        lthr_bpm: lthr,
       };
     }
 
@@ -861,6 +1102,8 @@ function buildWorkoutSpec(
       // VO2max intervals · Daniels I pace · Research/04 §6.
       // Phase-shaped default: 5×1K with 90s jog. Builder doesn't track
       // phase here; downstream notes have the variant context.
+      // HR anchor: emit LTHR so the renderer can show the anchor (Friel
+      // Z5b sits at 103–106% LTHR for VO2max work · Research/03 §6).
       return {
         kind: 'intervals',
         warmup_mi: 1.5,
@@ -869,12 +1112,15 @@ function buildWorkoutSpec(
         rep_pace_s_per_mi: paceCenter(paceSet.I) ?? paceSet.I.lowS,
         rep_rest_s: 90,
         cooldown_mi: 1,
-        lthr_bpm: null,
+        lthr_bpm: lthr,
       };
     }
 
     case 'mp': {
-      // Marathon-pace block · Daniels M pace.
+      // Marathon-pace block · Daniels M pace. HR target ≈ 92% LTHR
+      // (Friel Z3 sub-LT steady · Research/03 §6) — M pace sits between
+      // E and T, and the HR pin lets the runner hold the block as pace
+      // alone drifts with fatigue on long blocks.
       const warmupMi = 1;
       const cooldownMi = 1;
       const mpDist = Math.max(2, +(distanceMi - warmupMi - cooldownMi).toFixed(1));
@@ -884,24 +1130,28 @@ function buildWorkoutSpec(
         mp_distance_mi: mpDist,
         mp_pace_s_per_mi: paceCenter(paceSet.M) ?? paceSet.M.lowS,
         cooldown_mi: cooldownMi,
-        hr_target_bpm: null,
+        hr_target_bpm: tempoHrTarget,
       };
     }
 
     case 'recovery': {
       // Recovery: E + ~30s buffer (per paceTargetFor's recovery branch).
+      // HR cap = ~75% LTHR (Z1 ceiling, Friel · Research/03 §6 — strict
+      // aerobic-only to protect adaptation on a recovery day).
       const lo = paceSet.E.lowS + 30;
       const hi = paceSet.E.highS + 30;
       return {
         kind: 'recovery',
         pace_target_s_per_mi_lo: lo,
         pace_target_s_per_mi_hi: hi,
-        hr_cap_bpm: null,
+        hr_cap_bpm: recoveryHrCap,
       };
     }
 
     case 'race_week_tuneup': {
       // Race week tune-up · 4×1K at HMP (≈T pace). Research/08 §9.3.
+      // HR anchor = LTHR (tune-up sits at Z5a cruise like a normal
+      // threshold session, just with fewer reps).
       return {
         kind: 'threshold',
         warmup_mi: 1.5,
@@ -910,7 +1160,7 @@ function buildWorkoutSpec(
         rep_pace_s_per_mi: paceCenter(paceSet.T) ?? paceSet.T.lowS,
         rep_rest_s: 90,
         cooldown_mi: 1,
-        lthr_bpm: null,
+        lthr_bpm: lthr,
       };
     }
 

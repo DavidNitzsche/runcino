@@ -86,6 +86,7 @@ import {
   type WeeklyMileage,
   type WeeklyFrequency,
 } from '@/lib/onboarding/state';
+import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboarding';
 
 const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
@@ -223,7 +224,57 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, redirect: '/onboarding?step=done' });
+  // ── Phase 28 · seed maintenance plan on the no-race path ───────
+  // The race-anchored path keeps its existing flow (profile.race table
+  // → lifecycle picks it up on next briefing → canonical buildPlan
+  // generates a race-prep plan from the race row). Only the no-race
+  // path needs a plan seeded HERE, because there's no race anchor to
+  // pull off later and the runner expects something on day 1.
+  //
+  // The canonical buildPlan in legacy/web/coach/plan-builder.ts is the
+  // source of truth (its `OnboardingGoals` interface mirrors the
+  // payload we hand off). Web-v2 can't import legacy at the build
+  // layer, so we use a thin maintenance-only seeder in @/lib/plan that
+  // mirrors the canonical maintenance-branch logic. The next lifecycle
+  // rebuild (via the iPhone / Watch path which DOES reach legacy)
+  // upgrades the plan with full doctrine (VDOT-derived paces,
+  // adaptive strength placement, workout_spec emission).
+  //
+  // Best-effort: a seeding failure does not block onboarding — the
+  // runner still lands on the success page, and the next briefing
+  // pull rebuilds via lifecycle. We log to the response payload so
+  // the caller can surface the issue in dev.
+  let seedPlan: { ok: boolean; plan_id?: string; weeks_generated?: number; peak_mpw?: number; error?: string } | null = null;
+  if (!isRace) {
+    try {
+      const result = await seedMaintenancePlanFromOnboarding({
+        userId,
+        goals: {
+          ttDistance,
+          ttTimeBucket: ttTime,
+          weeklyMiTarget: weeklyMi,
+          weeklyFrequency: weeklyFreq,
+          historyAvg: histAvg,
+          historyLong: histLong,
+          historyYears: histYears,
+        },
+      });
+      seedPlan = {
+        ok: result.ok,
+        plan_id: result.plan_id,
+        weeks_generated: result.weeks_generated,
+        peak_mpw: result.peak_mpw,
+      };
+    } catch (err: any) {
+      seedPlan = { ok: false, error: err?.message ?? String(err) };
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    redirect: '/onboarding?step=done',
+    ...(seedPlan ? { plan: seedPlan } : {}),
+  });
 }
 
 function isValidDate(v: any): v is string {
