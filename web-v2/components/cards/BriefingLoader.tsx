@@ -389,7 +389,7 @@ function CoachLoading() {
       </h2>
       <p style={{
         fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.6,
-        color: 'rgba(246,247,248,0.66)', minHeight: '3em',
+        color: 'var(--mute)', minHeight: '3em',
         transition: 'opacity .2s',
       }}>
         {LOADING_MESSAGES[phase]}

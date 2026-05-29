@@ -89,6 +89,73 @@
   --r-card:  18px;
   --r-pill:  999px;
   --r-input: 10px;
+
+  /* ─── elevation · paper-overhaul 2026-05-29 ─── */
+  /* Dark defaults are near-invisible (dark theme leans on borders, not
+   * shadows). The paper skin overrides these with warm soft drop shadows
+   * so the die-cut ticket panels physically lift off the canvas. */
+  --shadow-card:  0 1px 2px rgba(0,0,0,0.30);
+  --shadow-panel: 0 2px 8px rgba(0,0,0,0.40);
+  --shadow-lift:  0 6px 20px rgba(0,0,0,0.45);
+  /* Ink at fractional strength — for hairlines/fills that must track the
+   * ink color across skins (registration marks, ticks, mono rules). */
+  --ink-12: rgba(246,247,248,0.12);
+  --ink-24: rgba(246,247,248,0.24);
+  --ink-64: rgba(246,247,248,0.64);
+}
+
+/*
+ * ════════════════════════════════════════════════════════════════════════
+ * PAPER SKIN · the FAFF technical spec-sheet overhaul (2026-05-29)
+ * ════════════════════════════════════════════════════════════════════════
+ * Locked aesthetic: warm paper canvas, near-black warm ink, bold condensed
+ * display type, color as registration marks. Mechanism: one attribute on
+ * <html data-skin="paper"> (set in layout.tsx). REVERT = delete the attribute
+ * → the app returns to the dark :root above (Cardinal Rule #8).
+ *
+ * Only the NEUTRALS invert (bg / card / ink / line / mute / dim / shadows).
+ * The semantic palette is RE-TUNED (deepened) for legibility on light paper —
+ * the dark-theme values were calibrated against #0a0c10 and wash out on paper.
+ * The 13 state gradients are intentionally NOT overridden: they're saturated
+ * enough to read on paper and carry the verb-hero accent + race-week wash.
+ */
+[data-skin="paper"] {
+  /* ─── canvas · warm paper ─── */
+  --bg:      #ECE7DD;  /* recessed paper (page gutters, inset wells) */
+  --bg-page: #F2EFE9;  /* THE canvas · warm paper (locked) */
+  --bg2:     #ECE7DD;
+  --card:    #F7F4EE;  /* raised paper card */
+  --card-2:  #FBFAF6;  /* lightest paper (stacked top layer) */
+  --card2:   #FBFAF6;
+
+  /* ─── ink · near-black warm ─── */
+  --ink:  #14110D;  /* near-black warm (locked) */
+  --mute: #6B6358;  /* warm grey label */
+  --dim:  #A9A093;  /* faint warm grey (ticks, disabled) */
+
+  /* ─── lines · ink at low alpha ─── */
+  --line:   rgba(20,17,13,0.14);
+  --line-2: rgba(20,17,13,0.07);
+  --line2:  rgba(20,17,13,0.07);
+
+  /* ─── semantic palette · deepened for paper contrast ─── */
+  --green: #1E9E47;  /* ON TRACK / DONE — deepened from #3EBD41 */
+  --goal:  #C2791A;  /* WATCH / amber / QUALITY — deepened from #F3AD38 */
+  --over:  #D8344C;  /* OFF TRACK / alert — deepened from #FC4D64 */
+  --dist:  #1789B0;  /* LONG / distance — deepened from #27B4E0 */
+  --rest:  #1268C9;  /* REST — deepened from #008FEC */
+  --learn: #7A4FD0;  /* PHASE / insight — deepened from #B084FF */
+  --race:  #DD5F22;  /* RACE WEEK / horizon — deepened from #FF8847 */
+
+  /* ─── elevation · warm soft paper shadows ─── */
+  --shadow-card:  0 1px 2px rgba(40,30,18,0.10);
+  --shadow-panel: 0 3px 12px rgba(40,30,18,0.13);
+  --shadow-lift:  0 10px 30px rgba(40,30,18,0.17);
+
+  /* ─── ink fills · track the dark warm ink ─── */
+  --ink-12: rgba(20,17,13,0.12);
+  --ink-24: rgba(20,17,13,0.24);
+  --ink-64: rgba(20,17,13,0.64);
 }
 
 /* Reset */
@@ -132,7 +199,9 @@ button { font-family: inherit; cursor: pointer; }
   font-family: var(--f-body);
   font-size: 12px;
   line-height: 1.5;
-  color: rgba(246,247,248,0.85);
+  /* skin-aware (paper-overhaul 2026-05-29): was hardcoded near-white
+   * rgba(246,247,248,0.85) which vanished on paper. --ink tracks the skin. */
+  color: var(--ink);
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line-2);

@@ -186,7 +186,7 @@ export function DeleteRaceButton({ slug }: { slug: string }) {
 function inputStyle(): React.CSSProperties {
   return {
     fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--ink)',
-    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+    background: 'var(--card-2)', border: '1px solid var(--line)',
     borderRadius: 8, padding: '8px 10px',
   };
 }

@@ -9,12 +9,17 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0a0c10',
+  // Paper-overhaul 2026-05-29: warm-paper canvas. Reverting the skin = drop
+  // data-skin below + restore #0a0c10 here.
+  themeColor: '#F2EFE9',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // data-skin="paper" activates the FAFF technical spec-sheet token layer in
+    // globals.css. Remove this one attribute to revert to the dark theme
+    // (Cardinal Rule #8 · dark stays revertable via token swap).
+    <html lang="en" data-skin="paper">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

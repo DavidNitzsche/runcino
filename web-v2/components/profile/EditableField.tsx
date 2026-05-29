@@ -118,11 +118,11 @@ export function EditableField({
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
             {label}
           </div>
-          <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, color: 'rgba(246,247,248,0.50)', letterSpacing: '1.2px' }}>
+          <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--dim)', letterSpacing: '1.2px' }}>
             EDIT
           </div>
         </div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: currentValue == null ? 'rgba(246,247,248,0.45)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: currentValue == null ? 'var(--dim)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
           {currentValue == null
             ? '— Add'
             : displayValue
@@ -165,8 +165,8 @@ export function EditableField({
                     textAlign: 'left',
                     padding: '12px 14px',
                     borderRadius: 10,
-                    background: selected ? 'rgba(62,189,65,0.10)' : 'rgba(255,255,255,0.025)',
-                    border: `1px solid ${selected ? 'var(--green)' : 'rgba(255,255,255,0.08)'}`,
+                    background: selected ? 'rgba(62,189,65,0.10)' : 'var(--card-2)',
+                    border: `1px solid ${selected ? 'var(--green)' : 'var(--line)'}`,
                     cursor: 'pointer',
                     color: 'inherit', font: 'inherit',
                     transition: 'background .12s, border-color .12s',
@@ -177,7 +177,7 @@ export function EditableField({
                   }}>
                     <span style={{
                       width: 14, height: 14, borderRadius: '50%',
-                      border: `2px solid ${selected ? 'var(--green)' : 'rgba(255,255,255,0.25)'}`,
+                      border: `2px solid ${selected ? 'var(--green)' : 'var(--ink-24)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0,
                     }}>
@@ -266,7 +266,7 @@ export function EditableField({
 function inputStyle(): React.CSSProperties {
   return {
     fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)',
-    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+    background: 'var(--card-2)', border: '1px solid var(--line)',
     borderRadius: 6, padding: '6px 10px', width: '100%',
   };
 }

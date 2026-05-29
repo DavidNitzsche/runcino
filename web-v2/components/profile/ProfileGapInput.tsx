@@ -65,7 +65,7 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
             COACH NEEDS
           </div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)' }}>{label}</div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'rgba(246,247,248,0.65)', marginTop: 2 }}>{why}</div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 2 }}>{why}</div>
         </div>
         <span style={{
           background: 'var(--goal)', color: '#1a1300',
@@ -94,7 +94,7 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           style={{
             fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)',
-            background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+            background: 'var(--card-2)', border: '1px solid var(--line)',
             borderRadius: 8, padding: '8px 12px', width: 100, letterSpacing: '0.5px',
           }}
         />

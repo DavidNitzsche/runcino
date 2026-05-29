@@ -32,14 +32,16 @@ import type {
 } from '@/lib/faff/types';
 import type { GlanceWeekDay } from '@/lib/coach/glance-state';
 import { PERSONA_CATALOGUE, type PersonaKey } from '@/lib/faff/personas';
-import { Poster } from '@/components/faff/Poster';
+import { VerbHero } from '@/components/faff/VerbHero';
 import { Sibling } from '@/components/faff/Sibling';
 import { WeekStrip } from '@/components/faff/WeekStrip';
 import { BodyGrid } from '@/components/faff/BodyGrid';
 import { BCard } from '@/components/faff/BCard';
 import { WorkoutBreakdown, type WorkoutData } from '@/components/faff/WorkoutBreakdown';
 import { ReconnectBanner } from '@/components/strava/ReconnectBanner';
-import { BodyFlags } from '@/components/today/BodyFlags';
+import { RaceBib } from '@/components/faff/RaceBib';
+import { BodyChips } from '@/components/today/BodyChips';
+import type { RaceHeader } from '@/lib/coach/race-header';
 
 export interface TodayClientProps {
   poster: PosterPayload;
@@ -47,6 +49,12 @@ export interface TodayClientProps {
   week: WeekStripPayload;
   state: DayState;
   phaseLabel: string | null;
+  // Paper-overhaul 2026-05-29 · the persistent race-bib header (spine) +
+  // the readiness composite that drives the BODY chip.
+  raceHeader: RaceHeader;
+  readinessBand: 'sharp' | 'ready' | 'moderate' | 'pull-back' | null;
+  readinessLabel: string | null;
+  readinessScore: number | null;
   // Slots: the page wires the legacy briefing + readiness loaders here so
   // we can keep them rendering while the new shell takes over visually.
   briefingSlot?: ReactNode;
@@ -94,6 +102,10 @@ export function TodayClient({
   week,
   state,
   phaseLabel,
+  raceHeader,
+  readinessBand,
+  readinessLabel,
+  readinessScore,
   briefingSlot,
   errorSlot,
   activePersona,
@@ -153,63 +165,55 @@ export function TodayClient({
         <SimulatorBar activeKey={activeEntry.key} description={activeEntry.description} label={activeEntry.label} />
       )}
 
-      <div style={{ maxWidth: 1440, margin: '0 auto', padding: '32px 32px 0' }}>
-        {/* HERO · Poster + Sibling side-by-side · single column on mobile */}
-        <div
-          className="today-hero"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 24,
-            marginBottom: 24,
-          }}
-        >
-          <Poster payload={poster} />
-          <Sibling
-            payload={sibling}
-            bodyFlags={
-              // Don't render chips when there's nothing meaningful to log:
-              // race-week takes over the surface, new-user has no body
-              // baseline yet, done/rest/skipped are not the right moment.
-              state === 'race_week' || state === 'new_user' ? null : (
-                <BodyFlags
-                  activeNiggle={activeNiggle}
-                  activeSick={activeSick}
-                  sleep7Avg={sleep7Avg}
-                  rhrCurrent={rhrCurrent}
-                  rhrBaseline={rhrBaseline}
-                />
-              )
-            }
+      <div
+        style={{
+          maxWidth: 1040,
+          margin: '0 auto',
+          padding: '28px 24px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 22,
+        }}
+      >
+        {/* ── RACE BIB · the spine. "Here's what stands between you and the
+            finish line." Persistent header; renders base mode when no race
+            is anchored. ── */}
+        <RaceBib header={raceHeader} />
+
+        {/* ── VERB HERO · the verb-as-mood-ring. Full-width (the old
+            Poster + Sibling two-up is retired). The verb carries all the
+            personality; the numbers below carry none. ── */}
+        <VerbHero payload={poster} />
+
+        {/* NEW USER · the only state that keeps the Sibling — it owns the
+            onboarding/setup flow until a baseline + plan exist. */}
+        {state === 'new_user' && <Sibling payload={sibling} bodyFlags={null} />}
+
+        {/* ── BODY CHIPS · the 5-signal instrument strip (BODY / SLEEP / RHR /
+            HRV / LOAD). Deterministic; each chip degrades to "—" when its
+            signal is missing. Hidden for new_user (no baseline yet). ── */}
+        {state !== 'new_user' && (
+          <BodyChips
+            readinessBand={readinessBand}
+            readinessLabel={readinessLabel}
+            readinessScore={readinessScore}
+            sleep7Avg={sleep7Avg}
+            rhrCurrent={rhrCurrent}
+            rhrBaseline={rhrBaseline}
+            hrvCurrent={hrvCurrent}
+            hrvBaseline={hrvBaseline}
+            loadAcwr={loadAcwr}
           />
-        </div>
-
-        {/* WEEK STRIP */}
-        {week.days.length > 0 && (
-          <div style={{ marginBottom: 24 }}>
-            <WeekStrip payload={week} phaseLabel={phaseHeader} />
-          </div>
         )}
 
-        {/* COACH VOICE (LLM-backed) — kept from production while we migrate
-            the deterministic voice into the Sibling. Renders into a clean
-            BCard so it blends with the new visual system. In simulator
-            mode the slot is a static placeholder (LLM disabled). */}
-        {briefingSlot && (
-          <div style={{ marginBottom: 24 }}>
-            <BCard header={{ label: 'COACH · WHY THIS WORKOUT' }}>
-              {briefingSlot}
-            </BCard>
-          </div>
-        )}
+        {/* ── THIS WEEK ── */}
+        {week.days.length > 0 && <WeekStrip payload={week} phaseLabel={phaseHeader} />}
 
-        {/* BODY GRID · per-state body content (Phase 32 — real data).
-            Gated out for `new_user` (Sibling owns the setup flow) and
-            `skipped` (2026-05-29 user direction: "i dont think we need
-            these cards at the bottom" — the Poster + Sibling carry the
-            skip framing already, the lower cards are redundant noise).
-            Every other state ships real left + right content per the
-            renderBodyLeft / renderBodyRight switches below. */}
+        {/* ── BODY GRID · per-state detail below the fold. Gated out for
+            new_user (Sibling owns setup) and skipped (the hero already
+            carries the skip framing — lower cards are redundant). Every
+            other state ships real left + right content per the
+            renderBodyLeft / renderBodyRight switches below. ── */}
         {state !== 'new_user' && state !== 'skipped' && (
           <BodyGrid
             sectionHeading={bodyHeadingFor(state)}
@@ -219,18 +223,25 @@ export function TodayClient({
           />
         )}
 
+        {/* ── COACH · WHY THIS WORKOUT · the LLM-backed voice, kept below the
+            deterministic surface during cutover. ── */}
+        {briefingSlot && (
+          <BCard header={{ label: 'COACH · WHY THIS WORKOUT' }}>
+            {briefingSlot}
+          </BCard>
+        )}
+
         {errorSlot}
       </div>
 
-      {/* Mobile single-column hero */}
       <style>{`
-        @media (max-width: 899px) {
-          .today-hero { grid-template-columns: 1fr !important; }
-        }
         .persona-chip-strip::-webkit-scrollbar { display: none; }
         .persona-chip-strip { scrollbar-width: none; }
-        .persona-chip:hover { background: rgba(255,255,255,0.05) !important; }
-        .persona-chip-active:hover { filter: brightness(1.08); }
+        .persona-chip:hover { filter: brightness(0.97); }
+        .persona-chip-active:hover { filter: brightness(1.04); }
+        @media (max-width: 720px) {
+          .body-chips { grid-template-columns: repeat(2, 1fr) !important; }
+        }
       `}</style>
     </main>
   );

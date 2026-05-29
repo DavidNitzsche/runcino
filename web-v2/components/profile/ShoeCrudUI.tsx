@@ -172,7 +172,7 @@ export function ShoeEditCard({ shoe }: { shoe: ShoeCardData }) {
       <button
         onClick={() => setOpenModal(true)}
         style={{
-          background: '#1f2226',
+          background: 'var(--card)',
           border: '1px solid var(--line2)',
           padding: 18,
           textAlign: 'left',
@@ -327,7 +327,7 @@ function ShoeDetailModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
+          background: 'var(--card)', border: '1px solid var(--line)',
           boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
           padding: '24px 28px', maxWidth: 560, width: '100%', maxHeight: '85vh', overflow: 'auto',
         }}

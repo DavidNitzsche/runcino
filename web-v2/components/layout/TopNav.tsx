@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SettingsAvatarTrigger } from '@/components/settings/SettingsModal';
 
+// Paper-overhaul 2026-05-29 · collapsed 7 tabs → 3 (TODAY / PLAN / ME).
+// Races fold into PLAN (race-destination path), health into the /today
+// body chips, log into a ME sub-page. The legacy routes still resolve by
+// URL — they're just no longer in the top nav.
 const TABS = [
-  { href: '/today',    label: 'TODAY' },
-  { href: '/training', label: 'TRAINING' },
-  { href: '/log',      label: 'LOG' },
-  { href: '/races',    label: 'RACES' },
-  { href: '/health',   label: 'HEALTH' },
-  { href: '/tips',     label: 'TIPS' },
-  { href: '/profile',  label: 'PROFILE' },
+  { href: '/today', label: 'TODAY' },
+  { href: '/plan',  label: 'PLAN' },
+  { href: '/me',    label: 'ME' },
 ];
 
 export function TopNav({ avatarInitials = 'DN' }: { avatarInitials?: string }) {

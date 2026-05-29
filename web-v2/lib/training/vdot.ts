@@ -38,21 +38,66 @@ function pctVO2(min: number): number {
                0.2989558 * Math.exp(-0.1932605 * min);
 }
 
-/** Given (finish_seconds, distance_mi), return the VDOT that predicts
- *  exactly that finish time. Returns null if outside [30, 85]. */
-export function vdotFromRace(finishSeconds: number, distanceMi: number): number | null {
-  if (!finishSeconds || finishSeconds < 60 || !distanceMi || distanceMi <= 0) return null;
-  const km = kmFromMi(distanceMi);
-  const meters = km * 1000;
+/** Unclamped VDOT for (finish_seconds, distance_mi). Internal — the raw
+ *  Daniels value before the [30,85] table clamp. Used by both the public
+ *  `vdotFromRace` (which clamps) and `predictRaceTime` (which inverts). */
+function rawVdot(finishSeconds: number, distanceMi: number): number | null {
+  if (!finishSeconds || finishSeconds <= 0 || !distanceMi || distanceMi <= 0) return null;
+  const meters = kmFromMi(distanceMi) * 1000;
   const minutes = finishSeconds / 60;
-  // Speed = meters per minute
-  const speed = meters / minutes;
+  const speed = meters / minutes; // m/min
   const vo2 = vo2Cost(speed);
   const pct = pctVO2(minutes);
   const vdot = vo2 / pct;
-  if (!isFinite(vdot)) return null;
+  return isFinite(vdot) ? vdot : null;
+}
+
+/** Given (finish_seconds, distance_mi), return the VDOT that predicts
+ *  exactly that finish time. Returns null if outside [30, 85]. */
+export function vdotFromRace(finishSeconds: number, distanceMi: number): number | null {
+  if (!finishSeconds || finishSeconds < 60) return null;
+  const vdot = rawVdot(finishSeconds, distanceMi);
+  if (vdot == null) return null;
   if (vdot < 30 || vdot > 85) return null;
   return Math.round(vdot * 10) / 10; // 1 decimal place
+}
+
+/**
+ * Invert the Daniels race-time table: given a VDOT and a distance, predict
+ * the finish time (seconds). This is the projection direction — "at your
+ * current fitness, racing distance D today would take ~T."
+ *
+ * `rawVdot` is monotonically decreasing in finish time (slower time → lower
+ * VDOT), so we binary-search the time whose predicted VDOT matches the
+ * target. Bounds span 2:30/mi (elite) to 25:00/mi (walk) — any realistic
+ * VDOT∈[30,85] resolves inside that window. Returns null on bad input.
+ *
+ * Cite: Daniels Running Formula §VDOT table (same formula as `vdotFromRace`).
+ */
+export function predictRaceTime(vdot: number, distanceMi: number): number | null {
+  if (!vdot || vdot <= 0 || !distanceMi || distanceMi <= 0) return null;
+  let lo = distanceMi * 150;   // 2:30/mi floor
+  let hi = distanceMi * 1500;  // 25:00/mi ceiling
+  let mid = (lo + hi) / 2;
+  for (let i = 0; i < 60; i++) {
+    mid = (lo + hi) / 2;
+    const v = rawVdot(mid, distanceMi);
+    if (v == null) break;
+    if (v > vdot) lo = mid; // predicted VDOT too high → time too fast → go slower
+    else hi = mid;
+  }
+  return Math.round(mid);
+}
+
+/** Format seconds → "1:44:50" (h:mm:ss) or "59:30" (m:ss). */
+export function formatRaceTime(seconds: number | null | undefined): string | null {
+  if (seconds == null || !isFinite(seconds) || seconds <= 0) return null;
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 /** Parse "1:34:54" or "3:30:25" or "59:30" or "23:15" → seconds. */

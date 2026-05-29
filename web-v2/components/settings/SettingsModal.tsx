@@ -111,7 +111,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
+          background: 'var(--card)', border: '1px solid var(--line)',
           boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
           padding: '32px 36px', maxWidth: 720, width: '100%', marginTop: 40, marginBottom: 60,
         }}

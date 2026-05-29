@@ -92,7 +92,7 @@ function DayCell({
       style={{
         background: isToday ? 'rgba(62,189,65,0.10)'
           : ran ? 'rgba(62,189,65,0.05)'
-                : 'rgba(255,255,255,0.025)',
+                : 'var(--card-2)',
         border: isToday ? '1px solid rgba(62,189,65,0.30)'
           : ran && isPast ? '1px solid rgba(62,189,65,0.18)'
                           : '1px solid transparent',

@@ -54,6 +54,7 @@ import {
 } from '@/lib/faff/personas';
 import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
 import { loadNextARace } from '@/lib/coach/race-lookup';
+import { loadRaceHeader, buildGlanceOnlyHeader } from '@/lib/coach/race-header';
 import { pool } from '@/lib/db/pool';
 import { TodayClient } from './TodayClient';
 
@@ -160,6 +161,25 @@ export default async function TodayPage({
       .catch(() => null);
   }
 
+  // Paper-overhaul 2026-05-29 · the persistent race-bib header (the SPINE).
+  // Real path hits the plan + race rows for goal/PROJ/date; persona mode
+  // uses the DB-free glance builder so the simulator never bleeds David's
+  // real goal into a fixture. Best-effort: a thrown real-path lookup
+  // soft-fails to the glance-only shape so the header always renders.
+  const headerInputs = {
+    today: glance.today,
+    daysToARace: glance.daysToARace,
+    nextARaceName: glance.nextARaceName,
+    phaseLabel: glance.phaseLabel,
+    readiness: glance.readiness,
+    loadAcwr: glance.loadAcwr,
+  };
+  const raceHeader = personaKey
+    ? buildGlanceOnlyHeader(headerInputs)
+    : await loadRaceHeader(DAVID_USER_ID, headerInputs).catch(() =>
+        buildGlanceOnlyHeader(headerInputs),
+      );
+
   // In persona mode, suppress the LLM briefing — BriefingLoader hits
   // Anthropic with the real user's data and doesn't know about the
   // simulated persona. Render a static placeholder instead so the
@@ -179,6 +199,10 @@ export default async function TodayPage({
         week={week}
         state={state}
         phaseLabel={glance.phaseLabel}
+        raceHeader={raceHeader}
+        readinessBand={glance.readiness.band}
+        readinessLabel={glance.readiness.label}
+        readinessScore={glance.readiness.score}
         briefingSlot={briefingSlot}
         errorSlot={glanceError ? <ErrorChip message={glanceError} /> : null}
         activePersona={personaKey}
