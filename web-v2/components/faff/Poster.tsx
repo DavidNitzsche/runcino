@@ -135,6 +135,28 @@ export function Poster({ payload }: PosterProps) {
 
       {payload.choice_row && <ChoiceRow row={payload.choice_row} />}
 
+      {/* Direction A3 workout-merge (docs/2026-05-28-poster-workout-merge.html
+       *  §"DIRECTION A3 · No rules. Just the rows."). The wrap uses flex: 1
+       *  so the rows sit vertically centered between the verb (top) and the
+       *  stat trio (margin-top: auto, anchored bottom). When workout_breakdown
+       *  is null (rest / done / skipped / etc.) we omit the wrap entirely so
+       *  the existing layout stays exactly as it was. */}
+      {payload.workout_breakdown && payload.workout_breakdown.length > 0 && (
+        <div className={styles.workoutBreakdown}>
+          <div className={styles.breakdownList}>
+            {payload.workout_breakdown.map((row, i) => (
+              <div key={`${row.label}-${i}`} className={styles.breakdownRow}>
+                <div className={styles.breakdownLabel}>{row.label}</div>
+                <div className={styles.breakdownBody}>{row.body}</div>
+                {row.tail !== null && (
+                  <div className={`${styles.breakdownTail} tabular`}>{row.tail}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {payload.stat_trio && payload.stat_trio.length > 0 && (
         <StatTrio stats={payload.stat_trio} />
       )}

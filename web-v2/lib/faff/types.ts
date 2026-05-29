@@ -107,6 +107,26 @@ export interface Stat {
   valueColor?: ValueColor;
 }
 
+/**
+ * Per-row breakdown shape for the Poster's workout-merge chrome
+ * (Direction A3 · docs/2026-05-28-poster-workout-merge.html §"DIRECTION A3 ·
+ * No rules. Just the rows."). The rows sit centered between the verb and
+ * the stat trio inside the gradient card; no hairlines — caps labels
+ * carry the structure.
+ *
+ *   label · caps-tracked column-left identifier (e.g. "PACE", "WARMUP")
+ *   body  · sentence-case middle column (e.g. "Conversational · Z2")
+ *   tail  · right-aligned monospaced number; null = omit the tail column
+ *
+ * Per-state row set lives in the adapter (`lib/faff/glance-adapter.ts` →
+ * `buildWorkoutBreakdown`). Component is dumb · just iterates the array.
+ */
+export interface PosterBreakdownRow {
+  label: string;
+  body: string;
+  tail: string | null;
+}
+
 export interface PosterPayload {
   state: DayState;
   gradient_token: string;
@@ -123,6 +143,15 @@ export interface PosterPayload {
     recommended: 'catch_up' | 'move_on';
   } | null;
   days_countdown: { days: number; dateLabel: string } | null;
+  /**
+   * Workout-merge rows · Direction A3 (locked 2026-05-28). Non-null when
+   * the day-state has a workout to render structure for (easy / long /
+   * quality / race). Null on done_nailed, done_ease_off, rest, skipped,
+   * missed, niggle, sick, new_user, race_week — those surfaces don't carry
+   * a breakdown (the workout already happened, no workout exists, or the
+   * race-week takeover owns the layout).
+   */
+  workout_breakdown: PosterBreakdownRow[] | null;
 }
 
 /**

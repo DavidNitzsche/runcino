@@ -27,6 +27,7 @@ import type { GlanceState, GlanceWeekDay } from '@/lib/coach/glance-state';
 import type {
   DayState,
   PosterPayload,
+  PosterBreakdownRow,
   SiblingPayload,
   WeekStripPayload,
   WorkoutType,
@@ -165,8 +166,16 @@ export function buildPoster(glance: GlanceState, state: DayState): PosterPayload
 
   const verb = heroVerb(state, today);
 
-  // Stat trio · varies per state. v1 keeps it consistent for base-4 (PLANNED/PACE/HR-CAP placeholders).
+  // Stat trio · varies per state per Direction A3 deck. easy keeps the
+  // body-context trio (WEEK · RHR · SLEEP); quality/long switch to
+  // workout-context (TOTAL MI · LTHR · EST. TIME and PLANNED MI · EST.
+  // TIME · TO RACE respectively).
   const stat_trio = buildStatTrio(state, today, glance);
+
+  // Workout-merge rows · Direction A3 (docs/2026-05-28-poster-workout-
+  // merge.html). State-keyed in the adapter, NOT in Poster.tsx — the
+  // component just renders what the payload emits.
+  const workout_breakdown = buildWorkoutBreakdown(state, today, glance);
 
   // Hero number for race_week countdown
   const days_countdown =
@@ -199,6 +208,7 @@ export function buildPoster(glance: GlanceState, state: DayState): PosterPayload
     hero_number,
     choice_row: null, // missed state · deferred for v1
     days_countdown,
+    workout_breakdown,
   };
 }
 
@@ -217,15 +227,13 @@ function buildStatTrio(
   if (!today) return null;
   switch (state) {
     case 'easy':
-    case 'quality':
-    case 'long':
+      // Direction A3 deck · EASY keeps the body-context trio. The workout-
+      // merge rows above now carry the workout numbers; this row carries
+      // the body context (week mi · RHR · sleep) the runner glances at
+      // before stepping out.
       return [
+        { value: glance.weekDone.toFixed(1), label: 'WEEK MI' },
         {
-          value: today.plannedMi > 0 ? today.plannedMi.toFixed(today.plannedMi % 1 === 0 ? 0 : 1) : '—',
-          label: 'PLANNED MI',
-        },
-        {
-          // Pace / cap placeholders · proper engine wiring comes in Phase 3.
           value: glance.rhrCurrent != null ? String(glance.rhrCurrent) : '—',
           label: 'RHR BPM',
         },
@@ -234,6 +242,44 @@ function buildStatTrio(
           label: 'SLEEP 7D',
         },
       ];
+    case 'quality': {
+      // Direction A3 deck · QUALITY switches to workout-context. TOTAL MI ·
+      // LTHR · EST. TIME. LTHR comes from the runner profile (TODO: wire
+      // through to a real profile-derived value · for now placeholder).
+      const lthr = '—'; // TODO 2026-05-28 · wire to profile.lthr_bpm once
+                       // GlanceState surfaces it. Doctrine: research/notes/
+                       // lthr-auto-derivation.md tier 3+.
+      const estTime = today.plannedMi > 0 ? formatEstTime(today.plannedMi, 480) : '—'; // ~8:00/mi placeholder for quality avg
+      return [
+        {
+          value: today.plannedMi > 0
+            ? today.plannedMi.toFixed(today.plannedMi % 1 === 0 ? 0 : 1)
+            : '—',
+          label: 'TOTAL MI',
+        },
+        { value: lthr, label: 'LTHR BPM' },
+        { value: estTime, label: 'EST. TIME' },
+      ];
+    }
+    case 'long': {
+      // Direction A3 deck · LONG switches to workout/horizon-context.
+      // PLANNED MI · EST. TIME · TO RACE (or WEEK MI as fallback when
+      // no A-race horizon is on the calendar).
+      const estTime = today.plannedMi > 0 ? formatEstTime(today.plannedMi, 495) : '—'; // ~8:15/mi long-day placeholder
+      const horizon = glance.daysToARace != null
+        ? { value: `${glance.daysToARace}d`, label: 'TO RACE', valueColor: 'race' as const }
+        : { value: glance.weekDone.toFixed(1), label: 'WEEK MI' };
+      return [
+        {
+          value: today.plannedMi > 0
+            ? today.plannedMi.toFixed(today.plannedMi % 1 === 0 ? 0 : 1)
+            : '—',
+          label: 'PLANNED MI',
+        },
+        { value: estTime, label: 'EST. TIME' },
+        horizon,
+      ];
+    }
     case 'done_nailed':
     case 'done_ease_off':
       return [
@@ -268,6 +314,198 @@ function buildStatTrio(
     default:
       return null;
   }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 3b. Workout-merge builder (Direction A3 · 2026-05-28)
+//     docs/2026-05-28-poster-workout-merge.html §"DIRECTION A3 · No rules.
+//     Just the rows." — rows live inside the gradient Poster, vertically
+//     centered between the verb and the stat trio. No hairlines; caps
+//     labels carry the structure.
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Compose the 3-row workout breakdown the Poster renders mid-card. Returns
+ * null for states without a workout to render structure for (done, rest,
+ * skipped, missed, niggle, sick, new_user, race_week).
+ *
+ * Per-state row shape:
+ *   easy    · PACE / HR CAP / DURATION
+ *   long    · PACE / HR CAP / FUEL
+ *   quality · WARMUP / [WORK|TEMPO|PROGRESSION] / COOLDOWN
+ *   race    · PACE TARGET / STRATEGY / DISTANCE
+ *
+ * TODO 2026-05-28 · pace bands ("8:15–8:45/mi") and HR caps ("148 bpm")
+ * are doctrine placeholders today — a future round wires the real Daniels
+ * VDOT engine + LTHR-derived caps per research/doctrine/training/
+ * 01-daniels-running-formula.md §VDOT-table-to-85 and research/notes/
+ * lthr-auto-derivation.md. Same TODO applies to the EST. TIME math in
+ * `formatEstTime` (placeholder 8.5 min/mi for easy, 8:00/mi for long).
+ */
+function buildWorkoutBreakdown(
+  state: DayState,
+  today: GlanceWeekDay | null,
+  _glance: GlanceState,
+): PosterBreakdownRow[] | null {
+  if (!today) return null;
+
+  switch (state) {
+    case 'easy': {
+      const mi = today.plannedMi;
+      // Duration estimate · placeholder 8.5 min/mi (TODO: wire to real
+      // pace engine — Daniels VDOT E-pace per runner profile).
+      const minutes = mi > 0 ? Math.round(mi * 8.5) : null;
+      const distLabel = mi > 0
+        ? `${mi.toFixed(mi % 1 === 0 ? 0 : 1)} mi`
+        : '—';
+      return [
+        // TODO 2026-05-28 · placeholder pace band ("8:15–8:45/mi") will
+        // wire to the runner-specific VDOT E-pace band in the next round.
+        { label: 'PACE', body: 'Conversational · Z2', tail: '8:15–8:45/mi' },
+        // TODO 2026-05-28 · placeholder HR cap (148 bpm) will wire to the
+        // runner's LTHR-derived aerobic ceiling (~LTHR × 0.85 typical).
+        { label: 'HR CAP', body: 'Stay aerobic', tail: '148 bpm' },
+        {
+          label: 'DURATION',
+          body: minutes != null ? `~${minutes} min on feet` : 'Time on feet',
+          tail: distLabel,
+        },
+      ];
+    }
+    case 'long': {
+      // TODO 2026-05-28 · placeholder long-day pace/HR will derive from
+      // VDOT L-pace + LTHR-margin (long-day ceiling ≈ LTHR × 0.82-0.85).
+      return [
+        { label: 'PACE', body: 'Aerobic band', tail: '8:00–8:25/mi' },
+        { label: 'HR CAP', body: 'Long-day ceiling', tail: '145 bpm' },
+        { label: 'FUEL', body: 'Gel · water · gel', tail: 'mi 4 · 8 · 11' },
+      ];
+    }
+    case 'quality': {
+      // Pick the WORK row label + body off the runner's plannedType +
+      // plannedLabel. plannedLabel examples from glance-state.ts:
+      //   '6×800', '4×1k', '3mi @ T', '5×1k', '12mi long'
+      const subtype = (today.plannedType ?? '').toLowerCase();
+      const workBody = interpretWorkBody(today.plannedLabel);
+
+      if (subtype === 'tempo') {
+        return [
+          { label: 'WARMUP', body: '1.5 mi easy', tail: '~13 min' },
+          // TODO 2026-05-28 · placeholder tempo pace (7:15/mi) will wire
+          // to VDOT T-pace per the runner's current VDOT.
+          { label: 'TEMPO', body: workBody, tail: '7:15/mi' },
+          { label: 'COOLDOWN', body: '1 mi easy', tail: '~8 min' },
+        ];
+      }
+      if (subtype === 'progression') {
+        return [
+          { label: 'WARMUP', body: '1 mi easy', tail: '~9 min' },
+          // TODO 2026-05-28 · progression pace endpoints will derive from
+          // VDOT E→T transition band.
+          { label: 'PROGRESSION', body: 'Build from easy to tempo', tail: '8:30 → 7:15' },
+          { label: 'COOLDOWN', body: '1 mi easy', tail: '~9 min' },
+        ];
+      }
+      // threshold / intervals / fartlek default
+      return [
+        { label: 'WARMUP', body: '1.5 mi easy build', tail: '~12 min' },
+        // TODO 2026-05-28 · placeholder rep pace (3:02/mi) will derive
+        // from VDOT R/I-pace per rep distance.
+        { label: 'WORK', body: workBody, tail: '3:02/mi' },
+        { label: 'COOLDOWN', body: '1.5 mi easy', tail: '~13 min' },
+      ];
+    }
+    // race-day (T-0) day-state isn't surfaced in the v1 DayState union
+    // — race_week owns the whole T-7..T-0 window and renders the
+    // countdown hero (days_countdown). When race-day breakdown rows
+    // become their own surface, add a new DayState (e.g. `race_day`)
+    // and a case here mapping to PACE TARGET / STRATEGY / DISTANCE per
+    // Direction A3 §"A3 · RACE" (the deck doesn't actually render this
+    // tier yet — kept as a deferred TODO 2026-05-28).
+    case 'rest':
+    case 'done_nailed':
+    case 'done_ease_off':
+    case 'skipped':
+    case 'missed':
+    case 'new_user':
+    case 'niggle':
+    case 'sick':
+    case 'race_week':
+      // No breakdown for these states · the workout either already
+      // happened (done), doesn't exist (rest/new_user/skipped/missed),
+      // is health-paused (niggle/sick), or the race-week countdown owns
+      // the layout (race_week).
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Parse a plan's freeform `plannedLabel` into a readable body sentence.
+ * Used as the middle column of the QUALITY breakdown's WORK / TEMPO row.
+ *
+ * Recognised patterns (case-insensitive):
+ *   '6×800'    → '6 × 800m · 90s jog rest'
+ *   '6x800'    → same
+ *   '4×1k'     → '4 × 1km · 2:00 jog rest'
+ *   '5×1km'    → same
+ *   '3mi @ T'  → '3 mi · sustained & controlled'
+ *   '5mi @ T'  → '5 mi · sustained & controlled'
+ *   anything else (or null) → 'Work block per plan'
+ *
+ * TODO 2026-05-28 · the jog-rest duration ("90s", "2:00") is doctrine
+ * default per Daniels §"I/R workouts"; once the plan emits an explicit
+ * rest field this should read it directly.
+ */
+function interpretWorkBody(plannedLabel: string | null): string {
+  if (!plannedLabel) return 'Work block per plan';
+  const raw = plannedLabel.trim();
+  // Normalise × and lowercase the divider char for matching
+  const norm = raw.replace(/×/g, 'x').toLowerCase();
+
+  // N × Mm  · m for metres (e.g. "6x800", "8x400")
+  const repsMetres = norm.match(/^(\d+)\s*x\s*(\d+)\s*m?$/);
+  if (repsMetres) {
+    const reps = repsMetres[1];
+    const dist = repsMetres[2];
+    return `${reps} × ${dist}m · 90s jog rest`;
+  }
+  // N × Mk / N × Mkm (e.g. "4x1k", "5×1km")
+  const repsKm = norm.match(/^(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*k(m)?$/);
+  if (repsKm) {
+    const reps = repsKm[1];
+    const dist = repsKm[2];
+    return `${reps} × ${dist}km · 2:00 jog rest`;
+  }
+  // N mi @ T (tempo) — e.g. "3mi @ T", "5mi @ T"
+  const tempoMi = norm.match(/^(\d+(?:\.\d+)?)\s*mi\s*@\s*t$/);
+  if (tempoMi) {
+    const mi = tempoMi[1];
+    return `${mi} mi · sustained & controlled`;
+  }
+  return 'Work block per plan';
+}
+
+/**
+ * Format an estimated workout time from miles + per-mile pace (seconds).
+ * Returns `~Xm` under an hour, `~H:MM` at or above.
+ *
+ *   formatEstTime(5.5, 480) → '~44m'           (5.5 × 8:00 = 44 min)
+ *   formatEstTime(12, 510)  → '~1:42'          (12 × 8:30 = 102 min)
+ *   formatEstTime(6.1, 510) → '~52m'           (6.1 × 8:30 ≈ 52 min)
+ *
+ * TODO 2026-05-28 · the `paceSec` argument is currently a placeholder
+ * constant per workout type (~8:00/mi quality avg, ~8:15/mi long avg);
+ * future round threads runner-specific VDOT-derived paces through.
+ */
+function formatEstTime(mi: number, paceSec: number): string {
+  if (mi <= 0 || paceSec <= 0) return '—';
+  const totalMin = Math.round((mi * paceSec) / 60);
+  if (totalMin < 60) return `~${totalMin}m`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `~${h}:${String(m).padStart(2, '0')}`;
 }
 
 // ──────────────────────────────────────────────────────────────────────

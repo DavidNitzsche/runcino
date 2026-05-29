@@ -381,3 +381,70 @@
   color: inherit;
   opacity: 0.78;
 }
+
+/* ─── Direction A3 · workout-merge rows ─────────────────────────────────
+ * Spec: docs/2026-05-28-poster-workout-merge.html §"DIRECTION A3 · No
+ * rules. Just the rows." The wrap takes flex: 1 so the row stack sits
+ * vertically centered between the verb (top) and the stat-trio (anchored
+ * bottom via margin-top: auto). NO border-bottom on rows — the caps
+ * labels carry the structure without hairlines.
+ *
+ * State-keyed in the adapter (`lib/faff/glance-adapter.ts`); component
+ * just iterates whatever payload.workout_breakdown emits. Rendered above
+ * the stat-trio inside the gradient card. */
+.workoutBreakdown {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  margin: 16px 0 12px;
+}
+
+.breakdownList {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.breakdownRow {
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  gap: 12px;
+  padding: 8px 0;
+  align-items: baseline;
+  /* A3 explicitly removes the divider lines that A2 carried.
+   * NO border-bottom — let the rows breathe like a poem. */
+}
+
+.breakdownLabel {
+  font-family: var(--f-body);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.70);
+}
+
+.breakdownBody {
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.breakdownTail {
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  font-feature-settings: "tnum";
+}
+
+/* Phone-width clamp · the deck's 96px label column reads tight on a
+ * Phone SE inside a side-by-side Poster + Sibling layout. Shrink the
+ * caps column to 68px on narrow viewports so the body column has
+ * breathing room. Tail column still right-aligned via grid auto. */
+@media (max-width: 480px) {
+  .breakdownRow {
+    grid-template-columns: 68px 1fr auto;
+  }
+}
