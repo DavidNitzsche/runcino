@@ -752,4 +752,84 @@ enum FaffAdapter {
         default:            return "Health."
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 8. Races-surface helpers (Phase 25b · iOS /races mirror)
+    //
+    // The iPhone races surface receives a flat `[RaceListItem]` from
+    // GET /api/races (sorted soonest-first, past at the tail). The web
+    // equivalent has the loader pre-bucket into A / B / C / past
+    // (see web-v2/lib/coach/races-state.ts → loadRacesState). The three
+    // helpers below derive the per-bucket counts + next-A countdown
+    // client-side so the iOS PageHeader can produce the same eyebrow
+    // ("3 A-RACES · 1 B-RACE · 1 C-RACE · 5 PAST") and accent chip
+    // ("17 DAYS") that web/app/races/page.tsx renders.
+    //
+    // No new wire model needed — the existing API.fetchRaces() payload
+    // is sufficient. When the iPhone eventually mirrors the full web
+    // RacesState (with matchedRun enrichment for past races, etc), these
+    // helpers stay relevant: they only need the priority + days_to_race
+    // axis.
+    // ──────────────────────────────────────────────────────────────────
+
+    /// Caps-tracked eyebrow string for the iOS /races PageHeader. Mirrors
+    /// the web assembly in web-v2/app/races/page.tsx lines 15-22:
+    ///
+    ///   "3 A-RACES · 1 B-RACE · 1 C-RACE · 5 PAST"
+    ///
+    /// Plurality matches the web ("1 A-RACE" / "3 A-RACES"). When the
+    /// list has no A-races at all, the first segment becomes
+    /// "NO A-RACE SET" so the eyebrow still communicates the gap.
+    /// Past races are always included as the trailing segment, even when
+    /// the count is zero, to match the web's stable shape.
+    static func racesEyebrow(races: [RaceListItem]) -> String {
+        let upcoming = races.filter { ($0.days_to_race ?? 0) >= 0 }
+        let past = races.filter { ($0.days_to_race ?? 0) < 0 }
+        let aRaces = upcoming.filter { ($0.priority ?? "").uppercased() == "A" }
+        let bRaces = upcoming.filter { ($0.priority ?? "").uppercased() == "B" }
+        // Per races-state.ts:155, "null priority" buckets with C.
+        let cRaces = upcoming.filter {
+            let p = ($0.priority ?? "").uppercased()
+            return p == "C" || p.isEmpty
+        }
+
+        let aPart = aRaces.isEmpty
+            ? "NO A-RACE SET"
+            : "\(aRaces.count) A-RACE\(aRaces.count == 1 ? "" : "S")"
+        let bPart = "\(bRaces.count) B-RACE\(bRaces.count == 1 ? "" : "S")"
+        let cPart = "\(cRaces.count) C-RACE\(cRaces.count == 1 ? "" : "S")"
+        let pastPart = "\(past.count) PAST"
+
+        return [aPart, bPart, cPart, pastPart].joined(separator: " · ")
+    }
+
+    /// Days-to-next-A countdown for the PageHeader accent slot.
+    /// Returns `nil` when there's no upcoming A-race (caller suppresses
+    /// the accent chip entirely in that case — mirrors the web's
+    /// `races.aRace ? ...` branch).
+    static func nextARaceCountdown(races: [RaceListItem]) -> Int? {
+        let upcomingA = races.filter {
+            ($0.priority ?? "").uppercased() == "A" && ($0.days_to_race ?? -1) >= 0
+        }
+        // RaceListResponse is already sorted soonest-first by the loader,
+        // but we sort defensively in case a caller passes raw rows.
+        let soonest = upcomingA.min(by: {
+            ($0.days_to_race ?? Int.max) < ($1.days_to_race ?? Int.max)
+        })
+        return soonest?.days_to_race
+    }
+
+    /// Priority → semantic color. Mirrors the BCRaceCard `priority === 'B'
+    /// ? var(--goal) : var(--learn)` branch in web /races plus the A-race
+    /// orange used for the hero + secondary A cards. C / unknown falls
+    /// through to `Theme.learn` (matches the web's "C" color choice in
+    /// BCRaceCard).
+    static func racePriorityColor(priority: String?) -> Color {
+        switch (priority ?? "").uppercased() {
+        case "A": return Theme.race    // race orange #FF8847
+        case "B": return Theme.goal    // quality gold #F3AD38
+        case "C": return Theme.learn   // phase purple #B084FF
+        default:  return Theme.mute    // unknown / null
+        }
+    }
 }

@@ -1,8 +1,31 @@
 //
-//  RacesView.swift  (P5 — iOS parity for /races)
-//  Coach voice + race list. 2026-05-27: added race list (web has it,
-//  iPhone didn't) — same /api/races data the web /races page reads.
-//  Tap a race → RaceDetailSheet (proximity-adaptive coach brief).
+//  RacesView.swift  (Phase 25b · iOS /races v3 mirror)
+//
+//  iPhone /races surface — aligned with the web v3 design at
+//  web-v2/app/races/page.tsx. Reuses the shared PageHeader (Phase 25a)
+//  so the chrome matches Training / Log / Health / Profile.
+//
+//  Composition (top → bottom):
+//    1) PageHeader            ← FaffPageShell mirror (display-recipe
+//                               title + caps-tracked eyebrow + accent
+//                               slot = next A-race countdown chip)
+//    2) Coach voice (CoachSlot, background-loaded)
+//    3) Race cards (A hero · A secondary · B compact · C compact · past)
+//
+//  Title rule (mirrors races/page.tsx line 14):
+//    · "Races."         when an A-race is set
+//    · "What's next?"   when there's no A-race
+//
+//  Eyebrow rule (mirrors races/page.tsx lines 15-22):
+//    "3 A-RACES · 1 B-RACE · 1 C-RACE · 5 PAST"
+//
+//  Accent chip:
+//    Next A-race countdown — "17 DAYS" — race-orange. Hidden when no
+//    A-race exists (the eyebrow already says NO A-RACE SET).
+//
+//  Cardinal Rule #4 — Theme tokens only · no inline hex. Adapter
+//  pure-function helpers fan out the bucketing + colors so the View
+//  stays a thin shell.
 //
 
 import SwiftUI
@@ -22,28 +45,22 @@ struct RacesView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Background-load coach — page chrome paints immediately.
+                VStack(alignment: .leading, spacing: 18) {
+                    PageHeader(
+                        title: headerTitle,
+                        eyebrow: FaffAdapter.racesEyebrow(races: races),
+                        accent: headerAccent
+                    )
+
+                    // Coach voice — background-loads, never blocks page paint.
                     CoachSlot(
                         briefing: briefing,
                         surface: "races",
                         askPrompt: nil
                     )
 
-                    if let briefing, !briefing.topics.isEmpty {
-                        VStack(spacing: 10) {
-                            ForEach(Array(briefing.topics.enumerated()), id: \.offset) { _, topic in
-                                TopicRenderer(topic: topic)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                        .transition(.opacity)
-                    }
-
-                    // Race list — same data web /races shows. Sorted
-                    // soonest-first; past races sink to the bottom.
                     if !races.isEmpty {
-                        racesSection
+                        raceList
                             .transition(.opacity)
                     } else if loadingRaces {
                         racesSkeleton
@@ -55,8 +72,10 @@ struct RacesView: View {
                 .animation(.spring(response: 0.45, dampingFraction: 0.85), value: races.count)
             }
             .background(Theme.bg.ignoresSafeArea())
+            // PageHeader paints the in-shell title. Suppress the system
+            // chrome title so we don't double up.
             .navigationTitle("Races")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .task { await load() }
             .refreshable { await load() }
             .sensoryFeedback(.selection, trigger: selected?.slug)
@@ -66,92 +85,119 @@ struct RacesView: View {
         }
     }
 
+    // MARK: - Header inputs
+
+    /// "Races." when at least one A-race exists, "What's next?" otherwise.
+    /// Matches races/page.tsx:14 exactly.
+    private var headerTitle: String {
+        let hasA = races.contains {
+            ($0.priority ?? "").uppercased() == "A" && ($0.days_to_race ?? -1) >= 0
+        }
+        return hasA ? "Races." : "What's next?"
+    }
+
+    /// Next-A countdown chip in the accent slot. Hidden when no A-race
+    /// is set (the eyebrow already communicates the gap).
+    private var headerAccent: AnyView? {
+        guard let days = FaffAdapter.nextARaceCountdown(races: races) else { return nil }
+        let color = Theme.race
+        return AnyView(
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(days)")
+                    .font(.display(40))
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+                Text("DAYS")
+                    .font(.label(10))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.mute)
+            }
+        )
+    }
+
     // MARK: - Race list
 
-    private var racesSection: some View {
+    /// A-races (hero + secondaries) → B-races → C-races → past races.
+    /// Each bucket is wrapped in a labeled section header to mirror the
+    /// web's SectionLabel rhythm.
+    private var raceList: some View {
+        let upcoming = races.filter { ($0.days_to_race ?? 0) >= 0 }
+        let past = races.filter { ($0.days_to_race ?? 0) < 0 }
+
+        // Sort each bucket soonest-first; past sorts most-recent first.
+        let aRaces = upcoming
+            .filter { ($0.priority ?? "").uppercased() == "A" }
+            .sorted { ($0.days_to_race ?? .max) < ($1.days_to_race ?? .max) }
+        let bRaces = upcoming
+            .filter { ($0.priority ?? "").uppercased() == "B" }
+            .sorted { ($0.days_to_race ?? .max) < ($1.days_to_race ?? .max) }
+        let cRaces = upcoming
+            .filter {
+                let p = ($0.priority ?? "").uppercased()
+                return p == "C" || p.isEmpty
+            }
+            .sorted { ($0.days_to_race ?? .max) < ($1.days_to_race ?? .max) }
+        let pastSorted = past
+            .sorted { ($0.days_to_race ?? .max) > ($1.days_to_race ?? .max) }
+
+        return VStack(alignment: .leading, spacing: 18) {
+            if let hero = aRaces.first {
+                bucket(label: "UPCOMING · A-RACE") {
+                    RaceCard(race: hero, style: .hero) { selected = hero }
+                    ForEach(aRaces.dropFirst()) { r in
+                        RaceCard(race: r, style: .secondary) { selected = r }
+                    }
+                }
+            }
+
+            if !bRaces.isEmpty {
+                bucket(label: "UPCOMING · B-RACES") {
+                    ForEach(bRaces) { r in
+                        RaceCard(race: r, style: .compact) { selected = r }
+                    }
+                }
+            }
+
+            if !cRaces.isEmpty {
+                bucket(label: "UPCOMING · C-RACES") {
+                    ForEach(cRaces) { r in
+                        RaceCard(race: r, style: .compact) { selected = r }
+                    }
+                }
+            }
+
+            if !pastSorted.isEmpty {
+                bucket(label: "PAST") {
+                    ForEach(pastSorted) { r in
+                        RaceCard(race: r, style: .past) { selected = r }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    @ViewBuilder
+    private func bucket<Content: View>(
+        label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("ALL RACES")
-                .font(.label(10)).tracking(1.6)
+            Text(label)
+                .font(.label(10))
+                .tracking(1.6)
                 .foregroundStyle(Theme.mute)
-                .padding(.horizontal, 24)
-
-            VStack(spacing: 10) {
-                ForEach(races) { race in
-                    Button { selected = race } label: { raceRow(race) }
-                        .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 24)
+            VStack(spacing: 10) { content() }
         }
     }
 
-    private func raceRow(_ r: RaceListItem) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            // Priority chip — A in race orange, B in gold, C in mute.
-            if let p = r.priority {
-                Text(p)
-                    .font(.label(11)).tracking(1.2)
-                    .foregroundStyle(priorityColor(p))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(priorityColor(p).opacity(0.18))
-                    .clipShape(Capsule())
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(r.name ?? r.slug)
-                    .font(.display(18))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                HStack(spacing: 6) {
-                    if let d = r.date { Text(d).font(.body(11)).foregroundStyle(Theme.mute) }
-                    if let dist = r.distance_label {
-                        Text("·").foregroundStyle(Theme.mute)
-                        Text(dist).font(.body(11)).foregroundStyle(Theme.mute)
-                    }
-                    if let loc = r.location {
-                        Text("·").foregroundStyle(Theme.mute)
-                        Text(loc)
-                            .font(.body(11)).foregroundStyle(Theme.mute)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            Spacer()
-            // Days-out: positive = upcoming, negative = past.
-            if let days = r.days_to_race {
-                Text(daysLabel(days))
-                    .font(.body(11, weight: .semibold))
-                    .foregroundStyle(days >= 0 ? Theme.race : Theme.mute)
-            }
-        }
-        .padding(14)
-        .background(Theme.card)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
-        .contentShape(Rectangle())
-    }
-
-    private func priorityColor(_ p: String) -> Color {
-        switch p.uppercased() {
-        case "A":  return Theme.race
-        case "B":  return Theme.goal
-        case "C":  return Theme.mute
-        default:   return Theme.mute
-        }
-    }
-
-    private func daysLabel(_ days: Int) -> String {
-        if days == 0 { return "TODAY" }
-        if days > 0  { return "in \(days)d" }
-        return "\(-days)d ago"
-    }
+    // MARK: - Skeleton
 
     private var racesSkeleton: some View {
         VStack(alignment: .leading, spacing: 10) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(Theme.ink.opacity(0.05))
                 .frame(width: 80, height: 10)
-                .padding(.horizontal, 24)
 
             VStack(spacing: 10) {
                 ForEach(0..<3, id: \.self) { _ in
@@ -176,9 +222,11 @@ struct RacesView: View {
                     .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
                 }
             }
-            .padding(.horizontal, 24)
         }
+        .padding(.horizontal, 24)
     }
+
+    // MARK: - Load
 
     private func load() async {
         async let bRes  = (try? await API.briefing(surface: "races"))
