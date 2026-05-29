@@ -220,11 +220,11 @@ struct RaceDetailSheet: View {
                 if let goal = r.goal {
                     statBox("GOAL", goal)
                 }
-                if let pb = r.pb {
-                    statBox("PB", pb)
-                }
-                if let finish = r.finish_time {
+                if let finish = r.finishTime {
                     statBox("FINISH", finish)
+                }
+                if r.pb == true {
+                    statBox("RESULT", "PB")
                 }
             }
             Text("Pace plan + elevation-aware splits live on the web /races/[slug] page. Splits payload deferred — same data-gap as the course section.")
