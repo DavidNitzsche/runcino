@@ -204,11 +204,13 @@ export function TodayClient({
         )}
 
         {/* BODY GRID · per-state body content (Phase 32 — real data).
-            new_user is the lone exception — the Sibling owns the setup
-            flow and there's no Body content to pair with it. Every other
-            state ships real left + right content per the renderBodyLeft
-            / renderBodyRight switches below. */}
-        {state !== 'new_user' && (
+            Gated out for `new_user` (Sibling owns the setup flow) and
+            `skipped` (2026-05-29 user direction: "i dont think we need
+            these cards at the bottom" — the Poster + Sibling carry the
+            skip framing already, the lower cards are redundant noise).
+            Every other state ships real left + right content per the
+            renderBodyLeft / renderBodyRight switches below. */}
+        {state !== 'new_user' && state !== 'skipped' && (
           <BodyGrid
             sectionHeading={bodyHeadingFor(state)}
             sectionSuffix={bodySuffixFor(state)}

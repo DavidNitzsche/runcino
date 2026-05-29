@@ -268,32 +268,43 @@ function colorVar(c: CoachFactColor | undefined): string {
 }
 
 function FactBlock({ block, didFail = false }: { block: CoachFactBlock; didFail?: boolean }) {
+  // Option A v2 (2026-05-29) · drop the redundant COACH · FACTS eyebrow
+  // (card header already says "COACH · WHY THIS WORKOUT"), drop the meta
+  // sub-captions, constrain to a narrow left column so the right side
+  // breathes. Per user direction: "just a long left justified list with a
+  // ton of room on the right." If we ever go offline, the offline pill
+  // returns in-row (not as a stacked eyebrow).
   const showDevStamp = didFail && process.env.NODE_ENV !== 'production';
   return (
     <section style={{ padding: '8px 24px 22px' }}>
-      <div style={{
-        fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700,
-        color: didFail ? 'var(--mute)' : 'var(--green)', letterSpacing: '1.6px',
-        textTransform: 'uppercase', marginBottom: 18,
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <span style={{
-          width: 6, height: 6, borderRadius: '50%',
-          background: didFail ? 'var(--mute)' : 'var(--green)',
-          boxShadow: didFail ? 'none' : '0 0 12px rgba(62,189,65,0.6)',
-        }} />
-        {didFail ? 'COACH · OFFLINE FALLBACK' : 'COACH · FACTS'}
-        {showDevStamp && (
+      {didFail && (
+        <div style={{
+          fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700,
+          color: 'var(--mute)', letterSpacing: '1.6px',
+          textTransform: 'uppercase', marginBottom: 18,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
           <span style={{
-            marginLeft: 8, fontSize: 9, opacity: 0.6, letterSpacing: '0.6px',
-          }}>
-            (facts endpoint failed · see console)
-          </span>
-        )}
-      </div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+            width: 6, height: 6, borderRadius: '50%',
+            background: 'var(--mute)',
+          }} />
+          OFFLINE FALLBACK
+          {showDevStamp && (
+            <span style={{
+              marginLeft: 8, fontSize: 9, opacity: 0.6, letterSpacing: '0.6px',
+            }}>
+              (facts endpoint failed · see console)
+            </span>
+          )}
+        </div>
+      )}
+      <ul style={{
+        listStyle: 'none', padding: 0, margin: 0,
+        display: 'flex', flexDirection: 'column', gap: 22,
+        maxWidth: 360,
+      }}>
         {block.facts.map((f, i) => (
-          <li key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <li key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{
               fontFamily: 'var(--f-body)',
               fontSize: 10,
@@ -306,24 +317,14 @@ function FactBlock({ block, didFail = false }: { block: CoachFactBlock; didFail?
             </div>
             <div style={{
               fontFamily: 'var(--f-display)',
-              fontSize: 22,
+              fontSize: 28,
               fontWeight: 700,
               color: colorVar(f.valueColor),
-              letterSpacing: '0.3px',
-              lineHeight: 1.15,
+              letterSpacing: '-0.015em',
+              lineHeight: 1.05,
             }}>
               {f.value}
             </div>
-            {f.meta && (
-              <div style={{
-                fontFamily: 'var(--f-body)',
-                fontSize: 12,
-                color: 'rgba(246,247,248,0.66)',
-                lineHeight: 1.4,
-              }}>
-                {f.meta}
-              </div>
-            )}
           </li>
         ))}
       </ul>

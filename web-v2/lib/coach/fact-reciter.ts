@@ -108,143 +108,56 @@ function loadBand(acwr: number): { name: string; color: CoachFactColor } {
  * RHR, HRV, next race horizon. No prose, no character — just facts.
  */
 export function reciteToday(glance: GlanceState): CoachFactBlock {
+  // Option A · 2026-05-29 user direction: tighten to 4 facts (TODAY · BODY
+  // · WEEK · RACE), drop sub-captions, drop alarm colors for "below
+  // target." SLEEP / LOAD / RHR / HRV live on the Sibling MiniTileGrid
+  // already — no double-up needed.
   const facts: CoachFact[] = [];
 
-  // TODAY · WORKOUT — pull from the week strip's "today" row.
+  // TODAY · WORKOUT
   const todayRow = glance.weekDays.find((d) => d.isToday) ?? null;
   if (glance.todaySkipped) {
     facts.push({
-      label: 'TODAY · WORKOUT',
-      value: 'SKIPPED',
-      valueColor: 'amber',
-      meta: todayRow ? `was ${workoutValue(todayRow.plannedType, todayRow.plannedMi)}` : undefined,
+      label: 'TODAY',
+      value: todayRow ? `Skipped · was ${workoutValue(todayRow.plannedType, todayRow.plannedMi).toLowerCase()}` : 'Skipped',
+      valueColor: 'default',
     });
   } else if (todayRow) {
     facts.push({
-      label: 'TODAY · WORKOUT',
+      label: 'TODAY',
       value: workoutValue(todayRow.plannedType, todayRow.plannedMi),
-      meta: todayRow.plannedLabel ?? undefined,
     });
   } else {
-    facts.push(emptyFact('TODAY · WORKOUT'));
+    facts.push(emptyFact('TODAY'));
   }
 
-  // BODY READINESS
+  // BODY · readiness band + score
   const r = glance.readiness;
   facts.push({
-    label: 'BODY READINESS',
+    label: 'BODY',
     value: `${r.label} ${r.score} / 100`,
     valueColor: bandColorForReadiness(r.band),
   });
 
-  // WEEK · X of Y · remaining
+  // WEEK · X of Y · plain (drop the sub-caption noise)
   if (glance.weekPlanned != null && glance.weekPlanned > 0) {
-    const remaining = Math.max(0, +(glance.weekPlanned - glance.weekDone).toFixed(1));
     facts.push({
       label: 'WEEK',
       value: `${glance.weekDone.toFixed(1)} of ${glance.weekPlanned.toFixed(1)} mi`,
-      meta: `${remaining.toFixed(1)} mi remaining`,
     });
   } else {
     facts.push({
       label: 'WEEK',
       value: `${glance.weekDone.toFixed(1)} mi done`,
-      meta: 'no weekly plan',
     });
   }
 
-  // SLEEP · 7d avg
-  if (glance.sleep7Avg != null) {
-    const deficit = glance.sleep7Deficit;
-    const meta = deficit > 0
-      ? `${deficit.toFixed(1)}h short of 7.5h target`
-      : 'at target';
-    facts.push({
-      label: 'SLEEP',
-      value: `${glance.sleep7Avg.toFixed(1)}h avg over 7 days`,
-      valueColor: deficit >= 5 ? 'over' : deficit >= 3 ? 'amber' : 'default',
-      meta,
-    });
-  } else {
-    facts.push(emptyFact('SLEEP'));
-  }
-
-  // LOAD · Gabbett ACWR
-  if (glance.loadAcwr != null) {
-    const b = loadBand(glance.loadAcwr);
-    facts.push({
-      label: 'LOAD',
-      value: `${glance.loadAcwr.toFixed(2)} ACWR · ${b.name}`,
-      valueColor: b.color,
-      meta: 'Gabbett 7d : 28d ratio',
-    });
-  } else {
-    facts.push({
-      label: 'LOAD',
-      value: DASH,
-      meta: 'needs ≥ 3 runs in last 28 days',
-    });
-  }
-
-  // RHR · vs baseline
-  if (glance.rhrCurrent != null) {
-    const delta = glance.rhrBaseline != null
-      ? glance.rhrCurrent - glance.rhrBaseline
-      : null;
-    let meta: string | undefined;
-    let color: CoachFactColor = 'default';
-    if (delta != null && glance.rhrBaseline != null) {
-      if (delta <= -2)     meta = `${Math.abs(delta)} below ${glance.rhrBaseline} base`;
-      else if (delta <= 1) meta = `at ${glance.rhrBaseline} base`;
-      else                 meta = `${delta} above ${glance.rhrBaseline} base`;
-      if (delta >= 5) color = 'over';
-      else if (delta >= 3) color = 'amber';
-      else if (delta <= -2) color = 'green';
-    }
-    facts.push({
-      label: 'RHR',
-      value: `${glance.rhrCurrent} bpm`,
-      valueColor: color,
-      meta,
-    });
-  } else {
-    facts.push(emptyFact('RHR'));
-  }
-
-  // HRV
-  if (glance.hrvCurrent != null) {
-    const delta = glance.hrvBaseline != null
-      ? glance.hrvCurrent - glance.hrvBaseline
-      : null;
-    let meta: string | undefined;
-    let color: CoachFactColor = 'default';
-    if (delta != null && glance.hrvBaseline != null) {
-      if (delta >= 5)       { meta = `${delta} above ${glance.hrvBaseline} base`; color = 'green'; }
-      else if (delta >= -4) { meta = `at ${glance.hrvBaseline} base`; }
-      else                  { meta = `${Math.abs(delta)} below ${glance.hrvBaseline} base`; color = 'amber'; }
-    }
-    facts.push({
-      label: 'HRV',
-      value: `${glance.hrvCurrent} ms`,
-      valueColor: color,
-      meta,
-    });
-  } else {
-    facts.push(emptyFact('HRV'));
-  }
-
-  // NEXT RACE
+  // RACE · only when present
   if (glance.nextARaceName && glance.daysToARace != null) {
     facts.push({
-      label: 'NEXT RACE',
+      label: 'RACE',
       value: `${glance.nextARaceName.toUpperCase()} · ${glance.daysToARace} day${glance.daysToARace === 1 ? '' : 's'}`,
       valueColor: 'race',
-    });
-  } else {
-    facts.push({
-      label: 'NEXT RACE',
-      value: DASH,
-      meta: 'no A-race on the calendar',
     });
   }
 
