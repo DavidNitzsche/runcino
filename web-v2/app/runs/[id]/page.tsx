@@ -117,9 +117,8 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
       <div
         style={{
           background: 'linear-gradient(180deg, rgba(39,180,224,0.08), rgba(39,180,224,0) 70%)',
-          border: '1px solid var(--line)',
-          borderRadius: 18,
-          padding: '26px 28px 18px',
+          borderTop: '2px solid var(--ink)',
+          padding: '20px 24px 18px',
           marginBottom: 18,
         }}
       >
@@ -461,13 +460,13 @@ function PhaseBreakdownCard({ phases }: { phases: PhaseBreakdown[] }) {
               ? (p.actual_pace ?? '—')
               : (p.actual_duration_sec ? fmtDur(p.actual_duration_sec) : (p.actual_pace ?? '—'));
             return (
-              <tr key={p.index} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+              <tr key={p.index} style={{ borderTop: '1px solid var(--line)' }}>
                 <td style={{ padding: '8px 4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span
                       style={{
                         display: 'inline-block', padding: '2px 6px', borderRadius: 4,
-                        background: 'rgba(255,255,255,0.05)',
+                        background: 'var(--card-2)',
                         color: phaseTypeColor(p.type),
                         fontSize: 8.5, letterSpacing: '0.9px', fontWeight: 700,
                       }}
@@ -566,7 +565,7 @@ function HRZonesCard({
       <div
         style={{
           display: 'flex', height: 18, borderRadius: 5, overflow: 'hidden',
-          background: 'rgba(255,255,255,0.03)', border: '1px solid var(--line2)',
+          background: 'var(--card-2)', border: '1px solid var(--line2)',
         }}
       >
         {zones.map((z) => {
@@ -682,7 +681,7 @@ function SplitsCard({
               gap: 12,
               fontFamily: 'var(--f-body)', fontSize: 13,
               padding: '10px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.03)',
+              borderBottom: '1px solid var(--line)',
               alignItems: 'center',
             }}
           >
@@ -798,7 +797,7 @@ function Placeholder({ children }: { children: ReactNode }) {
     <div
       style={{
         padding: '24px 16px',
-        background: 'rgba(255,255,255,0.02)',
+        background: 'var(--card-2)',
         border: '1px dashed var(--line2)',
         borderRadius: 8,
         fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)',
