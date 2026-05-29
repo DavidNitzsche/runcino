@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Watch face · the heads-up display — 2026-05-28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #0a0c10;
+    --bg-page: #15171c;
+    --card:    #11141a;
+    --card2:   #13171f;
+    --ink:     #f6f7f8;
+    --mute:    #8a90a0;
+    --dim:     #4b505e;
+    --line:    rgba(255,255,255,0.08);
+    --line2:   rgba(255,255,255,0.04);
+
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --over:    #FC4D64;
+    --dist:    #27B4E0;
+    --rest:    #008FEC;
+    --learn:   #B084FF;
+    --race:    #FF8847;
+
+    --g-easy:    linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+    --g-quality: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #7a2828 100%);
+    --g-long:    linear-gradient(135deg, #27B4E0 0%, #1a6a9e 60%, #0c2a5e 100%);
+    --g-race:    linear-gradient(135deg, #FF8847 0%, #E85D26 50%, #7a2828 100%);
+    --g-done:    linear-gradient(135deg, #3EBD41 0%, #27B4E0 60%, #1a4a8e 100%);
+
+    --f-display:          'Oswald', sans-serif;
+    --f-body:             'Inter', system-ui, sans-serif;
+    --f-display-weight:   700;
+    --f-display-tracking: -0.015em;
+    --f-display-line:     0.86;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--f-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── deck header ─── */
+  .header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 40px;
+    margin-bottom: 56px;
+  }
+  .h-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 18px;
+  }
+  .h-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 88px;
+    margin: 0 0 14px 0;
+  }
+  .h-sub {
+    font-size: 16px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    max-width: 760px;
+    margin: 0 0 28px 0;
+  }
+  .h-rules {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    max-width: 1100px;
+    margin-top: 32px;
+  }
+  .h-rule {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .h-rule-eye {
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .h-rule-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(246,247,248,0.82);
+  }
+
+  /* ─── section heading ─── */
+  .section {
+    margin-top: 88px;
+  }
+  .section.first { margin-top: 0; }
+  .sect-head {
+    margin-bottom: 28px;
+  }
+  .sect-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 12px;
+  }
+  .sect-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    margin: 0 0 10px 0;
+  }
+  .sect-sub {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.74);
+    margin: 0;
+    max-width: 720px;
+  }
+
+  /* ─── face row · watch + annotations ─── */
+  .facerow {
+    display: grid;
+    grid-template-columns: 410px 1fr;
+    gap: 48px;
+    align-items: start;
+    margin-top: 32px;
+  }
+
+  /* The "phone-style" black presentation frame that holds the watch
+   * at 1:1 scale plus generous safe margins. 410×502.
+   */
+  .stage {
+    width: 410px;
+    height: 502px;
+    background: #050608;
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.55), 0 6px 14px rgba(0,0,0,0.35);
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 50% 18%, rgba(255,255,255,0.025) 0%, transparent 60%),
+      radial-gradient(circle at 50% 90%, rgba(255,255,255,0.012) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .stage-label {
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--dim);
+  }
+  .stage-tag {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--dim);
+  }
+
+  /* The watch — Apple Watch Ultra ~49mm shape, 1:1 scale.
+   * Visible screen is 198×242 (Ultra is 422×514 native ~ 198×238 css)
+   * with bezel/case ring around it.
+   */
+  .watch-case {
+    width: 250px;
+    height: 312px;
+    border-radius: 56px;
+    background: linear-gradient(160deg, #2a2c30 0%, #14161a 60%, #0a0c10 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,0.06),
+      inset 0 2px 4px rgba(255,255,255,0.04),
+      0 18px 40px rgba(0,0,0,0.6);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Crown + side button hints */
+  .watch-case::after {
+    content: '';
+    position: absolute;
+    right: -3px;
+    top: 96px;
+    width: 6px;
+    height: 32px;
+    background: linear-gradient(90deg, #1a1c20, #2a2c30);
+    border-radius: 2px 0 0 2px;
+  }
+  .watch-case::before {
+    content: '';
+    position: absolute;
+    right: -3px;
+    top: 152px;
+    width: 6px;
+    height: 22px;
+    background: linear-gradient(90deg, #1a1c20, #2a2c30);
+    border-radius: 2px 0 0 2px;
+  }
+
+  .watch-screen {
+    width: 198px;
+    height: 242px;
+    background: var(--bg);
+    border-radius: 38px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* OS clock — always-visible system layer, top-right */
+  .os-clock {
+    position: absolute;
+    top: 6px;
+    right: 12px;
+    font-family: 'SF Pro', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--ink);
+    z-index: 10;
+    letter-spacing: -0.02em;
+  }
+
+  /* Background tint layer per face — sits below content */
+  .bg-tint {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .bg-tint.easy    { background: var(--g-easy);    opacity: 0.10; }
+  .bg-tint.quality { background: var(--g-quality); opacity: 0.14; }
+  .bg-tint.long    { background: var(--g-long);    opacity: 0.12; }
+  .bg-tint.race    { background: var(--g-race);    opacity: 0.18; }
+  .bg-tint.done    { background: var(--g-done);    opacity: 0.15; }
+
+  /* Face content layer */
+  .face {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    padding: 26px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Top zone — small caps label + secondary stat (clock baseline) */
+  .top-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 2px;
+    min-height: 26px;
+  }
+  .top-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .top-stat {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.4px;
+    color: rgba(246,247,248,0.86);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    margin-top: 2px;
+  }
+
+  /* Middle zone — the BIG Oswald number */
+  .mid-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .big {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 78px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .big.x-large { font-size: 86px; }
+  .big.medium  { font-size: 64px; }
+  .big.green   { color: var(--green); }
+  .big.amber   { color: var(--goal); }
+  .big.race    { color: var(--race); }
+  .big.dist    { color: var(--dist); }
+  .big.over    { color: var(--over); }
+
+  .big-sub {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.4px;
+    color: rgba(246,247,248,0.78);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    line-height: 1;
+  }
+  .big-sub .unit {
+    font-weight: 500;
+    color: var(--mute);
+    margin-left: 3px;
+  }
+
+  /* Bottom zone — HR / split delta / rest / fuel */
+  .bot-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-height: 32px;
+    text-align: center;
+  }
+  .bot-prime {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 28px;
+    font-variant-numeric: tabular-nums;
+  }
+  .bot-prime.over { color: var(--over); }
+  .bot-prime.green { color: var(--green); }
+  .bot-prime.race { color: var(--race); }
+  .bot-prime.amber { color: var(--goal); }
+  .bot-cap {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .bot-cap.over { color: var(--over); }
+  .bot-cap.green { color: var(--green); }
+
+  /* Chip (heat warning) */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(252, 77, 100, 0.16);
+    border: 1px solid rgba(252, 77, 100, 0.4);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--over);
+  }
+  .chip-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--over);
+  }
+
+  /* Annotation column */
+  .annot {
+    padding-top: 8px;
+  }
+  .a-eye {
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .a-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 44px;
+    margin: 0 0 10px 0;
+  }
+  .a-blurb {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.78);
+    margin: 0 0 22px 0;
+    max-width: 540px;
+  }
+  .a-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    max-width: 540px;
+  }
+  .a-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .a-zone {
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .a-what {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: rgba(246,247,248,0.86);
+    font-weight: 500;
+  }
+  .a-what strong { color: var(--ink); font-weight: 700; }
+  .a-what em {
+    font-style: normal;
+    color: var(--goal);
+    font-weight: 700;
+  }
+
+  /* ─── complications grid ─── */
+  .comp-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 32px;
+    margin-top: 32px;
+  }
+  .comp-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 28px 28px 24px;
+  }
+  .comp-stage {
+    width: 156px;
+    height: 156px;
+    margin: 0 auto 18px;
+    border-radius: 36px;
+    background: linear-gradient(160deg, #2a2c30 0%, #14161a 60%, #0a0c10 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .comp-glyph {
+    width: 124px;
+    height: 124px;
+    border-radius: 30px;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .comp-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--mute);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .comp-val {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 52px;
+    font-variant-numeric: tabular-nums;
+  }
+  .comp-val.green { color: var(--green); }
+  .comp-val.amber { color: var(--goal); }
+  .comp-unit {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-top: 3px;
+  }
+  .comp-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 28px;
+    margin: 0 0 8px 0;
+    text-align: center;
+  }
+  .comp-blurb {
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    margin: 0;
+    text-align: center;
+  }
+
+  /* ─── dim-vs-active grid ─── */
+  .dim-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-top: 32px;
+  }
+  .dim-cell {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .dim-stage {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 18px;
+  }
+  .dim-eye {
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 700;
+    margin-bottom: 6px;
+    text-align: center;
+  }
+  .dim-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 28px;
+    margin: 0 0 10px 0;
+    text-align: center;
+  }
+  .dim-blurb {
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    margin: 0;
+    text-align: center;
+    max-width: 360px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* Dimmed face — used in always-on */
+  .watch-screen.dimmed {
+    filter: brightness(0.42) saturate(0.65);
+  }
+
+  /* Pause overlay */
+  .pause-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10,12,16,0.78);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+  .pause-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .pause-big {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 38px;
+    color: var(--goal);
+  }
+  .pause-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .pause-btn {
+    padding: 6px 11px;
+    border-radius: 999px;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+  }
+  .pause-btn.resume { background: var(--green); color: #0a0c10; }
+  .pause-btn.end    { background: rgba(252,77,100,0.18); color: var(--over); border: 1px solid rgba(252,77,100,0.4); }
+
+  /* ─── architecture section ─── */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 32px;
+  }
+  .arch-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px 24px;
+  }
+  .arch-eye {
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .arch-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 32px;
+    margin: 0 0 14px 0;
+  }
+  .arch-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .arch-list li {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.84);
+    padding: 9px 0;
+    border-top: 1px solid var(--line2);
+    display: flex;
+    gap: 10px;
+  }
+  .arch-list li:first-child { border-top: 0; }
+  .arch-list .marker {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 16px;
+    color: var(--green);
+    flex-shrink: 0;
+    min-width: 24px;
+    line-height: 1.2;
+  }
+  .arch-list .marker.face { color: var(--goal); }
+  .arch-list strong { color: var(--ink); font-weight: 700; }
+  .arch-list code {
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--dist);
+    background: rgba(39,180,224,0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  /* ─── message shape doc ─── */
+  .msg-doc {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px 28px;
+    margin-top: 24px;
+  }
+  .msg-eye {
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .msg-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 30px;
+    margin: 0 0 16px 0;
+  }
+  .msg-block {
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: rgba(246,247,248,0.85);
+    background: rgba(0,0,0,0.32);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 22px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .msg-block .k { color: var(--dist); }
+  .msg-block .s { color: var(--green); }
+  .msg-block .n { color: var(--goal); }
+  .msg-block .c { color: var(--dim); font-style: italic; }
+
+  /* ─── footer ─── */
+  .footer {
+    margin-top: 96px;
+    padding-top: 40px;
+    border-top: 1px solid var(--line);
+  }
+  .q-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 28px;
+  }
+  .q-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .q-num {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 26px;
+    color: var(--learn);
+    margin-bottom: 6px;
+    line-height: 1;
+  }
+  .q-text {
+    font-size: 14px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.84);
+  }
+  .q-text strong { color: var(--ink); font-weight: 700; }
+
+  .colophon {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line2);
+    font-size: 12px;
+    color: var(--mute);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .colophon strong { color: var(--ink); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─────────── HEADER ─────────── -->
+  <header class="header">
+    <div class="h-eye">FAFF · WATCH FACE · 2026-05-28</div>
+    <h1 class="h-title">WHEN THE WATCH SPEAKS.</h1>
+    <p class="h-sub">
+      Wrist-level surface for the runner mid-effort. Same Oswald display recipe, same seven semantic
+      colors, same dark canvas. Five faces — one per workout type — each glanceable inside half a
+      second at race pace. The watch app stays preserved per Cardinal Rule #2 · this deck is the
+      face contract the existing watchOS app renders against.
+    </p>
+
+    <div class="h-rules">
+      <div class="h-rule">
+        <div class="h-rule-eye">RULE 1 · BIGGEST NUMBER</div>
+        <div class="h-rule-body">Always Oswald 700 · tracking -0.015em · line-height 0.86 · tabular-nums. The hero stat dominates. Nothing else competes.</div>
+      </div>
+      <div class="h-rule">
+        <div class="h-rule-eye">RULE 2 · UNDER 0.5s</div>
+        <div class="h-rule-body">Glanceable while running. No scroll. No swipe to read. Three zones: TOP context, MID hero stat, BOTTOM secondary.</div>
+      </div>
+      <div class="h-rule">
+        <div class="h-rule-eye">RULE 3 · STATE-CODED</div>
+        <div class="h-rule-body">Background tint comes from the day-state gradient at 10-18% opacity. Hero color is semantic: green in-band, amber drifting, red over.</div>
+      </div>
+      <div class="h-rule">
+        <div class="h-rule-eye">RULE 4 · TOP-BOTTOM SYMMETRY</div>
+        <div class="h-rule-body">Honors the locked Runcino NumberFace law — top margin equals bottom margin. Small caps top-label rides the OS clock baseline.</div>
+      </div>
+      <div class="h-rule">
+        <div class="h-rule-eye">RULE 5 · NO EMOJI · NO LLM</div>
+        <div class="h-rule-body">Every label is deterministic. Every threshold cites doctrine. No on-watch coaching prose — just numbers + state.</div>
+      </div>
+      <div class="h-rule">
+        <div class="h-rule-eye">RULE 6 · PRESENT · DO NOT COLLECT</div>
+        <div class="h-rule-body">The watch already gathers HR + pace + distance + route via HKWorkoutSession. The face's only job is to render what's already in CoachState.</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- A · EASY FACE                                 -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section first">
+    <div class="sect-head">
+      <div class="sect-eye">FACE A · EASY</div>
+      <h2 class="sect-title">RUN EASY.</h2>
+      <p class="sect-sub">
+        The most common face — base-aerobic runs, recovery days, the daily aerobic build. Hero is current pace.
+        Color shifts green ↔ amber on band drift. Bottom carries the HR cap reminder so the runner respects
+        the ceiling without doing math.
+      </p>
+    </div>
+
+    <div class="facerow">
+      <div class="stage">
+        <div class="stage-label">FACE · A · EASY</div>
+        <div class="stage-tag">198 × 242</div>
+        <div class="watch-case">
+          <div class="watch-screen">
+            <div class="bg-tint easy"></div>
+            <div class="os-clock">9:41</div>
+            <div class="face">
+              <div class="top-zone">
+                <div class="top-label">EASY</div>
+                <div class="top-stat">3.2 / 6.1 MI</div>
+              </div>
+              <div class="mid-zone">
+                <div class="big green">8:32</div>
+                <div class="big-sub">/MI<span class="unit">CURRENT</span></div>
+              </div>
+              <div class="bot-zone">
+                <div class="bot-prime">148</div>
+                <div class="bot-cap">148 / 148 CAP</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="annot">
+        <div class="a-eye">WHAT EACH ZONE DOES</div>
+        <h3 class="a-title">In-band · respect the cap.</h3>
+        <p class="a-blurb">
+          Easy days are won by not racing them. The runner's pace band is set by the plan engine (VDOT-driven
+          per Daniels). Hero color is the only thing the eye needs to lock onto — green means you're inside
+          the band, no work needed.
+        </p>
+
+        <div class="a-grid">
+          <div class="a-card">
+            <div class="a-zone">TOP ZONE · static</div>
+            <div class="a-what"><strong>EASY</strong> label + distance remaining. Never changes during the run except the live mile counter.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">MID ZONE · live</div>
+            <div class="a-what">Current pace. <em>Green</em> in-band · <em>amber</em> ±10s drift · <em>red</em> over the band ceiling.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">BOT ZONE · live</div>
+            <div class="a-what">Current HR + cap reminder. Cap text flips <em>red</em> when HR exceeds the LTHR-derived ceiling.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">CANVAS · subtle</div>
+            <div class="a-what">--g-easy at 10% opacity. Just enough to identify the day-state without competing with the hero.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- B · QUALITY / INTERVALS FACE                  -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">FACE B · QUALITY / INTERVALS</div>
+      <h2 class="sect-title">REP 3 OF 6.</h2>
+      <p class="sect-sub">
+        The hardest face to design well — too many numbers want to live here. Solved by keeping rep count
+        at the top and pace-on-rep in the middle. Rest countdown takes over the bottom row between reps,
+        fades out the moment the runner is moving again.
+      </p>
+    </div>
+
+    <div class="facerow">
+      <div class="stage">
+        <div class="stage-label">FACE · B · QUALITY</div>
+        <div class="stage-tag">198 × 242</div>
+        <div class="watch-case">
+          <div class="watch-screen">
+            <div class="bg-tint quality"></div>
+            <div class="os-clock">9:52</div>
+            <div class="face">
+              <div class="top-zone">
+                <div class="top-label">REP 3 / 6</div>
+                <div class="top-stat">800m @ 3:02</div>
+              </div>
+              <div class="mid-zone">
+                <div class="big amber">1:31</div>
+                <div class="big-sub">3:04<span class="unit">/MI</span></div>
+              </div>
+              <div class="bot-zone">
+                <div class="bot-prime amber">REST 0:45</div>
+                <div class="bot-cap">JOG 200M · BREATHE</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="annot">
+        <div class="a-eye">REPS · TARGETS · REST</div>
+        <h3 class="a-title">Three contexts · one face.</h3>
+        <p class="a-blurb">
+          A 6×800m session has three modes the face must handle: running a rep, recovering between reps,
+          and the rep target reminder before it starts. The static top label carries rep number + target;
+          the bottom row swaps live between rest-countdown and an empty (dim) state.
+        </p>
+
+        <div class="a-grid">
+          <div class="a-card">
+            <div class="a-zone">TOP ZONE · static</div>
+            <div class="a-what"><strong>REP n/m</strong> + the rep's target. Set by the plan engine. Doesn't change mid-rep.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">MID ZONE · live</div>
+            <div class="a-what">Rep elapsed time (big) + current pace per mile (sub). Pace stays <em>amber</em> in target band.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">BOT ZONE · contextual</div>
+            <div class="a-what"><em>REST n:nn</em> countdown between reps. Fades to dim once the next rep starts.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">CANVAS · amber</div>
+            <div class="a-what">--g-quality at 14% — slightly warmer than Easy because the work-rest rhythm signals "high-intent" day.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- C · LONG FACE                                 -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">FACE C · LONG</div>
+      <h2 class="sect-title">GO LONG.</h2>
+      <p class="sect-sub">
+        The face for 90+ minute efforts. Average pace is the hero, not current — micro pace swings don't
+        matter on a 14-miler, the average tells the story. Fuel marker sits inside the hero block so the
+        runner sees it without thinking. Heat warning chip earns the bottom row when it fires.
+      </p>
+    </div>
+
+    <div class="facerow">
+      <div class="stage">
+        <div class="stage-label">FACE · C · LONG</div>
+        <div class="stage-tag">198 × 242</div>
+        <div class="watch-case">
+          <div class="watch-screen">
+            <div class="bg-tint long"></div>
+            <div class="os-clock">10:14</div>
+            <div class="face">
+              <div class="top-zone">
+                <div class="top-label">LONG · 8.4 / 14 MI</div>
+                <div class="top-stat">138 BPM / 145 CAP</div>
+              </div>
+              <div class="mid-zone">
+                <div class="big dist x-large">8:18</div>
+                <div class="big-sub">FUEL @ MI 11</div>
+              </div>
+              <div class="bot-zone">
+                <span class="chip"><span class="chip-dot"></span>HEAT · 24°C · BACK OFF 10S</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="annot">
+        <div class="a-eye">AVERAGE · FUEL · HEAT</div>
+        <h3 class="a-title">Hours · not minutes.</h3>
+        <p class="a-blurb">
+          A long run is a thermal + glycogen story. The face surfaces what matters at that timescale —
+          rolling average pace, the next fuel cue, and a heat advisory if HR is drifting up against pace
+          (a classic dehydration / heat-strain signal).
+        </p>
+
+        <div class="a-grid">
+          <div class="a-card">
+            <div class="a-zone">TOP ZONE · static</div>
+            <div class="a-what">Distance progress + HR readout with cap. <em>Two numbers up top</em> only on Long — the runner has time to read them.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">MID ZONE · live</div>
+            <div class="a-what"><strong>Rolling average pace</strong> (not instantaneous). Color stays <em>blue</em> across the band — it's a steady-state effort.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">FUEL SUB · plan-driven</div>
+            <div class="a-what">Fuel cue from plan. Comes from the runner's race nutrition profile if set, defaults to every ~45 min otherwise.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">BOT ZONE · contextual</div>
+            <div class="a-what">Heat chip fires when HR drift > 8bpm vs same-pace baseline. Hidden when not relevant.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- D · RACE FACE                                 -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">FACE D · RACE</div>
+      <h2 class="sect-title">GUN DAY.</h2>
+      <p class="sect-sub">
+        T-0 takeover. The race-orange canvas signals "this is the day." Hero is the current mile split,
+        color-coded against the target split per the runner's race plan. Bottom row shows split delta
+        as the runner banks or burns seconds against goal pace.
+      </p>
+    </div>
+
+    <div class="facerow">
+      <div class="stage">
+        <div class="stage-label">FACE · D · RACE · T-0</div>
+        <div class="stage-tag">198 × 242</div>
+        <div class="watch-case">
+          <div class="watch-screen">
+            <div class="bg-tint race"></div>
+            <div class="os-clock">7:24</div>
+            <div class="face">
+              <div class="top-zone">
+                <div class="top-label">MI 6.2</div>
+                <div class="top-stat">1:29:42 PROJ</div>
+              </div>
+              <div class="mid-zone">
+                <div class="big green">7:08</div>
+                <div class="big-sub">MILE 6 SPLIT</div>
+              </div>
+              <div class="bot-zone">
+                <div class="bot-prime green">−0:04</div>
+                <div class="bot-cap green">VS TARGET · BANKED</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="annot">
+        <div class="a-eye">SPLIT · PROJECTION · DELTA</div>
+        <h3 class="a-title">One mile at a time.</h3>
+        <p class="a-blurb">
+          On race day the runner needs three things: how am I doing right now, how is the projection
+          tracking, and am I ahead or behind goal. Hero is mile split (the rhythm the race is run in),
+          color-coded green if under target, amber if at target, red if over.
+        </p>
+
+        <div class="a-grid">
+          <div class="a-card">
+            <div class="a-zone">TOP ZONE · live</div>
+            <div class="a-what">Current mile marker + <strong>projected finish</strong> computed off rolling average. Updates every 30s, debounced.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">MID ZONE · live</div>
+            <div class="a-what">Mile split for the just-completed mile. <em>Green</em> under target · <em>amber</em> at · <em>red</em> over.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">BOT ZONE · live</div>
+            <div class="a-what"><strong>Split delta</strong> vs the race plan. Negative banked time = green. Positive lost time = red.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">CANVAS · race-orange</div>
+            <div class="a-what">--g-race at 18% — the strongest tint in the system. Race-week sacred per token rules.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- E · RECOVERY (post-finish) FACE               -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">FACE E · RECOVERY / POST-FINISH</div>
+      <h2 class="sect-title">FINISHED.</h2>
+      <p class="sect-sub">
+        Immediately post-finish. Workout has ended, the watch is still on the wrist. The runner wants the
+        big number — total time, then the supporting stats. The done gradient (green → blue) signals
+        completion without celebration overkill — the celebration moment lives on the phone.
+      </p>
+    </div>
+
+    <div class="facerow">
+      <div class="stage">
+        <div class="stage-label">FACE · E · DONE</div>
+        <div class="stage-tag">198 × 242</div>
+        <div class="watch-case">
+          <div class="watch-screen">
+            <div class="bg-tint done"></div>
+            <div class="os-clock">8:31</div>
+            <div class="face">
+              <div class="top-zone">
+                <div class="top-label">FINISHED</div>
+                <div class="top-stat">1:30:01 TOTAL</div>
+              </div>
+              <div class="mid-zone">
+                <div class="big x-large">1:30:01</div>
+                <div class="big-sub">13.1<span class="unit">MI</span></div>
+              </div>
+              <div class="bot-zone">
+                <div class="bot-prime">6:53</div>
+                <div class="bot-cap">/MI · 164 BPM AVG</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="annot">
+        <div class="a-eye">TIME · DISTANCE · AVERAGES</div>
+        <h3 class="a-title">The number that mattered.</h3>
+        <p class="a-blurb">
+          The face stays up for ~90 seconds post-finish then auto-dims. No celebration prose on the watch
+          — the phone owns that moment with the poster. The watch's job here is the headline: total time +
+          the two averages that anchor the effort.
+        </p>
+
+        <div class="a-grid">
+          <div class="a-card">
+            <div class="a-zone">TOP ZONE · static</div>
+            <div class="a-what"><strong>FINISHED</strong> label + total time duplicated small. The duplication is intentional — the eye reads "finished, time, big-time" in sequence.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">MID ZONE · headline</div>
+            <div class="a-what">Total time at hero scale + distance sub. <em>Default ink color</em> — the celebration is the state itself.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">BOT ZONE · static</div>
+            <div class="a-what">Average pace + average HR. Two numbers that summarize the whole effort cleanly.</div>
+          </div>
+          <div class="a-card">
+            <div class="a-zone">CANVAS · done</div>
+            <div class="a-what">--g-done at 15% — green-to-blue gradient. Signals completion without alarm-color competition.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- COMPLICATIONS                                 -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">SECTION · COMPLICATIONS</div>
+      <h2 class="sect-title">CORNER GLANCES.</h2>
+      <p class="sect-sub">
+        Two complications for the watchOS corner slot. Single-number surfaces that let the runner glance
+        without opening the full face. Same Oswald hero recipe, scaled down. Color encoding matches the
+        face system so a glance reads identically.
+      </p>
+    </div>
+
+    <div class="comp-grid">
+      <div class="comp-card">
+        <div class="comp-stage">
+          <div class="comp-glyph">
+            <div class="comp-eye">PACE</div>
+            <div class="comp-val green">8:32</div>
+            <div class="comp-unit">/MI</div>
+          </div>
+        </div>
+        <h3 class="comp-title">PACE GLANCE</h3>
+        <p class="comp-blurb">
+          Current pace · single value. Color reads green / amber / red against the active workout's band.
+          When no workout is active, shows last-run average pace at <em>dim</em> ink.
+        </p>
+      </div>
+
+      <div class="comp-card">
+        <div class="comp-stage">
+          <div class="comp-glyph">
+            <div class="comp-eye">HR</div>
+            <div class="comp-val amber">148</div>
+            <div class="comp-unit">BPM</div>
+          </div>
+        </div>
+        <h3 class="comp-title">HEART RATE GLANCE</h3>
+        <p class="comp-blurb">
+          Current heart rate · single value. Color encodes the HR zone (Z1 cool → Z5 deep red) per the
+          canonical zone palette. Idle state shows resting HR in <em>dim</em> ink.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- DIM VS ACTIVE                                 -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">SECTION · ALWAYS-ON DIM STATE</div>
+      <h2 class="sect-title">DIM &harr; ACTIVE.</h2>
+      <p class="sect-sub">
+        When the runner's wrist drops, watchOS dims the display. The face survives the dim — the hero
+        number stays legible because Oswald 700 carries the weight, and the semantic color encoding stays
+        readable even at 40% brightness. Side-by-side comparison below.
+      </p>
+    </div>
+
+    <div class="dim-grid">
+      <div class="dim-cell">
+        <div class="dim-eye">ACTIVE · WRIST UP</div>
+        <h3 class="dim-title">FULL BRIGHTNESS</h3>
+        <div class="dim-stage">
+          <div class="watch-case">
+            <div class="watch-screen">
+              <div class="bg-tint easy"></div>
+              <div class="os-clock">9:41</div>
+              <div class="face">
+                <div class="top-zone">
+                  <div class="top-label">EASY</div>
+                  <div class="top-stat">3.2 / 6.1 MI</div>
+                </div>
+                <div class="mid-zone">
+                  <div class="big green">8:32</div>
+                  <div class="big-sub">/MI<span class="unit">CURRENT</span></div>
+                </div>
+                <div class="bot-zone">
+                  <div class="bot-prime">148</div>
+                  <div class="bot-cap">148 / 148 CAP</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="dim-blurb">All zones at full opacity. The runner has lifted the wrist — every detail is available.</p>
+      </div>
+
+      <div class="dim-cell">
+        <div class="dim-eye">DIMMED · WRIST DOWN · AOD</div>
+        <h3 class="dim-title">60% DIM</h3>
+        <div class="dim-stage">
+          <div class="watch-case">
+            <div class="watch-screen dimmed">
+              <div class="bg-tint easy"></div>
+              <div class="os-clock">9:41</div>
+              <div class="face">
+                <div class="top-zone">
+                  <div class="top-label">EASY</div>
+                  <div class="top-stat">3.2 / 6.1 MI</div>
+                </div>
+                <div class="mid-zone">
+                  <div class="big green">8:32</div>
+                  <div class="big-sub">/MI<span class="unit">CURRENT</span></div>
+                </div>
+                <div class="bot-zone">
+                  <div class="bot-prime">148</div>
+                  <div class="bot-cap">148 / 148 CAP</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="dim-blurb">Hero number + cap reminder stay legible. watchOS handles the dim transform — no separate AOD layout.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- PAUSE OVERLAY                                 -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">SECTION · PAUSE OVERLAY</div>
+      <h2 class="sect-title">PAUSED.</h2>
+      <p class="sect-sub">
+        When the runner taps pause, the face dims behind a modal overlay. Big amber word, two-tap recovery:
+        RESUME continues the workout, END writes the file and transitions to the post-finish face. Matches
+        the existing watch contract — no new behavior.
+      </p>
+    </div>
+
+    <div class="dim-grid">
+      <div class="dim-cell">
+        <div class="dim-eye">RUNNING</div>
+        <h3 class="dim-title">FACE A · ACTIVE</h3>
+        <div class="dim-stage">
+          <div class="watch-case">
+            <div class="watch-screen">
+              <div class="bg-tint easy"></div>
+              <div class="os-clock">9:41</div>
+              <div class="face">
+                <div class="top-zone">
+                  <div class="top-label">EASY</div>
+                  <div class="top-stat">3.2 / 6.1 MI</div>
+                </div>
+                <div class="mid-zone">
+                  <div class="big green">8:32</div>
+                  <div class="big-sub">/MI<span class="unit">CURRENT</span></div>
+                </div>
+                <div class="bot-zone">
+                  <div class="bot-prime">148</div>
+                  <div class="bot-cap">148 / 148 CAP</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="dim-blurb">Workout in progress · runner has not interrupted.</p>
+      </div>
+
+      <div class="dim-cell">
+        <div class="dim-eye">PAUSE TAPPED</div>
+        <h3 class="dim-title">OVERLAY</h3>
+        <div class="dim-stage">
+          <div class="watch-case">
+            <div class="watch-screen">
+              <div class="bg-tint easy"></div>
+              <div class="os-clock">9:41</div>
+              <div class="face" style="opacity: 0.32;">
+                <div class="top-zone">
+                  <div class="top-label">EASY</div>
+                  <div class="top-stat">3.2 / 6.1 MI</div>
+                </div>
+                <div class="mid-zone">
+                  <div class="big green">8:32</div>
+                  <div class="big-sub">/MI<span class="unit">CURRENT</span></div>
+                </div>
+                <div class="bot-zone">
+                  <div class="bot-prime">148</div>
+                  <div class="bot-cap">148 / 148 CAP</div>
+                </div>
+              </div>
+              <div class="pause-overlay">
+                <div class="pause-eye">WORKOUT</div>
+                <div class="pause-big">PAUSED</div>
+                <div class="pause-row">
+                  <div class="pause-btn resume">RESUME</div>
+                  <div class="pause-btn end">END</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="dim-blurb">Modal sits over the face. Background blur preserves spatial context · runner knows the workout is still alive.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- ARCHITECTURE                                  -->
+  <!-- ═════════════════════════════════════════════ -->
+  <section class="section">
+    <div class="sect-head">
+      <div class="sect-eye">SECTION · ARCHITECTURE</div>
+      <h2 class="sect-title">PRESENT · NOT COLLECT.</h2>
+      <p class="sect-sub">
+        Per Cardinal Rule #2, the existing watchOS app is preserved. The watch already owns the
+        HKWorkoutSession lifecycle, the route polling, the HR stream, and the live-distance accumulator.
+        The face's only job is to render. Five architecture decisions land below.
+      </p>
+    </div>
+
+    <div class="arch-grid">
+      <div class="arch-card">
+        <div class="arch-eye">WATCH ALREADY DOES</div>
+        <h3 class="arch-title">Collection · system layer.</h3>
+        <ul class="arch-list">
+          <li><span class="marker">·</span><span><strong>HKWorkoutSession</strong> lifecycle — start, pause, resume, end, file write. Untouched.</span></li>
+          <li><span class="marker">·</span><span><strong>Heart rate stream</strong> via HealthKit at 1Hz. Cached in <code>CoachState.hr</code>.</span></li>
+          <li><span class="marker">·</span><span><strong>Pace + distance</strong> from CMPedometer + GPS fused per the existing logic. Lives in <code>CoachState.pace</code> and <code>CoachState.distance</code>.</span></li>
+          <li><span class="marker">·</span><span><strong>Route polling</strong> via CLLocationManager for the post-run map. The face never renders the route.</span></li>
+          <li><span class="marker">·</span><span><strong>WatchConnectivity sync</strong> from iPhone — plan + targets + LTHR cap arrive before workout start.</span></li>
+        </ul>
+      </div>
+
+      <div class="arch-card">
+        <div class="arch-eye">FACE'S ONLY JOB</div>
+        <h3 class="arch-title">Render · view layer.</h3>
+        <ul class="arch-list">
+          <li><span class="marker face">·</span><span><strong>Select the face</strong> by workout type (easy / quality / long / race / done) sent from iPhone.</span></li>
+          <li><span class="marker face">·</span><span><strong>Read CoachState</strong> + the active plan target. Pure read · no mutation.</span></li>
+          <li><span class="marker face">·</span><span><strong>Compute color encoding</strong> — in-band / drift / over — from CoachState and the workout target.</span></li>
+          <li><span class="marker face">·</span><span><strong>Render three zones</strong> per the face spec — top, mid, bot. Static labels stay static · live numbers update every 1s.</span></li>
+          <li><span class="marker face">·</span><span><strong>Hand off pause / end</strong> back to the existing HKWorkoutSession lifecycle. No new state.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="msg-doc">
+      <div class="msg-eye">WATCH-CONNECTIVITY MESSAGE SHAPE · iPhone → watch · pre-workout-start</div>
+      <h3 class="msg-title">WCSession payload contract.</h3>
+      <div class="msg-block">
+<span class="c">// "session.start" message — sent once when the runner taps Start on iPhone</span>
+<span class="c">// or auto-pushed when the planned workout reaches T-0 on race day.</span>
+{
+  <span class="k">"type"</span>: <span class="s">"session.start"</span>,
+  <span class="k">"workoutId"</span>: <span class="s">"w-2026-05-28-easy-6.1mi"</span>,
+
+  <span class="k">"face"</span>: <span class="s">"easy"</span>,           <span class="c">// "easy" | "quality" | "long" | "race" | "done"</span>
+  <span class="k">"label"</span>: <span class="s">"EASY"</span>,           <span class="c">// caps-tracked top-zone label</span>
+
+  <span class="k">"target"</span>: {
+    <span class="k">"distanceMi"</span>:   <span class="n">6.1</span>,
+    <span class="k">"paceBand"</span>:     [<span class="n">510</span>, <span class="n">540</span>],   <span class="c">// seconds-per-mile · floor → ceiling</span>
+    <span class="k">"hrCap"</span>:        <span class="n">148</span>,         <span class="c">// LTHR-derived ceiling</span>
+    <span class="k">"reps"</span>:         <span class="n">null</span>,        <span class="c">// quality only · [{distM, paceSec, restSec}, ...]</span>
+    <span class="k">"fuelCueMi"</span>:    <span class="n">null</span>          <span class="c">// long only · single mile marker</span>
+  },
+
+  <span class="k">"race"</span>:        <span class="n">null</span>,            <span class="c">// race face only · {splits:[...], projTarget}</span>
+  <span class="k">"weatherChip"</span>: <span class="n">null</span>             <span class="c">// long face only · {kind:"heat", tempC, drop}</span>
+}
+
+<span class="c">// "session.tick" — watch → iPhone, every 5s during the workout</span>
+{
+  <span class="k">"type"</span>:       <span class="s">"session.tick"</span>,
+  <span class="k">"workoutId"</span>:  <span class="s">"w-2026-05-28-easy-6.1mi"</span>,
+  <span class="k">"distanceMi"</span>: <span class="n">3.2</span>,
+  <span class="k">"paceSec"</span>:    <span class="n">512</span>,
+  <span class="k">"hrBpm"</span>:      <span class="n">148</span>,
+  <span class="k">"elapsedSec"</span>: <span class="n">1640</span>
+}
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════ -->
+  <!-- FOOTER · OPEN QUESTIONS                       -->
+  <!-- ═════════════════════════════════════════════ -->
+  <footer class="footer">
+    <div class="sect-eye">FOOTER · OPEN DESIGN QUESTIONS</div>
+    <h2 class="sect-title">FIVE THINGS UNSETTLED.</h2>
+    <p class="sect-sub">
+      The face shape is locked. These are the design decisions still on the table — most are about the
+      edges (rare states, runner preference, device variants). None block v1 implementation against the
+      existing watch app.
+    </p>
+
+    <div class="q-list">
+      <div class="q-card">
+        <div class="q-num">Q1</div>
+        <div class="q-text">
+          <strong>Race-face split delta direction.</strong> Should negative time vs target read as
+          "−0:04 banked" (math-true) or "+0:04 ahead" (intuitive)? Currently shown as math-true negative
+          → green · gut says runners read "+" as "ahead." Needs a test.
+        </div>
+      </div>
+
+      <div class="q-card">
+        <div class="q-num">Q2</div>
+        <div class="q-text">
+          <strong>Heat-chip threshold authority.</strong> The Long face chip currently fires on HR drift
+          &gt;8bpm vs same-pace baseline. Should the threshold flex by ambient temperature input from
+          HealthKit, or stay deterministic? Cardinal Rule #3 prefers cited doctrine.
+        </div>
+      </div>
+
+      <div class="q-card">
+        <div class="q-num">Q3</div>
+        <div class="q-text">
+          <strong>Quality-face rep-target visibility.</strong> Mid-rep, does the runner want the next
+          rep's target visible (predictive prep) or stay focused on the current rep elapsed? Tested both
+          on the Runcino watch face contact sheet — no clear winner.
+        </div>
+      </div>
+
+      <div class="q-card">
+        <div class="q-num">Q4</div>
+        <div class="q-text">
+          <strong>Aluminum vs Ultra layout.</strong> The face is designed for 49mm Ultra (198×242 css).
+          Aluminum 41mm and 45mm are 162×197 and 184×224. Auto-shrink the hero number or auto-drop the
+          bottom row? The Runcino law says width-cap by widest row — needs porting.
+        </div>
+      </div>
+
+      <div class="q-card">
+        <div class="q-num">Q5</div>
+        <div class="q-text">
+          <strong>Recovery face auto-dismiss.</strong> How long does Face E stay visible post-finish?
+          90 seconds default but the runner may still be lying on the ground for minutes. Tap-to-dismiss
+          vs timeout vs both? Currently spec'd as both (timeout 90s · tap anytime).
+        </div>
+      </div>
+
+      <div class="q-card">
+        <div class="q-num">Q6</div>
+        <div class="q-text">
+          <strong>Complication availability matrix.</strong> The two glances are designed for the
+          modular corner slot. Should they also render at extraLarge, circular, and graphicBezel?
+          watchOS makes us pick — minimum viable is corner only, full coverage is more design work.
+        </div>
+      </div>
+    </div>
+
+    <div class="colophon">
+      <span><strong>FAFF · WATCH FACE · 2026-05-28</strong> · five faces + two complications + dim + pause</span>
+      <span>oswald 700 · -0.015em · 0.86 · seven semantic colors · zero LLM</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
