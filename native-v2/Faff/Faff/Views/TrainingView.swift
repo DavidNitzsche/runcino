@@ -1,126 +1,91 @@
 //
 //  TrainingView.swift
 //
-//  iPhone TRAINING tab — the WHOLE plan arc, not just a compact /today.
+//  iPhone PLAN tab — PAPER GUT (2026-05-29).
 //
-//  v3 chrome cutover (2026-05-28) — mirrors the web /training surface
-//  harmonized in Phase 11 (web commit fdf12bf). The legacy inline
-//  phase strip + plan arc + week-ahead list have been extracted into
-//  dedicated SwiftUI components under Components/, mirroring the web's
-//  PhaseStrip / PlanArc / WeekAhead one-for-one:
+//  No longer a stack of rounded component-cards (PageHeader + PhaseStrip
+//  + VolumeArc + WeekAheadGrid + nextQualityCard). It is the whole race
+//  arc rendered as one continuous editorial spec-sheet, per
+//  docs/DESIGN_OVERHAUL_2026-05-29.md. The race is the spine; the plan
+//  is the instrument readout beneath it.
 //
-//    1) PageHeader        ← FaffPageShell (display-recipe title +
-//                           caps-tracked eyebrow + optional accent)
-//    2) PhaseStrip        ← PhaseStrip.tsx
-//    3) VolumeArc         ← PlanArc.tsx
-//    4) WeekAheadGrid     ← WeekAhead.tsx
-//    5) CoachSlot         ← BriefingLoader (background-loaded)
+//    1) RACE SPINE      — FAFF wordmark · RACES ▸ · race name · T−N ·
+//                         GOAL · WK x/n · PHASE ● (phase-toned).
+//    2) PHASE ARC       — BASE→BUILD→PEAK→TAPER→RACE as a proportional
+//                         (week-weighted) strip, current block emphatic.
+//    3) WEEKLY VOLUME   — every week's planned mileage as graphic bars,
+//                         phase-toned, the current week notched in ink.
+//    4) THIS WEEK       — the 7 days as dense ruled SpecRows (DOW · type
+//                         · pace target · planned mi), today emphasised.
+//    5) NEXT QUALITY    — the next hard session as a bracketed callout.
+//    6) DISPATCH        — coach voice in its telex slot (surface=training).
+//    7) STAMP FOOTER    — page/version registration stamps.
 //
-//  Data still comes from /api/training/state via API.fetchTrainingState
-//  (decoded into TrainingState). FaffAdapter.buildPhaseStrip /
-//  buildVolumeArc / buildWeekAhead derive the per-component inputs.
+//  Cardinal Rules honoured: zero-LLM (facts only), watch untouched,
+//  token-driven (Theme.*) for one-swap dark revert. ALL data plumbing is
+//  preserved verbatim — load() fan-out (state + brief), AppCache
+//  hydration, the Races sheet, refreshable. Week indices are 0-based on
+//  the wire (plan_weeks.week_idx starts at 0); displayed as idx+1 (the
+//  old eyebrow rendered idx directly → "WEEK 0 OF 13", now fixed).
 //
 
 import SwiftUI
 
 struct TrainingView: View {
-    // Hydrate from AppCache so the first tap after launch paints the
-    // last-seen plan instantly. Network refresh overwrites both state
-    // values when it lands (see load() below).
     @State private var briefing: Briefing? =
         AppCache.read(.trainingBriefing, as: Briefing.self)
     @State private var state: TrainingState? =
         AppCache.read(.trainingState, as: TrainingState.self)
-    /// `loading` only kicks in when there's nothing cached — the very
-    /// first launch. From then on we paint real content and let
-    /// `.task` refresh silently in the background.
     @State private var loading: Bool = AppCache.readRaw(.trainingState) == nil
-    /// Paper overhaul 2026-05-29 · 5→3 tab collapse (Today/Plan/Me): Races
-    /// lost its primary tab and now lives under PLAN. A top-bar flag opens
-    /// the full races surface as a sheet — always reachable, including in
-    /// the no-active-plan state (the scroll body is empty there). (Web
-    /// equivalent: the race-destination strip on /plan.)
+    /// Races lost its primary tab in the 3-tab collapse; it opens here as
+    /// a sheet, reachable from the spine (RACES ▸) in every state.
     @State private var showRacesSheet = false
+
+    private let hPad: CGFloat = 20
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    PageHeader(
-                        title: planTitle,
-                        eyebrow: phaseEyebrow,
-                        accent: phaseAccent
-                    )
+                VStack(alignment: .leading, spacing: 0) {
+                    raceSpine
 
                     if let s = state, !s.weeks.isEmpty {
                         let blocks = FaffAdapter.buildPhaseStrip(state: s)
                         let currentIdx = FaffAdapter.currentPhaseBlockIdx(
-                            blocks: blocks,
-                            currentPhase: s.currentPhase
+                            blocks: blocks, currentPhase: s.currentPhase
                         )
-                        PhaseStrip(
-                            blocks: blocks,
-                            currentBlockIdx: currentIdx,
-                            totalWeeks: s.weeks.count,
-                            currentWeekIdx: s.currentWeekIdx,
-                            raceName: s.race?.name,
-                            daysToRace: s.race?.days_to_race
-                        )
-                        .transition(.opacity)
+                        phaseArcBand(blocks: blocks, currentIdx: currentIdx, totalWeeks: s.weeks.count)
 
-                        VolumeArc(
-                            bars: FaffAdapter.buildVolumeArc(state: s),
-                            raceName: s.race?.name,
-                            raceDate: s.race?.date,
-                            raceGoal: s.race?.goal
-                        )
-                        .transition(.opacity)
+                        volumeArcSection(bars: FaffAdapter.buildVolumeArc(state: s))
 
                         let weekDays = FaffAdapter.buildWeekAhead(state: s)
                         if !weekDays.isEmpty,
                            let currentWeek = s.weeks.first(where: { $0.isCurrent }) {
-                            WeekAheadGrid(
-                                days: weekDays,
-                                today: s.today,
-                                plannedMi: currentWeek.plannedMi
-                            )
-                            .transition(.opacity)
+                            weekAheadSection(days: weekDays, plannedMi: currentWeek.plannedMi, today: s.today)
                         }
 
                         if let q = s.nextQuality {
-                            nextQualityCard(q)
-                                .transition(.opacity)
+                            nextQualitySection(q)
                         }
                     } else if loading {
-                        trainingSkeleton
-                            .transition(.opacity)
+                        planSkeleton
+                    } else {
+                        noPlanBlock
                     }
 
-                    // Coach voice on the phase / arc — background-loads,
-                    // never blocks the structural content above. Stays
-                    // here verbatim; will swap to the fact-reciter post
-                    // Phase 24b on web.
-                    CoachSlot(
-                        briefing: briefing,
-                        surface: "training",
-                        askPrompt: nil
-                    )
+                    // DISPATCH — coach voice on the phase / arc. Background-
+                    // loads via CoachSlot, never blocks the structure above.
+                    CoachSlot(briefing: briefing, surface: "training", askPrompt: nil)
+                        .padding(.top, 8)
+
+                    stampFooter
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, 44)
                 .animation(.spring(response: 0.45, dampingFraction: 0.85), value: state?.plan_id)
                 .animation(.spring(response: 0.45, dampingFraction: 0.85), value: briefing?.lead)
             }
-            .background(Theme.bg.ignoresSafeArea())
-            .navigationTitle("Training")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showRacesSheet = true } label: {
-                        Label("Races", systemImage: "flag.checkered")
-                    }
-                    .tint(Theme.race)
-                }
-            }
+            .background(Theme.bgPage.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showRacesSheet) {
                 RacesView()
                     .presentationDetents([.large])
@@ -131,112 +96,296 @@ struct TrainingView: View {
         }
     }
 
-    // MARK: - Title + eyebrow (drives PageHeader)
+    // ══════════════════════════════════════════════════════════════════
+    // 1 · RACE SPINE
+    // ══════════════════════════════════════════════════════════════════
 
-    private var planTitle: String {
-        if let race = state?.race, let s = state, s.weeks.first(where: { $0.isCurrent }) != nil {
-            return "\(race.days_to_race) days to \(race.name)."
+    private var raceSpine: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("FAFF")
+                    .font(Theme.Font.display(22)).tracking(2)
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                Button { showRacesSheet = true } label: {
+                    Stamp("RACES \u{25B8}", tone: .race)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open races")
+            }
+
+            if let race = state?.race {
+                Text(race.name.uppercased())
+                    .font(Theme.Font.display(26))
+                    .tracking(Theme.Font.tracking(for: 26))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                planSpecLine(race: race)
+            } else {
+                Text("NO ACTIVE PLAN")
+                    .font(Theme.Font.display(26))
+                    .tracking(Theme.Font.tracking(for: 26))
+                    .foregroundStyle(Theme.ink)
+                HStack(spacing: 10) {
+                    Text("PICK A RACE TO BUILD ONE")
+                        .font(monoSpec(12)).foregroundStyle(Theme.mute)
+                    Spacer(minLength: 0)
+                }
+                .lineLimit(1).minimumScaleFactor(0.7)
+            }
         }
-        if state?.weeks.isEmpty == false {
-            return "Training."
+        .padding(.horizontal, hPad)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.line).frame(height: 1)
         }
-        return "No active plan."
     }
 
-    private var phaseEyebrow: String {
-        guard let s = state else { return "" }
-        guard let week = s.weeks.first(where: { $0.isCurrent }) else {
-            return s.currentPhase?.uppercased() ?? "NO PLAN"
+    /// `T−87 · GOAL 1:45 · WK 4/12 · BUILD ●` — tabular, ruled.
+    private func planSpecLine(race: TrainingRace) -> some View {
+        let phase = (state?.currentPhase ?? "").uppercased()
+        let pTone = phaseTone(state?.currentPhase ?? "")
+        return HStack(spacing: 10) {
+            Text("T\u{2212}\(race.days_to_race)")
+                .font(monoSpec(12)).foregroundStyle(Theme.race)
+            specDot()
+            if let goal = race.goal, !goal.isEmpty {
+                Text("GOAL \(goal)").font(monoSpec(12)).foregroundStyle(Theme.mute)
+                specDot()
+            }
+            if let wt = weekText {
+                Text(wt).font(monoSpec(12)).foregroundStyle(Theme.mute)
+                specDot()
+            }
+            if !phase.isEmpty {
+                HStack(spacing: 5) {
+                    Text(phase).font(monoSpec(12)).foregroundStyle(pTone.color)
+                    RegistrationDot(tone: pTone, size: 7)
+                }
+            }
+            Spacer(minLength: 0)
         }
-        let parts = [
-            s.currentPhase?.uppercased() ?? "NO PHASE",
-            "WEEK \(week.idx) OF \(s.weeks.count)",
-            s.weekPlanned != nil ? "\(Int(s.weekPlanned!)) MI PLANNED" : nil,
-        ].compactMap { $0 }
-        return parts.joined(separator: " · ")
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
     }
 
-    /// Phase chip in the accent slot — mirrors the `accent` prop on
-    /// FaffPageShell. Was previously rendered in the navigation
-    /// toolbar; now hops into the in-shell header band.
-    private var phaseAccent: AnyView? {
-        guard let phase = state?.currentPhase else { return nil }
-        let color = phaseColor(phase)
-        return AnyView(
-            Text(phase.uppercased())
-                .font(.label(10)).tracking(1.4)
-                .foregroundStyle(color)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(color.opacity(0.12))
-                .overlay(Capsule().stroke(color.opacity(0.35), lineWidth: 1))
-                .clipShape(Capsule())
-        )
+    // ══════════════════════════════════════════════════════════════════
+    // 2 · PHASE ARC — proportional block strip
+    // ══════════════════════════════════════════════════════════════════
+
+    private func phaseArcBand(blocks: [PhaseBlock], currentIdx: Int?, totalWeeks: Int) -> some View {
+        let total = max(1, blocks.reduce(0) { $0 + $1.weekCount })
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SpecLabel("PHASE ARC", size: 10)
+                Spacer()
+                Text("\(totalWeeks) WK").font(monoSpec(10)).foregroundStyle(Theme.mute)
+            }
+            GeometryReader { geo in
+                let gap: CGFloat = 3
+                let usable = geo.size.width - gap * CGFloat(max(0, blocks.count - 1))
+                HStack(spacing: gap) {
+                    ForEach(Array(blocks.enumerated()), id: \.element.id) { idx, b in
+                        let w = usable * CGFloat(b.weekCount) / CGFloat(total)
+                        let active = idx == currentIdx
+                        let t = phaseTone(b.label)
+                        VStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(active ? t.color : t.color.opacity(0.26))
+                                .frame(height: 9)
+                                .overlay(alignment: .top) {
+                                    if active {
+                                        Rectangle().fill(Theme.ink).frame(height: 2)
+                                    }
+                                }
+                            Text(b.label)
+                                .font(monoSpec(8.5))
+                                .foregroundStyle(active ? t.color : Theme.dim)
+                                .lineLimit(1).minimumScaleFactor(0.5)
+                        }
+                        .frame(width: max(10, w))
+                    }
+                }
+            }
+            .frame(height: 32)
+        }
+        .padding(.horizontal, hPad)
+        .padding(.vertical, 16)
     }
 
-    // MARK: - Next-quality card
+    // ══════════════════════════════════════════════════════════════════
+    // 3 · WEEKLY VOLUME — every week as a graphic bar
+    // ══════════════════════════════════════════════════════════════════
 
-    private func nextQualityCard(_ q: TrainingNextQuality) -> some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("NEXT QUALITY")
-                    .font(.label(10)).tracking(1.6)
-                    .foregroundStyle(Theme.goal)
+    private func volumeArcSection(bars: [VolumeBar]) -> some View {
+        let maxMi = max(1, bars.map { $0.plannedMi }.max() ?? 1)
+        let peak = bars.map { $0.plannedMi }.max() ?? 0
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                SpecLabel("WEEKLY VOLUME", size: 10)
+                Spacer()
+                Text("PEAK \(trimMi(peak)) MI").font(monoSpec(10)).foregroundStyle(Theme.mute)
+            }
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(bars) { bar in
+                    let t = phaseTone(bar.phase)
+                    let h = max(3, CGFloat(bar.plannedMi / maxMi) * 64)
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(bar.isCurrent ? t.color : t.color.opacity(0.30))
+                        .frame(height: h)
+                        .frame(maxWidth: .infinity)
+                        .overlay(alignment: .top) {
+                            if bar.isCurrent {
+                                Rectangle().fill(Theme.ink).frame(height: 2)
+                            }
+                        }
+                }
+            }
+            .frame(height: 64, alignment: .bottom)
+        }
+        .padding(.horizontal, hPad)
+        .padding(.vertical, 16)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.line).frame(height: 1)
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4 · THIS WEEK — 7 ruled SpecRows
+    // ══════════════════════════════════════════════════════════════════
+
+    private func weekAheadSection(days: [WeekAheadDay], plannedMi: Double, today: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                SpecLabel("THIS WEEK", size: 10)
+                Spacer()
+                Text("\(trimMi(plannedMi)) MI PLANNED")
+                    .font(monoSpec(10)).foregroundStyle(Theme.mute)
+            }
+            .padding(.bottom, 8)
+            TickRule(ticks: 28).padding(.bottom, 2)
+
+            ForEach(Array(days.enumerated()), id: \.element.id) { idx, d in
+                let isToday = d.date == today
+                let isRest = d.type.lowercased() == "rest"
+                SpecRow(
+                    label: dowLabel(d.dow),
+                    value: d.plannedMi > 0 ? trimMi(d.plannedMi) : "REST",
+                    unit: d.plannedMi > 0 ? "MI" : nil,
+                    meta: weekRowMeta(d),
+                    tone: isRest ? .mute : FaffTone.forType(d.type),
+                    dot: d.doneMi > 0 ? .green : (isToday ? FaffTone.forType(d.type) : nil),
+                    showRule: idx != 0
+                )
+            }
+        }
+        .padding(.horizontal, hPad)
+        .padding(.vertical, 16)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.line).frame(height: 1)
+        }
+    }
+
+    private func weekRowMeta(_ d: WeekAheadDay) -> String {
+        let word = (d.label?.isEmpty == false ? d.label! : d.type).uppercased()
+        if d.type.lowercased() == "rest" { return word }
+        return "\(word) · \(d.paceTarget)"
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 5 · NEXT QUALITY — bracketed callout
+    // ══════════════════════════════════════════════════════════════════
+
+    private func nextQualitySection(_ q: TrainingNextQuality) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Rectangle().fill(Theme.goal).frame(width: 4).frame(maxHeight: .infinity)
+            VStack(alignment: .leading, spacing: 7) {
+                FaffBracket("NEXT QUALITY", tone: .amber, size: 10)
                 Text(q.label ?? q.type.capitalized)
-                    .font(.display(18)).foregroundStyle(Theme.ink)
-                HStack(spacing: 6) {
-                    Text(dowLabel(q.dow))
-                        .font(.body(11, weight: .semibold))
-                        .foregroundStyle(Theme.mute)
-                    Text("·").foregroundStyle(Theme.mute)
-                    Text(String(format: "%.1f mi", q.mi))
-                        .font(.body(11))
-                        .foregroundStyle(Theme.mute)
+                    .font(Theme.Font.display(24)).tracking(0.4)
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Text(dowLabel(q.dow)).font(monoSpec(11)).foregroundStyle(Theme.mute)
+                    specDot()
+                    Text("\(trimMi(q.mi)) MI").font(monoSpec(11)).foregroundStyle(Theme.mute)
                 }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
-        .padding(16)
-        .background(Theme.goal.opacity(0.06))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.goal.opacity(0.28), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
-        .padding(.horizontal, 24)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, hPad)
+        .padding(.vertical, 16)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.line).frame(height: 1)
+        }
     }
 
-    // MARK: - Skeleton
+    // ══════════════════════════════════════════════════════════════════
+    // No-plan + skeleton
+    // ══════════════════════════════════════════════════════════════════
 
-    private var trainingSkeleton: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Theme.ink.opacity(0.06))
-                .frame(height: 24)
-                .padding(.horizontal, 24)
-            HStack(spacing: 4) {
-                ForEach(0..<4, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Theme.ink.opacity(0.06))
-                        .frame(height: 28)
-                }
+    private var noPlanBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FaffBracket("NO PLAN", tone: .learn, size: 11)
+            Text("Pick a race and Faff builds the arc — base through taper — around it.")
+                .font(.body(14)).foregroundStyle(Theme.ink.opacity(0.82)).lineSpacing(3)
+            Button { showRacesSheet = true } label: {
+                Stamp("PICK A RACE \u{25B8}", tone: .race)
             }
-            .padding(.horizontal, 24)
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(0..<10, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 3)
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, hPad)
+        .padding(.vertical, 28)
+    }
+
+    private var planSkeleton: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Theme.ink.opacity(0.06)).frame(height: 9)
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(0..<12, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1.5)
                         .fill(Theme.ink.opacity(0.05))
-                        .frame(width: 16, height: CGFloat(40 + (i % 4) * 18))
+                        .frame(height: CGFloat(20 + (i % 5) * 9))
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 24)
+            .frame(height: 64, alignment: .bottom)
         }
+        .padding(.horizontal, hPad)
+        .padding(.vertical, 20)
     }
 
-    // MARK: - Load
+    // ══════════════════════════════════════════════════════════════════
+    // 7 · STAMP FOOTER
+    // ══════════════════════════════════════════════════════════════════
+
+    private var stampFooter: some View {
+        HStack(spacing: 8) {
+            Stamp("FAFF", tone: .mute)
+            Stamp("PLAN", tone: .mute)
+            Spacer()
+            if let n = state?.weeks.count, n > 0 {
+                Stamp("\(n) WK ARC", tone: .mute)
+            }
+            Stamp("v4", tone: .race)
+        }
+        .padding(.horizontal, hPad)
+        .padding(.top, 22)
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Load — UNCHANGED plumbing
+    // ══════════════════════════════════════════════════════════════════
 
     private func load() async {
         loading = true
         defer { loading = false }
-        // State + brief in parallel. State paints the page immediately;
-        // brief snaps in below when ready.
         async let sRes = (try? await API.fetchTrainingState())
         async let bRes = (try? await API.briefing(surface: "training"))
         let s = await sRes
@@ -245,22 +394,45 @@ struct TrainingView: View {
         self.briefing = b ?? nil
     }
 
-    // MARK: - Helpers
+    // ══════════════════════════════════════════════════════════════════
+    // Helpers
+    // ══════════════════════════════════════════════════════════════════
 
+    /// `WK 4/12` — week_idx is 0-based on the wire, displayed as idx+1.
+    private var weekText: String? {
+        guard let s = state, let wk = s.weeks.first(where: { $0.isCurrent }), !s.weeks.isEmpty
+        else { return nil }
+        return "WK \(wk.idx + 1)/\(s.weeks.count)"
+    }
+
+    private func phaseTone(_ phase: String) -> FaffTone {
+        switch phase.lowercased() {
+        case "base":  return .green
+        case "build": return .dist
+        case "peak":  return .learn
+        case "taper": return .amber
+        case "race":  return .race
+        default:      return .mute
+        }
+    }
+
+    /// 0 = Sunday per the training-state loader convention.
     private func dowLabel(_ dow: Int) -> String {
-        // 0 = Sunday per the loader convention.
         let labels = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
         return labels.indices.contains(dow) ? labels[dow] : "—"
     }
 
-    private func phaseColor(_ phase: String) -> Color {
-        switch phase.lowercased() {
-        case "taper":  return Theme.goal
-        case "race":   return Theme.race
-        case "peak":   return Theme.learn
-        case "build":  return Theme.dist
-        case "base":   return Theme.green
-        default:       return Theme.mute
-        }
+    private func trimMi(_ mi: Double) -> String {
+        if mi <= 0 { return "0" }
+        if mi.truncatingRemainder(dividingBy: 1) == 0 { return String(Int(mi)) }
+        return String(format: "%.1f", mi)
+    }
+
+    private func monoSpec(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .semibold, design: .monospaced)
+    }
+
+    @ViewBuilder private func specDot() -> some View {
+        Text("·").font(monoSpec(12)).foregroundStyle(Theme.dim)
     }
 }

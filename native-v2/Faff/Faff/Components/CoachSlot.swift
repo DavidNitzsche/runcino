@@ -46,33 +46,39 @@ private struct CoachSkeleton: View {
     @State private var pulse = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
+            // DISPATCH header — matches CoachBlock so nothing jumps when
+            // the real brief lands.
             HStack(spacing: 8) {
-                Circle().fill(Theme.green.opacity(0.4)).frame(width: 6, height: 6)
-                Text("COACH").font(.label(10)).tracking(1.6)
-                    .foregroundStyle(Theme.green.opacity(0.55))
+                RegistrationDot(tone: .green, size: 7)
+                SpecLabel("DISPATCH", size: 10, tone: .green)
+                Spacer()
+                Stamp("COACH", tone: .mute)
             }
+            .padding(.bottom, 12)
+            Rectangle().fill(Theme.line).frame(height: 1)
 
-            // Lead headline placeholder (one tall line, ~display-32)
-            RoundedRectangle(cornerRadius: 6)
+            // Lead headline placeholder (one tall line, ~display-28)
+            RoundedRectangle(cornerRadius: 2)
                 .fill(Theme.ink.opacity(0.06))
-                .frame(height: 32)
+                .frame(height: 28)
                 .frame(maxWidth: .infinity)
+                .padding(.top, 14)
 
             // Two paragraph lines worth of placeholder
             VStack(alignment: .leading, spacing: 8) {
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 2)
                     .fill(Theme.ink.opacity(0.05))
                     .frame(height: 14)
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 2)
                     .fill(Theme.ink.opacity(0.05))
                     .frame(height: 14)
-                    .frame(maxWidth: .infinity * 0.7, alignment: .leading)
                     .padding(.trailing, 60)
             }
+            .padding(.top, 14)
         }
         .padding(.horizontal, 24)
-        .padding(.top, 22)
+        .padding(.top, 20)
         .padding(.bottom, 22)
         .opacity(pulse ? 0.55 : 1.0)
         .onAppear {

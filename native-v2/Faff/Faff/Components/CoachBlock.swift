@@ -23,49 +23,58 @@ struct CoachBlock: View {
     @State private var pending = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Eyebrow
+        // DISPATCH — the coach voice gets a designated, typeset slot
+        // (telex / wire-service framing) instead of floating prose. Ruled
+        // header with a registration dot + label + mono stamp; editorial
+        // lead; Inter body; flattened spec-style check-in. Paper gut
+        // 2026-05-29.
+        VStack(alignment: .leading, spacing: 0) {
+            // Ruled header band
             HStack(spacing: 8) {
-                Circle().fill(Theme.green).frame(width: 6, height: 6)
-                    .shadow(color: Theme.green.opacity(0.6), radius: 6)
-                Text("COACH").font(.label(10)).tracking(1.6)
-                    .foregroundStyle(Theme.green)
+                RegistrationDot(tone: .green, size: 7)
+                SpecLabel("DISPATCH", size: 10, tone: .green)
+                Spacer()
+                Stamp("COACH", tone: .mute)
             }
+            .padding(.bottom, 12)
+            Rectangle().fill(Theme.line).frame(height: 1)
 
             if let lead {
-                // 2026-05-27 fix: longer headlines were getting truncated
-                // ("Sleep debt and load spike fighting each...") because
-                // the .display font defaulted to one-line. fixedSize on
-                // vertical lets it wrap to as many lines as needed; no
-                // lineLimit clamp anywhere on the headline.
-                Text(lead).font(.display(32)).tracking(0.5)
+                // No lineLimit clamp — long leads wrap freely.
+                Text(lead).font(.display(28)).tracking(0.4)
                     .foregroundStyle(Theme.ink).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
+                    .padding(.top, 14)
             }
 
-            ForEach(Array(voice.enumerated()), id: \.offset) { _, paragraph in
-                paragraphView(paragraph)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(voice.enumerated()), id: \.offset) { _, paragraph in
+                    paragraphView(paragraph)
+                }
             }
+            .padding(.top, voice.isEmpty ? 0 : 12)
 
             if let ack {
                 Text(ack).font(.body(13)).italic().foregroundStyle(Theme.green)
-                    .padding(.top, 4)
+                    .padding(.top, 10)
             }
 
             if let askPrompt, !askPrompt.isEmpty {
-                Text(askPrompt).font(.body(12)).foregroundStyle(Theme.mute)
-                    .padding(.top, 8)
+                Text(askPrompt.uppercased()).font(.label(10)).tracking(1.4)
+                    .foregroundStyle(Theme.mute)
+                    .padding(.top, 16).padding(.bottom, 8)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 0) {
                     chipButton(.solid,   color: Theme.green)
                     chipButton(.tired,   color: Theme.goal)
                     chipButton(.wrecked, color: Theme.over)
                 }
+                .overlay(Rectangle().stroke(Theme.line, lineWidth: 1))
             }
         }
         .padding(.horizontal, 24)
-        .padding(.top, 22)
+        .padding(.top, 20)
         .padding(.bottom, 22)
         // Subtle haptic on chip-select + a heavier "success" thump when
         // the ack lands so check-ins feel like a real interaction.
@@ -104,14 +113,17 @@ struct CoachBlock: View {
             Task { await submit(rating) }
         } label: {
             Text(rating.rawValue.uppercased())
-                .font(.display(18)).tracking(1.2)
+                .font(.label(11)).tracking(1.4)
                 .foregroundStyle(isSelected ? color : (isDisabled ? Theme.dim : Theme.ink))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(isSelected ? color.opacity(0.12) : Color.clear)
-                .overlay(RoundedRectangle(cornerRadius: 14)
-                    .stroke(isSelected ? color : Theme.line, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.vertical, 13)
+                .background(isSelected ? color.opacity(0.10) : Color.clear)
+                .overlay(alignment: .leading) {
+                    // hairline divider between segments (skip the first)
+                    if rating != .solid {
+                        Rectangle().fill(Theme.line).frame(width: 1)
+                    }
+                }
         }
         .disabled(pending || isDisabled)
         .opacity(isDisabled ? 0.5 : 1)

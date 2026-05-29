@@ -85,6 +85,7 @@
 		E491393F0D5E5688309F0648 /* BodyMetricCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7F0BD128550FDD49CE6568 /* BodyMetricCard.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
 		E54882AEEF58895614A753D7 /* PhaseStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFA58EBF52CA176701D00FC /* PhaseStrip.swift */; };
+		E5BB63C90DF69C19CD17632F /* FaffGraphic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488BA1593AD706528F4D069B /* FaffGraphic.swift */; };
 		E74344DC5CD6D34D4FEF1A80 /* RacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 266E02CD612D7BE0F5CEB511 /* RacesView.swift */; };
 		EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */; };
 		ED3DBAEF3FFB60390FE0317B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */; };
@@ -151,6 +152,7 @@
 		3F62FAA0EAC2B6ADC530B3C3 /* MiniSparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniSparkline.swift; sourceTree = "<group>"; };
 		46A4430AFCE9B04C3FCF8B32 /* SiblingCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiblingCard.swift; sourceTree = "<group>"; };
 		47B01231CF6EA2F9487242FC /* WorkoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngine.swift; sourceTree = "<group>"; };
+		488BA1593AD706528F4D069B /* FaffGraphic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffGraphic.swift; sourceTree = "<group>"; };
 		48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
 		4A5D5ED665838309219AD56F /* OnboardingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSheet.swift; sourceTree = "<group>"; };
 		4E27550579AE4BDFA95531DD /* Fonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fonts.swift; sourceTree = "<group>"; };
@@ -251,6 +253,7 @@
 				FBCEB932B2D6CD7DB54198CE /* Cards.swift */,
 				03B7740393796CCA0A47FB2D /* CoachBlock.swift */,
 				18BFFA019FC2D0414D9A8A9A /* CoachSlot.swift */,
+				488BA1593AD706528F4D069B /* FaffGraphic.swift */,
 				A126721EB90E12E839766826 /* FieldCard.swift */,
 				BC857D4C88ACEA7ED27959B7 /* HRZoneRow.swift */,
 				83A717EF5F371482C8448495 /* LearnModal.swift */,
@@ -553,6 +556,7 @@
 				9354693CE555F3C986EA13C8 /* CoachSlot.swift in Sources */,
 				1DDB8B1E974575C04BE5676B /* FaffAdapter.swift in Sources */,
 				30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */,
+				E5BB63C90DF69C19CD17632F /* FaffGraphic.swift in Sources */,
 				4CACFB0EB456705EF1BAABB5 /* FaffPayloads.swift in Sources */,
 				491E00576C22BC7149B53BB6 /* FieldCard.swift in Sources */,
 				661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */,
