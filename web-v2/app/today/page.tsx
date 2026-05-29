@@ -52,6 +52,7 @@ import {
   getPersonaGlanceState,
   type PersonaKey,
 } from '@/lib/faff/personas';
+import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
 import { TodayClient } from './TodayClient';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -99,6 +100,16 @@ export default async function TodayPage({
   const sibling = buildSibling(glance, state);
   const week = buildWeekStrip(glance);
 
+  // Strava connection health (P-STRAVA-401-UX). Best-effort: if the lookup
+  // throws we silently render no banner — the rest of /today still loads.
+  // Suppressed entirely in simulator mode (persona fixtures don't have
+  // real OAuth state).
+  const stravaStatus = personaKey
+    ? undefined
+    : await loadStravaConnectionStatus(DAVID_USER_ID)
+        .then((s) => s.state)
+        .catch(() => undefined);
+
   // In persona mode, suppress the LLM briefing — BriefingLoader hits
   // Anthropic with the real user's data and doesn't know about the
   // simulated persona. Render a static placeholder instead so the
@@ -121,6 +132,7 @@ export default async function TodayPage({
         briefingSlot={briefingSlot}
         errorSlot={glanceError ? <ErrorChip message={glanceError} /> : null}
         activePersona={personaKey}
+        stravaStatus={stravaStatus}
       />
     </>
   );

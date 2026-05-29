@@ -14,7 +14,12 @@ import { LogTable } from '@/components/log/LogTable';
 import { LogFilterStrip, LogEmptyMatch } from '@/components/log/LogFilterStrip';
 import { ManualRunButton } from '@/components/today/ManualRunButton';
 import { FaffPageShell } from '@/components/faff/FaffPageShell';
+import { ReconnectBanner } from '@/components/strava/ReconnectBanner';
 import { loadLogState } from '@/lib/coach/log-state';
+import {
+  loadStravaConnectionStatus,
+  loadReauthFailedRunIds,
+} from '@/lib/strava/connection-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +47,18 @@ export default async function LogPage({
     },
   });
 
+  // Strava connection health (P-STRAVA-401-UX). Drives the inline reauth
+  // banner above the filter strip, plus the per-row ⚠ chip on rows whose
+  // last push was a 401. Best-effort: errors degrade to "no chips, no
+  // banner" and the rest of /log renders unchanged.
+  const stravaStatus = await loadStravaConnectionStatus(DAVID_USER_ID)
+    .then((s) => s.state)
+    .catch(() => undefined);
+  const visibleRunIds = log.weeks.flatMap((w) => w.runs.map((r) => r.id));
+  const reauthFailedRunIds = visibleRunIds.length > 0
+    ? await loadReauthFailedRunIds(DAVID_USER_ID, visibleRunIds).catch(() => new Set<string>())
+    : new Set<string>();
+
   // Build the eyebrow — switches between the unfiltered headline and the
   // "X OF Y RUNS · Z MI MATCHING · <axes>" headline when any filter is set.
   const activeAxes: string[] = [];
@@ -64,6 +81,11 @@ export default async function LogPage({
       maxWidth={1100}
       accent={<ManualRunButton />}
     >
+      {/* Strava 401 reauth banner — top of the page, above the filter strip
+          per spec 2026-05-28. Renders only when status is 'needs_reauth'. */}
+      <div style={{ marginBottom: stravaStatus === 'needs_reauth' ? 14 : 0 }}>
+        <ReconnectBanner initialState={stravaStatus} />
+      </div>
       {log.totalRunsUnfiltered === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
           <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO RUNS YET</div>
@@ -77,7 +99,10 @@ export default async function LogPage({
           {log.weeks.length === 0 ? (
             <LogEmptyMatch totalUnfiltered={log.totalRunsUnfiltered} />
           ) : (
-            <LogTable weeks={log.weeks} />
+            <LogTable
+              weeks={log.weeks}
+              reauthFailedRunIds={Array.from(reauthFailedRunIds)}
+            />
           )}
         </>
       )}

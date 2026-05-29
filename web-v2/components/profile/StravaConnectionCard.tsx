@@ -1,21 +1,25 @@
 'use client';
 
 /**
- * StravaConnectionCard — redesign per #161.
+ * StravaConnectionCard — redesign per #161, upgraded for P-STRAVA-401-UX
+ * (2026-05-28).
  *
  * Replaces the static "STRAVA · CONNECTED · Last sync 16h ago" row with
- * a card that exposes the push controls:
- *   - Connection status (with green dot when active)
- *   - Auto-push toggle (the headline feature)
- *   - Privacy default selector (private / followers / public)
- *   - Title format picker with live preview of the next push title
- *   - Last 3 pushes with status + retry on failed
+ * a card that exposes the push controls + three-state connection status:
+ *   - connected:    green dot, last sync time, push controls visible.
+ *   - needs_reauth: amber dot, "Reconnect Strava" CTA front-and-center,
+ *                   explanation copy, push controls hidden.
+ *   - disconnected: grey dot, "Connect Strava" CTA, controls hidden.
  *
- * Reads /api/profile for current state, /api/strava/pushes for history.
- * PATCHes /api/profile for toggle / privacy / title-format changes.
+ * Hooked by /api/strava/status (state) + /api/profile (push prefs) +
+ * /api/strava/pushes (history). PATCHes /api/profile for toggle / privacy
+ * / title-format changes.
+ *
+ * The wrapper carries `id="strava-card"` so the per-row chip on /log can
+ * jump straight to it (`/profile#strava-card`).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface StravaPrefs {
   connected: boolean;
@@ -24,6 +28,8 @@ interface StravaPrefs {
   privacy: 'private' | 'followers' | 'public';
   titleFormat: 'type_phases' | 'tod_type_dist';
 }
+
+type ConnState = 'connected' | 'needs_reauth' | 'disconnected';
 
 interface PushRow {
   id: number;
@@ -36,7 +42,19 @@ interface PushRow {
   pushed_at: string;
 }
 
-export function StravaConnectionCard({ initial }: { initial: { connected: boolean; lastSyncAgo?: string } }) {
+export function StravaConnectionCard({ initial }: {
+  initial: {
+    connected: boolean;
+    lastSyncAgo?: string;
+    /**
+     * P-STRAVA-401-UX: SSR-resolved tri-state (loadStravaConnectionStatus).
+     * When passed, the card paints the right CTA on first render with no
+     * client-flicker. Falls back to the legacy `connected` boolean when
+     * absent so older callers stay working.
+     */
+    state?: ConnState;
+  };
+}) {
   const [prefs, setPrefs] = useState<StravaPrefs>({
     connected: initial.connected,
     lastSyncAgo: initial.lastSyncAgo,
@@ -46,8 +64,21 @@ export function StravaConnectionCard({ initial }: { initial: { connected: boolea
   });
   const [pushes, setPushes] = useState<PushRow[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
+  // P-STRAVA-401-UX: tri-state connection status from /api/strava/status.
+  // Seeded from the SSR-computed initial.state when present so first paint
+  // shows the right CTA; falls back to the legacy connected boolean. The
+  // mount effect re-fetches /api/strava/status to catch any drift since
+  // SSR (e.g. user reconnected from another tab).
+  const [connState, setConnState] = useState<ConnState>(
+    initial.state ?? (initial.connected ? 'connected' : 'disconnected')
+  );
+  const [connecting, setConnecting] = useState(false);
+  // Focus the Reconnect CTA when the page arrives at /#strava-card so
+  // the per-row chip on /log lands the runner exactly where they need
+  // to click.
+  const ctaRef = useRef<HTMLButtonElement | null>(null);
 
-  // Fetch full prefs + history once on mount.
+  // Fetch full prefs + history + status once on mount.
   useEffect(() => {
     fetch('/api/profile')
       .then((r) => r.ok ? r.json() : null)
@@ -65,7 +96,38 @@ export function StravaConnectionCard({ initial }: { initial: { connected: boolea
       .then((r) => r.ok ? r.json() : null)
       .then((j) => { if (j?.pushes) setPushes(j.pushes.slice(0, 3)); })
       .catch(() => {});
+    fetch('/api/strava/status', { credentials: 'same-origin' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => {
+        if (j?.state === 'connected' || j?.state === 'needs_reauth' || j?.state === 'disconnected') {
+          setConnState(j.state);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Auto-focus the Reconnect CTA when the page lands on /profile#strava-card.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.hash !== '#strava-card') return;
+    if (connState !== 'needs_reauth' && connState !== 'disconnected') return;
+    // Tiny delay so the focus ring lands after the scroll anchor.
+    const t = setTimeout(() => ctaRef.current?.focus(), 60);
+    return () => clearTimeout(t);
+  }, [connState]);
+
+  async function startReconnect() {
+    if (connecting) return;
+    setConnecting(true);
+    try {
+      const r = await fetch('/api/auth/strava?action=connect');
+      const j = await r.json().catch(() => ({}));
+      if (j?.url) window.location.href = j.url;
+      else setConnecting(false);
+    } catch {
+      setConnecting(false);
+    }
+  }
 
   async function patch(field: keyof StravaPrefs, value: any) {
     const previous = (prefs as any)[field];
@@ -106,28 +168,164 @@ export function StravaConnectionCard({ initial }: { initial: { connected: boolea
     ? 'Morning easy · 5.2 mi'
     : 'Threshold · 4×1mi @ 6:48';
 
+  // ─── Three-state display ──────────────────────────────────────────────
+  // Coupled to connState (from /api/strava/status). The legacy
+  // `prefs.connected` boolean is kept as a fallback for first paint.
+  const isReauth = connState === 'needs_reauth';
+  const isDisconnected = connState === 'disconnected';
+  const isHealthy = connState === 'connected';
+  const statusDotColor = isHealthy
+    ? 'var(--green)'
+    : isReauth
+      ? 'var(--goal)' // amber: alive but needs attention
+      : 'var(--mute)'; // grey
+  const statusLabel = isHealthy
+    ? 'CONNECTED'
+    : isReauth
+      ? 'NEEDS REAUTH'
+      : 'NOT CONNECTED';
+  const statusLabelColor = isHealthy
+    ? 'var(--green)'
+    : isReauth
+      ? 'var(--goal)'
+      : 'var(--mute)';
+  const subtitle = isHealthy
+    ? `Connected${prefs.lastSyncAgo ? ` · last sync ${prefs.lastSyncAgo}` : ''}`
+    : isReauth
+      ? 'Reconnect required — your token expired or scopes changed.'
+      : 'Not connected';
+
   return (
-    <div className="card" style={{ padding: '20px 22px' }}>
-      {/* Header row: name + connected status */}
+    <div id="strava-card" className="card" style={{ padding: '20px 22px', scrollMarginTop: 80 }}>
+      {/* Header row: name + tri-state status pill */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, letterSpacing: '0.4px', lineHeight: 1 }}>STRAVA</div>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 4 }}>
-            {prefs.connected ? `Connected${prefs.lastSyncAgo ? ` · last sync ${prefs.lastSyncAgo}` : ''}` : 'Not connected'}
+            {subtitle}
           </div>
         </div>
-        {prefs.connected && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--green)', letterSpacing: '1.2px',
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 8px rgba(62,189,65,0.5)' }} />
-            CONNECTED
-          </div>
-        )}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontFamily: 'var(--f-label)', fontSize: 11, color: statusLabelColor, letterSpacing: '1.2px',
+        }}>
+          <span
+            style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: statusDotColor,
+              boxShadow: isHealthy
+                ? '0 0 8px rgba(62,189,65,0.5)'
+                : isReauth
+                  ? '0 0 8px rgba(244,180,90,0.5)'
+                  : 'none',
+            }}
+          />
+          {statusLabel}
+        </div>
       </div>
 
-      {prefs.connected && (
+      {/* P-STRAVA-401-UX: reauth CTA block. Front-and-center when the
+          token is dead, explains why, single button to fix. */}
+      {isReauth && (
+        <div
+          style={{
+            padding: '14px 16px',
+            borderRadius: 10,
+            background: 'rgba(252, 77, 100, 0.10)',
+            border: '1px solid rgba(252, 77, 100, 0.30)',
+            marginBottom: 14,
+            display: 'flex',
+            gap: 14,
+            alignItems: 'center',
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontFamily: 'var(--f-body)', fontSize: 14, fontWeight: 600,
+              color: 'var(--ink)', marginBottom: 4,
+            }}>
+              Reconnect Strava
+            </div>
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', lineHeight: 1.5 }}>
+              Your token expired or scopes changed. Reconnecting takes 10 seconds.
+            </div>
+          </div>
+          <button
+            ref={ctaRef}
+            type="button"
+            onClick={startReconnect}
+            disabled={connecting}
+            style={{
+              background: 'var(--over)',
+              color: '#0e1014',
+              border: 'none',
+              borderRadius: 'var(--r-pill, 999px)',
+              padding: '9px 18px',
+              fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700,
+              letterSpacing: '1.4px',
+              cursor: connecting ? 'wait' : 'pointer',
+              opacity: connecting ? 0.6 : 1,
+              flexShrink: 0,
+            }}
+          >
+            {connecting ? 'OPENING…' : 'RECONNECT STRAVA'}
+          </button>
+        </div>
+      )}
+
+      {/* Disconnected: simple connect CTA. The card stays sparse — there's
+          no history or controls to show until they connect. */}
+      {isDisconnected && (
+        <div
+          style={{
+            padding: '14px 16px',
+            borderRadius: 10,
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid var(--line)',
+            marginBottom: 14,
+            display: 'flex',
+            gap: 14,
+            alignItems: 'center',
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontFamily: 'var(--f-body)', fontSize: 14, fontWeight: 600,
+              color: 'var(--ink)', marginBottom: 4,
+            }}>
+              Connect Strava
+            </div>
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', lineHeight: 1.5 }}>
+              Push your runs to Strava automatically + retry any that fail.
+            </div>
+          </div>
+          <button
+            ref={ctaRef}
+            type="button"
+            onClick={startReconnect}
+            disabled={connecting}
+            style={{
+              background: 'var(--green)',
+              color: '#0e1014',
+              border: 'none',
+              borderRadius: 'var(--r-pill, 999px)',
+              padding: '9px 18px',
+              fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700,
+              letterSpacing: '1.4px',
+              cursor: connecting ? 'wait' : 'pointer',
+              opacity: connecting ? 0.6 : 1,
+              flexShrink: 0,
+            }}
+          >
+            {connecting ? 'OPENING…' : 'CONNECT STRAVA'}
+          </button>
+        </div>
+      )}
+
+      {/* Push controls only render when the connection is healthy. Hiding
+          them in needs_reauth/disconnected keeps the card focused on the
+          one action that matters. */}
+      {isHealthy && (
         <>
           {/* Auto-push toggle row */}
           <div style={{

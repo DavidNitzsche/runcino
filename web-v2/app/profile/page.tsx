@@ -5,6 +5,7 @@ import { SettingsLinkTrigger } from '@/components/settings/SettingsModal';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 import { FaffPageShell } from '@/components/faff/FaffPageShell';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
+import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,12 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const focusedGap = sp.gap ?? null;
   const profile = await loadProfileState(DAVID_USER_ID);
+  // P-STRAVA-401-UX: tri-state Strava connection (connected/needs_reauth/
+  // disconnected) so the card paints the right CTA on first render rather
+  // than flashing CONNECTED → NEEDS REAUTH after the client fetch lands.
+  const stravaConnState = await loadStravaConnectionStatus(DAVID_USER_ID)
+    .then((s) => s.state)
+    .catch(() => undefined);
   const initials = (profile.identity.full_name ?? 'DN').split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
 
   const eyebrowParts = [
@@ -211,6 +218,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <StravaConnectionCard initial={{
             connected: profile.connections.strava.connected,
             lastSyncAgo: profile.connections.strava.note.replace(/^Last sync /, ''),
+            state: stravaConnState,
           }} />
         </div>
         <Grid3>

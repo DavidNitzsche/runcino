@@ -16,12 +16,26 @@ import { RunDetailModal } from '@/components/runs/RunDetailModal';
 
 const DOW_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
-export function LogTable({ weeks }: { weeks: LogWeek[] }) {
+export function LogTable({
+  weeks,
+  reauthFailedRunIds,
+}: {
+  weeks: LogWeek[];
+  /**
+   * Run ids whose most-recent Strava push failed with a 401. Each gets a
+   * ⚠ "needs reauth" chip on the source tag (jumps to /profile#strava-card).
+   * Empty/undefined → no chips render. SSR'd from /log/page.tsx so the
+   * indicator paints on first render.
+   */
+  reauthFailedRunIds?: string[];
+}) {
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   // Shared prefetch cache across all rows. Keyed by run id.
   const cacheRef = useRef<Map<string, RunDetail>>(new Map());
   const [, forceRerender] = useState(0); // bump when cache fills so modal re-reads
   const [shoes, setShoes] = useState<any[] | null>(null);
+  // Lookup set for the per-row chip — recomputed once per render.
+  const reauthSet = new Set(reauthFailedRunIds ?? []);
 
   function prefetch(id: string) {
     if (cacheRef.current.has(id)) return;
@@ -59,7 +73,7 @@ export function LogTable({ weeks }: { weeks: LogWeek[] }) {
     <>
       <div>
         {weeks.map((w) => (
-          <WeekBlock key={w.monday} week={w} onOpen={setOpenRunId} onHover={prefetch} />
+          <WeekBlock key={w.monday} week={w} onOpen={setOpenRunId} onHover={prefetch} reauthSet={reauthSet} />
         ))}
       </div>
       {openRunId && (
@@ -74,7 +88,7 @@ export function LogTable({ weeks }: { weeks: LogWeek[] }) {
   );
 }
 
-function WeekBlock({ week, onOpen, onHover }: { week: LogWeek; onOpen: (id: string) => void; onHover: (id: string) => void }) {
+function WeekBlock({ week, onOpen, onHover, reauthSet }: { week: LogWeek; onOpen: (id: string) => void; onHover: (id: string) => void; reauthSet: Set<string> }) {
   return (
     <div style={{ marginBottom: 32 }}>
       <div style={{
@@ -99,13 +113,21 @@ function WeekBlock({ week, onOpen, onHover }: { week: LogWeek; onOpen: (id: stri
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {week.runs.map((r) => <RunRow key={`${r.id}-${r.date}`} run={r} onOpen={onOpen} onHover={onHover} />)}
+        {week.runs.map((r) => (
+          <RunRow
+            key={`${r.id}-${r.date}`}
+            run={r}
+            onOpen={onOpen}
+            onHover={onHover}
+            needsReauth={reauthSet.has(r.id)}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function RunRow({ run, onOpen, onHover }: { run: LogRun; onOpen: (id: string) => void; onHover: (id: string) => void }) {
+function RunRow({ run, onOpen, onHover, needsReauth }: { run: LogRun; onOpen: (id: string) => void; onHover: (id: string) => void; needsReauth: boolean }) {
   const typeColor =
     run.type === 'long'      ? 'var(--dist)' :
     run.type === 'race'      ? 'var(--race)' :
@@ -116,6 +138,7 @@ function RunRow({ run, onOpen, onHover }: { run: LogRun; onOpen: (id: string) =>
                                'var(--mute)';
 
   const sourceTag = run.source === 'watch' ? 'WATCH'
+    : run.source === 'apple_watch' ? 'WATCH'
     : run.source === 'manual' ? 'MANUAL'
     : run.source === 'apple_health' ? 'HEALTH'
     : run.source === 'strava' ? 'STRAVA' : null;
@@ -167,12 +190,61 @@ function RunRow({ run, onOpen, onHover }: { run: LogRun; onOpen: (id: string) =>
               {run.type.toUpperCase()}
             </span>
           )}
-          {sourceTag && (
+          {/* Source label: plain pill when there's a known source. Replaced
+              by the reauth chip below when the run's last push 401'd. */}
+          {sourceTag && !needsReauth && (
             <span style={{
               fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--dim)',
               letterSpacing: '1px', padding: '2px 7px', border: '1px solid var(--line-2)',
               borderRadius: 4,
             }}>{sourceTag}</span>
+          )}
+          {/* P-STRAVA-401-UX: per-row warn chip. Renders for any run whose
+              most-recent push attempt 401'd, regardless of source (the run
+              may have been captured by the watch but failed the Strava
+              upload). Clicking jumps to the Strava card on /profile
+              (#strava-card focuses the Reconnect CTA). Rendered as a
+              span (not <a>) because the row itself is a <button> and
+              nesting an <a> inside a <button> is invalid HTML.
+              stopPropagation prevents the row's open-modal handler from
+              firing. */}
+          {needsReauth && (
+            <span
+              role="link"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                window.location.href = '/profile#strava-card';
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  window.location.href = '/profile#strava-card';
+                }
+              }}
+              onMouseEnter={(e) => e.stopPropagation()}
+              style={{
+                fontFamily: 'var(--f-body)',
+                fontSize: 9, letterSpacing: '1px',
+                padding: '2px 7px',
+                border: '1px solid var(--over)',
+                background: 'rgba(252, 77, 100, 0.10)',
+                color: 'var(--over)',
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              title="Strava push failed (401) — click to reconnect"
+            >
+              <span aria-hidden>STRAVA</span>
+              <span aria-hidden> · </span>
+              <span aria-hidden style={{ fontSize: 10, lineHeight: 1 }}>⚠</span>
+              <span>NEEDS REAUTH</span>
+            </span>
           )}
         </div>
       </div>

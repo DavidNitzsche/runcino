@@ -30,6 +30,7 @@ import { Sibling } from '@/components/faff/Sibling';
 import { WeekStrip } from '@/components/faff/WeekStrip';
 import { BodyGrid } from '@/components/faff/BodyGrid';
 import { BCard } from '@/components/faff/BCard';
+import { ReconnectBanner } from '@/components/strava/ReconnectBanner';
 
 export interface TodayClientProps {
   poster: PosterPayload;
@@ -43,6 +44,10 @@ export interface TodayClientProps {
   errorSlot?: ReactNode;
   // Simulator mode · non-null when /today?persona=<key> is on the URL.
   activePersona?: PersonaKey | null;
+  // Strava 401 reconnect banner — SSR-seeded so the warning appears on
+  // first paint when the user's most-recent push 401'd. The banner refetches
+  // /api/strava/status on mount to keep it live.
+  stravaStatus?: 'connected' | 'needs_reauth' | 'disconnected';
 }
 
 export function TodayClient({
@@ -54,6 +59,7 @@ export function TodayClient({
   briefingSlot,
   errorSlot,
   activePersona,
+  stravaStatus,
 }: TodayClientProps) {
   const phaseHeader = phaseLabel ? phaseLabel.toUpperCase() : undefined;
   const activeEntry = activePersona
@@ -62,6 +68,11 @@ export function TodayClient({
 
   return (
     <main style={{ minHeight: '100vh', paddingBottom: 80 }}>
+      {/* STRAVA 401 RECONNECT BANNER · above persona switcher per spec
+          2026-05-28. Renders only when the user's most-recent push 401'd.
+          Self-fetches /api/strava/status to stay live across tabs. */}
+      <ReconnectBanner initialState={stravaStatus} />
+
       {/* SIMULATOR BAR · only renders in persona mode. Banner + chip strip. */}
       {activeEntry && (
         <SimulatorBar activeKey={activeEntry.key} description={activeEntry.description} label={activeEntry.label} />
