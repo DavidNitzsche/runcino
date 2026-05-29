@@ -104,6 +104,13 @@ html, body {
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
 
+/* `tabular` utility · tabular-nums for any aligned numeric value.
+ * BCard + StatTrio already apply `font-variant-numeric: tabular-nums`
+ * in their module CSS, so the global utility is additive — it lets
+ * any page-level text (e.g. /runs/[id] mile splits table) opt into
+ * tabular numerals without re-stating the rule per element. */
+.tabular { font-variant-numeric: tabular-nums; }
+
 /* Card primitives — used everywhere */
 .card {
   background: var(--card);
