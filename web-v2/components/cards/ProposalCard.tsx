@@ -122,7 +122,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
             flex: 1, minWidth: 160,
             background: 'transparent',
             color: 'var(--ink)',
-            border: '1px solid rgba(255,255,255,0.18)',
+            border: '1px solid var(--line)',
             borderRadius: 8,
             padding: '10px 14px',
             fontFamily: 'var(--f-body)',

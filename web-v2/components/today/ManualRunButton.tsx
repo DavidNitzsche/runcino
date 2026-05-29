@@ -75,7 +75,7 @@ export function ManualRunButton() {
         placeholder="Notes (optional) — felt easy, hot, slept poorly, etc."
         style={{
           width: '100%', marginTop: 10, padding: 10,
-          background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', borderRadius: 8,
+          background: 'var(--card-2)', border: '1px solid var(--line)', borderRadius: 8,
           color: 'var(--ink)', fontFamily: 'var(--f-body)', fontSize: 13, resize: 'vertical', minHeight: 60,
         }}
       />
@@ -110,7 +110,7 @@ function LabeledInput({ label, value, onChange, type = 'text', placeholder }: { 
         value={value} type={type} placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         style={{
-          background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', borderRadius: 6,
+          background: 'var(--card-2)', border: '1px solid var(--line)', borderRadius: 6,
           color: 'var(--ink)', fontFamily: 'var(--f-label)', fontSize: 14, padding: '6px 10px',
         }}
       />

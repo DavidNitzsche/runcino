@@ -52,7 +52,7 @@ export function SegmentedToggle<T extends string>({
       aria-label={ariaLabel}
       style={{
         display: 'inline-flex',
-        background: 'rgba(255,255,255,0.04)',
+        background: 'var(--card-2)',
         borderRadius: size === 'lg' ? 10 : 8,
         padding: 2,
         opacity: loading ? 0.55 : 1,
@@ -87,7 +87,7 @@ export function SegmentedToggle<T extends string>({
             }}
             onMouseEnter={(e) => {
               if (!loading && !active) {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                e.currentTarget.style.background = 'var(--card)';
               }
             }}
             onMouseLeave={(e) => {

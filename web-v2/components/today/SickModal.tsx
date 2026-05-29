@@ -140,7 +140,7 @@ export function SickModal({ onClose }: SickModalProps) {
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        background: 'rgba(10, 12, 16, 0.92)',
+        background: 'rgba(20,17,13,0.55)',
         backdropFilter: 'blur(10px)',
         display: 'flex',
         alignItems: 'center',
@@ -156,9 +156,9 @@ export function SickModal({ onClose }: SickModalProps) {
           width: '100%',
           maxWidth: 540,
           maxHeight: '92vh',
-          background: 'var(--bg, #0a0c10)',
-          borderRadius: 18,
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--card)',
+          borderRadius: 4,
+          border: '1px solid var(--line)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -171,7 +171,7 @@ export function SickModal({ onClose }: SickModalProps) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: '1px solid var(--line)',
           }}
         >
           <h2
@@ -182,7 +182,7 @@ export function SickModal({ onClose }: SickModalProps) {
               letterSpacing: '-0.015em',
               lineHeight: 0.86,
               fontSize: 28,
-              color: 'var(--ink, #f6f7f8)',
+              color: 'var(--ink)',
               margin: 0,
             }}
           >
@@ -195,7 +195,7 @@ export function SickModal({ onClose }: SickModalProps) {
               fontFamily: 'var(--f-body, Inter, sans-serif)',
               fontWeight: 600,
               fontSize: 14,
-              color: 'var(--mute, #8a90a0)',
+              color: 'var(--mute)',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
@@ -236,13 +236,13 @@ export function SickModal({ onClose }: SickModalProps) {
                 style={{
                   marginTop: 8,
                   width: '100%',
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 12,
+                  background: 'var(--card-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 4,
                   padding: '11px 14px',
                   fontFamily: 'var(--f-body, Inter, sans-serif)',
                   fontSize: 13,
-                  color: 'var(--ink, #f6f7f8)',
+                  color: 'var(--ink)',
                   outline: 'none',
                   boxSizing: 'border-box',
                 }}
@@ -283,11 +283,11 @@ export function SickModal({ onClose }: SickModalProps) {
               onClick={toggleFever}
               style={{
                 width: '100%',
-                background: hasFever ? 'rgba(252,77,100,0.08)' : 'rgba(255,255,255,0.03)',
+                background: hasFever ? 'rgba(252,77,100,0.08)' : 'var(--card-2)',
                 border: hasFever
                   ? '1px solid rgba(252,77,100,0.45)'
-                  : '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 14,
+                  : '1px solid var(--line)',
+                borderRadius: 4,
                 padding: '14px 16px',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -297,14 +297,14 @@ export function SickModal({ onClose }: SickModalProps) {
               }}
               aria-pressed={hasFever}
             >
-              <div style={{ fontFamily: 'var(--f-body)', fontWeight: 700, fontSize: 14, color: 'var(--ink, #f6f7f8)' }}>
+              <div style={{ fontFamily: 'var(--f-body)', fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>
                 {hasFever ? 'Yes, I have a fever' : 'No fever'}
                 <span
                   style={{
                     display: 'block',
                     fontWeight: 500,
                     fontSize: 11,
-                    color: 'var(--mute, #8a90a0)',
+                    color: 'var(--mute)',
                     marginTop: 3,
                   }}
                 >
@@ -316,7 +316,7 @@ export function SickModal({ onClose }: SickModalProps) {
                   width: 44,
                   height: 26,
                   borderRadius: 999,
-                  background: hasFever ? '#FC4D64' : 'rgba(255,255,255,0.12)',
+                  background: hasFever ? 'var(--over)' : 'var(--line)',
                   position: 'relative',
                   flexShrink: 0,
                   transition: 'background 0.18s ease',
@@ -330,7 +330,7 @@ export function SickModal({ onClose }: SickModalProps) {
                     width: 20,
                     height: 20,
                     borderRadius: '50%',
-                    background: hasFever ? '#fff' : 'rgba(246,247,248,0.85)',
+                    background: hasFever ? '#fff' : 'var(--mute)',
                     transition: 'left 0.18s ease, background 0.18s ease',
                   }}
                 />
@@ -341,7 +341,7 @@ export function SickModal({ onClose }: SickModalProps) {
                 style={{
                   background: 'rgba(252,77,100,0.10)',
                   border: '1px solid rgba(252,77,100,0.45)',
-                  borderRadius: 12,
+                  borderRadius: 4,
                   padding: '12px 14px',
                   marginTop: 10,
                 }}
@@ -352,7 +352,7 @@ export function SickModal({ onClose }: SickModalProps) {
                     fontWeight: 700,
                     letterSpacing: '-0.015em',
                     fontSize: 18,
-                    color: '#FC4D64',
+                    color: 'var(--over)',
                     marginBottom: 4,
                   }}
                 >
@@ -363,7 +363,7 @@ export function SickModal({ onClose }: SickModalProps) {
                     fontFamily: 'var(--f-body, Inter, sans-serif)',
                     fontSize: 11,
                     lineHeight: 1.45,
-                    color: 'rgba(246,247,248,0.86)',
+                    color: 'var(--mute)',
                   }}
                 >
                   Training with a fever raises core temperature further, risks dehydration, and in rare cases triggers <strong>myocarditis</strong>. The body needs rest, fluids, and time. The plan will resume when your fever is gone for 24h and your RHR is within 5 bpm of baseline.
@@ -374,7 +374,7 @@ export function SickModal({ onClose }: SickModalProps) {
                     fontSize: 9,
                     letterSpacing: 1,
                     textTransform: 'uppercase',
-                    color: 'var(--mute, #8a90a0)',
+                    color: 'var(--mute)',
                     marginTop: 6,
                   }}
                 >
@@ -392,15 +392,15 @@ export function SickModal({ onClose }: SickModalProps) {
               placeholder="Started feeling rough after Sunday's long run. Sore throat by Monday evening."
               style={{
                 width: '100%',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 12,
+                background: 'var(--card-2)',
+                border: '1px solid var(--line)',
+                borderRadius: 4,
                 padding: '12px 14px',
                 minHeight: 64,
                 fontFamily: 'var(--f-body, Inter, sans-serif)',
                 fontWeight: 500,
                 fontSize: 13,
-                color: 'var(--ink, #f6f7f8)',
+                color: 'var(--ink)',
                 lineHeight: 1.5,
                 resize: 'vertical',
                 outline: 'none',
@@ -412,7 +412,7 @@ export function SickModal({ onClose }: SickModalProps) {
           {error && (
             <div
               style={{
-                color: '#FC4D64',
+                color: 'var(--over)',
                 fontFamily: 'var(--f-body)',
                 fontSize: 12,
                 padding: '8px 12px',
@@ -435,8 +435,8 @@ export function SickModal({ onClose }: SickModalProps) {
             display: 'grid',
             gridTemplateColumns: '1fr 2fr',
             gap: 10,
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            background: 'var(--bg, #0a0c10)',
+            borderTop: '1px solid var(--line)',
+            background: 'var(--card)',
           }}
         >
           <button type="button" onClick={onClose} style={ctaSecStyle}>
@@ -474,7 +474,7 @@ function FieldBlock({ label, children }: { label: string; children: React.ReactN
           fontSize: 9,
           letterSpacing: 1.6,
           textTransform: 'uppercase',
-          color: 'var(--mute, #8a90a0)',
+          color: 'var(--mute)',
           marginBottom: 10,
         }}
       >
@@ -487,12 +487,12 @@ function FieldBlock({ label, children }: { label: string; children: React.ReactN
 
 function chipBtnStyle(active: boolean): React.CSSProperties {
   return {
-    background: active ? 'rgba(246,247,248,0.96)' : 'rgba(255,255,255,0.03)',
+    background: active ? 'rgba(246,247,248,0.96)' : 'var(--card-2)',
     border: active
       ? '1px solid rgba(246,247,248,0.96)'
-      : '1px solid rgba(255,255,255,0.08)',
-    color: active ? '#0a0c10' : 'rgba(246,247,248,0.85)',
-    borderRadius: 12,
+      : '1px solid var(--line)',
+    color: active ? '#0a0c10' : 'var(--mute)',
+    borderRadius: 4,
     padding: '11px 8px',
     fontFamily: 'var(--f-body, Inter, sans-serif)',
     fontWeight: active ? 700 : 600,
@@ -505,12 +505,12 @@ function chipBtnStyle(active: boolean): React.CSSProperties {
 
 function symChipStyle(active: boolean): React.CSSProperties {
   return {
-    background: active ? 'rgba(246,247,248,0.96)' : 'rgba(255,255,255,0.03)',
+    background: active ? 'rgba(246,247,248,0.96)' : 'var(--card-2)',
     border: active
       ? '1px solid rgba(246,247,248,0.96)'
-      : '1px solid rgba(255,255,255,0.08)',
-    color: active ? '#0a0c10' : 'rgba(246,247,248,0.85)',
-    borderRadius: 12,
+      : '1px solid var(--line)',
+    color: active ? '#0a0c10' : 'var(--mute)',
+    borderRadius: 4,
     padding: '11px 12px',
     fontFamily: 'var(--f-body, Inter, sans-serif)',
     fontWeight: active ? 700 : 600,
@@ -528,7 +528,7 @@ function checkBoxStyle(on: boolean): React.CSSProperties {
     width: 14,
     height: 14,
     borderRadius: 4,
-    border: on ? '1.5px solid #0a0c10' : '1.5px solid var(--mute, #8a90a0)',
+    border: on ? '1.5px solid #0a0c10' : '1.5px solid var(--mute)',
     background: on ? '#0a0c10' : 'transparent',
     color: '#fff',
     flexShrink: 0,
@@ -543,10 +543,10 @@ function checkBoxStyle(on: boolean): React.CSSProperties {
 
 const ctaSecStyle: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: 14,
+  border: '1px solid var(--line)',
+  borderRadius: 4,
   padding: '14px 0',
-  color: 'var(--mute, #8a90a0)',
+  color: 'var(--mute)',
   fontFamily: 'var(--f-body, Inter, sans-serif)',
   fontWeight: 700,
   fontSize: 14,
@@ -557,7 +557,7 @@ const ctaSecStyle: React.CSSProperties = {
 const ctaPriSickStyle: React.CSSProperties = {
   background: 'rgba(246,247,248,0.96)',
   border: 'none',
-  borderRadius: 14,
+  borderRadius: 4,
   padding: '14px 0',
   color: '#0a0c10',
   fontFamily: 'var(--f-body, Inter, sans-serif)',

@@ -206,7 +206,7 @@ function ReadinessChipLg({ value }: { value: number }) {
   return (
     <div style={{ width: 64, height: 64, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <svg viewBox="0 0 64 64" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+        <circle cx="32" cy="32" r={r} fill="none" stroke="var(--line)" strokeWidth="4" />
         <circle cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={off} />
       </svg>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color, letterSpacing: '0.5px' }}>{value}</div>

@@ -51,10 +51,10 @@ function StoryRow({ input }: { input: ReadinessInput }) {
   // Accent strip colors by effect — scan vertically to see the shape.
   const stripColor = input.weight > 0 ? 'var(--green)'
     : input.weight < 0 ? 'var(--over)'
-                       : 'rgba(255,255,255,0.08)';
+                       : 'var(--line)';
   const chipBg = input.weight > 0 ? 'rgba(62,189,65,0.16)'
     : input.weight < 0 ? 'rgba(252,77,100,0.16)'
-                       : 'rgba(255,255,255,0.08)';
+                       : 'var(--card-2)';
   const chipColor = input.weight > 0 ? 'var(--green)'
     : input.weight < 0 ? 'var(--over)'
                        : 'var(--mute)';
@@ -74,10 +74,10 @@ function StoryRow({ input }: { input: ReadinessInput }) {
   return (
     <div style={{
       display: 'flex',
-      background: 'rgba(255,255,255,0.025)',
+      background: 'var(--card-2)',
       borderRadius: 10,
       overflow: 'hidden',
-      border: '1px solid rgba(255,255,255,0.05)',
+      border: '1px solid var(--line-2)',
     }}>
       {/* Left accent strip */}
       <div style={{
@@ -135,7 +135,7 @@ function StoryRow({ input }: { input: ReadinessInput }) {
         {input.meaning && (
           <div style={{
             fontFamily: 'var(--f-body)', fontSize: 14,
-            color: 'rgba(246,247,248,0.85)', lineHeight: 1.5,
+            color: 'var(--mute)', lineHeight: 1.5,
             marginTop: 2,
           }}>
             {input.meaning}

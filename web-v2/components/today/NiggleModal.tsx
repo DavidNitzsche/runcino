@@ -92,7 +92,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
   }
 
   // Severity color band (mirrors deck sev-pip on1/on2/on3)
-  const sevColor = severity <= 3 ? '#3EBD41' : severity <= 5 ? '#F3AD38' : '#FC4D64';
+  const sevColor = severity <= 3 ? 'var(--green)' : severity <= 5 ? 'var(--goal)' : 'var(--over)';
 
   return (
     <div
@@ -102,7 +102,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        background: 'rgba(10, 12, 16, 0.92)',
+        background: 'rgba(20,17,13,0.55)',
         backdropFilter: 'blur(10px)',
         display: 'flex',
         alignItems: 'center',
@@ -118,9 +118,9 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
           width: '100%',
           maxWidth: 540,
           maxHeight: '92vh',
-          background: 'var(--bg, #0a0c10)',
-          borderRadius: 18,
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--card)',
+          borderRadius: 4,
+          border: '1px solid var(--line)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -133,7 +133,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: '1px solid var(--line)',
           }}
         >
           <h2
@@ -144,7 +144,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
               letterSpacing: '-0.015em',
               lineHeight: 0.86,
               fontSize: 28,
-              color: 'var(--ink, #f6f7f8)',
+              color: 'var(--ink)',
               margin: 0,
             }}
           >
@@ -157,7 +157,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
               fontFamily: 'var(--f-body, Inter, sans-serif)',
               fontWeight: 600,
               fontSize: 14,
-              color: 'var(--mute, #8a90a0)',
+              color: 'var(--mute)',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
@@ -178,13 +178,13 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
               style={{
                 fontFamily: 'var(--f-body)',
                 fontSize: 11,
-                color: 'var(--mute, #8a90a0)',
+                color: 'var(--mute)',
                 marginTop: 4,
               }}
             >
               Tap a region. Tap again to clear.{' '}
               {bodyPart ? (
-                <strong style={{ color: '#F3AD38' }}>
+                <strong style={{ color: 'var(--goal)' }}>
                   {side === 'both' ? 'Both' : side === 'left' ? 'L' : 'R'}{' '}
                   {(HOTSPOT_LABELS[bodyPart] ?? bodyPart).toLowerCase()} selected.
                 </strong>
@@ -198,9 +198,9 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
           <FieldBlock label="SEVERITY · HOW BAD">
             <div
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 14,
+                background: 'var(--card-2)',
+                border: '1px solid var(--line)',
+                borderRadius: 4,
                 padding: 14,
               }}
             >
@@ -215,13 +215,13 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
                   const isOn = n <= severity;
                   const bg = !isOn
-                    ? 'rgba(255,255,255,0.03)'
+                    ? 'var(--card-2)'
                     : n <= 3
                       ? 'rgba(62,189,65,0.85)'
                       : n <= 5
                         ? 'rgba(243,173,56,0.95)'
                         : 'rgba(252,77,100,0.95)';
-                  const color = !isOn ? 'var(--mute, #8a90a0)' : n <= 5 ? '#0a0c10' : '#fff';
+                  const color = !isOn ? 'var(--mute)' : n <= 5 ? '#0a0c10' : '#fff';
                   return (
                     <button
                       key={n}
@@ -230,7 +230,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
                       style={{
                         height: 28,
                         background: bg,
-                        border: isOn ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                        border: isOn ? 'none' : '1px solid var(--line)',
                         borderRadius: 4,
                         fontFamily: 'var(--f-body)',
                         fontWeight: 700,
@@ -256,7 +256,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
                   fontFamily: 'var(--f-body)',
                   fontSize: 10,
                   lineHeight: 1.4,
-                  color: 'var(--mute, #8a90a0)',
+                  color: 'var(--mute)',
                 }}
               >
                 {SEVERITY_ANCHORS.map((a, i) => (
@@ -266,7 +266,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
                       textAlign: i === 0 ? 'left' : i === 1 ? 'center' : 'right',
                     }}
                   >
-                    <strong style={{ color: 'var(--ink, #f6f7f8)', display: 'block', fontWeight: 700, fontSize: 10 }}>
+                    <strong style={{ color: 'var(--ink)', display: 'block', fontWeight: 700, fontSize: 10 }}>
                       {a.value} · {a.label}
                     </strong>
                     {i === 0 && "You'd ignore it."}
@@ -310,15 +310,15 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
               placeholder="Came on at mile 4 of Sunday's long. Loosens up walking. No pain at rest."
               style={{
                 width: '100%',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 12,
+                background: 'var(--card-2)',
+                border: '1px solid var(--line)',
+                borderRadius: 4,
                 padding: '12px 14px',
                 minHeight: 64,
                 fontFamily: 'var(--f-body, Inter, sans-serif)',
                 fontWeight: 500,
                 fontSize: 13,
-                color: 'var(--ink, #f6f7f8)',
+                color: 'var(--ink)',
                 lineHeight: 1.5,
                 resize: 'vertical',
                 outline: 'none',
@@ -330,7 +330,7 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
           {error && (
             <div
               style={{
-                color: '#FC4D64',
+                color: 'var(--over)',
                 fontFamily: 'var(--f-body)',
                 fontSize: 12,
                 padding: '8px 12px',
@@ -353,8 +353,8 @@ export function NiggleModal({ onClose }: NiggleModalProps) {
             display: 'grid',
             gridTemplateColumns: '1fr 2fr',
             gap: 10,
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            background: 'var(--bg, #0a0c10)',
+            borderTop: '1px solid var(--line)',
+            background: 'var(--card)',
           }}
         >
           <button type="button" onClick={onClose} style={ctaSecStyle}>
@@ -393,7 +393,7 @@ function FieldBlock({ label, children }: { label: string; children: React.ReactN
           fontSize: 9,
           letterSpacing: 1.6,
           textTransform: 'uppercase',
-          color: 'var(--mute, #8a90a0)',
+          color: 'var(--mute)',
           marginBottom: 10,
         }}
       >
@@ -425,12 +425,12 @@ function SideRadio({ side, onChange }: { side: NiggleSide; onChange: (s: NiggleS
 function sidePillStyle(active: boolean): React.CSSProperties {
   return {
     flex: 1,
-    background: active ? 'rgba(246,247,248,0.96)' : 'rgba(255,255,255,0.03)',
+    background: active ? 'rgba(246,247,248,0.96)' : 'var(--card-2)',
     border: active
       ? '1px solid rgba(246,247,248,0.96)'
-      : '1px solid rgba(255,255,255,0.08)',
-    color: active ? '#0a0c10' : 'var(--mute, #8a90a0)',
-    borderRadius: 12,
+      : '1px solid var(--line)',
+    color: active ? '#0a0c10' : 'var(--mute)',
+    borderRadius: 4,
     padding: '9px 0',
     fontFamily: 'var(--f-body, Inter, sans-serif)',
     fontWeight: 700,
@@ -442,12 +442,12 @@ function sidePillStyle(active: boolean): React.CSSProperties {
 
 function chipBtnStyle(active: boolean): React.CSSProperties {
   return {
-    background: active ? 'rgba(246,247,248,0.96)' : 'rgba(255,255,255,0.03)',
+    background: active ? 'rgba(246,247,248,0.96)' : 'var(--card-2)',
     border: active
       ? '1px solid rgba(246,247,248,0.96)'
-      : '1px solid rgba(255,255,255,0.08)',
-    color: active ? '#0a0c10' : 'rgba(246,247,248,0.85)',
-    borderRadius: 12,
+      : '1px solid var(--line)',
+    color: active ? '#0a0c10' : 'var(--mute)',
+    borderRadius: 4,
     padding: '11px 8px',
     fontFamily: 'var(--f-body, Inter, sans-serif)',
     fontWeight: active ? 700 : 600,
@@ -460,10 +460,10 @@ function chipBtnStyle(active: boolean): React.CSSProperties {
 
 const ctaSecStyle: React.CSSProperties = {
   background: 'transparent',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: 14,
+  border: '1px solid var(--line)',
+  borderRadius: 4,
   padding: '14px 0',
-  color: 'var(--mute, #8a90a0)',
+  color: 'var(--mute)',
   fontFamily: 'var(--f-body, Inter, sans-serif)',
   fontWeight: 700,
   fontSize: 14,
@@ -472,9 +472,9 @@ const ctaSecStyle: React.CSSProperties = {
 };
 
 const ctaPriStyle: React.CSSProperties = {
-  background: '#3EBD41',
+  background: 'var(--green)',
   border: 'none',
-  borderRadius: 14,
+  borderRadius: 4,
   padding: '14px 0',
   color: '#0a0c10',
   fontFamily: 'var(--f-body, Inter, sans-serif)',
@@ -532,9 +532,9 @@ function BodyDiagram({
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
         gap: 12,
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 14,
+        background: 'var(--card-2)',
+        border: '1px solid var(--line)',
+        borderRadius: 4,
         padding: 14,
         marginBottom: 10,
       }}
@@ -567,7 +567,7 @@ function BodySideView({
           fontSize: 9,
           letterSpacing: 1.6,
           textTransform: 'uppercase',
-          color: 'var(--mute, #8a90a0)',
+          color: 'var(--mute)',
           marginBottom: 6,
         }}
       >
@@ -579,7 +579,7 @@ function BodySideView({
         style={{ width: '100%', height: 'auto' }}
         aria-label={`${title.toLowerCase()} body diagram`}
       >
-        <g fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.18)" strokeWidth={0.6}>
+        <g fill="var(--card-2)" stroke="var(--line)" strokeWidth={0.6}>
           <ellipse cx={45} cy={12} rx={8} ry={10} />
           <rect x={42} y={20} width={6} height={6} rx={2} />
           <path d="M30 28 Q33 25 45 25 Q57 25 60 28 L62 60 Q62 75 58 88 L32 88 Q28 75 28 60 Z" />
@@ -619,8 +619,8 @@ function BodySideView({
                 cx={h.cx}
                 cy={h.cy}
                 r={isSel ? 6.5 : 4}
-                fill={isSel ? 'rgba(243,173,56,0.85)' : 'rgba(255,255,255,0.06)'}
-                stroke={isSel ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.22)'}
+                fill={isSel ? 'rgba(243,173,56,0.85)' : 'var(--card-2)'}
+                stroke={isSel ? 'rgba(255,255,255,0.9)' : 'var(--line)'}
                 strokeWidth={isSel ? 1.4 : 0.5}
                 style={{ cursor: 'pointer' }}
                 onClick={() => onTap(h.key)}
@@ -633,7 +633,7 @@ function BodySideView({
                   fontFamily="Inter"
                   fontSize={4.4}
                   fontWeight={700}
-                  fill="rgba(255,255,255,0.55)"
+                  fill="var(--dim)"
                 >
                   {h.label}
                 </text>

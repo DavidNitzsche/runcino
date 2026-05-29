@@ -100,7 +100,7 @@ function Tile({
   return (
     <div style={{
       background: 'var(--bg2)',
-      border: '1px solid rgba(255,255,255,0.04)',
+      border: '1px solid var(--line-2)',
       borderRadius: 12,
       padding: '14px 16px',
       position: 'relative',

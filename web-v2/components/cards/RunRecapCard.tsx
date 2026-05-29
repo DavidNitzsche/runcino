@@ -67,10 +67,10 @@ function Stat({ value, unit, color }: { value: string; unit: string; color: stri
 function Chip({ k, v, warm, children }: { k?: string; v?: string; warm?: boolean; children?: React.ReactNode }) {
   return (
     <span style={{
-      background: warm ? 'rgba(243,173,56,0.08)' : 'rgba(255,255,255,0.04)',
+      background: warm ? 'rgba(243,173,56,0.08)' : 'var(--card-2)',
       border: warm ? '1px solid rgba(243,173,56,0.30)' : '1px solid var(--line)',
       borderRadius: 999, padding: '6px 11px', fontSize: 11, fontWeight: 500,
-      color: warm ? 'var(--goal)' : 'rgba(246,247,248,0.85)',
+      color: warm ? 'var(--goal)' : 'var(--mute)',
       display: 'inline-flex', alignItems: 'center', gap: 5,
     }}>
       {k && <span style={{ color: 'var(--mute)', fontSize: 9, fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>{k}</span>}

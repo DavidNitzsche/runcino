@@ -125,7 +125,7 @@ export function PostRunCheckinChips({
           <p style={{
             margin: 0,
             fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.55,
-            color: 'rgba(246,247,248,0.92)',
+            color: 'var(--ink)',
           }}>
             {coachReply}
           </p>
@@ -161,8 +161,8 @@ export function PostRunCheckinChips({
         rows={3}
         style={{
           width: '100%',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.10)',
+          background: 'var(--card-2)',
+          border: '1px solid var(--line)',
           borderRadius: 10,
           padding: '12px 14px',
           color: 'var(--ink)',
@@ -230,7 +230,7 @@ export function PostRunCheckinChips({
         disabled={!canSubmit}
         style={{
           marginTop: 14,
-          background: canSubmit ? 'var(--green)' : 'rgba(255,255,255,0.08)',
+          background: canSubmit ? 'var(--green)' : 'var(--card-2)',
           color: canSubmit ? '#0e1014' : 'var(--mute)',
           border: 'none', borderRadius: 10,
           padding: '10px 18px',
@@ -329,9 +329,9 @@ function Chip({ active, onClick, tone, children }: {
       type="button"
       onClick={onClick}
       style={{
-        background: active ? colorVar : 'rgba(255,255,255,0.04)',
+        background: active ? colorVar : 'var(--card-2)',
         color: active ? '#0e1014' : 'var(--ink)',
-        border: `1px solid ${active ? colorVar : 'rgba(255,255,255,0.10)'}`,
+        border: `1px solid ${active ? colorVar : 'var(--line)'}`,
         borderRadius: 8,
         padding: '8px 12px',
         fontFamily: 'var(--f-label)', fontSize: 10,
@@ -341,10 +341,10 @@ function Chip({ active, onClick, tone, children }: {
         whiteSpace: 'nowrap',
       }}
       onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
+        if (!active) e.currentTarget.style.background = 'var(--card)';
       }}
       onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+        if (!active) e.currentTarget.style.background = 'var(--card-2)';
       }}
     >
       {children}

@@ -88,15 +88,15 @@ export function DayDetailModal({ day, onClose, prefetchedPres, prefetchedRun }: 
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+        position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
         zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
+          background: 'var(--card)', border: '1px solid var(--line)',
+          boxShadow: '0 24px 60px rgba(20,17,13,0.22)', borderRadius: 4,
           // 2026-05-27: widened from 600 → 1100 so the COMPLETED-day variant
           // can render splits + HR + form + route inline (David: "don't
           // want to have to click to load details. can be more horizontal
@@ -243,7 +243,7 @@ function PlannedWorkoutBody({ day, typeColor, prefetchedPres }: { day: GlanceWee
         </div>
       )}
       {pres?.why && (
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 13.5, color: 'rgba(246,247,248,0.78)', lineHeight: 1.55, marginBottom: 16, fontStyle: 'italic' }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 13.5, color: 'var(--mute)', lineHeight: 1.55, marginBottom: 16, fontStyle: 'italic' }}>
           {pres.why}
         </div>
       )}
@@ -321,8 +321,8 @@ function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
 
   return (
     <div style={{
-      background: '#1f2226', borderRadius: 12, padding: '14px 18px',
-      border: '1px solid rgba(255,255,255,0.05)',
+      background: 'var(--card-2)', borderRadius: 4, padding: '14px 18px',
+      border: '1px solid var(--line-2)',
       borderLeft: `3px solid ${accent}`,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
@@ -343,7 +343,7 @@ function StepCard({ step }: { step: PrescriptionStep; accent?: string }) {
           <span><span style={{ color: 'var(--mute)' }}>HR</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.hr_target}</span></span>
         )}
       </div>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.55 }}>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'var(--mute)', lineHeight: 1.55 }}>
         {step.note}
       </div>
 
@@ -396,11 +396,11 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
 
       {/* Indented child group — rep + recovery boxes pulled in so they
           visually nest under the REPEAT header. */}
-      <div style={{ marginLeft: 14, paddingLeft: 4, borderLeft: '1px dashed rgba(255,255,255,0.10)' }}>
+      <div style={{ marginLeft: 14, paddingLeft: 4, borderLeft: '1px dashed var(--line)' }}>
       {/* Reps box — hard effort accent (gold/race-orange) */}
       <div style={{
-        background: '#1f2226', borderRadius: 12, padding: '14px 18px',
-        border: '1px solid rgba(255,255,255,0.05)',
+        background: 'var(--card-2)', borderRadius: 4, padding: '14px 18px',
+        border: '1px solid var(--line-2)',
         borderLeft: `3px solid ${repsAccent}`,
         marginBottom: 8,
         marginLeft: 6,
@@ -421,15 +421,15 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
             <span><span style={{ color: 'var(--mute)' }}>HR</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.hr_target}</span></span>
           )}
         </div>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.55 }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'var(--mute)', lineHeight: 1.55 }}>
           {step.note}
         </div>
       </div>
 
       {/* Recovery box — easy effort accent (purple) */}
       <div style={{
-        background: '#1f2226', borderRadius: 12, padding: '14px 18px',
-        border: '1px solid rgba(255,255,255,0.05)',
+        background: 'var(--card-2)', borderRadius: 4, padding: '14px 18px',
+        border: '1px solid var(--line-2)',
         borderLeft: '3px solid var(--learn)',
         marginLeft: 6,
       }}>
@@ -446,7 +446,7 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
             <span style={{ color: 'var(--mute)' }}>PACE</span>{' '}<span style={{ color: 'var(--ink)', fontWeight: 600 }}>{step.recovery.pace_target}</span>
           </div>
         )}
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.55 }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'var(--mute)', lineHeight: 1.55 }}>
           {step.recovery.note}
         </div>
       </div>
@@ -458,7 +458,7 @@ function RepeatBlock({ step }: { step: PrescriptionStep }) {
 function RestBody() {
   return (
     <div style={{ padding: '8px 0 4px' }}>
-      <p style={{ fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.6, color: 'rgba(246,247,248,0.85)', margin: '0 0 12px' }}>
+      <p style={{ fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.6, color: 'var(--mute)', margin: '0 0 12px' }}>
         Rest is the work today. Sleep, mobility, recovery — the legs earned it.
       </p>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55 }}>
@@ -483,7 +483,7 @@ function UnplannedBody({ day }: { day: GlanceWeekDay }) {
 
 function BigStat({ v, u, color }: { v: string; u: string; color: string }) {
   return (
-    <div style={{ padding: '12px 14px', background: '#1f2226', borderRadius: 12 }}>
+    <div style={{ padding: '12px 14px', background: 'var(--card-2)', borderRadius: 4 }}>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 30, color, lineHeight: 1 }}>{v}</div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', marginTop: 4 }}>{u}</div>
     </div>

@@ -156,7 +156,7 @@ export function FunFactCard({ payload }: {
           {payload.term}
         </div>
       </div>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, lineHeight: 1.55, color: 'rgba(246,247,248,0.82)', margin: '4px 0 8px' }}>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, lineHeight: 1.55, color: 'var(--mute)', margin: '4px 0 8px' }}>
         {payload.body}
       </div>
       <Link href={`/learn/${payload.link_slug}`} style={{
@@ -195,10 +195,10 @@ export function NiggleCard({ payload, coach_note }: {
         </span>
         <span style={{ fontSize: 11, color: 'var(--mute)', letterSpacing: '0.5px' }}>· {when}</span>
       </div>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'rgba(246,247,248,0.75)', lineHeight: 1.5, marginTop: 6, fontStyle: 'italic' }}>
+      <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', lineHeight: 1.5, marginTop: 6, fontStyle: 'italic' }}>
         "{payload.description}"
       </div>
-      <div style={{ marginTop: 10, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+      <div style={{ marginTop: 10, height: 3, borderRadius: 2, background: 'var(--line-2)' }}>
         <div style={{ height: '100%', width: payload.severity === 'flare' ? '100%' : payload.severity === 'moderate' ? '60%' : '30%', background: sevColor, borderRadius: 2 }} />
       </div>
       {coach_note && <div className="coach-note">{coach_note}</div>}
@@ -248,10 +248,12 @@ export function LoadRampCard({ payload, coach_note }: {
           background: 'linear-gradient(90deg, rgba(0,143,236,0.30) 0%, rgba(62,189,65,0.5) 40%, rgba(62,189,65,0.5) 65%, rgba(243,173,56,0.55) 75%, rgba(252,77,100,0.6) 100%)',
         }}/>
         {/* Spike line marker at 1.5 */}
-        <div style={{ position: 'absolute', left: '75%', top: 6, width: 1, height: 11, background: 'rgba(255,255,255,0.4)' }}/>
-        <div style={{ position: 'absolute', left: '75%', top: 18, transform: 'translateX(-50%)', fontSize: 8, color: 'rgba(255,255,255,0.55)', fontWeight: 700, letterSpacing: '0.4px' }}>1.5</div>
-        {/* You marker */}
-        <div style={{ position: 'absolute', left: `${markerPct}%`, top: 5, transform: 'translateX(-50%)', width: 5, height: 13, background: bandColor, borderRadius: 2, boxShadow: `0 0 0 2px ${bandColor}30` }}/>
+        <div style={{ position: 'absolute', left: '75%', top: 6, width: 1, height: 11, background: 'var(--mute)' }}/>
+        <div style={{ position: 'absolute', left: '75%', top: 18, transform: 'translateX(-50%)', fontSize: 8, color: 'var(--dim)', fontWeight: 700, letterSpacing: '0.4px' }}>1.5</div>
+        {/* You marker — glow ring uses color-mix so the band token can carry an
+            alpha (a `${bandColor}30` hex-suffix concat would emit invalid CSS
+            since bandColor is a var() token, not a hex). */}
+        <div style={{ position: 'absolute', left: `${markerPct}%`, top: 5, transform: 'translateX(-50%)', width: 5, height: 13, background: bandColor, borderRadius: 2, boxShadow: `0 0 0 2px color-mix(in srgb, ${bandColor} 19%, transparent)` }}/>
       </div>
       {coach_note && <div className="coach-note">{coach_note}</div>}
     </div>
@@ -280,7 +282,7 @@ export function WeeklyVolumeCard({ payload, coach_note }: {
         </span>
         <span style={{ fontSize: 12, color: 'var(--mute)' }}>/ {payload.projected_mi.toFixed(1)} mi</span>
       </div>
-      <div style={{ marginTop: 10, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+      <div style={{ marginTop: 10, height: 6, borderRadius: 3, background: 'var(--line-2)', overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${donePct}%`, background: accent }}/>
       </div>
       {ahead && (

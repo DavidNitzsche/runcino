@@ -31,7 +31,7 @@ export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB
         aria-label={`Readiness ${breakdown.score} (${breakdown.label}) — tap for breakdown`}
       >
         <svg viewBox={`0 0 ${dim} ${dim}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-          <circle cx={dim / 2} cy={dim / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+          <circle cx={dim / 2} cy={dim / 2} r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />
           <circle cx={dim / 2} cy={dim / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={C} strokeDashoffset={off} />
         </svg>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1, position: 'relative' }}>
@@ -53,7 +53,7 @@ export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB
         <div
           onClick={() => setOpen(false)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+            position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
             zIndex: 50,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
           }}
@@ -61,12 +61,11 @@ export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              // Opaque, slightly raised. Was var(--card) which is semi-transparent
-              // and washed out against the blurred page underneath.
-              background: '#181a1d',
-              border: '1px solid rgba(255,255,255,0.10)',
-              boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
-              borderRadius: 20,
+              // Opaque card surface, slightly raised off the blurred page.
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              boxShadow: '0 24px 60px rgba(20,17,13,0.18)',
+              borderRadius: 4,
               padding: '28px 32px', maxWidth: 480, width: '100%', maxHeight: '80vh', overflow: 'auto',
             }}
           >

@@ -117,15 +117,15 @@ function EntryChip({
   dot: 'amber' | 'rest';
   onClick: () => void;
 }) {
-  const dotBg = dot === 'amber' ? '#F3AD38' : '#008FEC';
+  const dotBg = dot === 'amber' ? 'var(--goal)' : '#008FEC';
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
         flex: 1,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.10)',
+        background: 'var(--card-2)',
+        border: '1px solid var(--line)',
         borderRadius: 12,
         padding: '11px 12px',
         display: 'flex',
@@ -135,7 +135,7 @@ function EntryChip({
         fontWeight: 700,
         fontSize: 11,
         letterSpacing: 0.4,
-        color: 'rgba(246,247,248,0.85)',
+        color: 'var(--mute)',
         cursor: 'pointer',
       }}
     >
@@ -195,7 +195,7 @@ function NiggleRecovery({ niggle }: { niggle: ActiveNiggle }) {
           fontWeight: 700,
           letterSpacing: 1.4,
           textTransform: 'uppercase',
-          color: 'var(--mute, #8a90a0)',
+          color: 'var(--mute)',
           marginBottom: 8,
         }}
       >
@@ -243,13 +243,13 @@ function NiggleRecovery({ niggle }: { niggle: ActiveNiggle }) {
               fontWeight: 700,
               letterSpacing: '-0.015em',
               fontSize: 16,
-              color: '#FC4D64',
+              color: 'var(--over)',
               marginBottom: 4,
             }}
           >
             Consider seeing a physio.
           </div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, lineHeight: 1.45, color: 'rgba(246,247,248,0.82)' }}>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, lineHeight: 1.45, color: 'var(--mute)' }}>
             Day {niggle.days_active + 1}. Past day 7 is where coach guidance ends and clinical input begins.
           </div>
           <div
@@ -258,7 +258,7 @@ function NiggleRecovery({ niggle }: { niggle: ActiveNiggle }) {
               fontSize: 9,
               letterSpacing: 1,
               textTransform: 'uppercase',
-              color: 'var(--mute, #8a90a0)',
+              color: 'var(--mute)',
               marginTop: 6,
             }}
           >
@@ -267,7 +267,7 @@ function NiggleRecovery({ niggle }: { niggle: ActiveNiggle }) {
         </div>
       )}
       {error && (
-        <div style={{ color: '#FC4D64', fontSize: 11, marginTop: 6 }}>
+        <div style={{ color: 'var(--over)', fontSize: 11, marginTop: 6 }}>
           {error}
         </div>
       )}
@@ -287,10 +287,10 @@ function RecoveryChip({
   loading: boolean;
 }) {
   const palette: Record<typeof variant, { color: string; border: string; bg: string }> = {
-    green: { color: '#3EBD41', border: 'rgba(62,189,65,0.35)', bg: 'rgba(62,189,65,0.08)' },
-    amber: { color: '#F3AD38', border: 'rgba(243,173,56,0.35)', bg: 'rgba(243,173,56,0.08)' },
-    red: { color: '#FC4D64', border: 'rgba(252,77,100,0.35)', bg: 'rgba(252,77,100,0.08)' },
-    muted: { color: 'rgba(246,247,248,0.78)', border: 'rgba(255,255,255,0.10)', bg: 'rgba(255,255,255,0.04)' },
+    green: { color: 'var(--green)', border: 'rgba(62,189,65,0.35)', bg: 'rgba(62,189,65,0.08)' },
+    amber: { color: 'var(--goal)', border: 'rgba(243,173,56,0.35)', bg: 'rgba(243,173,56,0.08)' },
+    red: { color: 'var(--over)', border: 'rgba(252,77,100,0.35)', bg: 'rgba(252,77,100,0.08)' },
+    muted: { color: 'var(--mute)', border: 'var(--line)', bg: 'var(--card-2)' },
   };
   const p = palette[variant];
   return (
@@ -396,21 +396,21 @@ function SickRecovery({
           fontWeight: 700,
           letterSpacing: 1.4,
           textTransform: 'uppercase',
-          color: 'var(--mute, #8a90a0)',
+          color: 'var(--mute)',
           marginBottom: 8,
           display: 'flex',
           justifyContent: 'space-between',
         }}
       >
         <span>RETURN GATE · ALL 3 NEEDED</span>
-        <span style={{ color: allClear ? '#3EBD41' : 'var(--mute, #8a90a0)' }}>
+        <span style={{ color: allClear ? 'var(--green)' : 'var(--mute)' }}>
           {metCount}/3
         </span>
       </div>
       <div
         style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--card-2)',
+          border: '1px solid var(--line)',
           borderRadius: 12,
           padding: 12,
           display: 'flex',
@@ -433,8 +433,8 @@ function SickRecovery({
                 width: 18,
                 height: 18,
                 borderRadius: '50%',
-                background: g.met ? '#3EBD41' : 'rgba(255,255,255,0.06)',
-                border: g.met ? 'none' : '1px solid rgba(255,255,255,0.18)',
+                background: g.met ? 'var(--green)' : 'var(--line-2)',
+                border: g.met ? 'none' : '1px solid var(--line)',
                 color: '#0a0c10',
                 display: 'flex',
                 alignItems: 'center',
@@ -449,7 +449,7 @@ function SickRecovery({
               style={{
                 fontFamily: 'var(--f-body)',
                 fontSize: 12,
-                color: g.met ? 'var(--ink, #f6f7f8)' : 'rgba(246,247,248,0.7)',
+                color: g.met ? 'var(--ink)' : 'var(--dim)',
               }}
             >
               {g.label}
@@ -460,7 +460,7 @@ function SickRecovery({
                 fontSize: 10,
                 fontWeight: 700,
                 letterSpacing: 0.4,
-                color: g.met ? '#3EBD41' : 'var(--mute, #8a90a0)',
+                color: g.met ? 'var(--green)' : 'var(--mute)',
                 textTransform: 'uppercase',
               }}
             >
@@ -478,7 +478,7 @@ function SickRecovery({
               fontWeight: 700,
               letterSpacing: '-0.015em',
               fontSize: 22,
-              color: 'var(--ink, #f6f7f8)',
+              color: 'var(--ink)',
               marginBottom: 4,
             }}
           >
@@ -488,7 +488,7 @@ function SickRecovery({
             style={{
               fontFamily: 'var(--f-body)',
               fontSize: 12,
-              color: 'rgba(246,247,248,0.82)',
+              color: 'var(--mute)',
               marginBottom: 10,
               lineHeight: 1.5,
             }}
@@ -501,7 +501,7 @@ function SickRecovery({
             disabled={submitting}
             style={{
               width: '100%',
-              background: '#3EBD41',
+              background: 'var(--green)',
               border: 'none',
               borderRadius: 12,
               padding: '14px 0',
@@ -522,7 +522,7 @@ function SickRecovery({
           style={{
             fontFamily: 'var(--f-body)',
             fontSize: 11,
-            color: 'var(--mute, #8a90a0)',
+            color: 'var(--mute)',
             marginTop: 10,
             lineHeight: 1.45,
           }}
@@ -531,7 +531,7 @@ function SickRecovery({
         </div>
       )}
       {error && (
-        <div style={{ color: '#FC4D64', fontSize: 11, marginTop: 8 }}>{error}</div>
+        <div style={{ color: 'var(--over)', fontSize: 11, marginTop: 8 }}>{error}</div>
       )}
     </div>
   );

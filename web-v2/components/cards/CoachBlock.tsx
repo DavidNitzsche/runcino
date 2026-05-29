@@ -107,7 +107,7 @@ export function CoachBlock({
           fontFamily: 'var(--f-body)',
           fontSize: 15.5,
           lineHeight: 1.6,
-          color: 'rgba(246,247,248,0.86)',
+          color: 'var(--mute)',
           margin: '0 0 12px',
           letterSpacing: '-0.01em',
         }}>
