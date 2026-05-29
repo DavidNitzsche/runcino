@@ -122,7 +122,7 @@ export function PacePlanElevation({
               <text
                 x={cx} y={padTop + 18}
                 textAnchor="middle"
-                fontFamily="Bebas Neue, sans-serif"
+                fontFamily="'Oswald', 'Inter', sans-serif"
                 fontSize={16}
                 fill={color}
                 letterSpacing={1}
@@ -147,7 +147,7 @@ export function PacePlanElevation({
             key={`div-${seg.miEnd}`}
             x1={xFor(seg.miEnd)} y1={chartTop}
             x2={xFor(seg.miEnd)} y2={chartTop + H_chart}
-            stroke="rgba(255,255,255,0.10)"
+            stroke="var(--line-2)"
             strokeWidth={1}
             strokeDasharray="2 3"
           />
@@ -157,14 +157,14 @@ export function PacePlanElevation({
         <line
           x1={padX} y1={chartTop + H_chart}
           x2={W - padX} y2={chartTop + H_chart}
-          stroke="rgba(255,255,255,0.20)" strokeWidth={1}
+          stroke="var(--line)" strokeWidth={1}
         />
         {[0, 3, 6, 9, distanceMi].map((mi) => (
           <g key={`mi-${mi}`}>
             <line
               x1={xFor(mi)} y1={chartTop + H_chart - 4}
               x2={xFor(mi)} y2={chartTop + H_chart + 4}
-              stroke="rgba(255,255,255,0.35)" strokeWidth={1}
+              stroke="var(--mute)" strokeWidth={1}
             />
             <text
               x={xFor(mi)} y={chartTop + H_chart + 16}
@@ -172,7 +172,7 @@ export function PacePlanElevation({
               fontFamily="Inter, sans-serif"
               fontSize={9}
               fontWeight={700}
-              fill="rgba(246,247,248,0.45)"
+              fill="var(--dim)"
               letterSpacing={0.5}
             >
               {mi % 1 === 0 ? mi : mi.toFixed(1)} mi

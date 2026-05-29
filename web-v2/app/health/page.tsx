@@ -36,7 +36,9 @@ export default async function HealthPage() {
             : health.watchMode === 'watch-amber'
             ? 'linear-gradient(180deg, rgba(243,173,56,0.06), rgba(243,173,56,0) 70%)'
             : 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
-          border: '1px solid var(--line)', borderRadius: 18, padding: '4px 4px',
+          borderTop: '1px solid var(--line)',
+          borderLeft: `3px solid ${headlineColor}`,
+          padding: '10px 12px',
           marginBottom: 18, minHeight: 200,
         }}>
           <BriefingLoader surface="health" renderCards={false} />
@@ -44,7 +46,7 @@ export default async function HealthPage() {
 
         {/* §8.3 — readiness from glance state (no LLM needed) */}
         {glance && (
-          <div className="card" style={{ padding: '24px 28px', marginBottom: 18 }}>
+          <div style={{ borderTop: '1px solid var(--line)', padding: '18px 0', marginBottom: 18 }}>
             <div className="card-eyebrow" style={{ color: 'var(--green)' }}>READINESS · TODAY</div>
             <ReadinessBreakdownView breakdown={glance.readiness} />
           </div>
@@ -59,7 +61,7 @@ export default async function HealthPage() {
             valueColor="var(--goal)"
             narrative={sleepNarrative(health.sleep.avg7n)}
             sub={`7-NIGHT AVG · 30D avg ${health.sleep.avg30n ?? '—'}h · target 7.5h`}
-            chart={<BarChart series={health.sleepSeries.map((d) => d.hours)} min={4} max={10} color="#F3AD38" unit="h" baseline={7.5} />}
+            chart={<BarChart series={health.sleepSeries.map((d) => d.hours)} min={4} max={10} color="var(--goal)" unit="h" baseline={7.5} />}
           />
           <TrendCard
             title="RESTING HR · 60 DAYS" titleColor="var(--over)"
@@ -67,7 +69,7 @@ export default async function HealthPage() {
             valueColor={health.rhr.delta != null && health.rhr.delta >= 5 ? 'var(--over)' : 'var(--green)'}
             narrative={rhrNarrative(health.rhr.delta)}
             sub={`CURRENT BPM · baseline ${health.rhr.baseline ?? '—'} · 60-day window`}
-            chart={<BarChart series={health.rhrSeries.map((d) => d.bpm)} min={40} max={70} color="#FC4D64" unit="bpm" baseline={health.rhr.baseline ?? undefined} xLabel="60D AGO → TODAY" />}
+            chart={<BarChart series={health.rhrSeries.map((d) => d.bpm)} min={40} max={70} color="var(--over)" unit="bpm" baseline={health.rhr.baseline ?? undefined} xLabel="60D AGO → TODAY" />}
           />
         </Grid2>
 
@@ -78,7 +80,7 @@ export default async function HealthPage() {
             valueColor="var(--green)"
             narrative={hrvNarrative(health.hrv.pctAboveBaseline)}
             sub={`baseline ${health.hrv.baseline ?? '—'} ms`}
-            chart={<BarChart series={health.hrvSeries.map((d) => d.ms)} min={30} max={100} color="#3EBD41" unit="ms" baseline={health.hrv.baseline ?? undefined} />}
+            chart={<BarChart series={health.hrvSeries.map((d) => d.ms)} min={30} max={100} color="var(--green)" unit="ms" baseline={health.hrv.baseline ?? undefined} />}
           />
           <TrendCard
             title="WEIGHT · 30 DAYS" titleColor="var(--dist)"
@@ -86,7 +88,7 @@ export default async function HealthPage() {
             valueColor="var(--ink)"
             narrative={weightNarrative(health.weight.delta30)}
             sub={`${health.weight.delta30 != null ? (health.weight.delta30 >= 0 ? `+${health.weight.delta30}` : `${health.weight.delta30}`) : '—'} lb vs 30d ago`}
-            chart={<BarChart series={health.weightSeries.map((d) => d.lb)} min={170} max={200} color="#27B4E0" unit="lb" />}
+            chart={<BarChart series={health.weightSeries.map((d) => d.lb)} min={170} max={200} color="var(--dist)" unit="lb" />}
           />
         </Grid2>
 
@@ -134,10 +136,12 @@ export default async function HealthPage() {
 
 function WatchListBox({ items }: { items: HealthState['watchItems'] }) {
   return (
-    <div className="card" style={{
+    <div style={{
       marginBottom: 18,
-      borderColor: 'rgba(243,173,56,0.25)',
+      borderTop: '1px solid var(--line)',
+      borderLeft: '3px solid var(--goal)',
       background: 'rgba(243,173,56,0.04)',
+      padding: '16px 14px',
     }}>
       <div className="card-eyebrow" style={{ color: 'var(--goal)' }}>
         WATCH LIST · {items.length} {items.length === 1 ? 'ITEM' : 'ITEMS'}
@@ -182,7 +186,7 @@ function TrendCard({
   chart: React.ReactNode;
 }) {
   return (
-    <div className="card" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ borderTop: '1px solid var(--line)', padding: '18px 0 0', display: 'flex', flexDirection: 'column' }}>
       <div className="card-eyebrow" style={{ color: titleColor, marginBottom: 10 }}>{title}</div>
 
       {/* Hero number — proper editorial scale */}
@@ -247,7 +251,7 @@ function StatCard({
   narrative?: string;
 }) {
   return (
-    <div className="card" style={{ padding: '22px 26px' }}>
+    <div style={{ borderTop: '1px solid var(--line)', padding: '18px 0 0' }}>
       <div className="card-eyebrow" style={{ color: titleColor, marginBottom: 10 }}>{title}</div>
       <div style={{
         fontFamily: 'var(--f-display)',

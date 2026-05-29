@@ -232,7 +232,7 @@ export function LogFilterStrip({ filters, axes }: LogFilterStripProps) {
  */
 export function LogEmptyMatch({ totalUnfiltered }: { totalUnfiltered: number }) {
   return (
-    <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+    <div style={{ borderTop: '1px solid var(--line)', padding: '40px 0', textAlign: 'center' }}>
       <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO RUNS MATCH</div>
       <p style={{ color: 'var(--mute)', fontSize: 13, marginTop: 8, letterSpacing: '0.5px' }}>
         <Link

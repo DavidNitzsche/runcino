@@ -47,7 +47,7 @@ export function AddRaceButton() {
   }
 
   return (
-    <div className="card" style={{ padding: '20px 24px', marginBottom: 18, border: '1px solid var(--green)', background: 'rgba(62,189,65,0.04)' }}>
+    <div style={{ padding: '20px 24px', marginBottom: 18, border: '1px solid var(--green)', borderRadius: 4, background: 'rgba(62,189,65,0.04)' }}>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--green)', letterSpacing: '1.6px', textTransform: 'uppercase', marginBottom: 12 }}>
         NEW RACE
       </div>
@@ -119,7 +119,7 @@ export function EditRaceButton({ slug, current }: {
   }
 
   return (
-    <div className="card" style={{ padding: '20px 24px', marginTop: 18, border: '1px solid var(--green)', background: 'rgba(62,189,65,0.04)' }}>
+    <div style={{ padding: '20px 24px', marginTop: 18, border: '1px solid var(--green)', borderRadius: 4, background: 'rgba(62,189,65,0.04)' }}>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--green)', letterSpacing: '1.6px', textTransform: 'uppercase', marginBottom: 12 }}>
         EDIT RACE
       </div>

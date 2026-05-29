@@ -94,8 +94,9 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
         background: proximity === 'race-week' || proximity === 'post-race'
           ? 'linear-gradient(180deg, rgba(255,136,71,0.06), rgba(255,136,71,0) 70%)'
           : 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
-        border: `1px solid ${proximity === 'race-week' || proximity === 'post-race' ? 'rgba(255,136,71,0.22)' : 'var(--line)'}`,
-        borderRadius: 18, padding: '4px 4px', marginBottom: 18, minHeight: 200,
+        borderTop: '1px solid var(--line)',
+        borderLeft: `3px solid ${proximity === 'race-week' || proximity === 'post-race' ? 'var(--race)' : 'var(--green)'}`,
+        padding: '10px 12px', marginBottom: 18, minHeight: 200,
       }}>
         <BriefingLoader surface="race-detail" raceSlug={slug} renderCards={false} />
       </div>
@@ -117,7 +118,7 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
 
       {/* Course + pace plan — present at all proximities except deep post-race */}
       {proximity !== 'post-race' && (
-        <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
+        <div style={{ borderTop: '1px solid var(--line)', padding: '20px 0 4px', marginTop: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px' }}>
               {proximity === 'race-week' ? 'COURSE · PACE PLAN LOCKED' : 'COURSE'}
@@ -136,7 +137,7 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
             />
             <GpxUploadButton slug={slug} alreadyAttached={!!courseGeometry} />
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 12, marginBottom: 14 }}>
+          <div style={{ background: 'var(--card-2)', border: '1px solid var(--line-2)', borderRadius: 4, padding: 12, marginBottom: 14 }}>
             {courseGeometry ? <RealRouteSvg geometry={courseGeometry} /> : <CourseSchematic />}
           </div>
           {/* P47 — elevation-overlay pace plan replaces the old side table. */}
@@ -150,7 +151,7 @@ export default async function RaceDetailPage({ params }: { params: Promise<{ slu
 
       {/* Post-race section — retro form (finish, PB, felt, exec, notes) */}
       {proximity === 'post-race' && (
-        <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
+        <div style={{ borderTop: '2px solid var(--ink)', padding: '20px 0 4px', marginTop: 18 }}>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px', marginBottom: 4 }}>
             POST-RACE
           </div>

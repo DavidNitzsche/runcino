@@ -39,7 +39,7 @@ export function BuildingProgressCard({
     : null;
 
   return (
-    <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
+    <div style={{ borderTop: '1px solid var(--line)', borderLeft: '3px solid var(--rest)', padding: '20px 0 4px 16px', marginTop: 18 }}>
       <div className="card-eyebrow" style={{ color: 'var(--rest)' }}>BUILDING · LONG ROAD</div>
       <div style={{
         fontFamily: 'var(--f-display)', fontSize: 38, color: 'var(--ink)',
@@ -77,7 +77,7 @@ export function BuildingProgressCard({
               {pctTowardPeak}%
             </span>
           </div>
-          <div style={{ height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ height: 8, background: 'var(--line-2)', borderRadius: 4, overflow: 'hidden' }}>
             <div style={{
               height: '100%',
               width: `${Math.min(100, pctTowardPeak)}%`,
@@ -174,7 +174,7 @@ export function RaceWeekChecklist({ slug, daysToRace }: { slug: string; daysToRa
   const total = RACE_WEEK_CHECKLIST.length;
 
   return (
-    <div className="card" style={{ padding: '24px 28px', marginTop: 18 }}>
+    <div style={{ borderTop: '1px solid var(--line)', borderLeft: '3px solid var(--race)', padding: '20px 0 4px 16px', marginTop: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
         <div className="card-eyebrow" style={{ color: 'var(--race)' }}>RACE WEEK · CHECKLIST</div>
         <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1.2px', color: 'var(--mute)' }}>
@@ -208,8 +208,8 @@ export function RaceWeekChecklist({ slug, daysToRace }: { slug: string; daysToRa
                       <span style={{
                         width: 18, height: 18, borderRadius: 4, flexShrink: 0,
                         marginTop: 1,
-                        background: on ? 'var(--green)' : 'rgba(255,255,255,0.04)',
-                        border: `1px solid ${on ? 'var(--green)' : 'rgba(255,255,255,0.18)'}`,
+                        background: on ? 'var(--green)' : 'var(--card-2)',
+                        border: `1px solid ${on ? 'var(--green)' : 'var(--line)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#0e1014', fontSize: 12, fontWeight: 700,
                       }}>{on ? '✓' : ''}</span>
@@ -262,10 +262,10 @@ export function RaceWeekCountdown({ daysToRace, raceDate }: { daysToRace: number
     : `${daysToRace} DAYS`;
 
   return (
-    <div className="card" style={{
-      padding: '20px 24px', marginTop: 18,
+    <div style={{
+      padding: '20px 0 4px 16px', marginTop: 18,
       background: 'linear-gradient(135deg, rgba(255,136,71,0.10), rgba(255,136,71,0.02))',
-      border: '1px solid rgba(255,136,71,0.25)',
+      borderTop: '2px solid var(--race)', borderLeft: '3px solid var(--race)',
     }}>
       <div className="card-eyebrow" style={{ color: 'var(--race)' }}>COUNTDOWN</div>
       <div style={{

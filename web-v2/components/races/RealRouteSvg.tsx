@@ -35,9 +35,9 @@ export function RealRouteSvg({ geometry }: { geometry: Geometry }) {
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
-      <path d={d} fill="none" stroke="#FF8847" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={sx.toFixed(1)} cy={sy.toFixed(1)} r={6} fill="#3EBD41" stroke="#0a0c10" strokeWidth={2} />
-      <circle cx={ex.toFixed(1)} cy={ey.toFixed(1)} r={6} fill="#F3AD38" stroke="#0a0c10" strokeWidth={2} />
+      <path d={d} fill="none" stroke="var(--race)" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={sx.toFixed(1)} cy={sy.toFixed(1)} r={6} fill="var(--green)" stroke="var(--card-2)" strokeWidth={2} />
+      <circle cx={ex.toFixed(1)} cy={ey.toFixed(1)} r={6} fill="var(--goal)" stroke="var(--card-2)" strokeWidth={2} />
     </svg>
   );
 }

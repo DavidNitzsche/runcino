@@ -51,16 +51,16 @@ export function BarChart({
       <svg viewBox={`0 0 ${W} ${height + 4}`} preserveAspectRatio="xMidYMid meet"
            style={{ width: '100%', height: 'auto', maxHeight: height + 4, display: 'block' }}>
         {/* Y-axis range labels */}
-        <text x={PAD_L - 4} y={10} fontSize={9} fill="rgba(255,255,255,0.42)" textAnchor="end" fontFamily="var(--f-body)">
+        <text x={PAD_L - 4} y={10} fontSize={9} fill="var(--dim)" textAnchor="end" fontFamily="var(--f-body)">
           {max}{unit}
         </text>
-        <text x={PAD_L - 4} y={height - 1} fontSize={9} fill="rgba(255,255,255,0.42)" textAnchor="end" fontFamily="var(--f-body)">
+        <text x={PAD_L - 4} y={height - 1} fontSize={9} fill="var(--dim)" textAnchor="end" fontFamily="var(--f-body)">
           {min}{unit}
         </text>
 
         {/* Subtle horizontal frame top/bottom */}
-        <line x1={PAD_L} y1={0.5} x2={W - PAD_R} y2={0.5} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
-        <line x1={PAD_L} y1={height - 0.5} x2={W - PAD_R} y2={height - 0.5} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+        <line x1={PAD_L} y1={0.5} x2={W - PAD_R} y2={0.5} stroke="var(--line-2)" strokeWidth={1} />
+        <line x1={PAD_L} y1={height - 0.5} x2={W - PAD_R} y2={height - 0.5} stroke="var(--line-2)" strokeWidth={1} />
 
         {/* Baseline dashed line + label (label lives in the right-pad gutter) */}
         {baseline != null && baseline >= min && baseline <= max && (
@@ -68,11 +68,11 @@ export function BarChart({
             <line
               x1={PAD_L} y1={yFor(baseline)}
               x2={W - PAD_R} y2={yFor(baseline)}
-              stroke="rgba(255,255,255,0.22)" strokeWidth={1} strokeDasharray="3 4"
+              stroke="var(--mute)" strokeWidth={1} strokeDasharray="3 4"
             />
             <text
               x={W - PAD_R + 4} y={yFor(baseline) + 3}
-              fontSize={9} fill="rgba(255,255,255,0.55)" textAnchor="start" fontFamily="var(--f-body)" letterSpacing="0.4"
+              fontSize={9} fill="var(--mute)" textAnchor="start" fontFamily="var(--f-body)" letterSpacing="0.4"
             >
               base {baseline}{unit}
             </text>
@@ -104,10 +104,10 @@ export function BarChart({
         paddingRight: (PAD_R / W) * 100 + '%',
         marginTop: 4,
         fontFamily: 'var(--f-body)', fontSize: 9, letterSpacing: '1.2px',
-        color: 'rgba(255,255,255,0.42)',
+        color: 'var(--dim)',
       }}>
         <span>{xText.split('→')[0]?.trim() ?? ''}</span>
-        <span style={{ color: 'rgba(255,255,255,0.65)' }}>{xText.split('→')[1]?.trim() ?? ''}</span>
+        <span style={{ color: 'var(--mute)' }}>{xText.split('→')[1]?.trim() ?? ''}</span>
       </div>
     </div>
   );

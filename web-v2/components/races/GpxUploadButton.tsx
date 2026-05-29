@@ -46,7 +46,7 @@ export function GpxUploadButton({ slug, alreadyAttached }: { slug: string; alrea
         onClick={() => fileRef.current?.click()}
         disabled={pending}
         style={{
-          background: alreadyAttached ? 'rgba(255,255,255,0.04)' : 'rgba(62,189,65,0.10)',
+          background: alreadyAttached ? 'var(--card-2)' : 'rgba(62,189,65,0.10)',
           border: `1px solid ${alreadyAttached ? 'var(--line)' : 'rgba(62,189,65,0.30)'}`,
           color: alreadyAttached ? 'var(--mute)' : 'var(--green)',
           padding: '8px 14px', borderRadius: 8,

@@ -26,8 +26,8 @@ export default async function RacesPage() {
         {/* Coach voice opens the page — loads async */}
         <div style={{
           background: 'linear-gradient(180deg, rgba(62,189,65,0.04), rgba(62,189,65,0) 60%)',
-          border: '1px solid var(--line)', borderRadius: 18,
-          padding: '4px 4px', marginBottom: 18, minHeight: 180,
+          borderTop: '1px solid var(--line)', borderLeft: '3px solid var(--green)',
+          padding: '10px 12px', marginBottom: 18, minHeight: 180,
         }}>
           <BriefingLoader surface="races" renderCards={false} />
         </div>
@@ -77,11 +77,10 @@ function ARaceHero({ race }: { race: RaceRow }) {
   return (
     <Link href={`/races/${race.slug}`} style={{
       display: 'block',
-      background: 'var(--card)',
-      border: '1px solid var(--line)',
+      background: 'transparent',
+      borderTop: '2px solid var(--ink)',
       borderLeft: '3px solid var(--race)',
-      borderRadius: 18,
-      padding: '32px 36px',
+      padding: '28px 28px 28px 22px',
       marginBottom: 24,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
@@ -109,7 +108,7 @@ function ARaceHero({ race }: { race: RaceRow }) {
       {race.goal && (
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24,
-          marginTop: 18, paddingTop: 18, borderTop: '1px solid rgba(255,255,255,0.06)',
+          marginTop: 18, paddingTop: 18, borderTop: '1px solid var(--line)',
         }}>
           <div>
             <div style={{ fontSize: 10, color: 'var(--mute)', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 6 }}>GOAL</div>
@@ -126,10 +125,10 @@ function SecondaryARace({ race }: { race: RaceRow }) {
   return (
     <Link href={`/races/${race.slug}`} style={{
       display: 'block',
-      background: 'var(--card)',
-      border: '1px solid var(--line)',
+      background: 'transparent',
+      borderTop: '1px solid var(--line)',
       borderLeft: '3px solid var(--race)',
-      borderRadius: 14, padding: '20px 24px', marginBottom: 16,
+      padding: '18px 20px', marginBottom: 0,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -156,7 +155,11 @@ function BCRaceCard({ race, priority }: { race: RaceRow; priority: 'B' | 'C' }) 
   const color = priority === 'B' ? 'var(--goal)' : 'var(--learn)';
   const bg = priority === 'B' ? 'rgba(243,173,56,0.18)' : 'rgba(176,132,255,0.18)';
   return (
-    <Link href={`/races/${race.slug}`} className="card" style={{ display: 'block' }}>
+    <Link href={`/races/${race.slug}`} style={{
+      display: 'block', background: 'transparent',
+      borderTop: '1px solid var(--line)', borderLeft: `3px solid ${color}`,
+      padding: '16px 14px',
+    }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <span style={{ display: 'inline-block', fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', padding: '3px 8px', borderRadius: 4, background: bg, color }}>{priority}</span>
@@ -174,10 +177,11 @@ function BCRaceCard({ race, priority }: { race: RaceRow; priority: 'B' | 'C' }) 
 function PastRaceCard({ race }: { race: RaceRow }) {
   const finish = race.finishTime ?? (race.matchedRun ? '—' : null);
   return (
-    <Link href={`/races/${race.slug}`} className="card" style={{
-      padding: '16px 18px', display: 'block',
-      background: race.pb ? 'linear-gradient(135deg, rgba(62,189,65,0.06), rgba(62,189,65,0.01))' : 'rgba(255,255,255,0.025)',
-      border: race.pb ? '1px solid rgba(62,189,65,0.30)' : '1px solid var(--line)',
+    <Link href={`/races/${race.slug}`} style={{
+      padding: '16px 14px', display: 'block',
+      background: race.pb ? 'linear-gradient(135deg, rgba(62,189,65,0.06), rgba(62,189,65,0.01))' : 'transparent',
+      borderTop: '1px solid var(--line)',
+      borderLeft: race.pb ? '3px solid var(--green)' : '3px solid transparent',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -212,9 +216,9 @@ function PastRaceCard({ race }: { race: RaceRow }) {
 
       {race.matchedRun && (
         <div style={{ display: 'flex', gap: 14, marginTop: 8, fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.5px' }}>
-          {race.matchedRun.avg_hr      != null && <span><span style={{ color: 'rgba(246,247,248,0.55)' }}>HR</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.avg_hr}</span></span>}
-          {race.matchedRun.cadence     != null && <span><span style={{ color: 'rgba(246,247,248,0.55)' }}>CAD</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.cadence}</span></span>}
-          {race.matchedRun.elev_gain_ft!= null && race.matchedRun.elev_gain_ft > 0 && <span><span style={{ color: 'rgba(246,247,248,0.55)' }}>↑</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.elev_gain_ft}ft</span></span>}
+          {race.matchedRun.avg_hr      != null && <span><span style={{ color: 'var(--dim)' }}>HR</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.avg_hr}</span></span>}
+          {race.matchedRun.cadence     != null && <span><span style={{ color: 'var(--dim)' }}>CAD</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.cadence}</span></span>}
+          {race.matchedRun.elev_gain_ft!= null && race.matchedRun.elev_gain_ft > 0 && <span><span style={{ color: 'var(--dim)' }}>↑</span> <span style={{ color: 'var(--ink)' }}>{race.matchedRun.elev_gain_ft}ft</span></span>}
         </div>
       )}
     </Link>
@@ -223,9 +227,9 @@ function PastRaceCard({ race }: { race: RaceRow }) {
 
 function NoARacePrompt() {
   return (
-    <div className="card" style={{ padding: '28px 32px', marginBottom: 24 }}>
+    <div style={{ borderTop: '2px solid var(--ink)', padding: '24px 0', marginBottom: 24 }}>
       <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO RACE ON THE BOOKS</div>
-      <p style={{ color: 'rgba(246,247,248,0.86)', fontSize: 14, lineHeight: 1.6 }}>
+      <p style={{ color: 'var(--ink)', fontSize: 14, lineHeight: 1.6 }}>
         Pick the next race to anchor a plan around — tap <span style={{ color: 'var(--green)', fontWeight: 600 }}>+ ADD RACE</span> above.
       </p>
     </div>

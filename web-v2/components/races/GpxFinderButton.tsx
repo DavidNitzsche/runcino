@@ -130,15 +130,15 @@ function FinderModal({
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+        position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
         zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
+          background: 'var(--card)', border: '1px solid var(--line)',
+          boxShadow: '0 24px 60px rgba(20,17,13,0.22)', borderRadius: 4,
           padding: '24px 28px', maxWidth: 640, width: '100%', maxHeight: '85vh', overflow: 'auto',
         }}
       >
@@ -161,9 +161,9 @@ function FinderModal({
             placeholder="Race name"
             style={{
               flex: 1,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.10)',
-              borderRadius: 10,
+              background: 'var(--card-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 8,
               padding: '10px 14px',
               color: 'var(--ink)',
               fontFamily: 'var(--f-body)',
@@ -232,9 +232,9 @@ function FinderModal({
                   type="button"
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.025)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 10,
+                    background: 'var(--card-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 8,
                     padding: '12px 14px',
                     cursor: importingId ? 'wait' : 'pointer',
                     opacity: importingId && !isImporting ? 0.4 : 1,
@@ -242,7 +242,7 @@ function FinderModal({
                     font: 'inherit', color: 'inherit', width: '100%',
                   }}
                   onMouseEnter={(e) => { if (!importingId) e.currentTarget.style.background = 'rgba(62,189,65,0.06)'; }}
-                  onMouseLeave={(e) => { if (!importingId) e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
+                  onMouseLeave={(e) => { if (!importingId) e.currentTarget.style.background = 'var(--card-2)'; }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', lineHeight: 1.2 }}>

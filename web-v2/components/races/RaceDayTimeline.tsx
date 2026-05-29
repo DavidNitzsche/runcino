@@ -246,10 +246,9 @@ export function RaceDayTimeline({ race, daysUntil }: RaceDayTimelineProps) {
     <section
       aria-label="Race-day timeline"
       style={{
-        background: 'var(--card)',
-        border: '1px solid var(--line)',
-        borderRadius: 18,
-        padding: '22px 24px',
+        background: 'transparent',
+        borderTop: '2px solid var(--race)',
+        padding: '20px 0 4px',
         marginBottom: 18,
       }}
     >
@@ -337,13 +336,13 @@ function MomentCard({ moment, isActive }: { moment: Moment; isActive: boolean })
       background: 'var(--card-2)',
       border: isActive ? `1.5px solid ${accent}` : '1px solid var(--line)',
       borderLeft: `4px solid ${accent}`,
-      borderRadius: 10,
+      borderRadius: 4,
       padding: '16px 18px',
       display: 'flex',
       flexDirection: 'column',
       gap: 10,
       position: 'relative',
-      boxShadow: isActive ? `0 0 0 1px ${accent}33, 0 8px 24px rgba(0,0,0,0.18)` : 'none',
+      boxShadow: isActive ? `0 0 0 1px ${accent}33, 0 8px 24px rgba(20,17,13,0.12)` : 'none',
     }}>
       {/* Eyebrow + time marker row */}
       <div style={{
@@ -386,7 +385,7 @@ function MomentCard({ moment, isActive }: { moment: Moment; isActive: boolean })
         margin: 0,
         fontSize: 12.5,
         lineHeight: 1.55,
-        color: 'rgba(246,247,248,0.78)',
+        color: 'var(--mute)',
       }}>{moment.expect}</p>
 
       {/* Coach voice */}
@@ -438,7 +437,7 @@ function MomentAction({
           gap: 6,
           padding: '6px 12px',
           borderRadius: 99,
-          background: 'rgba(255,255,255,0.04)',
+          background: 'var(--card-2)',
           border: '1px dashed var(--line)',
           color: 'var(--mute)',
           fontFamily: 'var(--f-body)',
@@ -492,7 +491,7 @@ function RaceTimelineLocked({ daysUntil }: { daysUntil: number }) {
     <section style={{
       background: 'var(--card)',
       border: '1px dashed var(--line)',
-      borderRadius: 14,
+      borderRadius: 4,
       padding: '24px 26px',
       textAlign: 'center',
       display: 'flex',
@@ -519,7 +518,7 @@ function RaceTimelineLocked({ daysUntil }: { daysUntil: number }) {
       }}>
         Timeline unlocks 7 days before race day.
       </div>
-      <div style={{ fontSize: 12.5, color: 'rgba(246,247,248,0.6)' }}>
+      <div style={{ fontSize: 12.5, color: 'var(--mute)' }}>
         {daysUntil > 7
           ? `Currently ${daysUntil} days out. The night-before → debrief arc reveals itself in race week.`
           : 'Debrief window closed. The race report sits below.'}

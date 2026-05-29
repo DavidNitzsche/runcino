@@ -62,7 +62,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
             {[true, false].map((v) => (
               <button key={String(v)} onClick={() => setPb(v)}
                 style={{
-                  background: pb === v ? (v ? 'rgba(62,189,65,0.18)' : 'rgba(255,255,255,0.04)') : 'transparent',
+                  background: pb === v ? (v ? 'rgba(62,189,65,0.18)' : 'var(--card-2)') : 'transparent',
                   border: `1px solid ${pb === v ? (v ? 'var(--green)' : 'var(--line)') : 'var(--line)'}`,
                   color: pb === v ? (v ? 'var(--green)' : 'var(--mute)') : 'var(--mute)',
                   borderRadius: 8, padding: '8px 14px',
@@ -145,7 +145,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function inputStyle(): React.CSSProperties {
   return {
-    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', borderRadius: 8,
+    background: 'var(--card-2)', border: '1px solid var(--line)', borderRadius: 8,
     color: 'var(--ink)', fontFamily: 'var(--f-body)', fontSize: 14, padding: '8px 12px', width: '100%',
   };
 }

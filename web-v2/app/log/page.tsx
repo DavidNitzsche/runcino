@@ -87,7 +87,7 @@ export default async function LogPage({
         <ReconnectBanner initialState={stravaStatus} />
       </div>
       {log.totalRunsUnfiltered === 0 ? (
-        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+        <div style={{ borderTop: '1px solid var(--line)', padding: '40px 0', textAlign: 'center' }}>
           <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>NO RUNS YET</div>
           <p style={{ color: 'var(--mute)', fontSize: 14, marginTop: 8 }}>
             When the watch syncs your first run, it'll show up here.

@@ -112,7 +112,7 @@ function WeekBlock({ week, onOpen, onHover, reauthSet }: { week: LogWeek; onOpen
           <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.2px' }}>MI</span>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
         {week.runs.map((r) => (
           <RunRow
             key={`${r.id}-${r.date}`}
@@ -150,19 +150,20 @@ function RunRow({ run, onOpen, onHover, needsReauth }: { run: LogRun; onOpen: (i
         display: 'grid',
         gridTemplateColumns: '56px 1fr auto auto auto auto auto',
         gap: 16, alignItems: 'center',
-        padding: '14px 18px', textAlign: 'left', width: '100%', cursor: 'pointer',
-        border: '1px solid var(--line)',
-        borderRadius: 10,
-        background: 'rgba(255,255,255,0.025)',
+        padding: '14px 6px', textAlign: 'left', width: '100%', cursor: 'pointer',
+        border: 'none',
+        borderTop: '1px solid var(--line)',
+        borderRadius: 0,
+        background: 'transparent',
         transition: 'background .12s',
         fontFamily: 'inherit',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+        e.currentTarget.style.background = 'var(--card-2)';
         // Hover = intent. Fire the fetch so the click feels instant.
         onHover(run.id);
       }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       onFocus={() => onHover(run.id)}
     >
       {/* Date column */}
@@ -261,7 +262,7 @@ function RunRow({ run, onOpen, onHover, needsReauth }: { run: LogRun; onOpen: (i
 function Stat({ v, u, big, color }: { v: string; u: string; big?: boolean; color?: string }) {
   return (
     <div style={{ textAlign: 'right' }}>
-      {/* big=true (≥18) → Bebas display; big=false (<18) → HelveticaNeue label.
+      {/* big=true → Oswald display (--f-display); big=false → Inter label (--f-label).
        *  Stays within typography rule (#159). */}
       <div style={{
         fontFamily: big ? 'var(--f-display)' : 'var(--f-label)',
