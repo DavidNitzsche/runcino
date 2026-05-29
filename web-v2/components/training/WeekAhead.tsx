@@ -92,11 +92,12 @@ function DayCell({
       style={{
         background: isToday ? 'rgba(62,189,65,0.10)'
           : ran ? 'rgba(62,189,65,0.05)'
-                : 'var(--card-2)',
+                : 'transparent',
         border: isToday ? '1px solid rgba(62,189,65,0.30)'
           : ran && isPast ? '1px solid rgba(62,189,65,0.18)'
                           : '1px solid transparent',
-        borderRadius: 10, padding: '14px 11px',
+        borderTop: isToday || (ran && isPast) ? undefined : '1px solid var(--line)',
+        borderRadius: 0, padding: '14px 11px',
         display: 'flex', flexDirection: 'column',
         cursor: 'pointer',
         transition: 'background .12s, border .12s, transform .08s',
@@ -237,11 +238,7 @@ export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: stri
   }, [week.days]);
 
   return (
-    <div style={{
-      background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16,
-      padding: '22px 24px',
-      display: 'flex', flexDirection: 'column',
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       {(() => {
         // 2026-05-27 P-DOCTRINE-WEEK-OVER mirror: show projected (done +
         // remaining planned), not just the original planned total, so
@@ -254,9 +251,9 @@ export function WeekAhead({ week, today, planId }: { week: PlanWeek; today: stri
         const overPlanBy = Math.round((projected - week.plannedMi) * 10) / 10;
         return (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px' }}>WEEK AHEAD</div>
+            <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, fontWeight: 700, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--mute)' }}>VOLUME · LOGGED / PROJECTED</div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--mute)', letterSpacing: '0.5px' }}>
+              <div className="tabular" style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', letterSpacing: '-0.01em' }}>
                 {done.toFixed(1)} / {projected.toFixed(1)} MI
               </div>
               {Math.abs(overPlanBy) >= 3 && (

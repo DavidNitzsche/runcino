@@ -196,7 +196,7 @@ export function StravaConnectionCard({ initial }: {
       : 'Not connected';
 
   return (
-    <div id="strava-card" className="card" style={{ padding: '20px 22px', scrollMarginTop: 80 }}>
+    <div id="strava-card" style={{ borderTop: '1px solid var(--line)', padding: '16px 0 4px', scrollMarginTop: 80 }}>
       {/* Header row: name + tri-state status pill */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
@@ -397,8 +397,8 @@ export function StravaConnectionCard({ initial }: {
               />
             </div>
             <div style={{
-              marginTop: 10, padding: '10px 12px', borderRadius: 8,
-              background: 'rgba(255,255,255,0.025)',
+              marginTop: 10, padding: '10px 12px', borderRadius: 4,
+              background: 'var(--card-2)', border: '1px solid var(--line-2)',
               fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)',
             }}>
               <span style={{ color: 'var(--dim)' }}>Next push will be titled: </span>
@@ -414,8 +414,8 @@ export function StravaConnectionCard({ initial }: {
                 {pushes.map((p) => (
                   <div key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '8px 12px', borderRadius: 8,
-                    background: 'rgba(255,255,255,0.02)',
+                    padding: '8px 12px', borderRadius: 4,
+                    background: 'var(--card-2)', border: '1px solid var(--line-2)',
                     fontFamily: 'var(--f-body)', fontSize: 12,
                   }}>
                     <StatusDot status={p.status} />

@@ -181,12 +181,9 @@ function RaceLine({ race }: { race: RaceRow }) {
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        background: 'var(--card)',
-        border: '1px solid var(--line)',
+        borderTop: '1px solid var(--line)',
         borderLeft: `3px solid ${tone}`,
-        borderRadius: 12,
-        boxShadow: 'var(--shadow-card)',
-        padding: '12px 14px',
+        padding: '12px 14px 12px 12px',
         textDecoration: 'none',
         minWidth: 0,
       }}
@@ -239,11 +236,8 @@ function NoRacePrompt() {
   return (
     <section
       style={{
-        background: 'var(--card)',
-        border: '1px solid var(--line)',
-        borderRadius: 16,
-        boxShadow: 'var(--shadow-panel)',
-        padding: '28px 30px',
+        borderTop: '1px solid var(--line)',
+        paddingTop: 18,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,

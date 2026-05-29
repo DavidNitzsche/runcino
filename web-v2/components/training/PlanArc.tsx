@@ -33,18 +33,12 @@ export function PlanArc({
   const maxMi = Math.max(...weeks.map((w) => w.plannedMi), 1);
 
   return (
-    <div style={{
-      background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16,
-      padding: '22px 24px', marginBottom: 18,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, letterSpacing: '0.5px' }}>VOLUME ARC · NOW → RACE DAY</div>
-        {raceName && (
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--race)', letterSpacing: '1.2px', textTransform: 'uppercase' }}>
-            {raceName}{raceDate ? ` · ${raceDate}` : ''}{raceGoal ? ` · GOAL ${raceGoal}` : ''}
-          </div>
-        )}
-      </div>
+    <div style={{ marginBottom: 4 }}>
+      {raceName && (
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--race)', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 14, textAlign: 'right' }}>
+          {raceName}{raceDate ? ` · ${raceDate}` : ''}{raceGoal ? ` · GOAL ${raceGoal}` : ''}
+        </div>
+      )}
 
       <div style={{
         display: 'grid', gridAutoFlow: 'column', gridAutoColumns: '1fr', gap: 4,

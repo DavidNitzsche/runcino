@@ -89,7 +89,7 @@ export function NotificationSettings() {
 
   if (loading) {
     return (
-      <div className="card" style={{ padding: '24px 26px', fontSize: 13, color: 'var(--mute)' }}>
+      <div style={{ borderTop: '1px solid var(--line)', padding: '14px 0', fontSize: 13, color: 'var(--mute)' }}>
         Loading notification preferences…
       </div>
     );
@@ -98,7 +98,7 @@ export function NotificationSettings() {
   const dim = !prefs.master_enabled ? 0.45 : 1;
 
   return (
-    <div className="card" style={{ padding: '6px 0 0', overflow: 'hidden' }}>
+    <div style={{ overflow: 'hidden' }}>
       {/* Master toggle */}
       <Row
         title="All notifications"
@@ -240,7 +240,7 @@ export function NotificationSettings() {
         }
       />
 
-      <div style={{ padding: '14px 24px 18px', fontSize: 12, color: 'var(--mute)', lineHeight: 1.55 }}>
+      <div style={{ padding: '14px 0 4px', fontSize: 12, color: 'var(--mute)', lineHeight: 1.55 }}>
         Race day is the one we won&apos;t let you mute. You can change the wake time but the notification will fire.
       </div>
     </div>
@@ -260,9 +260,9 @@ function Row({
       display: 'grid',
       gridTemplateColumns: '1fr auto',
       gap: 16,
-      padding: '14px 24px',
+      padding: '14px 0',
       alignItems: 'center',
-      borderTop: '1px solid var(--line-2)',
+      borderTop: '1px solid var(--line)',
       opacity,
     }}>
       <div>
@@ -278,7 +278,7 @@ function SubLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
       fontSize: 10, fontWeight: 700, letterSpacing: '1.8px', textTransform: 'uppercase',
-      color: 'var(--mute)', padding: '20px 24px 4px',
+      color: 'var(--mute)', padding: '20px 0 4px',
     }}>{children}</div>
   );
 }

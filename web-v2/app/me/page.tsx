@@ -74,11 +74,8 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
             display: 'flex',
             alignItems: 'center',
             gap: 18,
-            background: 'var(--card)',
-            border: '1px solid var(--line)',
-            borderRadius: 16,
-            boxShadow: 'var(--shadow-panel)',
-            padding: '22px 24px',
+            paddingBottom: 24,
+            borderBottom: '1px solid var(--line)',
           }}
         >
           <div
@@ -200,12 +197,9 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
           {profile.physiology.zones && (
             <div
               style={{
-                marginTop: 14,
-                background: 'var(--card)',
-                border: '1px solid var(--line)',
-                borderRadius: 14,
-                boxShadow: 'var(--shadow-card)',
-                padding: '20px 22px',
+                marginTop: 16,
+                borderTop: '1px solid var(--line)',
+                paddingTop: 16,
               }}
             >
               <SpecLabel>
@@ -317,7 +311,7 @@ function Grid({ children, min }: { children: React.ReactNode; min: number }) {
 
 function FieldCard({ k, v, hint }: { k: string; v: string; hint?: string }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: 'var(--shadow-card)', padding: '16px 18px' }}>
+    <div style={{ borderTop: '1px solid var(--line)', padding: '13px 0 4px' }}>
       <div style={{ fontFamily: 'var(--f-label)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--mute)', marginBottom: 8 }}>{k}</div>
       <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 26, letterSpacing: '-0.01em', color: 'var(--ink)', lineHeight: 1.05 }}>{v}</div>
       {hint && <div style={{ fontFamily: 'var(--f-label)', fontSize: 9.5, fontWeight: 700, letterSpacing: '1px', color: 'var(--green)', marginTop: 6 }}>{hint}</div>}
@@ -327,7 +321,7 @@ function FieldCard({ k, v, hint }: { k: string; v: string; hint?: string }) {
 
 function AnchorCard({ label, value, note, usedFor }: { label: string; value: string; note: string; usedFor: string }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: 'var(--shadow-card)', padding: '16px 18px' }}>
+    <div style={{ borderTop: '1px solid var(--line)', padding: '13px 0 4px' }}>
       <div style={{ fontFamily: 'var(--f-label)', fontSize: 10.5, fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--mute)', marginBottom: 8 }}>{label}</div>
       <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 26, letterSpacing: '-0.01em', color: 'var(--ink)', lineHeight: 1.05 }}>{value}</div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, lineHeight: 1.45, color: 'var(--mute)', marginTop: 8 }}>{note}</div>
@@ -338,7 +332,7 @@ function AnchorCard({ label, value, note, usedFor }: { label: string; value: str
 
 function ConnCard({ name, sub, connected }: { name: string; sub: string; connected: boolean }) {
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: 'var(--shadow-card)', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+    <div style={{ borderTop: '1px solid var(--line)', padding: '13px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 19, letterSpacing: '-0.01em', color: 'var(--ink)', textTransform: 'uppercase' }}>{name}</div>
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 11.5, color: 'var(--mute)', marginTop: 3 }}>{sub}</div>
@@ -359,11 +353,8 @@ function DataLink({ href, title, sub }: { href: string; title: string; sub: stri
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 10,
-        background: 'var(--card)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
-        boxShadow: 'var(--shadow-card)',
-        padding: '16px 18px',
+        borderTop: '1px solid var(--line)',
+        padding: '13px 0',
         textDecoration: 'none',
       }}
     >

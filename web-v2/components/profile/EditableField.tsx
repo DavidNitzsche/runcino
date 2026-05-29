@@ -107,37 +107,38 @@ export function EditableField({
     return (
       <button
         onClick={() => setEditing(true)}
-        className="card"
         style={{
-          padding: '18px 22px',
-          textAlign: 'left',
-          cursor: 'pointer',
           display: 'block', width: '100%',
+          textAlign: 'left', cursor: 'pointer',
+          background: 'transparent', border: 'none',
+          borderTop: '1px solid var(--line)', borderRadius: 0,
+          padding: '13px 0 4px', font: 'inherit', color: 'inherit',
         }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <span style={{ fontFamily: 'var(--f-label)', fontSize: 10.5, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', fontWeight: 700 }}>
             {label}
-          </div>
-          <div style={{ fontFamily: 'var(--f-label)', fontSize: 11, color: 'var(--dim)', letterSpacing: '1.2px' }}>
-            EDIT
-          </div>
+          </span>
+          <span style={{ fontFamily: 'var(--f-label)', fontSize: 9.5, color: 'var(--dim)', letterSpacing: '1.2px', fontWeight: 700 }}>
+            EDIT →
+          </span>
         </div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, color: currentValue == null ? 'var(--dim)' : 'var(--ink)', letterSpacing: '0.5px', lineHeight: 1.1 }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 26, color: currentValue == null ? 'var(--dim)' : 'var(--ink)', letterSpacing: '-0.01em', lineHeight: 1.05 }}>
           {currentValue == null
             ? '— Add'
             : displayValue
               ? `${displayValue}${unitLabel ? ' ' + unitLabel : ''}`
               : `${displayMap?.[String(currentValue)] ?? currentValue}${unitLabel ? ' ' + unitLabel : ''}`}
         </div>
-        {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '1px' }}>{hint}</div>}
+        {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--green)', marginTop: 6, letterSpacing: '0.3px' }}>{hint}</div>}
       </button>
     );
   }
 
   return (
-    <div className="card" style={{
+    <div style={{
       padding: '14px 16px',
       border: '1px solid var(--green)',
+      borderRadius: 4,
       background: 'rgba(62,189,65,0.04)',
     }}>
       <div className="card-eyebrow" style={{ color: 'var(--mute)', marginBottom: 8 }}>

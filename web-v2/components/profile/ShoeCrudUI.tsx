@@ -42,7 +42,7 @@ export function AddShoeButton() {
   }
 
   return (
-    <div className="card" style={{ padding: '14px 18px', marginTop: 12, border: '1px solid var(--green)', background: 'rgba(62,189,65,0.04)' }}>
+    <div style={{ padding: '14px 18px', marginTop: 12, border: '1px solid var(--green)', borderRadius: 4, background: 'rgba(62,189,65,0.04)' }}>
       <div className="card-eyebrow" style={{ color: 'var(--green)' }}>NEW SHOE</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10 }}>
         <input placeholder="Brand (e.g. Nike)" value={brand} onChange={(e) => setBrand(e.target.value)} style={inputStyle()} />
@@ -173,25 +173,25 @@ export function ShoeEditCard({ shoe }: { shoe: ShoeCardData }) {
         onClick={() => setOpenModal(true)}
         style={{
           background: 'var(--card)',
-          border: '1px solid var(--line2)',
-          padding: 18,
+          border: '1px solid var(--line)',
+          padding: 16,
           textAlign: 'left',
           cursor: 'pointer',
           display: 'block',
           width: '100%',
           overflow: 'hidden',
           filter: desaturate,
-          borderRadius: 14,
+          borderRadius: 4,
           color: 'inherit', font: 'inherit',
           transition: 'transform .08s, background .12s, border .12s',
           minHeight: 150,
         }}
         onMouseEnter={(e) => {
-          if (!shoe.retired) e.currentTarget.style.background = '#24272c';
+          if (!shoe.retired) e.currentTarget.style.background = 'var(--card-2)';
           e.currentTarget.style.transform = 'translateY(-1px)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = '#1f2226';
+          e.currentTarget.style.background = 'var(--card)';
           e.currentTarget.style.transform = 'translateY(0)';
         }}
       >
@@ -211,7 +211,7 @@ export function ShoeEditCard({ shoe }: { shoe: ShoeCardData }) {
         </div>
 
         <div style={{
-          height: 4, background: 'rgba(255,255,255,0.06)',
+          height: 4, background: 'var(--line-2)',
           borderRadius: 2, marginTop: 8, overflow: 'hidden',
         }}>
           <div style={{ height: '100%', width: `${Math.min(100, shoe.pctUsed)}%`, background: barColor }} />
@@ -224,7 +224,7 @@ export function ShoeEditCard({ shoe }: { shoe: ShoeCardData }) {
                 fontFamily: 'var(--f-label)', fontSize: 9, letterSpacing: '0.8px',
                 color: 'var(--mute)',
                 padding: '3px 7px',
-                background: 'rgba(255,255,255,0.04)',
+                background: 'transparent', border: '1px solid var(--line)',
                 borderRadius: 4, fontWeight: 700,
               }}>{p.toUpperCase()}</span>
             ))}
@@ -415,9 +415,9 @@ function ShoeDetailModal({
                   type="button"
                   onClick={() => togglePurpose(p)}
                   style={{
-                    background: active ? 'var(--green)' : 'rgba(255,255,255,0.04)',
+                    background: active ? 'var(--green)' : 'transparent',
                     color: active ? '#0e1014' : 'var(--ink)',
-                    border: `1px solid ${active ? 'var(--green)' : 'rgba(255,255,255,0.10)'}`,
+                    border: `1px solid ${active ? 'var(--green)' : 'var(--line)'}`,
                     padding: '6px 12px', borderRadius: 8,
                     fontFamily: 'var(--f-label)', fontSize: 10, letterSpacing: '1px',
                     fontWeight: 700,
@@ -501,8 +501,8 @@ function ColorSlot({
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '6px 10px 6px 6px', borderRadius: 8,
-        background: active ? 'rgba(255,255,255,0.06)' : 'transparent',
-        border: `1px solid ${active ? 'var(--ink)' : 'rgba(255,255,255,0.10)'}`,
+        background: active ? 'var(--card-2)' : 'transparent',
+        border: `1px solid ${active ? 'var(--ink)' : 'var(--line)'}`,
         cursor: 'pointer', color: 'inherit', font: 'inherit',
       }}
     >
@@ -548,7 +548,7 @@ const miniLabel: React.CSSProperties = {
 function inputStyle(): React.CSSProperties {
   return {
     fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--ink)',
-    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+    background: 'var(--card-2)', border: '1px solid var(--line)',
     borderRadius: 6, padding: '6px 8px',
   };
 }

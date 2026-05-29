@@ -51,35 +51,39 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
     return (
       <button
         onClick={() => setOpen(true)}
-        className="card"
         style={{
-          padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14,
-          textAlign: 'left', cursor: 'pointer',
-          // Higher contrast — the previous 4% red wash + 25% border was almost invisible
-          // on dark backgrounds. Use a stronger amber tone (this is a "needed", not an "error").
-          border: '1px solid rgba(243,173,56,0.40)', background: 'rgba(243,173,56,0.07)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14,
+          width: '100%', textAlign: 'left', cursor: 'pointer',
+          background: 'transparent', border: 'none',
+          borderTop: '1px solid var(--line)',
+          borderLeft: '3px solid var(--goal)',
+          borderRadius: 0,
+          padding: '13px 12px 13px 12px',
+          font: 'inherit', color: 'inherit',
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--goal)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 4, fontWeight: 700 }}>
+          <div style={{ fontFamily: 'var(--f-label)', fontSize: 9.5, color: 'var(--goal)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 4, fontWeight: 700 }}>
             COACH NEEDS
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)' }}>{label}</div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 2 }}>{why}</div>
+          <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 22, letterSpacing: '-0.01em', color: 'var(--ink)' }}>{label}</div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', marginTop: 3 }}>{why}</div>
         </div>
         <span style={{
           background: 'var(--goal)', color: '#1a1300',
           border: 'none', borderRadius: 999,
           padding: '7px 14px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1px', fontWeight: 700,
+          flexShrink: 0,
         }}>+ ADD</span>
       </button>
     );
   }
 
   return (
-    <div className="card" style={{
+    <div style={{
       padding: '14px 16px',
       border: '1px solid var(--green)',
+      borderRadius: 4,
       background: 'rgba(62,189,65,0.04)',
     }}>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 8 }}>
