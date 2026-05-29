@@ -22,6 +22,36 @@ export interface LogRun {
   max_hr: number | null;
   cadence: number | null;
   elev_gain_ft: number | null;
+  // Filter axes (2026-05-28): three new joins for /log filter chips.
+  // - workoutType: pulled from plan_workouts (joined by ISO date) when a plan
+  //   row exists for this run's date. Falls back to the activity's own `type`
+  //   (already on the row) when there's no matched plan workout. Null when
+  //   neither resolves.
+  // - phaseLabel: plan_phases.label for the runner+ISO date (BASE/BUILD/PEAK/
+  //   TAPER/RACE). Null when no plan covers the date.
+  // - shoeName: shoes table display name ("Puma Deviate 3"). Null when no shoe
+  //   was assigned to this run.
+  workoutType: string | null;
+  phaseLabel: string | null;
+  shoeName: string | null;
+  shoeSlug: string | null;  // URL-safe id used by the filter chip
+}
+
+// Per-axis available values for the filter chip strip — only render chips
+// for values that actually appear in the unfiltered set.
+export interface LogFilterAxes {
+  sources: string[];                              // e.g. ['watch','strava']
+  types: string[];                                // e.g. ['easy','long','quality']
+  phases: string[];                               // e.g. ['BASE','BUILD']
+  shoes: { slug: string; name: string; runs: number }[];
+}
+
+// Active filters parsed from URL searchParams.
+export interface LogFilters {
+  source: string | null;
+  type: string | null;
+  phase: string | null;
+  shoe: string | null;
 }
 
 export interface LogWeek {
@@ -35,9 +65,13 @@ export interface LogWeek {
 
 export interface LogState {
   today: string;
-  totalRuns: number;
-  totalMi: number;
-  weeks: LogWeek[];
+  totalRuns: number;             // matching the active filters
+  totalMi: number;               // matching the active filters
+  totalRunsUnfiltered: number;   // all runs ignoring filters
+  totalMiUnfiltered: number;     // all runs ignoring filters
+  weeks: LogWeek[];              // already filtered (only weeks with matching runs)
+  axes: LogFilterAxes;           // axis values present in the unfiltered set
+  filters: LogFilters;           // active filters echoed back for the UI
 }
 
 function pad(n: number): string { return String(n).padStart(2, '0'); }
@@ -78,26 +112,111 @@ function addDays(iso: string, days: number): string {
   return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
 
-export async function loadLogState(userId: string, opts?: { limit?: number }): Promise<LogState> {
+/**
+ * Slugify a shoe display name into a URL-safe id.
+ * "Puma Deviate Nitro 3" → "puma-deviate-nitro-3"
+ */
+function shoeSlugify(s: string): string {
+  return s.toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export async function loadLogState(
+  userId: string,
+  opts?: { limit?: number; filters?: Partial<LogFilters> }
+): Promise<LogState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
   const limit = opts?.limit ?? 200; // ~6 months of running
 
+  const filters: LogFilters = {
+    source: opts?.filters?.source ?? null,
+    type: (opts?.filters?.type ?? null)?.toLowerCase() ?? null,
+    phase: (opts?.filters?.phase ?? null)?.toUpperCase() ?? null,
+    shoe: opts?.filters?.shoe ?? null,
+  };
+
+  // Pull runs + their shoe assignment in one query (LEFT JOIN to shoes).
+  // We still keep the json blob in `data` so all downstream formatting (pace,
+  // hr, etc.) keeps working identically.
   const rows = (await pool.query(
-    `SELECT data
-       FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
-        AND NOT (data ? 'mergedIntoId')
-        AND (data->>'distanceMi')::numeric > 0.5
-      ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal',10)) DESC,
-               COALESCE(data->>'startLocal','') DESC
+    `SELECT sa.data,
+            sa.shoe_id,
+            s.brand AS shoe_brand,
+            s.model AS shoe_model
+       FROM strava_activities sa
+       LEFT JOIN shoes s ON s.id = sa.shoe_id
+      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
+        AND NOT (sa.data ? 'mergedIntoId')
+        AND (sa.data->>'distanceMi')::numeric > 0.5
+      ORDER BY COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) DESC,
+               COALESCE(sa.data->>'startLocal','') DESC
       LIMIT $2`,
     [userId, limit]
   )).rows;
+
+  // Active plan → drives workoutType (plan_workouts) + phaseLabel (plan_phases)
+  // joins. Mirrors glance-state.ts loader.
+  const plan = (await pool.query(
+    `SELECT id FROM training_plans
+      WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL
+      ORDER BY authored_iso DESC LIMIT 1`,
+    [userId]
+  )).rows[0];
+
+  // plan_workouts keyed by ISO date — gives us the runner-friendly type
+  // assigned by the plan ("long", "quality", "easy", etc.) for that date.
+  const planWorkoutByDate = new Map<string, string>();
+  // plan_phases — array of {label, start, end week-idx}, mapped to ISO dates
+  // via plan_weeks. We resolve per-row at filter time.
+  type PhaseRange = { label: string; start_iso: string; end_iso: string };
+  let phaseRanges: PhaseRange[] = [];
+  if (plan) {
+    const pw = (await pool.query(
+      `SELECT date_iso, type FROM plan_workouts WHERE plan_id = $1`,
+      [plan.id]
+    )).rows;
+    for (const r of pw) {
+      if (r.date_iso && r.type) planWorkoutByDate.set(r.date_iso, String(r.type));
+    }
+    const weeks = (await pool.query(
+      `SELECT week_idx, week_start_iso FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
+      [plan.id]
+    )).rows;
+    const phases = (await pool.query(
+      `SELECT label, start_week_idx, end_week_idx FROM plan_phases WHERE plan_id = $1`,
+      [plan.id]
+    )).rows;
+    phaseRanges = phases.map((p: any) => {
+      const startWk = weeks.find((w: any) => w.week_idx === p.start_week_idx);
+      const endWk = weeks.find((w: any) => w.week_idx === p.end_week_idx);
+      if (!startWk || !endWk) return null;
+      // Phase end-week stretches through that week's Sunday.
+      const endIso = addDays(endWk.week_start_iso, 6);
+      return { label: String(p.label).toUpperCase(), start_iso: startWk.week_start_iso, end_iso: endIso };
+    }).filter(Boolean) as PhaseRange[];
+  }
+
+  function phaseFor(iso: string): string | null {
+    for (const p of phaseRanges) {
+      if (iso >= p.start_iso && iso <= p.end_iso) return p.label;
+    }
+    return null;
+  }
 
   const rawRuns: LogRun[] = rows.map((r: any) => {
     const a = r.data;
     const date = a.date || (a.startLocal ?? '').slice(0, 10);
     const sPerMi = Number(a.paceSPerMi) || null;
+    const activityType: string | null = a.type ?? null;
+    // workoutType: plan-assigned type wins, then activity type, then null.
+    const planType = date ? (planWorkoutByDate.get(date) ?? null) : null;
+    const workoutType = planType ?? activityType;
+    // shoe: only set when both brand + model present
+    const shoeName = r.shoe_brand && r.shoe_model
+      ? `${r.shoe_brand} ${r.shoe_model}`.trim()
+      : null;
+    const shoeSlug = shoeName ? shoeSlugify(shoeName) : null;
     return {
       id: a.id ?? a.activityId ?? `${date}-${Number(a.distanceMi).toFixed(2)}`,
       date,
@@ -105,7 +224,7 @@ export async function loadLogState(userId: string, opts?: { limit?: number }): P
       start_local: a.startLocal ?? null,
       name: a.name ?? 'Run',
       source: a.source ?? 'strava',
-      type: a.type ?? null,
+      type: activityType,
       distance_mi: Number(a.distanceMi) || 0,
       pace: a.avgPaceMinPerMi || fmtPaceFromSec(sPerMi) || null,
       time_moving: fmtDuration(Number(a.movingTimeS) || null),
@@ -113,6 +232,10 @@ export async function loadLogState(userId: string, opts?: { limit?: number }): P
       max_hr: Number(a.maxHr) || null,
       cadence: Number(a.avgCadence) || null,
       elev_gain_ft: Number(a.elevGainFt) || null,
+      workoutType,
+      phaseLabel: date ? phaseFor(date) : null,
+      shoeName,
+      shoeSlug,
     };
   });
 
@@ -130,9 +253,43 @@ export async function loadLogState(userId: string, opts?: { limit?: number }): P
     const newRank = SOURCE_RANK[r.source] ?? 0;
     if (newRank > curRank) bestByKey.set(k, r);
   }
-  const runs = [...bestByKey.values()].sort((a, b) => b.date.localeCompare(a.date));
+  const allRuns = [...bestByKey.values()].sort((a, b) => b.date.localeCompare(a.date));
 
-  // Group by Monday-of-week
+  // Axes from the UNFILTERED set — chips only render for values that actually
+  // appear, so we don't show CROSS when the runner has zero cross-trains.
+  const sourcesSet = new Set<string>();
+  const typesSet = new Set<string>();
+  const phasesSet = new Set<string>();
+  const shoeAgg = new Map<string, { name: string; runs: number }>();
+  for (const r of allRuns) {
+    if (r.source) sourcesSet.add(r.source);
+    if (r.workoutType) typesSet.add(r.workoutType.toLowerCase());
+    if (r.phaseLabel) phasesSet.add(r.phaseLabel.toUpperCase());
+    if (r.shoeSlug && r.shoeName) {
+      const cur = shoeAgg.get(r.shoeSlug);
+      if (cur) cur.runs += 1;
+      else shoeAgg.set(r.shoeSlug, { name: r.shoeName, runs: 1 });
+    }
+  }
+  const axes: LogFilterAxes = {
+    sources: [...sourcesSet].sort(),
+    types: [...typesSet].sort(),
+    phases: [...phasesSet].sort(),
+    shoes: [...shoeAgg.entries()]
+      .map(([slug, v]) => ({ slug, name: v.name, runs: v.runs }))
+      .sort((a, b) => b.runs - a.runs),
+  };
+
+  // Apply filters (all compose with AND).
+  const runs = allRuns.filter((r) => {
+    if (filters.source && r.source !== filters.source) return false;
+    if (filters.type && (r.workoutType ?? '').toLowerCase() !== filters.type) return false;
+    if (filters.phase && (r.phaseLabel ?? '').toUpperCase() !== filters.phase) return false;
+    if (filters.shoe && r.shoeSlug !== filters.shoe) return false;
+    return true;
+  });
+
+  // Group by Monday-of-week (filtered set)
   const byWeek = new Map<string, LogRun[]>();
   for (const r of runs) {
     if (!r.date) continue;
@@ -160,5 +317,15 @@ export async function loadLogState(userId: string, opts?: { limit?: number }): P
     });
 
   const totalMi = Math.round(runs.reduce((s, r) => s + r.distance_mi, 0) * 10) / 10;
-  return { today, totalRuns: runs.length, totalMi, weeks };
+  const totalMiUnfiltered = Math.round(allRuns.reduce((s, r) => s + r.distance_mi, 0) * 10) / 10;
+  return {
+    today,
+    totalRuns: runs.length,
+    totalMi,
+    totalRunsUnfiltered: allRuns.length,
+    totalMiUnfiltered,
+    weeks,
+    axes,
+    filters,
+  };
 }
