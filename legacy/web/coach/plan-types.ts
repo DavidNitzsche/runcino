@@ -98,11 +98,126 @@ export interface PlanWorkout {
   /** Short display label override, e.g. 'Long Run · HM Finish' for HM-specific weeks.
    *  Null means use the default label for the workout type. */
   subLabel?: string | null;
+  /** Structured per-workout spec used by WorkoutBreakdown (/runs/[id]) and
+   *  the Poster A3 breakdown rows on /today. Type-dependent shape; null
+   *  when the builder had no VDOT to anchor pace targets (callers fall
+   *  back to the existing label-only render). See migration 120 for the
+   *  JSON schema. */
+  workoutSpec?: WorkoutSpec | null;
   /** As-planned snapshot frozen at authoring time. */
   originalDateISO: string;
   originalType: WorkoutType;
   originalDistanceMi: number;
   mutations: PlanMutation[];
+}
+
+/** Structured workout spec · type-dependent shape mirroring the JSONB
+ *  column on `plan_workouts.workout_spec` (migration 120). All numeric
+ *  pace values are seconds-per-mile per Daniels Running Formula §VDOT
+ *  table conventions. HR caps cite the runner's LTHR-derived ceilings
+ *  (Research/notes/lthr-auto-derivation.md). */
+export type WorkoutSpec =
+  | WorkoutSpecEasy
+  | WorkoutSpecLong
+  | WorkoutSpecThreshold
+  | WorkoutSpecTempo
+  | WorkoutSpecIntervals
+  | WorkoutSpecFartlek
+  | WorkoutSpecProgression
+  | WorkoutSpecRecovery
+  | WorkoutSpecMP;
+
+/** Easy days (Daniels E pace) · pace band + HR ceiling + optional fuel cues. */
+export interface WorkoutSpecEasy {
+  kind: 'easy';
+  pace_target_s_per_mi_lo: number;
+  pace_target_s_per_mi_hi: number;
+  hr_cap_bpm: number | null;
+  fuel_mi?: number[];
+}
+
+/** Long runs (Daniels E pace; longer & with optional MP segment). */
+export interface WorkoutSpecLong {
+  kind: 'long';
+  pace_target_s_per_mi_lo: number;
+  pace_target_s_per_mi_hi: number;
+  hr_cap_bpm: number | null;
+  fuel_mi: number[];
+}
+
+/** Threshold rep workouts (Daniels T pace, cruise intervals).
+ *  Research/04 §5.3 · 3-6 × 1 mi with 1 min jog, or 5 × 1K. */
+export interface WorkoutSpecThreshold {
+  kind: 'threshold';
+  warmup_mi: number;
+  rep_count: number;
+  /** Use exactly ONE of rep_distance_m or rep_distance_mi (the other is undefined). */
+  rep_distance_m?: number;
+  rep_distance_mi?: number;
+  rep_pace_s_per_mi: number;
+  rep_rest_s: number;
+  cooldown_mi: number;
+  lthr_bpm: number | null;
+}
+
+/** Continuous tempo (Daniels §5.2 · 20–40 min at T effort). */
+export interface WorkoutSpecTempo {
+  kind: 'tempo';
+  warmup_mi: number;
+  tempo_distance_mi: number;
+  tempo_pace_s_per_mi: number;
+  cooldown_mi: number;
+  hr_target_bpm: number | null;
+}
+
+/** VO2max intervals (Daniels I pace · Research/04 §6). */
+export interface WorkoutSpecIntervals {
+  kind: 'intervals';
+  warmup_mi: number;
+  rep_count: number;
+  rep_distance_m?: number;
+  rep_distance_mi?: number;
+  rep_pace_s_per_mi: number;
+  rep_rest_s: number;
+  cooldown_mi: number;
+  lthr_bpm: number | null;
+}
+
+/** Fartlek · time-on-pace surge segments. */
+export interface WorkoutSpecFartlek {
+  kind: 'fartlek';
+  warmup_mi: number;
+  segments: Array<{ pace_s_per_mi: number; duration_s: number }>;
+  cooldown_mi: number;
+}
+
+/** Progression long run · E → T pace fade-in. Research/22 §3. */
+export interface WorkoutSpecProgression {
+  kind: 'progression';
+  warmup_mi: number;
+  prog_distance_mi: number;
+  prog_start_s_per_mi: number;
+  prog_end_s_per_mi: number;
+  cooldown_mi: number;
+  hr_cap_bpm: number | null;
+}
+
+/** Recovery shake-outs (below-E, blood-flow only). */
+export interface WorkoutSpecRecovery {
+  kind: 'recovery';
+  pace_target_s_per_mi_lo: number;
+  pace_target_s_per_mi_hi: number;
+  hr_cap_bpm: number | null;
+}
+
+/** Marathon-pace blocks (Daniels M pace). */
+export interface WorkoutSpecMP {
+  kind: 'mp';
+  warmup_mi: number;
+  mp_distance_mi: number;
+  mp_pace_s_per_mi: number;
+  cooldown_mi: number;
+  hr_target_bpm: number | null;
 }
 
 export interface PlanPhase {

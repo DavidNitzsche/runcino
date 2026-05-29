@@ -22,7 +22,9 @@ import type { ReactNode } from 'react';
 import { FaffPageShell } from '@/components/faff/FaffPageShell';
 import { BCard } from '@/components/faff/BCard';
 import { StatTrio } from '@/components/faff/StatTrio';
+import { WorkoutBreakdown, type WorkoutData } from '@/components/faff/WorkoutBreakdown';
 import { loadRunDetail, type RunDetail, type RunSplit, type PhaseBreakdown } from '@/lib/coach/run-state';
+import type { WorkoutSpec } from '@/lib/faff/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,22 +126,39 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
         <StatTrio stats={stats} size="poster" />
       </div>
 
-      {/* ── Plan vs. actual ── uses the existing WatchCompletion phase
-          breakdown when available. The WorkoutBreakdown component is for
-          *planned* workout structures (warmup_mi / tempo_distance_mi /
-          rep_pace) — plan_workouts only carries type/distance/sub_label,
-          so the structured WorkoutBreakdown chart can't be reconstructed
-          from existing fields without server work. Phase breakdown is
-          the closest plan-vs-actual signal we have today. */}
+      {/* ── Planned structure ── Migration 120 wired the per-workout JSONB
+          spec (Daniels VDOT pace targets, warmup/cooldown distances, rep
+          pace, fuel checkpoints) into plan_workouts. When present, the
+          WorkoutBreakdown component renders the SVG horizontal phase bar
+          + structured header so the runner sees what was planned. The
+          per-rep actuals still flow through PhaseBreakdownCard below
+          (it's the WatchCompletion delta tier).
+
+          Fallback when no spec: the placeholder card stays — runner
+          either had no plan attached or the plan-builder authored this
+          row without a VDOT (no race result yet). */}
+      {run.planned_spec ? (
+        <>
+          <WorkoutBreakdown
+            data={specToWorkoutData(run.planned_spec, run.planned_distance_mi)}
+            runnerLthrBpm={run.hr_zones_from_lthr?.lthr ?? undefined}
+          />
+          <Spacer />
+        </>
+      ) : null}
+
+      {/* ── Plan vs. actual ── per-rep deltas from the WatchCompletion
+          payload (Faff-watch runs only). When neither spec nor phases
+          exist, render the placeholder. */}
       {run.phase_breakdown.length > 1 ? (
         <PhaseBreakdownCard phases={run.phase_breakdown} />
-      ) : (
+      ) : !run.planned_spec ? (
         <BCard header={{ label: 'PLAN VS. ACTUAL' }}>
           <Placeholder>
             No structured workout · open easy/long run · no phase plan to compare against
           </Placeholder>
         </BCard>
-      )}
+      ) : null}
 
       {/* ── HR zones ── stacked bar + per-zone labels with mm:ss + pct.
           Time per zone derives from total moving seconds × pct. */}
@@ -661,6 +680,116 @@ function phaseTypeColor(t: PhaseBreakdown['type']): string {
 
 function phaseStatusLabel(st: PhaseBreakdown['status']): string {
   return st === 'on' ? 'ON' : st === 'fast' ? 'FAST' : st === 'slow' ? 'SLOW' : '—';
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// WorkoutSpec (migration 120 JSONB) → WorkoutData (component prop).
+//
+// The DB schema and the WorkoutBreakdown component use slightly different
+// field names for the same conceptual shape — the DB stores
+// pace_target_s_per_mi_lo/hi as a flat pair, while the component groups
+// them under `pace_target: { s, band }` for easy / `pace_band: [lo, hi]`
+// for long. This translator does the mapping. Mismatched kinds (e.g. a
+// fartlek spec we don't yet render) fall through to a placeholder easy
+// shape so the chart still renders something — the placeholder is fine
+// because fartlek/MP/recovery components are deferred per the
+// WorkoutBreakdown spec (designs/components/WorkoutBreakdown.md).
+// ─────────────────────────────────────────────────────────────────────
+function specToWorkoutData(spec: WorkoutSpec, fallbackDistanceMi: number | null): WorkoutData {
+  switch (spec.kind) {
+    case 'easy':
+      return {
+        type: 'easy',
+        distance_mi: fallbackDistanceMi ?? 0,
+        pace_target: {
+          s: Math.round((spec.pace_target_s_per_mi_lo + spec.pace_target_s_per_mi_hi) / 2),
+          band: [spec.pace_target_s_per_mi_lo, spec.pace_target_s_per_mi_hi],
+        },
+        hr_cap: spec.hr_cap_bpm,
+      };
+    case 'long':
+      return {
+        type: 'long',
+        distance_mi: fallbackDistanceMi ?? 0,
+        pace_band: [spec.pace_target_s_per_mi_lo, spec.pace_target_s_per_mi_hi],
+        fuel_checkpoints_mi: spec.fuel_mi,
+      };
+    case 'threshold':
+    case 'intervals':
+      return {
+        type: 'intervals',
+        warmup_mi: spec.warmup_mi,
+        reps: spec.rep_count,
+        rep_distance_m: spec.rep_distance_m
+          ?? (spec.rep_distance_mi ? Math.round(spec.rep_distance_mi * 1609) : 1000),
+        rep_pace_s_per_mi: spec.rep_pace_s_per_mi,
+        rest_jog_s: spec.rep_rest_s,
+        cooldown_mi: spec.cooldown_mi,
+      };
+    case 'tempo':
+      return {
+        type: 'tempo',
+        warmup_mi: spec.warmup_mi,
+        tempo_distance_mi: spec.tempo_distance_mi,
+        tempo_pace_s_per_mi: spec.tempo_pace_s_per_mi,
+        cooldown_mi: spec.cooldown_mi,
+      };
+    case 'progression':
+      // Progression chart variant is post-v1 per the WorkoutBreakdown
+      // spec. Render the placeholder via the component's default case.
+      return {
+        type: 'progression',
+        total_mi: spec.warmup_mi + spec.prog_distance_mi + spec.cooldown_mi,
+        start_pace_s_per_mi: spec.prog_start_s_per_mi,
+        end_pace_s_per_mi: spec.prog_end_s_per_mi,
+        phase_breakpoints_mi: [spec.warmup_mi, spec.warmup_mi + spec.prog_distance_mi],
+      };
+    case 'recovery':
+      // Recovery has no dedicated chart variant — render as a soft "easy"
+      // shape (pace band + light HR cap if known).
+      return {
+        type: 'easy',
+        distance_mi: fallbackDistanceMi ?? 0,
+        pace_target: {
+          s: Math.round((spec.pace_target_s_per_mi_lo + spec.pace_target_s_per_mi_hi) / 2),
+          band: [spec.pace_target_s_per_mi_lo, spec.pace_target_s_per_mi_hi],
+        },
+        hr_cap: spec.hr_cap_bpm,
+      };
+    case 'mp':
+      // MP block ≈ tempo at marathon pace · borrow the tempo chart.
+      return {
+        type: 'tempo',
+        warmup_mi: spec.warmup_mi,
+        tempo_distance_mi: spec.mp_distance_mi,
+        tempo_pace_s_per_mi: spec.mp_pace_s_per_mi,
+        cooldown_mi: spec.cooldown_mi,
+      };
+    case 'fartlek':
+      // Fartlek has no dedicated chart variant yet — fall through to the
+      // post-v1 placeholder via the 'hills' branch (component renders
+      // "<type> chart variant lands post-v1 per spec").
+      return {
+        type: 'hills',
+        warmup_mi: spec.warmup_mi,
+        reps: spec.segments.length,
+        hill_distance_m: 0,
+        hill_grade_pct: 0,
+        recovery_s: 0,
+        cooldown_mi: spec.cooldown_mi,
+      };
+    default: {
+      // Exhaustive guard — TS won't let unknown kinds through.
+      const _exhaustive: never = spec;
+      void _exhaustive;
+      return {
+        type: 'easy',
+        distance_mi: fallbackDistanceMi ?? 0,
+        pace_target: { s: 0, band: [0, 0] },
+        hr_cap: null,
+      };
+    }
+  }
 }
 
 function phaseStatusColor(st: PhaseBreakdown['status']): string {

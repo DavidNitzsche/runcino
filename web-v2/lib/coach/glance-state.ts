@@ -13,6 +13,7 @@ import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
+import type { WorkoutSpec } from '@/lib/faff/types';
 
 export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
@@ -21,6 +22,11 @@ export interface GlanceWeekDay {
   plannedMi: number;
   plannedType: string;     // 'easy' | 'rest' | 'long' | 'threshold' | etc.
   plannedLabel: string | null;
+  /** Structured per-workout spec (migration 120). null when the plan-builder
+   *  authored this row without a VDOT, OR when the workout type has no
+   *  structured spec (rest/race/shakeout). Downstream renderers fall back
+   *  to the existing label-only render in that case. */
+  plannedSpec: WorkoutSpec | null;
   // Actual (strava)
   doneMi: number;
   activityId: string | null;   // → click navigates to /runs/[id]
@@ -144,8 +150,12 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
         nextARaceName = race.name;
       }
     }
+    // Migration 120 · workout_spec is the per-workout JSONB anchor for
+    // /runs/[id] WorkoutBreakdown + /today Poster A3 breakdown rows. We
+    // pull it here (small per-day payload) so glance-adapter can prefer
+    // real Daniels-VDOT numbers over its placeholder strings.
     const planRows = (await pool.query(
-      `SELECT date_iso, dow, type, distance_mi, sub_label FROM plan_workouts
+      `SELECT date_iso, dow, type, distance_mi, sub_label, workout_spec FROM plan_workouts
         WHERE plan_id = $1 AND date_iso BETWEEN $2::text AND $3::text`,
       [plan.id, weekDates[0].date, weekDates[6].date]
     )).rows;
@@ -193,6 +203,11 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   weekDays = weekDates.map(({ date, dow }) => {
     const planRow = planByDate.get(date);
     const actual = actualByDate.get(date);
+    // workout_spec lands as a parsed object via node-postgres JSON typecast;
+    // narrow to WorkoutSpec | null. The adapter validates spec.kind matches
+    // the day-state before using it (guards against a stale spec left by
+    // an updateWorkout that didn't refresh the column).
+    const plannedSpec: WorkoutSpec | null = planRow?.workout_spec ?? null;
     return {
       date, dow,
       plannedMi: planRow ? Number(planRow.distance_mi) || 0 : 0,
@@ -200,6 +215,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       // TodayPlannedCard doesn't mislabel a run-day as a rest day.
       plannedType: planRow?.type ?? (plan ? 'rest' : 'unplanned'),
       plannedLabel: planRow?.sub_label ?? null,
+      plannedSpec,
       doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
       activityId: actual?.id ?? null,
       isToday: date === today,

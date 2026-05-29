@@ -344,12 +344,15 @@ function buildStatTrio(
  *   quality · WARMUP / [WORK|TEMPO|PROGRESSION] / COOLDOWN
  *   race    · PACE TARGET / STRATEGY / DISTANCE
  *
- * TODO 2026-05-28 · pace bands ("8:15–8:45/mi") and HR caps ("148 bpm")
- * are doctrine placeholders today — a future round wires the real Daniels
- * VDOT engine + LTHR-derived caps per research/doctrine/training/
- * 01-daniels-running-formula.md §VDOT-table-to-85 and research/notes/
- * lthr-auto-derivation.md. Same TODO applies to the EST. TIME math in
- * `formatEstTime` (placeholder 8.5 min/mi for easy, 8:00/mi for long).
+ * 2026-05-28 (migration 120) · when `today.plannedSpec` is present, real
+ * Daniels-VDOT numbers are pulled from the per-workout spec the plan-builder
+ * authored. The placeholder pace bands ("8:15–8:45/mi") and HR caps
+ * ("148 bpm") below remain as guard rails for runners without a VDOT (no
+ * race result yet) or for workouts the builder didn't emit a spec for
+ * (e.g. mutations applied post-authoring that null'd the spec). Cite
+ * research/doctrine/training/01-daniels-running-formula.md §VDOT-table-to-85
+ * for the pace targets and research/notes/lthr-auto-derivation.md for the
+ * HR ceilings.
  */
 function buildWorkoutBreakdown(
   state: DayState,
@@ -357,22 +360,43 @@ function buildWorkoutBreakdown(
   _glance: GlanceState,
 ): PosterBreakdownRow[] | null {
   if (!today) return null;
+  const spec = today.plannedSpec;
 
   switch (state) {
     case 'easy': {
       const mi = today.plannedMi;
-      // Duration estimate · placeholder 8.5 min/mi (TODO: wire to real
-      // pace engine — Daniels VDOT E-pace per runner profile).
-      const minutes = mi > 0 ? Math.round(mi * 8.5) : null;
       const distLabel = mi > 0
         ? `${mi.toFixed(mi % 1 === 0 ? 0 : 1)} mi`
         : '—';
+      // Spec-driven (real VDOT numbers): prefer when present and kind matches.
+      if (spec && spec.kind === 'easy') {
+        const paceSec = (spec.pace_target_s_per_mi_lo + spec.pace_target_s_per_mi_hi) / 2;
+        const minutes = mi > 0 ? Math.round((mi * paceSec) / 60) : null;
+        return [
+          {
+            label: 'PACE',
+            body: 'Conversational · Z2',
+            tail: `${fmtPace(spec.pace_target_s_per_mi_lo)}–${fmtPace(spec.pace_target_s_per_mi_hi)}/mi`,
+          },
+          {
+            label: 'HR CAP',
+            body: 'Stay aerobic',
+            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : '148 bpm',
+          },
+          {
+            label: 'DURATION',
+            body: minutes != null ? `~${minutes} min on feet` : 'Time on feet',
+            tail: distLabel,
+          },
+        ];
+      }
+      // Fallback placeholders (no spec — runner has no VDOT, or workout
+      // type/spec mismatch). TODO 2026-05-28 · pace band ("8:15–8:45/mi")
+      // + HR cap (148 bpm) below stay as guard rails per Daniels VDOT
+      // table + LTHR doctrine. Duration estimate placeholder 8.5 min/mi.
+      const minutes = mi > 0 ? Math.round(mi * 8.5) : null;
       return [
-        // TODO 2026-05-28 · placeholder pace band ("8:15–8:45/mi") will
-        // wire to the runner-specific VDOT E-pace band in the next round.
         { label: 'PACE', body: 'Conversational · Z2', tail: '8:15–8:45/mi' },
-        // TODO 2026-05-28 · placeholder HR cap (148 bpm) will wire to the
-        // runner's LTHR-derived aerobic ceiling (~LTHR × 0.85 typical).
         { label: 'HR CAP', body: 'Stay aerobic', tail: '148 bpm' },
         {
           label: 'DURATION',
@@ -382,8 +406,40 @@ function buildWorkoutBreakdown(
       ];
     }
     case 'long': {
-      // TODO 2026-05-28 · placeholder long-day pace/HR will derive from
-      // VDOT L-pace + LTHR-margin (long-day ceiling ≈ LTHR × 0.82-0.85).
+      // Spec-driven · long-runs ship pace band + fuel checkpoints.
+      if (spec && spec.kind === 'long') {
+        const fuelTail = spec.fuel_mi.length > 0
+          ? `mi ${spec.fuel_mi.join(' · ')}`
+          : 'mi 4 · 8 · 11';
+        return [
+          {
+            label: 'PACE',
+            body: 'Aerobic band',
+            tail: `${fmtPace(spec.pace_target_s_per_mi_lo)}–${fmtPace(spec.pace_target_s_per_mi_hi)}/mi`,
+          },
+          {
+            label: 'HR CAP',
+            body: 'Long-day ceiling',
+            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : '145 bpm',
+          },
+          { label: 'FUEL', body: 'Gel · water · gel', tail: fuelTail },
+        ];
+      }
+      // Progression-flavored long runs (HM Finish / Progression sub_labels)
+      // arrive here too — spec.kind is 'progression' in that case.
+      if (spec && spec.kind === 'progression') {
+        return [
+          { label: 'WARMUP', body: `${fmtMi(spec.warmup_mi)} mi easy`, tail: `${fmtPace(spec.prog_start_s_per_mi)}/mi` },
+          {
+            label: 'PROGRESSION',
+            body: 'Build easy → tempo',
+            tail: `${fmtPace(spec.prog_start_s_per_mi)} → ${fmtPace(spec.prog_end_s_per_mi)}`,
+          },
+          { label: 'COOLDOWN', body: `${fmtMi(spec.cooldown_mi)} mi easy`, tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm cap` : 'finish strong' },
+        ];
+      }
+      // Fallback placeholders. TODO 2026-05-28 · long-day pace/HR are
+      // placeholders per VDOT L-pace + LTHR-margin doctrine.
       return [
         { label: 'PACE', body: 'Aerobic band', tail: '8:00–8:25/mi' },
         { label: 'HR CAP', body: 'Long-day ceiling', tail: '145 bpm' },
@@ -397,11 +453,69 @@ function buildWorkoutBreakdown(
       const subtype = (today.plannedType ?? '').toLowerCase();
       const workBody = interpretWorkBody(today.plannedLabel);
 
+      // Spec-driven · prefer real warmup/cooldown + rep pace from VDOT.
+      if (spec && spec.kind === 'tempo') {
+        return [
+          {
+            label: 'WARMUP',
+            body: `${fmtMi(spec.warmup_mi)} mi easy`,
+            tail: `~${Math.round((spec.warmup_mi * 510) / 60)} min`,
+          },
+          {
+            label: 'TEMPO',
+            body: workBody,
+            tail: `${fmtPace(spec.tempo_pace_s_per_mi)}/mi`,
+          },
+          {
+            label: 'COOLDOWN',
+            body: `${fmtMi(spec.cooldown_mi)} mi easy`,
+            tail: `~${Math.round((spec.cooldown_mi * 510) / 60)} min`,
+          },
+        ];
+      }
+      if (spec && spec.kind === 'progression') {
+        return [
+          { label: 'WARMUP', body: `${fmtMi(spec.warmup_mi)} mi easy`, tail: `${fmtPace(spec.prog_start_s_per_mi)}/mi` },
+          {
+            label: 'PROGRESSION',
+            body: 'Build easy → tempo',
+            tail: `${fmtPace(spec.prog_start_s_per_mi)} → ${fmtPace(spec.prog_end_s_per_mi)}`,
+          },
+          { label: 'COOLDOWN', body: `${fmtMi(spec.cooldown_mi)} mi easy`, tail: '~9 min' },
+        ];
+      }
+      if (spec && (spec.kind === 'threshold' || spec.kind === 'intervals')) {
+        const distStr = spec.rep_distance_m
+          ? `${spec.rep_distance_m}m`
+          : `${spec.rep_distance_mi ?? '?'} mi`;
+        const restStr = spec.rep_rest_s >= 60
+          ? `${Math.floor(spec.rep_rest_s / 60)}:${String(spec.rep_rest_s % 60).padStart(2, '0')}`
+          : `${spec.rep_rest_s}s`;
+        return [
+          {
+            label: 'WARMUP',
+            body: `${fmtMi(spec.warmup_mi)} mi easy build`,
+            tail: `~${Math.round((spec.warmup_mi * 510) / 60)} min`,
+          },
+          {
+            label: 'WORK',
+            body: `${spec.rep_count} × ${distStr} · ${restStr} jog rest`,
+            tail: `${fmtPace(spec.rep_pace_s_per_mi)}/mi`,
+          },
+          {
+            label: 'COOLDOWN',
+            body: `${fmtMi(spec.cooldown_mi)} mi easy`,
+            tail: `~${Math.round((spec.cooldown_mi * 510) / 60)} min`,
+          },
+        ];
+      }
+
+      // Fallback placeholders. TODO 2026-05-28 · pace tails ("3:02/mi",
+      // "7:15/mi") + warmup/cooldown durations are placeholders per
+      // Daniels VDOT R/I/T-pace doctrine.
       if (subtype === 'tempo') {
         return [
           { label: 'WARMUP', body: '1.5 mi easy', tail: '~13 min' },
-          // TODO 2026-05-28 · placeholder tempo pace (7:15/mi) will wire
-          // to VDOT T-pace per the runner's current VDOT.
           { label: 'TEMPO', body: workBody, tail: '7:15/mi' },
           { label: 'COOLDOWN', body: '1 mi easy', tail: '~8 min' },
         ];
@@ -409,8 +523,6 @@ function buildWorkoutBreakdown(
       if (subtype === 'progression') {
         return [
           { label: 'WARMUP', body: '1 mi easy', tail: '~9 min' },
-          // TODO 2026-05-28 · progression pace endpoints will derive from
-          // VDOT E→T transition band.
           { label: 'PROGRESSION', body: 'Build from easy to tempo', tail: '8:30 → 7:15' },
           { label: 'COOLDOWN', body: '1 mi easy', tail: '~9 min' },
         ];
@@ -418,8 +530,6 @@ function buildWorkoutBreakdown(
       // threshold / intervals / fartlek default
       return [
         { label: 'WARMUP', body: '1.5 mi easy build', tail: '~12 min' },
-        // TODO 2026-05-28 · placeholder rep pace (3:02/mi) will derive
-        // from VDOT R/I-pace per rep distance.
         { label: 'WORK', body: workBody, tail: '3:02/mi' },
         { label: 'COOLDOWN', body: '1.5 mi easy', tail: '~13 min' },
       ];
@@ -448,6 +558,20 @@ function buildWorkoutBreakdown(
     default:
       return null;
   }
+}
+
+/** Format seconds-per-mile as "m:ss" (mirrors WorkoutBreakdown's fmtPace).
+ *  Used by buildWorkoutBreakdown when pulling real numbers off the spec. */
+function fmtPace(secondsPerMi: number): string {
+  const m = Math.floor(secondsPerMi / 60);
+  const s = Math.round(secondsPerMi % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Format a mile count: integer when whole, 1 decimal otherwise. */
+function fmtMi(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(1);
 }
 
 /**

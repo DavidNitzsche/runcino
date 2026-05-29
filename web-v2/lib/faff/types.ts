@@ -39,6 +39,116 @@ export type WorkoutSubLabel =
   | 'race_pace' | 'strides'
   | 'with_mp' | 'with_hills' | 'race_simulation';
 
+// ──────────────────────────────────────────────────────────────────────
+// WorkoutSpec · structured per-workout spec mirroring the JSONB column
+// `plan_workouts.workout_spec` (migration 120). The plan-builder
+// (legacy/web/coach/plan-builder.ts → buildWorkoutSpec) emits these per
+// authored workout when a VDOT is available; null when not. Adapters
+// surface real numbers when present + fall back to placeholder strings
+// when null.
+//
+// Pace fields are seconds-per-mile per Daniels Running Formula §VDOT
+// table conventions. HR caps cite the runner's LTHR-derived ceilings
+// (Research/notes/lthr-auto-derivation.md). LTHR is not threaded to
+// the plan-builder yet (P-LTHR-WIRE follow-up), so hr_cap_bpm /
+// hr_target_bpm / lthr_bpm currently land as null and the renderer
+// falls back to a placeholder for the HR row.
+// ──────────────────────────────────────────────────────────────────────
+
+export type WorkoutSpec =
+  | WorkoutSpecEasy
+  | WorkoutSpecLong
+  | WorkoutSpecThreshold
+  | WorkoutSpecTempo
+  | WorkoutSpecIntervals
+  | WorkoutSpecFartlek
+  | WorkoutSpecProgression
+  | WorkoutSpecRecovery
+  | WorkoutSpecMP;
+
+export interface WorkoutSpecEasy {
+  kind: 'easy';
+  pace_target_s_per_mi_lo: number;
+  pace_target_s_per_mi_hi: number;
+  hr_cap_bpm: number | null;
+  fuel_mi?: number[];
+}
+
+export interface WorkoutSpecLong {
+  kind: 'long';
+  pace_target_s_per_mi_lo: number;
+  pace_target_s_per_mi_hi: number;
+  hr_cap_bpm: number | null;
+  fuel_mi: number[];
+}
+
+export interface WorkoutSpecThreshold {
+  kind: 'threshold';
+  warmup_mi: number;
+  rep_count: number;
+  /** Use exactly ONE of rep_distance_m or rep_distance_mi (the other undefined). */
+  rep_distance_m?: number;
+  rep_distance_mi?: number;
+  rep_pace_s_per_mi: number;
+  rep_rest_s: number;
+  cooldown_mi: number;
+  lthr_bpm: number | null;
+}
+
+export interface WorkoutSpecTempo {
+  kind: 'tempo';
+  warmup_mi: number;
+  tempo_distance_mi: number;
+  tempo_pace_s_per_mi: number;
+  cooldown_mi: number;
+  hr_target_bpm: number | null;
+}
+
+export interface WorkoutSpecIntervals {
+  kind: 'intervals';
+  warmup_mi: number;
+  rep_count: number;
+  rep_distance_m?: number;
+  rep_distance_mi?: number;
+  rep_pace_s_per_mi: number;
+  rep_rest_s: number;
+  cooldown_mi: number;
+  lthr_bpm: number | null;
+}
+
+export interface WorkoutSpecFartlek {
+  kind: 'fartlek';
+  warmup_mi: number;
+  segments: Array<{ pace_s_per_mi: number; duration_s: number }>;
+  cooldown_mi: number;
+}
+
+export interface WorkoutSpecProgression {
+  kind: 'progression';
+  warmup_mi: number;
+  prog_distance_mi: number;
+  prog_start_s_per_mi: number;
+  prog_end_s_per_mi: number;
+  cooldown_mi: number;
+  hr_cap_bpm: number | null;
+}
+
+export interface WorkoutSpecRecovery {
+  kind: 'recovery';
+  pace_target_s_per_mi_lo: number;
+  pace_target_s_per_mi_hi: number;
+  hr_cap_bpm: number | null;
+}
+
+export interface WorkoutSpecMP {
+  kind: 'mp';
+  warmup_mi: number;
+  mp_distance_mi: number;
+  mp_pace_s_per_mi: number;
+  cooldown_mi: number;
+  hr_target_bpm: number | null;
+}
+
 export type DayState =
   | 'easy' | 'quality' | 'long' | 'rest'
   | 'done_nailed' | 'done_ease_off'

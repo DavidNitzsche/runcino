@@ -36,6 +36,10 @@ function toGlanceDay(day: PlanWeek['days'][number], today: string): GlanceWeekDa
     plannedMi: day.mi,
     plannedType: day.type,
     plannedLabel: day.label,
+    // Migration 120 · workout_spec isn't surfaced via the PlanWeek shape
+    // this component receives (lighter API for the WeekAhead grid). The
+    // detail modal renders the placeholder fallback when null.
+    plannedSpec: null,
     doneMi: day.doneMi,
     activityId: day.activityId,
     isToday: day.date === today,

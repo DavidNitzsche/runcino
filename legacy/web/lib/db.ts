@@ -362,9 +362,19 @@ async function bootstrap(): Promise<void> {
     await client.query(`
       ALTER TABLE plan_workouts ADD COLUMN IF NOT EXISTS sub_label TEXT;
     `);
+    // Migration 120 (2026-05-28): structured per-workout spec used by
+    // /runs/[id] WorkoutBreakdown + /today Poster A3 breakdown rows.
+    // Type-dependent JSONB shape · null when builder has no VDOT.
+    await client.query(`
+      ALTER TABLE plan_workouts ADD COLUMN IF NOT EXISTS workout_spec JSONB;
+    `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS plan_workouts_date
         ON plan_workouts (plan_id, date_iso);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS plan_workouts_spec_gin_idx
+        ON plan_workouts USING gin (workout_spec);
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS plan_mutations (

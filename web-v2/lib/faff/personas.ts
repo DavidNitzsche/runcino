@@ -185,6 +185,10 @@ function buildWeek(
       plannedMi: s.plannedMi,
       plannedType: s.plannedType,
       plannedLabel: s.plannedLabel ?? null,
+      // Migration 120 · fixture personas don't author specs; the adapter
+      // falls back to placeholder pace bands. Real users hit the spec
+      // path via plan-builder + workout_spec column.
+      plannedSpec: null,
       doneMi: s.doneMi ?? 0,
       activityId: s.activityId ?? null,
       isToday: isoDate === todayIso,

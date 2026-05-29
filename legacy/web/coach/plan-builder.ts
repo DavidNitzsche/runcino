@@ -29,7 +29,7 @@ import type { CoachState } from '../lib/coach-state';
 import { newId } from '../lib/plan-store';
 import {
   type Plan, type PlanPhase, type PlanWeek, type PlanWorkout,
-  type PlanMode, type WorkoutType, type PhaseLabel,
+  type PlanMode, type WorkoutType, type PhaseLabel, type WorkoutSpec,
   snapshotFromState,
 } from './plan-types';
 import { PLAN_TEMPLATES, type PlanDistance } from './doctrine/plan_templates';
@@ -593,6 +593,7 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
           ? 'rest'
           : pick.type;
 
+      const subLabel = subLabelFor(effectiveType, phaseSlice.label, w, curve.isCutback[w]);
       workouts.push({
         id: newId(),
         dateISO,
@@ -605,7 +606,11 @@ export async function buildPlan(inputs: BuildPlanInputs): Promise<Plan> {
         isLong: pick.isLong,
         hasStrength: false,
         notes: notesFor(effectiveType, phaseSlice.label, level, w, curve.isCutback[w]),
-        subLabel: subLabelFor(effectiveType, phaseSlice.label, w, curve.isCutback[w]),
+        subLabel,
+        // Migration 120 (2026-05-28): structured spec for WorkoutBreakdown +
+        // Poster A3 breakdown rows. null when no VDOT (runner has no race
+        // result yet); downstream falls back to label-only render.
+        workoutSpec: buildWorkoutSpec(effectiveType, subLabel, distances[jsDow], paces),
         originalDateISO: dateISO,
         originalType: effectiveType,
         originalDistanceMi: distances[jsDow],
@@ -711,6 +716,212 @@ function paceTargetFor(type: WorkoutType, paceSet: DanielsPaceSet | null): numbe
     // HM tune-up work intervals are at HMP ≈ T pace (Research/08 §9.3).
     case 'race_week_tuneup': return paceCenter(paceSet.T);
     default:          return null; // rest, race, no target
+  }
+}
+
+/** Build the structured workout_spec JSONB payload for a given workout.
+ *
+ *  Returns null when paceSet is unavailable (no VDOT) so callers know to
+ *  fall back to the existing label-only render path. Per the migration 120
+ *  schema, rest / cross / strength / shakeout / race types intentionally
+ *  return null (no structured spec — those rows have no pace targets).
+ *
+ *  The threshold/interval cases parse the rep structure out of the sub_label
+ *  emitted by `subLabelFor` (e.g. "Cruise Intervals" → 5×1K). Cite Daniels
+ *  Running Formula §VDOT table for the pace anchor + Research/04 §5.3,
+ *  §5.4, §6 for the rep structures. */
+function buildWorkoutSpec(
+  type: WorkoutType,
+  subLabel: string | null,
+  distanceMi: number,
+  paceSet: DanielsPaceSet | null,
+): WorkoutSpec | null {
+  if (!paceSet) return null;
+
+  switch (type) {
+    case 'easy': {
+      // Easy: Daniels E pace band + optional fuel beyond ~8 mi.
+      const fuelMi = distanceMi >= 8 ? [Math.round(distanceMi / 2)] : undefined;
+      return {
+        kind: 'easy',
+        pace_target_s_per_mi_lo: paceSet.E.lowS,
+        pace_target_s_per_mi_hi: paceSet.E.highS,
+        hr_cap_bpm: null,        // LTHR not threaded to plan-builder yet
+        ...(fuelMi ? { fuel_mi: fuelMi } : {}),
+      };
+    }
+
+    case 'long': {
+      // Long: Daniels E pace band + fuel checkpoints every ~4 mi.
+      // (Research/22 §5 · "fuel early, fuel often.")
+      const checkpoints: number[] = [];
+      if (distanceMi >= 4) {
+        for (let mi = 4; mi <= Math.floor(distanceMi); mi += 4) checkpoints.push(mi);
+      }
+      // Progression-style long runs (HM Finish / Progression) build to T
+      // pace at the end — emit a progression spec instead so the chart
+      // shows the fade-in. Research/22 §3.
+      if (subLabel === 'Long Run · Progression' || subLabel === 'Long Run · HM Finish') {
+        const progDist = Math.max(2, Math.round(distanceMi / 3));
+        const wm = Math.max(1, Math.round((distanceMi - progDist) * 0.5));
+        const cd = Math.max(0, +(distanceMi - wm - progDist).toFixed(1));
+        return {
+          kind: 'progression',
+          warmup_mi: wm,
+          prog_distance_mi: progDist,
+          prog_start_s_per_mi: paceSet.E.lowS,
+          prog_end_s_per_mi: paceSet.T.lowS,
+          cooldown_mi: cd,
+          hr_cap_bpm: null,
+        };
+      }
+      return {
+        kind: 'long',
+        pace_target_s_per_mi_lo: paceSet.E.lowS,
+        pace_target_s_per_mi_hi: paceSet.E.highS,
+        hr_cap_bpm: null,
+        fuel_mi: checkpoints,
+      };
+    }
+
+    case 'threshold': {
+      // Threshold reps · structure parsed from sub_label per
+      // THRESHOLD_SESSION_PROGRESSION (workouts.ts). Default: 5×1K at T
+      // pace with 60s jog (Research/04 §5.3 · cruise intervals).
+      // sub_label examples:
+      //   'Cruise Intervals'       → 5×1K  · 60s jog
+      //   'HM Cruise Intervals'    → 3×2mi @ HM pace · 90s jog
+      //   'HM Threshold Blocks'    → 2×3mi @ HM pace · 120s jog
+      //   'HM Continuous Tempo'    → 4mi continuous (tempo spec)
+      //   'Threshold Touch'        → 2×1.5mi · 90s jog
+      const warmupMi = 1.5;
+      const cooldownMi = 1;
+      const repPaceS = paceCenter(paceSet.T) ?? paceSet.T.lowS;
+      if (subLabel === 'HM Continuous Tempo') {
+        const tempoMi = Math.max(2, distanceMi - warmupMi - cooldownMi);
+        return {
+          kind: 'tempo',
+          warmup_mi: warmupMi,
+          tempo_distance_mi: +tempoMi.toFixed(1),
+          tempo_pace_s_per_mi: repPaceS,
+          cooldown_mi: cooldownMi,
+          hr_target_bpm: null,
+        };
+      }
+      if (subLabel === 'HM Cruise Intervals') {
+        return {
+          kind: 'threshold',
+          warmup_mi: warmupMi,
+          rep_count: 3,
+          rep_distance_mi: 2,
+          rep_pace_s_per_mi: repPaceS,
+          rep_rest_s: 90,
+          cooldown_mi: cooldownMi,
+          lthr_bpm: null,
+        };
+      }
+      if (subLabel === 'HM Threshold Blocks') {
+        return {
+          kind: 'threshold',
+          warmup_mi: warmupMi,
+          rep_count: 2,
+          rep_distance_mi: 3,
+          rep_pace_s_per_mi: repPaceS,
+          rep_rest_s: 120,
+          cooldown_mi: cooldownMi,
+          lthr_bpm: null,
+        };
+      }
+      if (subLabel === 'Threshold Touch') {
+        return {
+          kind: 'threshold',
+          warmup_mi: warmupMi,
+          rep_count: 2,
+          rep_distance_mi: 1.5,
+          rep_pace_s_per_mi: repPaceS,
+          rep_rest_s: 90,
+          cooldown_mi: cooldownMi,
+          lthr_bpm: null,
+        };
+      }
+      // Default cruise intervals (BASE).
+      return {
+        kind: 'threshold',
+        warmup_mi: warmupMi,
+        rep_count: 5,
+        rep_distance_m: 1000,
+        rep_pace_s_per_mi: repPaceS,
+        rep_rest_s: 60,
+        cooldown_mi: cooldownMi,
+        lthr_bpm: null,
+      };
+    }
+
+    case 'interval': {
+      // VO2max intervals · Daniels I pace · Research/04 §6.
+      // Phase-shaped default: 5×1K with 90s jog. Builder doesn't track
+      // phase here; downstream notes have the variant context.
+      return {
+        kind: 'intervals',
+        warmup_mi: 1.5,
+        rep_count: 5,
+        rep_distance_m: 1000,
+        rep_pace_s_per_mi: paceCenter(paceSet.I) ?? paceSet.I.lowS,
+        rep_rest_s: 90,
+        cooldown_mi: 1,
+        lthr_bpm: null,
+      };
+    }
+
+    case 'mp': {
+      // Marathon-pace block · Daniels M pace.
+      const warmupMi = 1;
+      const cooldownMi = 1;
+      const mpDist = Math.max(2, +(distanceMi - warmupMi - cooldownMi).toFixed(1));
+      return {
+        kind: 'mp',
+        warmup_mi: warmupMi,
+        mp_distance_mi: mpDist,
+        mp_pace_s_per_mi: paceCenter(paceSet.M) ?? paceSet.M.lowS,
+        cooldown_mi: cooldownMi,
+        hr_target_bpm: null,
+      };
+    }
+
+    case 'recovery': {
+      // Recovery: E + ~30s buffer (per paceTargetFor's recovery branch).
+      const lo = paceSet.E.lowS + 30;
+      const hi = paceSet.E.highS + 30;
+      return {
+        kind: 'recovery',
+        pace_target_s_per_mi_lo: lo,
+        pace_target_s_per_mi_hi: hi,
+        hr_cap_bpm: null,
+      };
+    }
+
+    case 'race_week_tuneup': {
+      // Race week tune-up · 4×1K at HMP (≈T pace). Research/08 §9.3.
+      return {
+        kind: 'threshold',
+        warmup_mi: 1.5,
+        rep_count: 4,
+        rep_distance_m: 1000,
+        rep_pace_s_per_mi: paceCenter(paceSet.T) ?? paceSet.T.lowS,
+        rep_rest_s: 90,
+        cooldown_mi: 1,
+        lthr_bpm: null,
+      };
+    }
+
+    case 'shakeout':
+    case 'rest':
+    case 'race':
+      // No structured spec — caller falls back to label-only render.
+      return null;
+
+    default:
+      return null;
   }
 }
 

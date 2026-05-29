@@ -17,7 +17,7 @@ import type { WorkoutType } from '@/lib/faff/types';
 import { BCard } from './BCard';
 import styles from './WorkoutBreakdown.module.css';
 
-type EasyData = { type: 'easy'; distance_mi: number; pace_target: { s: number; band: [number, number] }; hr_cap: number };
+type EasyData = { type: 'easy'; distance_mi: number; pace_target: { s: number; band: [number, number] }; hr_cap: number | null };
 type IntervalsData = {
   type: 'intervals';
   warmup_mi: number;
@@ -125,7 +125,7 @@ function renderChart(data: WorkoutData) {
 function renderFootnote(data: WorkoutData, runnerLthrBpm?: number): string {
   switch (data.type) {
     case 'easy':
-      return `Aerobic dose · pace band ${fmtPace(data.pace_target.band[0])}–${fmtPace(data.pace_target.band[1])} · HR cap ${data.hr_cap}.`;
+      return `Aerobic dose · pace band ${fmtPace(data.pace_target.band[0])}–${fmtPace(data.pace_target.band[1])}${data.hr_cap != null ? ` · HR cap ${data.hr_cap}` : ''}.`;
     case 'intervals':
       return `${data.reps}×${data.rep_distance_m}m @ ${fmtPace(data.rep_pace_s_per_mi)} · ${data.rest_jog_s}s float recoveries · HR target Z5${runnerLthrBpm ? ` (~${Math.round(runnerLthrBpm * 1.05)}bpm)` : ''}.`;
     case 'tempo':
@@ -154,10 +154,16 @@ function EasyChart({ data }: { data: EasyData }) {
       aria-hidden
     >
       <rect x="0" y="32" width="100" height="32" rx="4" fill="var(--green)" opacity="0.85" />
-      <line x1="0" x2="100" y1="24" y2="24" stroke="var(--goal)" strokeDasharray="2 3" strokeWidth="1" />
-      <text x="50" y="20" textAnchor="middle" fontSize="6" fill="var(--goal)" fontFamily="var(--f-body)" fontWeight="700">
-        HR cap {data.hr_cap}
-      </text>
+      {/* HR cap chip · only rendered when the spec has a value. LTHR isn't
+          threaded to plan-builder yet, so most authored rows ship null. */}
+      {data.hr_cap != null && (
+        <>
+          <line x1="0" x2="100" y1="24" y2="24" stroke="var(--goal)" strokeDasharray="2 3" strokeWidth="1" />
+          <text x="50" y="20" textAnchor="middle" fontSize="6" fill="var(--goal)" fontFamily="var(--f-body)" fontWeight="700">
+            HR cap {data.hr_cap}
+          </text>
+        </>
+      )}
     </svg>
   );
 }

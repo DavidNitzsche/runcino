@@ -23,6 +23,7 @@ import type {
   PhaseLabel,
   TriggerKind,
   CoachStateSnapshot,
+  WorkoutSpec,
 } from '../coach/plan-types';
 
 interface TrainingPlanRow {
@@ -72,6 +73,9 @@ interface PlanWorkoutRow {
   is_long: boolean;
   notes: string;
   sub_label: string | null;
+  /** Migration 120 · structured per-workout spec used by /runs/[id] +
+   *  /today Poster A3 breakdowns. null when plan-builder had no VDOT. */
+  workout_spec: WorkoutSpec | null;
   original_date_iso: string;
   original_type: WorkoutType;
   original_distance_mi: string | number;
@@ -142,12 +146,13 @@ export async function saveActivePlan(plan: Plan): Promise<void> {
           await client.query(
             `INSERT INTO plan_workouts
                (id, plan_id, week_id, date_iso, dow, type, distance_mi, pace_target_s_per_mi,
-                duration_min, is_quality, is_long, notes, sub_label,
+                duration_min, is_quality, is_long, notes, sub_label, workout_spec,
                 original_date_iso, original_type, original_distance_mi)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
             [
               w.id, plan.id, wk.id, w.dateISO, w.dow, w.type, w.distanceMi, w.paceTargetSPerMi,
               w.durationMin, w.isQuality, w.isLong, w.notes, w.subLabel ?? null,
+              w.workoutSpec ? JSON.stringify(w.workoutSpec) : null,
               w.originalDateISO, w.originalType, w.originalDistanceMi,
             ],
           );
@@ -195,7 +200,7 @@ export async function getActivePlan(userId = 'me'): Promise<Plan | null> {
   );
   const workoutRows = await query<PlanWorkoutRow>(
     `SELECT id, plan_id, week_id, date_iso, dow, type, distance_mi, pace_target_s_per_mi,
-            duration_min, is_quality, is_long, notes, sub_label,
+            duration_min, is_quality, is_long, notes, sub_label, workout_spec,
             original_date_iso, original_type, original_distance_mi
      FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso ASC`,
     [planRow.id],
@@ -242,6 +247,9 @@ export async function getActivePlan(userId = 'me'): Promise<Plan | null> {
       hasStrength: w.notes?.includes('\n\nStrength:') ?? false,
       notes: w.notes,
       subLabel: w.sub_label ?? undefined,
+      // Migration 120 · JSONB column comes back as a parsed object from
+      // node-postgres' JSON typecasting; null when builder had no VDOT.
+      workoutSpec: w.workout_spec ?? null,
       originalDateISO: w.original_date_iso,
       originalType: w.original_type,
       originalDistanceMi: toNum(w.original_distance_mi),

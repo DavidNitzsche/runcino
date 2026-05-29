@@ -125,6 +125,17 @@ export interface RunDetail {
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
   hr_zones_from_lthr: { lthr: number | null; ranges: { label: string; lower: number; upper: number }[] } | null;
   form: RunForm;                  // Apple Watch form metrics for that day
+  /** Migration 120 · structured spec for the plan_workouts row matching
+   *  this run's date (if any). Drives the WorkoutBreakdown component on
+   *  /runs/[id]. null when no plan exists, no plan_workout matches the
+   *  date, or the plan-builder authored this workout without a VDOT. */
+  planned_spec: import('@/lib/faff/types').WorkoutSpec | null;
+  /** The plan_workouts row's sub_label, mirrored so the page can compose
+   *  the WorkoutBreakdown header (e.g. "WORKOUT · CRUISE INTERVALS"). */
+  planned_sub_label: string | null;
+  /** plan_workouts.distance_mi for the matching row; used as the "planned
+   *  distance" axis when the spec ships rep-only structures. */
+  planned_distance_mi: number | null;
 }
 
 function fmtPace(s: number | null): string | null {
@@ -243,6 +254,30 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // exclude).
   const workAvgs = await computeWorkAverages(userId, day, splits, phaseBreakdown);
 
+  // Migration 120 (2026-05-28) — pull the matching plan_workouts row's
+  // structured spec so /runs/[id] can render the proper WorkoutBreakdown
+  // (plan-vs-actual surface). Selection: active plan + this run's date.
+  // Skipped silently when no plan or no matching workout — page falls
+  // back to the placeholder card.
+  const plannedRow = day
+    ? (await pool.query(
+        `SELECT pw.workout_spec, pw.sub_label, pw.distance_mi
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE (tp.user_uuid = $1 OR tp.user_id = 'me')
+            AND tp.archived_iso IS NULL
+            AND pw.date_iso = $2
+          ORDER BY (tp.user_uuid = $1) DESC
+          LIMIT 1`,
+        [userId, day],
+      ).catch(() => ({ rows: [] as any[] }))).rows[0]
+    : null;
+  const planned_spec = plannedRow?.workout_spec ?? null;
+  const planned_sub_label = plannedRow?.sub_label ?? null;
+  const planned_distance_mi = plannedRow?.distance_mi != null
+    ? Number(plannedRow.distance_mi)
+    : null;
+
   // Inline shoe inventory — same query as GET /api/shoe but bundled here
   // so the modal opens with no second round-trip.
   const shoesRows = (await pool.query(
@@ -315,6 +350,9 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     hr_zones_from_lthr,
     form,
     phase_breakdown: phaseBreakdown,
+    planned_spec,
+    planned_sub_label,
+    planned_distance_mi,
   };
 }
 
