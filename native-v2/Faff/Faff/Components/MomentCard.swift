@@ -77,15 +77,17 @@ struct MomentCard: View {
         .background(Theme.card2)
         .overlay(
             // Active state thickens the border to 1.5pt (mirrors the web
-            // `1.5px solid ${accent}` swap on isActive).
-            RoundedRectangle(cornerRadius: 10)
+            // `1.5px solid ${accent}` swap on isActive). Radius = Theme.rInput
+            // (10pt) — same token used for input/chip corners; matches the
+            // web `borderRadius: 10` on moment cards.
+            RoundedRectangle(cornerRadius: Theme.rInput)
                 .stroke(isActive ? accent : Theme.line, lineWidth: isActive ? 1.5 : 1)
         )
         .overlay(alignment: .leading) {
             // 4pt left accent strip · constant across active / inactive
             Rectangle().fill(accent).frame(width: 4)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rInput))
         .overlay(alignment: .topTrailing) {
             if isActive { nowPill }
         }
