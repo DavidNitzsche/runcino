@@ -832,4 +832,45 @@ enum FaffAdapter {
         default:  return Theme.mute    // unknown / null
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 9. Profile · eyebrow + initials (Phase 25d ProfileView callsites)
+    // ──────────────────────────────────────────────────────────────────
+    //
+    // Phase 25d shipped ProfileView calling these but the agent never
+    // landed the definitions. Patched 2026-05-28 to unblock TF Build 98.
+    // Mirrors web /profile's "DAVID NITZSCHE · MALE · 40 · LOS ANGELES"
+    // eyebrow recipe but degrades cleanly when fields are missing on
+    // the iPhone ProfileState (gender / birthday / city aren't always
+    // there — keep it honest, render only what's present).
+
+    /// Compose the profile page eyebrow line · caps-tracked · from the
+    /// identity + physiology + city fields that exist on iOS. Renders
+    /// "RUNNER · DETAILS" when state is nil (loading / failed fetch).
+    static func profileEyebrow(_ profile: ProfileState?) -> String {
+        guard let p = profile else { return "RUNNER · DETAILS" }
+        var parts: [String] = []
+        if let name = p.identity.full_name, !name.isEmpty {
+            parts.append(name.uppercased())
+        }
+        // Gender + city · only when present on the iPhone model
+        if let city = p.identity.city, !city.isEmpty {
+            parts.append(city.uppercased())
+        }
+        return parts.isEmpty ? "RUNNER · DETAILS" : parts.joined(separator: " · ")
+    }
+
+    /// 2-letter avatar initials from a full name. Falls back to "DN"
+    /// (David Nitzsche · single-user beta convention).
+    static func profileAvatarInitials(_ name: String?) -> String {
+        guard let name = name?.trimmingCharacters(in: .whitespaces), !name.isEmpty
+        else { return "DN" }
+        let parts = name.split(separator: " ", maxSplits: 1)
+        if parts.count == 2 {
+            let first = String(parts[0].prefix(1)).uppercased()
+            let last  = String(parts[1].prefix(1)).uppercased()
+            return first + last
+        }
+        return String(name.prefix(2)).uppercased()
+    }
 }
