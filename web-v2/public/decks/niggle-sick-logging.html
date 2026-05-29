@@ -1,0 +1,2451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Niggle + Sick Logging — Entry Flow Design · 2026-05-28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* ── canvas ── */
+    --bg:      #0a0c10;
+    --bg-page: #15171c;
+    --card:    #11141a;
+    --card2:   #13171f;
+    --ink:     #f6f7f8;
+    --mute:    #8a90a0;
+    --dim:     #4b505e;
+    --line:    rgba(255,255,255,0.08);
+    --line2:   rgba(255,255,255,0.04);
+
+    /* ── semantic ── */
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --over:    #FC4D64;
+    --dist:    #27B4E0;
+    --rest:    #008FEC;
+    --learn:   #B084FF;
+    --race:    #FF8847;
+
+    /* ── state gradients ── */
+    --g-easy:    linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+    --g-niggle:  linear-gradient(135deg, #3EBD41 0%, #2a6a3a 50%, #5a3408 100%);
+    --g-sick:    linear-gradient(135deg, #5a6580 0%, #3a3a55 60%, #1a1a2a 100%);
+
+    /* ── type ── */
+    --f-display:           'Oswald', sans-serif;
+    --f-body:              'Inter', system-ui, sans-serif;
+    --f-display-weight:    700;
+    --f-display-tracking:  -0.015em;
+    --f-display-line:      0.86;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--f-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── deck header ─── */
+  .header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 40px;
+    margin-bottom: 56px;
+  }
+  .h-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 18px;
+  }
+  .h-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 88px;
+    margin: 0 0 14px 0;
+  }
+  .h-sub {
+    font-size: 16px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    max-width: 760px;
+    margin: 0;
+  }
+  .h-sub + .h-sub { margin-top: 14px; }
+
+  /* ─── section / direction ─── */
+  .direction {
+    margin-top: 96px;
+  }
+  .d-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 36px;
+    align-items: end;
+  }
+  .d-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 12px;
+  }
+  .d-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    margin: 0;
+  }
+  .d-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.74);
+    margin: 0;
+  }
+  .d-desc + .d-desc { margin-top: 10px; }
+  .d-desc b { color: var(--ink); }
+
+  /* recommendation pill called out at the top of a section */
+  .reco {
+    background: rgba(62, 189, 65, 0.10);
+    border: 1px solid rgba(62, 189, 65, 0.32);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.92);
+    margin-bottom: 28px;
+  }
+  .reco b { color: #fff; }
+  .reco .tag {
+    display: inline-block;
+    background: var(--green);
+    color: #0a0c10;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 6px;
+    margin-right: 10px;
+    vertical-align: 1px;
+  }
+
+  /* ─── caption + note + grids ─── */
+  .caption {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    text-align: center;
+    margin-top: 16px;
+  }
+  .note {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.85);
+    margin-top: 22px;
+  }
+  .note b { color: var(--ink); }
+
+  /* mockup row + phone frame (lifted from onboarding deck) */
+  .mockrow {
+    display: grid;
+    grid-template-columns: 390px 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+  .mockrow.single { grid-template-columns: 390px; justify-content: start; }
+  .mockrow.pair   { grid-template-columns: 390px 390px; justify-content: start; gap: 32px; }
+
+  .phone {
+    width: 390px;
+    height: 760px;
+    background: var(--bg);
+    border-radius: 44px;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 60px rgba(0,0,0,0.55), 0 6px 14px rgba(0,0,0,0.35);
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: 32px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 28px;
+    background: #000;
+    border-radius: 16px;
+    z-index: 5;
+  }
+  .phone-status {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+  .phone-status.over-gradient { color: #fff; }
+  .phone-status .time { font-weight: 700; }
+  .phone-status .right { display: flex; gap: 6px; align-items: center; font-size: 11px; opacity: 0.85; }
+
+  /* ─── POSTER inside phone ─── */
+  .ph-body {
+    flex: 1;
+    overflow: hidden;
+    padding: 0 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .poster {
+    border-radius: 22px;
+    padding: 22px 20px 20px;
+    color: #fff;
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .poster.easy   { background: var(--g-easy); }
+  .poster.niggle { background: var(--g-niggle); }
+  .poster.sick   { background: var(--g-sick); }
+  .p-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 14px;
+  }
+  .p-verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    margin: 0;
+    color: #fff;
+  }
+  .p-verb-suffix {
+    font-family: var(--f-body);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 16px;
+    line-height: 1.3;
+    color: rgba(255,255,255,0.86);
+    margin-top: 10px;
+  }
+  .p-phase {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.72);
+    margin-top: 14px;
+  }
+  .stat-trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: auto;
+    padding-top: 18px;
+  }
+  .stat-cell { }
+  .stat-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 28px;
+    color: #fff;
+    font-feature-settings: "tnum";
+    line-height: 1;
+  }
+  .stat-v.amber { color: #F3AD38; }
+  .stat-v.over  { color: #FC4D64; }
+  .stat-l {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.78);
+    margin-top: 6px;
+  }
+
+  /* ─── log-chip · the entry affordance under the Sibling ─── */
+  .logchip-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .logchip {
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    padding: 11px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: rgba(246,247,248,0.85);
+    text-transform: none;
+  }
+  .logchip .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--goal);
+    flex-shrink: 0;
+  }
+  .logchip.sick .dot { background: var(--rest); }
+
+  /* ─── Sibling card (dark) ─── */
+  .sibling {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 18px 18px 16px;
+  }
+  .sib-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .sib-main {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 22px;
+    color: var(--ink);
+  }
+  .sib-suffix {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .sib-prose {
+    font-family: var(--f-body);
+    font-weight: 500;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.82);
+    margin: 0 0 12px 0;
+  }
+  .sib-prose b, .sib-prose strong { color: var(--ink); font-weight: 700; }
+
+  /* ─── MiniTileGrid ─── */
+  .tilegrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .tile {
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 11px 12px 10px;
+    position: relative;
+    min-height: 76px;
+  }
+  .tile-dot {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+  .tile-dot.amber { background: var(--goal); }
+  .tile-dot.red   { background: var(--over); }
+  .tile-dot.dim   { background: var(--dim); }
+  .tile-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 6px;
+  }
+  .tile-value {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 22px;
+    color: var(--ink);
+    line-height: 1;
+    font-feature-settings: "tnum";
+  }
+  .tile-meta {
+    font-family: var(--f-body);
+    font-weight: 500;
+    font-size: 10px;
+    color: var(--mute);
+    margin-top: 4px;
+  }
+
+  /* ─── full-screen MODAL frame inside phone ─── */
+  .modal-screen {
+    flex: 1;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-head {
+    padding: 8px 22px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .modal-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 28px;
+    color: var(--ink);
+  }
+  .modal-close {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--mute);
+  }
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 22px 0;
+  }
+  .field-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .field-block {
+    margin-bottom: 22px;
+  }
+
+  /* ─── body diagram SVG container ─── */
+  .body-diagram {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .body-side {
+    text-align: center;
+  }
+  .body-side-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 6px;
+  }
+  .body-svg {
+    width: 100%;
+    height: auto;
+  }
+
+  /* ─── side-radio (L/R) ─── */
+  .side-radio {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .side-pill {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 9px 0;
+    text-align: center;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: var(--mute);
+  }
+  .side-pill.on {
+    background: rgba(246,247,248,0.96);
+    color: #0a0c10;
+    border-color: rgba(246,247,248,0.96);
+  }
+
+  /* ─── severity scale ─── */
+  .sev-scale {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  .sev-row {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .sev-pip {
+    height: 24px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    text-align: center;
+    line-height: 22px;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    color: var(--mute);
+    font-feature-settings: "tnum";
+  }
+  .sev-pip.on1 { background: rgba(62,189,65,0.65); color: #0a0c10; border-color: transparent; }
+  .sev-pip.on2 { background: rgba(243,173,56,0.95); color: #0a0c10; border-color: transparent; }
+  .sev-pip.on3 { background: rgba(252,77,100,0.95); color: #fff; border-color: transparent; }
+  .sev-anchors {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+    font-family: var(--f-body);
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--mute);
+  }
+  .sev-anchors b { color: var(--ink); font-weight: 700; display: block; font-size: 10px; margin-bottom: 2px; }
+  .sev-anchors .mid { text-align: center; }
+  .sev-anchors .right { text-align: right; }
+
+  /* ─── status chips (just started / few days / weeks) ─── */
+  .chip-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+  }
+  .chip {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 11px 8px;
+    text-align: center;
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 11px;
+    color: rgba(246,247,248,0.85);
+    line-height: 1.3;
+  }
+  .chip.on {
+    background: rgba(246,247,248,0.96);
+    color: #0a0c10;
+    border-color: rgba(246,247,248,0.96);
+    font-weight: 700;
+  }
+  .chip.span2 { grid-column: span 2; }
+
+  /* symptom multi-select chips */
+  .symptom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .chip.sym {
+    text-align: left;
+    padding: 11px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .chip.sym .check {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1.5px solid var(--mute);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .chip.sym.on {
+    background: rgba(246,247,248,0.96);
+    color: #0a0c10;
+    border-color: rgba(246,247,248,0.96);
+  }
+  .chip.sym.on .check {
+    background: #0a0c10;
+    border-color: #0a0c10;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 14px;
+  }
+
+  /* fever toggle */
+  .fever-toggle {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .fever-toggle.on {
+    background: rgba(252,77,100,0.08);
+    border-color: rgba(252,77,100,0.45);
+  }
+  .ft-left {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .ft-left .meta {
+    display: block;
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--mute);
+    margin-top: 3px;
+  }
+  .ft-switch {
+    width: 44px;
+    height: 26px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.12);
+    position: relative;
+  }
+  .ft-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(246,247,248,0.85);
+    transition: all 0.18s ease;
+  }
+  .fever-toggle.on .ft-switch { background: var(--over); }
+  .fever-toggle.on .ft-switch::after {
+    left: 21px;
+    background: #fff;
+  }
+
+  /* DO NOT RUN banner — surfaces when fever toggled on */
+  .donotrun {
+    background: rgba(252,77,100,0.10);
+    border: 1px solid rgba(252,77,100,0.45);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-top: 10px;
+  }
+  .dnr-head {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 18px;
+    color: var(--over);
+    margin-bottom: 4px;
+  }
+  .dnr-body {
+    font-family: var(--f-body);
+    font-size: 11px;
+    line-height: 1.45;
+    color: rgba(246,247,248,0.86);
+  }
+  .dnr-body b { color: var(--ink); }
+  .dnr-cite {
+    font-family: var(--f-body);
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-top: 6px;
+  }
+
+  /* textarea */
+  .ta-field {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    min-height: 64px;
+    font-family: var(--f-body);
+    font-weight: 500;
+    font-size: 13px;
+    color: rgba(246,247,248,0.65);
+    line-height: 1.5;
+  }
+
+  /* modal CTAs */
+  .modal-cta {
+    padding: 16px 22px 20px;
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 10px;
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .cta {
+    border-radius: 14px;
+    text-align: center;
+    padding: 14px 0;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.3px;
+  }
+  .cta.sec {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--mute);
+  }
+  .cta.pri {
+    background: var(--green);
+    color: #0a0c10;
+  }
+  .cta.pri.sick {
+    background: rgba(246,247,248,0.96);
+    color: #0a0c10;
+  }
+
+  /* ─── workout breakdown adjusted card ─── */
+  .breakdown {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px 18px 18px;
+  }
+  .bk-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .bk-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 18px;
+    color: var(--ink);
+  }
+  .bk-adj-tag {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--goal);
+    background: rgba(243,173,56,0.10);
+    border: 1px solid rgba(243,173,56,0.35);
+    border-radius: 6px;
+    padding: 3px 7px;
+  }
+  .bk-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .bk-row {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line2);
+  }
+  .bk-row:last-child { border-bottom: 0; }
+  .bk-row.strike .bk-text { text-decoration: line-through; color: var(--dim); }
+  .bk-row.strike .bk-tail { color: var(--dim); }
+  .bk-label {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .bk-text {
+    font-family: var(--f-body);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: rgba(246,247,248,0.92);
+    line-height: 1.4;
+  }
+  .bk-text b { color: var(--goal); font-weight: 700; }
+  .bk-tail {
+    font-family: var(--f-body);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--ink);
+    font-feature-settings: "tnum";
+  }
+
+  /* ─── WeekStrip mini ─── */
+  .weekstrip {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+  .ws-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .ws-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .ws-meta {
+    font-family: var(--f-body);
+    font-size: 10px;
+    color: var(--mute);
+    letter-spacing: 0.4px;
+  }
+  .ws-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+  }
+  .ws-day {
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 0 8px;
+    text-align: center;
+    position: relative;
+  }
+  .ws-day.today {
+    border-color: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.04);
+  }
+  .ws-day.dim {
+    opacity: 0.32;
+  }
+  .ws-dow {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: 1.2px;
+    color: var(--mute);
+  }
+  .ws-num {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    font-size: 14px;
+    color: var(--ink);
+    margin-top: 2px;
+    line-height: 1;
+  }
+  .ws-bar {
+    height: 3px;
+    border-radius: 2px;
+    margin: 6px 4px 0;
+  }
+  .ws-bar.easy   { background: var(--green); }
+  .ws-bar.qual   { background: var(--goal); }
+  .ws-bar.long   { background: var(--dist); }
+  .ws-bar.rest   { background: rgba(255,255,255,0.18); }
+  .ws-bar.niggle { background: linear-gradient(90deg, var(--green), var(--goal)); }
+  .ws-bar.sick   { background: rgba(255,255,255,0.10); }
+
+  /* ─── recovery cards ─── */
+  .rec-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 22px 22px 20px;
+  }
+  .rec-q {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 32px;
+    color: var(--ink);
+    margin-bottom: 14px;
+  }
+  .rec-quick {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 6px;
+  }
+  .rec-quick .chip { padding: 13px 8px; font-size: 11px; }
+  .rec-quick .chip.green { color: var(--green); border-color: rgba(62,189,65,0.35); background: rgba(62,189,65,0.08); }
+  .rec-quick .chip.amber { color: var(--goal);  border-color: rgba(243,173,56,0.35); background: rgba(243,173,56,0.08); }
+  .rec-quick .chip.red   { color: var(--over);  border-color: rgba(252,77,100,0.35); background: rgba(252,77,100,0.08); }
+  .rec-quick .chip.muted { color: rgba(246,247,248,0.78); }
+
+  /* physio escalation banner */
+  .physio-banner {
+    background: rgba(243,173,56,0.10);
+    border: 1px solid rgba(243,173,56,0.35);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-top: 12px;
+  }
+  .pb-head {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 16px;
+    color: var(--goal);
+    margin-bottom: 4px;
+  }
+  .pb-body {
+    font-family: var(--f-body);
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: rgba(246,247,248,0.86);
+  }
+  .pb-cite {
+    font-family: var(--f-body);
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-top: 6px;
+  }
+
+  /* return-gate checklist (sick recovery) */
+  .gate {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .gate-head {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .gate-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line2);
+  }
+  .gate-row:last-child { border-bottom: 0; }
+  .gate-check {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid var(--mute);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 800;
+    color: transparent;
+  }
+  .gate-row.met .gate-check {
+    background: var(--green);
+    border-color: var(--green);
+    color: #0a0c10;
+  }
+  .gate-text {
+    font-family: var(--f-body);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: rgba(246,247,248,0.88);
+    line-height: 1.4;
+    flex: 1;
+  }
+  .gate-text.met { color: var(--ink); }
+  .gate-tail {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    font-feature-settings: "tnum";
+    color: var(--mute);
+  }
+  .gate-row.met .gate-tail { color: var(--green); }
+
+  /* ready-to-run hero (sick recovery) */
+  .r2r-card {
+    background: var(--g-easy);
+    border-radius: 18px;
+    padding: 22px 22px 20px;
+    color: #fff;
+    position: relative;
+  }
+  .r2r-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 10px;
+  }
+  .r2r-verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 44px;
+    color: #fff;
+    margin: 0 0 12px 0;
+  }
+  .r2r-prose {
+    font-family: var(--f-body);
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.92);
+    margin: 0 0 16px 0;
+  }
+  .r2r-stat {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .r2r-cta {
+    background: rgba(255,255,255,0.96);
+    color: #0a0c10;
+    border-radius: 12px;
+    text-align: center;
+    padding: 13px 0;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  /* /profile + readiness option entry mocks (option 2 + 3) */
+  .profile-row {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pr-left .pr-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 3px;
+  }
+  .pr-left .pr-q {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 18px;
+    color: var(--ink);
+  }
+  .pr-tail {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--mute);
+  }
+  .pr-section-head {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin: 12px 0 8px;
+  }
+
+  /* readiness ring mock for option 3 */
+  .ring-wrap {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .ring {
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    background: conic-gradient(var(--green) 0deg 280deg, rgba(255,255,255,0.10) 280deg 360deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .ring-inner {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .ring-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    font-size: 24px;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .ring-l {
+    font-family: var(--f-body);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    color: var(--mute);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .ring-right {
+    flex: 1;
+  }
+  .ring-q {
+    font-family: var(--f-body);
+    font-weight: 500;
+    font-size: 13px;
+    color: rgba(246,247,248,0.85);
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  .ring-q b { color: var(--ink); }
+  .ring-link {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--goal);
+    text-decoration: underline;
+    text-decoration-color: rgba(243,173,56,0.4);
+    text-underline-offset: 3px;
+  }
+
+  /* ─── footer ─── */
+  .footer {
+    margin-top: 120px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: rgba(246,247,248,0.78);
+    line-height: 1.6;
+  }
+  .footer h3 {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 28px;
+    color: var(--ink);
+    margin: 32px 0 14px 0;
+  }
+  .footer .meta-tag {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 8px;
+  }
+  .footer table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+  .footer th, .footer td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+    vertical-align: top;
+  }
+  .footer th {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    border-bottom: 1px solid var(--line);
+  }
+  .footer td b { color: var(--ink); }
+  .footer ul { padding-left: 20px; margin: 8px 0; }
+  .footer li { margin-bottom: 6px; }
+  .footer code {
+    background: var(--card);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11.5px;
+    color: var(--ink);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══════════════════════ HEADER ═══════════════════════ -->
+  <header class="header">
+    <div class="h-eye">FAFF · NIGGLE + SICK LOGGING · DESIGN · 2026-05-28</div>
+    <h1 class="h-title">How the body<br>says no.</h1>
+    <p class="h-sub">
+      The resolver routes to <b>niggle</b> and <b>sick</b>, and <code>/today</code> already renders them. But the signal can't fire because the runner has nowhere to log it. Two states exist with no entry point. The body says no, the app stays quiet.
+    </p>
+    <p class="h-sub">
+      This deck designs the entry surface, the data we capture, and the recovery path back to running. Mockups only. Body diagram is inline SVG.
+    </p>
+  </header>
+
+  <!-- ═══════════════════════ SECTION 1 · ENTRY SURFACES ═══════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 01 · ENTRY</div>
+        <h2 class="d-title">Where the<br>runner taps in.</h2>
+      </div>
+      <p class="d-desc">
+        Three plausible homes for the "log a niggle / log being sick" affordance. <b>Primary recommendation:</b> below the Sibling card on <code>/today</code>, always visible. Two fallback affordances on <code>/profile</code> and the readiness ring give a runner who didn't see the chip a second + third way in.
+      </p>
+    </div>
+
+    <div class="reco">
+      <span class="tag">Recommend</span>
+      Option 1 (from <code>/today</code>) as the primary. It is the screen a runner opens daily; the entry must live where eyes already are. Options 2 and 3 are quieter backups, not replacements.
+    </div>
+
+    <!-- mock 1 · /today with chip -->
+    <div class="mockrow">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-notch"></div>
+          <div class="phone-status over-gradient">
+            <span class="time">9:41</span>
+            <span class="right">5G · 87%</span>
+          </div>
+          <div class="ph-body">
+            <div class="poster easy">
+              <div class="p-eye">THU · MAY 28 · BASE</div>
+              <h3 class="p-verb">EASY 6.1.</h3>
+              <div class="p-phase">BASE · WK 5/12 · AEROBIC</div>
+              <div class="stat-trio">
+                <div class="stat-cell">
+                  <div class="stat-v">8:30</div>
+                  <div class="stat-l">PACE / MI</div>
+                </div>
+                <div class="stat-cell">
+                  <div class="stat-v">148</div>
+                  <div class="stat-l">HR CAP</div>
+                </div>
+                <div class="stat-cell">
+                  <div class="stat-v">6.1</div>
+                  <div class="stat-l">MILES</div>
+                </div>
+              </div>
+            </div>
+            <div class="sibling">
+              <div class="sib-title">
+                <span class="sib-main">At a glance</span>
+                <span class="sib-suffix">· THE WHY</span>
+              </div>
+              <div class="tilegrid">
+                <div class="tile">
+                  <div class="tile-dot"></div>
+                  <div class="tile-label">SLEEP</div>
+                  <div class="tile-value">7:24</div>
+                  <div class="tile-meta">hrs · last night</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot"></div>
+                  <div class="tile-label">HRV</div>
+                  <div class="tile-value">62</div>
+                  <div class="tile-meta">ms · +3 vs base</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot"></div>
+                  <div class="tile-label">RHR</div>
+                  <div class="tile-value">46</div>
+                  <div class="tile-meta">bpm · −1</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot"></div>
+                  <div class="tile-label">LOAD</div>
+                  <div class="tile-value">1.12</div>
+                  <div class="tile-meta">ACWR · in band</div>
+                </div>
+              </div>
+              <div class="logchip-row">
+                <div class="logchip">
+                  <span class="dot"></span>
+                  Log a niggle
+                </div>
+                <div class="logchip sick">
+                  <span class="dot"></span>
+                  Log being sick
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="d-label">OPTION 1 · PRIMARY</div>
+        <h3 style="font-family: var(--f-display); font-weight: var(--f-display-weight); letter-spacing: var(--f-display-tracking); line-height: var(--f-display-line); font-size: 38px; margin: 8px 0 14px 0;">Two chips,<br>under the Sibling.</h3>
+        <p class="d-desc">
+          The Sibling card carries the body context (sleep, HRV, RHR, load). Tucking the two log chips beneath the tile grid puts the entry exactly where the runner is already reading the body signal. Visible without being loud. Tap a chip, open the modal full-screen.
+        </p>
+        <p class="d-desc">
+          <b>Why this surface, not the Poster:</b> the Poster is the verb. Adding entry affordances there pollutes the hero. The Sibling is already the place where "the body" lives — adding "the body says no" buttons is the right semantic fit.
+        </p>
+        <p class="d-desc">
+          <b>Chip styling:</b> amber dot for niggle (mild flag), blue dot for sick (full pause). Same chip rhythm so they read as a pair, not as competing CTAs.
+        </p>
+      </div>
+    </div>
+    <div class="caption">OPTION 1 · /today · LOG-CHIPS UNDER SIBLING (PRIMARY)</div>
+
+    <!-- mock 2 + 3 · /profile + readiness ring -->
+    <div class="mockrow pair" style="margin-top: 56px;">
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G · 87%</span>
+            </div>
+            <div class="ph-body" style="gap: 8px;">
+              <div style="font-family: var(--f-display); font-weight: var(--f-display-weight); letter-spacing: var(--f-display-tracking); line-height: var(--f-display-line); font-size: 32px; color: var(--ink); padding: 8px 4px 4px;">Profile.</div>
+
+              <div class="pr-section-head">How I'm feeling today</div>
+              <div class="profile-row">
+                <div class="pr-left">
+                  <div class="pr-label">NIGGLE</div>
+                  <div class="pr-q">Log something tight or sore</div>
+                </div>
+                <div class="pr-tail">›</div>
+              </div>
+              <div class="profile-row">
+                <div class="pr-left">
+                  <div class="pr-label">SICK</div>
+                  <div class="pr-q">I'm not well — pause the plan</div>
+                </div>
+                <div class="pr-tail">›</div>
+              </div>
+
+              <div class="pr-section-head">Identity</div>
+              <div class="profile-row">
+                <div class="pr-left">
+                  <div class="pr-label">NAME</div>
+                  <div class="pr-q">Sasha Yip</div>
+                </div>
+                <div class="pr-tail">›</div>
+              </div>
+              <div class="profile-row">
+                <div class="pr-left">
+                  <div class="pr-label">RACE</div>
+                  <div class="pr-q">Berlin · Sep 28</div>
+                </div>
+                <div class="pr-tail">›</div>
+              </div>
+
+              <div class="pr-section-head">Connections</div>
+              <div class="profile-row">
+                <div class="pr-left">
+                  <div class="pr-label">DEVICE</div>
+                  <div class="pr-q">Apple Watch · paired</div>
+                </div>
+                <div class="pr-tail">›</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">OPTION 2 · /profile · QUIETER FALLBACK</div>
+      </div>
+
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G · 87%</span>
+            </div>
+            <div class="ph-body" style="gap: 10px;">
+              <div style="font-family: var(--f-display); font-weight: var(--f-display-weight); letter-spacing: var(--f-display-tracking); line-height: var(--f-display-line); font-size: 32px; color: var(--ink); padding: 8px 4px 4px;">Readiness.</div>
+
+              <div class="ring-wrap">
+                <div class="ring">
+                  <div class="ring-inner">
+                    <div class="ring-v">82</div>
+                    <div class="ring-l">READY</div>
+                  </div>
+                </div>
+                <div class="ring-right">
+                  <div class="ring-q">Sleep, HRV, RHR all in band. <b>Body's a green light.</b></div>
+                  <div class="ring-link">Something's off? →</div>
+                </div>
+              </div>
+
+              <div style="background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;">
+                <div style="font-family: var(--f-body); font-weight: 700; font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--mute); margin-bottom: 12px;">PER-INPUT BREAKDOWN</div>
+
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line2);">
+                  <div style="font-size: 13px; color: var(--ink);">Sleep</div>
+                  <div style="font-family: var(--f-display); font-weight: 700; font-size: 16px; color: var(--green);">7:24</div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line2);">
+                  <div style="font-size: 13px; color: var(--ink);">HRV</div>
+                  <div style="font-family: var(--f-display); font-weight: 700; font-size: 16px; color: var(--green);">62 ms</div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line2);">
+                  <div style="font-size: 13px; color: var(--ink);">RHR</div>
+                  <div style="font-family: var(--f-display); font-weight: 700; font-size: 16px; color: var(--green);">46 bpm</div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0;">
+                  <div style="font-size: 13px; color: var(--ink);">Load (ACWR)</div>
+                  <div style="font-family: var(--f-display); font-weight: 700; font-size: 16px; color: var(--green);">1.12</div>
+                </div>
+              </div>
+
+              <div style="font-family: var(--f-body); font-size: 11.5px; color: var(--mute); line-height: 1.5; padding: 0 4px;">
+                Tap <span style="color: var(--goal);">Something's off?</span> to branch into log-a-niggle or log-being-sick.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">OPTION 3 · READINESS MODAL · CONTEXTUAL FALLBACK</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>What ships:</b> Option 1 chips on <code>/today</code> are the v1 entry. Option 2 (<code>/profile</code> rows) ships alongside as a discoverability backup — the same modals open from both surfaces. Option 3 (readiness ring branch) is a v1.1 add — it requires the ring component first, which is a separate spec.
+      <br><br>
+      <b>Risk on Option 1:</b> two more chips below the Sibling adds 38px of vertical weight to <code>/today</code>. The Sibling tile grid already takes ~200px on phone. Total scroll cost: small. Worth it for discoverability.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 2 · NIGGLE MODAL ═══════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 02 · NIGGLE MODAL</div>
+        <h2 class="d-title">Where, how bad,<br>how long.</h2>
+      </div>
+      <p class="d-desc">
+        Niggle = mild musculoskeletal flag. Runner can still train. The modal captures four things: <b>where</b> (body diagram + left/right radio), <b>severity</b> (1–10 with runner-honest anchors), <b>status</b> (just started / few days / weeks), and <b>notes</b> (optional). One screen, no swipes.
+      </p>
+      <p class="d-desc">
+        <b>Body diagram</b> is clinical and labelled. Front + back view side-by-side. Tap a region to select. Common run-injury hotspots (hamstring, calf, Achilles, ITB, knee, hip, plantar, shin) are softly highlighted so the runner knows the menu without us shouting it.
+      </p>
+    </div>
+
+    <div class="mockrow single">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-notch"></div>
+          <div class="phone-status">
+            <span class="time">9:41</span>
+            <span class="right">5G · 87%</span>
+          </div>
+          <div class="modal-screen">
+            <div class="modal-head">
+              <div class="modal-title">Log a niggle.</div>
+              <div class="modal-close">Cancel</div>
+            </div>
+            <div class="modal-body">
+
+              <!-- WHERE -->
+              <div class="field-block">
+                <div class="field-label">WHERE</div>
+                <div class="side-radio">
+                  <div class="side-pill">LEFT</div>
+                  <div class="side-pill on">RIGHT</div>
+                  <div class="side-pill">BOTH</div>
+                </div>
+                <div class="body-diagram">
+
+                  <!-- FRONT view SVG -->
+                  <div class="body-side">
+                    <div class="body-side-label">FRONT</div>
+                    <svg class="body-svg" viewBox="0 0 90 200" xmlns="http://www.w3.org/2000/svg" aria-label="Front body diagram">
+                      <!-- silhouette · body fill -->
+                      <g fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.18)" stroke-width="0.6">
+                        <!-- head -->
+                        <ellipse cx="45" cy="12" rx="8" ry="10"/>
+                        <!-- neck -->
+                        <rect x="42" y="20" width="6" height="6" rx="2"/>
+                        <!-- torso -->
+                        <path d="M30 28 Q33 25 45 25 Q57 25 60 28 L62 60 Q62 75 58 88 L32 88 Q28 75 28 60 Z"/>
+                        <!-- arms -->
+                        <path d="M30 30 Q22 42 21 60 Q20 78 23 92 L26 92 Q23 78 24 62 Q25 46 32 36 Z"/>
+                        <path d="M60 30 Q68 42 69 60 Q70 78 67 92 L64 92 Q67 78 66 62 Q65 46 58 36 Z"/>
+                        <!-- pelvis -->
+                        <path d="M32 88 L58 88 L60 110 L52 112 L45 110 L38 112 L30 110 Z"/>
+                        <!-- L thigh (runner's left = viewer's right) -->
+                        <path d="M45 110 L52 112 L57 115 L57 158 L48 158 L45 130 Z"/>
+                        <!-- R thigh (runner's right = viewer's left) -->
+                        <path d="M45 110 L38 112 L33 115 L33 158 L42 158 L45 130 Z"/>
+                        <!-- knees -->
+                        <ellipse cx="37" cy="160" rx="5" ry="3"/>
+                        <ellipse cx="53" cy="160" rx="5" ry="3"/>
+                        <!-- L shin -->
+                        <path d="M48 162 L56 162 L55 193 L49 193 Z"/>
+                        <!-- R shin -->
+                        <path d="M34 162 L42 162 L41 193 L35 193 Z"/>
+                        <!-- feet -->
+                        <ellipse cx="38" cy="196" rx="6" ry="3"/>
+                        <ellipse cx="52" cy="196" rx="6" ry="3"/>
+                      </g>
+
+                      <!-- hotspot · R QUAD (selected) -->
+                      <circle cx="38" cy="135" r="6.5" fill="rgba(243,173,56,0.85)" stroke="rgba(255,255,255,0.9)" stroke-width="1.4"/>
+                      <text x="38" y="138" text-anchor="middle" font-family="Inter" font-size="6" font-weight="700" fill="#0a0c10">●</text>
+
+                      <!-- hotspots · soft highlights -->
+                      <circle cx="53" cy="135" r="4.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="37" cy="160" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="53" cy="160" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="37" cy="178" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="53" cy="178" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="38" cy="196" r="3.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="52" cy="196" r="3.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="37" cy="100" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="53" cy="100" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+
+                      <!-- labels (tiny) -->
+                      <g font-family="Inter" font-size="4.4" font-weight="700" fill="rgba(255,255,255,0.55)">
+                        <text x="69" y="103" text-anchor="start">HIP</text>
+                        <text x="69" y="136" text-anchor="start">QUAD</text>
+                        <text x="69" y="161" text-anchor="start">KNEE</text>
+                        <text x="69" y="180" text-anchor="start">SHIN</text>
+                      </g>
+                    </svg>
+                  </div>
+
+                  <!-- BACK view SVG -->
+                  <div class="body-side">
+                    <div class="body-side-label">BACK</div>
+                    <svg class="body-svg" viewBox="0 0 90 200" xmlns="http://www.w3.org/2000/svg" aria-label="Back body diagram">
+                      <g fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.18)" stroke-width="0.6">
+                        <!-- head -->
+                        <ellipse cx="45" cy="12" rx="8" ry="10"/>
+                        <!-- neck -->
+                        <rect x="42" y="20" width="6" height="6" rx="2"/>
+                        <!-- torso -->
+                        <path d="M30 28 Q33 25 45 25 Q57 25 60 28 L62 60 Q62 75 58 88 L32 88 Q28 75 28 60 Z"/>
+                        <!-- arms -->
+                        <path d="M30 30 Q22 42 21 60 Q20 78 23 92 L26 92 Q23 78 24 62 Q25 46 32 36 Z"/>
+                        <path d="M60 30 Q68 42 69 60 Q70 78 67 92 L64 92 Q67 78 66 62 Q65 46 58 36 Z"/>
+                        <!-- glutes -->
+                        <path d="M32 88 L58 88 L60 112 L45 116 L30 112 Z"/>
+                        <!-- L hamstring -->
+                        <path d="M45 116 L60 112 L58 158 L48 158 L45 130 Z"/>
+                        <!-- R hamstring -->
+                        <path d="M45 116 L30 112 L32 158 L42 158 L45 130 Z"/>
+                        <!-- knees (back) -->
+                        <ellipse cx="37" cy="160" rx="5" ry="3"/>
+                        <ellipse cx="53" cy="160" rx="5" ry="3"/>
+                        <!-- L calf -->
+                        <path d="M48 162 L57 162 Q57 175 55 193 L49 193 Z"/>
+                        <!-- R calf -->
+                        <path d="M33 162 L42 162 Q42 175 41 193 L35 193 Z"/>
+                        <!-- Achilles + heels -->
+                        <ellipse cx="38" cy="196" rx="6" ry="3"/>
+                        <ellipse cx="52" cy="196" rx="6" ry="3"/>
+                      </g>
+
+                      <!-- hotspots · highlights -->
+                      <circle cx="37" cy="140" r="4.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="53" cy="140" r="4.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="37" cy="176" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="53" cy="176" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="38" cy="190" r="3" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="52" cy="190" r="3" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="37" cy="100" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="53" cy="100" r="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <!-- ITB (outer thigh) -->
+                      <circle cx="29" cy="142" r="3.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+                      <circle cx="61" cy="142" r="3.5" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" stroke-width="0.5"/>
+
+                      <g font-family="Inter" font-size="4.4" font-weight="700" fill="rgba(255,255,255,0.55)">
+                        <text x="69" y="103" text-anchor="start">GLUTE</text>
+                        <text x="69" y="143" text-anchor="start">HAM</text>
+                        <text x="69" y="179" text-anchor="start">CALF</text>
+                        <text x="69" y="193" text-anchor="start">ACH.</text>
+                        <text x="20" y="145" text-anchor="end">ITB</text>
+                      </g>
+                    </svg>
+                  </div>
+                </div>
+                <div style="font-family: var(--f-body); font-size: 11px; color: var(--mute); margin-top: 2px;">Tap a region. Tap again to clear. <b style="color: rgba(243,173,56,0.95);">R quad selected.</b></div>
+              </div>
+
+              <!-- SEVERITY -->
+              <div class="field-block">
+                <div class="field-label">SEVERITY · HOW BAD</div>
+                <div class="sev-scale">
+                  <div class="sev-row">
+                    <div class="sev-pip on1">1</div>
+                    <div class="sev-pip on1">2</div>
+                    <div class="sev-pip on1">3</div>
+                    <div class="sev-pip on2">4</div>
+                    <div class="sev-pip on2">5</div>
+                    <div class="sev-pip">6</div>
+                    <div class="sev-pip">7</div>
+                    <div class="sev-pip">8</div>
+                    <div class="sev-pip">9</div>
+                    <div class="sev-pip">10</div>
+                  </div>
+                  <div class="sev-anchors">
+                    <div><b>1 · Annoying</b>You'd ignore it.</div>
+                    <div class="mid"><b>5 · Stop &amp; stretch</b>Mid-run noticing.</div>
+                    <div class="right"><b>10 · Can't run</b>Walking hurts.</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- STATUS -->
+              <div class="field-block">
+                <div class="field-label">STATUS · HOW LONG</div>
+                <div class="chip-row">
+                  <div class="chip on">Just started</div>
+                  <div class="chip">Few days now</div>
+                  <div class="chip">Weeks of it</div>
+                </div>
+              </div>
+
+              <!-- NOTES -->
+              <div class="field-block">
+                <div class="field-label">NOTES · OPTIONAL</div>
+                <div class="ta-field">Came on at mile 4 of Sunday's long. Loosens up walking. No pain at rest.</div>
+              </div>
+
+              <div style="height: 8px;"></div>
+            </div>
+            <div class="modal-cta">
+              <div class="cta sec">Cancel</div>
+              <div class="cta pri">Log niggle</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">NIGGLE MODAL · FULL-SCREEN ON PHONE</div>
+
+    <div class="note">
+      <b>Severity framing matters.</b> The medical 0–10 scale anchors at "10 = childbirth" which is useless for runners. Faff anchors at <b>1 = annoying, 5 = stop-and-stretch mid-run, 10 = can't run.</b> Honest. Runner can self-calibrate. Resolver thresholds (per <code>resolver/states.md</code> §07: niggle modifier when <code>max_grade &lt; 4</code>) map to severity ≤ 4 on this scale.
+      <br><br>
+      <b>Body diagram tappable regions:</b> hip · quad · knee · shin · foot · glute · hamstring · calf · Achilles · ITB · plantar (under-foot, on a foot-detail tap-through). Soft circle highlights show the common run-injury hotspots without making it a colouring book.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 3 · SICK MODAL ═══════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 03 · SICK MODAL</div>
+        <h2 class="d-title">Symptoms,<br>when, fever.</h2>
+      </div>
+      <p class="d-desc">
+        Sick = systemic illness. Plan pauses entirely. The modal captures <b>symptoms</b> (multi-select chips), <b>when</b> it started, <b>fever yes/no</b> (with a hard "DO NOT RUN" line surfacing on yes), and <b>notes</b> (optional). Less clinical, more humane than the niggle modal.
+      </p>
+      <p class="d-desc">
+        Tone is quiet. No alarming red except where it matters: the fever-positive banner. The CTA is <b>"Pause the plan"</b> — language that frames sick-logging as a deliberate, controlled action, not a defeat.
+      </p>
+    </div>
+
+    <div class="mockrow single">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-notch"></div>
+          <div class="phone-status">
+            <span class="time">9:41</span>
+            <span class="right">5G · 87%</span>
+          </div>
+          <div class="modal-screen">
+            <div class="modal-head">
+              <div class="modal-title">I'm not well.</div>
+              <div class="modal-close">Cancel</div>
+            </div>
+            <div class="modal-body">
+
+              <!-- SYMPTOMS -->
+              <div class="field-block">
+                <div class="field-label">SYMPTOMS · TAP ALL THAT APPLY</div>
+                <div class="symptom-grid">
+                  <div class="chip sym on"><span class="check">✓</span>Head cold</div>
+                  <div class="chip sym"><span class="check"></span>Chest congestion</div>
+                  <div class="chip sym on"><span class="check">✓</span>Fever</div>
+                  <div class="chip sym"><span class="check"></span>GI / stomach</div>
+                  <div class="chip sym"><span class="check"></span>Body aches</div>
+                  <div class="chip sym on"><span class="check">✓</span>Fatigue</div>
+                  <div class="chip sym"><span class="check"></span>Lost voice</div>
+                  <div class="chip sym"><span class="check"></span>Other</div>
+                </div>
+              </div>
+
+              <!-- STARTED -->
+              <div class="field-block">
+                <div class="field-label">STARTED</div>
+                <div class="chip-row">
+                  <div class="chip">Today</div>
+                  <div class="chip on">Yesterday</div>
+                  <div class="chip">2–3 days ago</div>
+                </div>
+                <div style="margin-top: 6px;">
+                  <div class="chip" style="width: 100%; box-sizing: border-box;">A week or more</div>
+                </div>
+              </div>
+
+              <!-- FEVER -->
+              <div class="field-block">
+                <div class="field-label">FEVER · ABOVE 100°F / 37.8°C</div>
+                <div class="fever-toggle on">
+                  <div class="ft-left">
+                    Yes, I have a fever
+                    <span class="meta">Above 100°F / 37.8°C</span>
+                  </div>
+                  <div class="ft-switch"></div>
+                </div>
+                <div class="donotrun">
+                  <div class="dnr-head">DO NOT RUN.</div>
+                  <div class="dnr-body">
+                    Training with a fever raises core temperature further, risks dehydration, and in rare cases triggers <b>myocarditis</b>. The body needs rest, fluids, and time. The plan will resume when your fever is gone for 24h and your RHR is within 5 bpm of baseline.
+                  </div>
+                  <div class="dnr-cite">Cite · research/methodology/05-injury-return-protocols.md · §recovery gates</div>
+                </div>
+              </div>
+
+              <!-- NOTES -->
+              <div class="field-block">
+                <div class="field-label">NOTES · OPTIONAL</div>
+                <div class="ta-field">Started feeling rough after Sunday's long run. Sore throat by Monday evening. Temp 100.4 this morning.</div>
+              </div>
+
+              <div style="height: 8px;"></div>
+            </div>
+            <div class="modal-cta">
+              <div class="cta sec">Cancel</div>
+              <div class="cta pri sick">Pause the plan</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">SICK MODAL · FEVER TOGGLE ON (DO-NOT-RUN BANNER SURFACED)</div>
+
+    <div class="note">
+      <b>Fever as a hard gate.</b> Fever yes → surfaces the "DO NOT RUN" line citing the recovery doctrine. This is a deterministic copy block, not LLM-generated — it has to read the same every time. The return condition (24h fever-free + RHR within 5 bpm of baseline) ties to <code>research/methodology/05-injury-return-protocols.md</code> §general principles.
+      <br><br>
+      <b>"Pause the plan" framing.</b> Not "I give up", not "I quit today". A pause. The plan resumes when the body says it can.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 4 · NIGGLE STATE ON /TODAY ═══════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 04 · NIGGLE STATE</div>
+        <h2 class="d-title">After logging.<br>Niggle on /today.</h2>
+      </div>
+      <p class="d-desc">
+        Once logged, <code>/today</code> routes through the niggle state. Poster gradient shifts from <code>--g-easy</code> (green) to <code>--g-niggle</code> (green → amber → burnt-brown). Verb keeps base shape with an italic suffix line. Sibling switches to "Niggle watch" with the body part + days active + bail trigger.
+      </p>
+      <p class="d-desc">
+        The new card below the Sibling is the <b>workout breakdown · adjusted</b>: today's planned workout with niggle-aware modifications struck through and amber-tagged. "Skip the strides", "cap HR at 140 instead of 148." Deterministic, citation-backed, not LLM prose.
+      </p>
+    </div>
+
+    <div class="mockrow single">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-notch"></div>
+          <div class="phone-status over-gradient">
+            <span class="time">9:41</span>
+            <span class="right">5G · 87%</span>
+          </div>
+          <div class="ph-body">
+            <div class="poster niggle">
+              <div class="p-eye">THU · MAY 28 · BASE · WATCH R QUAD</div>
+              <h3 class="p-verb">RUN EASY.</h3>
+              <div class="p-verb-suffix">— Listen to it. R quad day 2.</div>
+              <div class="p-phase">BASE · WK 5/12 · MODIFIED</div>
+              <div class="stat-trio">
+                <div class="stat-cell">
+                  <div class="stat-v">8:45</div>
+                  <div class="stat-l">PACE / MI</div>
+                </div>
+                <div class="stat-cell">
+                  <div class="stat-v amber">140</div>
+                  <div class="stat-l">HR CAP · DOWN</div>
+                </div>
+                <div class="stat-cell">
+                  <div class="stat-v">4.0</div>
+                  <div class="stat-l">MI · CUT BACK</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sibling">
+              <div class="sib-title">
+                <span class="sib-main">Niggle watch</span>
+                <span class="sib-suffix">· R QUAD · DAY 2</span>
+              </div>
+              <p class="sib-prose">
+                Logged Tue evening · grade <b>3/10</b>. No pain at rest, slight tightness in the first mile. <b>Bail if grade jumps to 5</b> or pain doesn't fade after mile 2.
+              </p>
+              <div class="tilegrid">
+                <div class="tile">
+                  <div class="tile-dot amber"></div>
+                  <div class="tile-label">SEVERITY</div>
+                  <div class="tile-value">3</div>
+                  <div class="tile-meta">out of 10</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot"></div>
+                  <div class="tile-label">DAYS ACTIVE</div>
+                  <div class="tile-value">2</div>
+                  <div class="tile-meta">→ physio at 7</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot"></div>
+                  <div class="tile-label">LAST RUN</div>
+                  <div class="tile-value">OK</div>
+                  <div class="tile-meta">no flare yesterday</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot red"></div>
+                  <div class="tile-label">BAIL TRIGGER</div>
+                  <div class="tile-value">5/10</div>
+                  <div class="tile-meta">or post-mile-2 pain</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="breakdown">
+              <div class="bk-head">
+                <div class="bk-title">Today · adjusted</div>
+                <div class="bk-adj-tag">NIGGLE-AWARE</div>
+              </div>
+              <div class="bk-rows">
+                <div class="bk-row">
+                  <div class="bk-label">PACE</div>
+                  <div class="bk-text"><b>Slower than planned.</b> Aerobic only.</div>
+                  <div class="bk-tail">8:45/mi</div>
+                </div>
+                <div class="bk-row">
+                  <div class="bk-label">HR CAP</div>
+                  <div class="bk-text"><b>140 bpm</b> instead of 148. Keep the quad easy.</div>
+                  <div class="bk-tail">140</div>
+                </div>
+                <div class="bk-row">
+                  <div class="bk-label">DISTANCE</div>
+                  <div class="bk-text">Cut to <b>4.0 mi</b> from 6.1. Bail at mile 2 if it bites.</div>
+                  <div class="bk-tail">4.0 mi</div>
+                </div>
+                <div class="bk-row strike">
+                  <div class="bk-label">STRIDES</div>
+                  <div class="bk-text">4 × 20s post-run strides</div>
+                  <div class="bk-tail">skipped</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">NIGGLE STATE · POSTER + SIBLING + ADJUSTED BREAKDOWN</div>
+
+    <div class="note">
+      <b>The adjustments are deterministic.</b> "Strides struck through · HR cap −8 bpm · distance cut to ~65%" are coded rules tied to severity grade per <code>research/methodology/05-injury-return-protocols.md</code> §1.2 (pain-monitoring rules · 0–2 green, 3–5 amber). Grade ≤2: keep workout, watch only. Grade 3: cap intensity. Grade 4: cut volume too. Grade 5+: route to a "should you run?" interstitial (v1.x).
+      <br><br>
+      <b>Poster verb keeps base shape.</b> <code>RUN EASY.</code> stays the verb — niggle is a modifier, not a state. The italic suffix "Listen to it. R quad day 2." is the modifier signal per <code>resolver/states.md</code> §07.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 5 · SICK STATE ON /TODAY ═══════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 05 · SICK STATE</div>
+        <h2 class="d-title">After logging.<br>Sick on /today.</h2>
+      </div>
+      <p class="d-desc">
+        Sick state routes to a quiet slate Poster (<code>--g-sick</code>), verb <b>"REST."</b>, Sibling shows symptoms + return condition. The WeekStrip below shows the rest of the week <b>dimmed</b> — the plan is paused, not deleted.
+      </p>
+      <p class="d-desc">
+        Stat trio replaced with anti-anxiety chips: <b>days paused · symptoms count · return condition</b>. No body data on display — the focus is recovery, not metrics.
+      </p>
+    </div>
+
+    <div class="mockrow single">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-notch"></div>
+          <div class="phone-status over-gradient">
+            <span class="time">9:41</span>
+            <span class="right">5G · 87%</span>
+          </div>
+          <div class="ph-body">
+            <div class="poster sick">
+              <div class="p-eye">FRI · MAY 29 · BODY FIGHTING · DAY 2</div>
+              <h3 class="p-verb">REST.</h3>
+              <div class="p-verb-suffix">— Recover first. The plan waits.</div>
+              <div class="p-phase">STREAK AUTO-PAUSED · RESUMES ON RETURN</div>
+              <div class="stat-trio">
+                <div class="stat-cell">
+                  <div class="stat-v">2</div>
+                  <div class="stat-l">DAYS PAUSED</div>
+                </div>
+                <div class="stat-cell">
+                  <div class="stat-v">3</div>
+                  <div class="stat-l">SYMPTOMS</div>
+                </div>
+                <div class="stat-cell">
+                  <div class="stat-v" style="font-size: 22px;">FEVER−1</div>
+                  <div class="stat-l">RETURN GATE</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sibling">
+              <div class="sib-title">
+                <span class="sib-main">Body alert</span>
+                <span class="sib-suffix">· MANUAL · DAY 2</span>
+              </div>
+              <p class="sib-prose">
+                Logged Thu evening · <b>head cold · fever · fatigue</b>. Plan paused. Returns to easy when fever-free for 24h <b>and</b> RHR within 5 bpm of baseline.
+              </p>
+              <div class="tilegrid">
+                <div class="tile">
+                  <div class="tile-dot red"></div>
+                  <div class="tile-label">FEVER</div>
+                  <div class="tile-value">YES</div>
+                  <div class="tile-meta">do not run</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot amber"></div>
+                  <div class="tile-label">SLEEP</div>
+                  <div class="tile-value">9:12</div>
+                  <div class="tile-meta">body asking</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot red"></div>
+                  <div class="tile-label">RHR</div>
+                  <div class="tile-value">58</div>
+                  <div class="tile-meta">+12 vs base</div>
+                </div>
+                <div class="tile">
+                  <div class="tile-dot dim"></div>
+                  <div class="tile-label">PLAN</div>
+                  <div class="tile-value">PAUSED</div>
+                  <div class="tile-meta">until you mark recovered</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="weekstrip">
+              <div class="ws-head">
+                <div class="ws-title">This week</div>
+                <div class="ws-meta">Wk 5 · paused</div>
+              </div>
+              <div class="ws-days">
+                <div class="ws-day">
+                  <div class="ws-dow">MON</div>
+                  <div class="ws-num">25</div>
+                  <div class="ws-bar easy"></div>
+                </div>
+                <div class="ws-day">
+                  <div class="ws-dow">TUE</div>
+                  <div class="ws-num">26</div>
+                  <div class="ws-bar qual"></div>
+                </div>
+                <div class="ws-day">
+                  <div class="ws-dow">WED</div>
+                  <div class="ws-num">27</div>
+                  <div class="ws-bar rest"></div>
+                </div>
+                <div class="ws-day today">
+                  <div class="ws-dow">THU</div>
+                  <div class="ws-num">28</div>
+                  <div class="ws-bar sick"></div>
+                </div>
+                <div class="ws-day dim">
+                  <div class="ws-dow">FRI</div>
+                  <div class="ws-num">29</div>
+                  <div class="ws-bar sick"></div>
+                </div>
+                <div class="ws-day dim">
+                  <div class="ws-dow">SAT</div>
+                  <div class="ws-num">30</div>
+                  <div class="ws-bar sick"></div>
+                </div>
+                <div class="ws-day dim">
+                  <div class="ws-dow">SUN</div>
+                  <div class="ws-num">31</div>
+                  <div class="ws-bar sick"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">SICK STATE · POSTER + SIBLING + WEEK PAUSED</div>
+
+    <div class="note">
+      <b>WeekStrip dim treatment.</b> Today (Thu) is the current day-state. Remaining days (Fri–Sun) drop to 32% opacity with neutral grey accent bars. The original planned workouts (long Sun, etc.) are preserved in data but the visual signal is clear: <b>nothing is running this week unless you say so</b>.
+      <br><br>
+      <b>"Return gate" chip.</b> "FEVER−1" reads as the gate state — fever needs to be gone for one more full day. Updates dynamically as the gate fills (see §07).
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 6 · NIGGLE RECOVERY ═══════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 06 · NIGGLE RECOVERY</div>
+        <h2 class="d-title">Daily check.<br>Better, same, worse, gone.</h2>
+      </div>
+      <p class="d-desc">
+        Each day the niggle modifier is active, <code>/today</code> opens with a quick check at the top: <b>"How's the R quad?"</b> with four chips: <b>BETTER · SAME · WORSE · GONE</b>. Tap-once interaction; result writes to the niggle's daily log and feeds back into the resolver.
+      </p>
+      <p class="d-desc">
+        <b>GONE</b> clears the modifier and routes back to base 4. <b>WORSE</b> escalates the grade by 1 and re-evaluates the adjustment. <b>SAME</b> holds. <b>BETTER</b> drops a grade after two consecutive better-days.
+      </p>
+      <p class="d-desc">
+        <b>Persistent niggle &gt; 7 days</b> surfaces a deterministic "consider seeing a physio" cue, citing the medical-referral red flags from <code>research/methodology/05-injury-return-protocols.md</code> §1.6.
+      </p>
+    </div>
+
+    <div class="mockrow pair">
+
+      <!-- mock A · daily check -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G · 87%</span>
+            </div>
+            <div class="ph-body">
+
+              <div class="rec-card">
+                <div style="font-family: var(--f-body); font-weight: 700; font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--mute); margin-bottom: 10px;">DAY 3 · NIGGLE WATCH</div>
+                <div class="rec-q">How's the<br>R quad?</div>
+                <div class="rec-quick">
+                  <div class="chip green">BETTER</div>
+                  <div class="chip muted">SAME</div>
+                  <div class="chip amber">WORSE</div>
+                  <div class="chip muted">GONE</div>
+                </div>
+                <div style="font-family: var(--f-body); font-size: 11.5px; color: var(--mute); margin-top: 14px; line-height: 1.5;">
+                  Tap one. Updates today's workout if needed.
+                </div>
+              </div>
+
+              <div class="poster niggle">
+                <div class="p-eye">SAT · MAY 30 · BASE · WATCH R QUAD</div>
+                <h3 class="p-verb" style="font-size: 44px;">RUN EASY.</h3>
+                <div class="p-verb-suffix">— R quad day 3. Still watching.</div>
+                <div class="p-phase">BASE · WK 5/12</div>
+                <div class="stat-trio">
+                  <div class="stat-cell">
+                    <div class="stat-v">8:45</div>
+                    <div class="stat-l">PACE / MI</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-v">140</div>
+                    <div class="stat-l">HR CAP</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-v">4.5</div>
+                    <div class="stat-l">MILES</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+        <div class="caption">DAILY CHECK · TOP OF /today</div>
+      </div>
+
+      <!-- mock B · 7-day escalation -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G · 87%</span>
+            </div>
+            <div class="ph-body">
+
+              <div class="rec-card">
+                <div style="font-family: var(--f-body); font-weight: 700; font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--mute); margin-bottom: 10px;">DAY 8 · NIGGLE WATCH</div>
+                <div class="rec-q">How's the<br>R quad?</div>
+                <div class="rec-quick">
+                  <div class="chip muted">BETTER</div>
+                  <div class="chip muted">SAME</div>
+                  <div class="chip amber">WORSE</div>
+                  <div class="chip muted">GONE</div>
+                </div>
+
+                <div class="physio-banner">
+                  <div class="pb-head">Consider seeing a physio.</div>
+                  <div class="pb-body">
+                    The R quad has been in the watch list for <b>8 days</b>. Persistent loading pain past a week is the threshold where coach guidance ends and clinical input begins.
+                  </div>
+                  <div class="pb-cite">Cite · research/methodology/05-injury-return-protocols.md · §1.6 medical referral</div>
+                </div>
+              </div>
+
+              <div class="sibling">
+                <div class="sib-title">
+                  <span class="sib-main">Niggle watch</span>
+                  <span class="sib-suffix">· R QUAD · DAY 8</span>
+                </div>
+                <p class="sib-prose">
+                  Grade dropped from <b>3 → 2</b> over the week. Better, but still there. <b>Past day 7</b> is where Faff stops being the right coach.
+                </p>
+                <div class="tilegrid">
+                  <div class="tile">
+                    <div class="tile-dot amber"></div>
+                    <div class="tile-label">SEVERITY</div>
+                    <div class="tile-value">2</div>
+                    <div class="tile-meta">down from 3</div>
+                  </div>
+                  <div class="tile">
+                    <div class="tile-dot red"></div>
+                    <div class="tile-label">DAYS ACTIVE</div>
+                    <div class="tile-value">8</div>
+                    <div class="tile-meta">physio threshold</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+        <div class="caption">DAY 8 · PHYSIO ESCALATION</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Daily check is one-tap.</b> Four chips, one of which is the result. No notes, no modal. The check exists at the top of <code>/today</code> until the runner taps something — then it collapses into the Sibling and the Poster reflects the resolver's new pick.
+      <br><br>
+      <b>Physio escalation threshold = 7 days.</b> Derived from the doctrine: most overuse injuries that persist past a week despite load management benefit from clinical assessment. The cue is deterministic and one-shot — it doesn't nag past day 8.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ SECTION 7 · SICK RECOVERY ═══════════════════════ -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 07 · SICK RECOVERY</div>
+        <h2 class="d-title">Doctrine-gated<br>return to running.</h2>
+      </div>
+      <p class="d-desc">
+        The return-to-run gate is not "I feel better." It's three conditions, all measurable: <b>24h fever-free</b>, <b>RHR within 5 bpm of baseline</b>, <b>slept &gt; 7h last night</b>. Until all three turn green, <code>/today</code> shows the gate progress and keeps the plan paused.
+      </p>
+      <p class="d-desc">
+        When the gate clears, the next morning <code>/today</code> opens with a soft "Ready to run?" surface — an easy 30-min run prescribed. One tap confirms; the sick state clears and the plan resumes.
+      </p>
+    </div>
+
+    <div class="mockrow pair">
+
+      <!-- mock A · return gate progress -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status over-gradient">
+              <span class="time">9:41</span>
+              <span class="right">5G · 87%</span>
+            </div>
+            <div class="ph-body">
+              <div class="poster sick">
+                <div class="p-eye">SUN · MAY 31 · BODY FIGHTING · DAY 4</div>
+                <h3 class="p-verb" style="font-size: 44px;">REST.</h3>
+                <div class="p-verb-suffix">— Two of three gates clear.</div>
+                <div class="p-phase">RETURN WHEN GATES TURN GREEN</div>
+                <div class="stat-trio">
+                  <div class="stat-cell">
+                    <div class="stat-v">4</div>
+                    <div class="stat-l">DAYS OFF</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-v" style="color: var(--green);">2/3</div>
+                    <div class="stat-l">GATES</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-v" style="font-size: 22px;">RHR</div>
+                    <div class="stat-l">STILL ELEVATED</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="gate">
+                <div class="gate-head">RETURN GATE · ALL 3 NEEDED</div>
+                <div class="gate-row met">
+                  <div class="gate-check">✓</div>
+                  <div class="gate-text met">Fever-free for 24h</div>
+                  <div class="gate-tail">CLEAR</div>
+                </div>
+                <div class="gate-row met">
+                  <div class="gate-check">✓</div>
+                  <div class="gate-text met">Slept &gt; 7h last night</div>
+                  <div class="gate-tail">7:42</div>
+                </div>
+                <div class="gate-row">
+                  <div class="gate-check"></div>
+                  <div class="gate-text">RHR within 5 bpm of baseline</div>
+                  <div class="gate-tail">+8 bpm</div>
+                </div>
+              </div>
+
+              <div style="font-family: var(--f-body); font-size: 11.5px; color: var(--mute); padding: 0 4px; line-height: 1.5;">
+                <b style="color: var(--ink);">RHR baseline = 46.</b> Yours is 54 this morning. Another day or two of rest typically closes that.
+                <div style="margin-top: 8px; font-size: 9px; letter-spacing: 1px; text-transform: uppercase;">CITE · 00b-recovery-protocols.md · §incomplete recovery</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">GATE 2/3 · STILL PAUSED</div>
+      </div>
+
+      <!-- mock B · ready to run -->
+      <div>
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status over-gradient">
+              <span class="time">9:41</span>
+              <span class="right">5G · 87%</span>
+            </div>
+            <div class="ph-body">
+
+              <div class="r2r-card">
+                <div class="r2r-eye">TUE · JUN 2 · RETURN DAY</div>
+                <h3 class="r2r-verb">Ready to run?</h3>
+                <p class="r2r-prose">
+                  All three gates clear. <b>Start with a soft easy run</b> — 30 minutes, conversational, walk if the body asks.
+                </p>
+                <div class="r2r-stat">
+                  <div class="stat-cell">
+                    <div class="stat-v">30</div>
+                    <div class="stat-l">MINUTES</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-v">~3</div>
+                    <div class="stat-l">MILES</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-v">140</div>
+                    <div class="stat-l">HR CAP</div>
+                  </div>
+                </div>
+                <div class="r2r-cta">Run today</div>
+              </div>
+
+              <div class="gate">
+                <div class="gate-head">ALL GATES MET</div>
+                <div class="gate-row met">
+                  <div class="gate-check">✓</div>
+                  <div class="gate-text met">Fever-free for 72h</div>
+                  <div class="gate-tail">CLEAR</div>
+                </div>
+                <div class="gate-row met">
+                  <div class="gate-check">✓</div>
+                  <div class="gate-text met">Slept 7:48 last night</div>
+                  <div class="gate-tail">CLEAR</div>
+                </div>
+                <div class="gate-row met">
+                  <div class="gate-check">✓</div>
+                  <div class="gate-text met">RHR 48 (base 46)</div>
+                  <div class="gate-tail">CLEAR</div>
+                </div>
+              </div>
+
+              <div style="font-family: var(--f-body); font-size: 11.5px; color: var(--mute); padding: 0 4px; line-height: 1.5;">
+                Tap <b style="color: var(--ink);">Run today</b> and the plan resumes from where it paused.
+              </div>
+
+            </div>
+          </div>
+        </div>
+        <div class="caption">ALL GATES CLEAR · READY-TO-RUN HERO</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Why three gates, not feel.</b> "I feel better" is unreliable — runners are biased to under-report illness when a plan is calling. The three measurable gates remove the self-talk: fever, sleep, RHR. All have wearable data feeding them; nothing requires the runner to self-diagnose.
+      <br><br>
+      <b>"Run today" is the only action.</b> Not "back to plan", not "resume training" — start small, prove the body is back, then let the plan engine pick tomorrow's workout. The next day's resolver pick proceeds normally from there.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+  <footer class="footer">
+
+    <h3>Data capture · field summary</h3>
+    <div class="meta-tag">WHAT GETS WRITTEN ON LOG · v1 SCHEMA</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 16%;">Modal</th>
+          <th style="width: 22%;">Field</th>
+          <th style="width: 22%;">Type</th>
+          <th>Resolver feed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td rowspan="6"><b>Niggle</b></td><td>body_part</td><td>enum (10 hotspots + foot subview)</td><td><code>niggles.active[].body_part</code></td></tr>
+        <tr><td>side</td><td>left · right · both</td><td><code>.side</code></td></tr>
+        <tr><td>severity</td><td>int 1–10 (runner-anchored)</td><td><code>.max_grade</code> mapped to /5 scale</td></tr>
+        <tr><td>status</td><td>enum (just-started · few-days · weeks)</td><td><code>.duration_bucket</code></td></tr>
+        <tr><td>notes</td><td>string (optional)</td><td><code>.notes</code> (display only, not in resolver)</td></tr>
+        <tr><td>logged_at</td><td>timestamp (auto)</td><td><code>.logged_at</code> · days-active math</td></tr>
+
+        <tr><td rowspan="5"><b>Sick</b></td><td>symptoms</td><td>enum array (8 chips)</td><td><code>runner_illnesses.active.symptoms</code></td></tr>
+        <tr><td>started</td><td>enum (today · yesterday · 2-3d · 1wk+)</td><td><code>.started_bucket</code></td></tr>
+        <tr><td>fever</td><td>bool</td><td><code>.fever</code> · gates the DO-NOT-RUN copy + return gate</td></tr>
+        <tr><td>notes</td><td>string (optional)</td><td><code>.notes</code></td></tr>
+        <tr><td>logged_at</td><td>timestamp (auto)</td><td><code>.logged_at</code> · days-paused math + return gate</td></tr>
+
+        <tr><td rowspan="2"><b>Niggle recovery (daily)</b></td><td>check_response</td><td>enum (better · same · worse · gone)</td><td><code>niggles.active[].daily_log[]</code></td></tr>
+        <tr><td>logged_at</td><td>timestamp (auto)</td><td><code>.daily_log[].logged_at</code></td></tr>
+
+        <tr><td><b>Sick recovery</b></td><td>(no fields)</td><td>auto-gated · runner taps "Run today" once gate clears</td><td><code>runner_illnesses.recovered_at = NOW()</code></td></tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top: 18px;"><b>Niggle: 6 fields · Sick: 5 fields · Niggle recovery: 2 fields · Sick recovery: 0 fields (gate-driven).</b></p>
+
+    <h3>Open design questions</h3>
+    <ul>
+      <li><b>Foot detail subview.</b> The body diagram main grid has "foot" as a tappable region — but plantar / metatarsal / Achilles insertion need a foot-detail tap-through. Designed as out-of-scope for v1 (catch-all "foot" enum). Worth designing in v1.1.</li>
+      <li><b>Severity scale 1–10 vs 1–5.</b> Resolver doctrine (<code>states.md</code> §07) uses <code>max_grade &lt; 4</code> on a 1–5 scale. The runner-facing 1–10 is more intuitive but creates a mapping step. Mapping ratio = severity / 2, rounded. Confirmed before implementation.</li>
+      <li><b>Multi-niggle UI.</b> Spec allows ≥2 active niggles ("2 niggles in watch" suffix). Two simultaneous niggles isn't designed here — every mockup shows one. Worth a second pass.</li>
+      <li><b>"Other" symptom on Sick.</b> Tapping it should open a text field — currently the chip is shown as a binary on/off. Decide whether "Other" is silent (just a flag) or prompts for free text.</li>
+      <li><b>Sick-gate sleep threshold.</b> Used <b>&gt;7h last night</b> as the third gate. Doctrine in <code>research/doctrine/foundations/00b-recovery-protocols.md</code> may pin a different threshold — confirm before locking.</li>
+      <li><b>RHR baseline source.</b> Used "RHR within 5 bpm of baseline" — this requires a baseline value present. For runners without 14d of HRV+RHR data, the gate falls back to: <b>fever-free 48h + slept &gt; 7h</b>. Designed but not mockup'd; flag for review.</li>
+      <li><b>Niggle log entry from auto-detect.</b> Spec mentions post-v1 auto-detect for sick (HRV/RHR convergence). No equivalent for niggle. Runner-only entry is fine for v1 — flag for v1.1 if cadence-asymmetry detection lands.</li>
+    </ul>
+
+    <h3>My read · what to ship first</h3>
+    <p>
+      <b>Niggle modal + Niggle-on-/today first.</b> Niggles are the higher-frequency event — every runner has one a month. The capture flow is the bigger UX win. Sick is the safer rail (worst case, runner takes an unplanned rest day) and the doctrine + gates need a second look at the recovery thresholds before shipping.
+    </p>
+    <p>
+      <b>Ship order:</b>
+    </p>
+    <ul>
+      <li>v1 release 1: niggle entry (Option 1 chips · modal · niggle state · daily check) — covers ~80% of "the body says no" cases.</li>
+      <li>v1 release 2: sick entry (modal · sick state · WeekStrip dim · return gate · ready-to-run hero).</li>
+      <li>v1.1: foot-detail subview · multi-niggle support · readiness-ring entry (Option 3).</li>
+    </ul>
+
+    <h3>Citations</h3>
+    <ul>
+      <li><b>PROJECT.md</b> · Cardinal Rule 3 (every doctrine cites a source) · Cardinal Rule 4 (single source of truth — tokens, no inline)</li>
+      <li><b>design/resolver/states.md</b> · §07 niggle modifier · §08 sick state · the modal data shapes here are inputs to those states</li>
+      <li><b>design/components/Sibling.md</b> · the Sibling state-key for niggle / sick · title structure · prose templates</li>
+      <li><b>design/tokens/colors.css</b> · <code>--g-niggle</code> · <code>--g-sick</code> · semantic palette tokens</li>
+      <li><b>design/tokens/typography.css</b> · Oswald 700 display recipe (-0.015em tracking · 0.86 line-height) · Inter body</li>
+      <li><b>research/methodology/05-injury-return-protocols.md</b> · §1.2 pain monitoring (0–10 NRS · 0–2 green, 3–5 amber, 6+ red) · §1.6 medical referral (7-day persistence trigger)</li>
+      <li><b>research/doctrine/foundations/00b-recovery-protocols.md</b> · §incomplete recovery · §warning signs — feeds sick return-gate doctrine</li>
+      <li><b>research/doctrine/data/15-wearable-data.md</b> · §spotting illness early — direction for the HRV/RHR convergence; not used in the manual flow but cited in the spec'd auto-detect</li>
+    </ul>
+
+    <p style="margin-top: 32px; color: var(--mute);">
+      Faff · 2026-05-28 · niggle + sick logging · entry flow design
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>
