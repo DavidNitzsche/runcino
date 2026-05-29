@@ -55,6 +55,13 @@ export interface GlanceState {
   cadenceBaseline: number | null;
   daysToARace: number | null;
   nextARaceName: string | null;
+  // Pace-derivation inputs (Phase 47). LTHR + closest upcoming A-race goal →
+  // prescriptions.derivePaces() in glance-adapter, so the Poster fallback
+  // renders REAL pace/HR (never fixed placeholders) when a workout_spec is
+  // absent. null when the runner has no LTHR / no goal race.
+  lthr: number | null;
+  raceGoalSeconds: number | null;
+  raceGoalDistanceMi: number | null;
   readiness: ReadinessBreakdown;
   // Skip Today (P-SKIP, 2026-05-28): runner explicitly tapped SKIP on the
   // poster. Row lives in `day_actions` (migration 114). Distinct from rest
@@ -89,7 +96,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
 
   // Profile (just for name)
   const prof = (await pool.query(
-    `SELECT full_name, height_cm FROM profile WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me')
+    `SELECT full_name, height_cm, lthr FROM profile WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me')
       ORDER BY (user_uuid = $1) DESC LIMIT 1`,
     [userId]
   )).rows[0];
@@ -246,8 +253,16 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   const rhrBaseline = rhr.length ? Math.round(rhr.reduce((s, x) => s + x, 0) / rhr.length) : null;
 
   // HRV
+  // 2026-05-29 (anti-staleness): bound to a 60-day recency window like RHR
+  // above. Without it, a lapsed HealthKit sync left `current` and the
+  // 30-sample `baseline` drawn from the same stale era → pct≈0, so HRV
+  // silently contributed a neutral value at its full 25% weight and diluted
+  // the real signal. With the window, a stale-only history yields no samples
+  // → hrvCurrent null → readiness drops HRV to weight 0 ("no data") and
+  // re-weights the remaining pillars (see readiness.ts §HRV).
   const hrv = (await pool.query(
     `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'hrv'
+       AND recorded_at >= NOW() - interval '60 days'
        ORDER BY recorded_at DESC LIMIT 30`,
     [userId]
   )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
@@ -371,6 +386,38 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     pendingIntents: [], shoes: [],
   });
 
+  // Pace-derivation inputs (Phase 47 · /today fallback). LTHR + the closest
+  // upcoming A-race goal feed prescriptions.derivePaces() in the adapter so
+  // the Poster shows REAL pace/HR when a per-workout spec is absent — instead
+  // of fixed, fitness-agnostic placeholder strings. Mirrors the profile+race
+  // reads in GET /api/prescription so the two paths agree.
+  const lthr = prof?.lthr != null ? Number(prof.lthr) : null;
+  let raceGoalSeconds: number | null = null;
+  let raceGoalDistanceMi: number | null = null;
+  {
+    const goalRow = (await pool.query(
+      `SELECT meta FROM races
+        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          AND meta->>'priority' = 'A'
+          AND meta->>'goalDisplay' IS NOT NULL
+          AND (meta->>'date')::date >= $2::date
+        ORDER BY (meta->>'date') ASC LIMIT 1`,
+      [userId, today]
+    ).catch(() => ({ rows: [] as any[] }))).rows[0];
+    const meta = goalRow?.meta ?? {};
+    const gd = String(meta.goalDisplay ?? '').match(/^(\d+):(\d{2}):(\d{2})$/);
+    if (gd) raceGoalSeconds = (+gd[1]) * 3600 + (+gd[2]) * 60 + (+gd[3]);
+    if (meta.distanceMi) {
+      raceGoalDistanceMi = Number(meta.distanceMi);
+    } else {
+      const dl = String(meta.distanceLabel ?? '').toLowerCase();
+      if (dl.includes('marathon') && !dl.includes('half')) raceGoalDistanceMi = 26.2;
+      else if (dl.includes('half') || dl.includes('21k')) raceGoalDistanceMi = 13.1;
+      else if (dl.includes('10k')) raceGoalDistanceMi = 6.2;
+      else if (dl.includes('5k')) raceGoalDistanceMi = 3.1;
+    }
+  }
+
   return {
     today,
     greetingName: prof?.full_name?.split(/\s+/)[0] ?? 'David',
@@ -381,6 +428,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     loadAcwr,
     cadenceBaseline,
     daysToARace, nextARaceName,
+    lthr, raceGoalSeconds, raceGoalDistanceMi,
     readiness,
     todaySkipped,
     activeNiggle,

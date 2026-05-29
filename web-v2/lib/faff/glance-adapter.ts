@@ -24,6 +24,7 @@
  */
 
 import type { GlanceState, GlanceWeekDay } from '@/lib/coach/glance-state';
+import { derivePaces } from '@/lib/training/prescriptions';
 import type {
   DayState,
   PosterPayload,
@@ -234,6 +235,13 @@ function buildStatTrio(
   glance: GlanceState,
 ): Stat[] | null {
   if (!today) return null;
+  // Real paces from the runner's goal + LTHR (Phase 47) — used by the
+  // EST. TIME stat below so we never quote a time off a fixed pace constant.
+  const dp = derivePaces({
+    lthr: glance.lthr,
+    goal_seconds: glance.raceGoalSeconds,
+    goal_distance_mi: glance.raceGoalDistanceMi,
+  });
   switch (state) {
     case 'easy':
       // Direction A3 deck · EASY keeps the body-context trio. The workout-
@@ -274,7 +282,11 @@ function buildStatTrio(
           lthrValue = String(s.hr_target_bpm);
         }
       }
-      const estTime = today.plannedMi > 0 ? formatEstTime(today.plannedMi, 480) : '—'; // ~8:00/mi placeholder for quality avg
+      // EST. TIME off the runner's own easy pace (quality days are mostly
+      // easy warmup/cooldown around the work) — a real, slightly-conservative
+      // estimate. "—" when we have no pace anchor (no goal race).
+      const qMid = dp.easySecLo != null && dp.easySecHi != null ? (dp.easySecLo + dp.easySecHi) / 2 : null;
+      const estTime = today.plannedMi > 0 && qMid != null ? formatEstTime(today.plannedMi, qMid) : '—';
       return [
         {
           value: today.plannedMi > 0
@@ -290,7 +302,10 @@ function buildStatTrio(
       // Direction A3 deck · LONG switches to workout/horizon-context.
       // PLANNED MI · EST. TIME · TO RACE (or WEEK MI as fallback when
       // no A-race horizon is on the calendar).
-      const estTime = today.plannedMi > 0 ? formatEstTime(today.plannedMi, 495) : '—'; // ~8:15/mi long-day placeholder
+      // EST. TIME off the runner's own long-run pace band (Phase 47).
+      // "—" when we have no pace anchor (no goal race).
+      const lMid = dp.longSecLo != null && dp.longSecHi != null ? (dp.longSecLo + dp.longSecHi) / 2 : null;
+      const estTime = today.plannedMi > 0 && lMid != null ? formatEstTime(today.plannedMi, lMid) : '—';
       const horizon = glance.daysToARace != null
         ? { value: `${glance.daysToARace}d`, label: 'TO RACE', valueColor: 'race' as const }
         : { value: glance.weekDone.toFixed(1), label: 'WEEK MI' };
@@ -362,21 +377,34 @@ function buildStatTrio(
  *
  * 2026-05-28 (migration 120) · when `today.plannedSpec` is present, real
  * Daniels-VDOT numbers are pulled from the per-workout spec the plan-builder
- * authored. The placeholder pace bands ("8:15–8:45/mi") and HR caps
- * ("148 bpm") below remain as guard rails for runners without a VDOT (no
- * race result yet) or for workouts the builder didn't emit a spec for
- * (e.g. mutations applied post-authoring that null'd the spec). Cite
- * research/doctrine/training/01-daniels-running-formula.md §VDOT-table-to-85
- * for the pace targets and research/notes/lthr-auto-derivation.md for the
- * HR ceilings.
+ * authored. 2026-05-29 (Phase 47) · when the spec is ABSENT (a workout
+ * mutated post-authoring that null'd the spec), the fallbacks below derive
+ * REAL pace/HR from the runner's goal + LTHR via `derivePaces()` — the same
+ * deterministic math `prescriptionFor` uses. Only when the runner has no
+ * goal race AND no LTHR do we drop to effort cues ("Easy · by feel"); we
+ * never quote a fixed, fitness-agnostic pace. Doctrine: pace targets from
+ * Research/01-pace-zones-vdot.md (T-pace offsets); HR cap = LTHR Z2 upper.
  */
 function buildWorkoutBreakdown(
   state: DayState,
   today: GlanceWeekDay | null,
-  _glance: GlanceState,
+  glance: GlanceState,
 ): PosterBreakdownRow[] | null {
   if (!today) return null;
   const spec = today.plannedSpec;
+  // Derived once — real pace/HR anchors for every fallback branch below.
+  const dp = derivePaces({
+    lthr: glance.lthr,
+    goal_seconds: glance.raceGoalSeconds,
+    goal_distance_mi: glance.raceGoalDistanceMi,
+  });
+  const easyBand = dp.easySecLo != null && dp.easySecHi != null
+    ? `${fmtPace(dp.easySecLo)}–${fmtPace(dp.easySecHi)}/mi` : null;
+  const longBand = dp.longSecLo != null && dp.longSecHi != null
+    ? `${fmtPace(dp.longSecLo)}–${fmtPace(dp.longSecHi)}/mi` : null;
+  const tempoBand = dp.tempoSecLo != null && dp.tempoSecHi != null
+    ? `${fmtPace(dp.tempoSecLo)}–${fmtPace(dp.tempoSecHi)}/mi` : null;
+  const aerobicCap = dp.aerobicCapBpm != null ? `${dp.aerobicCapBpm} bpm` : null;
 
   switch (state) {
     case 'easy': {
@@ -406,14 +434,14 @@ function buildWorkoutBreakdown(
           },
         ];
       }
-      // Fallback placeholders (no spec — runner has no VDOT, or workout
-      // type/spec mismatch). TODO 2026-05-28 · pace band ("8:15–8:45/mi")
-      // + HR cap (148 bpm) below stay as guard rails per Daniels VDOT
-      // table + LTHR doctrine. Duration estimate placeholder 8.5 min/mi.
-      const minutes = mi > 0 ? Math.round(mi * 8.5) : null;
+      // No spec — derive real pace/HR from the runner's goal + LTHR
+      // (Phase 47). Effort cues only when the runner has neither.
+      const easyMid = dp.easySecLo != null && dp.easySecHi != null
+        ? (dp.easySecLo + dp.easySecHi) / 2 : null;
+      const minutes = mi > 0 && easyMid != null ? Math.round((mi * easyMid) / 60) : null;
       return [
-        { label: 'PACE', body: 'Conversational · Z2', tail: '8:15–8:45/mi' },
-        { label: 'HR CAP', body: 'Stay aerobic', tail: '148 bpm' },
+        { label: 'PACE', body: 'Conversational · Z2', tail: easyBand ?? 'Easy · by feel' },
+        { label: 'HR CAP', body: 'Stay aerobic', tail: aerobicCap ?? 'Aerobic · Z2' },
         {
           label: 'DURATION',
           body: minutes != null ? `~${minutes} min on feet` : 'Time on feet',
@@ -454,11 +482,11 @@ function buildWorkoutBreakdown(
           { label: 'COOLDOWN', body: `${fmtMi(spec.cooldown_mi)} mi easy`, tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm cap` : 'finish strong' },
         ];
       }
-      // Fallback placeholders. TODO 2026-05-28 · long-day pace/HR are
-      // placeholders per VDOT L-pace + LTHR-margin doctrine.
+      // No spec — derive real pace/HR from the runner's goal + LTHR
+      // (Phase 47). Effort cues only when the runner has neither.
       return [
-        { label: 'PACE', body: 'Aerobic band', tail: '8:00–8:25/mi' },
-        { label: 'HR CAP', body: 'Long-day ceiling', tail: '145 bpm' },
+        { label: 'PACE', body: 'Aerobic band', tail: longBand ?? 'Steady · by feel' },
+        { label: 'HR CAP', body: 'Long-day ceiling', tail: aerobicCap ?? 'Aerobic ceiling' },
         { label: 'FUEL', body: 'Gel · water · gel', tail: 'mi 4 · 8 · 11' },
       ];
     }
@@ -529,24 +557,30 @@ function buildWorkoutBreakdown(
       // Fallback placeholders. TODO 2026-05-28 · pace tails ("3:02/mi",
       // "7:15/mi") + warmup/cooldown durations are placeholders per
       // Daniels VDOT R/I/T-pace doctrine.
+      // No spec — derive the WORK/TEMPO/PROGRESSION pace from the runner's
+      // goal (Phase 47); effort cue only when there's no goal race. Warmup/
+      // cooldown structure stays a sensible default (unknown without a spec).
       if (subtype === 'tempo') {
         return [
           { label: 'WARMUP', body: '1.5 mi easy', tail: '~13 min' },
-          { label: 'TEMPO', body: workBody, tail: '7:15/mi' },
+          { label: 'TEMPO', body: workBody, tail: tempoBand ?? 'Comfortably hard' },
           { label: 'COOLDOWN', body: '1 mi easy', tail: '~8 min' },
         ];
       }
       if (subtype === 'progression') {
+        const progTail = easyBand && dp.thresholdSec != null
+          ? `${fmtPace(dp.easySecHi as number)} → ${fmtPace(dp.thresholdSec)}` : 'Easy → tempo';
         return [
           { label: 'WARMUP', body: '1 mi easy', tail: '~9 min' },
-          { label: 'PROGRESSION', body: 'Build from easy to tempo', tail: '8:30 → 7:15' },
+          { label: 'PROGRESSION', body: 'Build from easy to tempo', tail: progTail },
           { label: 'COOLDOWN', body: '1 mi easy', tail: '~9 min' },
         ];
       }
       // threshold / intervals / fartlek default
+      const workTail = dp.intervalSec != null ? `${fmtPace(dp.intervalSec)}/mi` : '5K–10K effort';
       return [
         { label: 'WARMUP', body: '1.5 mi easy build', tail: '~12 min' },
-        { label: 'WORK', body: workBody, tail: '3:02/mi' },
+        { label: 'WORK', body: workBody, tail: workTail },
         { label: 'COOLDOWN', body: '1.5 mi easy', tail: '~13 min' },
       ];
     }

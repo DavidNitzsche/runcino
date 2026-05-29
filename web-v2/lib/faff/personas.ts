@@ -185,9 +185,11 @@ function buildWeek(
       plannedMi: s.plannedMi,
       plannedType: s.plannedType,
       plannedLabel: s.plannedLabel ?? null,
-      // Migration 120 · fixture personas don't author specs; the adapter
-      // falls back to placeholder pace bands. Real users hit the spec
-      // path via plan-builder + workout_spec column.
+      // Migration 120 · fixture personas don't author per-day specs; the
+      // adapter derives real pace/HR bands from the persona's lthr +
+      // race goal (or honest by-feel cues when those are null, e.g.
+      // Lilian). Real users hit the spec path via plan-builder +
+      // workout_spec column.
       plannedSpec: null,
       doneMi: s.doneMi ?? 0,
       activityId: s.activityId ?? null,
@@ -228,6 +230,9 @@ function david(): GlanceState {
     cadenceBaseline: 174,
     daysToARace: 80,
     nextARaceName: "America's Finest City",
+    lthr: 162,
+    raceGoalSeconds: 5700, // 1:35:00 half
+    raceGoalDistanceMi: 13.1,
     readiness: readinessReady(83),
     todaySkipped: false,
     activeNiggle: null,
@@ -268,6 +273,9 @@ function lilian(): GlanceState {
     cadenceBaseline: null,
     daysToARace: null,
     nextARaceName: null,
+    lthr: null, // net-new: no goal, no LTHR → adapter shows by-feel cues
+    raceGoalSeconds: null,
+    raceGoalDistanceMi: null,
     readiness: readinessUnknown(),
     todaySkipped: false,
     activeNiggle: null,
@@ -306,6 +314,9 @@ function tyler(): GlanceState {
     cadenceBaseline: 178,
     daysToARace: 3,
     nextARaceName: 'Brooklyn Half',
+    lthr: 165,
+    raceGoalSeconds: 5400, // 1:30:00 half
+    raceGoalDistanceMi: 13.1,
     readiness: readinessSharp(88),
     todaySkipped: false,
     activeNiggle: null,
@@ -348,6 +359,9 @@ function sarah(): GlanceState {
     cadenceBaseline: 172,
     daysToARace: 96,
     nextARaceName: 'Chicago Marathon',
+    lthr: 158,
+    raceGoalSeconds: 13500, // 3:45:00 marathon
+    raceGoalDistanceMi: 26.2,
     readiness: readinessPullBack(38),
     todaySkipped: false,
     activeNiggle: null,
@@ -394,6 +408,9 @@ function marcus(): GlanceState {
     cadenceBaseline: 176,
     daysToARace: 63,
     nextARaceName: 'Portland Half',
+    lthr: 160,
+    raceGoalSeconds: 6000, // 1:40:00 half
+    raceGoalDistanceMi: 13.1,
     readiness: readinessModerate(64),
     todaySkipped: false,
     activeNiggle: {
@@ -441,6 +458,9 @@ function helen(): GlanceState {
     cadenceBaseline: 170,
     daysToARace: 49,
     nextARaceName: 'Lake Tahoe Marathon',
+    lthr: 156,
+    raceGoalSeconds: 14400, // 4:00:00 marathon
+    raceGoalDistanceMi: 26.2,
     readiness: readinessModerate(68),
     todaySkipped: false,
     activeNiggle: null,
@@ -480,6 +500,9 @@ function alex(): GlanceState {
     cadenceBaseline: 180,
     daysToARace: 42,
     nextARaceName: 'Long Beach Half',
+    lthr: 168,
+    raceGoalSeconds: 5100, // 1:25:00 half
+    raceGoalDistanceMi: 13.1,
     readiness: readinessSharp(91),
     todaySkipped: false,
     activeNiggle: null,
@@ -519,6 +542,9 @@ function maya(): GlanceState {
     cadenceBaseline: 175,
     daysToARace: 55,
     nextARaceName: 'Big Sur Marathon',
+    lthr: 159,
+    raceGoalSeconds: 14100, // 3:55:00 marathon
+    raceGoalDistanceMi: 26.2,
     readiness: readinessReady(78),
     todaySkipped: true,
     activeNiggle: null,

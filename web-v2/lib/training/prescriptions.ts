@@ -116,6 +116,58 @@ function hrTargets(p: ProfileInputs) {
   };
 }
 
+// ── Derived pace/HR targets (exported for the /today Poster fallback) ─────
+
+export interface DerivedPaceTargets {
+  /** Threshold pace, s/mi — the anchor everything else derives from. null w/o goal. */
+  tPaceSec: number | null;
+  easySecLo: number | null;
+  easySecHi: number | null;
+  longSecLo: number | null;
+  longSecHi: number | null;
+  tempoSecLo: number | null;
+  tempoSecHi: number | null;
+  thresholdSec: number | null;
+  intervalSec: number | null;
+  repSec: number | null;
+  marathonSec: number | null;
+  /** Aerobic HR ceiling (Z2 upper from LTHR), bpm. null w/o LTHR. */
+  aerobicCapBpm: number | null;
+  zoneTable: ZoneTable | null;
+}
+
+/**
+ * Derive a runner's training paces (raw s/mi) + aerobic HR cap from the same
+ * inputs `prescriptionFor` uses — a race goal (→ T-pace) and LTHR (→ zones).
+ *
+ * Exported so the /today Poster's workout-breakdown fallback can render REAL
+ * numbers (not fixed placeholders) whenever a per-workout `workout_spec` is
+ * absent but the runner still has fitness data. Offsets mirror `paces()`
+ * exactly; HR cap is the LTHR Z2 upper bound. Returns nulls when the runner
+ * has no goal race / no LTHR — callers must then fall back to effort cues
+ * (never invent a number). Doctrine: Research/01-pace-zones-vdot.md.
+ */
+export function derivePaces(p: ProfileInputs): DerivedPaceTargets {
+  const t = tPaceSecPerMi(p);
+  const z = p.lthr ? computeZones({ lthr: p.lthr }) : null;
+  const z2 = z?.zones.find((x) => x.idx === 2) ?? null;
+  return {
+    tPaceSec: t,
+    easySecLo: t != null ? t + 60 : null,
+    easySecHi: t != null ? t + 110 : null,
+    longSecLo: t != null ? t + 55 : null,
+    longSecHi: t != null ? t + 90 : null,
+    tempoSecLo: t != null ? t + 5 : null,
+    tempoSecHi: t != null ? t + 18 : null,
+    thresholdSec: t,
+    intervalSec: t != null ? t - 18 : null,
+    repSec: t != null ? t - 30 : null,
+    marathonSec: t != null ? t + 18 : null,
+    aerobicCapBpm: z2?.upper ?? null,
+    zoneTable: z,
+  };
+}
+
 // ── Per-workout builders ────────────────────────────────────────────────
 
 export function prescriptionFor(
