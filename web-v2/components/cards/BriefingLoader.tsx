@@ -16,7 +16,6 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 // ── Types (mirror of lib/coach/fact-reciter.ts shape) ─────────────
 
@@ -43,7 +42,19 @@ interface FactsResponse {
 
 // Module-level in-flight cache. When two <BriefingLoader /> mount in
 // the same render, both share the same fetch → one network call.
+//
+// 2026-05-28 graceful-degrade pass: rejected promises are evicted from
+// the cache immediately so a transient endpoint hiccup doesn't poison
+// every subsequent mount for 60s. Only RESOLVED blocks get the cache TTL.
 const INFLIGHT = new Map<string, { promise: Promise<CoachFactBlock>; at: number }>();
+
+// Hard ceiling on how long we'll wait for /api/coach/facts before the
+// loader gives up and renders the deterministic fallback block. Per
+// Cardinal Rule #1 + the 2026-05-28 hang audit ("Coach card stuck on
+// 'Having a faff' on 9/9 states"): /today must NEVER block its visible
+// render on the briefing endpoint. 3s is generous against the observed
+// <1s cold-cache latencies on every surface.
+const FETCH_TIMEOUT_MS = 3000;
 
 function fetchFacts(surface: string, raceSlug?: string): Promise<CoachFactBlock> {
   const key = `${surface}|${raceSlug ?? ''}`;
@@ -52,15 +63,59 @@ function fetchFacts(surface: string, raceSlug?: string): Promise<CoachFactBlock>
   const url = new URL('/api/coach/facts', window.location.origin);
   url.searchParams.set('surface', surface);
   if (raceSlug) url.searchParams.set('race', raceSlug);
-  const promise = fetch(url.toString())
+
+  // AbortController bounds the network leg of the fetch; a top-level
+  // Promise.race against a sleep timer bounds the WHOLE pipeline so a
+  // hanging json-parse or a slow body stream also surfaces as a timeout.
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => { try { ac?.abort(); } catch { /* noop */ } }, FETCH_TIMEOUT_MS);
+
+  const fetchP = fetch(url.toString(), ac ? { signal: ac.signal } : undefined)
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = (await r.json()) as FactsResponse;
       if (!j?.block) throw new Error('malformed /api/coach/facts response');
       return j.block;
     });
+
+  const timeoutP = new Promise<CoachFactBlock>((_, reject) => {
+    setTimeout(() => reject(new Error(`timeout after ${FETCH_TIMEOUT_MS}ms`)), FETCH_TIMEOUT_MS + 50);
+  });
+
+  const promise = Promise.race([fetchP, timeoutP]).finally(() => {
+    clearTimeout(timer);
+  });
+
+  // Cache the in-flight promise so concurrent loaders share it, but
+  // evict on rejection so the next mount gets a fresh try.
   INFLIGHT.set(key, { promise, at: Date.now() });
+  promise.catch(() => { INFLIGHT.delete(key); });
   return promise;
+}
+
+/**
+ * Deterministic fallback block — used when /api/coach/facts errors out,
+ * times out, or returns a malformed body. The runner sees the surface
+ * label + a single "Coach voice loading…" fact so the card has CONTENT
+ * (never a forever-skeleton) and /today's hero never gets blocked on
+ * the briefing layer. Cardinal Rule #1: zero LLM, and the surface still
+ * recites a fact even when the pipeline is silent.
+ */
+function fallbackBlock(surface: string): CoachFactBlock {
+  const surfaceKey =
+    surface === 'race-detail' ? 'race_detail' :
+    (surface as CoachFactBlock['surface']);
+  return {
+    surface: surfaceKey,
+    state: 'fallback',
+    facts: [
+      {
+        label: `${surface.replace(/[-_]/g, ' ').toUpperCase()} · COACH`,
+        value: 'Coach voice loading',
+        meta: 'showing facts in a moment',
+      },
+    ],
+  };
 }
 
 // Faff-themed loading copy (preserved from the old loader so the
@@ -110,15 +165,31 @@ export function BriefingLoader({
 }) {
   const [block, setBlock] = useState<CoachFactBlock | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Debug-only flag — when the fetch failed and we're showing the
+  // fallback block, surface a tiny "(offline)" stamp in dev so the
+  // failure mode is visible without breaking the runner's render.
+  const [didFail, setDidFail] = useState(false);
   const calledOnLoad = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setError(null); setBlock(null);
+    setLoading(true); setDidFail(false); setBlock(null);
+    // Belt-and-braces: even if fetchFacts() somehow never settles
+    // (browser bug, dropped microtask), force a fallback render at
+    // FETCH_TIMEOUT_MS so the card NEVER stays in the skeleton state
+    // longer than the contract allows. This is the 2026-05-28 hang
+    // audit's deliverable: /today must never wait > 3s on a coach
+    // voice fetch.
+    const safetyTimer = setTimeout(() => {
+      if (cancelled) return;
+      setBlock((current) => current ?? fallbackBlock(surface));
+      setLoading(false);
+      setDidFail(true);
+    }, FETCH_TIMEOUT_MS + 100);
     fetchFacts(surface, raceSlug)
       .then((b) => {
         if (cancelled) return;
+        clearTimeout(safetyTimer);
         setBlock(b);
         setLoading(false);
         if (onLoad && !calledOnLoad.current) {
@@ -128,15 +199,31 @@ export function BriefingLoader({
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e?.message ?? String(e));
+        clearTimeout(safetyTimer);
+        // Graceful degrade: synthesize a minimal fact block instead of
+        // showing the "OFFLINE / Bit of a faff" error UI. The runner
+        // sees the surface name + a single fact line, the page renders
+        // its primary content, and a tiny dev-mode error stamp makes
+        // the failure visible to us. Per the hang audit, error UI here
+        // is worse UX than a fact stub.
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.warn('[BriefingLoader] /api/coach/facts fetch failed →', e?.message ?? e);
+        }
+        const fb = fallbackBlock(surface);
+        setBlock(fb);
         setLoading(false);
+        setDidFail(true);
+        if (onLoad && !calledOnLoad.current) {
+          calledOnLoad.current = true;
+          onLoad(toLoaded(fb));
+        }
       });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(safetyTimer); };
   }, [surface, raceSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Loading + error states only show on the coach side; cards stay quiet.
+  // Loading shows on coach side only; cards stay quiet.
   if (loading) return renderCoach ? <CoachLoading /> : null;
-  if (error)   return renderCoach ? <CoachError error={error} /> : null;
   if (!block)  return null;
 
   // The fact-reciter currently emits one consolidated block per
@@ -148,7 +235,7 @@ export function BriefingLoader({
   // page directly.
   return (
     <>
-      {renderCoach && <FactBlock block={block} />}
+      {renderCoach && <FactBlock block={block} didFail={didFail} />}
       {!renderCoach && renderCards && <FactBlockCompact block={block} />}
     </>
   );
@@ -180,20 +267,29 @@ function colorVar(c: CoachFactColor | undefined): string {
   }
 }
 
-function FactBlock({ block }: { block: CoachFactBlock }) {
+function FactBlock({ block, didFail = false }: { block: CoachFactBlock; didFail?: boolean }) {
+  const showDevStamp = didFail && process.env.NODE_ENV !== 'production';
   return (
     <section style={{ padding: '8px 24px 22px' }}>
       <div style={{
         fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700,
-        color: 'var(--green)', letterSpacing: '1.6px',
+        color: didFail ? 'var(--mute)' : 'var(--green)', letterSpacing: '1.6px',
         textTransform: 'uppercase', marginBottom: 18,
         display: 'flex', alignItems: 'center', gap: 8,
       }}>
         <span style={{
-          width: 6, height: 6, borderRadius: '50%', background: 'var(--green)',
-          boxShadow: '0 0 12px rgba(62,189,65,0.6)',
+          width: 6, height: 6, borderRadius: '50%',
+          background: didFail ? 'var(--mute)' : 'var(--green)',
+          boxShadow: didFail ? 'none' : '0 0 12px rgba(62,189,65,0.6)',
         }} />
-        COACH · FACTS
+        {didFail ? 'COACH · OFFLINE FALLBACK' : 'COACH · FACTS'}
+        {showDevStamp && (
+          <span style={{
+            marginLeft: 8, fontSize: 9, opacity: 0.6, letterSpacing: '0.6px',
+          }}>
+            (facts endpoint failed · see console)
+          </span>
+        )}
       </div>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
         {block.facts.map((f, i) => (
@@ -302,41 +398,12 @@ function CoachLoading() {
   );
 }
 
-function CoachError({ error }: { error: string }) {
-  const router = useRouter();
-  return (
-    <section style={{ padding: '32px 24px 22px' }}>
-      <div style={{
-        fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700,
-        color: 'var(--over)', letterSpacing: '1.6px', textTransform: 'uppercase',
-        marginBottom: 14,
-      }}>
-        COACH · OFFLINE
-      </div>
-      <h2 style={{
-        fontFamily: 'var(--f-display)', fontSize: 28, color: 'var(--ink)',
-        lineHeight: 1.05, letterSpacing: '0.5px', margin: '0 0 10px',
-      }}>
-        Bit of a faff right now.
-      </h2>
-      <p style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.6 }}>
-        The numbers are still here. Refresh in a moment.
-      </p>
-      {process.env.NODE_ENV !== 'production' && (
-        <pre style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--dim)', marginTop: 14, whiteSpace: 'pre-wrap' }}>
-          {error}
-        </pre>
-      )}
-      <button onClick={() => router.refresh()} style={{
-        marginTop: 14, background: 'transparent', border: '1px solid var(--line)', color: 'var(--mute)',
-        padding: '8px 14px', borderRadius: 8,
-        fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px', cursor: 'pointer',
-      }}>
-        TRY AGAIN
-      </button>
-    </section>
-  );
-}
+// 2026-05-28 hang audit — CoachError() (the "OFFLINE / Bit of a faff /
+// TRY AGAIN" panel) was removed. The fact-reciter contract is "facts
+// always recite even when silent," so the loader now renders a fallback
+// CoachFactBlock through the normal FactBlock path on error rather than
+// swapping to an error UI. This keeps the surface visually consistent
+// and avoids the failure-mode-as-skeleton bug the audit caught.
 
 function PulseDot() {
   return (

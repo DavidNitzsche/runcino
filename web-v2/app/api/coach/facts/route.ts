@@ -30,7 +30,15 @@ import {
 // Pure DB reads only — no LLM call. Bounded by the slowest state loader,
 // typically <300 ms. Keep the maxDuration tight so a stuck pool query
 // surfaces fast rather than hanging the briefing UI.
+//
+// 2026-05-28 hang audit (BriefingLoader stuck on faff skeleton): the
+// loader enforces a 3s client-side timeout independent of this value.
+// We also wrap buildBlock() in a server-side race so a runaway pool
+// query surfaces as a 504-ish JSON error rather than hanging the
+// loader's fetch leg.
 export const maxDuration = 15;
+
+const SERVER_BUILD_TIMEOUT_MS = 4500;
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -63,7 +71,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const block = await buildBlock(userId, surface, raceSlug);
+    const block = await buildBlockBounded(userId, surface, raceSlug);
     return NextResponse.json({ block });
   } catch (err: any) {
     return NextResponse.json({
@@ -90,7 +98,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const block = await buildBlock(userId, surface, raceSlug);
+    const block = await buildBlockBounded(userId, surface, raceSlug);
     return NextResponse.json({ block });
   } catch (err: any) {
     return NextResponse.json({
@@ -99,52 +107,133 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/**
+ * Server-side wrapper that races buildBlock against SERVER_BUILD_TIMEOUT_MS
+ * so a runaway state-loader query returns a 500 fast instead of holding
+ * the loader's fetch leg open. The loader's own 3s timer is the primary
+ * guard; this is a defence in depth.
+ */
+async function buildBlockBounded(
+  userId: string,
+  surface: 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me',
+  raceSlug: string | undefined,
+): Promise<CoachFactBlock> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeoutP = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`buildBlock(${surface}) timed out after ${SERVER_BUILD_TIMEOUT_MS}ms`)),
+      SERVER_BUILD_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([
+      buildBlock(userId, surface, raceSlug),
+      timeoutP,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function buildBlock(
   userId: string,
   surface: 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me',
   raceSlug: string | undefined,
 ): Promise<CoachFactBlock> {
+  // 2026-05-28 hang audit: each surface is wrapped so a single broken
+  // state-loader or reciter throws a TYPED block ({ state: 'error',
+  // single fact line with the err message }) instead of bubbling up as a
+  // 500. The route handler still returns 500 on a complete failure
+  // (timeout, fatal), but the typical "field X was null and we touched
+  // .y" case keeps the loader rendering rather than skeletoning.
   switch (surface) {
     case 'today': {
-      const glance = await loadGlanceState(userId);
-      return reciteToday(glance);
+      try {
+        const glance = await loadGlanceState(userId);
+        return reciteToday(glance);
+      } catch (e: any) {
+        return errorBlock('today', e);
+      }
     }
     case 'plan': {
-      const training = await loadTrainingState(userId);
-      return recitePlan(training);
+      try {
+        const training = await loadTrainingState(userId);
+        return recitePlan(training);
+      } catch (e: any) {
+        return errorBlock('plan', e);
+      }
     }
     case 'races': {
-      const races = await loadRacesState(userId);
-      return reciteRaces(races);
+      try {
+        const races = await loadRacesState(userId);
+        return reciteRaces(races);
+      } catch (e: any) {
+        return errorBlock('races', e);
+      }
     }
     case 'race_detail': {
-      const races = await loadRacesState(userId);
-      const all = [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs, ...races.past];
-      const race = raceSlug
-        ? all.find((r) => r.slug === raceSlug)
-        : (races.aRace ?? all[0]);
-      if (!race) {
-        return {
-          surface: 'race_detail',
-          facts: [{
-            label: 'RACE',
-            value: '—',
-            meta: raceSlug ? `no race with slug "${raceSlug}"` : 'no races on the calendar',
-          }],
-        };
+      try {
+        const races = await loadRacesState(userId);
+        const all = [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs, ...races.past];
+        const race = raceSlug
+          ? all.find((r) => r.slug === raceSlug)
+          : (races.aRace ?? all[0]);
+        if (!race) {
+          return {
+            surface: 'race_detail',
+            facts: [{
+              label: 'RACE',
+              value: '—',
+              meta: raceSlug ? `no race with slug "${raceSlug}"` : 'no races on the calendar',
+            }],
+          };
+        }
+        // Glance optional — only as defensive context.
+        let glance = null;
+        try { glance = await loadGlanceState(userId); } catch { /* non-fatal */ }
+        return reciteRaceDetail(race, glance);
+      } catch (e: any) {
+        return errorBlock('race_detail', e);
       }
-      // Glance optional — only as defensive context.
-      let glance = null;
-      try { glance = await loadGlanceState(userId); } catch { /* non-fatal */ }
-      return reciteRaceDetail(race, glance);
     }
     case 'health': {
-      const health = await loadHealthState(userId);
-      return reciteHealth(health);
+      try {
+        const health = await loadHealthState(userId);
+        return reciteHealth(health);
+      } catch (e: any) {
+        return errorBlock('health', e);
+      }
     }
     case 'me': {
-      const profile = await loadProfileState(userId);
-      return reciteMe(profile);
+      try {
+        const profile = await loadProfileState(userId);
+        return reciteMe(profile);
+      } catch (e: any) {
+        return errorBlock('me', e);
+      }
     }
   }
+}
+
+function errorBlock(
+  surface: 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me',
+  err: { message?: string } | undefined,
+): CoachFactBlock {
+  if (process.env.NODE_ENV === 'development') {
+    // eslint-disable-next-line no-console
+    console.warn(`[/api/coach/facts] ${surface} reciter failed:`, err?.message ?? err);
+  }
+  return {
+    surface,
+    state: 'error',
+    facts: [
+      {
+        label: `${surface.toUpperCase().replace('_', ' ')} · COACH`,
+        value: 'facts unavailable',
+        meta: process.env.NODE_ENV === 'development'
+          ? (err?.message ?? 'unknown error')
+          : 'try again in a moment',
+      },
+    ],
+  };
 }
