@@ -1,0 +1,2049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Companion Mode · v1.1+ Research — 2026-05-28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #0a0c10;
+    --bg-page: #15171c;
+    --card:    #11141a;
+    --card2:   #13171f;
+    --ink:     #f6f7f8;
+    --mute:    #8a90a0;
+    --dim:     #4b505e;
+    --line:    rgba(255,255,255,0.08);
+    --line2:   rgba(255,255,255,0.04);
+
+    --green:   #3EBD41;
+    --goal:    #F3AD38;
+    --over:    #FC4D64;
+    --dist:    #27B4E0;
+    --rest:    #008FEC;
+    --learn:   #B084FF;
+    --race:    #FF8847;
+
+    --g-easy:    linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+    --g-quality: linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #7a2828 100%);
+    --g-long:    linear-gradient(135deg, #27B4E0 0%, #1a6a9e 60%, #0c2a5e 100%);
+    --g-rest:    linear-gradient(135deg, #008FEC 0%, #2a4ace 60%, #1a1a5a 100%);
+    --g-new:     linear-gradient(135deg, #B084FF 0%, #6a4ace 60%, #2a1a5a 100%);
+    --g-race:    linear-gradient(135deg, #FF8847 0%, #c93838 60%, #6a1a1a 100%);
+
+    --f-display:           'Oswald', sans-serif;
+    --f-body:              'Inter', system-ui, sans-serif;
+    --f-display-weight:    700;
+    --f-display-tracking:  -0.015em;
+    --f-display-line:      0.86;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--f-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── deck header ─── */
+  .header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 40px;
+    margin-bottom: 56px;
+  }
+  .h-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 18px;
+  }
+  .h-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 88px;
+    margin: 0 0 14px 0;
+  }
+  .h-sub {
+    font-size: 16px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.78);
+    max-width: 760px;
+    margin: 0;
+  }
+
+  /* ─── section heads ─── */
+  .direction { margin-top: 96px; }
+  .d-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 32px;
+    align-items: end;
+  }
+  .d-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 12px;
+  }
+  .d-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    margin: 0;
+  }
+  .d-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.74);
+    margin: 0;
+  }
+
+  /* ─── persona block ─── */
+  .persona {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 40px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 36px 36px 36px;
+    align-items: start;
+  }
+  .persona-avatar {
+    aspect-ratio: 1 / 1;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #2a3140 0%, #11141a 60%, #0a0c10 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+  }
+  .persona-avatar .tyler {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 96px;
+    color: rgba(255,255,255,0.92);
+    line-height: 1;
+  }
+  .persona-avatar .tag {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+  }
+  .persona-body h3 {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 44px;
+    margin: 0 0 14px;
+  }
+  .persona-body p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.78);
+    margin: 0 0 18px;
+  }
+  .persona-rows {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 12px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+  }
+  .persona-row .pr-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 6px;
+  }
+  .persona-row .pr-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(246,247,248,0.9);
+  }
+
+  /* ─── phone shell (390 × 760) ─── */
+  .phone {
+    width: 390px;
+    height: 760px;
+    background: var(--bg);
+    border-radius: 44px;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 60px rgba(0,0,0,0.55), 0 6px 14px rgba(0,0,0,0.35);
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: 32px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 28px;
+    background: #000;
+    border-radius: 16px;
+    z-index: 5;
+  }
+  .phone-status {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+  .phone-status .time { font-weight: 700; }
+  .phone-status .right {
+    display: flex; gap: 6px; align-items: center;
+    font-size: 11px; opacity: 0.85;
+  }
+
+  /* gradient faces */
+  .face-new   { background: var(--g-new);   flex: 1; display: flex; flex-direction: column; padding: 36px 28px 28px; color: #fff; }
+  .face-easy  { background: var(--g-easy);  flex: 1; display: flex; flex-direction: column; padding: 36px 28px 28px; color: #fff; }
+  .face-qual  { background: var(--g-quality); flex: 1; display: flex; flex-direction: column; padding: 36px 28px 28px; color: #fff; }
+  .face-long  { background: var(--g-long);  flex: 1; display: flex; flex-direction: column; padding: 36px 28px 28px; color: #fff; }
+  .face-dark  { background: var(--bg);      flex: 1; display: flex; flex-direction: column; padding: 0; color: var(--ink); }
+
+  /* eyebrow + verb */
+  .eyebrow {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 18px;
+  }
+  .eyebrow.dark { color: var(--mute); }
+  .stepdots { display: flex; gap: 6px; margin-bottom: 22px; }
+  .stepdot {
+    width: 22px; height: 3px; border-radius: 2px;
+    background: rgba(255,255,255,0.22);
+  }
+  .stepdot.on { background: rgba(255,255,255,0.95); }
+  .verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 56px;
+    color: #fff;
+    margin: 0 0 18px 0;
+  }
+  .verb.big { font-size: 64px; }
+  .ask {
+    font-family: var(--f-body);
+    font-size: 15px;
+    line-height: 1.55;
+    color: rgba(255,255,255,0.86);
+    margin: 0 0 28px 0;
+    max-width: 320px;
+  }
+
+  /* picker pills (Step 1 fork) */
+  .pickerstack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  .pillpick {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 14px;
+    padding: 14px 16px;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 14px;
+    color: rgba(255,255,255,0.92);
+    letter-spacing: 0.2px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .pillpick.on {
+    background: rgba(255,255,255,0.96);
+    color: #2a1a5a;
+    border-color: rgba(255,255,255,0.96);
+  }
+  .pillpick .pp-meta {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    opacity: 0.66;
+  }
+  .pillpick.on .pp-meta { color: #4a3a8a; opacity: 0.9; }
+
+  /* form rows */
+  .form-row {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+  }
+  .form-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .form-label .src { color: rgba(255,255,255,0.45); letter-spacing: 1.2px; }
+  .form-value {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 16px;
+    color: #fff;
+    word-break: break-all;
+  }
+  .form-value.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.92);
+  }
+
+  /* tile (Step 2.5 source picker) */
+  .tiles { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+  .tile {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .tile.on { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.22); }
+  .tile-left { display: flex; align-items: center; gap: 14px; }
+  .tile-icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: 16px;
+    color: #fff;
+    flex-shrink: 0;
+    letter-spacing: -0.02em;
+  }
+  .tile-icon.fs   { background: #1f6fbf; }
+  .tile-icon.tp   { background: #d63b1f; }
+  .tile-icon.manual { background: #1d1d1f; border: 1px solid rgba(255,255,255,0.22); }
+  .tile-text { display: flex; flex-direction: column; }
+  .tile-name {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 14px;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+  .tile-meta {
+    font-family: var(--f-body);
+    font-size: 11px;
+    color: rgba(255,255,255,0.62);
+    letter-spacing: 0.2px;
+  }
+  .tilepill {
+    background: rgba(255,255,255,0.96);
+    color: #2a1a5a;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+  .tilepill.connected {
+    background: rgba(62,189,65,0.18);
+    color: #d2ffce;
+    border: 1px solid rgba(62,189,65,0.5);
+  }
+
+  /* CTA */
+  .cta {
+    margin-top: auto;
+    background: #fff;
+    color: #2a1a5a;
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 22px;
+    padding: 16px;
+    border-radius: 16px;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .cta.dark { color: #0c2a5e; }
+  .cta.ghost {
+    background: rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.88);
+    border: 1px solid rgba(255,255,255,0.24);
+    margin-top: 10px;
+  }
+  .below-cta {
+    margin-top: 14px;
+    font-family: var(--f-body);
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    text-align: center;
+    letter-spacing: 0.2px;
+  }
+  .below-cta b { color: rgba(255,255,255,0.9); font-weight: 700; }
+
+  /* ─── poster (today) ─── */
+  .poster-top {
+    padding: 24px 24px 18px;
+    flex: 0 0 auto;
+  }
+  .p-eye {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 14px;
+  }
+  .p-verb {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 64px;
+    margin: 0;
+    color: #fff;
+  }
+  .p-phase {
+    font-family: var(--f-body);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+    margin-top: 10px;
+  }
+  .p-coachbadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,0,0,0.32);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 999px;
+    padding: 5px 10px 5px 8px;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.92);
+    margin-top: 12px;
+  }
+  .p-coachbadge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(62,189,65,0.6); }
+  .a-list {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    margin: 0 24px;
+  }
+  .a-row {
+    display: grid;
+    grid-template-columns: 76px 1fr auto;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+    align-items: baseline;
+  }
+  .a-label {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.70);
+  }
+  .a-body {
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.95);
+  }
+  .a-tail {
+    font-family: var(--f-body);
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    font-feature-settings: "tnum";
+  }
+  .stat-trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: auto;
+    padding: 18px 24px 22px;
+    border-top: 1px solid rgba(255,255,255,0.18);
+  }
+  .stat-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 26px;
+    color: #fff;
+    font-feature-settings: "tnum";
+    line-height: 1;
+  }
+  .stat-l {
+    font-family: var(--f-body);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.75);
+    margin-top: 5px;
+  }
+
+  /* ─── sibling card ─── */
+  .sibling {
+    background: var(--card);
+    border-radius: 18px;
+    margin: 14px 14px 0;
+    padding: 18px 18px 18px;
+    border: 1px solid var(--line);
+  }
+  .sib-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .sib-body {
+    font-family: var(--f-body);
+    font-size: 14px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.94);
+  }
+  .sib-body .accent { color: var(--learn); font-weight: 700; }
+  .sib-body .calm   { color: var(--green); font-weight: 700; }
+  .sib-body .warn   { color: var(--goal); font-weight: 700; }
+  .sib-tile-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .sib-tile {
+    background: var(--card2);
+    border-radius: 10px;
+    padding: 10px 10px 10px;
+  }
+  .sib-tile .sl {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 4px;
+  }
+  .sib-tile .sv {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    font-size: 18px;
+    color: var(--ink);
+    font-feature-settings: "tnum";
+    line-height: 1;
+  }
+  .sib-tile .dot {
+    display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: 0.1em;
+  }
+  .sib-tile .dot.g { background: var(--green); }
+  .sib-tile .dot.a { background: var(--goal); }
+  .sib-tile .dot.r { background: var(--over); }
+
+  /* week strip */
+  .ws-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin: 14px 14px 0;
+  }
+  .ws-day {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 6px 9px;
+    text-align: center;
+  }
+  .ws-day.today { border-color: rgba(255,255,255,0.32); }
+  .ws-day .ws-d {
+    font-family: var(--f-body);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .ws-day .ws-n {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    font-size: 16px;
+    color: var(--ink);
+    line-height: 1;
+    margin: 4px 0 5px;
+    font-feature-settings: "tnum";
+  }
+  .ws-day .ws-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.18);
+  }
+  .ws-day .ws-bar.easy   { background: var(--green); }
+  .ws-day .ws-bar.qual   { background: var(--goal); }
+  .ws-day .ws-bar.long   { background: var(--dist); }
+  .ws-day .ws-bar.rest   { background: var(--rest); opacity: 0.55; }
+
+  /* ─── side-by-side rail ─── */
+  .siderail {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 40px;
+    justify-items: center;
+  }
+  .siderail.three { grid-template-columns: repeat(3, 1fr); gap: 28px; }
+  .col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .caption {
+    font-family: var(--f-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    text-align: center;
+    margin-top: 14px;
+  }
+  .caption.strong { color: var(--ink); }
+
+  /* ─── plan page · phone ─── */
+  .plan-head {
+    padding: 26px 22px 18px;
+  }
+  .plan-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 12px;
+  }
+  .plan-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 40px;
+    line-height: 0.92;
+    color: var(--ink);
+    margin: 0;
+  }
+  .plan-sub {
+    font-family: var(--f-body);
+    font-size: 12px;
+    color: var(--mute);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .phase-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin: 0 22px 18px;
+    padding: 14px 12px 14px;
+    background: var(--card);
+    border-radius: 14px;
+    border: 1px solid var(--line);
+  }
+  .phase-cell {
+    text-align: center;
+    padding: 6px 0;
+  }
+  .phase-cell .pc-l {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .phase-cell .pc-v {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    font-size: 14px;
+    color: var(--ink);
+    margin: 4px 0 5px;
+  }
+  .phase-cell.now .pc-v { color: var(--learn); }
+  .phase-cell .pc-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.10);
+  }
+  .phase-cell.done .pc-bar { background: var(--green); }
+  .phase-cell.now  .pc-bar { background: var(--learn); }
+
+  /* volume arc */
+  .vol-card {
+    margin: 0 22px 14px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 16px 14px;
+  }
+  .vol-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .vol-l {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .vol-meta {
+    font-family: var(--f-body);
+    font-size: 10px;
+    color: var(--mute);
+    font-feature-settings: "tnum";
+  }
+  .vol-bars {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    align-items: end;
+    height: 56px;
+  }
+  .vb {
+    background: rgba(255,255,255,0.14);
+    border-radius: 3px 3px 0 0;
+  }
+  .vb.now { background: var(--learn); }
+  .vb.proj { background: rgba(176,132,255,0.32); border: 1px dashed rgba(176,132,255,0.55); }
+
+  /* plan-source card */
+  .source-card {
+    margin: 14px 22px 14px;
+    background: linear-gradient(135deg, rgba(31,111,191,0.22) 0%, rgba(31,111,191,0.06) 100%);
+    border: 1px solid rgba(31,111,191,0.4);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .source-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .source-icon-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .source-icon-row .si {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: #1f6fbf;
+    color: #fff;
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .source-icon-row .sn {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .source-state {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--green);
+  }
+  .source-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.12);
+  }
+  .sm-row .sm-l {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 3px;
+  }
+  .sm-row .sm-v {
+    font-family: var(--f-body);
+    font-size: 12px;
+    color: var(--ink);
+    font-feature-settings: "tnum";
+  }
+  .source-cta {
+    margin-top: 12px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.20);
+    border-radius: 10px;
+    padding: 9px 0;
+    text-align: center;
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    color: var(--ink);
+  }
+
+  /* ─── race-day continuity grid ─── */
+  .race-grid {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 36px;
+    align-items: start;
+  }
+  .race-notes {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px 28px 28px;
+  }
+  .race-notes h3 {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 28px;
+    margin: 0 0 14px;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .race-row {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    align-items: baseline;
+  }
+  .race-row:first-of-type { border-top: none; padding-top: 6px; }
+  .rr-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 7px;
+  }
+  .rr-dot.un { background: var(--green); }
+  .rr-dot.ch { background: var(--goal); }
+  .rr-name {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .rr-meta {
+    font-family: var(--f-body);
+    font-size: 12px;
+    color: var(--mute);
+    line-height: 1.45;
+  }
+
+  /* ─── data contract table ─── */
+  .table-wrap {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px 28px 28px;
+    overflow-x: auto;
+  }
+  table.contract {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--f-body);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  table.contract th, table.contract td {
+    text-align: left;
+    padding: 14px 14px 14px 0;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.contract th {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 9px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--mute);
+    padding-bottom: 12px;
+  }
+  table.contract td.field {
+    font-weight: 700;
+    color: var(--ink);
+    font-size: 13px;
+    width: 200px;
+  }
+  table.contract td.v1 { color: rgba(246,247,248,0.78); }
+  table.contract td.v11 { color: var(--learn); font-weight: 600; }
+  table.contract td.same { color: rgba(246,247,248,0.5); font-style: italic; }
+  table.contract td.never { color: var(--over); font-weight: 700; }
+
+  /* ─── scope split ─── */
+  .scope-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .scope-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px 28px 28px;
+    position: relative;
+  }
+  .scope-card.v11 {
+    border-color: rgba(176,132,255,0.4);
+    background: linear-gradient(135deg, rgba(176,132,255,0.10) 0%, rgba(176,132,255,0.02) 100%);
+  }
+  .scope-card.v12 {
+    border-color: rgba(39,180,224,0.3);
+  }
+  .scope-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .scope-eye.v11 { color: var(--learn); }
+  .scope-eye.v12 { color: var(--dist); }
+  .scope-card h3 {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 30px;
+    line-height: 0.95;
+    color: var(--ink);
+    margin: 0 0 16px;
+  }
+  .scope-card ul {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+  }
+  .scope-card li {
+    padding: 10px 0 10px 22px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(246,247,248,0.88);
+    position: relative;
+  }
+  .scope-card li:first-child { border-top: none; }
+  .scope-card li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 16px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--learn);
+  }
+  .scope-card.v12 li::before { background: var(--dist); }
+  .scope-card li b { color: var(--ink); }
+
+  /* ─── footer / open questions ─── */
+  .footer {
+    margin-top: 96px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .footer b { color: var(--ink); font-weight: 700; }
+  .footer a { color: var(--learn); text-decoration: none; border-bottom: 1px solid rgba(176,132,255,0.4); }
+  .footer h3 {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    font-size: 28px;
+    color: var(--ink);
+    margin: 28px 0 14px;
+  }
+  .openq {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+  }
+  .openq .oq-num {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    font-size: 22px;
+    color: var(--learn);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .openq .oq-title {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink);
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .openq .oq-body {
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.74);
+  }
+  .openq .oq-body b { color: var(--ink); }
+
+  .citations {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px 24px 22px;
+    margin-top: 18px;
+  }
+  .citations h4 {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin: 0 0 12px;
+  }
+  .citations ul { padding-left: 18px; margin: 0; }
+  .citations li { margin-bottom: 6px; }
+
+  .note {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.85);
+    margin-top: 22px;
+  }
+  .note b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── header ─── -->
+  <header class="header">
+    <div class="h-eye">FAFF · COMPANION MODE · v1.1+ RESEARCH · 2026-05-28</div>
+    <h1 class="h-title">When the<br>plan isn't<br>yours.</h1>
+    <p class="h-sub">
+      Faff v1 ships to plan-following runners <i>without</i> an external human coach. Lilian's path. Tyler's path forks earlier and stays forked — he already has a coach programming his weeks in Final Surge or TrainingPeaks. Companion Mode (locked v1.1+) is Faff acknowledging someone else owns the plan and staying in its lane: body, recovery, race horizon, watch, race-day ops.
+      <br><br>
+      Same Faff design system as /today and onboarding-lilian. Dark canvas, Oswald 700 for hero questions, Inter for body, the existing gradient palette. No new colors. Mockups at iPhone width (390 × 760). Research deck — not ship-ready.
+    </p>
+  </header>
+
+  <!-- ─── SECTION 1 · THE PERSONA ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 1 · THE TYLER PERSONA</div>
+        <h2 class="d-title">Has a coach.<br>Wants Faff anyway.</h2>
+      </div>
+      <p class="d-desc">
+        Tyler is a sub-2:50 marathoner whose weekly program is written by a human coach he pays $200/mo. The schedule lands in Final Surge every Sunday night. He still wants Faff — for the body dashboard, the race horizon, the watch app, the race-day Uber + checklist. He does <b>not</b> want Faff generating plans, second-guessing his coach, or quietly adjusting his Tuesday intervals when his HRV is low.
+      </p>
+    </div>
+
+    <div class="persona">
+      <div class="persona-avatar">
+        <div class="tyler">TY</div>
+        <div class="tag">Tyler · 34 · NYC</div>
+      </div>
+      <div class="persona-body">
+        <h3>Coached.<br>Still chooses Faff.</h3>
+        <p>
+          Has had the same human coach for three years. Coach uses Final Surge for everything. Tyler doesn't want to manage two plans. He wants Faff for the things his coach + Final Surge don't do well — body context (Whoop killer), race-day operations (Uber, checklist, transport), the Apple Watch experience, and a clean daily surface that doesn't pretend to know better than his coach.
+        </p>
+        <div class="persona-rows">
+          <div class="persona-row">
+            <div class="pr-label">HAS</div>
+            <div class="pr-body">Live human coach · Final Surge subscription · Garmin watch · Strava</div>
+          </div>
+          <div class="persona-row">
+            <div class="pr-label">WANTS</div>
+            <div class="pr-body">Body dashboard · race horizon · watch face · race-day ops · clean daily surface</div>
+          </div>
+          <div class="persona-row">
+            <div class="pr-label">DOES NOT WANT</div>
+            <div class="pr-body">Plan generation · workout autocorrect · pace-band overrides · LTHR re-derivation that conflicts with his coach's zones</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Why this persona matters:</b> in interviews + public running communities, ~25-35% of serious goal-race runners use an external coach. Without Companion Mode, Faff is invisible to that segment — they bounce in onboarding the moment "race date → we'll build the plan" appears. <b>Companion Mode is not a feature, it's a path through the same product</b> — same Poster, same Sibling, same WeekStrip, different data source.
+    </div>
+  </section>
+
+  <!-- ─── SECTION 2 · ONBOARDING FORK ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 2 · ONBOARDING FORK</div>
+        <h2 class="d-title">Step 1 forks.<br>Everything else doesn't.</h2>
+      </div>
+      <p class="d-desc">
+        Lilian's Step 1 (Goal) becomes a two-question step for everyone: <i>who's writing your plan?</i> first, then <i>what are you training for?</i> If Tyler picks an external coach, a new <b>Step 2.5 · Plan source</b> appears between Signals and Confirm. Step 3 (name + confirm) shows the coach + source in the goal summary.
+      </p>
+    </div>
+
+    <div class="siderail three">
+
+      <!-- STEP 1 (revised) -->
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">STEP 1 OF 3 · PLAN OWNER</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb">Who's writing<br>your plan?</h3>
+              <p class="ask">Faff can build it, or follow what your coach already wrote.</p>
+
+              <div class="pickerstack">
+                <div class="pillpick">
+                  <span>I am · Faff builds it</span>
+                  <span class="pp-meta">Lilian path</span>
+                </div>
+                <div class="pillpick on">
+                  <span>My coach · Final Surge</span>
+                  <span class="pp-meta">Companion</span>
+                </div>
+                <div class="pillpick">
+                  <span>My coach · TrainingPeaks</span>
+                  <span class="pp-meta">Companion</span>
+                </div>
+                <div class="pillpick">
+                  <span>My coach · I'll log workouts</span>
+                  <span class="pp-meta">Manual</span>
+                </div>
+              </div>
+
+              <div class="cta">Continue</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">STEP 1 · REVISED · TYLER PICKS FINAL SURGE</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">Faff path · Companion · Manual</div>
+      </div>
+
+      <!-- STEP 2.5 (new) -->
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:43</span>
+              <span class="right">5G &nbsp; 86</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">STEP 2.5 · PLAN SOURCE</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+                <div class="stepdot"></div>
+              </div>
+              <h3 class="verb">Connect<br>the plan.</h3>
+              <p class="ask">Paste your Final Surge calendar feed. Faff syncs every 6h and on app launch.</p>
+
+              <div class="form-row">
+                <div class="form-label">CALENDAR FEED · ICS <span class="src">FINAL SURGE</span></div>
+                <div class="form-value mono">https://www.finalsurge.com/&#8203;calendar/&#8203;feed/&#8203;a47b…d09e.ics</div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-label">COACH NAME <span class="src">DISPLAYED IN POSTER</span></div>
+                <div class="form-value">Coach Aaron</div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-label">SYNC INTERVAL <span class="src">DEFAULT</span></div>
+                <div class="form-value">Every 6 hours · and on launch</div>
+              </div>
+
+              <div class="cta">Continue</div>
+              <div class="below-cta">Where do I find this? <b>How to copy the URL</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">STEP 2.5 · NEW · PLAN SOURCE</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">Only appears for Companion paths</div>
+      </div>
+
+      <!-- COMPLETION (revised) -->
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:44</span>
+              <span class="right">5G &nbsp; 86</span>
+            </div>
+            <div class="face-new">
+              <div class="eyebrow">STEP 3 OF 3 · CONFIRM</div>
+              <div class="stepdots">
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+                <div class="stepdot on"></div>
+              </div>
+              <h3 class="verb">Last thing.</h3>
+              <p class="ask">A name to call you. Then we'll start syncing.</p>
+
+              <div class="form-row">
+                <div class="form-label">NAME <span class="src">FROM STRAVA</span></div>
+                <div class="form-value">Tyler</div>
+              </div>
+              <div class="form-row">
+                <div class="form-label">PLAN OWNER <span class="src">FROM STEP 1</span></div>
+                <div class="form-value">Coach Aaron · Final Surge</div>
+              </div>
+              <div class="form-row">
+                <div class="form-label">GOAL <span class="src">CONFIRMED</span></div>
+                <div class="form-value">Marathon · Nov 2 · 22 weeks out</div>
+              </div>
+
+              <div class="cta">Start training</div>
+              <div class="below-cta">Following <b>Coach Aaron</b> · Plan via <b>Final Surge</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">COMPLETION · REVISED</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">Coach + source shown in the summary</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>Why ICS first, not OAuth:</b> Final Surge exposes per-athlete calendar feeds with read-only structured workout data. Zero integration friction, zero partnership dependency, ship-able in v1.1. TrainingPeaks has an OAuth API but it's gated for verified partners — v1.2+ effort. The "I'll log workouts" manual path is the v1.1 escape hatch for non-Final-Surge coaches (covers Excel, email PDFs, individual coach Notion docs).
+      <br><br>
+      <b>Step 2 (Signals · Strava + Apple Health + Watch) is identical to Lilian's path</b> — Tyler still connects body + activity sources. The body engine works the same regardless of who wrote the plan.
+    </div>
+  </section>
+
+  <!-- ─── SECTION 3 · /today COMPARISON ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 3 · /TODAY IN COMPANION MODE</div>
+        <h2 class="d-title">Same Poster.<br>Different author.</h2>
+      </div>
+      <p class="d-desc">
+        The verb still works — INTERVALS still reads as INTERVALS. The Sibling still surfaces THE BODY. The WeekStrip still shows the 7-day arc. What changes: <b>phase tag</b> (now "FROM COACH AARON" instead of "BASE WK 6"), the <b>workout detail rows</b> come verbatim from Final Surge's structured fields (no pace-band recomputation), the <b>Sibling coach line</b> explicitly defers ("Coach Aaron has you doing 6×800s today — here's what I'm seeing on the body side"), and Skip Today routes the message back to the coach instead of triggering Faff's plan adapter.
+      </p>
+    </div>
+
+    <div class="siderail">
+
+      <!-- STANDARD /today -->
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-qual">
+              <div class="poster-top">
+                <div class="p-eye">TUE · MAY 26 · BASE</div>
+                <h3 class="p-verb">INTERVALS.</h3>
+                <div class="p-phase">BASE · WEEK 6 OF 18 · FAFF VDOT 52</div>
+              </div>
+              <div class="a-list">
+                <div class="a-row">
+                  <div class="a-label">WARMUP</div>
+                  <div class="a-body">1.5 mi easy build</div>
+                  <div class="a-tail">~12 min</div>
+                </div>
+                <div class="a-row">
+                  <div class="a-label">WORK</div>
+                  <div class="a-body">6 &times; 800m · 90s jog</div>
+                  <div class="a-tail">3:02/mi</div>
+                </div>
+                <div class="a-row">
+                  <div class="a-label">COOLDOWN</div>
+                  <div class="a-body">1.5 mi easy</div>
+                  <div class="a-tail">~13 min</div>
+                </div>
+              </div>
+              <div class="stat-trio">
+                <div>
+                  <div class="stat-v">6.0</div>
+                  <div class="stat-l">TOTAL MI</div>
+                </div>
+                <div>
+                  <div class="stat-v">162</div>
+                  <div class="stat-l">LTHR BPM</div>
+                </div>
+                <div>
+                  <div class="stat-v">~48m</div>
+                  <div class="stat-l">EST. TIME</div>
+                </div>
+              </div>
+            </div>
+            <div class="sibling">
+              <div class="sib-eye">THE BODY · 7-DAY ROLL</div>
+              <div class="sib-body">
+                Body's lit. <span class="calm">RHR 46, HRV +6 vs baseline, sleep 7.4h.</span> Phase intent says push this one — <span class="accent">don't pull the splits back unless reps 5-6 fade hard.</span> Cap effort at 3:02/mi · let the watch keep the pace honest.
+              </div>
+              <div class="sib-tile-row">
+                <div class="sib-tile">
+                  <div class="sl"><span class="dot g"></span>RHR</div>
+                  <div class="sv">46</div>
+                </div>
+                <div class="sib-tile">
+                  <div class="sl"><span class="dot g"></span>HRV</div>
+                  <div class="sv">68</div>
+                </div>
+                <div class="sib-tile">
+                  <div class="sl"><span class="dot g"></span>SLP</div>
+                  <div class="sv">7.4</div>
+                </div>
+              </div>
+            </div>
+            <div class="ws-row">
+              <div class="ws-day"><div class="ws-d">M</div><div class="ws-n">25</div><div class="ws-bar easy"></div></div>
+              <div class="ws-day today"><div class="ws-d">T</div><div class="ws-n">26</div><div class="ws-bar qual"></div></div>
+              <div class="ws-day"><div class="ws-d">W</div><div class="ws-n">27</div><div class="ws-bar easy"></div></div>
+              <div class="ws-day"><div class="ws-d">T</div><div class="ws-n">28</div><div class="ws-bar easy"></div></div>
+              <div class="ws-day"><div class="ws-d">F</div><div class="ws-n">29</div><div class="ws-bar rest"></div></div>
+              <div class="ws-day"><div class="ws-d">S</div><div class="ws-n">30</div><div class="ws-bar easy"></div></div>
+              <div class="ws-day"><div class="ws-d">S</div><div class="ws-n">31</div><div class="ws-bar long"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">STANDARD · LILIAN PATH</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">Faff owns the workout, the phase, the pace</div>
+      </div>
+
+      <!-- COMPANION /today -->
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:41</span>
+              <span class="right">5G &nbsp; 87</span>
+            </div>
+            <div class="face-qual">
+              <div class="poster-top">
+                <div class="p-eye">TUE · MAY 26 · COACH AARON</div>
+                <h3 class="p-verb">INTERVALS.</h3>
+                <div class="p-coachbadge"><span class="dot"></span>From Coach Aaron · Final Surge</div>
+              </div>
+              <div class="a-list">
+                <div class="a-row">
+                  <div class="a-label">WARMUP</div>
+                  <div class="a-body">15 min Z2 build</div>
+                  <div class="a-tail">~2.0 mi</div>
+                </div>
+                <div class="a-row">
+                  <div class="a-label">WORK</div>
+                  <div class="a-body">6 &times; 800m @ 5K · 90s float</div>
+                  <div class="a-tail">2:58/mi</div>
+                </div>
+                <div class="a-row">
+                  <div class="a-label">COOLDOWN</div>
+                  <div class="a-body">10 min easy + drills</div>
+                  <div class="a-tail">~1.3 mi</div>
+                </div>
+              </div>
+              <div class="stat-trio">
+                <div>
+                  <div class="stat-v">6.3</div>
+                  <div class="stat-l">TOTAL MI</div>
+                </div>
+                <div>
+                  <div class="stat-v">163</div>
+                  <div class="stat-l">LTHR BPM</div>
+                </div>
+                <div>
+                  <div class="stat-v">~52m</div>
+                  <div class="stat-l">EST. TIME</div>
+                </div>
+              </div>
+            </div>
+            <div class="sibling">
+              <div class="sib-eye">THE BODY · 7-DAY ROLL</div>
+              <div class="sib-body">
+                <span class="accent">Coach Aaron has you on 6×800s @ 5K today.</span> Body's reading <span class="calm">RHR 46, HRV +6, sleep 7.4h.</span> Green to go — no flags from this side. If reps 5-6 fade, <span class="warn">message Aaron</span> · I won't pull splits without him.
+              </div>
+              <div class="sib-tile-row">
+                <div class="sib-tile">
+                  <div class="sl"><span class="dot g"></span>RHR</div>
+                  <div class="sv">46</div>
+                </div>
+                <div class="sib-tile">
+                  <div class="sl"><span class="dot g"></span>HRV</div>
+                  <div class="sv">68</div>
+                </div>
+                <div class="sib-tile">
+                  <div class="sl"><span class="dot g"></span>SLP</div>
+                  <div class="sv">7.4</div>
+                </div>
+              </div>
+            </div>
+            <div class="ws-row">
+              <div class="ws-day"><div class="ws-d">M</div><div class="ws-n">25</div><div class="ws-bar easy"></div></div>
+              <div class="ws-day today"><div class="ws-d">T</div><div class="ws-n">26</div><div class="ws-bar qual"></div></div>
+              <div class="ws-day"><div class="ws-d">W</div><div class="ws-n">27</div><div class="ws-bar easy"></div></div>
+              <div class="ws-day"><div class="ws-d">T</div><div class="ws-n">28</div><div class="ws-bar qual"></div></div>
+              <div class="ws-day"><div class="ws-d">F</div><div class="ws-n">29</div><div class="ws-bar rest"></div></div>
+              <div class="ws-day"><div class="ws-d">S</div><div class="ws-n">30</div><div class="ws-bar easy"></div></div>
+              <div class="ws-day"><div class="ws-d">S</div><div class="ws-n">31</div><div class="ws-bar long"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">COMPANION · TYLER PATH</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">External workout, Faff body context, no rewrite</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>The five changes:</b>
+      <br>1 · <b>Eyebrow</b> reads "TUE · MAY 26 · COACH AARON" instead of "TUE · MAY 26 · BASE" — coach replaces phase as the anchoring identity.
+      <br>2 · <b>Phase tag</b> replaced by a pill badge "From Coach Aaron · Final Surge" with a live green dot signaling the sync is healthy. Tap → /plan plan-source card.
+      <br>3 · <b>Workout detail rows</b> mirror the structured fields Final Surge exposes (warmup/work/cooldown · duration + pace target). Pace is the coach's pace, not Faff's VDOT calc. If a field is empty Faff renders "—" rather than guessing.
+      <br>4 · <b>Sibling coach voice</b> opens with attribution ("Coach Aaron has you on…") before the body read. <b>Never</b> suggests modifying the workout. Surfaces body signal as data, not instruction. The escape hatch is "message Aaron," not "I'll pull the splits."
+      <br>5 · <b>Stat trio · LTHR BPM</b> is Faff's auto-derived LTHR (the body engine still owns this — it's a Faff-side health number, not a plan number). If Tyler's coach prescribes HR zones inline in the Final Surge workout, those override.
+    </div>
+  </section>
+
+  <!-- ─── SECTION 4 · /plan ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 4 · /PLAN IN COMPANION MODE</div>
+        <h2 class="d-title">Coach owns<br>the cycle.</h2>
+      </div>
+      <p class="d-desc">
+        Lilian's /plan answers "where am I in the cycle?" with Faff's generated phase strip + volume arc + week ahead. Companion /plan answers the same question — but the phase ladder is Coach Aaron's labels (or a generic "BLOCK 2 OF 5" if he doesn't label phases), the volume arc is rolling 4-week ACWR + history projection (no Daniels recomputation), and a new <b>PLAN SOURCE</b> card at the bottom shows sync state, last refresh, and the manual re-sync CTA.
+      </p>
+    </div>
+
+    <div class="siderail">
+
+      <!-- /plan COMPANION -->
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:46</span>
+              <span class="right">5G &nbsp; 86</span>
+            </div>
+            <div class="face-dark">
+              <div class="plan-head">
+                <div class="plan-eye">PLAN · WHERE AM I IN THE CYCLE</div>
+                <h3 class="plan-title">Plan from<br>Coach Aaron.</h3>
+                <div class="plan-sub">Block 2 of 5 · marathon build · 22 weeks to Nov 2</div>
+              </div>
+
+              <div class="phase-strip">
+                <div class="phase-cell done">
+                  <div class="pc-l">BLK 1</div>
+                  <div class="pc-v">BASE</div>
+                  <div class="pc-bar"></div>
+                </div>
+                <div class="phase-cell now">
+                  <div class="pc-l">BLK 2</div>
+                  <div class="pc-v">BUILD</div>
+                  <div class="pc-bar"></div>
+                </div>
+                <div class="phase-cell">
+                  <div class="pc-l">BLK 3</div>
+                  <div class="pc-v">PEAK</div>
+                  <div class="pc-bar"></div>
+                </div>
+                <div class="phase-cell">
+                  <div class="pc-l">BLK 4</div>
+                  <div class="pc-v">TAPER</div>
+                  <div class="pc-bar"></div>
+                </div>
+              </div>
+
+              <div class="vol-card">
+                <div class="vol-head">
+                  <div class="vol-l">VOLUME · 8-WEEK ROLL</div>
+                  <div class="vol-meta">42 → 56 mi · from history</div>
+                </div>
+                <div class="vol-bars">
+                  <div class="vb" style="height: 60%"></div>
+                  <div class="vb" style="height: 68%"></div>
+                  <div class="vb" style="height: 72%"></div>
+                  <div class="vb" style="height: 78%"></div>
+                  <div class="vb now" style="height: 85%"></div>
+                  <div class="vb proj" style="height: 90%"></div>
+                  <div class="vb proj" style="height: 96%"></div>
+                  <div class="vb proj" style="height: 100%"></div>
+                </div>
+              </div>
+
+              <div class="source-card">
+                <div class="source-head">
+                  <div class="source-icon-row">
+                    <div class="si">FS</div>
+                    <div class="sn">Coach Aaron · Final Surge</div>
+                  </div>
+                  <div class="source-state">Synced</div>
+                </div>
+                <div class="source-meta">
+                  <div class="sm-row">
+                    <div class="sm-l">LAST SYNC</div>
+                    <div class="sm-v">9:32 AM · 14 min ago</div>
+                  </div>
+                  <div class="sm-row">
+                    <div class="sm-l">NEXT REFRESH</div>
+                    <div class="sm-v">3:32 PM</div>
+                  </div>
+                </div>
+                <div class="source-cta">Re-sync now</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">COMPANION /PLAN</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">Coach labels + history-projected volume + sync card</div>
+      </div>
+
+      <!-- /plan EMPTY/DISAGREE state -->
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">9:46</span>
+              <span class="right">5G &nbsp; 86</span>
+            </div>
+            <div class="face-dark">
+              <div class="plan-head">
+                <div class="plan-eye">PLAN · WHERE AM I IN THE CYCLE</div>
+                <h3 class="plan-title">Plan from<br>Coach Aaron.</h3>
+                <div class="plan-sub" style="color: var(--goal);">Sync stale · last refresh 2 days ago</div>
+              </div>
+
+              <div class="phase-strip" style="opacity: 0.55;">
+                <div class="phase-cell done">
+                  <div class="pc-l">BLK 1</div>
+                  <div class="pc-v">BASE</div>
+                  <div class="pc-bar"></div>
+                </div>
+                <div class="phase-cell now">
+                  <div class="pc-l">BLK 2</div>
+                  <div class="pc-v">BUILD</div>
+                  <div class="pc-bar"></div>
+                </div>
+                <div class="phase-cell">
+                  <div class="pc-l">BLK 3</div>
+                  <div class="pc-v">PEAK</div>
+                  <div class="pc-bar"></div>
+                </div>
+                <div class="phase-cell">
+                  <div class="pc-l">BLK 4</div>
+                  <div class="pc-v">TAPER</div>
+                  <div class="pc-bar"></div>
+                </div>
+              </div>
+
+              <div class="source-card" style="background: linear-gradient(135deg, rgba(243,173,56,0.18) 0%, rgba(243,173,56,0.04) 100%); border-color: rgba(243,173,56,0.5);">
+                <div class="source-head">
+                  <div class="source-icon-row">
+                    <div class="si" style="background: #d68b1f;">FS</div>
+                    <div class="sn">Coach Aaron · Final Surge</div>
+                  </div>
+                  <div class="source-state" style="color: var(--goal);">Stale</div>
+                </div>
+                <div class="source-meta">
+                  <div class="sm-row">
+                    <div class="sm-l">LAST SUCCESSFUL</div>
+                    <div class="sm-v">May 24 · 8:14 AM</div>
+                  </div>
+                  <div class="sm-row">
+                    <div class="sm-l">LAST ATTEMPT</div>
+                    <div class="sm-v">9:32 AM · failed (403)</div>
+                  </div>
+                </div>
+                <div class="source-cta" style="background: rgba(255,255,255,0.96); color: #6a4a1a;">Reconnect Final Surge</div>
+              </div>
+
+              <div class="note" style="margin: 14px 22px 0;">
+                <b>Why this matters:</b> when the feed goes stale Tyler needs to know <i>before</i> he goes out the door for a Tuesday session. Stale-sync state takes over the /plan eyebrow and the source card; the Poster on /today shows the last-known workout with a "STALE · MAY 24" warning instead of falsely presenting it as today's plan.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">COMPANION /PLAN · STALE SYNC</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">When the ICS feed fails — degrade honestly</div>
+      </div>
+
+    </div>
+
+    <div class="note">
+      <b>Phase strip logic:</b> if the coach's Final Surge plan has named blocks ("Base · Build · Peak · Taper · Race"), Faff shows them verbatim. If the coach uses week-by-week labels with no block tags, Faff renders generic "BLOCK 1 OF 5 · WEEK 6 OF 24" using the race-date math + total weeks. If neither is available, the strip collapses to a single "FROM COACH AARON" tile + week countdown.
+      <br><br>
+      <b>Volume arc:</b> built from rolling 28-day completed volume + projection from the next 2 weeks of Final Surge data (no Daniels VDOT recomputation, no ACWR-driven adjustment). Companion Mode does not surface the body engine's volume opinions on /plan — those live exclusively in the Sibling on /today, where they read as observation, not prescription.
+    </div>
+  </section>
+
+  <!-- ─── SECTION 5 · RACE-DAY CONTINUITY ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 5 · RACE-DAY CONTINUITY</div>
+        <h2 class="d-title">Race week<br>doesn't fork.</h2>
+      </div>
+      <p class="d-desc">
+        Tyler still races A/B/C events. Faff still handles race-day operations — Uber to the start, transport logistics, the checklist, the watch app's gun-time UI. The taper protocol is the coach's. Faff doesn't override it. But Faff still surfaces body signals (sleep, RHR, HRV) as race-day data so Tyler can decide what to message his coach about.
+      </p>
+    </div>
+
+    <div class="race-grid">
+
+      <div class="race-notes">
+        <h3>Unchanged in<br>Companion Mode.</h3>
+        <div class="race-row">
+          <div class="rr-dot un"></div>
+          <div>
+            <div class="rr-name">Race table · A/B/C events</div>
+            <div class="rr-meta">Race horizon view, countdown, race detail page — all identical to v1.</div>
+          </div>
+        </div>
+        <div class="race-row">
+          <div class="rr-dot un"></div>
+          <div>
+            <div class="rr-name">Uber API · race-day transport</div>
+            <div class="rr-meta">One-tap booking with start-corral coordinates, time-zone-aware ETA.</div>
+          </div>
+        </div>
+        <div class="race-row">
+          <div class="rr-dot un"></div>
+          <div>
+            <div class="rr-name">Race-day checklist</div>
+            <div class="rr-meta">Pre-race ops surface — gear, fuel, pre-race meal timing, throwaway layer guidance.</div>
+          </div>
+        </div>
+        <div class="race-row">
+          <div class="rr-dot un"></div>
+          <div>
+            <div class="rr-name">Apple Watch · gun-time UI</div>
+            <div class="rr-meta">Tap "Start" pattern, on-wrist coach voice, splits. Faff watch app is identical regardless of who wrote the plan.</div>
+          </div>
+        </div>
+        <div class="race-row">
+          <div class="rr-dot ch"></div>
+          <div>
+            <div class="rr-name">Race-week countdown (Sibling)</div>
+            <div class="rr-meta">Body signals still surface — but the prescription ("REST · take it easy") becomes observation ("Body's tracking well — RHR -2 vs baseline. Aaron's taper is doing its job.").</div>
+          </div>
+        </div>
+        <div class="race-row">
+          <div class="rr-dot ch"></div>
+          <div>
+            <div class="rr-name">Race-week takeover (T-3d)</div>
+            <div class="rr-meta">Same gradient + countdown. Coach attribution stays on every face. Faff does not auto-prescribe a tune-up — only surfaces what Final Surge has scheduled.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-notch"></div>
+            <div class="phone-status">
+              <span class="time">8:12</span>
+              <span class="right">5G &nbsp; 91</span>
+            </div>
+            <div class="face-qual" style="background: var(--g-race);">
+              <div class="poster-top">
+                <div class="p-eye">SUN · NOV 2 · RACE DAY</div>
+                <h3 class="p-verb" style="font-size: 56px;">NYC<br>MARATHON.</h3>
+                <div class="p-coachbadge"><span class="dot"></span>From Coach Aaron · Final Surge</div>
+              </div>
+              <div class="a-list">
+                <div class="a-row">
+                  <div class="a-label">TARGET</div>
+                  <div class="a-body">2:49 · 6:28 pace</div>
+                  <div class="a-tail">26.2</div>
+                </div>
+                <div class="a-row">
+                  <div class="a-label">FUEL</div>
+                  <div class="a-body">Gel @ mi 5 · 10 · 15 · 20</div>
+                  <div class="a-tail">4×</div>
+                </div>
+                <div class="a-row">
+                  <div class="a-label">TRANSPORT</div>
+                  <div class="a-body">Uber · book by 5:40 AM</div>
+                  <div class="a-tail">CTA</div>
+                </div>
+              </div>
+              <div class="stat-trio">
+                <div>
+                  <div class="stat-v">04:12</div>
+                  <div class="stat-l">TO GUN</div>
+                </div>
+                <div>
+                  <div class="stat-v">46</div>
+                  <div class="stat-l">RHR -2</div>
+                </div>
+                <div>
+                  <div class="stat-v">7.8</div>
+                  <div class="stat-l">SLEEP</div>
+                </div>
+              </div>
+            </div>
+            <div class="sibling">
+              <div class="sib-eye">THE BODY · RACE MORNING</div>
+              <div class="sib-body">
+                Body's tracking well. <span class="calm">RHR -2 vs baseline, HRV +8, sleep 7.8h.</span> Aaron's taper is doing its job — green to execute. Stick to <span class="accent">6:28 through mile 16</span> · open it up after the bridge if the legs answer.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption strong">COMPANION · RACE MORNING</div>
+        <div class="caption" style="margin-top: 4px; color: var(--mute);">Coach attribution stays · ops + body continuous</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── SECTION 6 · DATA CONTRACT ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 6 · DATA CONTRACT</div>
+        <h2 class="d-title">Where each<br>field comes from.</h2>
+      </div>
+      <p class="d-desc">
+        The contract for v1 → v1.1. The right-hand column locks what Companion Mode pulls externally vs what stays Faff-owned. <b>Faff-owned (body signals, race horizon)</b> doesn't change — those are Faff's job whether you have a coach or not. <b>Plan-owned (today's workout, phase label, volume)</b> shifts to the external source. <b>Plan modifications</b> are explicitly never Faff's in Companion Mode.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table class="contract">
+        <thead>
+          <tr>
+            <th style="width: 200px;">Field</th>
+            <th style="width: 240px;">Faff v1 source</th>
+            <th>Companion v1.1 source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="field">Today's workout</td>
+            <td class="v1">Faff plan engine · Path B · Daniels VDOT</td>
+            <td class="v11">Final Surge ICS · TrainingPeaks API · manual log</td>
+          </tr>
+          <tr>
+            <td class="field">Phase label</td>
+            <td class="v1">Faff plan engine · "BASE WK 6"</td>
+            <td class="v11">External plan label · or generic "BLOCK N OF M" if unlabeled</td>
+          </tr>
+          <tr>
+            <td class="field">Volume projection</td>
+            <td class="v1">Faff plan engine · planned next 4 weeks</td>
+            <td class="v11">External plan + history projection · no Daniels recomputation</td>
+          </tr>
+          <tr>
+            <td class="field">Pace targets · per workout</td>
+            <td class="v1">VDOT-derived bands · auto-recalibrating</td>
+            <td class="v11">Coach's prescribed pace · verbatim from the feed · no override</td>
+          </tr>
+          <tr>
+            <td class="field">HR zones · per workout</td>
+            <td class="v1">Auto-LTHR (Path A) · band per workout type</td>
+            <td class="v11">Coach's prescribed HR (if specified) · else Faff auto-LTHR</td>
+          </tr>
+          <tr>
+            <td class="field">Auto-LTHR derivation</td>
+            <td class="v1">Faff body engine · weekly recalc</td>
+            <td class="same">unchanged · body engine still owns LTHR</td>
+          </tr>
+          <tr>
+            <td class="field">Body signals (RHR · HRV · sleep · VO2max)</td>
+            <td class="v1">HealthKit + Strava</td>
+            <td class="same">unchanged · same sources</td>
+          </tr>
+          <tr>
+            <td class="field">Day-state resolver</td>
+            <td class="v1">Pure function · 11 states · plan + body inputs</td>
+            <td class="same">unchanged · resolver runs the same · plan input becomes external</td>
+          </tr>
+          <tr>
+            <td class="field">Race horizon</td>
+            <td class="v1">Faff races table · user-entered + auto-detected</td>
+            <td class="same">unchanged</td>
+          </tr>
+          <tr>
+            <td class="field">Race-day operations (Uber · checklist)</td>
+            <td class="v1">Faff race-day surface</td>
+            <td class="same">unchanged</td>
+          </tr>
+          <tr>
+            <td class="field">Plan modifications · adapt workouts</td>
+            <td class="v1">Faff within bounds (skip + swap triggers · per swap-triggers.md)</td>
+            <td class="never">never · "message your coach"</td>
+          </tr>
+          <tr>
+            <td class="field">Coach voice (Sibling)</td>
+            <td class="v1">Faff brand voice · prescriptive</td>
+            <td class="v11">Faff brand voice · attribution-first · observational only</td>
+          </tr>
+          <tr>
+            <td class="field">Skip Today / Niggle / Sick logging</td>
+            <td class="v1">Triggers plan adapter · re-routes week</td>
+            <td class="v11">Logs body event · prompts "message your coach" · no plan rewrite</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─── SECTION 7 · SCOPE SPLIT ─── -->
+  <section class="direction">
+    <div class="d-head">
+      <div>
+        <div class="d-label">SECTION 7 · v1.1 vs v1.2+ SCOPE</div>
+        <h2 class="d-title">Where the line<br>sits, honestly.</h2>
+      </div>
+      <p class="d-desc">
+        v1.1 ships Companion Mode for the Final Surge + manual paths · which covers ~80% of the coached-runner segment with low integration risk. TrainingPeaks OAuth, automatic plan-conflict detection, plan-import history surface — all v1.2+. The line is drawn at: <b>does shipping this require an external API partnership we don't yet have?</b> If yes, push it.
+      </p>
+    </div>
+
+    <div class="scope-grid">
+      <div class="scope-card v11">
+        <div class="scope-eye v11">v1.1 · NEXT</div>
+        <h3>Ships in the<br>Companion Mode round.</h3>
+        <ul>
+          <li><b>Final Surge ICS calendar import</b> — read-only feed URL, parsed for structured workout, 6h sync interval + on-launch refresh.</li>
+          <li><b>Manual workout-log path</b> — for runners with non-Final-Surge coaches (Excel, email, Notion). Tyler logs the day's workout in plain prose; Faff treats it as the source of truth without inferring more.</li>
+          <li><b>Step 1 fork + Step 2.5 plan-source onboarding</b> — the modified flow shown in Section 2.</li>
+          <li><b>/today Companion variant</b> — coach attribution badge, verbatim workout detail, observational Sibling, "message your coach" Skip Today.</li>
+          <li><b>/plan Companion variant</b> — external phase strip, history-projected volume arc, plan-source card with sync state.</li>
+          <li><b>Stale-sync degradation</b> — eyebrow + source card surface the failure honestly, last-known workout marked stale.</li>
+          <li><b>Coach name + plan source on /me</b> — single editable field, "Change plan owner" routes back to Step 1 flow.</li>
+        </ul>
+      </div>
+      <div class="scope-card v12">
+        <div class="scope-eye v12">v1.2+ · LATER</div>
+        <h3>Waits until the<br>v1.1 baseline lands.</h3>
+        <ul>
+          <li><b>TrainingPeaks OAuth integration</b> — pending API partner status. Until then, TrainingPeaks runners use the manual path or the calendar-export workaround.</li>
+          <li><b>Automatic plan-conflict detection</b> — when body signals + coach prescription disagree (e.g. HRV crashed but coach has intervals), surface a structured "consider easing" prompt. Open question 1 below covers the design call.</li>
+          <li><b>Plan-import history surface</b> — see every prior week's coach-prescribed plan vs what was executed. Lives on /plan as a longitudinal view.</li>
+          <li><b>Two-way sync</b> — push completed workouts back to Final Surge / TrainingPeaks so the coach sees them. Likely never · Strava already does this and competing on data plumbing isn't the moat.</li>
+          <li><b>Coach-side surface</b> — a coach-facing view of their athletes' Faff body data. Genuinely a separate product. Park.</li>
+          <li><b>Pro tier gating</b> — open question 2 below. If Companion Mode is Pro-only, the upgrade flow needs design. If it's free, doesn't.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── footer · open questions + citations ─── -->
+  <footer class="footer">
+
+    <h3>Open design calls.</h3>
+
+    <div class="openq">
+      <div class="oq-num">01</div>
+      <div class="oq-title">When the imported plan and the body signals disagree, what happens in the Sibling?</div>
+      <div class="oq-body">
+        Tyler's coach has him on 6×800s. HRV is -12 vs baseline, RHR +6, sleep 5.4h. Three options: <b>(A)</b> Surface body data, stay quiet on the workout — let Tyler decide. <b>(B)</b> Surface body data + a soft "consider easing" line that explicitly says "message Aaron." <b>(C)</b> Surface body data + auto-flag the workout to the coach (if 2-way sync exists). Cardinal Rule #3 (every doctrine cites a source) makes (B) and (C) load-bearing — they need a research-defended threshold for when to escalate. Current preference: <b>(B), conservative threshold (HRV -1σ AND sleep &lt;5.5h AND RHR +5 simultaneously)</b>, deferred to user.
+      </div>
+    </div>
+
+    <div class="openq">
+      <div class="oq-num">02</div>
+      <div class="oq-title">Pro tier or free? Does Companion Mode gate behind a paywall?</div>
+      <div class="oq-body">
+        Companion runners are net-net <i>more</i> serious than Lilian-path runners (they're already paying $150-300/mo for a coach). A natural Pro tier. But Companion Mode is also the lowest-cost-to-build path that grows the addressable market by ~25-35%. <b>Recommendation:</b> ship Companion Mode free in v1.1 to grow the user base; introduce Pro in v1.2+ with Pro-tier features (multi-race planning, advanced body analytics, coach-side surface). Pro is its own design pass.
+      </div>
+    </div>
+
+    <div class="openq">
+      <div class="oq-num">03</div>
+      <div class="oq-title">What does Skip Today do when there's an external coach?</div>
+      <div class="oq-body">
+        In v1, Skip Today triggers the plan adapter — swaps days, rebalances the week. In Companion Mode, Faff doesn't own the plan, so it can't swap days. Three options: <b>(A)</b> Skip just logs ("Skipped today · 0.0 mi") and does nothing else. <b>(B)</b> Skip logs + opens a draft message to the coach with prefilled context ("RHR +8, HRV -10, slept 5h — skipping today's tempo, ok?"). <b>(C)</b> Skip logs + a structured "request a swap" form Tyler sends his coach. Current preference: <b>(B)</b> — the draft is the helpful version; sending it is Tyler's call.
+      </div>
+    </div>
+
+    <div class="openq">
+      <div class="oq-num">04</div>
+      <div class="oq-title">How does Companion Mode handle a coach who prescribes by RPE only (no pace/HR)?</div>
+      <div class="oq-body">
+        Some coaches deliberately prescribe "hard 6×800, recover well" with no pace target. Faff's workout-detail row pattern assumes pace + HR + duration. Options: <b>(A)</b> Show empty tail values ("—") for missing fields and trust the coach. <b>(B)</b> Offer to overlay Faff's VDOT-derived pace as a <i>suggestion</i> labeled "Faff suggests" — opt-in per workout. <b>(C)</b> Hide the workout-detail rows entirely and show only the coach's prose. Current preference: <b>(A)</b> for v1.1, revisit with user data.
+      </div>
+    </div>
+
+    <div class="openq">
+      <div class="oq-num">05</div>
+      <div class="oq-title">Does LTHR auto-derivation stay on in Companion Mode?</div>
+      <div class="oq-body">
+        Faff's auto-LTHR (Path A · weekly recalc from 14d HR+pace data) is a body-engine number, not a plan number. It's used in the Sibling's body context and in the stat trio. <b>If the coach prescribes HR zones explicitly</b>, the question is: does Faff's auto-derived LTHR conflict with the coach's? Likely <i>not</i> — Faff's LTHR is descriptive (what the body is doing) vs the coach's is prescriptive (what the workout calls for). They live in different cells. <b>Current resolution:</b> auto-LTHR stays on as a body-side reading; coach's prescribed HR overrides in the workout detail rows. Surface both if they diverge by &gt;8bpm.
+      </div>
+    </div>
+
+    <div class="openq">
+      <div class="oq-num">06</div>
+      <div class="oq-title">What's the iOS tab bar look like when Tyler's not getting plan generation?</div>
+      <div class="oq-body">
+        Lilian's tab bar: Today · Plan · Races · Health · Me. Companion Mode keeps all five — but /plan's content shifts substantially. Should the tab label change ("Coach" instead of "Plan")? Or stay "Plan" with the page renamed to "Plan from Coach Aaron" inside? Tab label affinity is one of the highest-stakes consistency decisions across the product. <b>Recommendation:</b> tab label stays <b>Plan</b> · the page-level header changes. Five-tab shape is preserved for muscle memory between Lilian and Tyler paths.
+      </div>
+    </div>
+
+    <h3>Research citations.</h3>
+
+    <div class="citations">
+      <h4>Read for this deck</h4>
+      <ul>
+        <li><b>PROJECT.md</b> — v1 scope + Companion Mode v1.1+ lock (2026-05-28): <code>"Companion Mode for runners with external coaches (Final Surge / TrainingPeaks / individual coach setups · locked 2026-05-28 · v1.1+)"</code></li>
+        <li><b>PROJECT.md · Cardinal Rule #3</b> — Every doctrine cites a source. The "consider easing" Sibling logic (Open Q 1) needs a research-defended threshold before it can ship.</li>
+        <li><b>ROADMAP.md</b> — Companion Mode line: <code>"no plan gen, body monitor + execution helper" mode</code> — confirms the framing this deck builds on.</li>
+        <li><b>design/pages/today.md</b> — Inputs/outputs contract for the Today resolver. Companion Mode preserves the resolver shape; only the plan-input source changes.</li>
+        <li><b>design/components/Sibling.md + CoachVoice.md</b> — Sibling structure + voice rules. Companion Sibling reuses the structure verbatim; voice adds attribution-first sentence.</li>
+        <li><b>research/methodology/coach-voice-spec.md</b> — brand voice doctrine. Companion attribution lines are constrained to the same voice spec.</li>
+        <li><b>research/methodology/swap-triggers.md</b> — what triggers a workout swap in v1. In Companion Mode, swap triggers fire but route to "message coach" instead of acting.</li>
+        <li><b>docs/2026-05-28-onboarding-lilian.html</b> — onboarding visual rhythm and component vocabulary mirrored here.</li>
+        <li><b>docs/2026-05-28-poster-workout-merge.html</b> — Poster structure (workout-detail rows · stat trio anchored bottom) reused at parity.</li>
+      </ul>
+    </div>
+
+    <div class="citations">
+      <h4>Constraints honored</h4>
+      <ul>
+        <li><b>No LLM anywhere</b> (PROJECT.md, locked 2026-05-28) — Sibling attribution lines are deterministic templates: "{Coach name} has you on {workout type} today." No prose generation.</li>
+        <li><b>No code outside this deck</b> — pure HTML + CSS, no JS, no external images, no edits to /lib, /apps, or design specs.</li>
+        <li><b>Specs live separately from code</b> (Cardinal Rule #5) — this deck lives in <code>docs/</code> as research output, not in <code>design/</code> or <code>apps/</code>.</li>
+        <li><b>Single source of truth for design tokens</b> (Cardinal Rule #4) — every color in this deck is a token from the canonical palette (no inlined hex values without a CSS variable).</li>
+      </ul>
+    </div>
+
+    <div style="margin-top: 32px; color: var(--mute); font-size: 12px;">
+      <b>Faff · Companion Mode · v1.1+ research deck · 2026-05-28</b><br>
+      Reference for the future round. Not ship-ready. Decisions on the six open questions land before v1.1 build begins.
+    </div>
+
+  </footer>
+
+</div>
+</body>
+</html>
