@@ -1,20 +1,29 @@
 //
 //  HealthView.swift
 //
-//  2026-05-27 rebuild: David called the previous version "very slow" +
-//  said "Health on iphone needs to be a bunch of cards and data that
-//  is glanceable." This now shows what the web /health shows: readiness
-//  ring on top, then a grid of metric cards (SLEEP / RHR / HRV /
-//  WEIGHT / VO2) each with current value + a 30-day sparkline. Coach
-//  voice drops to the bottom and stays out of the way — never gates
-//  the cards.
+//  Phase 25b cutover (2026-05-28) — mirrors the v3 design of
+//  web-v2/app/health/page.tsx onto iPhone. The legacy inline
+//  "headline + metric grid" was rebuilt around the shared chrome
+//  primitives shipped in Phase 25a:
+//
+//    1) PageHeader              ← FaffPageShell (display-recipe title
+//                                 + caps-tracked eyebrow + optional
+//                                 accent / title color override)
+//    2) ReadinessHeroCard       ← <ReadinessBreakdownView /> card
+//    3) BodyMetricCard × 5      ← <TrendCard /> compact mode
+//    4) WATCH LIST card         ← <WatchListBox />
+//    5) CoachSlot               ← <BriefingLoader surface="health" />
+//
+//  Headline title / color / eyebrow are derived by FaffAdapter so the
+//  watch-mode branch logic lives in one place (matched 1:1 with the
+//  web page). HealthView stays render-only — no string assembly here.
 //
 
 import SwiftUI
 
 struct HealthView: View {
-    // Hydrate from AppCache so first tap after launch paints all three
-    // (brief, readiness, metric cards) instantly. Network refresh
+    // Hydrate from AppCache so the first tap after launch paints all
+    // three (brief, readiness, metric cards) instantly. Network refresh
     // overwrites them when it lands.
     @State private var briefing: Briefing? =
         AppCache.read(.healthBriefing, as: Briefing.self)
@@ -26,33 +35,36 @@ struct HealthView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Watch-mode aware headline. Mirrors web /health.
-                    headline
+                VStack(alignment: .leading, spacing: 18) {
+                    PageHeader(
+                        title: FaffAdapter.healthTitle(watchMode: health?.watchMode),
+                        eyebrow: FaffAdapter.healthEyebrow(state: health),
+                        titleColor: FaffAdapter.healthTitleColor(watchMode: health?.watchMode)
+                    )
 
-                    // Readiness ring hero — same component as TodayView.
-                    HStack {
-                        Spacer()
-                        ReadinessRing(
-                            score: readiness?.score,
-                            label: readiness?.label,
-                            size: .large
-                        )
-                        Spacer()
-                    }
-                    .padding(.vertical, 4)
+                    // §8.3 — readiness hero (big score + band).
+                    ReadinessHeroCard(
+                        score: readiness?.score,
+                        label: readiness?.label
+                    )
+                    .transition(.opacity)
 
-                    // Metric grid — glanceable cards with sparkline.
+                    // Per-metric tiles · two-column grid.
                     metricGrid
+                        .padding(.horizontal, 24)
 
-                    // Watch list (amber/red flags) if any.
+                    // Check-in row across the bottom of the grid block.
+                    checkInCard
+                        .padding(.horizontal, 24)
+
+                    // Watch list (amber/red flags) if any pending.
                     if let h = health, !h.watchItems.isEmpty {
                         watchList(h.watchItems)
                             .transition(.opacity)
                     }
 
-                    // Coach prose — bottom, background-loaded, doesn't
-                    // gate anything above. Tap to expand if needed.
+                    // Coach prose — background-loaded, sits below the
+                    // hard data. Never gates the cards above.
                     CoachSlot(
                         briefing: briefing,
                         surface: "health",
@@ -66,52 +78,14 @@ struct HealthView: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Health")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .task { await load() }
             .refreshable { await load() }
             .sensoryFeedback(.success, trigger: readiness?.score)
         }
     }
 
-    // MARK: - Headline
-
-    @ViewBuilder
-    private var headline: some View {
-        let (text, color) = headlineForMode(health?.watchMode)
-        VStack(alignment: .leading, spacing: 6) {
-            Text(text)
-                .font(.display(28))
-                .tracking(0.4)
-                .foregroundStyle(color)
-            // `Optional<String>.map { ... }` was being read as
-            // `String.map { ... }` (a sequence map over characters,
-            // returning [String]). Explicit subtitle build instead.
-            Text(subtitleText())
-                .font(.label(10)).tracking(1.4)
-                .foregroundStyle(Theme.mute)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 4)
-    }
-
-    private func subtitleText() -> String {
-        var s = "LONG-TERM PATTERNS · 30-DAY VIEW"
-        if let mode = health?.watchMode {
-            s += " · MODE: \(mode.uppercased())"
-        }
-        return s
-    }
-
-    private func headlineForMode(_ mode: String?) -> (String, Color) {
-        switch mode {
-        case "watch-red":    return ("Pull back.",       Theme.over)
-        case "watch-amber":  return ("Health.",          Theme.goal)
-        case "green":        return ("Everything's green.", Theme.green)
-        default:             return ("Health.",          Theme.ink)
-        }
-    }
-
-    // MARK: - Metric grid
+    // MARK: - Metric grid (SLEEP · RHR · HRV · LOAD)
 
     private var metricGrid: some View {
         LazyVGrid(
@@ -121,26 +95,42 @@ struct HealthView: View {
             sleepCard
             rhrCard
             hrvCard
-            weightCard
-            vo2Card
-            cadenceCard
+            loadCard
         }
-        .padding(.horizontal, 24)
     }
 
     @ViewBuilder
     private var sleepCard: some View {
         let s = health?.sleep
         let series = health?.sleepSeries.map(\.hours) ?? []
-        MetricCard(
+        let avg = s?.avg7n
+        let target = 7.5
+        let delta: String? = avg.map { v in
+            let d = v - target
+            if abs(d) < 0.1 { return "AT TARGET" }
+            return d >= 0
+                ? "+\(String(format: "%.1f", d))h vs 7.5h TARGET"
+                : "\(String(format: "%.1f", d))h vs 7.5h TARGET"
+        }
+        let tone: BodyMetricDeltaTone = {
+            guard let v = avg else { return .mute }
+            if v >= target - 0.3 { return .green }
+            if v >= target - 1.0 { return .amber }
+            return .red
+        }()
+
+        BodyMetricCard(
             label: "SLEEP",
-            value: s?.avg7n.map { String(format: "%.1f", $0) } ?? "—",
+            labelColor: Theme.goal,
+            value: avg.map { String(format: "%.1f", $0) } ?? "—",
             unit: "h",
+            delta: delta,
+            deltaTone: tone,
             sub: "7-NIGHT AVG · TARGET 7.5h",
-            color: Theme.goal,
-            series: series.suffix(30).map { $0 },
-            seriesMin: 4, seriesMax: 10,
-            baseline: 7.5
+            series: series,
+            seriesMin: 4,
+            seriesMax: 10,
+            sparkBaseline: target
         )
     }
 
@@ -148,18 +138,35 @@ struct HealthView: View {
     private var rhrCard: some View {
         let r = health?.rhr
         let series = health?.rhrSeries.map { Double($0.bpm) } ?? []
-        let elevatedRed = (r?.delta ?? 0) >= 5
-        MetricCard(
+        let delta = r?.delta
+        let deltaText: String? = {
+            guard let d = delta else { return nil }
+            if d == 0 { return "AT BASELINE" }
+            return d > 0
+                ? "+\(d) bpm vs 60D BASELINE"
+                : "\(d) bpm vs 60D BASELINE"
+        }()
+        let tone: BodyMetricDeltaTone = {
+            guard let d = delta else { return .mute }
+            if d >= 5 { return .red }
+            if d >= 2 { return .amber }
+            return .green
+        }()
+
+        BodyMetricCard(
             label: "RESTING HR",
+            labelColor: Theme.over,
             value: r?.current.map(String.init) ?? "—",
             unit: "bpm",
+            delta: deltaText,
+            deltaTone: tone,
             sub: r?.baseline != nil
-                ? "BASELINE \(r!.baseline!) · \(deltaLabel(r?.delta)) vs 60D"
+                ? "BASELINE \(r!.baseline!) bpm · 60-DAY WINDOW"
                 : "60-DAY BASELINE BUILDING",
-            color: elevatedRed ? Theme.over : Theme.green,
-            series: series.suffix(60).map { $0 },
-            seriesMin: 40, seriesMax: 70,
-            baseline: r?.baseline.map(Double.init)
+            series: series,
+            seriesMin: 40,
+            seriesMax: 70,
+            sparkBaseline: r?.baseline.map(Double.init)
         )
     }
 
@@ -167,68 +174,116 @@ struct HealthView: View {
     private var hrvCard: some View {
         let h = health?.hrv
         let series = health?.hrvSeries.map { Double($0.ms) } ?? []
-        MetricCard(
+        let pct = h?.pctAboveBaseline
+        let deltaText: String? = {
+            guard let p = pct else { return nil }
+            if abs(p) < 2 { return "AT BASELINE" }
+            return p >= 0
+                ? "+\(String(format: "%.0f", p))% vs BASELINE"
+                : "\(String(format: "%.0f", p))% vs BASELINE"
+        }()
+        let tone: BodyMetricDeltaTone = {
+            guard let p = pct else { return .mute }
+            if p >= 5 { return .green }
+            if p >= -3 { return .green }
+            if p >= -10 { return .amber }
+            return .red
+        }()
+
+        BodyMetricCard(
             label: "HRV",
+            labelColor: Theme.green,
             value: h?.current.map(String.init) ?? "—",
             unit: "ms",
-            sub: h?.baseline != nil ? "BASELINE \(h!.baseline!) ms · NIGHTLY" : "BASELINE BUILDING",
-            color: Theme.green,
-            series: series.suffix(30).map { $0 },
-            seriesMin: 30, seriesMax: 100,
-            baseline: h?.baseline.map(Double.init)
+            delta: deltaText,
+            deltaTone: tone,
+            sub: h?.baseline != nil
+                ? "BASELINE \(h!.baseline!) ms · NIGHTLY"
+                : "BASELINE BUILDING",
+            series: series,
+            seriesMin: 30,
+            seriesMax: 100,
+            sparkBaseline: h?.baseline.map(Double.init)
         )
     }
 
+    /// LOAD card · uses the loadAcwr field added to ReadinessSnapshot in
+    /// Phase 12. ACWR (acute:chronic workload ratio) — 0.8-1.3 is the
+    /// "sweet spot", >1.5 is the injury-risk threshold from the
+    /// Gabbett research. No 14-day series yet on the wire; the
+    /// MiniSparkline renders its placeholder dotted line.
     @ViewBuilder
-    private var weightCard: some View {
-        let w = health?.weight
-        let series = health?.weightSeries.map(\.lb) ?? []
-        MetricCard(
-            label: "WEIGHT",
-            value: w?.current.map { String(format: "%.1f", $0) } ?? "—",
-            unit: "lb",
-            sub: w?.delta30 != nil
-                ? "\(w!.delta30! >= 0 ? "+" : "")\(String(format: "%.1f", w!.delta30!)) lb vs 30D"
-                : "30-DAY VIEW",
-            color: Theme.dist,
-            series: series.suffix(30).map { $0 },
-            seriesMin: nil, seriesMax: nil
-        )
-    }
+    private var loadCard: some View {
+        let acwr = readiness?.loadAcwr
+        let deltaText: String? = acwr.map { v in
+            if v >= 1.5 { return "INJURY-RISK BAND" }
+            if v >= 1.3 { return "BUILD ZONE · UPPER" }
+            if v >= 0.8 { return "SWEET SPOT 0.8–1.3" }
+            return "DETRAINING RANGE"
+        }
+        let tone: BodyMetricDeltaTone = {
+            guard let v = acwr else { return .mute }
+            if v >= 1.5 { return .red }
+            if v >= 1.3 { return .amber }
+            if v >= 0.8 { return .green }
+            return .amber
+        }()
 
-    @ViewBuilder
-    private var vo2Card: some View {
-        let v = health?.vo2.current
-        MetricCard(
-            label: "VO2 MAX",
-            value: v.map { String(format: "%.1f", $0) } ?? "—",
-            unit: "",
-            sub: "APPLE WATCH",
-            color: Theme.learn,
+        BodyMetricCard(
+            label: "LOAD",
+            labelColor: Theme.dist,
+            value: acwr.map { String(format: "%.2f", $0) } ?? "—",
+            unit: "ACWR",
+            delta: deltaText,
+            deltaTone: tone,
+            sub: "ACUTE : CHRONIC · 7D vs 28D AVG",
             series: [],
-            seriesMin: nil, seriesMax: nil
+            seriesMin: nil,
+            seriesMax: nil
         )
     }
 
+    /// CHECK-IN row — placeholder for the morning subjective check-in
+    /// (mood / soreness / motivation). The web /health page doesn't
+    /// have this yet either; we ship the surface for visual parity
+    /// with the task spec and a "TAP TO LOG" affordance.
     @ViewBuilder
-    private var cadenceCard: some View {
-        let c = health?.cadence.baseline
-        MetricCard(
-            label: "CADENCE",
-            value: c.map(String.init) ?? "—",
-            unit: "spm",
-            sub: "BASELINE · LAST 60 DAYS",
-            color: Theme.race,
-            series: [],
-            seriesMin: nil, seriesMax: nil
+    private var checkInCard: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("CHECK-IN")
+                    .font(.label(10)).tracking(1.6)
+                    .foregroundStyle(Theme.learn)
+                Text("How does the body feel?")
+                    .font(.display(18))
+                    .foregroundStyle(Theme.ink)
+                Text("SUBJECTIVE · MORNING WAKE")
+                    .font(.label(9)).tracking(1.2)
+                    .foregroundStyle(Theme.mute)
+            }
+            Spacer()
+            Text("TAP TO LOG")
+                .font(.label(10)).tracking(1.4)
+                .foregroundStyle(Theme.learn)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Theme.learn.opacity(0.12))
+                .overlay(Capsule().stroke(Theme.learn.opacity(0.35), lineWidth: 1))
+                .clipShape(Capsule())
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .background(Theme.card)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.rCard)
+                .stroke(Theme.line, lineWidth: 1)
         )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
     }
 
     // MARK: - Watch list
 
     private func watchList(_ items: [WatchItem]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("WATCH LIST")
+            Text("WATCH LIST · \(items.count) \(items.count == 1 ? "ITEM" : "ITEMS")")
                 .font(.label(10)).tracking(1.6)
                 .foregroundStyle(Theme.goal)
                 .padding(.horizontal, 24)
@@ -273,105 +328,5 @@ struct HealthView: View {
         briefing = b ?? nil
         readiness = r ?? nil
         health = h ?? nil
-    }
-
-    private func deltaLabel(_ d: Int?) -> String {
-        guard let d else { return "—" }
-        if d == 0 { return "flat" }
-        return d > 0 ? "+\(d)" : "\(d)"
-    }
-}
-
-// MARK: - MetricCard
-
-private struct MetricCard: View {
-    let label: String
-    let value: String
-    let unit: String
-    let sub: String
-    let color: Color
-    let series: [Double]
-    let seriesMin: Double?
-    let seriesMax: Double?
-    var baseline: Double? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.label(10)).tracking(1.4)
-                .foregroundStyle(color)
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(value)
-                    .font(.display(28))
-                    .foregroundStyle(Theme.ink)
-                if !unit.isEmpty {
-                    Text(unit)
-                        .font(.body(13))
-                        .foregroundStyle(Theme.mute)
-                }
-            }
-            if !series.isEmpty {
-                Sparkline(values: series, color: color, min: seriesMin, max: seriesMax, baseline: baseline)
-                    .frame(height: 28)
-            } else {
-                // Hold height even without a series so cards align.
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(height: 28)
-            }
-            Text(sub)
-                .font(.label(9)).tracking(1)
-                .foregroundStyle(Theme.mute)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Theme.card)
-        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
-    }
-}
-
-// MARK: - Sparkline
-
-private struct Sparkline: View {
-    let values: [Double]
-    let color: Color
-    var min: Double? = nil
-    var max: Double? = nil
-    var baseline: Double? = nil
-
-    var body: some View {
-        GeometryReader { geo in
-            let lo = min ?? (values.min() ?? 0)
-            let hi = max ?? (values.max() ?? 1)
-            let range = Swift.max(0.01, hi - lo)
-            let count = Swift.max(1, values.count - 1)
-
-            ZStack {
-                // Baseline dashed line if set
-                if let b = baseline, b >= lo, b <= hi {
-                    let y = geo.size.height * (1 - CGFloat((b - lo) / range))
-                    Path { p in
-                        p.move(to: CGPoint(x: 0, y: y))
-                        p.addLine(to: CGPoint(x: geo.size.width, y: y))
-                    }
-                    .stroke(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
-                }
-                // Bars
-                HStack(alignment: .bottom, spacing: 2) {
-                    ForEach(Array(values.enumerated()), id: \.offset) { _, v in
-                        let h = CGFloat((Swift.min(hi, Swift.max(lo, v)) - lo) / range)
-                            * geo.size.height
-                        Capsule()
-                            .fill(color.opacity(0.78))
-                            .frame(width: Swift.max(1, (geo.size.width - CGFloat(count) * 2) / CGFloat(values.count)),
-                                   height: Swift.max(2, h))
-                    }
-                }
-                .frame(maxHeight: .infinity, alignment: .bottom)
-            }
-        }
     }
 }
