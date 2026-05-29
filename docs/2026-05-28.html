@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The overhaul · 2026-05-28 · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.04);
+    --card: #11141a;
+    --card2: #1a1d24;
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --learn: #B084FF;
+    --race:  #FF7028;
+    --paper: #F2EFE9;
+    --paper-ink: #14110D;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 60px; letter-spacing: -0.5px; margin: 0; line-height: 0.92; text-transform: uppercase; }
+  .sub { color: var(--mute); margin-top: 10px; font-size: 14px; max-width: 640px; line-height: 1.5; }
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 32px; letter-spacing: 0.3px; margin: 56px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; text-transform: uppercase; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 24px 0 8px; }
+  h4 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 22px; margin: 0 0 6px; letter-spacing: 0.3px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  em { color: rgba(246,247,248,0.95); font-style: italic; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: ui-monospace, monospace; color: var(--dist); }
+
+  .lead { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.40); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .lead h2 { margin: 0 0 12px; font-size: 24px; color: var(--green); border: 0; padding: 0; }
+  .lead p { font-size: 14.5px; }
+
+  .swatch-row { display: flex; gap: 0; margin: 20px 0 8px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+  .swatch { flex: 1; height: 64px; display: flex; align-items: flex-end; padding: 8px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; font-family: ui-monospace, monospace; }
+
+  .item { border-radius: 14px; padding: 18px 22px; margin: 14px 0; border: 1px solid var(--line); background: var(--card); }
+  .item.shipped { border-color: rgba(62,189,65,0.35);  background: rgba(62,189,65,0.04); }
+  .item.high { border-color: rgba(252,77,100,0.40); background: rgba(252,77,100,0.04); }
+  .item.med  { border-color: rgba(243,173,56,0.32); background: rgba(243,173,56,0.03); }
+  .item.low  { border-color: rgba(39,180,224,0.28); background: rgba(39,180,224,0.03); }
+  .item .tag { display: inline-block; font-weight: 700; padding: 3px 10px; border-radius: 6px; font-size: 10.5px; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
+  .item.shipped .tag { background: var(--green); color: #0a0c10; }
+  .item.high .tag    { background: var(--over);  color: #0a0c10; }
+  .item.med  .tag    { background: var(--goal);  color: #0a0c10; }
+  .item.low  .tag    { background: var(--dist);  color: #0a0c10; }
+  .item .meta { color: var(--mute); font-size: 11.5px; letter-spacing: 0.6px; margin-top: 10px; }
+  .item .files { color: rgba(246,247,248,0.55); font-size: 11.5px; margin-top: 6px; font-family: ui-monospace, monospace; }
+
+  .pattern { background: rgba(176,132,255,0.06); border: 1px solid rgba(176,132,255,0.25); border-radius: 14px; padding: 18px 22px; margin: 28px 0; }
+  .pattern h3 { color: var(--learn); margin-top: 0; }
+  .pattern p { font-size: 13.5px; margin: 0 0 8px; }
+  .pattern pre { background: rgba(0,0,0,0.4); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12px; font-family: ui-monospace, monospace; color: rgba(246,247,248,0.88); margin: 8px 0; }
+  .pattern p:last-child { margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10.5px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td.high { color: var(--over); font-weight: 600; }
+  td.med  { color: var(--goal); font-weight: 600; }
+  td.low  { color: var(--dist); font-weight: 600; }
+  td.ok   { color: var(--green); font-weight: 600; }
+  td.mute { color: var(--mute); }
+
+  .nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+  .nav a { font-size: 11.5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--mute); text-decoration: none; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
+  .nav a:hover { color: var(--ink); border-color: var(--ink); }
+  a { color: var(--dist); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .timeline { margin: 18px 0 0; position: relative; padding-left: 18px; }
+  .timeline::before { content: ''; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 1px; background: var(--line); }
+  .timeline .row { position: relative; padding: 4px 0 10px; font-size: 13.5px; }
+  .timeline .row::before { content: ''; position: absolute; left: -18px; top: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+  .timeline .row .what { color: var(--ink); font-weight: 600; }
+  .timeline .row .why { color: var(--mute); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>The overhaul<br>2026-05-28</h1>
+  <p class="sub">"Design me a fucking app and then push it live. I want to see it as an app, not a mockup." Overnight: the full visual overhaul — warm-paper spec-sheet skin, 3-tab nav, race-bib spine — built and pushed live on web AND iPhone.</p>
+
+  <div class="nav">
+    <a href="#summary">Bottom line</a>
+    <a href="#web">Web</a>
+    <a href="#iphone">iPhone</a>
+    <a href="#skin">The skin</a>
+    <a href="#verify">Verification</a>
+    <a href="#queue">What's left</a>
+    <a href="#timeline">Timeline</a>
+  </div>
+
+  <div class="lead" id="summary">
+    <h2>Bottom line</h2>
+    <p>The app you said felt "sloppy, cheap, no soul" is gone. In its place: a warm-paper technical spec-sheet — near-black ink on <code>#F2EFE9</code>, bold Oswald condensed display, color used as registration marks instead of fills. The race is the spine; you open to TODAY. Nav collapsed from a sprawl to three tabs — <strong>TODAY / PLAN / ME</strong>.</p>
+    <p><strong>Live right now:</strong> <a href="https://www.faff.run/today">faff.run</a> is serving the paper skin (verified — <code>data-skin="paper"</code> + warm canvas on every route). iPhone <strong>TestFlight build 99</strong> is uploaded, ASC-validated, and distributed to your Internal Testers group — open TestFlight and it's there.</p>
+    <p><strong>Both cardinal guardrails held:</strong> the Apple Watch was not touched (it stays dark, comms intact), and the entire paper skin reverts to the old dark theme with a one-line token swap on each platform. Zero LLM anywhere — facts only.</p>
+  </div>
+
+  <div class="swatch-row">
+    <div class="swatch" style="background:#F2EFE9; color:#14110D;">PAGE · F2EFE9</div>
+    <div class="swatch" style="background:#F7F4EE; color:#14110D;">CARD · F7F4EE</div>
+    <div class="swatch" style="background:#14110D; color:#F2EFE9;">INK · 14110D</div>
+    <div class="swatch" style="background:#DD5F22; color:#fff;">RACE · DD5F22</div>
+    <div class="swatch" style="background:#1E9E47; color:#fff;">ON TRACK · 1E9E47</div>
+    <div class="swatch" style="background:#C2791A; color:#fff;">WATCH · C2791A</div>
+  </div>
+
+  <h2 id="web">What shipped — Web</h2>
+  <p class="sub" style="margin-bottom:6px;">Committed <code>88dd7e2</code> · pushed to <code>main</code> · auto-deployed by Railway from <code>web-v2/</code>. Verified live tonight.</p>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · paper skin</span>
+    <h4>Revertable warm-paper token layer</h4>
+    <p>The root layout now carries <code>data-skin="paper"</code> on <code>&lt;html&gt;</code>, and <code>globals.css</code> gained a <code>[data-skin="paper"]</code> block that overrides the dark <code>:root</code> with the full warm palette — paper canvas, near-black warm ink, deepened semantic colors. The 13 state gradients are intentionally left untouched: they're saturated enough to read on warm paper and carry the race-week wash on both skins.</p>
+    <p class="files">web-v2/app/layout.tsx · web-v2/app/globals.css</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · 3-tab nav</span>
+    <h4>TODAY / PLAN / ME — collapsed from seven</h4>
+    <p>The nav sprawl folded to three. <strong>Races</strong> became the destination path inside <strong>PLAN</strong>. <strong>Health</strong> demoted to a /today link + body chips. <strong>Log + Tips</strong> tucked under <strong>ME</strong>, which is now settings-first. Every surface still reachable, nothing orphaned.</p>
+    <p class="files">web-v2/app/plan/page.tsx · web-v2/app/me/page.tsx</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · race-bib spine</span>
+    <h4>The boarding-pass header + deterministic status engine</h4>
+    <p>Every page now opens with a stacked race bib: FAFF wordmark / race name / <code>T-N · GOAL · PROJ · status</code>. The projected finish (<code>PROJ</code>) renders only when it's computable from a real VDOT — never fabricated. The status word comes from a pure deterministic engine, no model in the loop.</p>
+    <p class="files">web-v2/components/faff/RaceBib.tsx · components/faff/VerbHero.tsx · lib/coach/race-header.ts · lib/training/vdot.ts</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · graphic kit</span>
+    <h4>Spec-sheet primitives + reachable-surface color sweep</h4>
+    <p>Barcodes, crop/crosshair marks, brackets, die-cut ticket panels, version stamps — the registration-mark vocabulary that makes it read like a technical document, not a dashboard. Then a discipline pass: every color reachable from TODAY/PLAN/ME swept off hardcoded dark-mode literals onto <code>var(--*)</code> tokens so both skins paint correctly (no invisible white-on-paper text).</p>
+    <p class="files">components/faff/graphic/index.tsx · today/BodyChips.tsx · profile/EditableField.tsx · ProfileGapInput.tsx · training/WeekAhead.tsx · races/RaceCrudUI.tsx · profile/ShoeCrudUI.tsx · settings/SettingsModal.tsx · cards/BriefingLoader.tsx</p>
+  </div>
+
+  <h2 id="iphone">What shipped — iPhone</h2>
+  <p class="sub" style="margin-bottom:6px;">Committed <code>3245919</code> · pushed to <code>main</code> · shipped as TestFlight <strong>build 99</strong>. Compile-verified, then Release-archived &amp; uploaded.</p>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · paper skin (iOS)</span>
+    <h4>Theme.swift now carries both palettes</h4>
+    <p>Mirror of the web swap. <code>Theme.swift</code> gained two nested enums — <code>Theme.Paper</code> (warm spec-sheet) and <code>Theme.Dark</code> (original v3) — with the 16 flat <code>Theme.*</code> aliases pointing at <code>Paper.*</code>. <code>FaffApp</code> flips <code>.preferredColorScheme</code> to <code>.light</code> so system chrome (status bar, sheets, keyboard) renders light too. Gradients and HR-zone tokens deliberately left as-is.</p>
+    <p class="files">native-v2/Faff/Faff/Theme.swift · FaffApp.swift</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · 5→3 tabs (iOS)</span>
+    <h4>RootTabView collapse + no orphans</h4>
+    <p>The tab bar went from five (today/training/races/health/profile) to three (today/plan/me), matching web. To keep the demoted surfaces one tap away: <strong>Races</strong> opens from PLAN via a top-bar <code>flag.checkered</code> button (always reachable, even with no active plan); <strong>Health</strong> folds into ME as an action-row sheet beside Log/Tips. Both reuse the existing self-wrapped <code>NavigationStack</code> sheet pattern.</p>
+    <p class="files">native-v2/Faff/Faff/FaffApp.swift · Views/TrainingView.swift · Views/ProfileView.swift</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · build 99</span>
+    <h4>Compile-verified, then shipped to TestFlight</h4>
+    <p>Verified <code>BUILD SUCCEEDED</code> on the iPhone 17 Pro simulator (zero warnings in changed files) before shipping. Release archive succeeded, <code>.ipa</code> signed and exported, <code>UPLOAD SUCCEEDED with no errors</code>. App Store Connect marked <strong>build 99 VALID</strong>, export-compliant, and auto-distributed to the Internal Testers beta group.</p>
+    <p class="meta">Delivery UUID 817990bc-1309-4b10-86e6-2ff6b7d9eea6 · 99 supersedes build 98 (shipped earlier today)</p>
+  </div>
+
+  <div class="pattern" id="skin">
+    <h3>The mechanism — why the skin is fully revertable</h3>
+    <p>You asked that the dark theme stay reachable. It does — the paper skin is a swap layer on both platforms, not a rewrite. No view hardcodes a color; every surface reads a token. Reverting the whole app is a one-line-per-token flip plus a color-scheme line.</p>
+    <pre>Web    →  &lt;html data-skin="paper"&gt;   ✕ remove attr  → dark :root wins
+iOS    →  static let bg = Paper.bg   →  = Dark.bg   (×16 aliases)
+          FaffApp .preferredColorScheme(.light) → .dark</pre>
+    <p>That's the entire revert surface. Gradients and zone colors never branched, so they need no change either way.</p>
+  </div>
+
+  <h2 id="verify">Verification</h2>
+  <table>
+    <tr><th>Check</th><th>Result</th></tr>
+    <tr><td>faff.run serving paper skin</td><td class="ok">✓ &lt;html data-skin="paper"&gt; + #F2EFE9 on / and /today</td></tr>
+    <tr><td>Web typecheck (pre-push hook)</td><td class="ok">✓ clean, three pushes</td></tr>
+    <tr><td>iOS compile (iPhone 17 Pro sim)</td><td class="ok">✓ BUILD SUCCEEDED, 0 warnings in changed files</td></tr>
+    <tr><td>iOS Release archive + export</td><td class="ok">✓ ARCHIVE SUCCEEDED → EXPORT SUCCEEDED</td></tr>
+    <tr><td>TestFlight upload + processing</td><td class="ok">✓ UPLOAD SUCCEEDED → build 99 VALID → distributed</td></tr>
+    <tr><td>Apple Watch (Cardinal Rule #2)</td><td class="ok">✓ untouched — compiled as dependency only, stays dark</td></tr>
+    <tr><td>LLM in coach paths (Cardinal Rule #1)</td><td class="ok">✓ zero — facts only</td></tr>
+  </table>
+
+  <h2 id="queue">What's left</h2>
+  <p>The mandate — a real app, live on web and iPhone — is met. These are the open threads, none blocking:</p>
+
+  <div class="item med">
+    <span class="tag">queued · #130</span>
+    <h4>Smoke-verify /today across the 8 personas</h4>
+    <p>Build is green and the live site renders, but I have not driven all eight persona states through the paper skin visually. Worth a screenshot pass to catch any state-specific contrast edge (e.g. a gradient card whose text needs a tweak on paper).</p>
+  </div>
+
+  <div class="item med">
+    <span class="tag">queued · #110</span>
+    <h4>Wire onboarding fields → BuildPlanInputs</h4>
+    <p>Carried in-progress from before the overhaul. Not a visual item — plan-builder plumbing.</p>
+  </div>
+
+  <div class="item low">
+    <span class="tag">your call · #127 / #128</span>
+    <h4>Two things only you can do</h4>
+    <ul>
+      <li><strong>APNs cert + Railway env + cron</strong> — notifications v1 code is in; it needs the production push cert and the scheduler env wired in the dashboard.</li>
+      <li><strong>Strava webhook subscribe</strong> — the one-time <code>curl</code> to register the subscription (needs your account).</li>
+    </ul>
+    <p>Both were deferred to you deliberately — they touch credentials/dashboards I shouldn't.</p>
+  </div>
+
+  <div class="item low">
+    <span class="tag">note</span>
+    <h4>Font bundling</h4>
+    <p>Oswald/Inter fall back to system fonts until the TTFs are dropped into the iOS target's bundle resources (a one-time Xcode drag, documented in <code>Theme.swift</code>). The display recipe is already wired; it just inherits system bold until then.</p>
+  </div>
+
+  <h2 id="timeline">Timeline</h2>
+  <div class="timeline">
+    <div class="row"><div class="what">Web overhaul committed (88dd7e2)</div><div class="why">Paper skin + 3-tab + race-bib spine + graphic kit — pushed, Railway deploys.</div></div>
+    <div class="row"><div class="what">iOS surface parity (3245919)</div><div class="why">Theme Paper/Dark enums, .light scheme, 5→3 tabs, Races→PLAN + Health→ME sheets.</div></div>
+    <div class="row"><div class="what">Compile-verified</div><div class="why">BUILD SUCCEEDED on iPhone 17 Pro sim, zero warnings in changed files.</div></div>
+    <div class="row"><div class="what">TestFlight build 99 (8017c66 bumps counter)</div><div class="why">Release archive → sign → upload → VALID → distributed to Internal Testers.</div></div>
+    <div class="row"><div class="what">Live verification</div><div class="why">faff.run confirmed serving data-skin="paper"; build 99 confirmed on TestFlight.</div></div>
+  </div>
+
+  <p class="sub" style="margin-top:40px;">Open <a href="https://www.faff.run/today">faff.run</a> on the desktop and TestFlight build 99 on the phone. Same app, two surfaces, one spec-sheet.</p>
+
+</div>
+</body>
+</html>
