@@ -21,6 +21,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
+import { renderSkipRecovery } from '@/lib/notifications/templates';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -86,7 +88,53 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 
+  // Notifications v1 §C — enqueue skip-recovery for tomorrow 07:15.
+  // Soft-fail: if notifications tables aren't migrated yet the call
+  // catches inside enqueueNotification, the skip itself still succeeds.
+  try {
+    const tomorrow = new Date(date + 'T00:00:00Z');
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+    const planned = await lookupPlannedWorkout(DAVID_USER_ID, tomorrowIso);
+    const tpl = renderSkipRecovery({
+      user_id: DAVID_USER_ID,
+      date_iso: tomorrowIso,
+      planned_today_verb: planned.verb,
+      planned_today_distance: planned.distance,
+    });
+    await enqueueNotification(DAVID_USER_ID, tpl, nextMorning0715(new Date()));
+  } catch { /* notif enqueue is non-blocking */ }
+
   return NextResponse.json({ skipped: true, date });
+}
+
+/** Read tomorrow's planned workout to slot into the recovery notification.
+ *  Falls back to 'easy 5.0mi' if no plan row — matches deck §C SLOTS
+ *  default phrasing. */
+async function lookupPlannedWorkout(
+  userId: string,
+  dateIso: string,
+): Promise<{ verb: string; distance: string }> {
+  try {
+    const r = await pool.query(
+      `SELECT type, distance_mi FROM plan_workouts
+        WHERE user_uuid = $1 AND date_iso = $2 LIMIT 1`,
+      [userId, dateIso],
+    );
+    const row = r.rows[0];
+    if (!row) return { verb: 'easy', distance: '5.0mi' };
+    const verbMap: Record<string, string> = {
+      easy: 'easy', long: 'long', tempo: 'tempo', threshold: 'threshold',
+      intervals: 'intervals', progression: 'progression', recovery: 'recovery',
+      fartlek: 'fartlek', rest: 'rest', shakeout: 'shakeout',
+    };
+    return {
+      verb: verbMap[row.type] ?? 'easy',
+      distance: `${Number(row.distance_mi ?? 5).toFixed(1)}mi`,
+    };
+  } catch {
+    return { verb: 'easy', distance: '5.0mi' };
+  }
 }
 
 export async function DELETE(req: NextRequest) {

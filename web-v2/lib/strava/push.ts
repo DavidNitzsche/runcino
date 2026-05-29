@@ -16,6 +16,8 @@
 import { pool } from '@/lib/db/pool';
 import { getStravaToken } from './auth';
 import { buildTcx } from './build-tcx';
+import { enqueueNotification } from '@/lib/notifications/enqueue';
+import { renderStravaReconnect } from '@/lib/notifications/templates';
 
 interface PushOptions {
   /** When true, mark the activity as a race on Strava. */
@@ -173,6 +175,12 @@ export async function pushRunToStrava(
             WHERE user_id = $1 AND provider = 'strava'`,
           [userId]
         ).catch(() => {});
+        // Notifications v1 §G — fire the reconnect push on the 3rd consecutive
+        // 401. Counted off the latest failed strava_pushes rows. Anything
+        // less than 3 avoids a transient-flake notification. The dedup key
+        // is per-day so the runner gets at most one per 24h (deck §G
+        // RATE LIMIT).
+        await maybeFireStravaReconnect(userId);
         return { pushId, status: 'failed', error: 'REAUTH_REQUIRED' };
       }
       await markFailed(pushId, `${resp.status}: ${txt.slice(0, 500)}`);
@@ -310,3 +318,34 @@ function extractPhasesForTcx(run: any): BuildOpts['phases'] {
 }
 
 type BuildOpts = Parameters<typeof buildTcx>[0];
+
+/**
+ * Strava 401 → reconnect push, gated on 3 consecutive 401 failures
+ * (deck §G TRIGGER). Soft-fails if the notifications system isn't wired
+ * yet — the push.ts behavior is unaffected.
+ *
+ * The dedup key inside the rendered template is per-day, so even if the
+ * runner has many failed pushes in a row, we only land one push per day.
+ */
+async function maybeFireStravaReconnect(userId: string): Promise<void> {
+  try {
+    const r = await pool.query(
+      `SELECT status, error_message
+         FROM strava_pushes
+        WHERE user_uuid = $1
+        ORDER BY pushed_at DESC
+        LIMIT 3`,
+      [userId],
+    );
+    if (r.rows.length < 3) return;
+    const all401 = r.rows.every((row: any) =>
+      row.status === 'failed' && /\b401\b|REAUTH/i.test(row.error_message ?? '')
+    );
+    if (!all401) return;
+    const dateIso = new Date().toISOString().slice(0, 10);
+    const tpl = renderStravaReconnect({ user_id: userId, date_iso: dateIso });
+    await enqueueNotification(userId, tpl, new Date());
+  } catch {
+    // Notifications system not ready, or table missing — non-blocking.
+  }
+}

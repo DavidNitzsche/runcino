@@ -23,6 +23,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
+import { renderNiggleCheck } from '@/lib/notifications/templates';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -86,7 +88,21 @@ export async function POST(req: NextRequest) {
         body.note ?? null,
       ],
     );
-    return NextResponse.json({ niggle_id: ins.rows[0].id, active: true });
+    const niggleId = Number(ins.rows[0].id);
+    // Notifications v1 §E — enqueue the first daily check for tomorrow 07:15.
+    try {
+      const fireAt = nextMorning0715(new Date());
+      const dateIso = fireAt.toISOString().slice(0, 10);
+      const tpl = renderNiggleCheck({
+        user_id: DAVID_USER_ID,
+        niggle_id: niggleId,
+        date_iso: dateIso,
+        body_part: body.body_part,
+        days_active: 1,
+      });
+      await enqueueNotification(DAVID_USER_ID, tpl, fireAt);
+    } catch { /* non-blocking */ }
+    return NextResponse.json({ niggle_id: niggleId, active: true });
   } catch (err: any) {
     return NextResponse.json({
       error: 'niggle insert failed',

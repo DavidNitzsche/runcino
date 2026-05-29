@@ -1,0 +1,71 @@
+/**
+ * POST /api/notifications/register
+ *   { device_token, platform: 'ios', app_version?, user_id? }
+ *
+ * Upserts an APNs device token. The iPhone calls this from
+ * native-v2/Faff/Faff/FaffApp.swift inside the
+ * application(_:didRegisterForRemoteNotificationsWithDeviceToken:) handler,
+ * AND on every foreground transition (Apple silently rotates).
+ *
+ * Single-user beta pattern: user_id comes from process.env.DEFAULT_USER_ID
+ * when the body doesn't supply one (matches /api/checkin). Sign-in-with-Apple
+ * cutover (v1.1) will swap to userIdFromRequest, same as other endpoints.
+ *
+ * Source spec: docs/2026-05-28-notifications.html §1 (token registration).
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { pool } from '@/lib/db/pool';
+
+const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+
+interface RegisterBody {
+  device_token?: string;
+  platform?: 'ios' | 'web';
+  app_version?: string;
+  user_id?: string;
+}
+
+export async function POST(req: NextRequest) {
+  let body: RegisterBody;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  if (!body.device_token || typeof body.device_token !== 'string' || body.device_token.length < 16) {
+    return NextResponse.json({ error: 'device_token required (string, ≥16 chars)' }, { status: 400 });
+  }
+  const platform = body.platform ?? 'ios';
+  if (platform !== 'ios' && platform !== 'web') {
+    return NextResponse.json({ error: `platform must be 'ios' or 'web'` }, { status: 400 });
+  }
+  const userId = body.user_id ?? DAVID_USER_ID;
+
+  try {
+    // Upsert by device_token. If a different user registered this token
+    // previously (e.g. handoff), the user_id flips — that's fine, the
+    // physical device only belongs to one runner at a time.
+    await pool.query(
+      `INSERT INTO device_tokens (user_id, device_token, platform, app_version, registered_at, last_seen_at, revoked_at)
+       VALUES ($1, $2, $3, $4, now(), now(), null)
+       ON CONFLICT (device_token) DO UPDATE
+         SET user_id     = EXCLUDED.user_id,
+             platform    = EXCLUDED.platform,
+             app_version = EXCLUDED.app_version,
+             last_seen_at = now(),
+             revoked_at  = null`,
+      [userId, body.device_token, platform, body.app_version ?? null],
+    );
+  } catch (err: any) {
+    return NextResponse.json({
+      error: 'register failed',
+      detail: err?.message ?? String(err),
+      hint: 'Did you apply web-v2/db/migrations/121_notifications.sql?',
+    }, { status: 500 });
+  }
+
+  return NextResponse.json({ registered: true });
+}
+
+export const dynamic = 'force-dynamic';

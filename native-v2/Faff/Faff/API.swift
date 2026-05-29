@@ -410,6 +410,54 @@ enum API {
         return decoded
     }
 
+    // MARK: - Notifications v1 (2026-05-28 deck)
+
+    /// POST /api/notifications/register with the APNs device token after
+    /// UIApplication delegate hands it back. Called from FaffApp's
+    /// didRegisterForRemoteNotifications path. Soft-fail: on network error
+    /// we silently retry next foreground.
+    static func registerDeviceToken(_ token: String, appVersion: String?) async {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/notifications/register"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "device_token": token,
+            "platform": "ios",
+        ]
+        if let v = appVersion { body["app_version"] = v }
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            _ = try? await URLSession.shared.data(for: req)
+        } catch {
+            // JSON failed to serialize — silent.
+        }
+    }
+
+    /// POST /api/notifications/ack when the runner taps a rich-notification
+    /// action on the lock screen. The web's per-category routing handles
+    /// the side-effect (skip un-skip, niggle recovery insert, weekly check-in,
+    /// etc.) — see app/api/notifications/ack/route.ts.
+    static func ackNotification(
+        category: String,
+        action: String,
+        dedupKey: String?
+    ) async {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/notifications/ack"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "category": category,
+            "action": action,
+        ]
+        if let d = dedupKey { body["dedup_key"] = d }
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            _ = try? await URLSession.shared.data(for: req)
+        } catch {
+            // Silent.
+        }
+    }
+
     /// Fire every per-tab endpoint in parallel on app launch so the
     /// cache is warm by the time the user taps any tab. Best-effort;
     /// failures are silent — the per-tab .task in each View will retry.

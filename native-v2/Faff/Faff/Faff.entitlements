@@ -21,5 +21,16 @@
 	<array>
 		<string>group.run.faff.app</string>
 	</array>
+
+	<!--
+	  APNs / push notifications (deck 2026-05-28). 'development'
+	  routes to the sandbox APNs endpoint when running a debug build;
+	  'production' routes to api.push.apple.com. Apple resolves this
+	  automatically based on the provisioning profile, so 'development'
+	  here works for both sandbox + TestFlight.
+	  Set APNS_PRODUCTION=1 in Railway env when shipping to App Store.
+	-->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>

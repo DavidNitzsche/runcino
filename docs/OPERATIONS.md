@@ -152,6 +152,54 @@ GET handles the verification handshake (echoes `hub.challenge` only when `hub.ve
 
 ---
 
+## 5. APNs push notifications
+
+**What it does.** Push notifications v1 (deck `docs/2026-05-28-notifications.html`, mirrored to `web-v2/public/decks/notifications.html`) covers 7 categories: race-day morning (A), race eve (B), skip recovery (C), weekly check-in (D), niggle/sick check (E), streak / milestone (F), Strava reconnect (G). Token-based auth with a .p8 key generated in the Apple Developer portal. HTTP/2 send via APNs. Cron polls every 15 min to drain the pending queue and fire time-based categories.
+
+**One-time Apple Developer setup (your hands only):**
+
+| Step | Where | How |
+|---|---|---|
+| **1. Generate the APNs Auth Key** | developer.apple.com → Keys → ➕ | Name: "Faff APNs". Enable APNs. Download the `.p8` file ONCE — Apple won't show it again. Note the 10-char Key ID. |
+| **2. Note your Team ID** | developer.apple.com → Membership | 10-char Team ID at the top of the page. |
+| **3. Confirm bundle ID matches** | developer.apple.com → Identifiers | `run.faff.app` should already exist (the iOS bundle ID from `native-v2/project.yml:73`). Make sure "Push Notifications" capability is checked. |
+| **4. APNs capability on the app ID** | developer.apple.com → Identifiers → run.faff.app → Edit → Push Notifications | Tick "Push Notifications". Configure both Development and Production SSL certs if Xcode prompts — token auth still works without them but Apple's app review checklist asks for it. |
+| **5. Set Railway env vars** | Railway dashboard → service → Variables | Paste 4 vars (table below). Triggers a redeploy. |
+
+**Required env vars in Railway:**
+
+| Var | Value | Purpose |
+|---|---|---|
+| `APNS_KEY_ID` | 10-char Key ID from step 1 | JWT `kid` header |
+| `APNS_TEAM_ID` | 10-char Team ID from step 2 | JWT `iss` claim |
+| `APNS_BUNDLE_ID` | `run.faff.app` | APNs `apns-topic` header |
+| `APNS_KEY_PEM` | The entire `.p8` file contents (including `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines) | Signing key for the JWT |
+| `APNS_PRODUCTION` | `1` when shipping to App Store, unset for TestFlight + Xcode debug | Routes to `api.push.apple.com` vs `api.sandbox.push.apple.com` |
+| `CRON_SECRET` | Random 32-byte hex (`openssl rand -hex 32`) | Bearer token Cron-job.org sends on every poll |
+
+**Wiring the cron:**
+
+The cron endpoint is `POST https://www.faff.run/api/cron/notifications` with `Authorization: Bearer $CRON_SECRET`. Configure a cron-job.org (or Railway-native cron) job to hit it every 15 min. The endpoint runs in <10s and is safe to call concurrently — both write paths are idempotent.
+
+| Action | Where | How |
+|---|---|---|
+| **Check APNs config status** | Local terminal | `curl https://www.faff.run/api/cron/notifications` → `{ pending, secret_configured, apns_configured }`. Confirm both flags are `true` after env-var setup. |
+| **Trigger a cron manually** | Local terminal | `curl -X POST https://www.faff.run/api/cron/notifications -H "Authorization: Bearer $CRON_SECRET"` → returns dispatch stats |
+| **Inspect recent notifications** | Postgres | `SELECT category, fired_at, delivered, ack_action FROM notifications_log WHERE user_id = '<uuid>' ORDER BY fired_at DESC LIMIT 20;` |
+| **Inspect pending queue** | Postgres | `SELECT category, fire_at, dedup_key FROM notifications_pending WHERE processed_at IS NULL;` |
+| **Test a real push end-to-end** | Local terminal | Boot the iOS app on a physical device, grant permission, confirm `device_tokens` row landed in Postgres. POST `/api/notifications/register` with the token, then run the cron POST. The device should buzz within a few seconds. |
+
+**Notifications gracefully degrade.** If `APNS_KEY_PEM` is unset, the sender returns `apns_not_configured` and logs a no-op row to `notifications_log`. The app still works; the cron still runs; nothing crashes. Devices register tokens against an empty cert and wait — when you set the env vars, the next cron tick starts firing for real.
+
+**If Claude says "configure APNs":**
+1. Walk through steps 1-4 in the Apple Developer portal
+2. Paste the 5 env vars into Railway (step 5)
+3. Confirm via `curl https://www.faff.run/api/cron/notifications` → `apns_configured: true`
+4. Wire the cron-job.org poll at 15-min intervals
+5. Tell Claude in chat; Claude verifies via cron POST
+
+---
+
 ## How Claude hands off to you
 
 For any of the three above, Claude provides in chat:

@@ -220,6 +220,15 @@ export async function POST(req: NextRequest) {
 
     await bustBriefingCacheForEvent(userId, 'run_ingest');
 
+    // Notifications v1 §F — check for streak milestone (7/14/30/100 days).
+    // Non-blocking; failures don't affect the ingest path.
+    try {
+      const { maybeFireStreakMilestone } = await import('@/lib/notifications/streak-check');
+      await maybeFireStreakMilestone(userId);
+    } catch (e: any) {
+      console.error('[ingest/workout] streak check failed:', e?.message);
+    }
+
     // #161 — auto-push to Strava when the toggle is on. Fire-and-forget;
     // failures land in strava_pushes for retry. The push itself is
     // idempotent on run_id so a re-ingest won't double-upload.

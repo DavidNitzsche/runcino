@@ -3,6 +3,7 @@ import { EditableField } from '@/components/profile/EditableField';
 import { AddShoeButton, ShoeEditCard } from '@/components/profile/ShoeCrudUI';
 import { SettingsLinkTrigger } from '@/components/settings/SettingsModal';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
+import { NotificationSettings } from '@/components/profile/NotificationSettings';
 import { FaffPageShell } from '@/components/faff/FaffPageShell';
 import { loadProfileState, type ProfileState } from '@/lib/coach/profile-state';
 import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
@@ -225,6 +226,10 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <ConnCard name="Apple Health" sub={profile.connections.appleHealth.note} connected={profile.connections.appleHealth.connected} />
           <ConnCard name="Apple Watch"  sub={profile.connections.appleWatch.note}  connected={profile.connections.appleWatch.connected} />
         </Grid3>
+
+        {/* NOTIFICATIONS — push notification prefs (deck 2026-05-28) */}
+        <SectionLabel>NOTIFICATIONS</SectionLabel>
+        <NotificationSettings />
 
         {/* PREFERENCES — from user_settings (edit via settings modal) */}
         <SectionLabel>PREFERENCES · <SettingsLinkTrigger>EDIT →</SettingsLinkTrigger></SectionLabel>

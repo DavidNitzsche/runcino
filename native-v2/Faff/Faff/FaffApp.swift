@@ -4,9 +4,18 @@
 //
 
 import SwiftUI
+import UserNotifications
+import UIKit
 
 @main
 struct FaffApp: App {
+    // Notifications v1 (2026-05-28 deck) — UIApplicationDelegateAdaptor
+    // hooks the AppDelegate so we can implement
+    // application(_:didRegisterForRemoteNotificationsWithDeviceToken:) +
+    // application(_:didReceiveRemoteNotification:) without losing the
+    // SwiftUI App lifecycle.
+    @UIApplicationDelegateAdaptor(NotificationsAppDelegate.self) private var appDelegate
+
     @Environment(\.scenePhase) private var scenePhase
     /// Throttle background→foreground HK re-imports so opening + immediately
     /// re-opening the app doesn't fire two parallel ingests. 30s is enough
@@ -29,6 +38,24 @@ struct FaffApp: App {
                 // a MainActor context, so direct .start() is safe.
                 .task {
                     WatchSync.shared.start()
+
+                    // Notifications v1 (2026-05-28 deck) — register
+                    // categories so the OS knows the rich-action button
+                    // sets, request permission once, kick the remote
+                    // notification registration so the system hands us
+                    // back a device token via the AppDelegate.
+                    NotificationCategories.register()
+                    Task.detached(priority: .background) {
+                        let center = UNUserNotificationCenter.current()
+                        let granted = (try? await center.requestAuthorization(
+                            options: [.alert, .badge, .sound]
+                        )) ?? false
+                        if granted {
+                            await MainActor.run {
+                                UIApplication.shared.registerForRemoteNotifications()
+                            }
+                        }
+                    }
 
                     // 2026-05-27: kick off the per-tab prefetch FIRST,
                     // in parallel with HK auth + import. By the time

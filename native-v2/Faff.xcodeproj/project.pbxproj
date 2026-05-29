@@ -30,6 +30,7 @@
 		3E0D9921CD21B6DFC6E09262 /* MiniTileGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB478F8C51B8875762F9927E /* MiniTileGridView.swift */; };
 		3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761D6D9F643EAA00C64D9BBC /* Runs.swift */; };
 		415055A7ADBD7EA074F57A5B /* ReadinessHeroCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC745A49081A05481CF35E26 /* ReadinessHeroCard.swift */; };
+		47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCEEE47B94CDA981E430812A /* NotificationCategories.swift */; };
 		491E00576C22BC7149B53BB6 /* FieldCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126721EB90E12E839766826 /* FieldCard.swift */; };
 		49DD1311332CCD7EC88681EC /* Tips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9883A181E1656DBDC8F3FAFC /* Tips.swift */; };
 		4CACFB0EB456705EF1BAABB5 /* FaffPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEF9EEB865458FD9FBA9054 /* FaffPayloads.swift */; };
@@ -75,6 +76,7 @@
 		D4E3F4875BAFEC6F6D5FDCC7 /* HRAlerter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EABD5D3321534861E82F02 /* HRAlerter.swift */; };
 		D524AAC53FD8DE380C84F914 /* MiniSparkline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F62FAA0EAC2B6ADC530B3C3 /* MiniSparkline.swift */; };
 		D908A1389B777A23A0CA7339 /* TipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C00B92B3DBCA7E7A9A07AC4 /* TipsView.swift */; };
+		D92EA33FB4285F4A8AB859C9 /* NotificationsAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */; };
 		DA806212609E7D78CE2A8916 /* PosterCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB95DAC2471BA4FB77ACA52 /* PosterCard.swift */; };
 		DB53ACA1DBB39F46EB32303C /* Oswald-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0CDBF2DFC432A591DA62EDEF /* Oswald-SemiBold.ttf */; };
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
@@ -193,6 +195,7 @@
 		B4EABD5D3321534861E82F02 /* HRAlerter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRAlerter.swift; sourceTree = "<group>"; };
 		B6BF22DF1BD412FB1CA83446 /* Faff.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Faff.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7BC29B2BF1F273F9E653AEB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsAppDelegate.swift; sourceTree = "<group>"; };
 		BC857D4C88ACEA7ED27959B7 /* HRZoneRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRZoneRow.swift; sourceTree = "<group>"; };
 		BEB7488684D586DB269C2F02 /* RaceDayTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceDayTimeline.swift; sourceTree = "<group>"; };
 		BFA85E15978E6315D144D85E /* MIGRATION_PLAN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MIGRATION_PLAN.md; sourceTree = "<group>"; };
@@ -206,6 +209,7 @@
 		D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
 		D9FA179F02EB61425E2DF62A /* Inter-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Variable.ttf"; sourceTree = "<group>"; };
 		DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWatchApp.swift; sourceTree = "<group>"; };
+		DCEEE47B94CDA981E430812A /* NotificationCategories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCategories.swift; sourceTree = "<group>"; };
 		E2B28F9C8F4604550364F9BC /* WorkoutTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTracker.swift; sourceTree = "<group>"; };
 		E642C82A6F2C85D02FB33076 /* AppCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCache.swift; sourceTree = "<group>"; };
 		EAA41631B820945F5A2FB787 /* SettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSheet.swift; sourceTree = "<group>"; };
@@ -368,6 +372,8 @@
 				6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */,
 				B4EABD5D3321534861E82F02 /* HRAlerter.swift */,
 				0743519D766EECA60297B74F /* Info.plist */,
+				DCEEE47B94CDA981E430812A /* NotificationCategories.swift */,
+				B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */,
 				2600BF38DD79CB8A08592B03 /* Theme.swift */,
 				80D79010E6307A7B819FD164 /* TokenStore.swift */,
 				5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */,
@@ -560,6 +566,8 @@
 				D524AAC53FD8DE380C84F914 /* MiniSparkline.swift in Sources */,
 				3E0D9921CD21B6DFC6E09262 /* MiniTileGridView.swift in Sources */,
 				705E9E58EDE2BDF3EDDEDFBB /* MomentCard.swift in Sources */,
+				47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */,
+				D92EA33FB4285F4A8AB859C9 /* NotificationsAppDelegate.swift in Sources */,
 				7BC2FF48DEFE1F45B1C0CE54 /* OnboardingSheet.swift in Sources */,
 				86A22E83FA6253F8776972F9 /* PageHeader.swift in Sources */,
 				E54882AEEF58895614A753D7 /* PhaseStrip.swift in Sources */,
