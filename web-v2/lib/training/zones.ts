@@ -170,17 +170,3 @@ export function estimateLTHR(args: {
 export function estimateMaxHRFromLTHR(lthr: number): number {
   return Math.round(lthr + 22);
 }
-
-// ── Coach injection helper ──────────────────────────────────────────────
-
-/** Compact string for injecting into the coach prompt. */
-export function zonesAsPromptText(z: ZoneTable): string {
-  const lines = z.zones.map((zone) =>
-    `  ${zone.shortLabel} ${zone.label}: ${zone.lower}–${zone.upper} bpm (${zone.purpose})`
-  );
-  return [
-    `HR zones (method: ${z.method === 'lthr-friel' ? 'LTHR-based, Friel' : '%MHR fallback'}, anchor: ${z.anchor.label} ${z.anchor.bpm}):`,
-    ...lines,
-    `↳ Cite ${z.citation} when discussing zones. Easy runs SHOULD be in Z1-Z2; if a "low" HR (e.g. 133 for someone w/ LTHR 162 = 82% LTHR = Z1) is reported on an easy day, that's CORRECT EXECUTION, not a problem. Cardiac drift in long runs adds 5-10% — don't flag a Z2 long that drifts into Z3 territory in the final hour.`,
-  ].join('\n');
-}

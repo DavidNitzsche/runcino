@@ -313,10 +313,6 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       age: profile.age ?? null,
       city: profile.city ?? null,
       height_cm: profile.height_cm ?? null,
-      // Prefer user-entered observed maxHR; fall back to legacy column.
-      hrmax: profile.hrmax_observed ?? profile.hrmax ?? null,
-      lthr: profile.lthr ?? null,
-      rhr: profile.rhr ?? null,
       experience_level: profile.experience_level ?? null,
     } : null,
     latest_activity,
