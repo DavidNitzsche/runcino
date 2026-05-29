@@ -1065,9 +1065,8 @@ function HRSection({ d }: { d: RunDetail }) {
 
   return (
     <div style={{
-      // 2026-05-27: was #06080b (near-black) → reads as a hole punched in the
-      // modal. Other run-detail cards use #1f2226; matching that here lets the
-      // HR block sit in the visual stack instead of plunging out of it.
+      // HR block matches the other run-detail cards (var(--card-2)) so it sits
+      // in the visual stack instead of reading as a hole punched in the modal.
       background: 'var(--card-2)', borderRadius: 4, padding: 14, border: '1px solid var(--line-2)',
       display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gridTemplateRows: 'auto auto', gap: 10,
       marginBottom: 12,

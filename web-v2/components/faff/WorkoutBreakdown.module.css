@@ -1,7 +1,7 @@
 /* WorkoutBreakdown · spec at design/components/WorkoutBreakdown.md */
 
 .chart {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--card2);
   border: 1px solid var(--line2);
   border-radius: 8px;
   height: 110px;

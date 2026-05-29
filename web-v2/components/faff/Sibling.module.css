@@ -57,7 +57,7 @@
   font-weight: 500;
   font-size: 12.5px;
   line-height: 1.55;
-  color: rgba(246, 247, 248, 0.82);
+  color: var(--mute);
   margin: 0 0 18px;
 }
 

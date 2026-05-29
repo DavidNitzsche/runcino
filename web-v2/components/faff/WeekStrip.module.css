@@ -79,7 +79,7 @@
 
 .dayToday {
   outline: 1.5px solid var(--ink);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--card2);
 }
 
 /* Future day · 0.5 opacity on the two-line content ONLY (mileage + type

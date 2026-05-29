@@ -5,7 +5,7 @@
   font-weight: 500;
   font-size: 14px;
   line-height: 1.55;
-  color: rgba(246, 247, 248, 0.86);
+  color: var(--mute);
   margin: 16px 0 20px;
   /* No indent, no first-line cap, no opening quote treatment. The
    * doctrine reads the paragraph as one spoken line.
@@ -18,11 +18,11 @@
   /* Slightly brighter than ambient prose · ~10% alpha bump. The eye
    * lands on the stat without the stat shouting (invariant 4).
    */
-  color: rgba(246, 247, 248, 0.96);
+  color: var(--ink);
 }
 
 .statDefault {
-  color: rgba(246, 247, 248, 0.96);
+  color: var(--ink);
 }
 
 .statAmber {
@@ -30,9 +30,9 @@
    * tint per spec §"Stat color override". Used only when the engine
    * flags a callout-band stat.
    */
-  color: #ffe38f;
+  color: var(--goal);
 }
 
 .statOver {
-  color: #ffb0b8;
+  color: var(--over);
 }
