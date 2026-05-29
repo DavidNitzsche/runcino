@@ -46,7 +46,10 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
 
   function onContinue() {
     if (!canAdvance) return;
-    router.push(buildOnboardingHref(state, { step: 'signals' }));
+    // "No specific race" branches into Step 1b for goal + history detail.
+    // Every other distance jumps straight to signals (Step 2).
+    const nextStep = state.distance === 'none' ? 'goal-details' : 'signals';
+    router.push(buildOnboardingHref(state, { step: nextStep }));
   }
 
   return (

@@ -18,6 +18,7 @@ import {
   canSubmit,
   distanceLabel,
   timezoneShortLabel,
+  ttDistanceLabel,
   type OnboardingState,
 } from '@/lib/onboarding/state';
 
@@ -68,6 +69,14 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           distance: initial.distance,
           date: initial.date,
           time: initial.time,
+          // Step 1b · no-race goal-details (silently null on race paths).
+          ttDistance: initial.ttDistance,
+          ttTime: initial.ttTime,
+          weeklyMi: initial.weeklyMi,
+          weeklyFreq: initial.weeklyFreq,
+          histAvg: initial.histAvg,
+          histLong: initial.histLong,
+          histYears: initial.histYears,
           name: name.trim(),
           timezone,
           connectionsSkipped: initial.connectionsSkipped,
@@ -84,10 +93,19 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
     }
   }
 
-  // Build the goal-summary string from step 1 answers.
+  // Build the goal-summary string from step 1 (and 1b on no-race path).
   const goalSummary = (() => {
     if (!initial.distance) return '—';
-    if (initial.distance === 'none') return 'Just running consistently';
+    if (initial.distance === 'none') {
+      const parts: string[] = [];
+      if (initial.ttDistance && initial.ttTime) {
+        parts.push(`${ttDistanceLabel(initial.ttDistance)} ${initial.ttTime.toLowerCase()}`);
+      }
+      if (initial.weeklyMi != null && initial.weeklyFreq != null) {
+        parts.push(`${initial.weeklyMi} mi/wk over ${initial.weeklyFreq} days`);
+      }
+      return parts.length > 0 ? parts.join(' · ') : 'Just running consistently';
+    }
     const parts: string[] = [distanceLabel(initial.distance)];
     if (initial.date) {
       const d = new Date(initial.date + 'T00:00:00');
@@ -97,6 +115,18 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
     }
     if (initial.time) parts.push(initial.time);
     return parts.join(' · ');
+  })();
+
+  // History summary — only rendered on the no-race path. When Strava is
+  // connected we just note the source; otherwise echo the chip picks.
+  const showHistorySummary = initial.distance === 'none';
+  const historySummary = (() => {
+    if (initial.stravaConnected) return 'Live · pulled from Strava';
+    const parts: string[] = [];
+    if (initial.histAvg) parts.push(`${initial.histAvg} mi/wk avg`);
+    if (initial.histLong) parts.push(`longest recent ${initial.histLong}mi`);
+    if (initial.histYears) parts.push(`${initial.histYears} years`);
+    return parts.length > 0 ? parts.join(' · ') : '—';
   })();
 
   return (
@@ -219,6 +249,20 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
             {goalSummary}
           </div>
         </FormRow>
+
+        {/* Running history (no-race path only) */}
+        {showHistorySummary && (
+          <FormRow label="RUNNING HISTORY" hint="FROM STEP 1B">
+            <div style={{
+              fontFamily: 'var(--f-body)',
+              fontWeight: 600,
+              fontSize: 17,
+              color: '#fff',
+            }}>
+              {historySummary}
+            </div>
+          </FormRow>
+        )}
       </div>
 
       {error && (
