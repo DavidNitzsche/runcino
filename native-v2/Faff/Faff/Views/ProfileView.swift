@@ -1,6 +1,28 @@
 //
-//  ProfileView.swift  (P5 — iOS parity for /profile)
-//  Identity-first; gap input sheet for §8.6 closed loop.
+//  ProfileView.swift  (v3 chrome cutover · Phase 25b · 2026-05-28)
+//
+//  iPhone mirror of web-v2/app/profile/page.tsx. Wraps the page in the
+//  shared FaffPageShell-equivalent (PageHeader) and rebuilds the same
+//  five sections the web /profile renders:
+//
+//    1. PageHeader   "Profile." + eyebrow (NAME · GENDER · AGE · CITY)
+//                    + AvatarCircle accent.
+//    2. CoachSlot    Background-loaded identity-mode voice (unchanged).
+//    3. PERSONAL     NAME · GENDER · BIRTHDAY · HEIGHT · CITY · EXPERIENCE
+//                    grid of FieldCards.
+//    4. PHYSIOLOGY · TRAINING ANCHORS
+//                    LTHR · MAX HR · RESTING HR · VDOT grid of FieldCards
+//                    (each with source + used-for subhint).
+//    5. HR ZONES TABLE
+//                    5 HRZoneRow rows (Z1 … Z5) rendered when the server
+//                    returns a computed zones table.
+//    6. SHOE ROTATION
+//                    Per-shoe card with brand · model · miles + cap +
+//                    last-used + retired flag.
+//
+//  Data still comes from /api/profile/state via API.fetchProfileState.
+//  Missing fields render as "—" (never fabricated) per the constraint
+//  in the issue brief.
 //
 
 import SwiftUI
@@ -27,130 +49,117 @@ struct ProfileView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                // Identity — real data from /api/profile/state. Falls
-                // back to "—" while loading or if the field is empty,
-                // matching web's behaviour.
-                HStack(alignment: .center, spacing: 18) {
-                    ZStack {
-                        Circle().fill(
-                            LinearGradient(colors: [Theme.learn, Theme.race], startPoint: .topLeading, endPoint: .bottomTrailing)
+
+                    // 1. PageHeader · shared chrome (Phase 25a · TrainingView pattern).
+                    PageHeader(
+                        title: "Profile.",
+                        eyebrow: FaffAdapter.profileEyebrow(profile),
+                        accent: AnyView(
+                            AvatarCircle(
+                                initials: FaffAdapter.profileAvatarInitials(profile?.identity.full_name)
+                            )
                         )
-                        Text(initialsForProfile())
-                            .font(.display(36))
-                            .foregroundStyle(Color(white: 0.1))
-                            .tracking(1)
+                    )
+
+                    // Training-for line — mirrors the web band between
+                    // the page header and the coach card. Renders only
+                    // when a next A-race is present.
+                    if let race = profile?.nextARace {
+                        trainingForLine(race)
+                            .padding(.horizontal, 24)
                     }
-                    .frame(width: 88, height: 88)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(profile?.identity.full_name ?? "Runner")
-                            .font(.display(36)).tracking(0.5).foregroundStyle(Theme.ink)
-                        Text(identitySubtitle())
-                            .font(.label(11)).tracking(1.4).foregroundStyle(Theme.mute)
+
+                    // 2. Coach identity-mode voice. Background-loads via
+                    //    CoachSlot — skeleton while pending, snaps in when
+                    //    ready. Never blocks the page.
+                    CoachSlot(
+                        briefing: briefing,
+                        surface: "profile",
+                        askPrompt: nil
+                    )
+
+                    // 3. PERSONAL grid · 6 cards (NAME · GENDER · BIRTHDAY ·
+                    //    HEIGHT · CITY · EXPERIENCE). Mirrors web Grid4 +
+                    //    second row of 2 — flattened to a 2-col iPhone
+                    //    grid that scrolls vertically.
+                    SectionLabel("PERSONAL")
+                    personalGrid
+
+                    // 4. PHYSIOLOGY · TRAINING ANCHORS grid · 4 cards (LTHR
+                    //    · MAX HR · RESTING HR · VDOT). Each carries the
+                    //    source line + used-for context (mirrors AnchorCard
+                    //    on the web).
+                    SectionLabel("PHYSIOLOGY · TRAINING ANCHORS")
+                    anchorsGrid
+
+                    // 5. HR ZONES table · 5 rows. Renders only when the
+                    //    server returned a computed zones table.
+                    if let zt = profile?.physiology.zones, !zt.zones.isEmpty {
+                        SectionLabel(hrZonesEyebrow(zt))
+                        hrZonesCard(zt)
                     }
-                    Spacer()
-                }
-                .padding(.horizontal, 24).padding(.top, 24)
 
-                // Coach identity-mode voice. Background-loads via
-                // CoachSlot — skeleton while pending, snaps in when
-                // ready. Never blocks the page.
-                CoachSlot(
-                    briefing: briefing,
-                    surface: "profile",
-                    askPrompt: nil
-                )
-
-                // PERSONAL — real fields from /api/profile/state.
-                SectionLabel("PERSONAL")
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    Field(k: "NAME", v: profile?.identity.full_name ?? "—")
-                    Field(k: "GENDER",  v: profile?.identity.sex?.capitalized ?? "—")
-                    Field(k: "AGE",  v: profile?.identity.age.map(String.init) ?? "—")
-                    // Height — taps the editor when missing. When set,
-                    // shows the value (in feet/inches).
-                    if let cm = profile?.identity.height_cm {
-                        Field(k: "HEIGHT", v: formatHeightFtIn(cm: cm))
-                    } else {
-                        Button {
-                            showHeightSheet = true
-                        } label: {
-                            ProfileGapCard(field: "height_cm", why: "Unlocks cadence target")
-                        }
-                        .buttonStyle(.plain)
+                    // 6. SHOE ROTATION · per-shoe card. Renders only when
+                    //    the wire response carries at least one shoe.
+                    if let shoes = profile?.shoes, !shoes.isEmpty {
+                        SectionLabel("SHOE ROTATION · \(shoes.count) ACTIVE")
+                        shoesList(shoes)
                     }
-                }
-                .padding(.horizontal, 24)
 
-                // PHYSIOLOGY · DERIVED — real numbers from health_samples
-                // + computed (VDOT from best recent race, max-HR sourced
-                // per `max_hr_source`).
-                SectionLabel("PHYSIOLOGY · DERIVED")
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    Field(k: "MAX HR",
-                          v: profile?.physiology.max_hr.map { "\($0) bpm" } ?? "—",
-                          hint: maxHrHint(profile?.physiology.max_hr_source))
-                    Field(k: "RESTING HR",
-                          v: profile?.physiology.rhr.map { "\($0) bpm" } ?? "—",
-                          hint: "60D MEAN")
-                    Field(k: "VO2 MAX",
-                          v: profile?.physiology.vo2.map { String(format: "%.1f", $0) } ?? "—",
-                          hint: "APPLE")
-                    Field(k: "WEIGHT",
-                          v: profile?.physiology.weight_lb.map { String(format: "%.0f lb", $0) } ?? "—",
-                          hint: "APPLE HEALTH")
-                }
-                .padding(.horizontal, 24)
+                    // CONNECTIONS — connected/last-sync state from server,
+                    // not blind "CONNECTED" labels. Kept verbatim from the
+                    // legacy view so the existing Strava OAuth + Apple
+                    // Health flow continue to work.
+                    SectionLabel("CONNECTIONS")
+                    VStack(spacing: 10) {
+                        ConnRow(name: "Strava",
+                                sub: profile?.connections.strava.note ?? "Auto-sync via OAuth",
+                                connected: profile?.connections.strava.connected ?? false)
+                        ConnRow(name: "Apple Health",
+                                sub: profile?.connections.appleHealth.note ?? "Sleep / HRV / RHR / weight",
+                                connected: profile?.connections.appleHealth.connected ?? false)
+                        ConnRow(name: "Apple Watch",
+                                sub: profile?.connections.appleWatch.note ?? "Paired via WatchConnectivity",
+                                connected: profile?.connections.appleWatch.connected ?? false)
+                    }
+                    .padding(.horizontal, 24)
 
-                // CONNECTIONS — connected/last-sync state from server,
-                // not blind "CONNECTED" labels.
-                SectionLabel("CONNECTIONS")
-                VStack(spacing: 10) {
-                    ConnRow(name: "Strava",
-                            sub: profile?.connections.strava.note ?? "Auto-sync via OAuth",
-                            connected: profile?.connections.strava.connected ?? false)
-                    ConnRow(name: "Apple Health",
-                            sub: profile?.connections.appleHealth.note ?? "Sleep / HRV / RHR / weight",
-                            connected: profile?.connections.appleHealth.connected ?? false)
-                    ConnRow(name: "Apple Watch",
-                            sub: profile?.connections.appleWatch.note ?? "Paired via WatchConnectivity",
-                            connected: profile?.connections.appleWatch.connected ?? false)
-                }
-                .padding(.horizontal, 24)
-
-                // P29 — actions: edit settings + log manual run + onboarding
-                // 2026-05-27: added Run log + Form tips here so the two
-                // surfaces that dropped out of the tab bar are still one
-                // tap away.
-                SectionLabel("ACTIONS")
-                VStack(spacing: 10) {
-                    Button { showLogSheet = true } label: {
-                        actionRow(icon: "list.bullet.rectangle.fill", label: "Run log", sub: "Every run, chronologically")
-                    }.buttonStyle(.plain)
-                    Button { showTipsSheet = true } label: {
-                        actionRow(icon: "lightbulb.fill", label: "Form tips", sub: "Cadence · vertical osc · ground contact")
-                    }.buttonStyle(.plain)
-                    Button { showSettingsSheet = true } label: {
-                        actionRow(icon: "gearshape.fill", label: "Settings", sub: "Units · zones · profile")
-                    }.buttonStyle(.plain)
-                    Button { showManualRunSheet = true } label: {
-                        actionRow(icon: "plus.circle.fill", label: "Log manual run", sub: "Treadmill / forgot to track")
-                    }.buttonStyle(.plain)
-                    Button { showOnboardingSheet = true } label: {
-                        actionRow(
-                            icon: tokenStore.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.plus",
-                            label: tokenStore.isSignedIn ? "Connections" : "Set up account",
-                            sub: tokenStore.isSignedIn ? "Sign-in · Strava · Apple Health" : "Sign in + connect your data"
-                        )
-                    }.buttonStyle(.plain)
-                }
-                .padding(.horizontal, 24)
+                    // P29 — actions: edit settings + log manual run + onboarding
+                    // 2026-05-27: added Run log + Form tips here so the two
+                    // surfaces that dropped out of the tab bar are still one
+                    // tap away.
+                    SectionLabel("ACTIONS")
+                    VStack(spacing: 10) {
+                        Button { showLogSheet = true } label: {
+                            actionRow(icon: "list.bullet.rectangle.fill", label: "Run log", sub: "Every run, chronologically")
+                        }.buttonStyle(.plain)
+                        Button { showTipsSheet = true } label: {
+                            actionRow(icon: "lightbulb.fill", label: "Form tips", sub: "Cadence · vertical osc · ground contact")
+                        }.buttonStyle(.plain)
+                        Button { showSettingsSheet = true } label: {
+                            actionRow(icon: "gearshape.fill", label: "Settings", sub: "Units · zones · profile")
+                        }.buttonStyle(.plain)
+                        Button { showManualRunSheet = true } label: {
+                            actionRow(icon: "plus.circle.fill", label: "Log manual run", sub: "Treadmill / forgot to track")
+                        }.buttonStyle(.plain)
+                        Button { showOnboardingSheet = true } label: {
+                            actionRow(
+                                icon: tokenStore.isSignedIn ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.plus",
+                                label: tokenStore.isSignedIn ? "Connections" : "Set up account",
+                                sub: tokenStore.isSignedIn ? "Sign-in · Strava · Apple Health" : "Sign in + connect your data"
+                            )
+                        }.buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 24)
 
                     Spacer().frame(height: 40)
                 }
             }
             .background(Theme.bg.ignoresSafeArea())
+            // The in-shell PageHeader carries the display recipe — suppress
+            // the system title so we don't get a duplicate.
             .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             // Warm settings + profile in the background as soon as /profile
             // mounts. SettingsSheet seeds its @State synchronously from the
             // cache when opened — kills the visible "Loading…" flash.
@@ -191,6 +200,202 @@ struct ProfileView: View {
         }
     }
 
+    // MARK: - PERSONAL grid
+
+    private var personalGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            FieldCard(label: "NAME", value: profile?.identity.full_name ?? "—")
+            FieldCard(label: "GENDER", value: genderDisplay)
+            FieldCard(label: "BIRTHDAY",
+                      value: formatBirthday(profile?.identity.birthday),
+                      hint: profile?.identity.age.map { "AGE \($0)" })
+            // Height — taps the editor when missing. When set, shows the
+            // value in feet/inches.
+            if let cm = profile?.identity.height_cm {
+                FieldCard(label: "HEIGHT",
+                          value: formatHeightFtIn(cm: cm),
+                          editable: true)
+            } else {
+                Button { showHeightSheet = true } label: {
+                    FieldCard(label: "HEIGHT", value: "—",
+                              hint: "TAP TO ADD")
+                }
+                .buttonStyle(.plain)
+            }
+            FieldCard(label: "CITY", value: profile?.identity.city ?? "—")
+            FieldCard(label: "EXPERIENCE",
+                      value: experienceDisplay(profile?.identity.experience_level))
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - PHYSIOLOGY · TRAINING ANCHORS grid
+
+    private var anchorsGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            FieldCard(
+                label: "LTHR",
+                value: profile?.physiology.lthr.map { "\($0) bpm" } ?? "—",
+                hint: nil,
+                subhint: "HR zones (Z1-Z5 from Friel)",
+                editable: true
+            )
+            FieldCard(
+                label: "MAX HR",
+                value: profile?.physiology.max_hr.map { "\($0) bpm" } ?? "—",
+                hint: maxHrHint(profile?.physiology.max_hr_source),
+                subhint: "Z5 ceiling, age-grade fallback",
+                editable: true
+            )
+            FieldCard(
+                label: "RESTING HR",
+                value: profile?.physiology.rhr.map { "\($0) bpm" } ?? "—",
+                hint: profile?.physiology.rhr != nil ? "60D MEAN" : "PENDING",
+                subhint: "Readiness baseline"
+            )
+            FieldCard(
+                label: "VDOT",
+                value: profile?.physiology.vdot.map { String(format: "%.0f", $0) } ?? "—",
+                hint: profile?.physiology.vdot != nil ? "BEST RACE · 6MO" : "PENDING",
+                subhint: "Pace zones (E/M/T/I/R)"
+            )
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - HR ZONES card
+
+    private func hrZonesEyebrow(_ zt: ProfileZoneTable) -> String {
+        let method = zt.method == "lthr-friel" ? "LTHR-ANCHORED (FRIEL)" : "%MHR FALLBACK"
+        return "HR ZONES · \(method) · \(zt.anchor.label) \(zt.anchor.bpm)"
+    }
+
+    private func hrZonesCard(_ zt: ProfileZoneTable) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(zt.zones) { z in
+                HRZoneRow(zone: z)
+            }
+            if let note = zt.note, !note.isEmpty {
+                Text(note)
+                    .font(.body(11))
+                    .foregroundStyle(Theme.mute)
+                    .padding(.top, 12)
+            }
+            Text("Re-test LTHR every 6-12 weeks for the most accurate zones.")
+                .font(.body(11))
+                .foregroundStyle(Theme.mute)
+                .padding(.top, 10)
+        }
+        .padding(16)
+        .background(Theme.card)
+        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - SHOE ROTATION list
+
+    private func shoesList(_ shoes: [ProfileShoe]) -> some View {
+        VStack(spacing: 10) {
+            ForEach(shoes) { shoe in
+                shoeCard(shoe)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private func shoeCard(_ shoe: ProfileShoe) -> some View {
+        let miles  = shoe.mileage ?? 0
+        let cap    = shoe.cap ?? 0
+        let pct    = shoe.pctUsed ?? (cap > 0 ? miles / cap : 0)
+        let retired = shoe.retired ?? false
+        // Lock the pill color to amber when ≥ 80% of cap, red when ≥ 100%,
+        // green otherwise. Matches the web's mileage warning ramp.
+        let pillColor: Color = pct >= 1.0 ? Theme.over
+            : pct >= 0.8 ? Theme.goal
+            : Theme.green
+        return HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(shoeDisplayName(shoe))
+                        .font(.display(18))
+                        .tracking(0.5)
+                        .foregroundStyle(retired ? Theme.mute : Theme.ink)
+                        .lineLimit(1)
+                    if retired {
+                        Text("RETIRED")
+                            .font(.body(9, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(Theme.mute)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .overlay(Capsule().stroke(Theme.mute.opacity(0.4), lineWidth: 1))
+                            .clipShape(Capsule())
+                    } else if shoe.preferred == true {
+                        Text("PREFERRED")
+                            .font(.body(9, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(Theme.green)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .overlay(Capsule().stroke(Theme.green.opacity(0.35), lineWidth: 1))
+                            .clipShape(Capsule())
+                    }
+                }
+                Text(shoeMetaLine(miles: miles, cap: cap))
+                    .font(.body(11))
+                    .foregroundStyle(Theme.mute)
+            }
+            Spacer(minLength: 8)
+            Text(String(format: "%.0f%%", min(pct, 1.0) * 100))
+                .font(.body(11, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(pillColor)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .overlay(Capsule().stroke(pillColor.opacity(0.35), lineWidth: 1))
+                .clipShape(Capsule())
+        }
+        .padding(14)
+        .background(Theme.card)
+        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
+    }
+
+    private func shoeDisplayName(_ shoe: ProfileShoe) -> String {
+        if let name = shoe.name, !name.isEmpty { return name }
+        let parts = [shoe.brand, shoe.model].compactMap { $0?.isEmpty == false ? $0 : nil }
+        return parts.isEmpty ? "Shoe" : parts.joined(separator: " ")
+    }
+
+    private func shoeMetaLine(miles: Double, cap: Double) -> String {
+        if cap > 0 {
+            return "\(formatMi(miles)) / \(formatMi(cap)) MI"
+        }
+        return "\(formatMi(miles)) MI"
+    }
+
+    private func formatMi(_ mi: Double) -> String {
+        if mi.truncatingRemainder(dividingBy: 1) == 0 { return String(Int(mi)) }
+        return String(format: "%.1f", mi)
+    }
+
+    // MARK: - Training-for line
+
+    private func trainingForLine(_ race: ProfileNextRace) -> some View {
+        let goalSuffix = race.goal.map { " · goal \($0)" } ?? ""
+        return HStack(spacing: 6) {
+            Text("Training for")
+                .font(.body(13))
+                .foregroundStyle(Theme.mute)
+            Text("\(race.name) · \(race.days_to_race) days\(goalSuffix)")
+                .font(.body(13, weight: .semibold))
+                .foregroundStyle(Theme.race)
+        }
+    }
+
+    // MARK: - Load
+
     private func load() async {
         await SettingsCache.shared.warm()
         // Three calls in parallel: settings cache warm (cached locally for
@@ -202,23 +407,31 @@ struct ProfileView: View {
         briefing = await bRes ?? nil
     }
 
-    /// "DN" from a full name (falls back when name not loaded).
-    private func initialsForProfile() -> String {
-        guard let n = profile?.identity.full_name, !n.isEmpty else { return "—" }
-        let parts = n.split(separator: " ", omittingEmptySubsequences: true)
-        let chars = parts.prefix(2).compactMap { $0.first.map(String.init) }
-        return chars.joined().uppercased()
+    // MARK: - Formatting helpers
+
+    /// "MALE", "FEMALE", or "—" — capitalized for the FieldCard value.
+    private var genderDisplay: String {
+        guard let s = profile?.identity.sex, !s.isEmpty else { return "—" }
+        return s.uppercased()
     }
 
-    /// "MALE · 40 · LOS ANGELES, CA" assembled from real fields. Each
-    /// segment renders only when its value is present, matching web.
-    private func identitySubtitle() -> String {
-        guard let p = profile?.identity else { return "" }
-        var parts: [String] = []
-        if let sex = p.sex, !sex.isEmpty { parts.append(sex.uppercased()) }
-        if let age = p.age { parts.append("\(age)") }
-        if let city = p.city, !city.isEmpty { parts.append(city.uppercased()) }
-        return parts.joined(separator: " · ")
+    /// "06-15-1985" from "1985-06-15", or "—" when unset.
+    private func formatBirthday(_ iso: String?) -> String {
+        guard let iso, !iso.isEmpty else { return "—" }
+        let parts = iso.split(separator: "-")
+        guard parts.count >= 3 else { return iso }
+        return "\(parts[1])-\(parts[2].prefix(2))-\(parts[0])"
+    }
+
+    /// "Intermediate" / "Sub-elite" / etc. from the raw enum value.
+    private func experienceDisplay(_ level: String?) -> String {
+        switch (level ?? "").lowercased() {
+        case "beginner":      return "BEGINNER"
+        case "intermediate":  return "INTERMEDIATE"
+        case "advanced":      return "ADVANCED"
+        case "advanced_plus": return "SUB-ELITE"
+        default:              return "—"
+        }
     }
 
     /// 175 cm → "5'9\"" — same formatter web /profile uses
@@ -232,13 +445,13 @@ struct ProfileView: View {
 
     /// MAX HR card's small hint label keys off how the value was derived
     /// (manual / observed peak / LTHR-derived / formula).
-    private func maxHrHint(_ source: String?) -> String {
+    private func maxHrHint(_ source: String?) -> String? {
         switch source ?? "" {
         case "manual":        return "MANUAL"
         case "observed":      return "OBSERVED"
         case "lthr-derived":  return "LTHR-DERIVED"
         case "formula":       return "FORMULA"
-        default:              return "—"
+        default:              return nil
         }
     }
 
@@ -273,24 +486,6 @@ private struct SectionLabel: View {
         Text(text).font(.label(11)).tracking(1.6)
             .foregroundStyle(Theme.mute)
             .padding(.horizontal, 24)
-    }
-}
-
-private struct Field: View {
-    let k: String; let v: String; var hint: String? = nil
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(k).font(.label(9)).tracking(1.4).foregroundStyle(Theme.mute)
-            Text(v).font(.display(20)).tracking(0.5).foregroundStyle(Theme.ink)
-            if let hint {
-                Text(hint).font(.label(9)).tracking(1).foregroundStyle(Theme.green)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Theme.card)
-        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).stroke(Theme.line, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.rCard))
     }
 }
 

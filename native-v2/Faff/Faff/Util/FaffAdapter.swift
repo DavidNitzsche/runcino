@@ -700,4 +700,56 @@ enum FaffAdapter {
         default:          return ("—", "")
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 6. Health-surface helpers (Phase 25b · 2026-05-28)
+    //
+    // Mirrors the headline + eyebrow logic at the top of
+    // web-v2/app/health/page.tsx:
+    //
+    //     const headlineColor = watchMode === 'watch-red' ? 'var(--over)'
+    //       : watchMode === 'watch-amber' ? 'var(--goal)'
+    //       : watchMode === 'green' ? 'var(--green)' : 'var(--ink)';
+    //     const headlineText = watchMode === 'watch-red'  ? 'Pull back.'
+    //       : watchMode === 'watch-amber' ? 'Health.'
+    //       : watchMode === 'green' ? "Everything's green." : 'Health.';
+    //     eyebrow = `LONG-TERM PATTERNS · 30-DAY VIEW · WATCH MODE: ${...}`
+    //
+    // PageHeader takes a single eyebrow + title + titleColor — these
+    // three functions produce all three so HealthView stays
+    // render-only.
+    // ──────────────────────────────────────────────────────────────────
+
+    /// Eyebrow for the /health PageHeader. Always opens with
+    /// "LONG-TERM PATTERNS · 30-DAY VIEW", then appends the watch mode
+    /// when the server has emitted one. Mirrors web-v2/app/health/page.tsx.
+    static func healthEyebrow(state: HealthState?) -> String {
+        var s = "LONG-TERM PATTERNS · 30-DAY VIEW"
+        if let mode = state?.watchMode, !mode.isEmpty {
+            s += " · WATCH MODE: \(mode.uppercased())"
+        }
+        return s
+    }
+
+    /// Title color override for the /health PageHeader. Defaults to
+    /// Theme.ink when watchMode is nil / unknown.
+    static func healthTitleColor(watchMode: String?) -> Color {
+        switch watchMode {
+        case "watch-red":   return Theme.over
+        case "watch-amber": return Theme.goal
+        case "green":       return Theme.green
+        default:            return Theme.ink
+        }
+    }
+
+    /// Hero verb for the /health PageHeader. One short sentence the
+    /// user reads first — same dictionary the web headline uses.
+    static func healthTitle(watchMode: String?) -> String {
+        switch watchMode {
+        case "watch-red":   return "Pull back."
+        case "watch-amber": return "Health."
+        case "green":       return "Everything's green."
+        default:            return "Health."
+        }
+    }
 }

@@ -556,6 +556,11 @@ struct ProfileState: Decodable {
     let identity: ProfileIdentity
     let physiology: ProfilePhysiology
     let connections: ProfileConnections
+    // v3 chrome cutover (2026-05-28) — Phase 25b adds the shoes + zones +
+    // nextARace slices the web /profile renders. All optional so older
+    // server responses still decode. Empty fall-back is "—" in the UI.
+    let shoes: [ProfileShoe]?
+    let nextARace: ProfileNextRace?
 }
 
 struct ProfileIdentity: Decodable {
@@ -576,6 +581,64 @@ struct ProfilePhysiology: Decodable {
     let weight_lb: Double?
     let vdot: Double?
     let lthr: Int?
+    // v3 chrome cutover (2026-05-28) — Phase 25b adds the computed HR
+    // zone table + LTHR-method provenance so the iPhone can render the
+    // same 5-row Z1-Z5 anchor table the web /profile shows.
+    let lthr_method: String?
+    let zones: ProfileZoneTable?
+}
+
+/// Mirrors web's `ZoneTable` (lib/training/zones.ts). `method` is
+/// "lthr-friel" when an LTHR exists, "pct-mhr" when only MaxHR is known.
+struct ProfileZoneTable: Decodable {
+    let method: String              // "lthr-friel" | "pct-mhr"
+    let anchor: ProfileZoneAnchor
+    let zones: [ProfileHRZone]
+    let citation: String?
+    let note: String?
+}
+
+struct ProfileZoneAnchor: Decodable {
+    let label: String               // "LTHR" / "MaxHR"
+    let bpm: Int
+}
+
+struct ProfileHRZone: Decodable, Identifiable {
+    let idx: Int                    // 1 … 5
+    let label: String               // "Recovery" / "Aerobic" / …
+    let shortLabel: String          // "Z1" … "Z5"
+    let lower: Int                  // bpm
+    let upper: Int                  // bpm
+    let purpose: String             // 1-line description
+    var id: Int { idx }
+}
+
+/// One row in PROFILE's SHOE ROTATION section. Mirrors the per-shoe
+/// shape web's loadProfileState returns (id, brand, model, mileage, cap,
+/// pctUsed, retired). All optional so the wire format can grow without
+/// breaking the decoder.
+struct ProfileShoe: Decodable, Identifiable {
+    let id: String
+    let name: String?
+    let brand: String?
+    let model: String?
+    let color: String?
+    let mileage: Double?
+    let cap: Double?
+    let pctUsed: Double?
+    let preferred: Bool?
+    let retired: Bool?
+}
+
+/// `nextARace` slice from /api/profile/state — the upcoming A-race
+/// the user is training for. Powers the "Training for …" line below
+/// the page header.
+struct ProfileNextRace: Decodable {
+    let slug: String
+    let name: String
+    let date: String
+    let goal: String?
+    let days_to_race: Int
 }
 
 struct ProfileConnections: Decodable {
