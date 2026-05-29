@@ -65,7 +65,7 @@ export function Step2Signals({ initial }: { initial: OnboardingState }) {
         lineHeight: 0.86,
         fontSize: 'clamp(48px, 8vw, 84px)',
         margin: 0,
-        color: '#fff',
+        color: 'var(--ink)',
       }}>
         Let Faff see<br />your runs<br />and body.
       </h1>
@@ -74,7 +74,7 @@ export function Step2Signals({ initial }: { initial: OnboardingState }) {
         fontFamily: 'var(--f-body)',
         fontSize: 17,
         lineHeight: 1.55,
-        color: 'rgba(255,255,255,0.86)',
+        color: 'var(--ink)',
         margin: '24px 0 32px',
         maxWidth: 520,
       }}>
@@ -151,7 +151,7 @@ export function Step2Signals({ initial }: { initial: OnboardingState }) {
         style={{
           background: 'transparent',
           border: 'none',
-          color: 'rgba(255,255,255,0.7)',
+          color: 'var(--mute)',
           fontFamily: 'var(--f-body)',
           fontSize: 13,
           padding: '14px 0 0',
@@ -191,15 +191,15 @@ function SignalTile({
       disabled={disabled}
       style={{
         background: connected
-          ? 'rgba(255,255,255,0.10)'
-          : 'rgba(255,255,255,0.06)',
+          ? 'var(--card-2)'
+          : 'var(--card-2)',
         border: `1px solid ${connected
-          ? 'rgba(255,255,255,0.22)'
-          : 'rgba(255,255,255,0.14)'}`,
+          ? 'var(--line)'
+          : 'var(--line)'}`,
         borderRadius: 14,
         padding: '16px 16px',
         textAlign: 'left' as const,
-        color: '#fff',
+        color: 'var(--ink)',
         fontFamily: 'inherit',
         cursor: onClick && !disabled ? 'pointer' : 'default',
         opacity: disabled ? 0.6 : 1,
@@ -236,7 +236,7 @@ function SignalTile({
               fontFamily: 'var(--f-body)',
               fontWeight: 700,
               fontSize: 14,
-              color: '#fff',
+              color: 'var(--ink)',
               marginBottom: 2,
             }}>
               {name}
@@ -244,7 +244,7 @@ function SignalTile({
             <div style={{
               fontFamily: 'var(--f-body)',
               fontSize: 11,
-              color: 'rgba(255,255,255,0.6)',
+              color: 'var(--dim)',
               letterSpacing: '0.2px',
             }}>
               {meta}
@@ -253,7 +253,7 @@ function SignalTile({
         </div>
         <div style={{
           width: 8, height: 8, borderRadius: '50%',
-          background: connected ? 'var(--green)' : 'rgba(255,255,255,0.22)',
+          background: connected ? 'var(--green)' : 'var(--line)',
           boxShadow: connected ? '0 0 10px rgba(62,189,65,0.6)' : 'none',
           flexShrink: 0,
         }} />
@@ -262,7 +262,7 @@ function SignalTile({
         <div style={{
           fontFamily: 'var(--f-body)',
           fontSize: 12,
-          color: 'rgba(255,255,255,0.7)',
+          color: 'var(--mute)',
           lineHeight: 1.5,
         }}>
           {help}
@@ -274,7 +274,7 @@ function SignalTile({
         fontSize: 11,
         letterSpacing: '1.6px',
         textTransform: 'uppercase',
-        color: connected ? '#d2ffce' : 'rgba(255,255,255,0.85)',
+        color: connected ? 'var(--green)' : 'var(--mute)',
       }}>
         {cta}
       </div>

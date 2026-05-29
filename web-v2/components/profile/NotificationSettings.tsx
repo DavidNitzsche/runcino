@@ -292,7 +292,7 @@ function Toggle({
       disabled={disabled || busy}
       style={{
         width: 44, height: 26, borderRadius: 999,
-        background: on ? 'var(--green, #3EBD41)' : 'var(--dim, #4b505e)',
+        background: on ? 'var(--green)' : 'var(--line)',
         position: 'relative',
         border: 'none',
         cursor: disabled ? 'default' : 'pointer',
@@ -310,7 +310,7 @@ function Toggle({
           top: 2,
           left: on ? 'auto' : 2,
           right: on ? 2 : 'auto',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          boxShadow: '0 1px 3px rgba(20,17,13,0.18)',
           transition: 'left 0.15s, right 0.15s',
         }}
       />
@@ -332,7 +332,7 @@ function TimePicker({
       onBlur={() => { if (local !== value) onCommit(local); }}
       style={{
         background: 'rgba(255,136,71,0.08)',
-        color: 'var(--race, #FF8847)',
+        color: 'var(--race)',
         fontSize: 13,
         fontWeight: 600,
         fontFamily: 'var(--f-body)',

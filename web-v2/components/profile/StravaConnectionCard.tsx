@@ -230,7 +230,7 @@ export function StravaConnectionCard({ initial }: {
         <div
           style={{
             padding: '14px 16px',
-            borderRadius: 10,
+            borderRadius: 4,
             background: 'rgba(252, 77, 100, 0.10)',
             border: '1px solid rgba(252, 77, 100, 0.30)',
             marginBottom: 14,
@@ -279,8 +279,8 @@ export function StravaConnectionCard({ initial }: {
         <div
           style={{
             padding: '14px 16px',
-            borderRadius: 10,
-            background: 'rgba(255,255,255,0.03)',
+            borderRadius: 4,
+            background: 'var(--card-2)',
             border: '1px solid var(--line)',
             marginBottom: 14,
             display: 'flex',
@@ -460,7 +460,7 @@ function Toggle({ on, loading, onChange }: { on: boolean; loading: boolean; onCh
       disabled={loading}
       style={{
         width: 44, height: 26, borderRadius: 999,
-        background: on ? 'var(--green)' : 'rgba(255,255,255,0.12)',
+        background: on ? 'var(--green)' : 'var(--line)',
         border: 'none',
         position: 'relative',
         cursor: loading ? 'wait' : 'pointer',
@@ -489,7 +489,7 @@ function Segmented<T extends string>({ value, options, loading, onChange }: {
   return (
     <div style={{
       display: 'inline-flex',
-      background: 'rgba(255,255,255,0.04)',
+      background: 'var(--card-2)',
       borderRadius: 8, padding: 2,
       opacity: loading ? 0.6 : 1,
     }}>

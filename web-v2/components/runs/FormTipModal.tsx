@@ -30,17 +30,17 @@ export function FormStatButton({
         disabled={!tip}
         style={{
           padding: '10px 12px',
-          background: 'rgba(255,255,255,0.025)',
-          borderRadius: 10,
-          border: '1px solid rgba(255,255,255,0.05)',
+          background: 'var(--card-2)',
+          borderRadius: 4,
+          border: '1px solid var(--line-2)',
           textAlign: 'left',
           cursor: tip ? 'pointer' : 'default',
           width: '100%',
           fontFamily: 'inherit',
           transition: 'background .12s',
         }}
-        onMouseEnter={(e) => { if (tip) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-        onMouseLeave={(e) => { if (tip) e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
+        onMouseEnter={(e) => { if (tip) e.currentTarget.style.background = 'var(--card-2)'; }}
+        onMouseLeave={(e) => { if (tip) e.currentTarget.style.background = 'var(--card-2)'; }}
       >
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', lineHeight: 1, letterSpacing: '0.3px' }}>
           {value}{unit ? ' ' + unit : ''}
@@ -75,13 +75,13 @@ function FormTipModal({ tip, currentValue, onClose }: { tip: FormTip; currentVal
 
   return (
     <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+      position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
       zIndex: 80, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 32,
       overflowY: 'auto',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
+        background: 'var(--card)', border: '1px solid var(--line)',
+        boxShadow: '0 24px 60px rgba(20,17,13,0.22)', borderRadius: 4,
         padding: '28px 32px', maxWidth: 720, width: '100%', marginTop: 40, marginBottom: 60,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
@@ -114,8 +114,8 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
       {/* Your current value + classification */}
       {currentValue != null && userBand && (
         <div style={{
-          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 12, padding: '16px 18px', marginBottom: 18,
+          background: 'var(--card-2)', border: '1px solid var(--line)',
+          borderRadius: 4, padding: '16px 18px', marginBottom: 18,
           borderLeft: `3px solid ${bandToCss(userBand.band)}`,
         }}>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -136,7 +136,7 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
               {userBand.label.toUpperCase()}
             </span>
           </div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'rgba(246,247,248,0.78)', marginTop: 6, lineHeight: 1.5 }}>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', marginTop: 6, lineHeight: 1.5 }}>
             {userBand.meaning}
           </div>
         </div>
@@ -146,14 +146,14 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
       <h3 style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 6px' }}>
         What it is
       </h3>
-      <p style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'rgba(246,247,248,0.85)', lineHeight: 1.6, margin: '0 0 12px' }}>
+      <p style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', lineHeight: 1.6, margin: '0 0 12px' }}>
         {tip.whatItIs}
       </p>
 
       <h3 style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)', letterSpacing: '0.3px', margin: '14px 0 6px' }}>
         Why it matters
       </h3>
-      <p style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'rgba(246,247,248,0.85)', lineHeight: 1.6, margin: '0 0 12px' }}>
+      <p style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', lineHeight: 1.6, margin: '0 0 12px' }}>
         {tip.whyItMatters}
       </p>
 
@@ -166,10 +166,10 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
           <div key={b.label} style={{
             display: 'grid', gridTemplateColumns: '110px 130px 1fr',
             gap: 14, padding: '10px 12px',
-            background: userBand?.label === b.label ? 'rgba(255,255,255,0.05)' : 'transparent',
-            border: `1px solid ${userBand?.label === b.label ? bandToCss(b.band) : 'rgba(255,255,255,0.04)'}`,
+            background: userBand?.label === b.label ? 'var(--card-2)' : 'transparent',
+            border: `1px solid ${userBand?.label === b.label ? bandToCss(b.band) : 'var(--line-2)'}`,
             borderLeft: `3px solid ${bandToCss(b.band)}`,
-            borderRadius: 8,
+            borderRadius: 4,
             alignItems: 'baseline',
           }}>
             <span style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: bandToCss(b.band), letterSpacing: '1.2px', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -178,7 +178,7 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
             <span style={{ fontFamily: 'var(--f-label)', fontSize: 13, color: 'var(--ink)' }}>
               {b.range}
             </span>
-            <span style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>
+            <span style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'var(--mute)', lineHeight: 1.5 }}>
               <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{b.label}.</span> {b.meaning}
             </span>
           </div>
@@ -191,7 +191,7 @@ export function FormTipDetail({ tip, currentValue }: { tip: FormTip; currentValu
           <h3 style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--goal)', letterSpacing: '0.3px', margin: '20px 0 8px' }}>
             What to do about it
           </h3>
-          <ol style={{ paddingLeft: 22, margin: 0, fontFamily: 'var(--f-body)', fontSize: 14, color: 'rgba(246,247,248,0.85)', lineHeight: 1.65 }}>
+          <ol style={{ paddingLeft: 22, margin: 0, fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', lineHeight: 1.65 }}>
             {tip.drillsWhenFlagged.map((d, i) => (
               <li key={i} style={{ marginBottom: 6 }}>{d}</li>
             ))}

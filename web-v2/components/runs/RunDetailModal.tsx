@@ -153,15 +153,15 @@ export function RunDetailModal({
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+        position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
         zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
+          background: 'var(--card)', border: '1px solid var(--line)',
+          boxShadow: '0 24px 60px rgba(20,17,13,0.22)', borderRadius: 4,
           padding: '28px 32px', maxWidth: 720, width: '100%', maxHeight: '85vh', overflow: 'auto',
         }}
       >
@@ -288,7 +288,7 @@ export function RunDetailBody({
           Also dropped the loud orange tint/border — eyebrow now reads
           mute since this isn't an alert, it's context. */}
       {hasMeaningfulWorkAverages(d) && (
-        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: '#1f2226' }}>
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: 'var(--card-2)' }}>
           <div className="card-eyebrow" style={{ color: 'var(--mute)', marginBottom: 6 }}>
             WORK-PHASE AVERAGES · RECOVERIES EXCLUDED
           </div>
@@ -311,7 +311,7 @@ export function RunDetailBody({
           bright iOS blue selection) was wildly off-theme. ShoePicker is a
           custom button+popover that stays in the app's palette. */}
       {shoes.length > 0 && (
-        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: '#1f2226' }}>
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 14, background: 'var(--card-2)' }}>
           <div className="card-eyebrow" style={{ color: 'var(--green)', marginBottom: 8 }}>SHOES</div>
           <ShoePicker shoes={shoes} value={d.shoe_id ?? null} onChange={onPickShoe} />
         </div>
@@ -325,7 +325,7 @@ export function RunDetailBody({
           reps + recoveries + cooldown. Recolored eyebrow to mute too —
           it's structural, not an alert. */}
       {d.phase_breakdown && d.phase_breakdown.length > 1 && (
-        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+        <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: 'var(--card-2)' }}>
           <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>BREAKDOWN · PLAN vs ACTUAL</div>
           <PhaseBreakdownTable phases={d.phase_breakdown} />
         </div>
@@ -355,7 +355,7 @@ export function RunDetailBody({
           {/* Splits chart — bar per mile by pace, w/ HR overlay if we have it.
               Hidden when there's only 1 split AND no per-mile pace data. */}
           {d.splits.length > 1 && (
-            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: 'var(--card-2)' }}>
               <div className="card-eyebrow" style={{ color: 'var(--mute)' }}>SPLITS · {d.splits.length} MILES</div>
               <SplitsBars splits={d.splits} />
               <SplitsTable splits={d.splits} />
@@ -368,7 +368,7 @@ export function RunDetailBody({
               Pulled from health_samples for the run's date (Apple Watch).
               Each tile is clickable → opens a FormTipModal. */}
           {hasFormData(d) && (
-            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: 'var(--card-2)' }}>
               <div className="card-eyebrow" style={{ color: 'var(--learn)' }}>FORM · APPLE WATCH · TAP A TILE</div>
               <div style={{ display: 'grid', gridTemplateColumns: inline ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 10, marginTop: 10 }}>
                 {d.cadence_avg            != null && <FormStatButton metricKey="cadence_spm"             value={String(d.cadence_avg)}                    unit=""    label="cadence spm"       hint={cadenceHint(d.cadence_avg)} />}
@@ -386,7 +386,7 @@ export function RunDetailBody({
           {/* Route — render the actual polyline as an SVG sparkline when we
               have it (Strava-encoded). Falls back to a stat-only note. */}
           {d.has_route && (
-            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: '#1f2226' }}>
+            <div className="card" style={{ padding: '18px 20px', marginBottom: 12, background: 'var(--card-2)' }}>
               <div className="card-eyebrow" style={{ color: 'var(--dist)' }}>
                 ROUTE
                 {d.elev_gain_ft != null && d.elev_gain_ft > 0 && (
@@ -418,7 +418,7 @@ export function RunDetailBody({
 
 function FormStat({ v, u, hint }: { v: string; u: string; hint: string }) {
   return (
-    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.025)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
+    <div style={{ padding: '10px 12px', background: 'var(--card-2)', borderRadius: 4, border: '1px solid var(--line-2)' }}>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', lineHeight: 1, letterSpacing: '0.3px' }}>{v}</div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 9.5, color: 'var(--mute)', letterSpacing: '1.1px', textTransform: 'uppercase', marginTop: 4 }}>{u}</div>
       {hint && <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--learn)', marginTop: 4, fontStyle: 'italic' }}>{hint}</div>}
@@ -496,7 +496,7 @@ function hrInterpretation(p: { z1: number; z2: number; z3: number; z4: number; z
 
 function SmallStat({ v, u }: { v: string; u: string }) {
   return (
-    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.025)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)' }}>
+    <div style={{ padding: '10px 12px', background: 'var(--card-2)', borderRadius: 4, border: '1px solid var(--line-2)' }}>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)', lineHeight: 1, letterSpacing: '0.3px' }}>{v}</div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 9.5, color: 'var(--mute)', letterSpacing: '1.1px', textTransform: 'uppercase', marginTop: 3 }}>{u}</div>
     </div>
@@ -559,12 +559,12 @@ function PhaseBreakdownTable({ phases }: { phases: PhaseBreakdown[] }) {
               ? (p.actual_pace ?? '—')
               : (p.actual_duration_sec ? fmtDur(p.actual_duration_sec) : (p.actual_pace ?? '—'));
             return (
-              <tr key={p.index} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+              <tr key={p.index} style={{ borderTop: '1px solid var(--line-2)' }}>
                 <td style={{ padding: '8px 4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
                       display: 'inline-block', padding: '2px 6px', borderRadius: 4,
-                      background: 'rgba(255,255,255,0.05)', color: typeBadgeColor(p.type),
+                      background: 'var(--card-2)', color: typeBadgeColor(p.type),
                       fontSize: 8.5, letterSpacing: '0.9px', fontWeight: 700,
                     }}>{typeBadge(p.type)}</span>
                     <span style={{ color: 'var(--ink)', fontSize: 12.5 }}>{p.label}</span>
@@ -610,7 +610,7 @@ function SplitsTable({ splits }: { splits: { mile: number; pace: string | null; 
         </thead>
         <tbody>
           {splits.map((s) => (
-            <tr key={s.mile} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+            <tr key={s.mile} style={{ borderTop: '1px solid var(--line-2)' }}>
               <td style={{ padding: '7px 4px', fontFamily: 'var(--f-label)', color: 'var(--mute)', fontSize: 13 }}>{s.mile}</td>
               <td style={{ padding: '7px 4px', fontFamily: 'var(--f-label)', color: 'var(--ink)', fontSize: 13.5 }}>{s.pace ?? '—'}</td>
               <td style={{ padding: '7px 4px', textAlign: 'right', color: s.hr ? 'var(--ink)' : 'var(--dim)', fontFamily: 'var(--f-label)', fontSize: 13 }}>{s.hr ?? '—'}</td>
@@ -627,7 +627,7 @@ function SplitsTable({ splits }: { splits: { mile: number; pace: string | null; 
 
 function BigStat({ v, u, color }: { v: string; u: string; color: string }) {
   return (
-    <div style={{ padding: '12px 14px', background: '#1f2226', borderRadius: 12 }}>
+    <div style={{ padding: '12px 14px', background: 'var(--card-2)', borderRadius: 4 }}>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 30, color, lineHeight: 1 }}>{v}</div>
       <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '1.2px', textTransform: 'uppercase', marginTop: 4 }}>{u}</div>
     </div>
@@ -726,9 +726,9 @@ function ShoePicker({
         onClick={() => setOpen((o) => !o)}
         style={{
           width: '100%',
-          background: 'rgba(255,255,255,0.05)',
+          background: 'var(--card-2)',
           color: 'var(--ink)',
-          border: '1px solid rgba(255,255,255,0.1)',
+          border: '1px solid var(--line)',
           borderRadius: 8,
           padding: '10px 12px',
           fontFamily: 'var(--f-body)',
@@ -756,11 +756,11 @@ function ShoePicker({
           role="listbox"
           style={{
             position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 50,
-            background: '#16191e',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 10,
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            borderRadius: 4,
             padding: 4,
-            boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)',
+            boxShadow: '0 12px 32px rgba(20,17,13,0.18), 0 2px 8px rgba(20,17,13,0.18)',
             maxHeight: 280, overflowY: 'auto',
           }}
         >
@@ -813,7 +813,7 @@ function ShoeRow({
       style={{
         width: '100%',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-        background: selected ? 'rgba(62,189,65,0.16)' : (hover ? 'rgba(255,255,255,0.05)' : 'transparent'),
+        background: selected ? 'rgba(62,189,65,0.16)' : (hover ? 'var(--card-2)' : 'transparent'),
         border: 'none',
         color: 'var(--ink)',
         padding: '9px 10px',
@@ -1068,7 +1068,7 @@ function HRSection({ d }: { d: RunDetail }) {
       // 2026-05-27: was #06080b (near-black) → reads as a hole punched in the
       // modal. Other run-detail cards use #1f2226; matching that here lets the
       // HR block sit in the visual stack instead of plunging out of it.
-      background: '#1f2226', borderRadius: 14, padding: 14, border: '1px solid var(--line2)',
+      background: 'var(--card-2)', borderRadius: 4, padding: 14, border: '1px solid var(--line-2)',
       display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gridTemplateRows: 'auto auto', gap: 10,
       marginBottom: 12,
     }}>
@@ -1090,7 +1090,7 @@ function HRSection({ d }: { d: RunDetail }) {
       <div style={{
         gridRow: 'span 2',
         background: `linear-gradient(135deg, ${dom.color === 'var(--mute)' ? 'rgba(138,144,160,0.10)' : `${dom.color}1a`} 0%, transparent 100%)`,
-        borderRadius: 12, padding: 22, border: `1px solid ${dom.color === 'var(--mute)' ? 'rgba(138,144,160,0.25)' : `${dom.color}33`}`,
+        borderRadius: 4, padding: 22, border: `1px solid ${dom.color === 'var(--mute)' ? 'rgba(138,144,160,0.25)' : `${dom.color}33`}`,
         display: 'grid', gridTemplateColumns: '1fr 70px', gap: 14,
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -1113,7 +1113,7 @@ function HRSection({ d }: { d: RunDetail }) {
               {heroSubline}
             </div>
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(246,247,248,0.7)', fontStyle: 'italic', lineHeight: 1.5, marginTop: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--mute)', fontStyle: 'italic', lineHeight: 1.5, marginTop: 12 }}>
             {heroNote}
           </div>
         </div>
@@ -1154,7 +1154,7 @@ function HRSection({ d }: { d: RunDetail }) {
       </div>
 
       {/* PEAK HR GAUGE */}
-      <div style={{ background: 'rgba(255,255,255,0.035)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ background: 'var(--card-2)', borderRadius: 4, padding: '14px 16px', border: '1px solid var(--line-2)' }}>
         <div style={{ fontSize: 9, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700, marginBottom: 8 }}>PEAK HR</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 10 }}>
           <span style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)', lineHeight: 1 }}>{d.hr_max ?? '—'}</span>
@@ -1177,9 +1177,9 @@ function HRSection({ d }: { d: RunDetail }) {
       </div>
 
       {/* AVG vs LTHR DONUT */}
-      <div style={{ background: 'rgba(255,255,255,0.035)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ background: 'var(--card-2)', borderRadius: 4, padding: '14px 16px', border: '1px solid var(--line-2)', display: 'flex', alignItems: 'center', gap: 12 }}>
         <svg viewBox="0 0 60 60" style={{ width: 54, height: 54, flexShrink: 0, transform: 'rotate(-90deg)' }}>
-          <circle cx="30" cy="30" r="26" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+          <circle cx="30" cy="30" r="26" fill="none" stroke="var(--line)" strokeWidth="6" />
           {lthrRatio != null && (
             <circle cx="30" cy="30" r="26" fill="none" stroke={lthrRatioColor} strokeWidth="6"
                     strokeDasharray="163" strokeDashoffset={donutOffset} strokeLinecap="round"/>
@@ -1204,7 +1204,7 @@ function HRSection({ d }: { d: RunDetail }) {
           "no data" right below. Honest. */}
       <div style={{
         gridColumn: 'span 2',
-        background: 'rgba(255,255,255,0.035)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.06)',
+        background: 'var(--card-2)', borderRadius: 4, padding: '14px 16px', border: '1px solid var(--line-2)',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', fontWeight: 700 }}>
@@ -1225,7 +1225,7 @@ function HRSection({ d }: { d: RunDetail }) {
                 {lthrY != null && (
                   <div style={{
                     position: 'absolute', right: 8, top: `${(lthrY / 80) * 100}%`, transform: 'translateY(-50%)',
-                    fontSize: 10, fontWeight: 700, letterSpacing: '0.4px', color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap',
+                    fontSize: 10, fontWeight: 700, letterSpacing: '0.4px', color: 'var(--dim)', whiteSpace: 'nowrap',
                   }}>LTHR</div>
                 )}
                 {avgY != null && d.hr_avg != null && Math.abs((avgY ?? 0) - (lthrY ?? -999)) > 7 && (
@@ -1242,7 +1242,7 @@ function HRSection({ d }: { d: RunDetail }) {
                   {/* LTHR reference */}
                   {lthrY != null && (
                     <line x1="0" x2="400" y1={lthrY} y2={lthrY}
-                          stroke="rgba(255,255,255,0.30)" strokeWidth="0.7" strokeDasharray="4,3"/>
+                          stroke="var(--line)" strokeWidth="0.7" strokeDasharray="4,3"/>
                   )}
                   {/* AVG HR reference */}
                   {avgY != null && (
@@ -1264,7 +1264,7 @@ function HRSection({ d }: { d: RunDetail }) {
                         strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"/>
                   {/* Peak dot */}
                   {peakPoint && (
-                    <circle cx={peakX * 4} cy={peakY} r="3" fill="#FC4D64"/>
+                    <circle cx={peakX * 4} cy={peakY} r="3" fill="var(--over)"/>
                   )}
                 </svg>
 
@@ -1273,8 +1273,8 @@ function HRSection({ d }: { d: RunDetail }) {
                   <div style={{
                     position: 'absolute', left: `${peakX}%`, top: `${peakYPct}%`,
                     transform: 'translate(-50%, -100%)',
-                    background: 'rgba(15,17,21,0.92)', border: '1px solid rgba(252,77,100,0.5)', borderRadius: 4,
-                    padding: '2px 6px', fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.3px',
+                    background: 'var(--card)', border: '1px solid rgba(252,77,100,0.5)', borderRadius: 4,
+                    padding: '2px 6px', fontSize: 10, fontWeight: 700, color: 'var(--ink)', letterSpacing: '0.3px',
                     whiteSpace: 'nowrap', zIndex: 3, lineHeight: 1.2, marginTop: -4,
                     pointerEvents: 'none',
                   }}>
@@ -1287,7 +1287,7 @@ function HRSection({ d }: { d: RunDetail }) {
                   <div style={{ position: 'absolute', inset: '0 0 0 0', pointerEvents: 'none' }}>
                     {series.phases.map((ph, i) => {
                       const center = ((ph.tStart + ph.tEnd) / 2) * 100;
-                      const color = ph.type === 'work' ? '#FC4D64'
+                      const color = ph.type === 'work' ? 'var(--over)'
                         : ph.type === 'recovery' ? 'var(--mute)'
                         : 'var(--mute)';
                       const shortLabel = ph.type === 'warmup' ? 'W'
@@ -1405,7 +1405,7 @@ function HrSummaryFallback({
       {/* TIME-IN-ZONE STACKED BAR */}
       {hasZoneData && (
         <div>
-          <div style={{ display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--line-2)' }}>
             {zones.map((z) => {
               const pct = pcts[z];
               if (pct < 0.5) return null;
@@ -1449,10 +1449,10 @@ function HrSummaryFallback({
         type Marker = { id: 'lthr' | 'avg' | 'peak'; pct: number; label: string; color: string; tickColor: string; bold: boolean };
         const markers: Marker[] = [];
         if (lthr != null && lthr >= axisMin && lthr <= axisMax) {
-          markers.push({ id: 'lthr', pct: pctOnAxis(lthr), label: `LTHR ${lthr}`, color: 'rgba(255,255,255,0.55)', tickColor: 'rgba(255,255,255,0.35)', bold: false });
+          markers.push({ id: 'lthr', pct: pctOnAxis(lthr), label: `LTHR ${lthr}`, color: 'var(--dim)', tickColor: 'var(--line)', bold: false });
         }
         if (hrAvg != null && hrAvg >= axisMin && hrAvg <= axisMax) {
-          markers.push({ id: 'avg', pct: pctOnAxis(hrAvg), label: `AVG ${hrAvg}`, color: '#fff', tickColor: '#fff', bold: true });
+          markers.push({ id: 'avg', pct: pctOnAxis(hrAvg), label: `AVG ${hrAvg}`, color: 'var(--ink)', tickColor: 'var(--ink)', bold: true });
         }
         if (hrMax != null && hrMax >= axisMin && hrMax <= axisMax) {
           markers.push({ id: 'peak', pct: pctOnAxis(hrMax), label: `PEAK ${hrMax}`, color: '#FC4D64', tickColor: '#FC4D64', bold: true });
@@ -1568,7 +1568,7 @@ function HRZones({
             <span style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.3px' }}>
               {rng ? `${rng.lower}–${rng.upper}` : ''}
             </span>
-            <div style={{ position: 'relative', height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ position: 'relative', height: 8, background: 'var(--card-2)', borderRadius: 4, overflow: 'hidden' }}>
               <div style={{
                 position: 'absolute', inset: 0, width: `${pct}%`,
                 background: colors[z], borderRadius: 4,
@@ -1589,7 +1589,7 @@ function HRZones({
 function _Chip({ k, v, warm, children }: { k?: string; v?: string; warm?: boolean; children?: React.ReactNode }) {
   return (
     <span style={{
-      background: warm ? 'rgba(243,173,56,0.08)' : 'rgba(255,255,255,0.04)',
+      background: warm ? 'rgba(243,173,56,0.08)' : 'var(--card-2)',
       border: warm ? '1px solid rgba(243,173,56,0.30)' : '1px solid var(--line)',
       borderRadius: 999, padding: '6px 11px', fontSize: 11, color: warm ? 'var(--goal)' : 'var(--ink)',
     }}>

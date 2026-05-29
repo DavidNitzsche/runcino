@@ -57,7 +57,7 @@ export default async function UsagePage() {
                 ? Math.round((d.cache_read_tokens / (d.input_tokens + d.cache_read_tokens)) * 100)
                 : 0;
               return (
-                <tr key={d.date} style={{ color: 'rgba(246,247,248,0.85)' }}>
+                <tr key={d.date} style={{ color: 'var(--mute)' }}>
                   <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>{d.date}</td>
                   <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', textAlign: 'right' }}>{d.briefings}</td>
                   <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', textAlign: 'right' }}>{d.rounds}</td>

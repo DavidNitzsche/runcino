@@ -123,7 +123,7 @@ export function InlineGapEditor({ field, fallbackWhy }: { field: string; fallbac
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, fontWeight: 700, color: 'var(--goal)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 4 }}>COACH NEEDS</div>
           <div style={{ fontFamily: 'var(--f-label)', fontSize: 16, color: 'var(--ink)' }}>{prettify(field)}</div>
           {fallbackWhy && (
-            <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'rgba(246,247,248,0.65)', marginTop: 2 }}>{fallbackWhy}</div>
+            <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--dim)', marginTop: 2 }}>{fallbackWhy}</div>
           )}
         </div>
         <a href="/profile" style={{
@@ -174,7 +174,7 @@ export function InlineGapEditor({ field, fallbackWhy }: { field: string; fallbac
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--f-body)', fontSize: 9, fontWeight: 700, color: 'var(--goal)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 4 }}>COACH NEEDS</div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)' }}>{spec.label}</div>
-          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'rgba(246,247,248,0.65)', marginTop: 2 }}>{spec.why}</div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--dim)', marginTop: 2 }}>{spec.why}</div>
         </div>
         <span style={{
           background: 'var(--goal)', color: '#1a1300', borderRadius: 999,
@@ -270,7 +270,7 @@ function prettify(s: string): string {
 function inputStyle(): React.CSSProperties {
   return {
     fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)',
-    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+    background: 'var(--card-2)', border: '1px solid var(--line)',
     borderRadius: 8, padding: '8px 12px', minWidth: 160, letterSpacing: '0.5px',
   };
 }

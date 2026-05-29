@@ -28,7 +28,7 @@ export default async function TipsPage() {
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginTop: 10, marginBottom: 28 }}>
           FORM · WHAT IT MEANS · WHAT TO DO
         </div>
-        <p style={{ fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.6, color: 'rgba(246,247,248,0.78)', marginBottom: 28 }}>
+        <p style={{ fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.6, color: 'var(--mute)', marginBottom: 28 }}>
           Every form metric the watch tracks, with target ranges and what to actually do when something flags. Tap a card.
         </p>
         <TipsList />

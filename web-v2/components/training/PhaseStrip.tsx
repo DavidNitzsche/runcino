@@ -66,7 +66,7 @@ export function PhaseStrip({
       }}>
         <span style={{ color: 'var(--mute)' }}>
           {totalWeeks ? `${totalWeeks} WEEKS` : ''}
-          {raceName ? <> · <span style={{ color: 'rgba(246,247,248,0.75)' }}>BUILDING TO {raceName}</span></> : null}
+          {raceName ? <> · <span style={{ color: 'var(--mute)' }}>BUILDING TO {raceName}</span></> : null}
         </span>
         <span style={{ color: daysToRace != null && daysToRace <= 14 ? 'var(--race)' : 'var(--mute)' }}>
           {daysToRace != null ? `${daysToRace}D LEFT` : ''}
@@ -81,7 +81,7 @@ export function PhaseStrip({
           card padding. */}
       <div style={{
         display: 'flex', gap: 4,
-        background: 'rgba(255,255,255,0.02)',
+        background: 'var(--card-2)',
         borderRadius: 10, padding: '4px 24px',
       }}>
         {PHASE_ORDER.map((label, i) => {

@@ -156,7 +156,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   return (
     <button onClick={() => onChange(!on)} style={{
       width: 40, height: 22, borderRadius: 11,
-      background: on ? 'var(--green)' : 'rgba(255,255,255,0.08)',
+      background: on ? 'var(--green)' : 'var(--line)',
       border: 'none', cursor: 'pointer', position: 'relative',
       transition: 'background .15s',
     }}>
@@ -176,7 +176,7 @@ function Pill({ children }: { children: React.ReactNode }) {
 function inputStyle(): React.CSSProperties {
   return {
     fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--ink)',
-    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+    background: 'var(--card-2)', border: '1px solid var(--line)',
     borderRadius: 6, padding: '4px 8px',
   };
 }

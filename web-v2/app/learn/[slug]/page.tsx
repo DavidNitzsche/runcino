@@ -51,7 +51,7 @@ export default async function LearnPage({ params }: { params: Promise<{ slug: st
           {article.title}
         </h1>
         {article.body_md.split('\n\n').map((p, i) => (
-          <p key={i} style={{ fontFamily: 'var(--f-body)', fontSize: 16, lineHeight: 1.7, color: 'rgba(246,247,248,0.86)', margin: '0 0 14px' }}>
+          <p key={i} style={{ fontFamily: 'var(--f-body)', fontSize: 16, lineHeight: 1.7, color: 'var(--ink)', margin: '0 0 14px' }}>
             {p}
           </p>
         ))}

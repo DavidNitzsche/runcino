@@ -60,7 +60,7 @@ export function WorkoutSwapButton({
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}
         style={{
           position: 'absolute', top: 4, right: 4,
-          background: 'rgba(255,255,255,0.06)', border: 'none', color: 'var(--mute)',
+          background: 'var(--card-2)', border: 'none', color: 'var(--mute)',
           width: 22, height: 22, borderRadius: 4, cursor: 'pointer', fontSize: 12,
         }}
         aria-label="Swap workout">⇄</button>
@@ -68,12 +68,12 @@ export function WorkoutSwapButton({
         <div
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); }}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+            position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(6px)',
             zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
           }}>
           <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
             style={{
-              background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 18,
+              background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 4,
               padding: '24px 28px', maxWidth: 420, width: '100%',
             }}>
             <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '1.6px', textTransform: 'uppercase', marginBottom: 12 }}>
@@ -122,7 +122,7 @@ function Label({ children }: { children: React.ReactNode }) {
 function inputStyle(): React.CSSProperties {
   return {
     fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--ink)',
-    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+    background: 'var(--card-2)', border: '1px solid var(--line)',
     borderRadius: 6, padding: '8px 10px', width: '100%',
   };
 }

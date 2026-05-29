@@ -320,7 +320,7 @@ function ShoeDetailModal({
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+        position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
         zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
@@ -328,7 +328,7 @@ function ShoeDetailModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'var(--card)', border: '1px solid var(--line)',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
+          boxShadow: '0 24px 60px rgba(20,17,13,0.18)', borderRadius: 4,
           padding: '24px 28px', maxWidth: 560, width: '100%', maxHeight: '85vh', overflow: 'auto',
         }}
       >
@@ -508,8 +508,8 @@ function ColorSlot({
     >
       <span style={{
         width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-        background: empty ? 'rgba(255,255,255,0.04)' : hex,
-        border: '1px solid rgba(255,255,255,0.18)',
+        background: empty ? 'var(--card-2)' : hex,
+        border: '1px solid var(--line)',
       }} />
       <span style={{
         fontFamily: 'var(--f-label)', fontSize: 10, letterSpacing: '1px',

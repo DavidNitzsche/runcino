@@ -743,7 +743,7 @@ function SickGateBlock({ ctx }: { ctx: BodyContext }) {
         <div key={i} style={{ display: 'grid', gridTemplateColumns: '18px 1fr auto', gap: 10, alignItems: 'center' }}>
           <div style={{
             width: 18, height: 18, borderRadius: '50%',
-            background: g.met ? 'var(--green)' : 'rgba(255,255,255,0.06)',
+            background: g.met ? 'var(--green)' : 'var(--line-2)',
             border: g.met ? 'none' : '1px solid var(--line)',
             color: '#0a0c10', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 11, fontWeight: 800,

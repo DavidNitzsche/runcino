@@ -140,7 +140,7 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
         lineHeight: 0.86,
         fontSize: 'clamp(40px, 7vw, 68px)',
         margin: 0,
-        color: '#fff',
+        color: 'var(--ink)',
       }}>
         Just running.<br />Tell us how.
       </h1>
@@ -149,7 +149,7 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
         fontFamily: 'var(--f-body)',
         fontSize: 17,
         lineHeight: 1.55,
-        color: 'rgba(255,255,255,0.86)',
+        color: 'var(--ink)',
         margin: '20px 0 28px',
         maxWidth: 520,
       }}>
@@ -296,7 +296,7 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
           marginTop: 14,
           fontFamily: 'var(--f-body)',
           fontSize: 13,
-          color: 'rgba(255,255,255,0.7)',
+          color: 'var(--mute)',
           textAlign: 'left',
           textDecoration: 'underline',
           maxWidth: 480,
@@ -329,7 +329,7 @@ function Section({
         fontSize: 11,
         letterSpacing: '2.2px',
         textTransform: 'uppercase',
-        color: '#fff',
+        color: 'var(--ink)',
         marginBottom: 10,
         display: 'flex',
         alignItems: 'baseline',
@@ -338,22 +338,22 @@ function Section({
         <span>{header}</span>
         {optional && (
           <span style={{
-            color: 'rgba(255,255,255,0.5)',
+            color: 'var(--dim)',
             fontSize: 9,
             letterSpacing: '1.4px',
           }}>OPTIONAL</span>
         )}
         {required && (
           <span style={{
-            color: 'rgba(255,255,255,0.5)',
+            color: 'var(--dim)',
             fontSize: 9,
             letterSpacing: '1.4px',
           }}>REQUIRED</span>
         )}
       </div>
       <div style={{
-        background: 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.14)',
+        background: 'var(--card-2)',
+        border: '1px solid var(--line)',
         borderRadius: 14,
         padding: 14,
       }}>
@@ -371,7 +371,7 @@ function SubLabel({ children }: { children: React.ReactNode }) {
       fontSize: 9,
       letterSpacing: '1.6px',
       textTransform: 'uppercase',
-      color: 'rgba(255,255,255,0.6)',
+      color: 'var(--dim)',
       marginBottom: 8,
     }}>
       {children}
@@ -403,8 +403,8 @@ function Chip({
       type="button"
       onClick={onClick}
       style={{
-        background: active ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.08)',
-        border: `1px solid ${active ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.18)'}`,
+        background: active ? 'rgba(255,255,255,0.96)' : 'var(--card-2)',
+        border: `1px solid ${active ? 'rgba(255,255,255,0.96)' : 'var(--line)'}`,
         borderRadius: 999,
         padding: '9px 14px',
         fontFamily: 'var(--f-body)',
@@ -412,7 +412,7 @@ function Chip({
         fontSize: 12,
         letterSpacing: '1.2px',
         textTransform: 'uppercase',
-        color: active ? '#2a1a5a' : 'rgba(255,255,255,0.92)',
+        color: active ? '#2a1a5a' : 'var(--ink)',
         cursor: 'pointer',
         whiteSpace: 'nowrap',
       }}
@@ -444,7 +444,7 @@ function StravaHistoryCard({
           style={{
             background: 'transparent',
             border: 'none',
-            color: 'rgba(255,255,255,0.7)',
+            color: 'var(--mute)',
             fontFamily: 'var(--f-body)',
             fontSize: 11,
             letterSpacing: '0.2px',
@@ -477,8 +477,8 @@ function StatBlock({
 }) {
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.06)',
-      border: '1px solid rgba(255,255,255,0.16)',
+      background: 'var(--card-2)',
+      border: '1px solid var(--line)',
       borderRadius: 12,
       padding: '12px 14px',
     }}>
@@ -487,7 +487,7 @@ function StatBlock({
         fontWeight: 700,
         letterSpacing: '-0.015em',
         fontSize: 30,
-        color: '#fff',
+        color: 'var(--ink)',
         lineHeight: 1,
       }}>
         {value}
@@ -495,7 +495,7 @@ function StatBlock({
           fontSize: 12,
           letterSpacing: '1.2px',
           marginLeft: 5,
-          color: 'rgba(255,255,255,0.7)',
+          color: 'var(--mute)',
           fontFamily: 'var(--f-body)',
         }}>{unit}</span>
       </div>
@@ -505,7 +505,7 @@ function StatBlock({
         fontSize: 9,
         letterSpacing: '1.4px',
         textTransform: 'uppercase',
-        color: 'rgba(255,255,255,0.55)',
+        color: 'var(--dim)',
         marginTop: 6,
       }}>
         {label}

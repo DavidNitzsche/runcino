@@ -192,7 +192,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
                         : z.idx === 5 ? `> ${z.lower} bpm`
                         : `${z.lower}–${z.upper} bpm`}
                     </td>
-                    <td style={{ padding: '12px 12px', fontSize: 13, color: 'rgba(246,247,248,0.72)', lineHeight: 1.5 }}>{z.purpose}</td>
+                    <td style={{ padding: '12px 12px', fontSize: 13, color: 'var(--mute)', lineHeight: 1.5 }}>{z.purpose}</td>
                   </tr>
                 ))}
               </tbody>
@@ -256,7 +256,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, fontWeight: 700, color: 'rgba(246,247,248,0.65)', letterSpacing: '1.6px', textTransform: 'uppercase', margin: '36px 0 14px' }}>{children}</div>;
+  return <div style={{ fontFamily: 'var(--f-body)', fontSize: 13, fontWeight: 700, color: 'var(--dim)', letterSpacing: '1.6px', textTransform: 'uppercase', margin: '36px 0 14px' }}>{children}</div>;
 }
 function Grid3({ children }: { children: React.ReactNode }) { return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>{children}</div>; }
 function Grid4({ children }: { children: React.ReactNode }) { return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>{children}</div>; }

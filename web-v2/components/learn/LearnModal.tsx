@@ -63,7 +63,7 @@ export function LearnCardTrigger({ term, body, slug }: { term: string; body: str
           }}>ⓘ</span>
           <span style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--learn)', letterSpacing: '1.2px' }}>{term}</span>
         </div>
-        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'rgba(246,247,248,0.85)', lineHeight: 1.55, margin: '4px 0 8px' }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'var(--mute)', lineHeight: 1.55, margin: '4px 0 8px' }}>
           {body}
         </div>
         <span style={{ fontFamily: 'var(--f-body)', fontSize: 10.5, fontWeight: 600, color: 'var(--learn)', letterSpacing: '0.5px' }}>Read the research →</span>
@@ -105,15 +105,15 @@ function LearnModal({ slug, onClose }: { slug: string; onClose: () => void }) {
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+        position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
         zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
+          background: 'var(--card)', border: '1px solid var(--line)',
+          boxShadow: '0 24px 60px rgba(20,17,13,0.22)', borderRadius: 4,
           padding: '28px 32px', maxWidth: 760, width: '100%', maxHeight: '85vh', overflow: 'auto',
         }}
       >
@@ -157,7 +157,7 @@ function ArticleBody({ d }: { d: Article }) {
         {d.title}
       </h2>
       {d.body_md.split('\n\n').map((p, i) => (
-        <p key={i} style={{ fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.7, color: 'rgba(246,247,248,0.88)', margin: '0 0 12px' }}>
+        <p key={i} style={{ fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.7, color: 'var(--ink)', margin: '0 0 12px' }}>
           {p}
         </p>
       ))}

@@ -79,7 +79,7 @@ export function OnboardingFlow() {
         {STEPS.map((s, i) => (
           <div key={s} style={{
             flex: 1, height: 4, borderRadius: 2,
-            background: i <= idx ? 'var(--green)' : 'rgba(255,255,255,0.08)',
+            background: i <= idx ? 'var(--green)' : 'var(--line-2)',
           }} />
         ))}
       </div>
@@ -129,7 +129,7 @@ export function OnboardingFlow() {
                 value={goalTime} onChange={(e) => setGoalTime(e.target.value)}
                 style={{
                   fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)',
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+                  background: 'var(--card-2)', border: '1px solid var(--line)',
                   borderRadius: 8, padding: '8px 12px', width: '100%', letterSpacing: '0.5px',
                 }}
               />
@@ -149,7 +149,7 @@ export function OnboardingFlow() {
               onChange={(e) => setRaceName(e.target.value)}
               style={{
                 fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)',
-                background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+                background: 'var(--card-2)', border: '1px solid var(--line)',
                 borderRadius: 8, padding: '10px 14px', width: '100%', marginTop: 18,
               }}
             />
@@ -157,7 +157,7 @@ export function OnboardingFlow() {
               type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)}
               style={{
                 fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--ink)',
-                background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+                background: 'var(--card-2)', border: '1px solid var(--line)',
                 borderRadius: 8, padding: '10px 14px', width: '100%', marginTop: 10,
               }}
             />

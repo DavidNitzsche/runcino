@@ -61,7 +61,7 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
         lineHeight: 0.86,
         fontSize: 'clamp(48px, 8vw, 84px)',
         margin: 0,
-        color: '#fff',
+        color: 'var(--ink)',
       }}>
         What are you<br />training for?
       </h1>
@@ -70,7 +70,7 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
         fontFamily: 'var(--f-body)',
         fontSize: 17,
         lineHeight: 1.55,
-        color: 'rgba(255,255,255,0.86)',
+        color: 'var(--ink)',
         margin: '24px 0 32px',
         maxWidth: 520,
       }}>
@@ -94,15 +94,15 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
               onClick={() => pick(d.value)}
               style={{
                 gridColumn: d.wide ? 'span 2' : undefined,
-                background: active ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.08)',
-                border: `1px solid ${active ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.16)'}`,
+                background: active ? 'rgba(255,255,255,0.96)' : 'var(--card-2)',
+                border: `1px solid ${active ? 'rgba(255,255,255,0.96)' : 'var(--line)'}`,
                 borderRadius: 14,
                 padding: '16px 14px',
                 textAlign: 'center',
                 fontFamily: 'var(--f-body)',
                 fontWeight: 700,
                 fontSize: 15,
-                color: active ? '#2a1a5a' : 'rgba(255,255,255,0.92)',
+                color: active ? '#2a1a5a' : 'var(--ink)',
                 letterSpacing: '0.2px',
                 cursor: 'pointer',
               }}
@@ -131,14 +131,15 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
                 appearance: 'none',
                 background: 'transparent',
                 border: 'none',
-                color: '#fff',
+                color: 'var(--ink)',
                 fontFamily: 'var(--f-display)',
                 fontWeight: 700,
                 letterSpacing: '-0.015em',
                 fontSize: 22,
                 padding: 0,
                 width: '100%',
-                colorScheme: 'dark',
+                // Native date-picker chrome follows the live (paper) skin.
+                colorScheme: 'light',
               }}
             />
           </InputBlock>
@@ -152,7 +153,7 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#fff',
+                color: 'var(--ink)',
                 fontFamily: 'var(--f-display)',
                 fontWeight: 700,
                 letterSpacing: '-0.015em',
@@ -168,8 +169,8 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
       {/* "No specific race" alternate copy */}
       {showConsistencyCallout && (
         <div style={{
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.14)',
+          background: 'var(--card-2)',
+          border: '1px solid var(--line)',
           borderRadius: 14,
           padding: '18px 18px',
           marginBottom: 18,
@@ -180,7 +181,7 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
             fontWeight: 700,
             letterSpacing: '-0.015em',
             fontSize: 24,
-            color: '#fff',
+            color: 'var(--ink)',
             marginBottom: 6,
           }}>
             Just want to run consistently
@@ -188,7 +189,7 @@ export function Step1Goal({ initial }: { initial: OnboardingState }) {
           <div style={{
             fontFamily: 'var(--f-body)',
             fontSize: 13,
-            color: 'rgba(255,255,255,0.78)',
+            color: 'var(--mute)',
             lineHeight: 1.5,
           }}>
             Faff still builds your week, just without a race anchor. You can pick a race any time and the plan recalibrates.
@@ -231,8 +232,8 @@ function InputBlock({ label, children }: { label: string; children: React.ReactN
   return (
     <label style={{
       display: 'block',
-      background: 'rgba(255,255,255,0.06)',
-      border: '1px solid rgba(255,255,255,0.14)',
+      background: 'var(--card-2)',
+      border: '1px solid var(--line)',
       borderRadius: 14,
       padding: '14px 16px',
       cursor: 'text',
@@ -243,7 +244,7 @@ function InputBlock({ label, children }: { label: string; children: React.ReactN
         fontSize: 9,
         letterSpacing: '1.6px',
         textTransform: 'uppercase',
-        color: 'rgba(255,255,255,0.6)',
+        color: 'var(--dim)',
         marginBottom: 6,
       }}>
         {label}

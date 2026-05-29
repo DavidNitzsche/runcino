@@ -21,13 +21,13 @@ export function TipsList() {
             onClick={() => setOpenTip(t)}
             style={{
               display: 'block', width: '100%', textAlign: 'left',
-              background: 'rgba(255,255,255,0.025)',
+              background: 'var(--card-2)',
               border: '1px solid var(--line)',
               borderRadius: 12, padding: '18px 22px', cursor: 'pointer',
               fontFamily: 'inherit', transition: 'background .12s',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--card)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--card-2)'; }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <div>
@@ -48,8 +48,8 @@ export function TipsList() {
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
               {t.bands.map((b) => (
                 <span key={b.label} style={{
-                  fontFamily: 'var(--f-body)', fontSize: 10, color: 'rgba(246,247,248,0.55)',
-                  padding: '3px 9px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 999,
+                  fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--dim)',
+                  padding: '3px 9px', border: '1px solid var(--line-2)', borderRadius: 999,
                 }}>
                   {b.range}
                 </span>
@@ -63,7 +63,7 @@ export function TipsList() {
         <div
           onClick={() => setOpenTip(null)}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(8,8,10,0.78)', backdropFilter: 'blur(10px)',
+            position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.55)', backdropFilter: 'blur(10px)',
             zIndex: 80, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 32,
             overflowY: 'auto',
           }}
@@ -71,8 +71,8 @@ export function TipsList() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#181a1d', border: '1px solid rgba(255,255,255,0.10)',
-              boxShadow: '0 24px 60px rgba(0,0,0,0.55)', borderRadius: 20,
+              background: 'var(--card)', border: '1px solid var(--line)',
+              boxShadow: '0 24px 60px rgba(20,17,13,0.22)', borderRadius: 4,
               padding: '28px 32px', maxWidth: 720, width: '100%',
               marginTop: 40, marginBottom: 60,
             }}

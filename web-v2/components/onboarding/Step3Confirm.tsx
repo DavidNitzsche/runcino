@@ -138,7 +138,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
         lineHeight: 0.86,
         fontSize: 'clamp(48px, 8vw, 84px)',
         margin: 0,
-        color: '#fff',
+        color: 'var(--ink)',
       }}>
         Last thing.<br />Who are you?
       </h1>
@@ -147,7 +147,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
         fontFamily: 'var(--f-body)',
         fontSize: 17,
         lineHeight: 1.55,
-        color: 'rgba(255,255,255,0.86)',
+        color: 'var(--ink)',
         margin: '24px 0 32px',
         maxWidth: 520,
       }}>
@@ -171,7 +171,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#fff',
+              color: 'var(--ink)',
               fontFamily: 'var(--f-body)',
               fontWeight: 600,
               fontSize: 17,
@@ -193,7 +193,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: 'rgba(255,255,255,0.7)',
+                color: 'var(--mute)',
                 fontFamily: 'var(--f-body)',
                 fontSize: 11,
                 letterSpacing: '0.2px',
@@ -217,7 +217,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#fff',
+                color: 'var(--ink)',
                 fontFamily: 'var(--f-body)',
                 fontWeight: 600,
                 fontSize: 17,
@@ -231,7 +231,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
               fontFamily: 'var(--f-body)',
               fontWeight: 600,
               fontSize: 17,
-              color: '#fff',
+              color: 'var(--ink)',
             }}>
               {timezoneShortLabel(timezone)}
             </div>
@@ -244,7 +244,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
             fontFamily: 'var(--f-body)',
             fontWeight: 600,
             fontSize: 17,
-            color: '#fff',
+            color: 'var(--ink)',
           }}>
             {goalSummary}
           </div>
@@ -257,7 +257,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
               fontFamily: 'var(--f-body)',
               fontWeight: 600,
               fontSize: 17,
-              color: '#fff',
+              color: 'var(--ink)',
             }}>
               {historySummary}
             </div>
@@ -267,7 +267,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
 
       {error && (
         <div style={{
-          color: '#FFD1D1',
+          color: 'var(--over)',
           background: 'rgba(252,77,100,0.18)',
           border: '1px solid rgba(252,77,100,0.4)',
           borderRadius: 12,
@@ -313,7 +313,7 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           marginTop: 14,
           fontFamily: 'var(--f-body)',
           fontSize: 13,
-          color: 'rgba(255,255,255,0.7)',
+          color: 'var(--mute)',
           textAlign: 'left',
           textDecoration: 'underline',
           maxWidth: 480,
@@ -335,8 +335,8 @@ function FormRow({
 }) {
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.06)',
-      border: '1px solid rgba(255,255,255,0.14)',
+      background: 'var(--card-2)',
+      border: '1px solid var(--line)',
       borderRadius: 14,
       padding: '14px 18px',
     }}>
@@ -350,14 +350,14 @@ function FormRow({
         fontSize: 9,
         letterSpacing: '1.6px',
         textTransform: 'uppercase',
-        color: 'rgba(255,255,255,0.6)',
+        color: 'var(--dim)',
       }}>
         <div>
           {label}
           {hint && (
             <span style={{
               marginLeft: 10,
-              color: 'rgba(255,255,255,0.5)',
+              color: 'var(--dim)',
               letterSpacing: '1.2px',
             }}>{hint}</span>
           )}
