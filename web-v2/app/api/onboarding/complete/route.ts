@@ -87,6 +87,8 @@ import {
   type WeeklyFrequency,
 } from '@/lib/onboarding/state';
 import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboarding';
+import { generatePlan } from '@/lib/plan/generate';
+import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
@@ -224,28 +226,71 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 
-  // ── Phase 28 · seed maintenance plan on the no-race path ───────
-  // The race-anchored path keeps its existing flow (profile.race table
-  // → lifecycle picks it up on next briefing → canonical buildPlan
-  // generates a race-prep plan from the race row). Only the no-race
-  // path needs a plan seeded HERE, because there's no race anchor to
-  // pull off later and the runner expects something on day 1.
+  // ── Seed the runner's first plan ───────────────────────────────
+  // Both paths get a usable plan on day 1; the next lifecycle rebuild
+  // (via the iPhone / Watch path which reaches legacy buildPlan)
+  // upgrades it with full doctrine (VDOT-derived paces, adaptive
+  // strength, workout_spec emission).
   //
-  // The canonical buildPlan in legacy/web/coach/plan-builder.ts is the
-  // source of truth (its `OnboardingGoals` interface mirrors the
-  // payload we hand off). Web-v2 can't import legacy at the build
-  // layer, so we use a thin maintenance-only seeder in @/lib/plan that
-  // mirrors the canonical maintenance-branch logic. The next lifecycle
-  // rebuild (via the iPhone / Watch path which DOES reach legacy)
-  // upgrades the plan with full doctrine (VDOT-derived paces,
-  // adaptive strength placement, workout_spec emission).
+  // RACE path — A-race goal: write a `races` row (so the anchor exists
+  // for the countdown, goal-pace derivation, and /races), then author a
+  // full periodized race-prep plan via the canonical web-v2 generator
+  // (lib/plan/generate.ts — BASE→QUALITY→RACE-SPECIFIC→TAPER, every
+  // block cited to /Research/). Previously the race path wrote
+  // goal_race_* to the profile and assumed "lifecycle picks it up" —
+  // but nothing ever created the race row, so the runner hit a dead
+  // end: no race on the calendar, no plan. This closes that gap.
   //
-  // Best-effort: a seeding failure does not block onboarding — the
-  // runner still lands on the success page, and the next briefing
-  // pull rebuilds via lifecycle. We log to the response payload so
-  // the caller can surface the issue in dev.
-  let seedPlan: { ok: boolean; plan_id?: string; weeks_generated?: number; peak_mpw?: number; error?: string } | null = null;
-  if (!isRace) {
+  // NO-RACE path — maintenance: there's no race anchor to pull off
+  // later, so seed a 16-week maintenance plan from the captured goals
+  // via the thin maintenance seeder (mirrors the canonical maintenance
+  // branch).
+  //
+  // Best-effort for BOTH: a seeding failure never blocks onboarding —
+  // the runner still lands on the success page, and the next briefing
+  // pull rebuilds via lifecycle. We surface the outcome in the response
+  // payload so the caller can log issues in dev.
+  let seedPlan:
+    | { ok: boolean; mode?: 'race-prep' | 'maintenance'; race_slug?: string; plan_id?: string; weeks_generated?: number; peak_mpw?: number; error?: string }
+    | null = null;
+  if (isRace) {
+    try {
+      const distanceLabel = raceDistanceLabel(distance);
+      const raceName = `My ${distanceLabel}`;
+      const slug = slugify(`${raceName}-${date}`);
+      const meta = {
+        name: raceName,
+        date,                                   // YYYY-MM-DD (required on race path)
+        distanceLabel,                          // "5K" | "10K" | "Half Marathon" | "Marathon"
+        priority: 'A',                          // onboarding goal race is THE A-race
+        goalDisplay: normalizeGoalDisplay(time, distance), // canonical H:MM:SS (or null)
+        location: null,
+      };
+      // Mirror POST /api/race exactly (idempotent on slug → re-onboarding
+      // updates the same row instead of duplicating).
+      await pool.query(
+        `INSERT INTO races (slug, user_uuid, meta)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (slug) DO UPDATE SET meta = EXCLUDED.meta`,
+        [slug, userId, meta]
+      );
+      // Canonical race-prep generator. Best-effort: returns ok:false with
+      // a reason for edge runways (<2wks / >1yr / <3wks) — the race row
+      // still stands, and lifecycle authors the plan once it's in range.
+      const result = await generatePlan({ userId, raceSlug: slug });
+      seedPlan = {
+        ok: result.ok,
+        mode: 'race-prep',
+        race_slug: slug,
+        plan_id: result.plan_id,
+        weeks_generated: result.weeks_generated,
+        error: result.ok ? undefined : result.reason,
+      };
+      await bustBriefingCacheForEvent(userId, 'race_crud').catch(() => {});
+    } catch (err: any) {
+      seedPlan = { ok: false, mode: 'race-prep', error: err?.message ?? String(err) };
+    }
+  } else {
     try {
       const result = await seedMaintenancePlanFromOnboarding({
         userId,
@@ -261,12 +306,13 @@ export async function POST(req: NextRequest) {
       });
       seedPlan = {
         ok: result.ok,
+        mode: 'maintenance',
         plan_id: result.plan_id,
         weeks_generated: result.weeks_generated,
         peak_mpw: result.peak_mpw,
       };
     } catch (err: any) {
-      seedPlan = { ok: false, error: err?.message ?? String(err) };
+      seedPlan = { ok: false, mode: 'maintenance', error: err?.message ?? String(err) };
     }
   }
 
@@ -282,4 +328,44 @@ function isValidDate(v: any): v is string {
 }
 function isValidTime(v: any): v is string {
   return typeof v === 'string' && /^\d{1,2}:\d{2}(:\d{2})?$/.test(v);
+}
+
+/** Slug for the races row. Mirrors POST /api/race's slugify exactly so
+ *  the two creation paths produce identical keys (idempotent re-runs). */
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+/** Onboarding distance code → race `meta.distanceLabel`. The label is
+ *  chosen so distanceMiOf() in lib/plan/generate.ts (and the prescription
+ *  + glance-state goal queries) resolve the right mileage by keyword:
+ *  "Marathon" (not "half") → 26.2, "Half Marathon" → 13.1, etc. */
+function raceDistanceLabel(distance: string): string {
+  switch (distance) {
+    case '5k':       return '5K';
+    case '10k':      return '10K';
+    case 'half':     return 'Half Marathon';
+    case 'marathon': return 'Marathon';
+    default:         return distance.toUpperCase();
+  }
+}
+
+/** Normalize a runner-typed goal time into the canonical H:MM:SS the
+ *  downstream parsers require (parseGoalSeconds wants three colon-parts).
+ *  The goal-time input is free text, so disambiguate two-part times by
+ *  distance: a 5K/10K "22:30" is MM:SS → 0:22:30; a half/marathon
+ *  "1:35" is H:MM → 1:35:00. Unparseable → null (race still created,
+ *  just without a goal pace, which degrades to by-feel honestly). */
+function normalizeGoalDisplay(time: string | null, distance: string): string | null {
+  if (!time) return null;
+  const t = time.trim();
+  if (/^\d{1,2}:\d{2}:\d{2}$/.test(t)) return t;          // already H:MM:SS
+  const two = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (two) {
+    const isShort = distance === '5k' || distance === '10k';
+    return isShort
+      ? `0:${two[1].padStart(2, '0')}:${two[2]}`           // MM:SS → 0:MM:SS
+      : `${two[1]}:${two[2]}:00`;                          // H:MM  → H:MM:00
+  }
+  return null;
 }
