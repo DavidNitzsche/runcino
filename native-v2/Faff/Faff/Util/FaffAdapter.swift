@@ -436,7 +436,7 @@ enum FaffAdapter {
         }
     }
 
-    static func buildWeekStrip(plan: PlanWeek?) -> WeekStripPayload {
+    static func buildWeekStrip(plan: PlanWeek?, todaySkipped: Bool = false) -> WeekStripPayload {
         guard let plan else {
             return WeekStripPayload(
                 weekStart: "",
@@ -447,7 +447,7 @@ enum FaffAdapter {
         }
 
         let todayIso = plan.today_iso
-        let days: [FaffWeekDay] = plan.days.map { d in
+        var days: [FaffWeekDay] = plan.days.map { d in
             FaffWeekDay(
                 date: d.date_iso,
                 dow: d.dow,
@@ -465,6 +465,24 @@ enum FaffAdapter {
                 completedRunId: d.completedRunId,
                 isToday: d.is_today,
                 isFuture: !d.is_today && !d.is_past
+            )
+        }
+
+        // P-SKIP 2026-05-28 · when today is skipped, the WeekStrip card
+        // mirrors the Poster's `skipped` state — dim accent, em-dash
+        // mileage, SKIP label. Mirrors the web override in
+        // lib/faff/glance-adapter.ts buildWeekStrip.
+        if todaySkipped, let idx = days.firstIndex(where: { $0.isToday }) {
+            let original = days[idx]
+            days[idx] = FaffWeekDay(
+                date: original.date,
+                dow: original.dow,
+                plannedType: "rest",
+                plannedDistance: nil,
+                plannedTypeLabel: "SKIP",
+                completedRunId: original.completedRunId,
+                isToday: true,
+                isFuture: false
             )
         }
 

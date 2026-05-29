@@ -754,6 +754,26 @@ export function buildWeekStrip(glance: GlanceState): WeekStripPayload {
     isFuture: d.date > todayIso,
   }));
 
+  // P-SKIP 2026-05-28 · when today is skipped, the WeekStrip card should
+  // mirror the Poster's `skipped` state — dim accent, em-dash mileage,
+  // SKIP label. User feedback: "will look just like REST" — so we
+  // override the today card's plannedType to 'rest' (drives blue mute
+  // accent), plannedDistance to null (mileage renders '—'), and
+  // plannedTypeLabel to 'SKIP' (4-char vocab). The plannedType swap is
+  // visual only — resolveDayState on the client now sees rest, but the
+  // `SKIP` label tells the runner what actually happened.
+  if (glance.todaySkipped) {
+    const idx = days.findIndex((d) => d.isToday);
+    if (idx >= 0) {
+      days[idx] = {
+        ...days[idx],
+        plannedType: 'rest',
+        plannedDistance: null,
+        plannedTypeLabel: 'SKIP',
+      };
+    }
+  }
+
   const weekStart = days[0]?.date ?? todayIso;
 
   return {
