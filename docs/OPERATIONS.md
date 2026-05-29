@@ -25,7 +25,7 @@ Three things only Claude can't do. You handle them in their respective dashboard
 | Var | Purpose |
 |---|---|
 | `DATABASE_URL` | Postgres connection (Railway-managed, don't touch) |
-| `ANTHROPIC_API_KEY` | Coach LLM (non-/today surfaces) |
+| ~~`ANTHROPIC_API_KEY`~~ | **DEPRECATED 2026-05-28.** Cardinal Rule #1 (PROJECT.md) — zero LLM anywhere ever. The coach now recites deterministic facts from the loaders; no Anthropic call fires from any code path. The var can be removed from Railway whenever convenient (it's just dead weight at this point). |
 | `STRAVA_CLIENT_ID` | Strava OAuth — public app ID |
 | `STRAVA_CLIENT_SECRET` | Strava OAuth — server secret |
 | `STRAVA_OAUTH_REDIRECT` | OAuth callback URL — set to `https://www.faff.run/api/auth/strava?action=callback` |

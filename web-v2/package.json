@@ -14,7 +14,6 @@
     "test:truth": "node ../scripts/sim/truth-contract.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.40.1",
     "next": "15.1.6",
     "pg": "^8.13.1",
     "react": "19.0.0",

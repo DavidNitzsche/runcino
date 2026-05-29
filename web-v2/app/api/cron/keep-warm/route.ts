@@ -8,28 +8,13 @@
 //   3. Pre-load today's CoachState for active users so /today's first
 //      paint reads from a fresh in-process cache.
 //
-// This is NOT the LLM-regen cron (that's refresh-briefings, daily).
-// keep-warm is cheap and frequent — no LLM calls, just DB reads.
+// 2026-05-28 LLM rip: brief pre-regen step is GONE (no LLM, no cache).
+// The state-loader warm is still useful — pg pool stays hot, and the
+// per-process race-lookup memo gets populated so the first user-driven
+// request doesn't pay the DB round-trip.
 //
 // Auth: same CRON_SECRET as refresh-briefings.
-//
-// Setup (Railway cron):
-//   Schedule: every 15 min from 7am to 11pm UTC (cron: "0,15,30,45 7-23 * * *")
-//             — slash-15 syntax is fine in the cron field; using explicit
-//             list here because the literal asterisk-slash sequence would
-//             otherwise close any block comment that wrapped this doc.
-//   Method:   POST https://www.faff.run/api/cron/keep-warm
-//   Header:   Authorization: Bearer <CRON_SECRET>
-//
-// Returns timing per step so you can see if any sub-call is slow.
-//
-// 2026-05-27 incident: this doc was originally a /** ... */ JSDoc and
-// contained the literal "asterisk-slash-15" cron schedule, which closed
-// the JSDoc block early on line 18 — the rest of the comment parsed as
-// code, Next.js webpack threw Syntax Error, and Railway rejected every
-// build for ~15 hours. PROMPT_VERSION bumps and other doctrine fixes
-// never reached prod because of this one character pair. Converted to
-// line comments to make it impossible to recur.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { loadCoachState } from '@/lib/coach/state-loader';
@@ -38,7 +23,6 @@ import { loadTrainingState } from '@/lib/coach/training-state';
 import { loadRacesState } from '@/lib/coach/races-state';
 import { loadHealthState } from '@/lib/coach/health-state';
 import { loadProfileState } from '@/lib/coach/profile-state';
-import { generateBriefing } from '@/lib/coach/engine';
 
 export const maxDuration = 30;
 
@@ -91,13 +75,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, step: 'list_users', error: e?.message ?? String(e) }, { status: 500 });
   }
 
-  // ── pre-load ALL page-level state loaders per user ──
-  // 2026-05-27: extended beyond loadCoachState to cover the loaders for
-  // every LLM-backed surface. Each call populates pg query plan cache +
-  // warms the shared race lookup memo. No LLM spend; pure DB work.
-  //
-  // Run loaders in parallel per user (they hit different tables); users
-  // sequentially so a slow user doesn't block other users' warm windows.
+  // ── pre-load page-level state loaders per user ──
+  // No LLM regen — just the state warm. Loaders hit different tables so
+  // they parallelize cleanly per user; users run sequentially so one slow
+  // user doesn't block others.
   const t3 = Date.now();
   const perUser: Array<{ user_id: string; ms: number; ok: boolean; loaders: Record<string, number | string> }> = [];
   for (const userId of activeUserIds) {
@@ -116,38 +97,11 @@ export async function POST(req: NextRequest) {
       runLoader('health',   () => loadHealthState(userId)),
       runLoader('profile',  () => loadProfileState(userId)),
     ]);
-    // 2026-05-27 P-KEEPWARM-SECONDARY (revised after cron timeout):
-    // Pre-warm the briefing CACHE for every LLM-backed surface, but
-    // FIRE-AND-FORGET. The previous version awaited 6 generateBriefing
-    // calls per user, which on a cold cache (day rollover, version
-    // bump) could collectively exceed the 30s cron edge timeout —
-    // GitHub Action killed the request and the warmer never finished.
-    //
-    // Now: state loaders above (fast DB reads) stay awaited; brief
-    // regens are kicked off in the background and the endpoint
-    // returns immediately. The warmed cache lands a few seconds
-    // later regardless of when the cron caller hung up.
-    //
-    // Cost in steady state: ~0 (cache hits). Cost after a daily
-    // invalidation: ~5 LLM calls × active users — same as before,
-    // just non-blocking.
-    const briefRegens = [
-      () => generateBriefing(userId, 'today'),
-      () => generateBriefing(userId, 'today', undefined, true),
-      () => generateBriefing(userId, 'training'),
-      () => generateBriefing(userId, 'races'),
-      () => generateBriefing(userId, 'health'),
-      () => generateBriefing(userId, 'profile'),
-    ];
-    for (const fn of briefRegens) {
-      // Promise.race-style swallow so a slow LLM call doesn't crash
-      // the process; logged but not awaited.
-      void fn().catch((e: any) => {
-        console.error(`[keep-warm] brief regen failed for ${userId}:`, e?.message ?? e);
-      });
-    }
-    loaders['briefs_kicked_off'] = briefRegens.length;
-    const ok = Object.values(loaders).every((v) => typeof v === 'number');
+    // 2026-05-28 LLM rip: brief pre-regen step removed entirely.
+    // fact-reciter rebuilds from state on every read; nothing to warm
+    // beyond the state-loaders above.
+    loaders['briefs_kicked_off'] = 0;
+    const ok = Object.values(loaders).filter((v) => v !== 0).every((v) => typeof v === 'number');
     perUser.push({ user_id: userId, ms: Date.now() - us, ok, loaders });
   }
   timings.state_warm_total_ms = Date.now() - t3;
@@ -169,6 +123,5 @@ export async function GET() {
     auth: 'Authorization: Bearer <CRON_SECRET>',
     secret_configured: Boolean(process.env.CRON_SECRET),
     recommended_schedule: '*/15 7-23 * * *  (every 15 min, 7am-11pm UTC)',
-    purpose: 'keep container + DB pool + per-user state warm; no LLM spend',
   });
 }

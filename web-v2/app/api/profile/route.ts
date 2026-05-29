@@ -2,12 +2,17 @@
  * PATCH /api/profile  { height_cm?, ... }
  *
  * §8.6 closed loop: profile gap input → writes profile.<field> →
- * coach_intents row 'profile_field_added' → next briefing acknowledges once.
+ * coach_intents row 'profile_field_added' → next surface read shows
+ * the new value directly (no LLM regen — fact-reciter reads state on
+ * demand).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-import { generateBriefing } from '@/lib/coach/engine';
+// 2026-05-28 LLM rip (Cardinal Rule #1, PROJECT.md):
+// generateBriefing deleted. The fact-reciter is deterministic +
+// cheap, so there's no warm-fan-out to kick off — the next surface
+// read just builds facts from current DB state.
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -121,11 +126,10 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Profile edits change zones + paces; today + training + profile
-    // surfaces need fresh voice. See lib/coach/regen-policy.ts.
+    // Profile edits change zones + paces; bust the in-process memos.
+    // The next /today + /plan fact reads pick up changes directly from
+    // the loaders — no LLM regen to kick off.
     await bustBriefingCacheForEvent(userId, 'profile_edit');
-    void generateBriefing(userId, 'today').catch(() => {});
-    void generateBriefing(userId, 'training').catch(() => {});
 
     return NextResponse.json({ ok: true, updated: updates });
   } catch (err: any) {

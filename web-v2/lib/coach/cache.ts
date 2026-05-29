@@ -1,75 +1,35 @@
 /**
- * cache.ts — briefing cache backed by Postgres (table: briefings).
+ * cache.ts — neutralized briefing-cache shim.
  *
- * EVENT-DRIVEN. Briefings are pre-built on triggers (day rollover, run
- * ingest, check-in, profile edit, plan swap, race edit) and read forever
- * until the next mutating endpoint calls bustBriefingCache().
+ * 2026-05-28 · Cardinal Rule #1 (PROJECT.md, locked 2026-05-28): "Zero
+ * LLM · anywhere · ever." The old engine.ts that wrote here is deleted.
+ * /api/coach/facts is the new source of truth and recomputes facts
+ * deterministically on every read (cheap pg queries only) — there is
+ * nothing to cache.
  *
- * No signature hashing — that was a fallback for "any state change should
- * regenerate." With comprehensive event-bust coverage (see audit
- * P17.6), the events ARE the invalidation, and the briefing is just the
- * latest one written.
+ * We keep the EXPORTED FUNCTION SIGNATURES so the dozens of mutating
+ * endpoints (run ingest, profile edit, race CRUD, plan swap, watch
+ * complete, etc.) that call `bustBriefingCacheForEvent` continue to
+ * compile and run. They just become no-ops (other than busting the
+ * in-process race-lookup memo, which is still cheap + correct).
  *
- * Schema note: the existing `briefings` table has a `signature` column.
- * We keep it for backward compatibility but write a fixed sentinel so
- * the (user_id, surface, signature) unique key collapses to (user_id,
- * surface). When migrations next pass, drop the column.
+ * The `briefings` and `coach_usage` Postgres tables are LEFT ON DISK —
+ * cheap, harmless, and they hold a historical record of the LLM era.
+ * A follow-up phase can drop them.
+ *
+ * NOTHING in this file imports Anthropic. NOTHING calls fetch().
+ * NOTHING writes to the `briefings` table any more.
  */
-import { pool } from '@/lib/db/pool';
-import type { Topic } from '@/lib/topics/types';
 import { bustRaceCache } from './race-lookup';
-import { surfacesForEvent, type RegenEvent, type Surface } from './regen-policy';
+import type { RegenEvent, Surface } from './regen-policy';
 
-// Fixed sentinel — old `signature` column is no longer used as an input
-// hash; collapses the unique key to (user_id, surface_key).
-const SIGNATURE_SENTINEL = 'event-driven';
+// ── Constants kept for import-site compatibility ──────────────────────
 
-// Prompt-version stamp. Bump this whenever the prompts in
-// `coach/prompts/index.ts` change in a way that should invalidate all
-// cached briefings (e.g. a doctrine fix like HR-ceiling drift). Cache
-// reads compare the stored version against this constant and miss on
-// mismatch — much cheaper than enumerating users to bust manually.
-//
-//   v1 → initial
-//   v2 → 2026-05-27 HR-ceiling doctrine fix: getPlanWindow now ships
-//        hrCeilingBpm; TODAY_PRE_RUN prompt instructs LLM to use that
-//        instead of avgHrEasy baseline. Old briefs say "135 or below"
-//        when the watch says "144" — they have to go.
-//   v3 → 2026-05-27 phantom check-in fix: readiness inputs now date-
-//        stamp each check-in ("TIRED (3d ago)" instead of bare "TIRED"),
-//        observedSub explicitly says "none today" when no rating
-//        landed; prompt forbids "this morning's check-in" unless a
-//        check-in is dated today. Old briefs claim "this morning's
-//        check-in was TIRED" when David never tapped a chip today.
-//   v4 → 2026-05-27 week-mileage + spike + pace-coherence fixes:
-//        engine orientation now ships weekDone / weekPlannedRemaining
-//        / weekTotalPlanned as HARD FACTS so the coach can't sum runs
-//        in its head and contradict the strip; loadAcwr also stamped so
-//        the coach can't call any ramp a "volume spike" — spike is
-//        defined as ACWR > 1.5 (Gabbett); TODAY_POST_RUN prompt got a
-//        paragraph-structure rule keeping each thread together (no
-//        bookending pace at the open + close around unrelated content).
-//   v5 → 2026-05-27 easy-day pace tolerance: cross-surface rule says
-//        on easy / long / recovery days, ±20s/mi from prescribed pace
-//        is normal variability — don't flag, don't lead with pace if
-//        HR was in zone. Coach voice was saying "pace was 13 seconds
-//        slow" on easy days, treating it as a miss when it's within
-//        Daniels/Hansons easy-pace tolerance.
-//   v6 → 2026-05-27 zone-naming style: stop dumping bpm ranges in
-//        parens after the zone name. "held 140 in middle of Z2 (138 to
-//        144)" reads clinical and treats a forgiving aerobic intent
-//        like a tight target. Say "mid-Z2" or "held in aerobic zone."
-//        Quote bpm only when it adds signal the zone name can't.
-// v13-right-rail-topics 2026-05-27: four new topic kinds (niggle,
-// load_ramp, weekly_volume, long_run_horizon) added to /today
-// candidate lists + a "if voice mentions X, emit X topic" doctrine
-// so the right rail surfaces a card for every beat the coach
-// references in voice. Bump invalidates briefs written under v12.
-export const PROMPT_VERSION = 'v13-right-rail-topics';
+/** Was used by the LLM-era engine to invalidate cached briefs when
+ *  prompt doctrine changed. Now meaningless — left as a constant so
+ *  any code that imports it still type-checks. */
+export const PROMPT_VERSION = 'deterministic-fact-reciter-v1';
 
-// The cache key is the surface, optionally suffixed with `:ios` for the
-// compact-voice variant. We pass it as a string so the engine controls
-// the bucket name.
 export type CacheKey = string;
 
 export interface CachedBriefing {
@@ -77,244 +37,46 @@ export interface CachedBriefing {
   mode: string;
   lead: string;
   voice: string[];
-  topics: Topic[];
+  topics: unknown[];
   _state: any;
 }
 
-function todayPT(): string {
-  return new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+// ── Reads always miss ─────────────────────────────────────────────────
+
+export async function readCachedBriefing(
+  _userId: string,
+  _key: CacheKey,
+): Promise<CachedBriefing | null> {
+  return null;
 }
 
-export async function readCachedBriefing(userId: string, key: CacheKey): Promise<CachedBriefing | null> {
-  try {
-    const r = (await pool.query(
-      `SELECT payload FROM briefings
-        WHERE user_id = $1 AND surface = $2
-        ORDER BY generated_at DESC LIMIT 1`,
-      [userId, key]
-    )).rows[0];
-    if (!r) return null;
-    const payload = r.payload as CachedBriefing;
-    // Day-rollover invalidation: a briefing whose embedded today != now is
-    // stale by definition (TODAY moved underneath it). Treat as miss so
-    // the engine regenerates against the new day. Cheaper than running a
-    // midnight cron + survives if a cron ever misses.
-    if (payload?._state?.today && payload._state.today !== todayPT()) {
-      return null;
-    }
-    // Prompt-version invalidation: when prompt doctrine changes (see
-    // PROMPT_VERSION above), every cached brief written against the old
-    // prompt is wrong by definition. Treat as miss; the engine
-    // regenerates against the new prompt on the next request.
-    //
-    // 2026-05-27: removed the `storedVersion &&` short-circuit. Briefs
-    // written before prompt-versioning was introduced have NO version
-    // stamp — the old guard let them live forever, so every doctrine
-    // bump for the past week (v2→v8) silently skipped any user whose
-    // last brief predated v2. Treat missing-or-mismatched the same:
-    // both are stale.
-    const storedVersion = (payload as any)?._state?.promptVersion;
-    if (storedVersion !== PROMPT_VERSION) {
-      return null;
-    }
-    return payload;
-  } catch {
-    return null;
-  }
-}
+// ── Writes are no-ops ─────────────────────────────────────────────────
 
 export async function writeCachedBriefing(
-  userId: string,
-  key: CacheKey,
-  mode: string,
-  payload: CachedBriefing,
+  _userId: string,
+  _key: CacheKey,
+  _mode: string,
+  _payload: CachedBriefing,
 ): Promise<void> {
-  try {
-    await pool.query(
-      `INSERT INTO briefings (user_id, surface, mode, signature, payload)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (user_id, surface, signature)
-       DO UPDATE SET payload = EXCLUDED.payload, generated_at = now(), mode = EXCLUDED.mode`,
-      [userId, key, mode, SIGNATURE_SENTINEL, payload]
-    );
-  } catch {
-    // non-fatal — engine still returned the live result.
-  }
+  /* no-op */
 }
 
-/**
- * Bust the cache for a user. Called from EVERY mutating endpoint so the
- * next /api/briefing fetch regenerates voice with fresh tool reads.
- *
- * Cache-bust is the ONLY invalidation now — there's no signature/TTL
- * safety net. Events must be exhaustive (audit P17.6).
- *
- * After busting, kicks off a BACKGROUND regeneration of the most-used
- * surfaces (today + today:ios) so the next /today open is instant rather
- * than a 15-20s LLM wait. Fire-and-forget — the caller (mutating endpoint)
- * is not blocked. Failures are swallowed: the day-rollover-on-read
- * staleness check + lazy regen on next fetch are the safety net.
- *
- * @param userId
- * @param keyOrSurfaces  One of:
- *    - undefined (legacy) — busts ALL surfaces for this user
- *    - a single surface string ('today:ios') — busts that one cache key
- *    - an array of Surface values — busts those surfaces only (web + iOS variants)
- */
+// ── Busts bust the in-process race-lookup memo only ───────────────────
+
 export async function bustBriefingCache(
-  userId: string,
-  keyOrSurfaces?: CacheKey | readonly Surface[]
+  _userId: string,
+  _keyOrSurfaces?: CacheKey | readonly Surface[],
 ): Promise<void> {
-  try {
-    if (Array.isArray(keyOrSurfaces)) {
-      // Targeted: bust only the surfaces this event affects. Each Surface
-      // expands to its web + iOS variant (e.g. 'today' busts both 'today'
-      // AND 'today:ios'). Cheaper than the all-busted default.
-      const surfaceKeys = keyOrSurfaces.flatMap((s) => [s, `${s}:ios`]);
-      if (surfaceKeys.length > 0) {
-        await pool.query(
-          `DELETE FROM briefings WHERE user_id = $1 AND surface = ANY($2::text[])`,
-          [userId, surfaceKeys]
-        );
-      }
-    } else if (typeof keyOrSurfaces === 'string') {
-      await pool.query(`DELETE FROM briefings WHERE user_id = $1 AND surface = $2`, [userId, keyOrSurfaces]);
-    } else {
-      await pool.query(`DELETE FROM briefings WHERE user_id = $1`, [userId]);
-    }
-  } catch {
-    // non-fatal
-  }
-
-  // Bust the in-process race lookup memo too — any mutation that touches
-  // briefings could also have touched race meta (race CRUD, plan swap),
-  // and the 60s TTL on race-lookup wouldn't reflect a freshly-edited race
-  // otherwise. Cheap: clears an in-memory Map.
   bustRaceCache();
-
-  // Fire background regen. Non-blocking. The mutating endpoint already
-  // returned to the caller before this Promise even starts the LLM call.
-  void warmBriefingsAfterBust(userId);
 }
 
-/**
- * Bust caches affected by a specific event, per regen-policy.ts.
- * Preferred over bustBriefingCache(userId) because it scopes the LLM
- * regen fan-out to only the surfaces the event actually changes.
- *
- * Example:
- *   /api/race CRUD → bustBriefingCacheForEvent(userId, 'race_crud')
- *   only busts today + races + race-detail + profile, NOT training/health.
- */
 export async function bustBriefingCacheForEvent(
-  userId: string,
-  event: RegenEvent
+  _userId: string,
+  _event: RegenEvent,
 ): Promise<void> {
-  const surfaces = surfacesForEvent(event);
-  if (surfaces.length === 0) {
-    // keep_warm_tick has no surfaces; nothing to bust.
-    return;
-  }
-  return bustBriefingCache(userId, surfaces);
+  bustRaceCache();
 }
 
-// ── Debounced bust for HK sample arrivals ───────────────────────────────
-//
-// HK syncs often arrive in bursts (watch syncs sleep + HRV + RHR within
-// seconds when you open the iPhone app). Without debouncing, each arrival
-// triggers a fresh LLM regen.
-//
-// Leading + trailing-edge debounce per user:
-//   - First call: bust immediately. Start 5-min cooldown.
-//   - During cooldown: schedule a trailing bust at cooldown end.
-//     Subsequent calls within the same cooldown coalesce into the same
-//     trailing bust (no extra schedules).
-//   - After cooldown: next call is treated as leading edge again.
-//
-// Worst case: 2 LLM regens per 5-min window per user. Nothing dropped.
-
-interface DebounceState {
-  lastBustAt: number;
-  trailing: NodeJS.Timeout | null;
-}
-const debounceState = new Map<string, DebounceState>();
-const DEBOUNCE_MS = 5 * 60_000;
-
-export function bustBriefingCacheDebounced(userId: string): void {
-  const now = Date.now();
-  const state = debounceState.get(userId);
-  const last = state?.lastBustAt ?? 0;
-
-  if (now - last >= DEBOUNCE_MS) {
-    // Leading edge — bust now and start the cooldown window. Scoped to
-    // the HK signal event so we only regen today + health, not all surfaces.
-    void bustBriefingCacheForEvent(userId, 'hk_signal_sample');
-    debounceState.set(userId, { lastBustAt: now, trailing: null });
-    return;
-  }
-  if (state?.trailing) {
-    // In cooldown, trailing already scheduled — this sample will be
-    // picked up by the pending fire. Coalesce.
-    return;
-  }
-  // In cooldown, no trailing yet — schedule one at cooldown end.
-  const fireAt = last + DEBOUNCE_MS;
-  const t = setTimeout(() => {
-    void bustBriefingCacheForEvent(userId, 'hk_signal_sample');
-    debounceState.set(userId, { lastBustAt: Date.now(), trailing: null });
-  }, Math.max(0, fireAt - now));
-  // Don't keep the Node process alive just for this timer.
-  if (typeof t.unref === 'function') t.unref();
-  debounceState.set(userId, { lastBustAt: last, trailing: t });
-}
-
-/**
- * Background warm — regenerate the surfaces the user actually opens.
- *
- * Today + today:ios are always warmed (every runner reads them daily).
- * Other surfaces (training/races/etc.) are warmed only if they have a
- * cached entry from within the last 14 days for this user — no point
- * burning LLM cycles on surfaces the runner never visits.
- *
- * Concurrent regens of the same surface are fine: writeCachedBriefing
- * does an upsert, latest-write-wins.
- */
-async function warmBriefingsAfterBust(userId: string): Promise<void> {
-  // P43 pause — when COACH_PAUSED=1, skip the warm fan-out entirely.
-  // Cache stays busted (next read fully regenerates once paused clears).
-  if (process.env.COACH_PAUSED === '1') return;
-  try {
-    // Dynamic import to dodge the circular dep (engine.ts imports from cache.ts).
-    const { generateBriefing } = await import('./engine');
-
-    // Always warm today (web + iOS variant).
-    const targets: Array<{ surface: 'today' | 'training' | 'races' | 'health' | 'profile'; compact?: boolean }> = [
-      { surface: 'today' },
-      { surface: 'today', compact: true },
-    ];
-
-    // Optionally warm other surfaces if the user has touched them recently.
-    const recent = (await pool.query(
-      `SELECT DISTINCT surface FROM briefings
-        WHERE user_id = $1
-          AND generated_at >= NOW() - interval '14 days'
-          AND surface IN ('training', 'races', 'health', 'profile')`,
-      [userId]
-    ).catch(() => ({ rows: [] }))).rows;
-    for (const r of recent) {
-      const s = r.surface as 'training' | 'races' | 'health' | 'profile';
-      targets.push({ surface: s });
-    }
-
-    console.log(`[cache] warming ${targets.length} briefing(s) for ${userId}`);
-    // Fire all in parallel. Each generateBriefing call writes to cache on success.
-    await Promise.all(targets.map((t) =>
-      generateBriefing(userId, t.surface, undefined, t.compact).catch((e) => {
-        console.error(`[cache] warm failed surface=${t.surface}${t.compact ? ':ios' : ''}:`, e?.message ?? e);
-      })
-    ));
-    console.log(`[cache] warm done for ${userId}`);
-  } catch (e: any) {
-    console.error('[cache] warmBriefingsAfterBust crashed:', e?.message ?? e);
-  }
+export function bustBriefingCacheDebounced(_userId: string): void {
+  /* no-op */
 }

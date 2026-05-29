@@ -1,72 +1,95 @@
 'use client';
 
 /**
- * BriefingLoader — async-fetches /api/briefing and renders the coach voice +
- * topics + readiness once ready. The page shell renders instantly without it.
+ * BriefingLoader — async-fetches /api/coach/facts and renders a
+ * structured list of CAPS-tracked facts.
  *
- * Solves two problems at once:
- *   1. The LLM call (~15-20s) shouldn't block the page render
- *   2. Railway proxy 502s when the page render took too long
+ * 2026-05-28 · Cardinal Rule #1 (PROJECT.md, locked 2026-05-28): "Zero
+ * LLM · anywhere · ever." This component used to fetch /api/briefing
+ * (an Anthropic tool-use loop ~15-20s tail) and render the LLM
+ * paragraphs. It now fetches /api/coach/facts (pure DB reads,
+ * <300 ms) and renders a fact list.
  *
- * Loading state cycles through coach-flavored progress lines so the runner
- * sees the system actually doing work.
+ * Prop contract preserved: callers pass surface / raceSlug /
+ * renderCards / renderCoach and the component remains opaque to the
+ * page.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Topic } from '@/lib/topics/types';
-import type { ReadinessBreakdown } from '@/lib/coach/readiness';
-import { CoachBlock } from './CoachBlock';
-import { TopicRenderer } from './TopicRenderer';
-import { ProposalCard } from './ProposalCard';
 
-// Module-level in-flight cache. When /today mounts two <BriefingLoader />
-// instances (left for coach voice, right for cards rail), both share the
-// same promise → ONE network call, both render the same payload.
-// TTL is short (60s) — busted by router.refresh() on check-in / profile edit.
-const INFLIGHT = new Map<string, { promise: Promise<LoadedBriefing>; at: number }>();
-function fetchBriefing(surface: string, raceSlug?: string): Promise<LoadedBriefing> {
+// ── Types (mirror of lib/coach/fact-reciter.ts shape) ─────────────
+
+type CoachFactColor = 'default' | 'green' | 'amber' | 'over' | 'race';
+
+interface CoachFact {
+  label: string;
+  value: string;
+  valueColor?: CoachFactColor;
+  meta?: string;
+}
+
+interface CoachFactBlock {
+  surface: 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me';
+  state?: string;
+  facts: CoachFact[];
+}
+
+interface FactsResponse {
+  block: CoachFactBlock;
+}
+
+// ── In-flight cache (same shape as the old loader) ────────────────
+
+// Module-level in-flight cache. When two <BriefingLoader /> mount in
+// the same render, both share the same fetch → one network call.
+const INFLIGHT = new Map<string, { promise: Promise<CoachFactBlock>; at: number }>();
+
+function fetchFacts(surface: string, raceSlug?: string): Promise<CoachFactBlock> {
   const key = `${surface}|${raceSlug ?? ''}`;
   const cached = INFLIGHT.get(key);
   if (cached && Date.now() - cached.at < 60000) return cached.promise;
-  const url = new URL('/api/briefing', window.location.origin);
+  const url = new URL('/api/coach/facts', window.location.origin);
   url.searchParams.set('surface', surface);
   if (raceSlug) url.searchParams.set('race', raceSlug);
-  const promise = fetch(url.toString()).then(async (r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  });
+  const promise = fetch(url.toString())
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as FactsResponse;
+      if (!j?.block) throw new Error('malformed /api/coach/facts response');
+      return j.block;
+    });
   INFLIGHT.set(key, { promise, at: Date.now() });
   return promise;
 }
 
+// Faff-themed loading copy (preserved from the old loader so the
+// visual cadence stays familiar even though latency is now <300 ms).
+const LOADING_MESSAGES = [
+  'Having a faff...',
+  'Just a quick faff...',
+  'Faffing on...',
+  'One sec, faffing...',
+  'Crunching the faff...',
+  'Bit of a faff...',
+  'Sorting your faff...',
+  'Faffing the numbers...',
+];
+
+// ── Public component ─────────────────────────────────────────────
+
 export interface LoadedBriefing {
+  // Preserved-shape envelope so any external code that reads
+  // `briefing.lead` / `briefing.voice` (e.g. snapshot tests) still
+  // works. The block is the new source of truth.
   surface: string;
   mode: string;
   lead: string;
   voice: string[];
-  topics: Topic[];
-  _state?: {
-    user_id: string;
-    today: string;
-    candidateKinds: string[];
-    eligibleKinds: string[];
-    readiness?: ReadinessBreakdown;
-  };
+  topics: never[];
+  block: CoachFactBlock;
+  _state?: { user_id: string; today: string };
 }
-
-// Faff-themed loading copy. The brand IS "faff" — every loading state
-// should sound like the brand voice talking, not a generic spinner.
-const LOADING_MESSAGES = [
-  "Having a faff...",
-  "Just a quick faff...",
-  "Faffing on...",
-  "One sec, faffing...",
-  "Crunching the faff...",
-  "Bit of a faff...",
-  "Sorting your faff...",
-  "Faffing the numbers...",
-];
 
 export function BriefingLoader({
   surface,
@@ -74,31 +97,33 @@ export function BriefingLoader({
   onLoad,
   renderCoach = true,
   renderCards = true,
-  askPrompt,
 }: {
   surface: string;
   raceSlug?: string;
   onLoad?: (b: LoadedBriefing) => void;
   renderCoach?: boolean;
   renderCards?: boolean;
+  /** Preserved for prop-shape compatibility with the old loader. The
+   *  fact-reciter has no concept of an ask prompt; the prop is
+   *  accepted and ignored. */
   askPrompt?: string;
 }) {
-  const [briefing, setBriefing] = useState<LoadedBriefing | null>(null);
+  const [block, setBlock] = useState<CoachFactBlock | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const calledOnLoad = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setError(null); setBriefing(null);
-    fetchBriefing(surface, raceSlug)
+    setLoading(true); setError(null); setBlock(null);
+    fetchFacts(surface, raceSlug)
       .then((b) => {
         if (cancelled) return;
-        setBriefing(b);
+        setBlock(b);
         setLoading(false);
         if (onLoad && !calledOnLoad.current) {
           calledOnLoad.current = true;
-          onLoad(b);
+          onLoad(toLoaded(b));
         }
       })
       .catch((e) => {
@@ -107,46 +132,139 @@ export function BriefingLoader({
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [surface, raceSlug]);
+  }, [surface, raceSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Loading + error states only show on the coach side; cards stay quiet.
   if (loading) return renderCoach ? <CoachLoading /> : null;
   if (error)   return renderCoach ? <CoachError error={error} /> : null;
-  if (!briefing) return null;
+  if (!block)  return null;
 
+  // The fact-reciter currently emits one consolidated block per
+  // surface — the renderer treats every fact as a left-rail entry.
+  // `renderCards` from the old loader (right-rail topic cards) is
+  // honored as a flag: when false we only render the left rail, when
+  // true we render the same fact list there too (mirrored). The right
+  // rail's structured cards are owned by other components on the
+  // page directly.
   return (
     <>
-      {renderCoach && (
-        <CoachBlock
-          lead={briefing.lead}
-          voice={briefing.voice}
-          briefingId={`${briefing._state?.user_id ?? ''}|${briefing._state?.today ?? ''}|${briefing.surface}`}
-          askPrompt={askPrompt ?? askPromptFor(briefing.mode)}
-          // 2026-05-27: check-in UI off for now. David: "remove the
-          // how'd the run go and all tap ratings etc for now." We'll
-          // bring it back as chips/sliders only (no free-text) once
-          // the deterministic /today is stable.
-          showCheckin={false}
-          // #150 — post-run uses the new workout-type-aware two-axis chips.
-          // Other check-in modes (pre-run, rest-day) keep the legacy 3-chip set.
-          checkinMode={briefing.mode === 'post-run' ? 'post_run' : 'legacy'}
-          workoutType={(briefing._state as any)?.todayWorkoutType ?? null}
-          runId={(briefing._state as any)?.todayRunId ?? null}
-        />
-      )}
-      {/* P-COACH-PROPOSAL-1 — actionable swap proposal. Renders only on
-          /today (the only surface where the runner can take action on
-          today's plan) and only when the coach actually proposed one
-          via the proposeWorkoutSwap tool. */}
-      {renderCoach && surface === 'today' && (briefing as any).proposed_alternative && (
-        <ProposalCard proposal={(briefing as any).proposed_alternative} />
-      )}
-      {renderCards && briefing.topics.length > 0 && (
-        <div style={{ padding: renderCoach ? '4px 24px 24px' : '0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {briefing.topics.map((t, i) => <TopicRenderer key={i} topic={t} />)}
-        </div>
-      )}
+      {renderCoach && <FactBlock block={block} />}
+      {!renderCoach && renderCards && <FactBlockCompact block={block} />}
     </>
+  );
+}
+
+function toLoaded(block: CoachFactBlock): LoadedBriefing {
+  const fmt = (f: CoachFact) => `${f.label} · ${f.value}${f.meta ? ' · ' + f.meta : ''}`;
+  const [first, ...rest] = block.facts;
+  return {
+    surface: block.surface,
+    mode: block.state ?? 'facts',
+    lead: first ? fmt(first) : '',
+    voice: rest.map(fmt),
+    topics: [],
+    block,
+  };
+}
+
+// ── Render: full fact block on the coach side ───────────────────
+
+function colorVar(c: CoachFactColor | undefined): string {
+  switch (c) {
+    case 'green':  return 'var(--green)';
+    case 'amber':  return 'var(--goal)';
+    case 'over':   return 'var(--over)';
+    case 'race':   return 'var(--race, var(--goal))';
+    case 'default':
+    default:       return 'var(--ink)';
+  }
+}
+
+function FactBlock({ block }: { block: CoachFactBlock }) {
+  return (
+    <section style={{ padding: '8px 24px 22px' }}>
+      <div style={{
+        fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700,
+        color: 'var(--green)', letterSpacing: '1.6px',
+        textTransform: 'uppercase', marginBottom: 18,
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%', background: 'var(--green)',
+          boxShadow: '0 0 12px rgba(62,189,65,0.6)',
+        }} />
+        COACH · FACTS
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {block.facts.map((f, i) => (
+          <li key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{
+              fontFamily: 'var(--f-body)',
+              fontSize: 10,
+              fontWeight: 700,
+              color: 'var(--mute)',
+              letterSpacing: '1.6px',
+              textTransform: 'uppercase',
+            }}>
+              {f.label}
+            </div>
+            <div style={{
+              fontFamily: 'var(--f-display)',
+              fontSize: 22,
+              fontWeight: 700,
+              color: colorVar(f.valueColor),
+              letterSpacing: '0.3px',
+              lineHeight: 1.15,
+            }}>
+              {f.value}
+            </div>
+            {f.meta && (
+              <div style={{
+                fontFamily: 'var(--f-body)',
+                fontSize: 12,
+                color: 'rgba(246,247,248,0.66)',
+                lineHeight: 1.4,
+              }}>
+                {f.meta}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// Compact variant for the right-rail cards slot. Used when the caller
+// asked for cards only (renderCoach=false, renderCards=true).
+function FactBlockCompact({ block }: { block: CoachFactBlock }) {
+  return (
+    <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {block.facts.map((f, i) => (
+        <div key={i} className="card" style={{ padding: 14 }}>
+          <div className="card-eyebrow">{f.label}</div>
+          <div style={{
+            fontFamily: 'var(--f-display)',
+            fontSize: 18,
+            fontWeight: 700,
+            color: colorVar(f.valueColor),
+            marginTop: 4,
+          }}>
+            {f.value}
+          </div>
+          {f.meta && (
+            <div style={{
+              fontFamily: 'var(--f-body)',
+              fontSize: 12,
+              color: 'var(--mute)',
+              marginTop: 4,
+            }}>
+              {f.meta}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -202,7 +320,7 @@ function CoachError({ error }: { error: string }) {
         Bit of a faff right now.
       </h2>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.6 }}>
-        The numbers are all still here. The voice will catch up. Refresh in a moment, or it'll show up on its own next time.
+        The numbers are still here. Refresh in a moment.
       </p>
       {process.env.NODE_ENV !== 'production' && (
         <pre style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--dim)', marginTop: 14, whiteSpace: 'pre-wrap' }}>
@@ -249,17 +367,4 @@ function SkeletonBars() {
       </div>
     </>
   );
-}
-
-// Modes where a check-in prompt makes sense on /today.
-const CHECKIN_MODES = new Set(['post-run', 'pre-run', 'rest-day']);
-
-function askPromptFor(mode: string): string {
-  switch (mode) {
-    case 'post-run':  return 'How did the run feel?';
-    case 'pre-run':   return 'How are the legs this morning?';
-    case 'rest-day':  return 'How are you feeling today?';
-    case 'race-day':  return 'Ready for race day?';
-    default:          return 'How are you feeling?';
-  }
 }
