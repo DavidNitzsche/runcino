@@ -52,8 +52,20 @@ function paceCenter(band) {
   return Math.round((band.lowS + band.highS) / 2);
 }
 
-function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
+// Phase 31 (2026-05-28 · LTHR wire) · the plan-builder now threads
+// profile.lthr through buildWorkoutSpec and emits LTHR-anchored HR
+// fields (easy → ~88% LTHR, long → 85%, recovery → 75%, threshold =
+// LTHR direct, tempo/mp → 92%). This backfill mirrors the same math so
+// re-runs converge with fresh-authored plans. When `lthr` is null
+// (runner has no manual LTHR set), HR fields stay null and renderers
+// fall back to placeholders. Cite: Friel · Research/03 §6 (LTHR zones).
+function buildWorkoutSpec(type, subLabel, distanceMi, paceSet, lthr) {
   if (!paceSet) return null;
+  const easyHrCap     = lthr != null ? Math.round(lthr * 0.88) : null;
+  const longHrCap     = lthr != null ? Math.round(lthr * 0.85) : null;
+  const recoveryHrCap = lthr != null ? Math.round(lthr * 0.75) : null;
+  const tempoHrTarget = lthr != null ? Math.round(lthr * 0.92) : null;
+
   switch (type) {
     case 'easy': {
       const fuelMi = distanceMi >= 8 ? [Math.round(distanceMi / 2)] : undefined;
@@ -61,7 +73,7 @@ function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
         kind: 'easy',
         pace_target_s_per_mi_lo: paceSet.E.lowS,
         pace_target_s_per_mi_hi: paceSet.E.highS,
-        hr_cap_bpm: null,
+        hr_cap_bpm: easyHrCap,
         ...(fuelMi ? { fuel_mi: fuelMi } : {}),
       };
     }
@@ -81,14 +93,14 @@ function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
           prog_start_s_per_mi: paceSet.E.lowS,
           prog_end_s_per_mi: paceSet.T.lowS,
           cooldown_mi: cd,
-          hr_cap_bpm: null,
+          hr_cap_bpm: longHrCap,
         };
       }
       return {
         kind: 'long',
         pace_target_s_per_mi_lo: paceSet.E.lowS,
         pace_target_s_per_mi_hi: paceSet.E.highS,
-        hr_cap_bpm: null,
+        hr_cap_bpm: longHrCap,
         fuel_mi: checkpoints,
       };
     }
@@ -104,23 +116,23 @@ function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
           tempo_distance_mi: +tempoMi.toFixed(1),
           tempo_pace_s_per_mi: repPaceS,
           cooldown_mi: cooldownMi,
-          hr_target_bpm: null,
+          hr_target_bpm: tempoHrTarget,
         };
       }
       if (subLabel === 'HM Cruise Intervals') {
         return { kind: 'threshold', warmup_mi: warmupMi, rep_count: 3, rep_distance_mi: 2,
-          rep_pace_s_per_mi: repPaceS, rep_rest_s: 90, cooldown_mi: cooldownMi, lthr_bpm: null };
+          rep_pace_s_per_mi: repPaceS, rep_rest_s: 90, cooldown_mi: cooldownMi, lthr_bpm: lthr };
       }
       if (subLabel === 'HM Threshold Blocks') {
         return { kind: 'threshold', warmup_mi: warmupMi, rep_count: 2, rep_distance_mi: 3,
-          rep_pace_s_per_mi: repPaceS, rep_rest_s: 120, cooldown_mi: cooldownMi, lthr_bpm: null };
+          rep_pace_s_per_mi: repPaceS, rep_rest_s: 120, cooldown_mi: cooldownMi, lthr_bpm: lthr };
       }
       if (subLabel === 'Threshold Touch') {
         return { kind: 'threshold', warmup_mi: warmupMi, rep_count: 2, rep_distance_mi: 1.5,
-          rep_pace_s_per_mi: repPaceS, rep_rest_s: 90, cooldown_mi: cooldownMi, lthr_bpm: null };
+          rep_pace_s_per_mi: repPaceS, rep_rest_s: 90, cooldown_mi: cooldownMi, lthr_bpm: lthr };
       }
       return { kind: 'threshold', warmup_mi: warmupMi, rep_count: 5, rep_distance_m: 1000,
-        rep_pace_s_per_mi: repPaceS, rep_rest_s: 60, cooldown_mi: cooldownMi, lthr_bpm: null };
+        rep_pace_s_per_mi: repPaceS, rep_rest_s: 60, cooldown_mi: cooldownMi, lthr_bpm: lthr };
     }
     case 'interval':
       return {
@@ -131,7 +143,7 @@ function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
         rep_pace_s_per_mi: paceCenter(paceSet.I) ?? paceSet.I.lowS,
         rep_rest_s: 90,
         cooldown_mi: 1,
-        lthr_bpm: null,
+        lthr_bpm: lthr,
       };
     case 'mp': {
       const warmupMi = 1;
@@ -143,7 +155,7 @@ function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
         mp_distance_mi: mpDist,
         mp_pace_s_per_mi: paceCenter(paceSet.M) ?? paceSet.M.lowS,
         cooldown_mi: cooldownMi,
-        hr_target_bpm: null,
+        hr_target_bpm: tempoHrTarget,
       };
     }
     case 'recovery': {
@@ -151,7 +163,7 @@ function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
         kind: 'recovery',
         pace_target_s_per_mi_lo: paceSet.E.lowS + 30,
         pace_target_s_per_mi_hi: paceSet.E.highS + 30,
-        hr_cap_bpm: null,
+        hr_cap_bpm: recoveryHrCap,
       };
     }
     case 'race_week_tuneup':
@@ -163,7 +175,7 @@ function buildWorkoutSpec(type, subLabel, distanceMi, paceSet) {
         rep_pace_s_per_mi: paceCenter(paceSet.T) ?? paceSet.T.lowS,
         rep_rest_s: 90,
         cooldown_mi: 1,
-        lthr_bpm: null,
+        lthr_bpm: lthr,
       };
     case 'shakeout':
     case 'rest':
@@ -199,6 +211,33 @@ async function loadPaceSetForPlan(client, planId) {
   return paces;
 }
 
+// Phase 31 · LTHR-per-runner lookup. Mirrors state-loader.ts's profile
+// query — the user_id on training_plans maps to profile rows by
+// user_uuid (or by legacy user_id='me' for anon-bound data). Returns
+// null when no LTHR is set so the spec emits null HR fields and the
+// renderer falls back to placeholders. Cite: Friel · Research/03 §6.
+async function loadLthrForUser(client, userId) {
+  // user_id on training_plans is a uuid (when authenticated) or 'me' for
+  // legacy single-tenant rows. Try the uuid path first; if it's not a
+  // valid uuid format, fall back to the 'me'-anchored row.
+  const isUuid = typeof userId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+  if (isUuid) {
+    const r = await client.query(
+      `SELECT lthr FROM profile
+        WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
+        ORDER BY (user_uuid = $1) DESC LIMIT 1`,
+      [userId],
+    );
+    return r.rows[0]?.lthr ?? null;
+  }
+  // Legacy 'me' fallback.
+  const r = await client.query(
+    `SELECT lthr FROM profile WHERE user_id = 'me' AND user_uuid IS NULL LIMIT 1`,
+  );
+  return r.rows[0]?.lthr ?? null;
+}
+
 // ── Main backfill loop ───────────────────────────────────────────────
 
 async function main() {
@@ -220,6 +259,13 @@ async function main() {
         continue;
       }
 
+      // Phase 31 · resolve the runner's LTHR so HR caps/targets are
+      // emitted alongside pace targets. Null when the runner hasn't set
+      // a manual LTHR — HR fields ship null and the renderer falls back
+      // to placeholders (no fabrication).
+      const lthr = await loadLthrForUser(client, plan.user_id);
+      const lthrTag = lthr != null ? `LTHR=${lthr}` : 'LTHR=null (no profile.lthr)';
+
       const { rows: workouts } = await client.query(
         `SELECT id, type, sub_label, distance_mi, workout_spec
            FROM plan_workouts
@@ -229,7 +275,7 @@ async function main() {
 
       for (const w of workouts) {
         scanned++;
-        const spec = buildWorkoutSpec(w.type, w.sub_label, Number(w.distance_mi), paceSet);
+        const spec = buildWorkoutSpec(w.type, w.sub_label, Number(w.distance_mi), paceSet, lthr);
         if (!spec) {
           skipped++;
           continue;
@@ -240,7 +286,7 @@ async function main() {
         );
         updated++;
       }
-      console.log(`  · plan ${plan.id} — scanned ${workouts.length} null-spec rows.`);
+      console.log(`  · plan ${plan.id} (${lthrTag}) — scanned ${workouts.length} null-spec rows.`);
     }
   } finally {
     client.release();

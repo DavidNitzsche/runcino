@@ -49,10 +49,18 @@ export type WorkoutSubLabel =
 //
 // Pace fields are seconds-per-mile per Daniels Running Formula §VDOT
 // table conventions. HR caps cite the runner's LTHR-derived ceilings
-// (Research/notes/lthr-auto-derivation.md). LTHR is not threaded to
-// the plan-builder yet (P-LTHR-WIRE follow-up), so hr_cap_bpm /
-// hr_target_bpm / lthr_bpm currently land as null and the renderer
-// falls back to a placeholder for the HR row.
+// (Friel · Research/03 §6 · 30-min TT field method):
+//   easy      → ~88% LTHR (Z2 ceiling, aerobic)
+//   long      → ~85% LTHR (long-day ceiling, conservative for drift)
+//   recovery  → ~75% LTHR (Z1 ceiling, strict aerobic)
+//   tempo/mp  → ~92% LTHR (Z3 mid, sub-LT steady)
+//   threshold → LTHR direct (Z5a · 100–102% LTHR, anchor for cruise)
+// Phase 31 (2026-05-28) wired LTHR off profile.lthr through the
+// plan-builder so these fields ship populated when the runner has
+// set a manual LTHR. When no LTHR is set (cold-start) the fields stay
+// null and the renderer falls back to placeholder strings. Path A
+// auto-derivation (Phase 32) will lift this from manual-only to also-
+// from-data when the runner has 14d of HR+pace.
 // ──────────────────────────────────────────────────────────────────────
 
 export type WorkoutSpec =

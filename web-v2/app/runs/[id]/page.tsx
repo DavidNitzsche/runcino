@@ -147,6 +147,31 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
         </>
       ) : null}
 
+      {/* ── HR target vs. actual ── Phase 31 (2026-05-28 · LTHR wire).
+          The plan-builder emits HR caps / targets into workout_spec when
+          the runner has a profile.lthr set (Friel · Research/03 §6 zones:
+          easy ≤88% LTHR, long ≤85%, recovery ≤75%, threshold = LTHR
+          direct, tempo/mp ≈92%). This card pulls the matching field off
+          the spec, compares against the run's avg HR, and shows a colored
+          delta (green if comfortably under, amber if 5% over, red if 10%
+          over). Only renders when both a target AND an avg HR are
+          present — silent when either is missing so cold-start runners
+          don't see noise. */}
+      {(() => {
+        const target = pickHrTarget(run.planned_spec);
+        if (target == null || run.hr_avg == null) return null;
+        return (
+          <>
+            <HRTargetCard
+              targetBpm={target.bpm}
+              targetKind={target.kind}
+              actualBpm={run.hr_avg}
+            />
+            <Spacer />
+          </>
+        );
+      })()}
+
       {/* ── Plan vs. actual ── per-rep deltas from the WatchCompletion
           payload (Faff-watch runs only). When neither spec nor phases
           exist, render the placeholder. */}
@@ -208,6 +233,193 @@ function ElevAccent({ feet }: { feet: number }) {
     >
       {Math.round(feet).toLocaleString()} FT GAIN
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// HR target card · Phase 31 (2026-05-28 · LTHR wire). Compares the run's
+// actual avg HR against the planned target/cap (off workout_spec) and
+// shows a colored delta. The kind label varies per spec:
+//   easy / long / recovery / progression → "HR CAP"   (don't exceed)
+//   tempo / mp                            → "HR TARGET" (sit on it)
+//   threshold / intervals                  → "LTHR ANCHOR" (rep HR sits at)
+// Cite: Friel · Research/03 §6 (LTHR-zone semantics).
+// ─────────────────────────────────────────────────────────────────────
+type HrTargetKind = 'cap' | 'target' | 'lthr';
+
+function pickHrTarget(spec: WorkoutSpec | null): { bpm: number; kind: HrTargetKind } | null {
+  if (!spec) return null;
+  switch (spec.kind) {
+    case 'easy':
+    case 'long':
+    case 'recovery':
+    case 'progression':
+      return spec.hr_cap_bpm != null ? { bpm: spec.hr_cap_bpm, kind: 'cap' } : null;
+    case 'tempo':
+    case 'mp':
+      return spec.hr_target_bpm != null ? { bpm: spec.hr_target_bpm, kind: 'target' } : null;
+    case 'threshold':
+    case 'intervals':
+      return spec.lthr_bpm != null ? { bpm: spec.lthr_bpm, kind: 'lthr' } : null;
+    case 'fartlek':
+      return null; // fartlek spec doesn't carry an HR field
+    default:
+      return null;
+  }
+}
+
+function hrTargetLabel(kind: HrTargetKind): string {
+  switch (kind) {
+    case 'cap':    return 'HR CAP';
+    case 'target': return 'HR TARGET';
+    case 'lthr':   return 'LTHR ANCHOR';
+  }
+}
+
+function HRTargetCard({
+  targetBpm,
+  targetKind,
+  actualBpm,
+}: {
+  targetBpm: number;
+  targetKind: HrTargetKind;
+  actualBpm: number;
+}) {
+  // Delta semantics depend on the kind. For a CAP, "over by 10%" is a
+  // miss (you blew past the ceiling). For a TARGET, "within ±5%" is on
+  // (you sat where you should). For LTHR ANCHOR, the rep HR usually
+  // lands NEAR or slightly above — Z5a sits at 100–102% LTHR so being
+  // within ~5% is on-anchor. Research/03 §6.
+  const deltaPct = ((actualBpm - targetBpm) / targetBpm) * 100;
+  // Color:
+  //   cap kind:    under = green; over 5% = amber; over 10% = red
+  //   target kind: within 3% either side = green; outside 3% = amber;
+  //                outside 8% = red
+  //   lthr kind:   between -5% and +5% = green (on-anchor);
+  //                outside ±5% but within ±10% = amber; beyond ±10% = red
+  let color: 'green' | 'goal' | 'over' = 'green';
+  if (targetKind === 'cap') {
+    if (deltaPct >= 10) color = 'over';
+    else if (deltaPct >= 5) color = 'goal';
+    else color = 'green';
+  } else if (targetKind === 'target') {
+    const abs = Math.abs(deltaPct);
+    if (abs > 8) color = 'over';
+    else if (abs > 3) color = 'goal';
+    else color = 'green';
+  } else {
+    // lthr
+    const abs = Math.abs(deltaPct);
+    if (abs > 10) color = 'over';
+    else if (abs > 5) color = 'goal';
+    else color = 'green';
+  }
+  const deltaSign = deltaPct >= 0 ? '+' : '';
+  const deltaStr = `${deltaSign}${deltaPct.toFixed(1)}%`;
+  const statusLabel = (() => {
+    if (targetKind === 'cap') {
+      if (color === 'green') return 'UNDER CAP';
+      if (color === 'goal') return 'AT CAP';
+      return 'OVER CAP';
+    }
+    if (targetKind === 'target') {
+      if (color === 'green') return 'ON TARGET';
+      if (color === 'goal') return 'OFF TARGET';
+      return 'MISSED';
+    }
+    // lthr
+    if (color === 'green') return 'ON ANCHOR';
+    if (color === 'goal') return 'OFF ANCHOR';
+    return 'WELL OFF';
+  })();
+  const label = hrTargetLabel(targetKind);
+  return (
+    <BCard header={{ label: `${label} · PLAN VS. ACTUAL`, value: statusLabel }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 18,
+          padding: '4px 0 8px',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div
+            style={{
+              fontFamily: 'var(--f-body)', fontSize: 9.5, fontWeight: 700,
+              letterSpacing: '1.2px', color: 'var(--mute)',
+              textTransform: 'uppercase',
+            }}
+          >
+            TARGET
+          </div>
+          <div
+            className="tabular"
+            style={{
+              fontFamily: 'var(--f-display)', fontSize: 34,
+              color: 'var(--ink)', letterSpacing: '-0.5px', lineHeight: 1,
+            }}
+          >
+            {targetBpm}
+          </div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)' }}>
+            bpm
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div
+            style={{
+              fontFamily: 'var(--f-body)', fontSize: 9.5, fontWeight: 700,
+              letterSpacing: '1.2px', color: 'var(--mute)',
+              textTransform: 'uppercase',
+            }}
+          >
+            ACTUAL AVG
+          </div>
+          <div
+            className="tabular"
+            style={{
+              fontFamily: 'var(--f-display)', fontSize: 34,
+              color: 'var(--ink)', letterSpacing: '-0.5px', lineHeight: 1,
+            }}
+          >
+            {actualBpm}
+          </div>
+          <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)' }}>
+            bpm
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div
+            style={{
+              fontFamily: 'var(--f-body)', fontSize: 9.5, fontWeight: 700,
+              letterSpacing: '1.2px', color: 'var(--mute)',
+              textTransform: 'uppercase',
+            }}
+          >
+            DELTA
+          </div>
+          <div
+            className="tabular"
+            style={{
+              fontFamily: 'var(--f-display)', fontSize: 34,
+              color: `var(--${color})`, letterSpacing: '-0.5px', lineHeight: 1,
+            }}
+          >
+            {deltaStr}
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--f-body)', fontSize: 10, fontWeight: 700,
+              letterSpacing: '1.2px', color: `var(--${color})`,
+              textTransform: 'uppercase',
+            }}
+          >
+            {statusLabel}
+          </div>
+        </div>
+      </div>
+    </BCard>
   );
 }
 

@@ -253,11 +253,27 @@ function buildStatTrio(
       ];
     case 'quality': {
       // Direction A3 deck · QUALITY switches to workout-context. TOTAL MI ·
-      // LTHR · EST. TIME. LTHR comes from the runner profile (TODO: wire
-      // through to a real profile-derived value · for now placeholder).
-      const lthr = '—'; // TODO 2026-05-28 · wire to profile.lthr_bpm once
-                       // GlanceState surfaces it. Doctrine: research/notes/
-                       // lthr-auto-derivation.md tier 3+.
+      // LTHR · EST. TIME.
+      //
+      // 2026-05-28 (Phase 31 · LTHR wire) · prefer real LTHR off the
+      // workout spec (plan-builder emits lthr_bpm directly for threshold
+      // / interval / race-week tune-up kinds). When the spec is a tempo
+      // or progression variant (no LTHR field, only an HR target), fall
+      // back to the HR target as the "anchor" the runner watches. Final
+      // fallback "—" when neither is available (runner has no manual
+      // LTHR yet). Doctrine: Friel · Research/03 §6.
+      let lthrValue: string = '—';
+      if (today.plannedSpec) {
+        const s = today.plannedSpec;
+        if ((s.kind === 'threshold' || s.kind === 'intervals') && s.lthr_bpm != null) {
+          lthrValue = String(s.lthr_bpm);
+        } else if (s.kind === 'tempo' && s.hr_target_bpm != null) {
+          // Tempo has no direct LTHR field — show the Z3 target instead.
+          lthrValue = String(s.hr_target_bpm);
+        } else if (s.kind === 'mp' && s.hr_target_bpm != null) {
+          lthrValue = String(s.hr_target_bpm);
+        }
+      }
       const estTime = today.plannedMi > 0 ? formatEstTime(today.plannedMi, 480) : '—'; // ~8:00/mi placeholder for quality avg
       return [
         {
@@ -266,7 +282,7 @@ function buildStatTrio(
             : '—',
           label: 'TOTAL MI',
         },
-        { value: lthr, label: 'LTHR BPM' },
+        { value: lthrValue, label: 'LTHR BPM' },
         { value: estTime, label: 'EST. TIME' },
       ];
     }

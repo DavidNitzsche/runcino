@@ -131,6 +131,19 @@ export interface CoachState {
      *  real HR ceiling for Karvonen zones instead of a hardcoded default.
      *  Optional so older fixtures/callers omit it (treated as unknown). */
     maxHrBpm?: number | null;
+    /** Friel LTHR (lactate threshold HR) from profile.lthr — the runner's
+     *  primary zone anchor (Research/03 §6 · 30-min TT field method).
+     *  Drives HR caps emitted in plan_workouts.workout_spec:
+     *    easy      → ~88% LTHR (Z2 ceiling)
+     *    long      → ~85% LTHR (long-day ceiling, slightly more conservative)
+     *    recovery  → ~75% LTHR (Z1 ceiling)
+     *    threshold → emit LTHR directly so the renderer shows the anchor
+     *  Null when the runner hasn't set a manual LTHR yet (cold-start), in
+     *  which case downstream emits null HR fields and renderers fall back
+     *  to placeholder strings. Path A auto-derivation (Phase 32) will fill
+     *  this when the runner has 14d of HR+pace data even without a manual
+     *  entry. Optional so older fixtures/callers omit it. */
+    lthrBpm?: number | null;
     /** Latest body weight (kg) from Apple Health, for W/kg + fueling
      *  context. Optional/null when no smart-scale data. */
     weightKg?: number | null;
@@ -421,6 +434,40 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
     try { maxHrBpm = (await resolveEffectiveMaxHr(opts.userId)).value; } catch { /* leave null */ }
   }
 
+  // Friel LTHR (lactate threshold HR) from profile.lthr — the primary zone
+  // anchor for emitting HR caps in plan_workouts.workout_spec. Research/03
+  // §6 (30-min TT field method) + Research/notes/lthr-auto-derivation.md.
+  // Cold-start: null when the runner hasn't entered a manual LTHR and Path
+  // A auto-derivation (Phase 32 follow-up) hasn't run yet — downstream HR
+  // fields ship null and renderers fall back to placeholder strings.
+  //
+  // Branching: when userId is a real UUID, prefer the user_uuid-matched
+  // row; fall through to the legacy 'me' row. When userId is the legacy
+  // string 'me', skip the UUID arg (Postgres would error on `user_uuid =
+  // 'me'` since user_uuid is a uuid column) and read the 'me' row only.
+  let lthrBpm: number | null = null;
+  if (opts.userId) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opts.userId);
+    try {
+      if (isUuid) {
+        const r = await query<{ lthr: number | null }>(
+          `SELECT lthr FROM profile
+            WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
+            ORDER BY (user_uuid = $1) DESC LIMIT 1`,
+          [opts.userId],
+        );
+        lthrBpm = r[0]?.lthr ?? null;
+      } else {
+        const r = await query<{ lthr: number | null }>(
+          `SELECT lthr FROM profile
+            WHERE user_uuid IS NULL AND user_id = 'me'
+            LIMIT 1`,
+        );
+        lthrBpm = r[0]?.lthr ?? null;
+      }
+    } catch { /* leave null */ }
+  }
+
   // ── Race calendar ─────────────────────────────────────────
   const futureSaved = savedRaces
     .filter(r => r.meta.date >= todayISO)
@@ -660,6 +707,7 @@ export async function gatherCoachState(opts: GatherCoachStateOpts = {}): Promise
       sleep7dAvgHrs: healthBio.sleep7dAvgHrs,
       sleepDeficit14d,
       maxHrBpm,
+      lthrBpm,
       weightKg: healthBio.weightKg,
       strengthDaysThisWeek: null,
     },

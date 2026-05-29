@@ -92,7 +92,14 @@ function toBuildRace(nextA: CoachState['races']['nextA']): BuildPlanRace | undef
 
 /** Read or author the current plan, then adapt against fresh state. */
 export async function getCurrentPlan(userId = 'me'): Promise<LifecycleResult> {
-  const state = await gatherCoachState();
+  // Phase 31 (2026-05-28 · LTHR wire) · thread the resolved userId into
+  // gatherCoachState so the LTHR + biometrics queries scope to this
+  // runner. Without it, the plan-builder ships HR fields as null even
+  // when profile.lthr is set. When userId is the legacy 'me' anchor,
+  // gatherHealthBiometrics' isUuid guard returns the empty struct so
+  // this stays safe; the lthr lookup likewise skips the uuid path and
+  // tries the legacy 'me' row.
+  const state = await gatherCoachState({ userId });
   let plan = await getActivePlan(userId);
   let action: LifecycleAction = lifecycleCheck(plan, state);
 
