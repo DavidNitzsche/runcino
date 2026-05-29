@@ -77,6 +77,14 @@ struct TodayView: View {
                         structureBand(workout: w, state: state)
                     }
 
+                    // 3b · PRESCRIPTION — pace / HR / fuel for the prescribed
+                    // session (#163). Server-emitted on TODAY only; gated to
+                    // the workout states so it never trails a done/rest verb.
+                    if let rows = briefing?.workout_breakdown, !rows.isEmpty,
+                       state == .easy || state == .quality || state == .long || state == .race_week {
+                        prescriptionSheet(rows: rows)
+                    }
+
                     bodySpecSheet(state: state)
 
                     weekStripSection
@@ -662,5 +670,55 @@ struct TodayView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, hPad)
         .padding(.vertical, 12)
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // PRESCRIPTION — workout_breakdown rows (PACE / HR CAP / FUEL)
+    // ══════════════════════════════════════════════════════════════════
+    //
+    // #163 · the prescribed session's pace / HR / fuel detail, emitted by
+    // GET /api/briefing?surface=today — computed server-side by the SAME
+    // buildWorkoutBreakdown() the web /today renders, so iOS mirrors web
+    // exactly instead of re-deriving it client-side. The STRUCTURE BAND
+    // above shows the session SHAPE; this shows the NUMBERS.
+
+    private func prescriptionSheet(rows: [PosterBreakdownRow]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SpecLabel("PRESCRIPTION", size: 10)
+                .padding(.bottom, 8)
+            TickRule(ticks: 28)
+                .padding(.bottom, 2)
+            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                prescriptionRow(row, showRule: idx != 0)
+            }
+        }
+        .padding(.horizontal, hPad)
+        .padding(.vertical, 16)
+    }
+
+    private func prescriptionRow(_ row: PosterBreakdownRow, showRule: Bool) -> some View {
+        VStack(spacing: 0) {
+            if showRule {
+                Rectangle().fill(Theme.line).frame(height: 1)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                SpecLabel(row.label, size: 10)
+                    .frame(width: 72, alignment: .leading)
+                Text(row.body)
+                    .font(.body(13, weight: .medium))
+                    .foregroundStyle(Theme.ink.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if let tail = row.tail {
+                    Text(tail)
+                        .font(monoSpec(12))
+                        .foregroundStyle(Theme.mute)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .padding(.vertical, 11)
+        }
     }
 }

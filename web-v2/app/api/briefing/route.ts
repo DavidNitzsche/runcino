@@ -35,6 +35,8 @@ import {
   reciteMe,
   type CoachFactBlock,
 } from '@/lib/coach/fact-reciter';
+import { buildPoster, resolveDayState } from '@/lib/faff/glance-adapter';
+import type { PosterBreakdownRow } from '@/lib/faff/types';
 
 // Pure DB reads now — no LLM tail latency. 15s is more than enough.
 export const maxDuration = 15;
@@ -64,8 +66,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const block = await buildBlock(userId, surface, raceSlug);
-    return NextResponse.json(legacyEnvelopeOf(block, surfaceParam, userId));
+    const { block, workoutBreakdown } = await buildBlock(userId, surface, raceSlug);
+    return NextResponse.json(legacyEnvelopeOf(block, surfaceParam, userId, workoutBreakdown));
   } catch (err: any) {
     return NextResponse.json({
       error: err?.message ?? String(err),
@@ -78,19 +80,24 @@ async function buildBlock(
   userId: string,
   surface: 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me',
   raceSlug: string | undefined,
-): Promise<CoachFactBlock> {
+): Promise<{ block: CoachFactBlock; workoutBreakdown?: PosterBreakdownRow[] | null }> {
   switch (surface) {
     case 'today': {
       const glance = await loadGlanceState(userId);
-      return reciteToday(glance);
+      const block = reciteToday(glance);
+      // #163 · single source of truth: the Today poster's workout breakdown
+      // is computed by the SAME buildPoster() the web /today renders, so the
+      // iOS poster mirrors web exactly instead of re-deriving it client-side.
+      const poster = buildPoster(glance, resolveDayState(glance));
+      return { block, workoutBreakdown: poster.workout_breakdown };
     }
     case 'plan': {
       const training = await loadTrainingState(userId);
-      return recitePlan(training);
+      return { block: recitePlan(training) };
     }
     case 'races': {
       const races = await loadRacesState(userId);
-      return reciteRaces(races);
+      return { block: reciteRaces(races) };
     }
     case 'race_detail': {
       const races = await loadRacesState(userId);
@@ -100,25 +107,27 @@ async function buildBlock(
         : (races.aRace ?? all[0]);
       if (!race) {
         return {
-          surface: 'race_detail',
-          facts: [{
-            label: 'RACE',
-            value: '—',
-            meta: raceSlug ? `no race with slug "${raceSlug}"` : 'no races on the calendar',
-          }],
+          block: {
+            surface: 'race_detail',
+            facts: [{
+              label: 'RACE',
+              value: '—',
+              meta: raceSlug ? `no race with slug "${raceSlug}"` : 'no races on the calendar',
+            }],
+          },
         };
       }
       let glance = null;
       try { glance = await loadGlanceState(userId); } catch { /* non-fatal */ }
-      return reciteRaceDetail(race, glance);
+      return { block: reciteRaceDetail(race, glance) };
     }
     case 'health': {
       const health = await loadHealthState(userId);
-      return reciteHealth(health);
+      return { block: reciteHealth(health) };
     }
     case 'me': {
       const profile = await loadProfileState(userId);
-      return reciteMe(profile);
+      return { block: reciteMe(profile) };
     }
   }
 }
@@ -131,12 +140,14 @@ function legacyEnvelopeOf(
   block: CoachFactBlock,
   surfaceParam: string,
   userId: string,
+  workoutBreakdown?: PosterBreakdownRow[] | null,
 ): {
   surface: string;
   mode: string;
   lead: string;
   voice: string[];
   topics: unknown[];
+  workout_breakdown: PosterBreakdownRow[] | null;
   block: CoachFactBlock;
   _state: { user_id: string; today: string };
 } {
@@ -152,6 +163,7 @@ function legacyEnvelopeOf(
     lead,
     voice,
     topics: [],
+    workout_breakdown: workoutBreakdown ?? null,
     block,
     _state: { user_id: userId, today },
   };
