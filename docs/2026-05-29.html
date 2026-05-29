@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>All the way down · 2026-05-29 · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --ink: #f6f7f8;
+    --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08);
+    --line-2: rgba(255,255,255,0.04);
+    --card: #11141a;
+    --card2: #1a1d24;
+    --green: #3EBD41;
+    --goal:  #F3AD38;
+    --over:  #FC4D64;
+    --dist:  #27B4E0;
+    --learn: #B084FF;
+    --race:  #FF7028;
+    --paper: #F2EFE9;
+    --paper-ink: #14110D;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 60px; letter-spacing: -0.5px; margin: 0; line-height: 0.92; text-transform: uppercase; }
+  .sub { color: var(--mute); margin-top: 10px; font-size: 14px; max-width: 640px; line-height: 1.5; }
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 32px; letter-spacing: 0.3px; margin: 56px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; text-transform: uppercase; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 24px 0 8px; }
+  h4 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 22px; margin: 0 0 6px; letter-spacing: 0.3px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  em { color: rgba(246,247,248,0.95); font-style: italic; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: ui-monospace, monospace; color: var(--dist); }
+
+  .lead { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.40); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .lead h2 { margin: 0 0 12px; font-size: 24px; color: var(--green); border: 0; padding: 0; }
+  .lead p { font-size: 14.5px; }
+
+  .swatch-row { display: flex; gap: 0; margin: 20px 0 8px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+  .swatch { flex: 1; height: 64px; display: flex; align-items: flex-end; padding: 8px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; font-family: ui-monospace, monospace; }
+
+  .item { border-radius: 14px; padding: 18px 22px; margin: 14px 0; border: 1px solid var(--line); background: var(--card); }
+  .item.shipped { border-color: rgba(62,189,65,0.35);  background: rgba(62,189,65,0.04); }
+  .item.high { border-color: rgba(252,77,100,0.40); background: rgba(252,77,100,0.04); }
+  .item.med  { border-color: rgba(243,173,56,0.32); background: rgba(243,173,56,0.03); }
+  .item.low  { border-color: rgba(39,180,224,0.28); background: rgba(39,180,224,0.03); }
+  .item .tag { display: inline-block; font-weight: 700; padding: 3px 10px; border-radius: 6px; font-size: 10.5px; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
+  .item.shipped .tag { background: var(--green); color: #0a0c10; }
+  .item.high .tag    { background: var(--over);  color: #0a0c10; }
+  .item.med  .tag    { background: var(--goal);  color: #0a0c10; }
+  .item.low  .tag    { background: var(--dist);  color: #0a0c10; }
+  .item .meta { color: var(--mute); font-size: 11.5px; letter-spacing: 0.6px; margin-top: 10px; }
+  .item .files { color: rgba(246,247,248,0.55); font-size: 11.5px; margin-top: 6px; font-family: ui-monospace, monospace; }
+
+  .pattern { background: rgba(176,132,255,0.06); border: 1px solid rgba(176,132,255,0.25); border-radius: 14px; padding: 18px 22px; margin: 28px 0; }
+  .pattern h3 { color: var(--learn); margin-top: 0; }
+  .pattern p { font-size: 13.5px; margin: 0 0 8px; }
+  .pattern pre { background: rgba(0,0,0,0.4); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12px; font-family: ui-monospace, monospace; color: rgba(246,247,248,0.88); margin: 8px 0; }
+  .pattern p:last-child { margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10.5px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td.high { color: var(--over); font-weight: 600; }
+  td.med  { color: var(--goal); font-weight: 600; }
+  td.low  { color: var(--dist); font-weight: 600; }
+  td.ok   { color: var(--green); font-weight: 600; }
+  td.mute { color: var(--mute); }
+
+  .nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+  .nav a { font-size: 11.5px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--mute); text-decoration: none; letter-spacing: 0.8px; text-transform: uppercase; font-weight: 600; }
+  .nav a:hover { color: var(--ink); border-color: var(--ink); }
+  a { color: var(--dist); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .timeline { margin: 18px 0 0; position: relative; padding-left: 18px; }
+  .timeline::before { content: ''; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 1px; background: var(--line); }
+  .timeline .row { position: relative; padding: 4px 0 10px; font-size: 13.5px; }
+  .timeline .row::before { content: ''; position: absolute; left: -18px; top: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+  .timeline .row .what { color: var(--ink); font-weight: 600; }
+  .timeline .row .why { color: var(--mute); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>All the way<br>down · 2026-05-29</h1>
+  <p class="sub">"Still relying on cards… we can be way more graphic… more of a gut job… you are being way too respectful. The iPhone app especially is pure shit." Last night the paper skin went live — but you were right, the bones were still card-shaped. Tonight the gut went all the way down.</p>
+
+  <div class="nav">
+    <a href="#summary">Bottom line</a>
+    <a href="#iphone">iPhone</a>
+    <a href="#web-gut">Web · the gut</a>
+    <a href="#web-sweep">Web · the sweep</a>
+    <a href="#discipline">The discipline</a>
+    <a href="#verify">Verification</a>
+    <a href="#queue">What's left</a>
+    <a href="#timeline">Timeline</a>
+  </div>
+
+  <div class="lead" id="summary">
+    <h2>Bottom line</h2>
+    <p>Yesterday shipped the <em>skin</em> — warm paper, 3-tab nav, race-bib spine — but it still leaned on stacked rounded cards. You called it. Tonight the card chrome is <strong>flattened into hairline-ruled spec-sheet ledger rows</strong> across every web surface: TODAY, PLAN, ME, Health, Log, Races, and the run-detail page. The boxes are gone; what's left reads like a technical document, not a dashboard.</p>
+    <p><strong>iPhone, rebuilt:</strong> TODAY / PLAN / ME were re-laid as editorial spec-sheets — not the card reskin of build 99, an actual gut — and shipped as <strong>TestFlight build 100</strong>.</p>
+    <p><strong>Paper-correct to the last pixel:</strong> after the gut I drove the paper tokens down into every reachable surface — every modal, the onboarding flow, profile, settings, the readiness breakdown, even the five lifted CSS modules that were still painting near-invisible white-on-paper text. A whole-tree audit confirms <strong>zero unintentional dark-mode literals remain.</strong></p>
+    <p><strong>Guardrails held:</strong> the Apple Watch was not touched, the paper skin still reverts to dark with a one-line token swap per platform, and there is zero LLM in any coach path — facts only.</p>
+  </div>
+
+  <div class="swatch-row">
+    <div class="swatch" style="background:#F2EFE9; color:#14110D;">PAGE · F2EFE9</div>
+    <div class="swatch" style="background:#F7F4EE; color:#14110D;">CARD · F7F4EE</div>
+    <div class="swatch" style="background:#14110D; color:#F2EFE9;">INK · 14110D</div>
+    <div class="swatch" style="background:#DD5F22; color:#fff;">RACE · DD5F22</div>
+    <div class="swatch" style="background:#1E9E47; color:#fff;">ON TRACK · 1E9E47</div>
+    <div class="swatch" style="background:#C2791A; color:#fff;">WATCH · C2791A</div>
+  </div>
+
+  <h2 id="iphone">What shipped — iPhone</h2>
+  <p class="sub" style="margin-bottom:6px;">Committed <code>ea1b51a</code> · shipped as TestFlight <strong>build 100</strong> · counter bumped to 101 for the next ship (<code>e280d90</code>).</p>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · iOS gut</span>
+    <h4>TODAY / PLAN / ME rebuilt as editorial spec-sheets</h4>
+    <p>Build 99 swapped the colour palette; this is the part you actually asked for. The three native surfaces were re-laid on the same graphic vocabulary as the web — ledger rows, registration marks, the race-bib spine, ghosted numerals — so the phone reads as a technical document instead of a stack of rounded tiles. Native SwiftUI throughout (no web-views — Cardinal Rule #4).</p>
+    <p class="files">native-v2/Faff/Faff/Views/TodayView.swift · TrainingView.swift · ProfileView.swift · FaffGraphic.swift</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · build 100</span>
+    <h4>Pushed to TestFlight</h4>
+    <p>The editorial gut went out as build 100 and the <code>.asc.build</code> counter rolled to 101 for the next ship. Open TestFlight on the phone and it's the rebuilt app, not the card version.</p>
+    <p class="meta">iOS milestone of this run · my hands-on verification tonight was the web audit below; build 100's ship is recorded in the run log and the bump commit.</p>
+  </div>
+
+  <h2 id="web-gut">What shipped — Web · the gut</h2>
+  <p class="sub" style="margin-bottom:6px;">Three commits — <code>ceaf50c</code> (/today) · <code>d0bc2c4</code> (/plan + /me) · <code>94ddd80</code> (/health + /log + /races). Auto-deployed by Railway from <code>web-v2/</code>.</p>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · flatten</span>
+    <h4>Card chrome → spec-sheet ledger</h4>
+    <p>The recipe, applied surface by surface: rounded-card wrappers become hairline-ruled ledger rows — a <code>1px</code> top rule, transparent ground, no radius, content flush to the column. Tone surfaces get a <code>3px</code> coloured left edge instead of a tinted fill; hero and terminal blocks get a <code>2px</code> ink (or race) top rule. The result is the editorial / boarding-pass language from the refs — barcodes, brackets, crop marks — rather than a wall of boxes.</p>
+    <p class="files">web-v2/app/today/* · app/plan/page.tsx · app/me/page.tsx · app/health/page.tsx · app/log/page.tsx · app/races/page.tsx · components/faff/* · components/spec/Spec.tsx</p>
+  </div>
+
+  <h2 id="web-sweep">What shipped — Web · the sweep</h2>
+  <p class="sub" style="margin-bottom:6px;">Four commits — <code>d61653f</code> (/runs/[id]) · <code>80cd229</code> (/today secondary) · <code>d1705e5</code> (onboarding + profile + settings + training + run-modals) · <code>73601e8</code> (faff CSS modules). ~40 files, all token-only.</p>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · deep sweep</span>
+    <h4>Paper tokens into every surface below the fold</h4>
+    <p>The gut handled the page bodies; the skin still had to reach the parts you only see on a tap. Swept onto <code>var(--*)</code> tokens: the run-detail modal (splits, zones, shoe picker, HR chart), the day-detail / niggle / sick modals, body-flag chips, the coach &amp; recap cards, the readiness breakdown sheet, the full onboarding flow, learn, tips, profile (shoes / Strava / notifications / zone table), settings, and the training phase strip. Dark-theme hex panels → card tokens, white-alpha borders → line tokens, off-white text → ink / mute / dim, accent hexes → semantic tokens.</p>
+    <p class="files">components/runs/RunDetailModal.tsx · today/{DayDetail,Niggle,Sick}Modal.tsx · BodyFlags.tsx · readiness/* · onboarding/Step1–3*.tsx · profile/* · settings/SettingsForm.tsx · training/PhaseStrip.tsx</p>
+  </div>
+
+  <div class="item shipped">
+    <span class="tag">SHIPPED · the invisible bug</span>
+    <h4>Five lifted CSS modules were painting white-on-paper</h4>
+    <p>The Phase-1 Faff lift left a handful of hardcoded dark values in five CSS modules the migration never caught — off-white text and faint-white fills that render <em>near-invisible</em> on warm paper. They were live on real surfaces: the <strong>new-user coach card</strong> (CoachVoice + MiniTileGrid), the <strong>week strip</strong> every user sees, and the <strong>run-detail HR chart</strong>. Swept to tokens; the inline coach stat tints went to <code>--goal</code>/<code>--over</code>. StatTrio's matching pastels were left alone — those genuinely sit on the saturated poster gradient, where the canonical tokens are too strong.</p>
+    <p class="files">components/faff/{CoachVoice,MiniTileGrid,Sibling,WeekStrip,WorkoutBreakdown}.module.css</p>
+  </div>
+
+  <div class="pattern" id="discipline">
+    <h3>The discipline — a gut you can trust, not a rewrite</h3>
+    <p>Every commit in the sweep is <strong>token-only</strong>: no logic, JSX, props, copy, or behaviour changed. That's what kept a ~40-file pass safe enough to push straight to <code>main</code>. The risk in a mechanical sweep is over-converting — so four guardrails decided what to leave hardcoded:</p>
+    <pre>LEAVE  dark ink on a saturated/accent fill   (#0e1014 on var(--race)) — correct both skins
+LEAVE  hex-alpha concatenation               (${color}30) — var(--x)30 is invalid CSS
+LEAVE  white / pastel text over a gradient   (StatTrio on the poster wash)
+LEAVE  literal colour-picker swatches + HR-zone fills (user data, not theme)</pre>
+    <p>And the revert surface from yesterday is unchanged: pull <code>data-skin="paper"</code> off <code>&lt;html&gt;</code> on web, flip the 16 <code>Theme.*</code> aliases + the <code>.preferredColorScheme</code> line on iOS. The sweep moved values onto tokens — it didn't add a single new branch.</p>
+  </div>
+
+  <h2 id="verify">Verification</h2>
+  <table>
+    <tr><th>Check</th><th>Result</th></tr>
+    <tr><td>Web typecheck (pre-push hook)</td><td class="ok">✓ clean on every push tonight</td></tr>
+    <tr><td>Whole-tree paper audit</td><td class="ok">✓ every remaining dark value triaged — all intentional</td></tr>
+    <tr><td>Invalid <code>var(--x)NN</code> CSS concat scan</td><td class="ok">✓ none</td></tr>
+    <tr><td>faff CSS-module stragglers</td><td class="ok">✓ swept + re-grep clean</td></tr>
+    <tr><td>Stale <code>#1f2226</code> references</td><td class="ok">✓ none remain in the tree</td></tr>
+    <tr><td>iPhone editorial gut → TestFlight</td><td class="ok">✓ build 100 shipped (run record + bump commit)</td></tr>
+    <tr><td>Apple Watch (Cardinal Rule #2)</td><td class="ok">✓ untouched — stays dark, comms intact</td></tr>
+    <tr><td>LLM in coach paths (Cardinal Rule #1)</td><td class="ok">✓ zero — facts only</td></tr>
+  </table>
+
+  <h2 id="queue">What's left</h2>
+  <p>The mandate — a gutted, graphic, paper-correct app, live on web and iPhone — is met. These are the open threads, none blocking:</p>
+
+  <div class="item med">
+    <span class="tag">queued · #130</span>
+    <h4>Persona smoke-verify of /today</h4>
+    <p>The build is green and the audit is clean by inspection, but I have not driven all eight persona states through the live paper skin visually. Worth a screenshot pass to catch any state-specific contrast edge a static grep can't see — e.g. a gradient card whose overlaid text wants a nudge on warm paper.</p>
+  </div>
+
+  <div class="item med">
+    <span class="tag">queued · #110</span>
+    <h4>Wire onboarding fields → BuildPlanInputs</h4>
+    <p>Carried in-progress from before the overhaul. Plan-builder plumbing, not a visual item.</p>
+  </div>
+
+  <div class="item low">
+    <span class="tag">your call · #127 / #128</span>
+    <h4>Two things only you can do</h4>
+    <ul>
+      <li><strong>APNs cert + Railway env + cron</strong> — notifications v1 code is in; it needs the production push cert and the scheduler env wired in the dashboard.</li>
+      <li><strong>Strava webhook subscribe</strong> — the one-time <code>curl</code> to register the subscription (needs your account).</li>
+    </ul>
+    <p>Both deferred to you deliberately — they touch credentials and dashboards I shouldn't.</p>
+  </div>
+
+  <div class="item low">
+    <span class="tag">note</span>
+    <h4>iOS font bundling</h4>
+    <p>Oswald / Inter fall back to system fonts until the TTFs are dropped into the iOS target's bundle resources (a one-time Xcode drag, documented in <code>Theme.swift</code>). The display recipe is already wired; it just inherits system bold until then.</p>
+  </div>
+
+  <h2 id="timeline">Timeline</h2>
+  <div class="timeline">
+    <div class="row"><div class="what">iOS editorial gut → build 100 (ea1b51a · e280d90)</div><div class="why">TODAY/PLAN/ME re-laid as spec-sheets; shipped to TestFlight, counter → 101.</div></div>
+    <div class="row"><div class="what">Web /today gut (ceaf50c)</div><div class="why">Card chrome flattened onto spec-sheet primitives.</div></div>
+    <div class="row"><div class="what">Web /plan + /me gut (d0bc2c4)</div><div class="why">Same flatten — ledger rows, tone edges, terminal rules.</div></div>
+    <div class="row"><div class="what">Web /health + /log + /races gut (94ddd80)</div><div class="why">The demoted surfaces brought onto the same ledger language.</div></div>
+    <div class="row"><div class="what">/runs/[id] internals swept (d61653f)</div><div class="why">Splits, zones, shoe picker, HR chart onto paper tokens.</div></div>
+    <div class="row"><div class="what">/today secondary layer swept (80cd229)</div><div class="why">Modals, body flags, coach &amp; recap cards, readiness sheet.</div></div>
+    <div class="row"><div class="what">Onboarding + profile + settings + training + modals (d1705e5)</div><div class="why">The last page surfaces + three latent-bug fixes.</div></div>
+    <div class="row"><div class="what">faff CSS-module stragglers + whole-tree audit (73601e8)</div><div class="why">The invisible white-on-paper text killed; every remaining dark value confirmed intentional.</div></div>
+  </div>
+
+  <p class="sub" style="margin-top:40px;">Open <a href="https://www.faff.run/today">faff.run</a> on the desktop and TestFlight build 100 on the phone. The cards are gone — it's a spec-sheet now, top to bottom, on both surfaces.</p>
+
+</div>
+</body>
+</html>
