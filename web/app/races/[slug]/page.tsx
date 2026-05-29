@@ -20,12 +20,12 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Caption } from '../../../components/nav';
-import { Topbar } from '../../components/Topbar';
-import { TopbarClock } from '../../components/TopbarClock';
 import { EmptyState, Skeleton } from '../../components/EmptyState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ModalOverlay, Modal, ModalHeader, ModalBody, ModalFooter } from '../../components/Modal';
+import { FaffPageShell } from '../../components/FaffPageShell';
+import { BCard } from '../../components/BCard';
+import { StatTrio } from '../../components/StatTrio';
 import { deleteRace, getRace, setActualResult, type ActualResult, type SavedRace } from '../../../lib/storage';
 import { autoSyncStrava } from '../../../lib/strava-auto';
 import { analyzeGpx, autoNamePhases, type CourseAnalysis } from '../../../lib/gpx-analysis';
@@ -33,6 +33,7 @@ import {
   RouteMap, ElevationProfile,
   SplitsTables, ChartsRow, SpacingAndDistance, Insights,
 } from '../../../components/CoursePreview';
+import { RaceDayTimeline } from '../../../components/races/RaceDayTimeline';
 
 const FT_PER_M = 3.28084;
 
@@ -109,47 +110,41 @@ export default function RaceDetailPage() {
 
   if (race === 'loading') {
     return (
-      <>
-        <Caption left="Runcino · races" right="LOADING…" />
-        <div className="stage">
-          <Topbar activeTab="races" clock={<TopbarClock />} />
-          <div className="body">
-            <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
-              <div className="card" style={{ gridColumn: 'span 12' }}>
-                <Skeleton width={120} height={11} style={{ marginBottom: 14 }} />
-                <Skeleton width={360} height={48} style={{ marginBottom: 18 }} />
-                <Skeleton height={280} />
-              </div>
-            </div>
-          </div>
+      <FaffPageShell
+        captionLeft="Runcino · races"
+        captionRight="LOADING…"
+        title="LOADING…"
+        eyebrow="Race detail"
+      >
+        <div className="card">
+          <Skeleton width={120} height={11} style={{ marginBottom: 14 }} />
+          <Skeleton width={360} height={48} style={{ marginBottom: 18 }} />
+          <Skeleton height={280} />
         </div>
-      </>
+      </FaffPageShell>
     );
   }
   if (!race) {
     return (
-      <>
-        <Caption left="Runcino · races" right="NOT FOUND" />
-        <div className="stage">
-          <Topbar activeTab="races" clock={<TopbarClock />} />
-          <div className="body">
-            <div className="row" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
-              <div className="card" style={{ gridColumn: 'span 12' }}>
-                <EmptyState
-                  variant="error"
-                  title="Race not found"
-                  body={<>No saved race for slug <code style={{ background: 'var(--l3)', padding: '1px 6px', borderRadius: 4 }}>{slug}</code>. It may have been deleted, or the link is wrong.</>}
-                  cta={
-                    <Link href="/races" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-                      ← BACK TO RACES
-                    </Link>
-                  }
-                />
-              </div>
-            </div>
-          </div>
+      <FaffPageShell
+        captionLeft="Runcino · races"
+        captionRight="NOT FOUND"
+        title="NOT FOUND"
+        eyebrow="Race detail"
+      >
+        <div className="card">
+          <EmptyState
+            variant="error"
+            title="Race not found"
+            body={<>No saved race for slug <code style={{ background: 'var(--l3)', padding: '1px 6px', borderRadius: 4 }}>{slug}</code>. It may have been deleted, or the link is wrong.</>}
+            cta={
+              <Link href="/races" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                ← BACK TO RACES
+              </Link>
+            }
+          />
         </div>
-      </>
+      </FaffPageShell>
     );
   }
   return <RaceDetailView
@@ -166,6 +161,14 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
     try { return analyzeGpx(race.gpxText); } catch { return null; }
   }, [race.gpxText]);
   const days = daysUntil(race.meta.date);
+  const priority = race.meta.priority ?? 'A';
+  // Race-day timeline gates: A-races only, T-7 forward and T-14 back.
+  // BriefingLoader / coach voice on the page stays unchanged for all
+  // priorities; the timeline is the only new race-week treatment.
+  const showRaceDayTimeline = priority === 'A' && days <= 7 && days >= -14;
+  // Race-week chrome: when within race week, lean into the racing
+  // gradient on the countdown chip; otherwise it's a calmer dist tone.
+  const isRaceWeek = days >= 0 && days <= 7;
   // Distance still leans on the saved plan for canonical race distance
   // (e.g. user picked "Half marathon" in the form). Falls back to the
   // analyzer when missing.
@@ -207,13 +210,23 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
     URL.revokeObjectURL(url);
   }
 
+  // Eyebrow under the FaffPageShell title — race essentials line.
+  const eyebrowText = [
+    formatRaceDistanceLabel(race.meta.distanceMi),
+    fmtDate(race.meta.date),
+    priorityLabel(priority, days),
+  ].filter(Boolean).join(' · ');
+
   return (
     <>
-      <Caption left={`Runcino · ${race.meta.name}`} right={`${race.meta.distanceMi.toFixed(1)} MI · GOAL ${race.meta.goalDisplay}`} />
-      <div className="stage">
-        <Topbar activeTab="races" clock={<TopbarClock />} />
-        <div className="body">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+      <FaffPageShell
+        captionLeft={`Runcino · ${race.meta.name}`}
+        captionRight={`${race.meta.distanceMi.toFixed(1)} MI · GOAL ${race.meta.goalDisplay}`}
+        title={race.meta.name.toUpperCase()}
+        eyebrow={eyebrowText}
+        accent={<RaceCountdownAccent days={days} isRaceWeek={isRaceWeek} />}
+      >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Link href="/races" style={{
               fontFamily: 'var(--f-data)', fontSize: 11, letterSpacing: '.12em',
               textTransform: 'uppercase', color: 'var(--t2)', fontWeight: 700,
@@ -255,6 +268,23 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
             onConfirm={async () => { await onDelete(); }}
             onCancel={() => setConfirmingDelete(false)}
           />
+
+          {/* Race-day timeline — A-races within race week + debrief window
+              only. Sits ABOVE the deep poster so when the day matters,
+              the arc dominates the page; outside the window it shows
+              the locked state (or is hidden entirely for B/C races). */}
+          {showRaceDayTimeline && (
+            <RaceDayTimeline race={race} daysUntil={days} />
+          )}
+
+          {/* Headline stats trio · v3 design contract.
+              goal time · distance · elevation (+ rolls to result on debrief).
+              Sits directly under the page band, above the deep PosterCard
+              so the at-a-glance numbers don't require scrolling past the
+              map. */}
+          {analysis && (
+            <RaceStatTrio race={race} analysis={analysis} days={days} />
+          )}
 
           {analysis ? (
             <PosterCard
@@ -314,25 +344,103 @@ function RaceDetailView({ race, onDelete, onUpdated }: { race: SavedRace; onDele
           )}
 
           {analysis && (
-            <section style={{ marginTop: 18 }}>
-              <div style={{
-                fontSize: 11, color: 'var(--color-t3)',
-                fontFamily: 'var(--font-data)', letterSpacing: '1.6px',
-                fontWeight: 700, textTransform: 'uppercase', marginBottom: 12,
-              }}>Course detail</div>
+            <BCard
+              header={{ label: 'Course detail', value: `${analysis.stats.gainFt.toFixed(0)} ft gain`, valueColor: 'race' }}
+              footnote="Deep stats derived from the uploaded GPX trace · grade-adjusted via the Minetti curve."
+            >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 <SplitsTables analysis={analysis} />
                 <ChartsRow analysis={analysis} />
                 <SpacingAndDistance analysis={analysis} />
                 <Insights analysis={analysis} />
               </div>
-            </section>
+            </BCard>
           )}
 
           <ExportFooter race={enrichedRace} onDownload={downloadJson} />
-        </div>
-      </div>
+      </FaffPageShell>
     </>
+  );
+}
+
+/* ── Helpers for the FaffPageShell header ──────────────────────────
+   Eyebrow text + the right-side accent chip. Keep these small and
+   beside the view so the file stays scannable. */
+
+function formatRaceDistanceLabel(mi: number): string {
+  if (Math.abs(mi - 26.2188) < 0.05) return 'Marathon';
+  if (Math.abs(mi - 13.1094) < 0.05) return 'Half marathon';
+  if (Math.abs(mi - 6.2137) < 0.05) return '10K';
+  if (Math.abs(mi - 3.1069) < 0.05) return '5K';
+  return `${mi.toFixed(1)} mi`;
+}
+
+/** Priority + days copy: "80 DAYS · A-RACE" / "RACE WEEK · A-RACE" /
+ *  "TUNE-UP" / "SOCIAL · 12 DAYS AGO". Eyebrows are always uppercased
+ *  via the .faff-eyebrow class so case here is irrelevant — readable
+ *  forms only. */
+function priorityLabel(priority: 'A' | 'B' | 'C', days: number): string {
+  const tier = priority === 'A' ? 'A-race' : priority === 'B' ? 'Tune-up' : 'Social';
+  if (days > 0) return tier;
+  if (days === 0) return `${tier} · race day`;
+  return tier;
+}
+
+function RaceCountdownAccent({ days, isRaceWeek }: { days: number; isRaceWeek: boolean }) {
+  const isPast = days < 0;
+  const label = isPast
+    ? (Math.abs(days) === 1 ? 'day ago' : 'days ago')
+    : isRaceWeek
+      ? (days === 0 ? 'today' : days === 1 ? 'day to go' : 'days to go')
+      : (days === 1 ? 'day' : 'days');
+  return (
+    <span className="race-countdown-chip">
+      <span className="n">{Math.abs(days)}</span>
+      <span className="u">{label}</span>
+    </span>
+  );
+}
+
+/* ── StatTrio · v3 contract for headline numbers ───────────────────
+   Two flavors:
+     pre-race  → goal time · distance · elevation
+     debrief   → finish time · pace · vs goal (delta)
+   Sits directly under the FaffPageShell band so the at-a-glance
+   numbers don't require scrolling past the PosterCard map. */
+function RaceStatTrio({ race, analysis, days }: { race: SavedRace; analysis: CourseAnalysis; days: number }) {
+  const totalMi = race.plan.race.distance_mi ?? analysis.stats.totalDistM / 1609.344;
+  const totalGainFt = analysis.stats.gainFt;
+  const result = race.actualResult;
+  const isDebrief = days < 0 && result != null;
+
+  if (isDebrief) {
+    const goalDeltaSec = result.finishS - race.plan.goal.finish_time_s;
+    const deltaColor = goalDeltaSec <= 0 ? 'green' as const : 'over' as const;
+    return (
+      <StatTrio
+        stats={[
+          { label: 'Finish', value: result.finishDisplay, valueColor: 'green' },
+          { label: 'Avg pace', value: `${result.paceDisplay}/mi` },
+          {
+            label: `vs goal ${race.meta.goalDisplay.replace(/:00$/, '')}`,
+            value: goalDeltaSec === 0
+              ? '±0'
+              : (goalDeltaSec > 0 ? '+' : '−') + fmtTimeShort(Math.abs(goalDeltaSec)),
+            valueColor: deltaColor,
+          },
+        ]}
+      />
+    );
+  }
+
+  return (
+    <StatTrio
+      stats={[
+        { label: 'Goal time', value: race.meta.goalDisplay.replace(/^0?:?/, '').replace(/:00$/, ''), valueColor: 'race' },
+        { label: 'Distance', value: `${totalMi.toFixed(1)} mi`, valueColor: 'dist' },
+        { label: 'Elevation', value: `+${Math.round(totalGainFt)} ft` },
+      ]}
+    />
   );
 }
 

@@ -1844,3 +1844,58 @@ h1, h2, h3, h4 {
 .imminent-race::after { background:radial-gradient(circle, rgba(255,255,255,.10), transparent 65%); }
 .imminent-race .card-l { color:rgba(255,255,255,.85) !important; }
 
+/* ── FaffPageShell band ────────────────────────────────────────────────
+   The shared title band used by every secondary surface (races, training,
+   health, profile, log). Eyebrow + display-recipe title row + optional
+   right-side accent slot. Mirrors design/tokens/typography.css display
+   recipe — Oswald 700, -0.015em tracking, 0.86 line-height. */
+.faff-band {
+  display:flex; flex-direction:column; gap:8px;
+  padding:18px 0 24px;
+  margin-bottom:8px;
+  border-bottom:1px solid var(--l4);
+}
+.faff-eyebrow {
+  font-family:var(--f-data);
+  font-size:11px; font-weight:700;
+  letter-spacing:1.8px; text-transform:uppercase;
+  color:var(--mute);
+}
+.faff-title-row {
+  display:flex; align-items:flex-end; gap:24px;
+  justify-content:space-between;
+  flex-wrap:wrap;
+}
+.faff-title {
+  font-family:var(--f-display);
+  font-weight:700;
+  font-size:clamp(56px, 8vw, 96px);
+  letter-spacing:-.015em;
+  line-height:.86;
+  margin:0;
+  text-transform:uppercase;
+  color:var(--ink);
+}
+.faff-accent { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.faff-content { display:flex; flex-direction:column; gap:16px; padding-top:8px; }
+
+/* ── Race countdown chip · used as accent on /races/[slug] ─────── */
+.race-countdown-chip {
+  display:inline-flex; align-items:baseline; gap:8px;
+  padding:10px 16px;
+  border-radius:99px;
+  background:rgba(255,87,34,.16);
+  border:1px solid rgba(255,87,34,.40);
+  color:var(--race);
+  font-family:var(--f-display);
+}
+.race-countdown-chip .n {
+  font-size:22px; font-weight:700; letter-spacing:0.3px;
+  font-variant-numeric:tabular-nums;
+}
+.race-countdown-chip .u {
+  font-family:var(--f-data);
+  font-size:10px; font-weight:700;
+  letter-spacing:1.6px; text-transform:uppercase;
+  color:var(--race);
+}
