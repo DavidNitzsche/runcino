@@ -107,6 +107,51 @@ Three things only Claude can't do. You handle them in their respective dashboard
 
 ---
 
+## 4. Strava webhook
+
+**What it does.** Strava's Push API delivers `activity.create` / `activity.update` / `activity.delete` / `athlete:update` events to Faff seconds after a run finishes — replaces the next-page-load poll-based sync. Strava enforces ONE subscription per app (client_id), so this is a one-time post-deploy registration, not per-user.
+
+**Callback URL Faff exposes:**
+`https://www.faff.run/api/strava/webhook`
+
+GET handles the verification handshake (echoes `hub.challenge` only when `hub.verify_token` matches the stored row — else 403). POST receives events, audit-logs into `strava_webhook_events`, and returns 200 in under 100 ms while the processor runs in the background.
+
+**One-time setup (after every Railway redeploy that involves the webhook code paths only if the subscription was lost):**
+
+| Step | Where | How |
+|---|---|---|
+| **1. Confirm callback is live** | curl | `curl 'https://www.faff.run/api/strava/webhook?hub.mode=subscribe&hub.verify_token=test&hub.challenge=abc123'` → 403 (no row yet) |
+| **2. Subscribe** | POST to admin endpoint | `curl -X POST https://www.faff.run/api/admin/strava-webhook -H 'Content-Type: application/json' -d '{"action":"subscribe"}'` — server mints a random verify_token, registers with Strava, stores the subscription_id |
+| **3. Confirm subscription** | GET | `curl https://www.faff.run/api/admin/strava-webhook` → `{ state: 'active', subscription_id, events_received: 0 }` |
+| **4. Watch for first event** | GET after a run | `events_received` increments seconds after any Strava-connected user finishes a run |
+
+**If the subscription is lost** (Strava revokes during an extended outage, or a callback URL change): re-subscribe via the admin endpoint. There's no auto-restore — webhooks coexist with the existing pull paths, so a lost subscription means runs land on next-page-load instead of seconds later. Not fatal.
+
+**Rotating the verify_token.** If the verify_token leaks (it shouldn't — never logged, never echoed in API responses, never in the callback URL):
+1. POST `{ action: 'unsubscribe' }` — tears down the Strava subscription + local row
+2. POST `{ action: 'subscribe' }` — mints a fresh 32-byte token, re-registers
+3. Strava sends a fresh GET handshake; the new token matches the new stored row
+
+**The athlete deauthorize event.** When a user revokes Faff in their Strava settings (Strava website → Settings → My Apps), Strava sends `object_type=athlete`, `aspect_type=update`, `updates: { authorized: 'false' }`. The processor marks `connector_tokens.disconnected_at` so the in-app "Reconnect Strava" UI fires next time the user opens Faff. No manual action needed.
+
+**If a deploy breaks the webhook:** the subscription survives (Strava doesn't care that the route 500s — it just retries up to 3 times). Symptoms: `strava_webhook_events` rows with `process_status='error'`. Fix the code, redeploy, then re-process by re-fetching the activities via /api/v3/activities/{id} manually (the bulk pull script in `scripts/` can be aimed at the last N hours).
+
+**Manual ops (your hands only):**
+
+| Action | Where | How |
+|---|---|---|
+| **Initial subscribe (one-time post-deploy)** | Local terminal | `curl -X POST https://www.faff.run/api/admin/strava-webhook -H 'Content-Type: application/json' -d '{"action":"subscribe"}'` |
+| **Check subscription state** | Local terminal | `curl https://www.faff.run/api/admin/strava-webhook` |
+| **Unsubscribe + re-subscribe (verify_token rotation)** | Local terminal | POST `{"action":"unsubscribe"}` then POST `{"action":"subscribe"}` |
+| **Inspect Strava's view** | Local terminal | `curl -G https://www.strava.com/api/v3/push_subscriptions -d client_id=$STRAVA_CLIENT_ID -d client_secret=$STRAVA_CLIENT_SECRET` |
+
+**If Claude says "subscribe the webhook":**
+1. Run the curl above
+2. Confirm response shows `{ ok: true, subscription_id: <number> }`
+3. Tell Claude the subscription_id; Claude verifies via GET
+
+---
+
 ## How Claude hands off to you
 
 For any of the three above, Claude provides in chat:
