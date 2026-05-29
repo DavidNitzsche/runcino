@@ -40,7 +40,7 @@
 
 import { TopNav } from '@/components/layout/TopNav';
 import { BriefingLoader } from '@/components/cards/BriefingLoader';
-import { loadGlanceState, type GlanceState } from '@/lib/coach/glance-state';
+import { loadGlanceState, type GlanceState, type GlanceWeekDay } from '@/lib/coach/glance-state';
 import {
   resolveDayState,
   buildPoster,
@@ -53,6 +53,8 @@ import {
   type PersonaKey,
 } from '@/lib/faff/personas';
 import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
+import { loadNextARace } from '@/lib/coach/race-lookup';
+import { pool } from '@/lib/db/pool';
 import { TodayClient } from './TodayClient';
 
 // Glance state is a handful of fast pg queries — page renders in ~200ms.
@@ -110,6 +112,54 @@ export default async function TodayPage({
         .then((s) => s.state)
         .catch(() => undefined);
 
+  // Phase 32 (2026-05-28) — BodyGrid per-state real content. Derive the
+  // slim per-state slices TodayClient needs.
+  const todayDay: GlanceWeekDay | null =
+    glance.weekDays.find((d) => d.date === glance.today) ?? null;
+  const tomorrowIso = nextDateIso(glance.today);
+  const tomorrowDay: GlanceWeekDay | null =
+    glance.weekDays.find((d) => d.date === tomorrowIso) ?? null;
+  const yesterdayIso = prevDateIso(glance.today);
+  const yesterdayDay: GlanceWeekDay | null =
+    glance.weekDays.find((d) => d.date === yesterdayIso) ?? null;
+
+  // Race slug — we have name + days but the slug lives a layer down.
+  // Best-effort lookup (race-lookup memoizes 60s). Suppressed in persona
+  // mode + only fires near a race so cold-path round-trip is bounded.
+  let nextARaceSlug: string | null = null;
+  if (!personaKey && glance.daysToARace != null && glance.daysToARace <= 14) {
+    const planRow = await pool
+      .query(
+        `SELECT race_id FROM training_plans
+          WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL
+          ORDER BY authored_iso DESC LIMIT 1`,
+        [DAVID_USER_ID],
+      )
+      .then((r) => r.rows[0])
+      .catch(() => null);
+    const race = await loadNextARace(
+      DAVID_USER_ID,
+      glance.today,
+      planRow?.race_id ?? null,
+    ).catch(() => null);
+    nextARaceSlug = race?.slug ?? null;
+  }
+
+  // Runner LTHR for the WorkoutBreakdown HR-ceiling chip. Best-effort —
+  // suppressed for personas, soft-fail to null. Component handles null.
+  let runnerLthrBpm: number | null = null;
+  if (!personaKey) {
+    runnerLthrBpm = await pool
+      .query(
+        `SELECT lthr FROM profile
+          WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
+          ORDER BY (user_uuid = $1) DESC LIMIT 1`,
+        [DAVID_USER_ID],
+      )
+      .then((r) => (r.rows[0]?.lthr != null ? Number(r.rows[0].lthr) : null))
+      .catch(() => null);
+  }
+
   // In persona mode, suppress the LLM briefing — BriefingLoader hits
   // Anthropic with the real user's data and doesn't know about the
   // simulated persona. Render a static placeholder instead so the
@@ -138,9 +188,31 @@ export default async function TodayPage({
         sleep7Avg={glance.sleep7Avg}
         rhrCurrent={glance.rhrCurrent}
         rhrBaseline={glance.rhrBaseline}
+        hrvCurrent={glance.hrvCurrent}
+        hrvBaseline={glance.hrvBaseline}
+        loadAcwr={glance.loadAcwr}
+        daysToARace={glance.daysToARace}
+        nextARaceName={glance.nextARaceName}
+        nextARaceSlug={nextARaceSlug}
+        runnerLthrBpm={runnerLthrBpm}
+        todayDay={todayDay}
+        tomorrowDay={tomorrowDay}
+        yesterdayDay={yesterdayDay}
       />
     </>
   );
+}
+
+/** Shift YYYY-MM-DD by ±1 day (UTC noon anchor avoids DST drift). */
+function nextDateIso(iso: string): string {
+  return new Date(Date.parse(iso + 'T12:00:00Z') + 86400000)
+    .toISOString()
+    .slice(0, 10);
+}
+function prevDateIso(iso: string): string {
+  return new Date(Date.parse(iso + 'T12:00:00Z') - 86400000)
+    .toISOString()
+    .slice(0, 10);
 }
 
 /**
