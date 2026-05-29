@@ -483,3 +483,150 @@ export function TickRule({
 export function SpecLabel({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return <span style={{ ...SPEC_LABEL, ...style }}>{children}</span>;
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// IntensityBar — proportional weighted effort segments. Each segment's
+// flex-grow is its share of the total weight; `emphatic` segments paint
+// full-tone, the rest sit faint (warm-up / cool-down vs. the actual work).
+// The phone's structure band, in one hairline strip.
+// ──────────────────────────────────────────────────────────────────────
+export interface IntensitySegment {
+  weight: number;
+  tone: StatusTone;
+  /** Full opacity (the work) vs. faint (warm-up / recovery). */
+  emphatic?: boolean;
+}
+
+export function IntensityBar({
+  segments,
+  height = 8,
+  gap = 2,
+  style,
+}: {
+  segments: IntensitySegment[];
+  height?: number;
+  gap?: number;
+  style?: CSSProperties;
+}) {
+  if (!segments.length) return null;
+  const total = Math.max(1, segments.reduce((a, s) => a + Math.max(0, s.weight), 0));
+  return (
+    <div aria-hidden style={{ display: 'flex', gap, height, width: '100%', ...style }}>
+      {segments.map((seg, i) => (
+        <span
+          key={i}
+          style={{
+            flexGrow: Math.max(0.0001, seg.weight) / total,
+            flexBasis: 0,
+            background: toneColor(seg.tone),
+            opacity: seg.emphatic ? 1 : 0.4,
+            borderRadius: 1,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// SpecRow — the hairline-ruled data row. The workhorse of every spec
+// sheet: caps label (left, optional status dot) · optional mono meta
+// (center) · Oswald display value + unit (right). Color rides the dot;
+// the value stays ink unless an explicit tone is passed ("color as
+// registration marks, not fills").
+// ──────────────────────────────────────────────────────────────────────
+export function SpecRow({
+  label,
+  value,
+  unit,
+  meta,
+  tone = 'mute',
+  dot,
+  valueSize = 22,
+  showRule = true,
+  onClick,
+  trailing,
+  style,
+}: {
+  label: string;
+  value?: ReactNode;
+  unit?: string;
+  meta?: string;
+  tone?: StatusTone;
+  dot?: StatusTone;
+  valueSize?: number;
+  showRule?: boolean;
+  onClick?: () => void;
+  trailing?: ReactNode;
+  style?: CSSProperties;
+}) {
+  const rowStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 12,
+    width: '100%',
+    padding: '11px 0',
+    background: 'transparent',
+    border: 'none',
+    borderTop: showRule ? '1px solid var(--line)' : 'none',
+    textAlign: 'left',
+    font: 'inherit',
+    color: 'inherit',
+    cursor: onClick ? 'pointer' : 'default',
+    ...style,
+  };
+  const inner = (
+    <>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 92, flexShrink: 0 }}>
+        {dot && <RegistrationDot tone={dot} size={7} />}
+        <span style={{ ...SPEC_LABEL, fontSize: 11, letterSpacing: '1.2px' }}>{label}</span>
+      </span>
+      {meta ? (
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontFamily: 'var(--f-label)',
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: '0.4px',
+            color: 'var(--dim)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {meta}
+        </span>
+      ) : (
+        <span style={{ flex: 1 }} />
+      )}
+      {value !== undefined && value !== null && (
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexShrink: 0 }}>
+          <span
+            className="tabular"
+            style={{
+              fontFamily: 'var(--f-display)',
+              fontWeight: 700,
+              fontSize: valueSize,
+              lineHeight: 1,
+              letterSpacing: '-0.01em',
+              color: tone === 'mute' || tone === 'none' ? 'var(--ink)' : toneColor(tone),
+            }}
+          >
+            {value}
+          </span>
+          {unit && <span style={{ ...SPEC_LABEL, fontSize: 10, letterSpacing: '1px' }}>{unit}</span>}
+          {trailing}
+        </span>
+      )}
+    </>
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} style={rowStyle}>
+      {inner}
+    </button>
+  ) : (
+    <div style={rowStyle}>{inner}</div>
+  );
+}

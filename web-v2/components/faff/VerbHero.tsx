@@ -70,13 +70,10 @@ export function VerbHero({ payload }: { payload: PosterPayload }) {
   return (
     <CropFrame
       inset={6}
-      tone="mute"
+      tone={tone}
+      arm={14}
       style={{
-        background: 'var(--card)',
-        border: '1px solid var(--line)',
-        borderRadius: 16,
-        boxShadow: 'var(--shadow-panel)',
-        padding: '26px 28px',
+        padding: '22px 14px 26px',
         display: 'flex',
         flexDirection: 'column',
         gap: 18,

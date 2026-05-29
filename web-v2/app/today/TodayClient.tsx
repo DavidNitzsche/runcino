@@ -922,10 +922,6 @@ function SickPlanStatus({ ctx }: { ctx: BodyContext }) {
         Resumes at easy when all three return gates clear. Recovery beats
         adherence in the illness window.
       </ProseRow>
-      <div style={{
-        fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)',
-        letterSpacing: 0.4, marginTop: 4,
-      }}>Cite · research/methodology/05-injury-return-protocols.md §1.4</div>
     </div>
   );
 }
@@ -989,10 +985,6 @@ function PhaseIntentProse({
         {typeLabel && <Chip>{typeLabel}</Chip>}
         {workoutMi != null && workoutMi > 0 && <Chip>{`${workoutMi.toFixed(1)} mi`}</Chip>}
       </div>
-      <div style={{
-        fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)',
-        letterSpacing: 0.4, marginTop: 4,
-      }}>Cite · Daniels Running Formula §VDOT</div>
     </div>
   );
 }
