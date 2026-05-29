@@ -523,4 +523,181 @@ enum FaffAdapter {
         }
         return date
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 7. Training / Plan-surface builders
+    //
+    // Mirrors the web /training surface (web-v2/app/training/page.tsx)
+    // which feeds three coordinated widgets — PhaseStrip, PlanArc (=
+    // VolumeArc on iPhone), and WeekAhead (= WeekAheadGrid on iPhone).
+    //
+    // Source of truth: web-v2/lib/coach/training-state.ts → TrainingState.
+    // On the iPhone, that loader's output ships as the `TrainingState`
+    // model in API.swift (decoded from /api/training/state). The rich
+    // PlanWeek shape the web surface uses is mirrored as
+    // `TrainingPlanWeek` on iPhone — NOT to be confused with the simpler
+    // Mon-Sun PlanWeek (/api/plan/week) that powers the /today
+    // WeekStrip. Both names exist on the iPhone side; these adapters
+    // accept the rich TrainingState (so we hit parity with the web).
+    //
+    // The instructions also asked for PlanWeek-keyed signatures as a
+    // fallback for the simpler shape. We provide both — TrainingState
+    // overloads carry full fidelity; PlanWeek overloads degrade to the
+    // best info available (e.g. a 5-block default phase strip flagged
+    // as approximation, since the simple shape lacks phase metadata).
+    // ──────────────────────────────────────────────────────────────────
+
+    // ── 7.1 PhaseStrip — derive blocks from the plan arc ──
+
+    /// Build the phase strip from the rich TrainingState. Phases ship
+    /// with explicit week-index ranges from the loader, so this is a
+    /// straight pass-through (preserving the canonical BASE → BUILD →
+    /// PEAK → TAPER → RACE order via PhaseStrip's own order constant).
+    static func buildPhaseStrip(state: TrainingState?) -> [PhaseBlock] {
+        guard let phases = state?.phases else { return defaultPhaseBlocks() }
+        // Empty phases (legacy plan before phase rows were generated) →
+        // 5-block default flagged as approximation.
+        if phases.isEmpty { return defaultPhaseBlocks() }
+        return phases.map {
+            PhaseBlock(
+                label: $0.label.uppercased(),
+                startWeekIdx: $0.startWeekIdx,
+                endWeekIdx: $0.endWeekIdx
+            )
+        }
+    }
+
+    /// PlanWeek fallback — the simpler Mon-Sun shape doesn't carry
+    /// phase metadata, so this returns the 5-block default. Documented
+    /// open gap (see file header comment).
+    static func buildPhaseStrip(plan: PlanWeek?) -> [PhaseBlock] {
+        // OPEN DATA GAP — PlanWeek (the simple Mon-Sun shape from
+        // /api/plan/week) doesn't carry plan_phases rows. The rich
+        // TrainingState from /api/training/state does. Until the
+        // /api/plan/week shape grows phase metadata, this fallback
+        // outputs the canonical 13-week marathon default.
+        return defaultPhaseBlocks()
+    }
+
+    /// Canonical default block layout — used when phase metadata isn't
+    /// available. Matches the implicit assumption in the instructions:
+    /// "Base 4wk · Build 4wk · Peak 3wk · Taper 1wk · Race 1wk".
+    private static func defaultPhaseBlocks() -> [PhaseBlock] {
+        // Week indices are 0-based inclusive ranges.
+        return [
+            PhaseBlock(label: "BASE",  startWeekIdx: 0,  endWeekIdx: 3),
+            PhaseBlock(label: "BUILD", startWeekIdx: 4,  endWeekIdx: 7),
+            PhaseBlock(label: "PEAK",  startWeekIdx: 8,  endWeekIdx: 10),
+            PhaseBlock(label: "TAPER", startWeekIdx: 11, endWeekIdx: 11),
+            PhaseBlock(label: "RACE",  startWeekIdx: 12, endWeekIdx: 12),
+        ]
+    }
+
+    /// Find the index INTO the returned `blocks` array that matches the
+    /// state's currentPhase label. PhaseStrip uses this to ring the
+    /// active pill.
+    static func currentPhaseBlockIdx(blocks: [PhaseBlock], currentPhase: String?) -> Int? {
+        guard let label = currentPhase?.uppercased() else { return nil }
+        return blocks.firstIndex(where: { $0.label.uppercased() == label })
+    }
+
+    // ── 7.2 VolumeArc — derive weekly mileage bars from the plan ──
+
+    /// Build the per-week volume bars from the rich TrainingState.
+    /// Each TrainingPlanWeek carries idx, phase, plannedMi, isCurrent —
+    /// exactly the four fields VolumeBar needs.
+    static func buildVolumeArc(state: TrainingState?) -> [VolumeBar] {
+        guard let weeks = state?.weeks else { return [] }
+        return weeks.map {
+            VolumeBar(
+                weekIdx: $0.idx,
+                plannedMi: $0.plannedMi,
+                phase: $0.phase,
+                isCurrent: $0.isCurrent
+            )
+        }
+    }
+
+    /// PlanWeek fallback — the simple Mon-Sun shape only describes ONE
+    /// week (the current one). It has no notion of the multi-week arc,
+    /// so we return an empty array rather than fabricate fake bars.
+    /// OPEN DATA GAP documented inline.
+    static func buildVolumeArc(plan: PlanWeek?) -> [VolumeBar] {
+        // OPEN DATA GAP — PlanWeek is the /api/plan/week shape (Mon-Sun
+        // for ONE week). The multi-week arc lives in TrainingState
+        // (/api/training/state). Don't fabricate the 12-13 weeks the
+        // web surface shows — return empty and let the view show
+        // nothing rather than a lie.
+        return []
+    }
+
+    // ── 7.3 WeekAheadGrid — 7-day rows w/ planned mi + type + target ──
+
+    /// Build the 7 day cards from the current week of the rich TrainingState.
+    /// The week is whichever TrainingPlanWeek carries isCurrent=true; if
+    /// none does (pre-plan), returns empty.
+    static func buildWeekAhead(state: TrainingState?) -> [WeekAheadDay] {
+        guard let weeks = state?.weeks else { return [] }
+        guard let current = weeks.first(where: { $0.isCurrent }) else { return [] }
+        return current.days.map { d in
+            let (pace, secondary) = paceTarget(for: d.type, label: d.label)
+            return WeekAheadDay(
+                date: d.date,
+                dow: d.dow,
+                plannedMi: d.mi,
+                type: d.type,
+                label: d.label,
+                doneMi: d.doneMi,
+                activityId: d.activityId,
+                paceTarget: pace,
+                secondaryTarget: secondary
+            )
+        }
+    }
+
+    /// PlanWeek (simple Mon-Sun) fallback. Has the day list but lacks
+    /// activity_id / done_mi field naming consistency — those map cleanly
+    /// since the API responses converged in Phase 17. Open gap: no
+    /// prescription pace, so we fall back to type-based defaults
+    /// (same as web's `targetFor()`).
+    static func buildWeekAhead(plan: PlanWeek?) -> [WeekAheadDay] {
+        guard let days = plan?.days else { return [] }
+        return days.map { d in
+            let (pace, secondary) = paceTarget(for: d.type, label: d.sub_label)
+            return WeekAheadDay(
+                date: d.date_iso,
+                dow: d.dow,
+                plannedMi: d.distance_mi,
+                type: d.type,
+                label: d.sub_label,
+                doneMi: d.done_mi ?? 0,
+                activityId: d.completedRunId,
+                paceTarget: pace,
+                secondaryTarget: secondary
+            )
+        }
+    }
+
+    /// Type-based pace target placeholders. Mirrors `targetFor()` in
+    /// web-v2/components/training/WeekAhead.tsx — same dictionary, same
+    /// strings.
+    ///
+    /// OPEN DATA GAP — the web surface upgrades these placeholders by
+    /// pre-fetching /api/prescription per planned day (see WeekAhead's
+    /// `presByDate` effect), then pulling pace + HR off the work step.
+    /// iOS doesn't yet wire that fetch — adapter consumers get the same
+    /// type-based defaults the web showed before P-TILE-PRES-DRIFT.
+    private static func paceTarget(for type: String, label: String?) -> (String, String) {
+        switch type.lowercased() {
+        case "easy":      return ("9:00 /mi", "HR < 140")
+        case "long":      return ("8:50 /mi", "HR < 145 · fuel @45'")
+        case "threshold": return ("6:48 /mi", label ?? "T pace")
+        case "tempo":     return ("6:35 /mi", label ?? "tempo")
+        case "intervals": return ("3:45 /K",  label ?? "intervals")
+        case "race":      return ("race effort", label ?? "race day")
+        case "rest":      return ("sleep +1h", "recovery day")
+        case "shakeout":  return ("9:30 /mi", "easy & short")
+        default:          return ("—", "")
+        }
+    }
 }
