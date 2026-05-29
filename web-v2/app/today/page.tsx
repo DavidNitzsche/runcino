@@ -133,6 +133,11 @@ export default async function TodayPage({
         errorSlot={glanceError ? <ErrorChip message={glanceError} /> : null}
         activePersona={personaKey}
         stravaStatus={stravaStatus}
+        activeNiggle={glance.activeNiggle}
+        activeSick={glance.activeSick}
+        sleep7Avg={glance.sleep7Avg}
+        rhrCurrent={glance.rhrCurrent}
+        rhrBaseline={glance.rhrBaseline}
       />
     </>
   );

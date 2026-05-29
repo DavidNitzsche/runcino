@@ -55,6 +55,27 @@ export interface GlanceState {
   // (planned), missed (passive), sick/niggle (health). Drives the `skipped`
   // DayState in lib/faff/glance-adapter.ts → resolveDayState().
   todaySkipped: boolean;
+  // Niggle + Sick logging (P-NIGGLE-SICK, 2026-05-28). Rows live in
+  // `niggles` (mig 116) + `sick_episodes` (mig 117). The active row (most
+  // recent WHERE cleared_at IS NULL) drives the `niggle` / `sick` DayState
+  // in resolveDayState. days_active is computed from logged_at.
+  activeNiggle: {
+    id: number;
+    body_part: string;
+    severity: number;
+    side: 'left' | 'right' | 'both' | null;
+    status: 'just_started' | 'few_days' | 'weeks';
+    logged_at: string;
+    days_active: number;
+  } | null;
+  activeSick: {
+    id: number;
+    symptoms: string[];
+    has_fever: boolean;
+    started: 'today' | 'yesterday' | 'few_days' | 'week_plus';
+    logged_at: string;
+    days_active: number;
+  } | null;
 }
 
 export async function loadGlanceState(userId: string): Promise<GlanceState> {
@@ -268,6 +289,53 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   ).catch(() => ({ rows: [] as any[] }));
   const todaySkipped = skipRow.rows.length > 0;
 
+  // Niggle + Sick (P-NIGGLE-SICK, 2026-05-28). Two LIMIT-1 point reads
+  // against migrations 116/117. Partial indexes on (user_id, logged_at DESC)
+  // WHERE cleared_at IS NULL keep this ~O(1). Silent degrade to null if
+  // tables don't exist yet so the loader doesn't hard-fail.
+  const niggleRow = await pool.query(
+    `SELECT id, body_part, side, severity, status, logged_at,
+            EXTRACT(EPOCH FROM (now() - logged_at)) / 86400.0 AS days_active
+       FROM niggles
+      WHERE user_id = $1 AND cleared_at IS NULL
+      ORDER BY logged_at DESC
+      LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as any[] }));
+  const activeNiggle = niggleRow.rows[0]
+    ? {
+        id: Number(niggleRow.rows[0].id),
+        body_part: String(niggleRow.rows[0].body_part),
+        severity: Number(niggleRow.rows[0].severity),
+        side: niggleRow.rows[0].side ?? null,
+        status: niggleRow.rows[0].status,
+        logged_at: new Date(niggleRow.rows[0].logged_at).toISOString(),
+        days_active: Math.floor(Number(niggleRow.rows[0].days_active) || 0),
+      }
+    : null;
+
+  const sickRow = await pool.query(
+    `SELECT id, symptoms, started, has_fever, logged_at,
+            EXTRACT(EPOCH FROM (now() - logged_at)) / 86400.0 AS days_active
+       FROM sick_episodes
+      WHERE user_id = $1 AND cleared_at IS NULL
+      ORDER BY logged_at DESC
+      LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as any[] }));
+  const activeSick = sickRow.rows[0]
+    ? {
+        id: Number(sickRow.rows[0].id),
+        symptoms: Array.isArray(sickRow.rows[0].symptoms)
+          ? sickRow.rows[0].symptoms
+          : [],
+        has_fever: Boolean(sickRow.rows[0].has_fever),
+        started: sickRow.rows[0].started,
+        logged_at: new Date(sickRow.rows[0].logged_at).toISOString(),
+        days_active: Math.floor(Number(sickRow.rows[0].days_active) || 0),
+      }
+    : null;
+
   const readiness = computeReadiness({
     today, user_id: userId,
     profile: prof ?? null,
@@ -299,5 +367,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     daysToARace, nextARaceName,
     readiness,
     todaySkipped,
+    activeNiggle,
+    activeSick,
   };
 }

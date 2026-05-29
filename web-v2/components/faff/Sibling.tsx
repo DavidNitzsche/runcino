@@ -4,13 +4,17 @@
  * Sibling · the dark dashboard card next to the Poster.
  * Spec: design/components/Sibling.md
  *
- * Composes title + (CoachVoice OR prose, never both) + MiniTileGrid.
+ * Composes title + (CoachVoice OR prose, never both) + MiniTileGrid +
+ * optional bodyFlags slot (entry chips for niggle/sick logging, deck
+ * docs/2026-05-28-niggle-sick-logging.html §SECTION 01).
+ *
  * The Sibling is state-keyed — the resolver's `SiblingPayload` is a
  * tagged union over `state`, and per-state shape determines what's
  * present (e.g. `bail_trigger` on `niggle`, `recommendation` on
  * `missed`, `completion_pct` on `new_user`, etc.).
  */
 
+import type { ReactNode } from 'react';
 import type { SiblingPayload } from '@/lib/faff/types';
 import { MiniTileGrid } from './MiniTileGrid';
 import { CoachVoice, type CoachVoicePayload } from './CoachVoice';
@@ -26,6 +30,17 @@ export interface SiblingProps {
    * don't carry the slot.
    */
   voice?: CoachVoicePayload;
+  /**
+   * Optional · niggle/sick entry chips rendered directly under the
+   * MiniTileGrid. The page wires the chip pair through here. Keeps
+   * the Sibling generic — it just renders the slot if present.
+   *
+   * Per deck §SECTION 01 the entry pair (LOG A NIGGLE · FEELING SICK)
+   * lives below the tile grid where the runner is already reading the
+   * body signal. When a niggle/sick is active the chip label flips to
+   * UPDATE per state.
+   */
+  bodyFlags?: ReactNode;
 }
 
 function siblingProse(payload: SiblingPayload): string | undefined {
@@ -58,7 +73,7 @@ function siblingActionTileIndex(payload: SiblingPayload): number | undefined {
   return undefined;
 }
 
-export function Sibling({ payload, voice }: SiblingProps) {
+export function Sibling({ payload, voice, bodyFlags }: SiblingProps) {
   const prose = siblingProse(payload);
   const actionTileIndex = siblingActionTileIndex(payload);
 
@@ -86,6 +101,10 @@ export function Sibling({ payload, voice }: SiblingProps) {
       ) : null}
 
       <MiniTileGrid tiles={payload.tiles} actionTileIndex={actionTileIndex} />
+
+      {/* Optional · niggle/sick entry chip pair (or recovery row) lives
+          directly under the tile grid per deck §SECTION 01. */}
+      {bodyFlags}
     </section>
   );
 }

@@ -226,6 +226,8 @@ function david(): GlanceState {
     nextARaceName: "America's Finest City",
     readiness: readinessReady(83),
     todaySkipped: false,
+    activeNiggle: null,
+    activeSick: null,
   };
 }
 
@@ -264,6 +266,8 @@ function lilian(): GlanceState {
     nextARaceName: null,
     readiness: readinessUnknown(),
     todaySkipped: false,
+    activeNiggle: null,
+    activeSick: null,
   };
 }
 
@@ -300,6 +304,8 @@ function tyler(): GlanceState {
     nextARaceName: 'Brooklyn Half',
     readiness: readinessSharp(88),
     todaySkipped: false,
+    activeNiggle: null,
+    activeSick: null,
   };
 }
 
@@ -340,6 +346,15 @@ function sarah(): GlanceState {
     nextARaceName: 'Chicago Marathon',
     readiness: readinessPullBack(38),
     todaySkipped: false,
+    activeNiggle: null,
+    activeSick: {
+      id: 999001,
+      symptoms: ['head_cold', 'fever', 'fatigue'],
+      has_fever: true,
+      started: 'few_days',
+      logged_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+      days_active: 2,
+    },
   };
 }
 
@@ -377,6 +392,16 @@ function marcus(): GlanceState {
     nextARaceName: 'Portland Half',
     readiness: readinessModerate(64),
     todaySkipped: false,
+    activeNiggle: {
+      id: 999002,
+      body_part: 'hamstring',
+      severity: 3,
+      side: 'left',
+      status: 'few_days',
+      logged_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+      days_active: 2,
+    },
+    activeSick: null,
   };
 }
 
@@ -414,6 +439,8 @@ function helen(): GlanceState {
     nextARaceName: 'Lake Tahoe Marathon',
     readiness: readinessModerate(68),
     todaySkipped: false,
+    activeNiggle: null,
+    activeSick: null,
   };
 }
 
@@ -451,6 +478,8 @@ function alex(): GlanceState {
     nextARaceName: 'Long Beach Half',
     readiness: readinessSharp(91),
     todaySkipped: false,
+    activeNiggle: null,
+    activeSick: null,
   };
 }
 
@@ -488,5 +517,7 @@ function maya(): GlanceState {
     nextARaceName: 'Big Sur Marathon',
     readiness: readinessReady(78),
     todaySkipped: true,
+    activeNiggle: null,
+    activeSick: null,
   };
 }

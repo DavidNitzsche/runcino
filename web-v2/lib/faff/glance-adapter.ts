@@ -73,6 +73,15 @@ export function resolveDayState(glance: GlanceState | null): DayState {
   // P-SKIP 2026-05-28 · see lib/coach/glance-state.ts → todaySkipped.
   if (glance.todaySkipped) return 'skipped';
 
+  // 2c. sick / niggle · runner-logged health flags.
+  // P-NIGGLE-SICK 2026-05-28. Sick takes precedence over niggle (illness
+  // pauses the plan; niggle modifies but doesn't pause). Both sit AFTER
+  // skipped and DEFER to race_week (T-7..T-0 takeover is sacred per
+  // design/resolver/states.md §02), but TAKE PRECEDENCE over the base-4
+  // so the health-aware surface wins over the original easy/quality/long.
+  if (glance.activeSick) return 'sick';
+  if (glance.activeNiggle) return 'niggle';
+
   const today = glance.weekDays.find((d) => d.date === glance.today);
   if (!today) return 'easy';
 
@@ -574,22 +583,105 @@ export function buildSibling(glance: GlanceState, state: DayState): SiblingPaylo
         tiles,
         prose: 'Volume drops, intensity stays sharp. Trust the taper.',
       };
-    case 'niggle':
+    case 'niggle': {
+      const n = glance.activeNiggle;
+      // Niggle-specific tiles: SEVERITY · DAYS ACTIVE · LAST RUN · BAIL
+      // per the deck §SECTION 04 mockup. Body tiles drop off — focus is
+      // the niggle, not the body baseline.
+      const niggleTiles: MiniTile[] = n
+        ? [
+            {
+              label: 'SEVERITY',
+              value: String(n.severity),
+              valueColor: n.severity <= 3 ? 'amber' : 'over',
+              meta: 'out of 10',
+              dot: n.severity <= 3 ? 'amber' : 'over',
+            },
+            {
+              label: 'DAYS ACTIVE',
+              value: String(n.days_active),
+              meta: n.days_active >= 7 ? 'see a physio' : '→ physio at 7',
+              dot: n.days_active >= 7 ? 'over' : 'green',
+            },
+            {
+              label: 'BODY PART',
+              value: formatBodyPart(n.body_part, n.side),
+              meta: n.status === 'just_started' ? 'just started'
+                : n.status === 'few_days' ? 'few days now' : 'weeks of it',
+              dot: 'green',
+            },
+            {
+              label: 'BAIL TRIGGER',
+              value: '5/10',
+              valueColor: 'over',
+              meta: 'or post-mile-2 pain',
+              dot: 'over',
+            },
+          ]
+        : tiles;
+      const physioCue =
+        n && n.days_active >= 7
+          ? ' Past day 7 is where coach guidance ends and clinical input begins.'
+          : '';
       return {
         state,
         title,
-        tiles,
-        prose: 'Listen to it. The body is the signal.',
+        tiles: niggleTiles,
+        prose: n
+          ? `Grade ${n.severity}/10 · ${formatBodyPart(n.body_part, n.side).toLowerCase()} · day ${n.days_active + 1}. Listen to it. Bail if grade jumps to 5 or pain doesn't fade after mile 2.${physioCue}`
+          : 'Listen to it. The body is the signal.',
         bail_trigger: 'pain > 4/10',
       };
-    case 'sick':
+    }
+    case 'sick': {
+      const s = glance.activeSick;
+      // Sick-specific tiles: FEVER · SLEEP · RHR · PLAN per deck §SECTION 05
+      const sickTiles: MiniTile[] = s
+        ? [
+            {
+              label: 'FEVER',
+              value: s.has_fever ? 'YES' : 'NO',
+              valueColor: s.has_fever ? 'over' : 'green',
+              meta: s.has_fever ? 'do not run' : 'fever-free',
+              dot: s.has_fever ? 'over' : 'green',
+            },
+            {
+              label: 'SLEEP',
+              value: glance.sleep7Avg != null ? glance.sleep7Avg.toFixed(1) : '—',
+              valueUnit: 'h',
+              meta: 'body asking',
+              dot: 'amber',
+            },
+            {
+              label: 'RHR',
+              value: glance.rhrCurrent != null ? String(glance.rhrCurrent) : '—',
+              valueColor: glance.rhrCurrent != null && glance.rhrBaseline != null
+                && glance.rhrCurrent - glance.rhrBaseline >= 5 ? 'over' : 'default',
+              meta: glance.rhrCurrent != null && glance.rhrBaseline != null
+                ? `${glance.rhrCurrent - glance.rhrBaseline >= 0 ? '+' : ''}${glance.rhrCurrent - glance.rhrBaseline} vs base`
+                : '—',
+              dot: glance.rhrCurrent != null && glance.rhrBaseline != null
+                && glance.rhrCurrent - glance.rhrBaseline >= 5 ? 'over' : 'green',
+            },
+            {
+              label: 'PLAN',
+              value: 'PAUSED',
+              meta: 'until you mark recovered',
+              dot: 'none',
+            },
+          ]
+        : tiles;
+      const symptomList = s ? s.symptoms.map(humanSymptom).join(' · ') : '';
       return {
         state,
         title,
-        tiles,
-        prose: 'Plan paused. Resumes at easy when you mark recovered.',
+        tiles: sickTiles,
+        prose: s
+          ? `Day ${s.days_active + 1} · ${symptomList || 'illness logged'}. Plan paused. Returns to easy when fever-free for 24h and RHR within 5 bpm of baseline.`
+          : 'Plan paused. Resumes at easy when you mark recovered.',
         return_condition: 'no fever 24h + RHR within baseline',
       };
+    }
     case 'missed':
       return {
         state,
@@ -793,6 +885,33 @@ export function buildWeekStrip(glance: GlanceState): WeekStripPayload {
 function formatMi(mi: number): string {
   if (mi <= 0) return '0';
   return mi.toFixed(mi % 1 === 0 ? 0 : 1);
+}
+
+function formatBodyPart(
+  bodyPart: string,
+  side: 'left' | 'right' | 'both' | null,
+): string {
+  const part = bodyPart
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace('It Band', 'ITB');
+  if (!side) return part;
+  if (side === 'both') return `Both ${part.toLowerCase()}s`;
+  return `${side === 'left' ? 'L' : 'R'} ${part.toLowerCase()}`;
+}
+
+function humanSymptom(s: string): string {
+  switch (s) {
+    case 'head_cold': return 'head cold';
+    case 'chest': return 'chest congestion';
+    case 'fever': return 'fever';
+    case 'gi': return 'GI';
+    case 'aches': return 'body aches';
+    case 'fatigue': return 'fatigue';
+    case 'voice': return 'lost voice';
+    case 'other': return 'other';
+    default: return s;
+  }
 }
 
 function dowMonthDay(iso: string | undefined): string {

@@ -31,6 +31,7 @@ import { WeekStrip } from '@/components/faff/WeekStrip';
 import { BodyGrid } from '@/components/faff/BodyGrid';
 import { BCard } from '@/components/faff/BCard';
 import { ReconnectBanner } from '@/components/strava/ReconnectBanner';
+import { BodyFlags } from '@/components/today/BodyFlags';
 
 export interface TodayClientProps {
   poster: PosterPayload;
@@ -48,6 +49,23 @@ export interface TodayClientProps {
   // first paint when the user's most-recent push 401'd. The banner refetches
   // /api/strava/status on mount to keep it live.
   stravaStatus?: 'connected' | 'needs_reauth' | 'disconnected';
+  // P-NIGGLE-SICK 2026-05-28 · niggle/sick state + recovery signals for
+  // the BodyFlags chip pair under the Sibling. Pulled from the loaded
+  // GlanceState by the page (real or persona).
+  activeNiggle: {
+    id: number; body_part: string; severity: number;
+    side: 'left' | 'right' | 'both' | null;
+    status: 'just_started' | 'few_days' | 'weeks';
+    logged_at: string; days_active: number;
+  } | null;
+  activeSick: {
+    id: number; symptoms: string[]; has_fever: boolean;
+    started: 'today' | 'yesterday' | 'few_days' | 'week_plus';
+    logged_at: string; days_active: number;
+  } | null;
+  sleep7Avg: number | null;
+  rhrCurrent: number | null;
+  rhrBaseline: number | null;
 }
 
 export function TodayClient({
@@ -60,6 +78,11 @@ export function TodayClient({
   errorSlot,
   activePersona,
   stravaStatus,
+  activeNiggle,
+  activeSick,
+  sleep7Avg,
+  rhrCurrent,
+  rhrBaseline,
 }: TodayClientProps) {
   const phaseHeader = phaseLabel ? phaseLabel.toUpperCase() : undefined;
   const activeEntry = activePersona
@@ -90,7 +113,23 @@ export function TodayClient({
           }}
         >
           <Poster payload={poster} />
-          <Sibling payload={sibling} />
+          <Sibling
+            payload={sibling}
+            bodyFlags={
+              // Don't render chips when there's nothing meaningful to log:
+              // race-week takes over the surface, new-user has no body
+              // baseline yet, done/rest/skipped are not the right moment.
+              state === 'race_week' || state === 'new_user' ? null : (
+                <BodyFlags
+                  activeNiggle={activeNiggle}
+                  activeSick={activeSick}
+                  sleep7Avg={sleep7Avg}
+                  rhrCurrent={rhrCurrent}
+                  rhrBaseline={rhrBaseline}
+                />
+              )
+            }
+          />
         </div>
 
         {/* WEEK STRIP */}
