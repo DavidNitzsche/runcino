@@ -1,0 +1,1793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Notifications · When Faff speaks up — 2026-05-28</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0c10;
+    --bg-page:   #15171c;
+    --card:      #11141a;
+    --card2:     #13171f;
+    --ink:       #f6f7f8;
+    --mute:      #8a90a0;
+    --dim:       #4b505e;
+    --line:      rgba(255,255,255,0.08);
+    --line2:     rgba(255,255,255,0.04);
+
+    --green:     #3EBD41;
+    --goal:      #F3AD38;
+    --over:      #FC4D64;
+    --dist:      #27B4E0;
+    --rest:      #008FEC;
+    --learn:     #B084FF;
+    --race:      #FF8847;
+
+    /* gradients used as accent strips on category headers · sibling-card mood */
+    --g-race:    linear-gradient(135deg, #FF8847 0%, #C44A1B 60%, #5a1a08 100%);
+    --g-recovery:linear-gradient(135deg, #B084FF 0%, #6444a8 60%, #2a1a4a 100%);
+    --g-checkin: linear-gradient(135deg, #27B4E0 0%, #1a6a9e 60%, #0c2a5e 100%);
+    --g-niggle:  linear-gradient(135deg, #F3AD38 0%, #E85D26 60%, #7a2828 100%);
+    --g-streak:  linear-gradient(135deg, #3EBD41 0%, #1f8a52 60%, #0f4a3a 100%);
+    --g-strava:  linear-gradient(135deg, #FC4D64 0%, #a01e2e 60%, #4a0d14 100%);
+
+    --f-display:           'Oswald', sans-serif;
+    --f-body:              'Inter', system-ui, sans-serif;
+    --f-display-weight:    700;
+    --f-display-tracking:  -0.015em;
+    --f-display-line:      0.86;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--f-body);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+
+  /* ─── deck header ─── */
+  .header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 40px;
+    margin-bottom: 56px;
+  }
+  .h-eye {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 18px;
+  }
+  .h-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: var(--f-display-line);
+    font-size: 92px;
+    margin: 0 0 18px 0;
+  }
+  .h-sub {
+    font-size: 16px;
+    line-height: 1.6;
+    color: rgba(246,247,248,0.80);
+    max-width: 780px;
+    margin: 0;
+  }
+  .h-meta {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .h-meta-cell {
+    padding: 14px 16px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .h-meta-l {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 6px;
+  }
+  .h-meta-v {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* ─── voice frame ─── */
+  .voice {
+    margin-top: 80px;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 36px;
+    padding: 36px 36px 38px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+  }
+  .voice-l {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: 0.92;
+    font-size: 56px;
+    margin: 0;
+  }
+  .voice-r p {
+    font-size: 14px;
+    line-height: 1.65;
+    color: rgba(246,247,248,0.80);
+    margin: 0 0 12px 0;
+  }
+  .voice-rules {
+    margin-top: 14px;
+    display: grid;
+    gap: 8px;
+  }
+  .voice-rule {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .voice-rule b {
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--race);
+    line-height: 1;
+    margin-top: 2px;
+  }
+
+  /* ─── section header ─── */
+  .section {
+    margin-top: 110px;
+  }
+  .s-head {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 24px;
+    margin-bottom: 36px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+    align-items: end;
+  }
+  .s-letter {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: 1;
+    font-size: 80px;
+    color: var(--ink);
+  }
+  .s-letter.race    { color: var(--race); }
+  .s-letter.recov   { color: var(--learn); }
+  .s-letter.checkin { color: var(--dist); }
+  .s-letter.niggle  { color: var(--goal); }
+  .s-letter.streak  { color: var(--green); }
+  .s-letter.strava  { color: var(--over); }
+  .s-label {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .s-title {
+    font-family: var(--f-display);
+    font-weight: var(--f-display-weight);
+    letter-spacing: var(--f-display-tracking);
+    line-height: 0.94;
+    font-size: 56px;
+    margin: 0;
+  }
+
+  /* ─── category body grid · phone + spec ─── */
+  .cat-grid {
+    display: grid;
+    grid-template-columns: 390px 1fr;
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* ─── iPhone lock-screen mockup ─── */
+  .phone {
+    width: 390px;
+    border-radius: 52px;
+    background: #000;
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    position: relative;
+  }
+  .phone-screen {
+    border-radius: 42px;
+    overflow: hidden;
+    position: relative;
+    height: 780px;
+    background-image: linear-gradient(180deg, #0a0a18 0%, #1a1228 35%, #2a1a3a 70%, #0a0a18 100%);
+  }
+  /* dynamic island */
+  .phone-island {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 126px;
+    height: 36px;
+    background: #000;
+    border-radius: 22px;
+    z-index: 6;
+  }
+  /* time + date stack on lock screen */
+  .phone-time-stack {
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #fff;
+    z-index: 4;
+  }
+  .phone-date {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 15px;
+    color: rgba(255,255,255,0.92);
+    letter-spacing: 0.2px;
+  }
+  .phone-time {
+    font-family: var(--f-body);
+    font-weight: 200;
+    font-size: 86px;
+    line-height: 1;
+    color: #fff;
+    margin-top: 4px;
+    font-feature-settings: "tnum";
+    letter-spacing: -0.02em;
+  }
+
+  /* notification card · single-stack at bottom */
+  .notif {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 110px;
+    background: rgba(38, 38, 44, 0.78);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 18px;
+    padding: 14px 14px 12px;
+    z-index: 5;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .notif-stack-2 {
+    position: absolute;
+    left: 22px;
+    right: 22px;
+    bottom: 100px;
+    height: 16px;
+    background: rgba(28, 28, 32, 0.55);
+    backdrop-filter: blur(20px);
+    border-radius: 18px;
+    z-index: 4;
+  }
+  .notif-head {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .notif-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--f-display);
+    font-weight: 700;
+    color: #000;
+    font-size: 16px;
+    letter-spacing: -0.02em;
+  }
+  .notif-app {
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 13px;
+    color: rgba(255,255,255,0.95);
+    letter-spacing: 0.1px;
+  }
+  .notif-when {
+    font-family: var(--f-body);
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    font-feature-settings: "tnum";
+  }
+  .notif-title {
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+    color: #fff;
+    margin: 2px 0 4px 0;
+  }
+  .notif-body {
+    font-family: var(--f-body);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.35;
+    color: rgba(255,255,255,0.92);
+    margin: 0 0 4px 0;
+  }
+  .notif-body em {
+    font-style: normal;
+    color: rgba(255,255,255,0.65);
+  }
+
+  /* rich notification action row · pinned to bottom of notif card */
+  .notif-actions {
+    margin-top: 12px;
+    display: grid;
+    gap: 1px;
+    border-top: 1px solid rgba(255,255,255,0.10);
+    padding-top: 0;
+    margin-left: -14px;
+    margin-right: -14px;
+    margin-bottom: -12px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 0 0 18px 18px;
+    overflow: hidden;
+  }
+  .notif-actions.two { grid-template-columns: 1fr 1fr; gap: 1px; }
+  .notif-actions.three { grid-template-columns: 1fr 1fr 1fr; gap: 1px; }
+  .notif-actions.four { grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1px; }
+  .notif-action {
+    background: rgba(38, 38, 44, 0.92);
+    text-align: center;
+    padding: 13px 6px;
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 13px;
+    color: rgba(255,255,255,0.96);
+    letter-spacing: 0.1px;
+  }
+  .notif-action.primary { color: var(--race); }
+  .notif-action.good    { color: var(--green); }
+  .notif-action.warn    { color: var(--goal); }
+  .notif-action.bad     { color: var(--over); }
+
+  /* single deep-link chip variant (no rich actions, just CTA bar) */
+  .notif-chip {
+    margin-top: 12px;
+    margin-left: -14px;
+    margin-right: -14px;
+    margin-bottom: -12px;
+    border-top: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.05);
+    text-align: center;
+    padding: 13px 6px;
+    font-family: var(--f-body);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--race);
+    letter-spacing: 0.2px;
+    border-radius: 0 0 18px 18px;
+  }
+
+  /* flashlight + camera footers (lock-screen quick actions) */
+  .phone-quick {
+    position: absolute;
+    bottom: 30px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 38px;
+    z-index: 3;
+  }
+  .phone-quick-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(10px);
+  }
+  .phone-bar {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 134px;
+    height: 5px;
+    background: rgba(255,255,255,0.85);
+    border-radius: 3px;
+    z-index: 3;
+  }
+
+  /* ─── spec column ─── */
+  .spec {
+    display: grid;
+    gap: 18px;
+    padding-top: 8px;
+  }
+  .spec-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 18px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: baseline;
+  }
+  .spec-row:last-child { border-bottom: none; }
+  .spec-l {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .spec-v {
+    font-family: var(--f-body);
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+  .spec-v code {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    padding: 2px 7px;
+    border-radius: 5px;
+    color: rgba(246,247,248,0.95);
+    font-feature-settings: "tnum";
+  }
+  .spec-v .pill {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    margin-right: 6px;
+  }
+  .pill-race    { background: rgba(255,136,71,0.14); color: var(--race); }
+  .pill-recov   { background: rgba(176,132,255,0.14); color: var(--learn); }
+  .pill-checkin { background: rgba(39,180,224,0.14); color: var(--dist); }
+  .pill-niggle  { background: rgba(243,173,56,0.14); color: var(--goal); }
+  .pill-streak  { background: rgba(62,189,65,0.14); color: var(--green); }
+  .pill-strava  { background: rgba(252,77,100,0.14); color: var(--over); }
+  .pill-eve     { background: rgba(39,180,224,0.14); color: var(--dist); }
+
+  /* ─── settings surface mockup ─── */
+  .settings-mockup {
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    overflow: hidden;
+  }
+  .settings-head {
+    padding: 28px 24px 22px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,136,71,0.04) 0%, transparent 100%);
+  }
+  .settings-eye {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .settings-title {
+    font-family: var(--f-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 0.92;
+    font-size: 42px;
+    margin: 0 0 8px 0;
+  }
+  .settings-sub {
+    font-size: 13px;
+    color: rgba(246,247,248,0.7);
+    margin: 0;
+    line-height: 1.5;
+  }
+  .settings-group {
+    padding: 20px 0 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  .settings-group:last-child { border-bottom: none; }
+  .settings-group-l {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--mute);
+    padding: 0 24px 12px;
+  }
+  .settings-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    padding: 14px 24px;
+    align-items: center;
+    border-top: 1px solid var(--line2);
+  }
+  .settings-row-l {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .settings-row-sub {
+    font-size: 12px;
+    color: var(--mute);
+    margin-top: 2px;
+  }
+  .toggle {
+    width: 44px;
+    height: 26px;
+    background: var(--green);
+    border-radius: 999px;
+    position: relative;
+  }
+  .toggle.off { background: var(--dim); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px;
+    right: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .toggle.off::after { left: 2px; right: auto; }
+  .time-pill {
+    font-family: var(--f-body);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--race);
+    font-feature-settings: "tnum";
+    background: rgba(255,136,71,0.08);
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,136,71,0.16);
+  }
+
+  /* ─── architecture diagram block ─── */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .arch {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px 28px 30px;
+  }
+  .arch-l {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 14px;
+  }
+  .arch-t {
+    font-family: var(--f-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 0.94;
+    font-size: 30px;
+    margin: 0 0 18px 0;
+  }
+  .arch-p {
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.75);
+    margin: 0 0 16px 0;
+  }
+  .arch-flow {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.75;
+    color: rgba(246,247,248,0.92);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    white-space: pre-wrap;
+    font-feature-settings: "tnum";
+  }
+  .arch-flow .mute { color: var(--mute); }
+  .arch-flow .hi   { color: var(--race); font-weight: 700; }
+  .arch-flow .good { color: var(--green); }
+
+  /* ─── v1 / v1.1+ split table ─── */
+  .split-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .split-col {
+    border-radius: 18px;
+    padding: 28px 28px 32px;
+  }
+  .split-col.v1   { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.20); }
+  .split-col.next { background: rgba(176,132,255,0.06); border: 1px solid rgba(176,132,255,0.20); }
+  .split-eye {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .split-col.v1 .split-eye   { color: var(--green); }
+  .split-col.next .split-eye { color: var(--learn); }
+  .split-title {
+    font-family: var(--f-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 0.92;
+    font-size: 38px;
+    margin: 0 0 18px 0;
+  }
+  .split-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .split-list li {
+    font-size: 14px;
+    line-height: 1.5;
+    color: rgba(246,247,248,0.92);
+    padding-left: 18px;
+    position: relative;
+  }
+  .split-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .split-col.v1 .split-list li::before   { background: var(--green); }
+  .split-col.next .split-list li::before { background: var(--learn); }
+
+  /* ─── open questions ─── */
+  .q-list {
+    display: grid;
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .q-row {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 18px;
+    padding: 22px 24px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+  .q-n {
+    font-family: var(--f-display);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-size: 36px;
+    color: var(--race);
+    line-height: 1;
+  }
+  .q-t {
+    font-family: var(--f-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-size: 20px;
+    line-height: 1.15;
+    margin: 0 0 6px 0;
+  }
+  .q-b {
+    font-size: 13px;
+    line-height: 1.55;
+    color: rgba(246,247,248,0.72);
+    margin: 0;
+  }
+
+  /* ─── footer ─── */
+  .footer {
+    margin-top: 110px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--mute);
+    line-height: 1.6;
+  }
+  .footer b { color: var(--ink); font-weight: 700; }
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 28px;
+    margin-bottom: 32px;
+  }
+  .footer-cell-l {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 10px;
+  }
+  .footer-cell-v {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── HEADER ─── -->
+  <header class="header">
+    <div class="h-eye">FAFF · NOTIFICATION SYSTEM · DESIGN DECK · 2026-05-28</div>
+    <h1 class="h-title">When Faff<br>speaks up.</h1>
+    <p class="h-sub">
+      Push notifications are coaching beats, not noise. Each one earns its tap by answering a real question the runner already has: <em>is it race day?</em> · <em>am I still skipping?</em> · <em>did the week land?</em> · <em>is the niggle better?</em> Seven categories. Deterministic templates. Zero LLM in the payload. Quiet hours respected. Race-day delivery is non-negotiable.
+    </p>
+    <div class="h-meta">
+      <div class="h-meta-cell">
+        <div class="h-meta-l">PRIMARY CHANNEL</div>
+        <div class="h-meta-v">iOS APNs (v1)</div>
+      </div>
+      <div class="h-meta-cell">
+        <div class="h-meta-l">SECONDARY</div>
+        <div class="h-meta-v">Web Push (v1.1+)</div>
+      </div>
+      <div class="h-meta-cell">
+        <div class="h-meta-l">CATEGORIES</div>
+        <div class="h-meta-v">7 (A → G)</div>
+      </div>
+      <div class="h-meta-cell">
+        <div class="h-meta-l">LLM IN CONTENT</div>
+        <div class="h-meta-v">Zero. Ever.</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── VOICE FRAME ─── -->
+  <section class="voice">
+    <h2 class="voice-l">Short.<br>Direct.<br>Plain.</h2>
+    <div class="voice-r">
+      <p>
+        Faff's voice on the lock screen is the same as in the app — verb · noun · numbers. Lowercase prose. SCREAMING CAPS only on the title line, and only when the data warrants it. No "Don't miss your run!" No "Crush it today, runner!" The runner already knows.
+      </p>
+      <div class="voice-rules">
+        <div class="voice-rule"><b>1.</b><span>Deterministic templates only. Slots are filled from typed state — no generative prose.</span></div>
+        <div class="voice-rule"><b>2.</b><span>One sentence. Maybe two. If it needs three, it doesn't belong on the lock screen.</span></div>
+        <div class="voice-rule"><b>3.</b><span>Numbers are <code>tabular-nums</code>. <em>19.7 / 43.8 mi</em>, not <em>about 20 miles</em>.</span></div>
+        <div class="voice-rule"><b>4.</b><span>No urgency without cause. No clock emoji. No exclamation points unless the runner finished a PR.</span></div>
+        <div class="voice-rule"><b>5.</b><span>Race-day is the one place we go slightly louder. Everywhere else is calm.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── A · RACE-DAY MORNING ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter race">A</div>
+      <div>
+        <div class="s-label">CATEGORY A · RACE DAY · T-0</div>
+        <h2 class="s-title">Race-day<br>morning.</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid">
+
+      <!-- iPhone lock-screen mockup -->
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-island"></div>
+          <div class="phone-time-stack">
+            <div class="phone-date">Saturday, June 7</div>
+            <div class="phone-time">5:30</div>
+          </div>
+          <div class="notif-stack-2"></div>
+          <div class="notif">
+            <div class="notif-head">
+              <div class="notif-icon" style="background: var(--race);">F</div>
+              <div class="notif-app">FAFF</div>
+              <div class="notif-when">now</div>
+            </div>
+            <div class="notif-title">RACE DAY · AMERICA'S FINEST CITY</div>
+            <p class="notif-body">Gun 7:00. Uber pickup 6:25. <em>kit on the chair · 13.1 ahead.</em></p>
+            <div class="notif-chip">OPEN FAFF →</div>
+          </div>
+          <div class="phone-quick">
+            <div class="phone-quick-btn"></div>
+            <div class="phone-quick-btn"></div>
+          </div>
+          <div class="phone-bar"></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">TRIGGER</div>
+          <div class="spec-v">T-0 race day · runner's configured wake time (default <code>05:30</code> local). Resolved from <code>races.start_time</code> minus a fixed pre-gun delta plus runner preference.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PAYLOAD</div>
+          <div class="spec-v"><span class="pill pill-race">RACE DAY</span> Oswald 700 title · race name · Inter 400 body · gun time · Uber pickup (if booked).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">ACTION</div>
+          <div class="spec-v">Single deep-link chip · <code>faff://races/[slug]</code> → race-day timeline view. Tap opens directly to the race surface, not /today.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SLOTS</div>
+          <div class="spec-v">
+            <code>{race_name}</code> · <code>{gun_time_local}</code> · <code>{uber_pickup_local}</code> · <code>{distance}</code>.
+            If no Uber booked, body collapses to "<em>kit on the chair · {distance} ahead.</em>"
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">RELIABILITY</div>
+          <div class="spec-v"><b>Highest stakes.</b> Scheduled <em>twice</em> — primary at T-wake, fallback at T-wake +5min if first delivery fails APNs receipt. Bypasses quiet hours unconditionally.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">QUIET HRS</div>
+          <div class="spec-v">Race-day notification <em>overrides</em> quiet hours. The runner asked us to wake them up. We deliver.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">DEDUP KEY</div>
+          <div class="spec-v"><code>race-day:{race_id}</code> — fired at most once per race per device.</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── B · T-1 RACE EVE ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter race">B</div>
+      <div>
+        <div class="s-label">CATEGORY B · RACE EVE · T-1</div>
+        <h2 class="s-title">Race<br>tomorrow.</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid">
+
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-island"></div>
+          <div class="phone-time-stack">
+            <div class="phone-date">Friday, June 6</div>
+            <div class="phone-time">9:00</div>
+          </div>
+          <div class="notif">
+            <div class="notif-head">
+              <div class="notif-icon" style="background: var(--race);">F</div>
+              <div class="notif-app">FAFF</div>
+              <div class="notif-when">now</div>
+            </div>
+            <div class="notif-title">RACE TOMORROW</div>
+            <p class="notif-body">Light shake-out done. Early to bed. <em>kit prepped?</em></p>
+            <div class="notif-chip">OPEN CHECKLIST →</div>
+          </div>
+          <div class="phone-quick">
+            <div class="phone-quick-btn"></div>
+            <div class="phone-quick-btn"></div>
+          </div>
+          <div class="phone-bar"></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">TRIGGER</div>
+          <div class="spec-v">T-1 · <code>21:00</code> runner local. Only fires if a race exists in the next 24h. If the runner has already opened the race timeline in the prior 2 hours, suppress (they're already prepping).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PAYLOAD</div>
+          <div class="spec-v"><span class="pill pill-eve">RACE EVE</span> Oswald 700 title · Inter 400 body · soft prompt to verify bib/kit/transport rather than urgent push.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">ACTION</div>
+          <div class="spec-v">Single chip · <code>faff://races/[slug]/checklist</code> → kit + transport + alarm verification surface.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SLOTS</div>
+          <div class="spec-v">
+            <code>{shakeout_done}</code> — if today's planned easy was completed, body opens with "Light shake-out done." If not, opens with "Shake-out skipped — that's fine."
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">RELIABILITY</div>
+          <div class="spec-v">Standard reliability tier. Late by 30+ minutes → suppress (runner is asleep, defer to morning).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">QUIET HRS</div>
+          <div class="spec-v">Eve notification respects quiet hours <em>only if</em> the runner moved them earlier than 21:00. Default quiet starts at 22:00, so we land before it.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">DEDUP KEY</div>
+          <div class="spec-v"><code>race-eve:{race_id}</code></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── C · SKIP RECOVERY PROMPT ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter recov">C</div>
+      <div>
+        <div class="s-label">CATEGORY C · SKIP RECOVERY</div>
+        <h2 class="s-title">Still<br>feeling it?</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid">
+
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-island"></div>
+          <div class="phone-time-stack">
+            <div class="phone-date">Thursday, May 29</div>
+            <div class="phone-time">7:15</div>
+          </div>
+          <div class="notif">
+            <div class="notif-head">
+              <div class="notif-icon" style="background: var(--learn);">F</div>
+              <div class="notif-app">FAFF</div>
+              <div class="notif-when">now</div>
+            </div>
+            <div class="notif-title">YESTERDAY · SKIPPED</div>
+            <p class="notif-body">Today is easy 6.1mi. <em>still feeling it?</em></p>
+            <div class="notif-actions two">
+              <div class="notif-action good">READY</div>
+              <div class="notif-action warn">STILL SKIPPING</div>
+            </div>
+          </div>
+          <div class="phone-quick">
+            <div class="phone-quick-btn"></div>
+            <div class="phone-quick-btn"></div>
+          </div>
+          <div class="phone-bar"></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">TRIGGER</div>
+          <div class="spec-v">Morning after a Skip Today event · <code>day_state = missed</code> in <code>day_states</code> table for yesterday. Fires at runner's configured morning time (default <code>07:15</code> local).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PAYLOAD</div>
+          <div class="spec-v"><span class="pill pill-recov">RECOVERY</span> Rich notification. Title shows the gap. Body shows today's planned workout. Two inline actions.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">ACTION</div>
+          <div class="spec-v">
+            Two inline buttons (no app open required):<br>
+            <code>READY</code> → resets day_state to today's planned · POST <code>/api/day-states/recovery-ack</code><br>
+            <code>STILL SKIPPING</code> → marks today as missed too · re-fires tomorrow.
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SLOTS</div>
+          <div class="spec-v">
+            <code>{planned_today_verb}</code> · <code>{planned_today_distance}</code>.
+            Verb pulled from day-state resolver (EASY / INTERVALS / LONG / TEMPO etc).
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">HIG NOTE</div>
+          <div class="spec-v">Inline actions don't require unlock when they POST a simple ack. No PII in either action target.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SUPPRESS</div>
+          <div class="spec-v">If runner opens /today before the morning trigger window, suppress (they've self-served).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">DEDUP KEY</div>
+          <div class="spec-v"><code>skip-recovery:{user_id}:{date}</code></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── D · WEEKLY CHECK-IN ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter checkin">D</div>
+      <div>
+        <div class="s-label">CATEGORY D · WEEKLY CHECK-IN</div>
+        <h2 class="s-title">How'd it<br>feel?</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid">
+
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-island"></div>
+          <div class="phone-time-stack">
+            <div class="phone-date">Sunday, June 1</div>
+            <div class="phone-time">20:00</div>
+          </div>
+          <div class="notif">
+            <div class="notif-head">
+              <div class="notif-icon" style="background: var(--dist);">F</div>
+              <div class="notif-app">FAFF</div>
+              <div class="notif-when">now</div>
+            </div>
+            <div class="notif-title">WEEK DONE · 19.7 / 43.8 MI</div>
+            <p class="notif-body">6 of 7 days. <em>how'd it feel?</em></p>
+            <div class="notif-actions three">
+              <div class="notif-action good">SOLID</div>
+              <div class="notif-action warn">TIRED</div>
+              <div class="notif-action bad">WRECKED</div>
+            </div>
+          </div>
+          <div class="phone-quick">
+            <div class="phone-quick-btn"></div>
+            <div class="phone-quick-btn"></div>
+          </div>
+          <div class="phone-bar"></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">TRIGGER</div>
+          <div class="spec-v">Sunday <code>20:00</code> runner local. Only fires if at least 1 run was recorded that week (no-runs-week skips the check-in entirely — different surface).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PAYLOAD</div>
+          <div class="spec-v"><span class="pill pill-checkin">WEEKLY</span> Title carries the week totals — actual mileage / planned. Body shows day coverage.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">ACTION</div>
+          <div class="spec-v">
+            Three inline ratings mapping 1:1 to the existing <code>check_ins.rating</code> column:<br>
+            <code>SOLID</code> = solid · <code>TIRED</code> = tired · <code>WRECKED</code> = wrecked.<br>
+            POSTs to <code>/api/check-ins</code> with the rating + week_start. Affects next week's load via the existing coach engine.
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SLOTS</div>
+          <div class="spec-v">
+            <code>{actual_mi}</code> · <code>{planned_mi}</code> · <code>{days_run}</code> · <code>{days_total}</code>.
+            All tabular-nums. <em>19.7 / 43.8 mi</em> reads at a glance.
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">HIG NOTE</div>
+          <div class="spec-v">Rating ack is non-sensitive · no unlock required. POST goes through APNs HTTP/2 background channel.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SUPPRESS</div>
+          <div class="spec-v">If a check-in for this week already exists in <code>check_ins</code>, suppress (runner self-served via /plan).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">DEDUP KEY</div>
+          <div class="spec-v"><code>weekly-checkin:{user_id}:{week_start}</code></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── E · NIGGLE / SICK CHECK ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter niggle">E</div>
+      <div>
+        <div class="s-label">CATEGORY E · NIGGLE / SICK CHECK</div>
+        <h2 class="s-title">Better<br>today?</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid">
+
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-island"></div>
+          <div class="phone-time-stack">
+            <div class="phone-date">Tuesday, June 3</div>
+            <div class="phone-time">7:15</div>
+          </div>
+          <div class="notif">
+            <div class="notif-head">
+              <div class="notif-icon" style="background: var(--goal);">F</div>
+              <div class="notif-app">FAFF</div>
+              <div class="notif-when">now</div>
+            </div>
+            <div class="notif-title">HAMSTRING · 4 DAYS</div>
+            <p class="notif-body">How is it this morning? <em>scale of better, same, worse, gone.</em></p>
+            <div class="notif-actions four">
+              <div class="notif-action good">BETTER</div>
+              <div class="notif-action warn">SAME</div>
+              <div class="notif-action bad">WORSE</div>
+              <div class="notif-action primary">GONE</div>
+            </div>
+          </div>
+          <div class="phone-quick">
+            <div class="phone-quick-btn"></div>
+            <div class="phone-quick-btn"></div>
+          </div>
+          <div class="phone-bar"></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">TRIGGER</div>
+          <div class="spec-v">Every morning a niggle <em>or</em> illness is active in <code>health_events</code> · runner morning time (<code>07:15</code> default). Stops the day the event is marked <code>resolved</code>.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PAYLOAD</div>
+          <div class="spec-v"><span class="pill pill-niggle">CHECK</span> Title carries the body part + day count. Sick variant uses <code>SICK · DAY 2</code> instead.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">ACTION</div>
+          <div class="spec-v">
+            Four inline:<br>
+            <code>BETTER</code> → trend logged, day_state stays niggle but coach loosens<br>
+            <code>SAME</code> → trend logged, no plan change<br>
+            <code>WORSE</code> → escalates · suggests rest day if it wasn't already planned<br>
+            <code>GONE</code> → marks health_event resolved · returns to normal plan tomorrow.
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SLOTS</div>
+          <div class="spec-v">
+            <code>{body_part}</code> · <code>{days_active}</code>.
+            <em>HAMSTRING · 4 DAYS</em> reads cleanly. Singular "1 DAY" handled.
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">HIG NOTE</div>
+          <div class="spec-v">Health-trend ack is non-sensitive · no unlock. Real escalation paths (CALL DOCTOR etc.) live behind the app, not on the lock screen.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SUPPRESS</div>
+          <div class="spec-v">If runner has already logged a trend within the prior 18h via the in-app niggle surface, suppress.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">DEDUP KEY</div>
+          <div class="spec-v"><code>niggle-check:{health_event_id}:{date}</code></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── F · STREAK / MILESTONE ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter streak">F</div>
+      <div>
+        <div class="s-label">CATEGORY F · STREAK · MILESTONE</div>
+        <h2 class="s-title">Longest<br>yet.</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid">
+
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-island"></div>
+          <div class="phone-time-stack">
+            <div class="phone-date">Monday, June 2</div>
+            <div class="phone-time">7:15</div>
+          </div>
+          <div class="notif-stack-2"></div>
+          <div class="notif">
+            <div class="notif-head">
+              <div class="notif-icon" style="background: var(--green);">F</div>
+              <div class="notif-app">FAFF</div>
+              <div class="notif-when">now</div>
+            </div>
+            <div class="notif-title">30 DAY STREAK · LONGEST YET</div>
+            <p class="notif-body">10 weeks to America's Finest City. <em>peak block starts Sunday.</em></p>
+          </div>
+          <div class="phone-quick">
+            <div class="phone-quick-btn"></div>
+            <div class="phone-quick-btn"></div>
+          </div>
+          <div class="phone-bar"></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">TRIGGER</div>
+          <div class="spec-v">
+            Two sub-triggers, same template family:<br>
+            (1) Streak hits <code>7 / 14 / 30 / 100</code> consecutive days with a run<br>
+            (2) A goal race crosses a clean weekly threshold (12 / 10 / 8 / 6 / 4 / 2 weeks out)
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PAYLOAD</div>
+          <div class="spec-v"><span class="pill pill-streak">BEAT</span> Soft. No action. Just a beat to mark the moment. Title carries the milestone, body adds context.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">ACTION</div>
+          <div class="spec-v">None. Notification is informational. Tap opens /today (default deep-link).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SLOTS</div>
+          <div class="spec-v">
+            Streak variant: <code>{streak_days}</code> · <code>{is_longest_ever}</code>.<br>
+            Race variant: <code>{race_name}</code> · <code>{weeks_to_race}</code> · <code>{phase_next}</code>.
+          </div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">RATE LIMIT</div>
+          <div class="spec-v"><b>One milestone per week max.</b> If two triggers land in the same week, streak wins · race takes next week. Prevents milestone fatigue.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SUPPRESS</div>
+          <div class="spec-v">If runner has the master toggle on but has muted Category F specifically (most likely to be muted), all milestone events log silently to the activity feed instead.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">DEDUP KEY</div>
+          <div class="spec-v"><code>milestone:{kind}:{value}:{user_id}</code> — a 30-day streak only ever fires once per user.</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── G · STRAVA RECONNECT ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter strava">G</div>
+      <div>
+        <div class="s-label">CATEGORY G · STRAVA RECONNECT</div>
+        <h2 class="s-title">1 tap<br>to fix.</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid">
+
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-island"></div>
+          <div class="phone-time-stack">
+            <div class="phone-date">Wednesday, June 4</div>
+            <div class="phone-time">9:42</div>
+          </div>
+          <div class="notif">
+            <div class="notif-head">
+              <div class="notif-icon" style="background: var(--over);">F</div>
+              <div class="notif-app">FAFF</div>
+              <div class="notif-when">2m ago</div>
+            </div>
+            <div class="notif-title">STRAVA STOPPED SYNCING</div>
+            <p class="notif-body">Token expired. <em>1 tap to fix.</em></p>
+            <div class="notif-chip">RECONNECT →</div>
+          </div>
+          <div class="phone-quick">
+            <div class="phone-quick-btn"></div>
+            <div class="phone-quick-btn"></div>
+          </div>
+          <div class="phone-bar"></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">TRIGGER</div>
+          <div class="spec-v">Background sync detects a Strava <code>401 Unauthorized</code> response on the 3rd consecutive failed pull. Avoids transient errors / single-call flakes.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PAYLOAD</div>
+          <div class="spec-v"><span class="pill pill-strava">ACTION REQUIRED</span> Plain, calm copy. No "URGENT" / no red banner. Just a fact + the fix.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">ACTION</div>
+          <div class="spec-v">Single chip · <code>faff://settings/integrations/strava/reconnect</code> → opens Strava OAuth flow in-app.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">SLOTS</div>
+          <div class="spec-v">None. Static payload. Variation only by integration if we add Garmin/Coros later (G2 / G3).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">HIG NOTE</div>
+          <div class="spec-v">Reconnect deep-link <em>does</em> require unlock — touches OAuth tokens. OS prompts naturally; no extra hoop on our side.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">RATE LIMIT</div>
+          <div class="spec-v">One reconnect prompt per 24h max. After 3 days unfixed, in-app banner takes over · push goes silent (we've told them; don't nag).</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">DEDUP KEY</div>
+          <div class="spec-v"><code>strava-reconnect:{user_id}:{day}</code></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── SETTINGS SURFACE ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter">⚙</div>
+      <div>
+        <div class="s-label">SETTINGS SURFACE · /PROFILE → NOTIFICATIONS</div>
+        <h2 class="s-title">Runner<br>controls.</h2>
+      </div>
+    </div>
+
+    <div class="cat-grid" style="grid-template-columns: 480px 1fr;">
+
+      <div class="settings-mockup">
+        <div class="settings-head">
+          <div class="settings-eye">/PROFILE · NOTIFICATIONS</div>
+          <h3 class="settings-title">When Faff<br>speaks up.</h3>
+          <p class="settings-sub">Mute anything you don't want. Race day is the one we'll never mute on you · you can change the wake time but the notification will fire.</p>
+        </div>
+
+        <!-- Master -->
+        <div class="settings-group">
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">All notifications</div>
+              <div class="settings-row-sub">Master toggle · turns everything off</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+        </div>
+
+        <!-- Per-category -->
+        <div class="settings-group">
+          <div class="settings-group-l">CATEGORIES</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Race day morning</div>
+              <div class="settings-row-sub">Cannot be muted · wake time below</div>
+            </div>
+            <div class="toggle" style="opacity: 0.5;"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Race eve</div>
+              <div class="settings-row-sub">Night before race · 9pm</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Skip recovery</div>
+              <div class="settings-row-sub">Morning after a missed day</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Weekly check-in</div>
+              <div class="settings-row-sub">Sunday night</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Niggle / sick check</div>
+              <div class="settings-row-sub">Daily while a niggle is active</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Streaks &amp; milestones</div>
+              <div class="settings-row-sub">7 · 14 · 30 · 100 days · race countdowns</div>
+            </div>
+            <div class="toggle off"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Strava reconnect</div>
+              <div class="settings-row-sub">When sync breaks · recommended</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+        </div>
+
+        <!-- Schedule -->
+        <div class="settings-group">
+          <div class="settings-group-l">SCHEDULE</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Race-day wake time</div>
+              <div class="settings-row-sub">Used by Category A only</div>
+            </div>
+            <div class="time-pill">5:30 AM</div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Weekly check-in time</div>
+              <div class="settings-row-sub">Sunday local</div>
+            </div>
+            <div class="time-pill">8:00 PM</div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-l">Quiet hours</div>
+              <div class="settings-row-sub">Nothing fires inside this window</div>
+            </div>
+            <div class="time-pill">10 PM – 6 AM</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <div class="spec-l">SHAPE</div>
+          <div class="spec-v">Settings panel slots into <code>/profile</code> under a dedicated <em>Notifications</em> section. Native iOS Settings styling — grouped tables, toggles right-aligned, time pickers as inline sheets.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">MASTER</div>
+          <div class="spec-v">Top-level toggle kills <em>all</em> categories at once. Mirrors iOS Settings → Notifications → Faff → Allow Notifications. If OS-level is off, we render the entire panel as disabled with a link to System Settings.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">RACE-DAY LOCK</div>
+          <div class="spec-v">Race-day toggle is intentionally non-disable-able. Wake time is configurable, but the notification itself is locked on. Footnote: <em>"This is the one we won't let you mute."</em></div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">QUIET HRS</div>
+          <div class="spec-v">Default <code>22:00 – 06:00</code> local. Any notification scheduled inside this window is deferred to the next allowed minute · except race-day morning, which overrides.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">PER-CATEGORY DEFAULTS</div>
+          <div class="spec-v">A · ON (locked) · B · ON · C · ON · D · ON · E · ON · F · OFF (opt-in — most likely to feel noisy) · G · ON.</div>
+        </div>
+        <div class="spec-row">
+          <div class="spec-l">STATE OWNER</div>
+          <div class="spec-v"><code>users.notification_prefs JSONB</code> — single source of truth, both the iOS client and the backend scheduler read from it. Per Cardinal Rule #4: never inline values, never duplicate state.</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── ARCHITECTURE ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter">⌗</div>
+      <div>
+        <div class="s-label">ARCHITECTURE · BEHIND THE PUSH</div>
+        <h2 class="s-title">Token in.<br>Beat out.</h2>
+      </div>
+    </div>
+
+    <div class="arch-grid">
+
+      <!-- Token registration -->
+      <div class="arch">
+        <div class="arch-l">1 · TOKEN REGISTRATION</div>
+        <h3 class="arch-t">App boot → token → server.</h3>
+        <p class="arch-p">When the iOS app launches and the user has granted notification permission, we register for remote notifications and POST the resulting device token to our backend. Re-runs on app foreground in case Apple rotates.</p>
+        <div class="arch-flow"><span class="mute"># on app boot, after auth</span>
+UIApplication.registerForRemoteNotifications()
+   ↓
+<span class="hi">didRegisterForRemoteNotifications</span>(deviceToken)
+   ↓
+POST /api/notifications/register
+   { user_id, device_token, platform: "ios",
+     app_version, bundle_id }
+   ↓
+<span class="good">device_tokens table · upsert by token</span>
+   { token, user_id, last_seen_at,
+     revoked_at: null }</div>
+      </div>
+
+      <!-- Scheduler -->
+      <div class="arch">
+        <div class="arch-l">2 · SCHEDULER · HYBRID</div>
+        <h3 class="arch-t">Cron + queue.</h3>
+        <p class="arch-p">Two engines, one job. Cron fires the time-based categories (B / D). A queue consumes events from <code>day_states</code>, <code>health_events</code>, <code>races</code>, and <code>strava_sync_failures</code> for the rest. Both feed the same delivery worker.</p>
+        <div class="arch-flow"><span class="hi">cron (every 5 min)</span>
+   ↓ scans users w/ pref + tz + race calendar
+   ↓ enqueues: A · B · D · F (race-countdown)
+<span class="hi">event bus</span>
+   ↓ day_state changes → C
+   ↓ health_event open  → E
+   ↓ streak threshold   → F (streak)
+   ↓ strava 401 ×3      → G
+<span class="good">delivery_worker (single point)</span>
+   ↓ dedup check · quiet hours filter
+   ↓ render template (NO LLM)
+   ↓ APNs HTTP/2 push · token from registration</div>
+      </div>
+
+      <!-- Payload -->
+      <div class="arch">
+        <div class="arch-l">3 · PAYLOAD SHAPE</div>
+        <h3 class="arch-t">aps + faff.</h3>
+        <p class="arch-p">Standard APNs JSON. The <code>aps</code> dict gets the OS-visible content. A sibling <code>faff</code> dict carries metadata for in-app routing, deduplication acks, and category-specific slots.</p>
+        <div class="arch-flow">{
+  "aps": {
+    "alert": {
+      "title": "RACE DAY · AMERICA'S FINEST CITY",
+      "body":  "Gun 7:00. Uber pickup 6:25..."
+    },
+    "sound": "default",
+    "category": "<span class="hi">FAFF_RACE_DAY</span>",
+    "thread-id": "race-{race_id}",
+    "interruption-level": "<span class="hi">time-sensitive</span>"
+  },
+  "faff": {
+    "kind": "race-day",
+    "race_id": "afc-2026",
+    "deeplink": "faff://races/afc-2026",
+    "dedup_key": "race-day:afc-2026",
+    "fired_at": "2026-06-07T05:30:00-07:00"
+  }
+}</div>
+      </div>
+
+      <!-- Categories + actions -->
+      <div class="arch">
+        <div class="arch-l">4 · RICH NOTIFICATION CATEGORIES</div>
+        <h3 class="arch-t">Inline actions registered at launch.</h3>
+        <p class="arch-p">iOS requires that interactive notification actions be registered at app launch via <code>UNUserNotificationCenter.setNotificationCategories</code>. Each category maps to one of our seven kinds. Action handlers POST to small ack endpoints.</p>
+        <div class="arch-flow"><span class="hi">FAFF_RACE_DAY</span>      · 1 action  · OPEN
+<span class="hi">FAFF_RACE_EVE</span>      · 1 action  · CHECKLIST
+<span class="hi">FAFF_SKIP_RECOV</span>    · 2 actions · READY · STILL
+<span class="hi">FAFF_WEEKLY</span>        · 3 actions · SOLID · TIRED · WRECK
+<span class="hi">FAFF_NIGGLE</span>        · 4 actions · BETTER · SAME · WORSE · GONE
+<span class="hi">FAFF_MILESTONE</span>     · 0 actions · soft beat
+<span class="hi">FAFF_STRAVA_RECON</span>  · 1 action  · RECONNECT
+
+<span class="mute"># ack endpoint</span>
+POST /api/notifications/ack
+  { dedup_key, action, fired_at }</div>
+      </div>
+
+      <!-- Dedup + quiet hours -->
+      <div class="arch">
+        <div class="arch-l">5 · DEDUP + QUIET HOURS</div>
+        <h3 class="arch-t">Filter before send.</h3>
+        <p class="arch-p">Every payload runs the dedup gate before APNs. Same key in the prior 24h → drop. Quiet hours: scheduled time gets shifted to next allowed minute. Race-day morning bypasses both because the runner has explicitly opted in.</p>
+        <div class="arch-flow">render_template(kind, slots)
+   ↓
+<span class="hi">dedup_gate(dedup_key)</span>
+   ↓ if seen in 24h → DROP, log silently
+   ↓
+<span class="hi">quiet_hours_gate(user_tz, now)</span>
+   ↓ if inside [22:00, 06:00)
+   ↓   and kind != RACE_DAY
+   ↓ → defer to next 06:00
+   ↓
+APNs HTTP/2 push (token, payload)
+   ↓
+notifications_log table
+   { user_id, kind, dedup_key, fired_at,
+     apns_response, ack_at, ack_action }</div>
+      </div>
+
+      <!-- Apple Developer setup -->
+      <div class="arch">
+        <div class="arch-l">6 · APPLE DEVELOPER SETUP</div>
+        <h3 class="arch-t">Cert in the right place.</h3>
+        <p class="arch-p">APNs auth uses a <em>token-based</em> key (.p8) generated from the user's Apple Developer account. Stored as a backend secret. We do <em>not</em> use legacy <em>certificate-based</em> auth — token-based is what Apple recommends and works for both sandbox + production.</p>
+        <div class="arch-flow"><span class="mute"># one-time setup</span>
+1. <span class="hi">developer.apple.com</span> → Keys → New
+2. Enable APNs · download .p8 · note Key ID
+3. Note Team ID from membership page
+4. Store as env:
+   APNS_KEY_ID=ABC123XYZ
+   APNS_TEAM_ID=TEAM456789
+   APNS_KEY_P8=----BEGIN PRIVATE KEY----...
+   APNS_BUNDLE_ID=run.faff.ios
+
+<span class="good"># sign each JWT per request</span>
+JWT header: { alg: ES256, kid: $APNS_KEY_ID }
+JWT claims: { iss: $APNS_TEAM_ID, iat: now }
+Authorization: bearer &lt;signed jwt&gt;</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── v1 vs v1.1+ ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter">▣</div>
+      <div>
+        <div class="s-label">SCOPE · WHAT SHIPS · WHAT WAITS</div>
+        <h2 class="s-title">v1<br>and beyond.</h2>
+      </div>
+    </div>
+
+    <div class="split-grid">
+
+      <div class="split-col v1">
+        <div class="split-eye">v1 · SHIPS WITH FAFF LAUNCH</div>
+        <h3 class="split-title">In the box.</h3>
+        <ul class="split-list">
+          <li>All 7 iOS categories (A → G) · deterministic templates</li>
+          <li>iOS APNs with token-based .p8 auth · time-sensitive interruption level for race day</li>
+          <li>Rich notification actions for C / D / E (inline buttons)</li>
+          <li>Single-chip deep links for A / B / G</li>
+          <li>Soft beat (no action) for F</li>
+          <li>Settings surface at <code>/profile → Notifications</code> · master + per-category + race-day wake + check-in time + quiet hours</li>
+          <li>Hybrid scheduler · cron for B/D/F-race · event queue for C/E/F-streak/G</li>
+          <li>Token registration on app boot + foreground</li>
+          <li>Dedup gate · 24h key window</li>
+          <li>Quiet hours gate · race-day override</li>
+          <li><code>notifications_log</code> table · ack tracking · debug surface</li>
+        </ul>
+      </div>
+
+      <div class="split-col next">
+        <div class="split-eye">v1.1+ · DEFERRED</div>
+        <h3 class="split-title">Comes later.</h3>
+        <ul class="split-list">
+          <li>Web Push (Service Worker · VAPID) for the web companion</li>
+          <li>Apple Watch complication update on the same triggers</li>
+          <li>Apple Watch <em>direct</em> notification when phone is off</li>
+          <li>Live Activities for in-progress runs and race-day pickup countdown</li>
+          <li>Notification grouping / threading by week or by race</li>
+          <li>Inline run-start action ("START EASY 6.1" inline on Category D mornings)</li>
+          <li>Localization beyond en-US (date formats, time formats)</li>
+          <li>A/B testing the copy templates against engagement</li>
+          <li>Snooze actions (1h / tomorrow) on C and E</li>
+          <li>Companion-mode notifications for runners with external coaches</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── OPEN QUESTIONS ───────────────── -->
+  <section class="section">
+    <div class="s-head">
+      <div class="s-letter">?</div>
+      <div>
+        <div class="s-label">OPEN DESIGN QUESTIONS</div>
+        <h2 class="s-title">Still<br>undecided.</h2>
+      </div>
+    </div>
+
+    <div class="q-list">
+
+      <div class="q-row">
+        <div class="q-n">1</div>
+        <div>
+          <h3 class="q-t">Does the race-day notification fire on Apple Watch even if the phone is in Do Not Disturb?</h3>
+          <p class="q-b">APNs lets us flag <code>interruption-level: critical</code>, which bypasses every system filter — but requires an Apple-granted entitlement that's not trivial to get. <em>time-sensitive</em> handles most cases but a runner who set Focus to silence everything might miss the call. Walk-the-line: do we apply for critical, accept the review burden, or trust the runner's Focus settings?</p>
+        </div>
+      </div>
+
+      <div class="q-row">
+        <div class="q-n">2</div>
+        <div>
+          <h3 class="q-t">Should Category C (skip recovery) inline-actions trigger a plan rewrite, or just log a flag?</h3>
+          <p class="q-b">If the runner taps STILL SKIPPING from the lock screen, the day_state is already <em>missed</em>. Do we re-rank tomorrow's plan immediately (potentially shifting a quality day later) or just record the signal and let the next daily plan resolver pick it up? Bias toward the latter, but it means the runner won't see plan change confirmation in the notification ack.</p>
+        </div>
+      </div>
+
+      <div class="q-row">
+        <div class="q-n">3</div>
+        <div>
+          <h3 class="q-t">Quiet hours default — runner local vs. device local?</h3>
+          <p class="q-b">A runner traveling for a destination race lands in a new timezone but the device timezone often updates 20+ minutes later. Do we honor the device timezone (simpler, OS-truthful) or store the runner's home timezone and respect that (better for travel races but adds a config step)? Lean toward device, but race-day notification needs to use race city tz.</p>
+        </div>
+      </div>
+
+      <div class="q-row">
+        <div class="q-n">4</div>
+        <div>
+          <h3 class="q-t">Should Category F (streak / milestone) be opt-in or opt-out by default?</h3>
+          <p class="q-b">Streaks lean Strava-coded — gamification that some runners actively dislike. Plan-following audience may find them noise. Default OFF feels right but means many runners never discover them. Compromise: surface during onboarding ("Want a beat at 7 / 14 / 30 days?") and let them choose then.</p>
+        </div>
+      </div>
+
+      <div class="q-row">
+        <div class="q-n">5</div>
+        <div>
+          <h3 class="q-t">If APNs fails delivery (token revoked, network blip), do we retry — and how visibly?</h3>
+          <p class="q-b">APNs returns a per-push response. For race-day, a failed primary push triggers a +5min retry. But for the other six categories, retry cost is silent inconvenience. Do we log + drop, retry once silently, or surface "Faff couldn't reach you this morning" inside the app when next opened? Affects the trust contract.</p>
+        </div>
+      </div>
+
+      <div class="q-row">
+        <div class="q-n">6</div>
+        <div>
+          <h3 class="q-t">Should the deep-link target depend on the day-state, or always be /today?</h3>
+          <p class="q-b">Category A clearly opens the race timeline. Category G clearly opens reconnect. But C, D, E all start from "open the app to see context" — should those land on /today (the runner's habitat) or the specific surface that prompted the notification (recovery card / weekly summary / niggle detail)? Argument for /today: one mental model. Argument for surface: zero extra taps.</p>
+        </div>
+      </div>
+
+      <div class="q-row">
+        <div class="q-n">7</div>
+        <div>
+          <h3 class="q-t">Does the niggle-check notification carry the planned workout, or stay purely a body question?</h3>
+          <p class="q-b">Right now the mockup asks "better today?" without showing what's on the plate. Argument for adding the workout: same decision, fewer taps. Argument against: notifications stay single-purpose · runners conflate "should I run?" with "is the niggle better?" when they're separate questions.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── FOOTER ─── -->
+  <footer class="footer">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-cell-l">DELIVERY TARGETS</div>
+        <div class="footer-cell-v">
+          <b>iOS APNs</b> · v1 primary channel · token-based auth (.p8) · HTTP/2.<br>
+          <b>Web Push</b> · v1.1+ · VAPID + Service Worker on the companion.<br>
+          <b>Apple Watch</b> · v1.1+ · complications + direct push.
+        </div>
+      </div>
+      <div>
+        <div class="footer-cell-l">VOICE CONSTRAINTS</div>
+        <div class="footer-cell-v">
+          <b>Zero LLM</b> in any notification payload. Deterministic templates only.<br>
+          Brand voice · short · direct · plain · no marketing language.<br>
+          No fake urgency. The runner is in control.
+        </div>
+      </div>
+      <div>
+        <div class="footer-cell-l">CARDINAL RULES TOUCHED</div>
+        <div class="footer-cell-v">
+          <b>#1</b> Build it right · no thin push system shipped early.<br>
+          <b>#3</b> Every threshold cites a source (skip-recov morning, niggle daily, etc).<br>
+          <b>#4</b> Single state in <code>users.notification_prefs</code>.
+        </div>
+      </div>
+    </div>
+    <div>
+      <b>Faff · notification system design deck</b> · 2026-05-28 · v1 spec ready for build · 7 categories · iOS APNs primary · Web Push + Watch deferred to v1.1+ · zero LLM in content · race-day delivery is non-negotiable.
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
