@@ -14,6 +14,47 @@ struct OnboardingView: View {
     @State private var distance: Distance = .marathon
     @State private var goalSec: Int = 14400
     @State private var raceName: String = ""
+    @State private var submitting: Bool = false
+
+    /// Builds the /api/onboarding/complete payload from the UI state.
+    /// Most fields are required by the server; we fill nullable ones with
+    /// sensible defaults until a future iteration collects them properly.
+    private var onboardingPayload: [String: Any] {
+        let raceDateOffset = 112 // days; matches the OnboardingView default
+        let date = Calendar.current.date(byAdding: .day, value: raceDateOffset, to: Date())
+        let isoF = DateFormatter(); isoF.dateFormat = "yyyy-MM-dd"
+        let tz = TimeZone.current.identifier
+
+        let h = goalSec / 3600
+        let m = (goalSec % 3600) / 60
+        let s = goalSec % 60
+        let goalTime = String(format: "%02d:%02d:%02d", h, m, s)
+
+        let distanceCode: String = {
+            switch distance {
+            case .k5:    return "5k"
+            case .k10:   return "10k"
+            case .half:  return "half"
+            case .marathon: return "marathon"
+            }
+        }()
+
+        return [
+            "distance": mode == .just ? "none" : distanceCode,
+            "date": mode == .race ? (date.map { isoF.string(from: $0) } as Any? ?? NSNull()) : NSNull(),
+            "time": mode == .race ? goalTime : NSNull(),
+            "ttDistance": NSNull(),
+            "ttTime": NSNull(),
+            "weeklyMi": NSNull(),
+            "weeklyFreq": NSNull(),
+            "histAvg": NSNull(),
+            "histLong": NSNull(),
+            "histYears": NSNull(),
+            "name": raceName.isEmpty ? "Goal Race" : raceName,
+            "timezone": tz,
+            "connected": Array(connected)
+        ]
+    }
 
     enum TargetMode: String, CaseIterable { case race, goal, just }
     enum Distance: String, CaseIterable { case k5 = "5K", k10 = "10K", half = "HALF", marathon = "MARATHON" }
@@ -427,8 +468,16 @@ struct OnboardingView: View {
 
             Spacer(minLength: 0)
 
-            ctaButton(title: mode == .just ? "Start running" : "Build my plan") {
-                onComplete()
+            ctaButton(title: submitting ? "Saving…" : (mode == .just ? "Start running" : "Build my plan")) {
+                guard !submitting else { return }
+                submitting = true
+                Task {
+                    _ = try? await API.completeOnboarding(payload: onboardingPayload)
+                    await MainActor.run {
+                        submitting = false
+                        onComplete()
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -24,6 +24,7 @@ struct TodayView: View {
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
     @State private var showNudge: Bool = false
+    @State private var refreshing: Bool = false
 
     var body: some View {
         let mesh = selectedEffort.mesh
@@ -34,6 +35,26 @@ struct TodayView: View {
                 HStack(spacing: 12) {
                     SpecLabel(text: titleForToday, size: 13, tracking: 2.5, color: Theme.txt)
                     Spacer()
+                    Button {
+                        guard !refreshing else { return }
+                        refreshing = true
+                        Task {
+                            await loadAll()
+                            await MainActor.run { refreshing = false }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(refreshing ? 0.4 : 0.85))
+                            .frame(width: 28, height: 28)
+                            .background(Theme.Glass.fill, in: Circle())
+                            .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+                            .rotationEffect(.degrees(refreshing ? 360 : 0))
+                            .animation(refreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: refreshing)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(refreshing)
+
                     Button { showNudge = true } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "bell.fill")

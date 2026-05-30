@@ -197,9 +197,11 @@ struct SettingsView: View {
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    @State private var showSignOutConfirm: Bool = false
+
     private var signOutButton: some View {
         Button {
-            // Sign out not wired here · expected to bubble up through app state.
+            showSignOutConfirm = true
         } label: {
             Text("Sign out")
                 .font(.body(14, weight: .extraBold))
@@ -212,6 +214,31 @@ struct SettingsView: View {
                     .stroke(Color(hex: 0xFF5A52).opacity(0.3), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .confirmationDialog("Sign out of Faff?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
+            Button("Sign out", role: .destructive) {
+                Task { await performSignOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You'll need to sign in again with Apple to see your data.")
+        }
+    }
+
+    private func performSignOut() async {
+        // Clear local session + the gate's "onboarded" flag so the next
+        // launch lands on SignIn. AppCache stays cleared so the gate's
+        // returning-user heuristic doesn't auto-bypass.
+        await MainActor.run {
+            TokenStore.shared.clear()
+            let d = UserDefaults.standard
+            d.removeObject(forKey: "faff.onboarded")
+            d.removeObject(forKey: "faff.health.connected.v2")
+            AppCache.clearAll()
+            // Re-exit the app · the cleanest way to bounce back through
+            // RootContainer's gate decision is a fresh launch. Until then,
+            // post a notification the gate can listen for.
+            NotificationCenter.default.post(name: .faffGateReset, object: nil)
+        }
     }
 
     private var footer: some View {

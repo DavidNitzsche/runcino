@@ -169,15 +169,18 @@ struct ProfileView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(shoes) { s in
-                    ShoeCompact(shoe: FaffShoe(
-                        id: s.id,
-                        brand: s.brand ?? "",
-                        name: s.name ?? [s.brand, s.model].compactMap { $0 }.joined(separator: " "),
-                        role: roleFor(s),
-                        miles: s.mileage ?? 0,
-                        lifeMi: s.cap ?? 450,
-                        retired: s.retired ?? false
-                    ))
+                    NavigationLink(value: FaffRoute.shoes) {
+                        ShoeCompact(shoe: FaffShoe(
+                            id: s.id,
+                            brand: s.brand ?? "",
+                            name: s.name ?? [s.brand, s.model].compactMap { $0 }.joined(separator: " "),
+                            role: roleFor(s),
+                            miles: s.mileage ?? 0,
+                            lifeMi: s.cap ?? 450,
+                            retired: s.retired ?? false
+                        ))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 22)

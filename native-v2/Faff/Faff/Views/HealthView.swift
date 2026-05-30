@@ -295,11 +295,12 @@ struct HealthView: View {
                 .frame(height: 180)
                 .padding(.top, 6)
             HStack {
-                Text("4 WEEKS AGO").font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                let labels = xAxisLabels(for: metric)
+                Text(labels.0).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
                 Spacer()
-                Text("2W").font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                Text(labels.1).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
                 Spacer()
-                Text("TODAY").font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                Text(labels.2).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
             }
             .padding(.top, 4)
         }
@@ -314,6 +315,27 @@ struct HealthView: View {
         case "weight": return s.weightSeries.map { $0.lb }
         default:       return []
         }
+    }
+
+    /// First / middle / "TODAY" labels derived from the active series' real
+    /// dates. Falls back to the static labels when the series is empty.
+    private func xAxisLabels(for k: String) -> (String, String, String) {
+        let dates: [String] = {
+            guard let s = state else { return [] }
+            switch k {
+            case "rhr":    return s.rhrSeries.map { $0.date }
+            case "hrv":    return s.hrvSeries.map { $0.date }
+            case "sleep":  return s.sleepSeries.map { $0.date }
+            case "weight": return s.weightSeries.map { $0.date }
+            default:       return []
+            }
+        }()
+        guard dates.count >= 3 else { return ("4 WEEKS AGO", "2W", "TODAY") }
+        let f = DateFormatter(); f.dateFormat = "MMM d"
+        let isoIn = DateFormatter(); isoIn.dateFormat = "yyyy-MM-dd"
+        let first = isoIn.date(from: dates.first ?? "").map { f.string(from: $0).uppercased() } ?? ""
+        let mid   = isoIn.date(from: dates[dates.count / 2]).map { f.string(from: $0).uppercased() } ?? ""
+        return (first.isEmpty ? "4 WEEKS AGO" : first, mid.isEmpty ? "2W" : mid, "TODAY")
     }
 }
 

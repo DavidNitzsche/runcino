@@ -303,6 +303,19 @@ enum API {
         let date: String
     }
 
+    /// POST /api/onboarding/complete · persists the onboarding answers
+    /// and (for race-mode) seeds an initial plan. Returns true on a 2xx.
+    static func completeOnboarding(payload: [String: Any]) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/onboarding/complete"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        TokenStore.shared.authorize(&req)
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
+        return true
+    }
+
     /// POST /api/strava/push/[runId] · manually push a completed run to
     /// Strava. Idempotent: a second push of the same runId is a no-op.
     /// Returns true on a 2xx response; false on any failure.

@@ -9,6 +9,7 @@ import SwiftUI
 struct WeekAheadView: View {
     @State private var planWeek: PlanWeek? =
         AppCache.read(.planWeek, as: PlanWeek.self)
+    @State private var planFacts: CoachFactsBlock?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -26,6 +27,12 @@ struct WeekAheadView: View {
                     hero
                         .padding(.horizontal, 24)
                         .padding(.top, 18)
+
+                    if let facts = planFacts?.facts, !facts.isEmpty {
+                        atAGlance(facts: facts)
+                            .padding(.horizontal, 22)
+                            .padding(.top, 24)
+                    }
 
                     agenda
                         .padding(.top, 24)
@@ -47,6 +54,48 @@ struct WeekAheadView: View {
             BackChip { dismiss() }
             SpecLabel(text: "THIS WEEK", size: 13, tracking: 2.5, color: Theme.txt)
             Spacer()
+        }
+    }
+
+    private func atAGlance(facts: [CoachFact]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SpecLabel(text: "AT A GLANCE", size: 11, tracking: 2, color: Theme.txt.opacity(0.55))
+            GlassTile(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(facts.prefix(4).enumerated()), id: \.element.label) { i, f in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                                if let meta = f.meta, !meta.isEmpty {
+                                    Text(meta)
+                                        .font(.display(11, weight: .semibold))
+                                        .foregroundStyle(Theme.txt.opacity(0.62))
+                                        .lineLimit(2)
+                                }
+                            }
+                            Spacer(minLength: 12)
+                            Text(f.value)
+                                .font(.display(14, weight: .bold))
+                                .foregroundStyle(factTint(f.valueColor))
+                                .multilineTextAlignment(.trailing)
+                        }
+                        .padding(14)
+                        if i < min(facts.count, 4) - 1 {
+                            Divider().background(Color.white.opacity(0.08))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func factTint(_ tone: String?) -> Color {
+        switch (tone ?? "").lowercased() {
+        case "race":  return Theme.race
+        case "green": return Theme.green
+        case "amber": return Theme.goal
+        case "over":  return Theme.over
+        default:      return Theme.txt
         }
     }
 
@@ -193,8 +242,12 @@ struct WeekAheadView: View {
     }
 
     private func load() async {
-        if let pw = try? await API.fetchPlanWeek() {
-            await MainActor.run { planWeek = pw }
+        async let pw = (try? await API.fetchPlanWeek())
+        async let fc = (try? await API.fetchCoachFacts(surface: "plan"))
+        let (week, facts) = await (pw, fc)
+        await MainActor.run {
+            self.planWeek = week
+            self.planFacts = facts
         }
     }
 }

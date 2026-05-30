@@ -110,6 +110,12 @@ struct FaffApp: App {
 
 // RootTabView lives in Views/RootTabView.swift (5-tab v3 host).
 
+extension Notification.Name {
+    /// Posted by Settings → Sign out. RootContainer resets back to the
+    /// SignIn gate when it fires.
+    static let faffGateReset = Notification.Name("faff.gate.reset")
+}
+
 /// Routes the user between the auth/onboarding gate and the main app.
 ///
 /// Gate policy (soft, opt-in):
@@ -147,6 +153,10 @@ struct RootContainer: View {
             case .main:
                 RootTabView()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .faffGateReset)) { _ in
+            // Settings → Sign out cleared the session. Bounce back to gate.
+            withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
         }
     }
 

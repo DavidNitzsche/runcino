@@ -48,12 +48,36 @@ struct TrainView: View {
             }
             .padding(.bottom, 100)
         }
-        .task {
-            async let s = (try? await API.fetchTrainingState())
-            async let f = (try? await API.fetchCoachFacts(surface: "plan"))
-            let (st, fc) = await (s, f)
-            await MainActor.run { self.state = st; self.planFacts = fc }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        async let s = (try? await API.fetchTrainingState())
+        async let f = (try? await API.fetchCoachFacts(surface: "plan"))
+        let (st, fc) = await (s, f)
+        await MainActor.run { self.state = st; self.planFacts = fc }
+    }
+
+    private var refreshButton: some View {
+        Button {
+            guard !refreshing else { return }
+            refreshing = true
+            Task {
+                await reload()
+                await MainActor.run { refreshing = false }
+            }
+        } label: {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Theme.txt.opacity(refreshing ? 0.4 : 0.85))
+                .frame(width: 28, height: 28)
+                .background(Theme.Glass.fill, in: Circle())
+                .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+                .rotationEffect(.degrees(refreshing ? 360 : 0))
+                .animation(refreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: refreshing)
         }
+        .buttonStyle(.plain)
+        .disabled(refreshing)
     }
 
     /// Compact coach overlay shown under the readout chip when planFacts loads.
@@ -90,6 +114,8 @@ struct TrainView: View {
 
     // MARK: - Header
 
+    @State private var refreshing: Bool = false
+
     private var header: some View {
         HStack(alignment: .center) {
             SpecLabel(text: roadToText, size: 11, tracking: 2, color: Theme.txt)
@@ -97,6 +123,7 @@ struct TrainView: View {
             Text(daysOutText)
                 .font(.display(11, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.82))
+            refreshButton
             Button { onProfile() } label: {
                 Text("DK")
                     .font(.display(11, weight: .bold))
