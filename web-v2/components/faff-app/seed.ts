@@ -137,6 +137,45 @@ type Races    = Awaited<ReturnType<typeof import('@/lib/coach/races-state').load
 type LogT     = Awaited<ReturnType<typeof import('@/lib/coach/log-state').loadLogState>>;
 type Profile  = Awaited<ReturnType<typeof import('@/lib/coach/profile-state').loadProfileState>>;
 
+/** Extract the headline pace (s/mi) from a workout_spec. Returns null
+ *  for spec kinds where a single pace doesn't represent the workout
+ *  (rest, race, shakeout). Used by adaptWeek + adaptSeason to populate
+ *  the per-day pace cells with real Daniels-VDOT numbers (P0 #4) instead
+ *  of canonical PACE_DEFAULT fallbacks.
+ *
+ *  Easy/long/recovery: midpoint of the pace band.
+ *  Tempo: tempo_pace_s_per_mi.
+ *  Threshold/intervals: rep_pace_s_per_mi (the work segment, not the cooldown).
+ *  Progression/fartlek/MP: midpoint when defined.
+ */
+function paceFromSpec(spec: import('@/lib/faff/types').WorkoutSpec | null | undefined): number | null {
+  if (!spec) return null;
+  switch (spec.kind) {
+    case 'easy':
+    case 'long':
+    case 'recovery':
+      return Math.round((spec.pace_target_s_per_mi_lo + spec.pace_target_s_per_mi_hi) / 2);
+    case 'tempo':
+      return spec.tempo_pace_s_per_mi ?? null;
+    case 'threshold':
+    case 'intervals':
+      return spec.rep_pace_s_per_mi ?? null;
+    case 'progression':
+      return spec.prog_start_s_per_mi != null && spec.prog_end_s_per_mi != null
+        ? Math.round((spec.prog_start_s_per_mi + spec.prog_end_s_per_mi) / 2)
+        : null;
+    case 'fartlek':
+      // Segments shape — return the median segment pace if any.
+      return spec.segments?.length
+        ? spec.segments[Math.floor(spec.segments.length / 2)].pace_s_per_mi
+        : null;
+    case 'mp':
+      return spec.mp_pace_s_per_mi ?? null;
+    default:
+      return null;
+  }
+}
+
 /* ─────────────────────────  Adapters  ───────────────────────── */
 
 function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: number; results: Record<number, CompletedRun | undefined> } {
@@ -144,8 +183,9 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
     return { week: FALLBACK_WEEK, todayIdx: 1, results: {} };
   }
   const DOW = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
-  // Canonical pace defaults per effort type (used when the plan workout
-  // didn't carry a paceTargetSPerMi — e.g. long runs with mixed blocks).
+  // Canonical pace defaults per effort type — only used when the plan
+  // workout has NO workout_spec (migration 120) AND no paceTargetSPerMi.
+  // After the P0 #4 backfill these should rarely fire for an active plan.
   const PACE_DEFAULT: Record<EffortKey, number | null> = {
     easy: 525, recovery: 570, long: 460, tempo: 398, intervals: 365, rest: null,
   };
@@ -154,7 +194,13 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
     const dist = d.plannedMi > 0 ? d.plannedMi.toFixed(1) : ' · ';
     const fullDate = new Date(d.date + 'T12:00:00Z');
     const fullLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(fullDate);
-    const paceSec = (d as { paceTargetSPerMi?: number | null }).paceTargetSPerMi ?? PACE_DEFAULT[eff];
+    // 2026-05-30: prefer real Daniels-VDOT pace from the workout_spec
+    // (P0 #4 backfill). Fall through to legacy paceTargetSPerMi field
+    // (used by some non-spec plans) then PACE_DEFAULT placeholder.
+    const specPace = paceFromSpec(d.plannedSpec);
+    const paceSec = specPace
+      ?? (d as { paceTargetSPerMi?: number | null }).paceTargetSPerMi
+      ?? PACE_DEFAULT[eff];
     const paceStr = paceSec != null && paceSec > 0
       ? `${Math.floor(paceSec / 60)}:${String(Math.round(paceSec % 60)).padStart(2, '0')}`
       : (eff === 'rest' ? 'Rest' : '·');
@@ -346,12 +392,16 @@ function adaptSeason(training: Training | null) {
   };
   const weekDays = training.weeks.map(w => (w.days ?? []).map(d => {
     const t = mapType(d.type);
+    // 2026-05-30: prefer real Daniels-VDOT pace from workout_spec (P0 #4
+    // backfill) for the per-day pace cell. PACE_DEFAULT is only the fallback
+    // for plan-builder rows that authored without a VDOT.
+    const specPace = paceFromSpec((d as { spec?: import('@/lib/faff/types').WorkoutSpec | null }).spec);
     return {
       dow: DOW[(d.dow + 6) % 7],
       type: t as import('./constants').EffortKey,
       name: d.label || humanName(t, d.mi),
       mi: d.mi || 0,
-      paceSec: PACE_DEFAULT[t] ?? null,
+      paceSec: specPace ?? PACE_DEFAULT[t] ?? null,
       done: !!d.activityId,
       activityId: d.activityId,
     };

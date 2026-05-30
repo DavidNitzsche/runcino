@@ -18,6 +18,10 @@ export interface PlanWeek {
   days: Array<{
     date: string; dow: number; type: string;
     mi: number; label: string | null;
+    // 2026-05-30: workout_spec jsonb (migration 120) so the train-view week
+    // strip can render real Daniels-VDOT paces per day (P0 #4 backfill)
+    // instead of the canonical PACE_DEFAULT placeholder.
+    spec: import('@/lib/faff/types').WorkoutSpec | null;
     // Actual side (strava activity if logged):
     doneMi: number;
     activityId: string | null;
@@ -68,7 +72,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     [plan.id]
   )).rows;
   const workouts = (await pool.query(
-    `SELECT week_id::text AS week_id, date_iso, dow, type, distance_mi, sub_label
+    `SELECT week_id::text AS week_id, date_iso, dow, type, distance_mi, sub_label, workout_spec
        FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso`,
     [plan.id]
   )).rows;
@@ -110,6 +114,8 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
         return {
           date: d.date_iso, dow: d.dow, type: d.type,
           mi: Number(d.distance_mi) || 0, label: d.sub_label,
+          // workout_spec parses as a JS object via node-postgres JSON typecast.
+          spec: d.workout_spec ?? null,
           doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
           activityId: actual?.id ?? null,
         };
