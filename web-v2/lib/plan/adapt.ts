@@ -44,7 +44,8 @@ export type AdaptationTriggerKind =
   | 'pr_bank'
   | 'niggle_reported'     // Q-04 · active niggle severity threshold
   | 'sick_episode_active' // Q-03 · active illness — propose, never auto
-  | 'injury_active';      // Q-08 · active runner_injuries row — propose
+  | 'injury_active'       // Q-08 · active runner_injuries row — propose
+  | 'goal_changed';       // runner edited goal time → mark paces stale
 
 export interface AdaptationTrigger {
   kind: AdaptationTriggerKind;
@@ -114,6 +115,11 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   // 8. PR_BANK · new race finish that implies VDOT jump > 1.5 pts
   const prBank = await detectPrBank(userId);
   if (prBank) triggers.push(prBank);
+
+  // 9. GOAL_CHANGED · runner accepted adaptive-VDOT bump (manual override)
+  //    OR edited their goal_race_time. Both signal "paces need re-derive".
+  const goalChanged = await detectGoalChanged(userId);
+  if (goalChanged) triggers.push(goalChanged);
 
   const actions: AdaptationAction[] = [];
   for (const t of triggers) {
@@ -429,6 +435,66 @@ async function detectInjuryActive(userId: string): Promise<AdaptationTrigger | n
 }
 
 /**
+ * GOAL_CHANGED · runner edited their goal time OR accepted an adaptive-
+ * VDOT bump (vdot_manual_override set). Either way, the active plan's
+ * pace targets were derived from old numbers and need recompute.
+ *
+ * Detection:
+ *   - users.vdot_manual_override_at within last 24h, OR
+ *   - profile.goal_race_time changed within last 24h (we don't track
+ *     change history, so we approximate via profile.updated_at vs the
+ *     active plan's authored_iso — if profile was edited AFTER the plan
+ *     was authored, the goal likely changed since)
+ *
+ * Action: mark next 14d plan_workouts as paces-stale (same as PR_BANK).
+ *
+ * Cite: Research/01-pace-zones-vdot.md §VDOT-recalibrate (pace derivation
+ *       from goal time / VDOT changes invalidate prior prescriptions).
+ */
+async function detectGoalChanged(userId: string): Promise<AdaptationTrigger | null> {
+  const r = (await pool.query<{
+    vdot_override_at: string | null;
+    profile_updated_at: string | null;
+    plan_authored_at: string | null;
+  }>(
+    `SELECT u.vdot_manual_override_at::text AS vdot_override_at,
+            p.updated_at::text             AS profile_updated_at,
+            tp.authored_iso::text          AS plan_authored_at
+       FROM users u
+       LEFT JOIN profile p ON p.user_uuid = u.id
+       LEFT JOIN training_plans tp
+              ON tp.user_uuid = u.id AND tp.archived_iso IS NULL
+      WHERE u.id = $1
+      LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r) return null;
+
+  const now = Date.now();
+  const vdotOverrideAt = r.vdot_override_at ? Date.parse(r.vdot_override_at) : 0;
+  const profileUpdatedAt = r.profile_updated_at ? Date.parse(r.profile_updated_at) : 0;
+  const planAuthoredAt = r.plan_authored_at ? Date.parse(r.plan_authored_at) : 0;
+
+  const vdotChangedRecent = vdotOverrideAt > 0 && (now - vdotOverrideAt) < 24 * 3600 * 1000;
+  const profileChangedAfterPlan = profileUpdatedAt > planAuthoredAt && (now - profileUpdatedAt) < 24 * 3600 * 1000;
+
+  if (!vdotChangedRecent && !profileChangedAfterPlan) return null;
+
+  return {
+    kind: 'goal_changed',
+    severity: 'info',
+    reason: vdotChangedRecent
+      ? 'VDOT override applied. Plan paces derive from old VDOT; recompute next 14d.'
+      : 'Profile updated after plan authored. Plan paces may be stale.',
+    evidence: {
+      vdot_override_at: r.vdot_override_at,
+      profile_updated_at: r.profile_updated_at,
+      plan_authored_at: r.plan_authored_at,
+    },
+  };
+}
+
+/**
  * PR_BANK · recent race finish whose VDOT exceeds users.vdot_last_reviewed
  * by > 1.5 pts. Action: mark next 14d plan_workouts as paces-stale so the
  * runner's prescription gets recomputed off the new VDOT before the next
@@ -600,9 +666,11 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         why: `Volume ${Math.round(t.evidence.last7d_mi)}mi exceeded ${t.evidence.level} cap. Shave next 7 days 17%.`,
       }];
     }
-    case 'pr_bank': {
-      // Mark next 14d plan_workouts as paces-stale so the briefing
-      // surface re-derives pace targets from the new VDOT.
+    case 'pr_bank':
+    case 'goal_changed': {
+      // Both signals say "paces stale; recompute". Mark next 14d
+      // plan_workouts so the briefing surface re-derives pace targets
+      // from the new VDOT / new goal.
       const rows = (await pool.query(
         `SELECT pw.id FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
@@ -612,10 +680,13 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         [userId]
       )).rows;
       if (rows.length === 0) return [];
+      const why = t.kind === 'pr_bank'
+        ? `New race fitness — VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces need recompute.`
+        : 'Goal or VDOT changed. Plan paces need recompute against new target.';
       return [{
         kind: 'mark_dirty',
         workoutIds: rows.map((r: any) => r.id),
-        why: `New race fitness — VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces need recompute.`,
+        why,
       }];
     }
     case 'niggle_reported': {
