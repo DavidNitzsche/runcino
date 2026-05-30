@@ -122,7 +122,8 @@ struct TodayView: View {
         .sheet(isPresented: $showNudge) {
             NudgeSheet(
                 onAccept: { showNudge = false },
-                onKeep: { showNudge = false }
+                onKeep: { showNudge = false },
+                readiness: readiness
             )
         }
     }

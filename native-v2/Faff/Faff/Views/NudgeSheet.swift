@@ -8,11 +8,17 @@ import SwiftUI
 struct NudgeSheet: View {
     let onAccept: () -> Void
     let onKeep: () -> Void
+    var readiness: ReadinessSnapshot? = nil
+    var healthFacts: CoachFactsBlock? = nil
 
     private let mesh = FaffMesh(
         c1: 0x3FB6B0, c2: 0xFFB24D, c3: 0x0E4F4C,
         c4: 0x155A4A, c5: 0x155A4A, base: 0x0A2622
     )
+
+    @State private var loadedFacts: CoachFactsBlock?
+
+    private var facts: CoachFactsBlock? { healthFacts ?? loadedFacts }
 
     var body: some View {
         ZStack {
@@ -53,6 +59,11 @@ struct NudgeSheet: View {
                         .padding(.horizontal, 24)
                         .padding(.bottom, 40)
                 }
+                .task {
+                    if healthFacts == nil {
+                        loadedFacts = try? await API.fetchCoachFacts(surface: "health")
+                    }
+                }
             }
         }
     }
@@ -60,31 +71,39 @@ struct NudgeSheet: View {
     private var topLabel: some View {
         HStack(spacing: 9) {
             Circle().fill(Color(hex: 0xFFB24D)).frame(width: 8, height: 8)
-            Text("MORNING CHECK · THU")
+            Text(headerLabel)
                 .font(.label(13)).tracking(2.5)
                 .foregroundStyle(Theme.txt)
             Spacer()
         }
     }
 
+    private var headerLabel: String {
+        let f = DateFormatter(); f.dateFormat = "EEE"
+        return "MORNING CHECK · \(f.string(from: Date()).uppercased())"
+    }
+
     private var hero: some View {
-        HStack(spacing: 18) {
+        let score = readiness?.score ?? 0
+        let label = (readiness?.label ?? ReadinessRing.classify(score) ?? "—").uppercased()
+        let frac = Double(max(0, min(100, score))) / 100.0
+        return HStack(spacing: 18) {
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.16), lineWidth: 7)
                 Circle()
-                    .trim(from: 0, to: 0.61)
-                    .stroke(Color(hex: 0xFFB24D),
+                    .trim(from: 0, to: CGFloat(frac))
+                    .stroke(score < 65 ? Color(hex: 0xFFB24D) : Color(hex: 0x62E08A),
                             style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 5) {
-                    Text("61")
+                    Text(score > 0 ? "\(score)" : "—")
                         .font(.display(36, weight: .bold))
                         .tracking(-1.5)
                         .foregroundStyle(Theme.txt)
-                    Text("EASY")
+                    Text(label)
                         .font(.label(8)).tracking(2)
-                        .foregroundStyle(Color(hex: 0xFFCE8A))
+                        .foregroundStyle(score < 65 ? Color(hex: 0xFFCE8A) : Color(hex: 0x9AF0BF))
                 }
             }
             .frame(width: 104, height: 104)
@@ -93,18 +112,26 @@ struct NudgeSheet: View {
                 Text("READINESS")
                     .font(.label(11)).tracking(2)
                     .foregroundStyle(Theme.txt.opacity(0.66))
-                Text("Down 21\novernight")
-                    .font(.display(27, weight: .bold))
-                    .tracking(-1)
+                Text(readinessHeadline)
+                    .font(.display(20, weight: .bold))
+                    .tracking(-0.5)
                     .foregroundStyle(Theme.txt)
-                    .lineSpacing(-4)
+                    .lineSpacing(-2)
                     .padding(.top, 8)
-                Text("was 82 yesterday")
-                    .font(.display(11, weight: .bold))
-                    .foregroundStyle(Color(hex: 0xFFCE8A))
-                    .padding(.top, 9)
+                    .multilineTextAlignment(.leading)
             }
             Spacer()
+        }
+    }
+
+    private var readinessHeadline: String {
+        let score = readiness?.score ?? 0
+        switch score {
+        case 80...: return "Primed for the work."
+        case 65..<80: return "Hold the plan."
+        case 50..<65: return "Ease the targets today."
+        case 1..<50: return "Recover. Don't push."
+        default: return "Awaiting your first sample."
         }
     }
 
