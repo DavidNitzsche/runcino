@@ -303,6 +303,22 @@ enum API {
         let date: String
     }
 
+    /// GET /api/coach/facts?surface=<…> → deterministic coach facts for any
+    /// of the supported surfaces (today / plan / races / race_detail /
+    /// health / me). Returns nil on any decode or HTTP error so callers can
+    /// gracefully hide the section rather than show a fake fact.
+    static func fetchCoachFacts(surface: String) async throws -> CoachFactsBlock? {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/coach/facts"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "surface", value: surface)]
+        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let envelope = try? JSONDecoder().decode(CoachFactsEnvelope.self, from: data)
+        return envelope?.block
+    }
+
     /// GET /api/today/skip → returns whether today is currently marked
     /// as skipped. Defaults to false on any network / decode error so
     /// the UI doesn't lie about a skip the user didn't make.

@@ -39,6 +39,7 @@
 		5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */; };
 		531A5724C7E47FBEF3AC3D5B /* PlannedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B07A257EFCEFD45EDA03792D /* PlannedView.swift */; };
 		58C73FAA4F3A621C91A48076 /* RaceDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75CB12F69B8E91BD1846A268 /* RaceDayView.swift */; };
+		5966D86B3E01B512FB053BD2 /* CoachFacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45138C09A08463A9958BCD3F /* CoachFacts.swift */; };
 		5CC15617CBD77E60E78F0B75 /* ShoeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADD08DB3E4484B1FC6C0C0F8 /* ShoeView.swift */; };
 		5E96515E4E3AEB50C7224C2F /* TargetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D7554D68355339D82D6F51 /* TargetsView.swift */; };
 		60441969D5FB3C1127CFCFF3 /* ZoneBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD91B5D2A39BE920DD3C4358 /* ZoneBar.swift */; };
@@ -152,6 +153,7 @@
 		37F523B1198BDF2C15E626B2 /* Inter-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-SemiBold.ttf"; sourceTree = "<group>"; };
 		3C2B62D9179AAC7D41426156 /* FaffApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffApp.swift; sourceTree = "<group>"; };
 		444251779F1CDC004513FAD8 /* WithinReachSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WithinReachSheet.swift; sourceTree = "<group>"; };
+		45138C09A08463A9958BCD3F /* CoachFacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachFacts.swift; sourceTree = "<group>"; };
 		47B01231CF6EA2F9487242FC /* WorkoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngine.swift; sourceTree = "<group>"; };
 		48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
 		4E27550579AE4BDFA95531DD /* Fonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fonts.swift; sourceTree = "<group>"; };
@@ -232,6 +234,7 @@
 			isa = PBXGroup;
 			children = (
 				9DDE304E9C6471D398E2D102 /* Briefing.swift */,
+				45138C09A08463A9958BCD3F /* CoachFacts.swift */,
 				ADEF9EEB865458FD9FBA9054 /* FaffPayloads.swift */,
 				174FE8C6F00184359AC974B6 /* Races.swift */,
 				761D6D9F643EAA00C64D9BBC /* Runs.swift */,
@@ -557,6 +560,7 @@
 				36B9DFECC527B9516F2E9D87 /* AppCache.swift in Sources */,
 				22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */,
 				E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */,
+				5966D86B3E01B512FB053BD2 /* CoachFacts.swift in Sources */,
 				4167E13357AE78F92DB3AB54 /* CoachNote.swift in Sources */,
 				14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */,
 				317B8EDA830CCC1FE06624A4 /* CompletedView.swift in Sources */,

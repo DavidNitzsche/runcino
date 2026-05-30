@@ -11,6 +11,8 @@ struct TargetsView: View {
 
     @State private var races: RaceListResponse?
     @State private var profile: ProfileState?
+    @State private var raceFacts: CoachFactsBlock?
+    @State private var standingGoals: [StandingGoal] = []
 
     var body: some View {
         ZStack {
@@ -34,11 +36,11 @@ struct TargetsView: View {
                             emptyState("No races scheduled", "+ Add a race when you're ready")
                         }
                     }
-                    section("STANDING GOALS") {
-                        VStack(spacing: 10) {
-                            goalTile(title: "5K", detail: "SUB-19", start: "20:35", now: "19:42", goal: "18:59", progress: 0.74)
-                            goalTile(title: "1 MILE", detail: "SUB-5:30", start: "6:05", now: "5:48", goal: "5:29", progress: 0.63)
-                            addButton("+ ADD GOAL")
+                    if !standingGoals.isEmpty {
+                        section("STANDING GOALS") {
+                            VStack(spacing: 10) {
+                                ForEach(standingGoals) { g in standingGoalTile(g) }
+                            }
                         }
                     }
                 }
@@ -46,33 +48,118 @@ struct TargetsView: View {
             }
         }
         .task {
-            races = try? await API.fetchRaces()
-            profile = try? await API.fetchProfileState()
+            async let r = (try? await API.fetchRaces())
+            async let p = (try? await API.fetchProfileState())
+            async let f = (try? await API.fetchCoachFacts(surface: "races"))
+            let (rs, pr, fc) = await (r, p, f)
+            await MainActor.run {
+                self.races = rs
+                self.profile = pr
+                self.raceFacts = fc
+                // Derive standing goals from the user's race set. Each upcoming
+                // A or B race becomes a "finish under target" goal once we have
+                // a goal time; otherwise it's "finish the distance".
+                self.standingGoals = (rs?.races ?? [])
+                    .filter { $0.priority == "A" || $0.priority == "B" }
+                    .prefix(3)
+                    .map { race in
+                        StandingGoal(
+                            title: RaceName.short(race.name, abbreviateAlways: true),
+                            detail: race.distance_label?.uppercased() ?? "",
+                            sub: race.name ?? ""
+                        )
+                    }
+            }
         }
     }
 
+    private struct StandingGoal: Identifiable, Hashable {
+        let id = UUID()
+        let title: String
+        let detail: String
+        let sub: String
+    }
+
+    /// Resolved A-race hero data. Prefers profile.nextARace; falls back to
+    /// the coach-facts NEXT A line when the plan row hasn't yet wired
+    /// race_id (the backend gap we surfaced separately).
+    private struct HeroData {
+        let name: String?
+        let days: Int?
+        let goal: String?
+        let pace: String?
+        let distance: String?
+    }
+    private var hero: HeroData {
+        if let n = profile?.nextARace {
+            return HeroData(name: n.name, days: n.days_to_race, goal: n.goal,
+                            pace: nil, distance: nil)
+        }
+        if let f = raceFacts {
+            // Parse "AMERICAS FINEST CITY · 78 days · half marathon" + "GOAL 1:30:00"
+            let nextA = f.facts.first { $0.label.uppercased() == "NEXT A" }
+            let goal  = f.facts.first { $0.label.uppercased() == "GOAL" }
+            let pieces = (nextA?.value ?? "").components(separatedBy: " · ")
+            let name = pieces.first
+            let days: Int? = {
+                guard pieces.count > 1,
+                      let raw = pieces[1].components(separatedBy: " ").first
+                else { return nil }
+                return Int(raw)
+            }()
+            let distance = pieces.count > 2 ? pieces[2] : nil
+            return HeroData(name: name, days: days, goal: goal?.value,
+                            pace: paceFromGoal(goal?.value, distance: distance),
+                            distance: distance)
+        }
+        return HeroData(name: nil, days: nil, goal: nil, pace: nil, distance: nil)
+    }
+
+    private func paceFromGoal(_ goal: String?, distance: String?) -> String? {
+        guard let goal, let distance else { return nil }
+        let secs = goalSeconds(goal)
+        let mi: Double? = {
+            let d = distance.lowercased()
+            if d.contains("half") { return 13.1 }
+            if d.contains("marathon") { return 26.2 }
+            if d.contains("10k") { return 6.2 }
+            if d.contains("5k") { return 3.1 }
+            return nil
+        }()
+        guard let secs, let mi, mi > 0 else { return nil }
+        let perMi = Int(Double(secs) / mi)
+        return String(format: "%d:%02d/mi", perMi / 60, perMi % 60)
+    }
+
+    private func goalSeconds(_ g: String) -> Int? {
+        let parts = g.split(separator: ":").compactMap { Int($0) }
+        if parts.count == 3 { return parts[0]*3600 + parts[1]*60 + parts[2] }
+        if parts.count == 2 { return parts[0]*60 + parts[1] }
+        return nil
+    }
+
     private var heroBlock: some View {
-        let next = profile?.nextARace ?? nil
+        let h = hero
         return VStack(alignment: .leading, spacing: 16) {
-            SpecLabel(text: next != nil ? "A-RACE" : "TOP GOAL", size: 11, tracking: 2.5, color: Theme.txt.opacity(0.66))
+            SpecLabel(text: h.name != nil ? "A-RACE" : "TOP GOAL", size: 11, tracking: 2.5, color: Theme.txt.opacity(0.66))
 
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(RaceName.short(next?.name, abbreviateAlways: (next?.name.count ?? 0) > 14))
+                    Text(RaceName.short(h.name, abbreviateAlways: (h.name?.count ?? 0) > 14))
                         .font(.display(50, weight: .bold))
                         .tracking(-2.5)
                         .foregroundStyle(Theme.txt)
                         .shadow(color: .black.opacity(0.32), radius: 22, y: 2)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
-                    Text(next?.name ?? "Set a target")
+                    Text(h.name ?? "Set a target")
                         .font(.body(13, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.82))
                         .lineLimit(2)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    if let d = next?.daysToRace {
+                    if let d = h.days {
                         Text("\(d)")
                             .font(.display(30, weight: .semibold))
                             .tracking(-1)
@@ -88,12 +175,12 @@ struct TargetsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(next?.goalLabel ?? "—")
+                Text(h.goal ?? "—")
                     .font(.display(58, weight: .bold))
                     .tracking(-2.5)
                     .foregroundStyle(Theme.txt)
                     .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
-                Text("GOAL TIME · \(next?.goalPaceLabel ?? "—")")
+                Text("GOAL TIME\(h.pace.map { " · \($0)" } ?? "")")
                     .font(.display(14, weight: .semibold))
                     .foregroundStyle(Theme.txt.opacity(0.8))
             }
@@ -101,29 +188,21 @@ struct TargetsView: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("PROJECTED \(next?.projectedLabel ?? "—")")
+                    Text("PROJECTED · waiting for projection wire")
                         .font(.display(11, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.85))
+                        .foregroundStyle(Theme.txt.opacity(0.6))
                     Spacer()
-                    Text(next?.gapLabel ?? "")
-                        .font(.display(11, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0xFFCE8A))
                 }
-                GapBeam(progress: next?.gapProgress ?? 0.55)
+                GapBeam(progress: 0.55)
 
                 HStack {
-                    Text("START \(next?.startLabel ?? "—")")
+                    Text("START —")
                         .font(.display(10, weight: .semibold))
                         .foregroundStyle(Theme.txt.opacity(0.5))
                     Spacer()
-                    Text("GOAL \(next?.goalLabel ?? "—")")
+                    Text("GOAL \(h.goal ?? "—")")
                         .font(.display(10, weight: .semibold))
                         .foregroundStyle(Color(hex: 0xFFCE8A))
-                }
-                if let trend = next?.trendLabel {
-                    Text(trend)
-                        .font(.display(10, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x9AF0BF))
                 }
             }
             .padding(.top, 18)
@@ -164,6 +243,29 @@ struct TargetsView: View {
                 .stroke(race.priority == "A" ? Color(hex: 0xFF965A).opacity(0.6) : Color.white.opacity(0.14)))
         }
         .buttonStyle(.plain)
+    }
+
+    private func standingGoalTile(_ g: StandingGoal) -> some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(g.title).font(.body(17, weight: .extraBold)).tracking(-0.3).foregroundStyle(Theme.txt)
+                    if !g.detail.isEmpty {
+                        Text(g.detail).font(.body(11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.62))
+                    }
+                }
+                if !g.sub.isEmpty {
+                    Text(g.sub)
+                        .font(.display(11, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+        }
+        .padding(15)
+        .background(Color(hex: 0x140610).opacity(0.46), in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.14)))
     }
 
     private func goalTile(title: String, detail: String, start: String, now: String, goal: String, progress: Double) -> some View {
