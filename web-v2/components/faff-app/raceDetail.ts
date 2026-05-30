@@ -208,6 +208,14 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     const bib = (meta as { bib?: string }).bib || '#pending';
     const netElevFt = geom?.elevation_gain_ft ? -Math.round(geom.elevation_gain_ft * 0.24) : 0;
 
+    // 2026-05-30: post-race retro fields. Source of truth per CLAUDE.md is
+    // races.actual_result (curated chip times beat raw Strava elapsed).
+    // loadRacesState already does the resolution + Strava fallback labeling,
+    // so race.finishTime is canonical here.
+    const isPast = race.days < 0;
+    const finishTime = race.finishTime ?? null;
+    const pb = Boolean((meta as { pb?: boolean }).pb);
+
     return {
       slug: race.slug,
       name: race.name,
@@ -218,7 +226,10 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       registered: (meta as { registered?: boolean }).registered ?? true,
       bib,
       wave,
-      daysAway: Math.max(0, race.days),
+      daysAway: race.days,
+      isPast,
+      finishTime,
+      pb,
       distanceMi: dist,
       netElevFt,
       gainFt,

@@ -25,6 +25,12 @@ export type RaceDetailSeed = {
   bib: string;
   wave: string;
   daysAway: number;
+  // 2026-05-30: post-race retro support. When isPast is true, the hero
+  // swaps to a RESULT widget where the runner enters finish time + PB,
+  // persisted to races.actual_result via PATCH /api/race.
+  isPast: boolean;
+  finishTime: string | null;
+  pb: boolean;
   distanceMi: number;
   netElevFt: number;
   gainFt: number;
@@ -50,7 +56,8 @@ const FALLBACK: RaceDetailSeed = {
   slug: 'race', name: 'Race', date: '', startTime: '·',
   course: '·', certification: '·',
   registered: false, bib: '·', wave: '·',
-  daysAway: 0, distanceMi: 0, netElevFt: 0, gainFt: 0, goalPace: '·',
+  daysAway: 0, isPast: false, finishTime: null, pb: false,
+  distanceMi: 0, netElevFt: 0, gainFt: 0, goalPace: '·',
   aGoal: '·', bGoal: '·',
   pacing: [],
   splits: [],
@@ -71,6 +78,13 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
   const [bGoal, setBGoal] = useState(r.bGoal);
   const [bib, setBib] = useState(r.bib);
   const [goalPace, setGoalPace] = useState(r.goalPace);
+  // 2026-05-30: post-race retro state. Hero swaps to a result card when
+  // race.isPast — finishTime free-text edit (HMS) + PB toggle persist to
+  // races.actual_result via PATCH /api/race.
+  const [finishTime, setFinishTime] = useState(r.finishTime ?? '');
+  const [pb, setPb] = useState(r.pb);
+  const [savingFinish, setSavingFinish] = useState(false);
+  const [finishAck, setFinishAck] = useState<'saved' | 'error' | null>(null);
 
   function commitA(text: string) {
     const sec = parseHMS(text);
@@ -92,6 +106,25 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     setBib(next);
     void patchRace(r.slug, { bib: next });
   }
+  async function commitFinish(text: string) {
+    const trimmed = (text || '').trim();
+    // Normalize anything HMS-shaped to canonical H:MM:SS. Empty clears it.
+    const normalized = trimmed === '' ? null : (parseHMS(trimmed) > 0 ? fmtHMS(parseHMS(trimmed)) : trimmed);
+    setFinishTime(normalized ?? '');
+    setSavingFinish(true);
+    const ok = await patchRace(r.slug, { finishTime: normalized });
+    setSavingFinish(false);
+    setFinishAck(ok ? 'saved' : 'error');
+    setTimeout(() => setFinishAck(null), 1800);
+  }
+  async function commitPb(next: boolean) {
+    setPb(next);
+    setSavingFinish(true);
+    const ok = await patchRace(r.slug, { pb: next });
+    setSavingFinish(false);
+    setFinishAck(ok ? 'saved' : 'error');
+    setTimeout(() => setFinishAck(null), 1800);
+  }
 
   return (
     <>
@@ -102,63 +135,108 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
 
       <div className="rp-hero">
         <div>
-          <div className="rp-eyebrow">GOAL RACE · MARATHON</div>
+          <div className="rp-eyebrow">{r.isPast ? 'PAST RACE' : 'GOAL RACE'} · {distLabel(r.distanceMi)}</div>
           <div className="rp-title">{r.name.split(' ').map((w, i) => <span key={i}>{w}<br/></span>)}</div>
           <div className="rp-meta">
-            <span><b>{formatDateFull(r.date)}</b> · {r.startTime}</span>
+            <span><b>{formatDateFull(r.date)}</b>{r.isPast ? '' : ' · ' + r.startTime}</span>
             <span>{r.course}</span>
             <span>{r.certification}</span>
           </div>
           <div className="rp-chips">
-            {r.registered && (
+            {!r.isPast && r.registered && (
               <div className="rp-chip reg">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#7BE8A0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                 Registered
               </div>
             )}
-            <div className="rp-chip">
-              Bib{' '}
-              <span
-                className="chip-edit"
-                contentEditable
-                suppressContentEditableWarning
-                spellCheck={false}
-                onBlur={(e) => commitBib(e.currentTarget.textContent || '')}
-              >{bib}</span>
-            </div>
-            <div className="rp-chip">{r.wave}</div>
+            {r.isPast && pb && (
+              <div className="rp-chip reg">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#7BE8A0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
+                Personal best
+              </div>
+            )}
+            {!r.isPast && (
+              <div className="rp-chip">
+                Bib{' '}
+                <span
+                  className="chip-edit"
+                  contentEditable
+                  suppressContentEditableWarning
+                  spellCheck={false}
+                  onBlur={(e) => commitBib(e.currentTarget.textContent || '')}
+                >{bib}</span>
+              </div>
+            )}
+            {!r.isPast && <div className="rp-chip">{r.wave}</div>}
           </div>
         </div>
         <div>
-          <div className="rp-count">
-            <div className="rp-countn">{r.daysAway}</div>
-            <div className="rp-countl">DAYS TO GO</div>
-            <div className="rp-goals">
-              <div className="rp-goal a">
-                <div className="gk">A · GOAL</div>
-                <div
-                  className="gv edit"
-                  contentEditable
-                  suppressContentEditableWarning
-                  spellCheck={false}
-                  onBlur={(e) => commitA(e.currentTarget.textContent || '')}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
-                >{aGoal}</div>
+          {r.isPast ? (
+            <div className="rp-count">
+              <div
+                className="rp-countn edit"
+                contentEditable
+                suppressContentEditableWarning
+                spellCheck={false}
+                onBlur={(e) => commitFinish(e.currentTarget.textContent || '')}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
+                style={{ fontSize: finishTime ? undefined : 38, opacity: finishTime ? 1 : 0.6 }}
+              >{finishTime || 'Tap to log'}</div>
+              <div className="rp-countl">
+                FINISH TIME
+                {savingFinish && <span style={{ marginLeft: 8, color: 'var(--mute)' }}> · saving</span>}
+                {finishAck === 'saved' && <span style={{ marginLeft: 8, color: 'var(--green)' }}> · saved</span>}
+                {finishAck === 'error' && <span style={{ marginLeft: 8, color: 'var(--over)' }}> · retry</span>}
               </div>
-              <div className="rp-goal gd" />
-              <div className="rp-goal">
-                <div className="gk">B · SAFE</div>
+              <div className="rp-goals">
+                <div className="rp-goal a">
+                  <div className="gk">A · GOAL</div>
+                  <div className="gv">{aGoal}</div>
+                </div>
+                <div className="rp-goal gd" />
                 <div
-                  className="gv edit"
-                  contentEditable
-                  suppressContentEditableWarning
-                  spellCheck={false}
-                  onBlur={(e) => commitB(e.currentTarget.textContent || '')}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
-                >{bGoal}</div>
+                  className="rp-goal"
+                  onClick={() => commitPb(!pb)}
+                  role="button"
+                  tabIndex={0}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="gk">PR?</div>
+                  <div className="gv" style={{ color: pb ? 'var(--green)' : 'var(--mute)' }}>{pb ? 'YES' : 'NO'}</div>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="rp-count">
+              <div className="rp-countn">{r.daysAway}</div>
+              <div className="rp-countl">DAYS TO GO</div>
+              <div className="rp-goals">
+                <div className="rp-goal a">
+                  <div className="gk">A · GOAL</div>
+                  <div
+                    className="gv edit"
+                    contentEditable
+                    suppressContentEditableWarning
+                    spellCheck={false}
+                    onBlur={(e) => commitA(e.currentTarget.textContent || '')}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
+                  >{aGoal}</div>
+                </div>
+                <div className="rp-goal gd" />
+                <div className="rp-goal">
+                  <div className="gk">B · SAFE</div>
+                  <div
+                    className="gv edit"
+                    contentEditable
+                    suppressContentEditableWarning
+                    spellCheck={false}
+                    onBlur={(e) => commitB(e.currentTarget.textContent || '')}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
+                  >{bGoal}</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -294,6 +372,14 @@ function LogisticsItem({ icon, label, value, detail }: { icon: React.ReactNode; 
 
 function formatDateFull(iso: string) {
   return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(iso));
+}
+function distLabel(mi: number): string {
+  if (mi >= 25 && mi <= 27) return 'MARATHON';
+  if (mi >= 12 && mi <= 14) return 'HALF MARATHON';
+  if (mi >= 6 && mi <= 7) return '10K';
+  if (mi >= 3 && mi <= 3.5) return '5K';
+  if (mi > 0) return `${mi.toFixed(1)} MI`;
+  return 'RACE';
 }
 function parseHMS(t: string): number {
   const parts = (t || '').trim().split(':').map(x => parseInt(x, 10) || 0);

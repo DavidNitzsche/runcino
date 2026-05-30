@@ -630,6 +630,9 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .rp-chip.reg{color:#86efa0;border-color:rgba(123,232,160,.4);}
 .rp-count{flex:0 0 auto;text-align:center;background:rgba(8,10,14,.42);border:1px solid rgba(255,255,255,.14);border-radius:20px;padding:22px 28px;backdrop-filter:blur(12px);min-width:196px;}
 .rp-countn{font-family:'Oswald',sans-serif;font-size:64px;font-weight:600;line-height:.95;letter-spacing:-2px;padding-top:4px;background:linear-gradient(120deg,#FFE7C2,#FF8847);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.rp-countn.edit{cursor:text;outline:none;border-radius:8px;padding:0 8px;margin:0 -8px;transition:background .15s,box-shadow .15s;}
+.rp-countn.edit:hover{background:rgba(255,255,255,.06);}
+.rp-countn.edit:focus{background:rgba(255,255,255,.10);box-shadow:0 0 0 1px rgba(255,255,255,.30);}
 .rp-countl{font-size:11px;font-weight:700;letter-spacing:2px;margin-top:8px;opacity:.7;}
 .rp-goals{display:flex;gap:10px;margin-top:18px;justify-content:center;}
 .rp-goal{text-align:center;}
