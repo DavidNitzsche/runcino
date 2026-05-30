@@ -113,13 +113,38 @@ interface BlockPlan {
   phases: Array<{ label: string; weeks: number; rationale: string; citation: string }>;
 }
 
+/**
+ * Race-distance category (Q-02 · SIM-02 fix). The plan generator now
+ * differentiates 5K / 10K / HM / M instead of only marathon-vs-not.
+ * Each category drives a distinct taper length, race-specific block
+ * size, and quality-mix (see qualityMixFor below).
+ *
+ * Cite: Research/22-plan-templates.md (per-distance template tables);
+ *       Research/00a §race-specific-prep (taper length by distance).
+ */
+type DistCategory = '5k' | '10k' | 'hm' | 'm';
+function distanceCategoryOf(raceDistanceMi: number): DistCategory {
+  if (raceDistanceMi >= 20) return 'm';
+  if (raceDistanceMi >= 11) return 'hm';
+  if (raceDistanceMi >= 5)  return '10k';
+  return '5k';
+}
+
+/** Per-category structural numbers per Research/22 + canonical Daniels. */
+const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: number }> = {
+  '5k':  { taperWeeks: 1, raceSpecificCap: 2 }, // short, fast races — minimal taper
+  '10k': { taperWeeks: 2, raceSpecificCap: 3 },
+  'hm':  { taperWeeks: 2, raceSpecificCap: 3 },
+  'm':   { taperWeeks: 3, raceSpecificCap: 4 },
+};
+
 function sizeBlocks(totalWeeks: number, raceDistanceMi: number): BlockPlan {
-  // Marathon vs half — half gets shorter taper + shorter race-specific block.
-  const isMarathon = raceDistanceMi >= 20;
-  const taperWeeks       = isMarathon ? 3 : 2;
+  const cat = distanceCategoryOf(raceDistanceMi);
+  const shape = BLOCK_SHAPE[cat];
+  const taperWeeks       = shape.taperWeeks;
   // Race-specific = the closest-to-race quality block. Sized by race distance,
   // squeezed only if total runway is too short.
-  const raceSpecificWks  = Math.min(isMarathon ? 4 : 3, Math.max(0, totalWeeks - taperWeeks - 4));
+  const raceSpecificWks  = Math.min(shape.raceSpecificCap, Math.max(0, totalWeeks - taperWeeks - 4));
   // Quality block: bigger when there's more runway, capped at 8.
   const remainingAfterTaperAndRS = totalWeeks - taperWeeks - raceSpecificWks;
   const qualityWeeks     = Math.min(8, Math.max(3, Math.floor(remainingAfterTaperAndRS * 0.6)));
@@ -295,17 +320,42 @@ function layoutWeek({
       : 'Conversational throughout. Build the engine.',
   };
   if (phase !== 'BASE') {
+    // Q-02 fix: quality mix now varies by race distance per Research/22.
+    // 5K leans VO2max heavy (intervals); 10K balanced threshold + intervals;
+    // HM threshold-dominant + race-specific MP; M long-run + threshold +
+    // marathon-pace integration. Race-specific phase still steers harder
+    // toward race-specific quality regardless of distance.
+    const cat = distanceCategoryOf(raceDistanceMi);
     const qualityTypes: Array<DayPlan['type']> =
-      phase === 'TAPER'         ? ['threshold']                                       // tune-up
-      : phase === 'RACE-SPECIFIC' ? ['threshold', 'tempo']                            // sharpening
-      : phase === 'QUALITY'       ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
+        phase === 'TAPER'         ? ['threshold']                                     // tune-up — same for all distances
+      : phase === 'RACE-SPECIFIC'
+          ? (cat === '5k'   ? ['intervals', 'intervals']
+           : cat === '10k'  ? ['threshold', 'intervals']
+           : cat === 'hm'   ? ['threshold', 'tempo']
+           : /* m */          ['tempo', 'threshold'])
+      : phase === 'QUALITY'
+          ? (cat === '5k'   ? (weekIdx % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
+           : cat === '10k'  ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
+           : cat === 'hm'   ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
+           : /* m */          (weekIdx % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
       : [];
+    // Per-distance interval prescription strings. Research/22 §quality-templates.
+    const intervalsPrescription =
+        cat === '5k'  ? '5×800m @ I pace · 90s jog'
+      : cat === '10k' ? '4×1km @ I pace · 2:00 jog'
+      : cat === 'hm'  ? '6×800m @ I pace · 90s jog'
+      :                 '5×1mi @ I-T transition · 2:00 jog';
+    const thresholdPrescription =
+        cat === '5k'  ? '3×1mi @ T pace · 60s jog'
+      : cat === '10k' ? '4×1km @ T pace · 60s jog'
+      : cat === 'hm'  ? '3×1mi @ T pace · 2:00 jog'
+      :                 '4×1mi @ T pace · 90s jog';
     qualityDows.forEach((dow, i) => {
       if (slots[dow] != null) return; // conflict — skip
       const qt = qualityTypes[i % qualityTypes.length];
       const sub =
-        qt === 'intervals'  ? '6×800m @ I pace · 90s jog'
-      : qt === 'threshold'  ? '3×1mi @ T pace · 2:00 jog'
+        qt === 'intervals'  ? intervalsPrescription
+      : qt === 'threshold'  ? thresholdPrescription
       : qt === 'tempo'      ? `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi continuous tempo`
       :                       'QUALITY';
       slots[dow] = {
