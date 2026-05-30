@@ -160,7 +160,7 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
           seed={seed}
         />
       )}
-      <WeeklyCheckIn open={openOverlay === 'weekci'} onClose={() => setOpenOverlay(null)} />
+      <WeeklyCheckIn open={openOverlay === 'weekci'} onClose={() => setOpenOverlay(null)} seed={seed} />
       <Paywall open={openOverlay === 'paywall'} onClose={() => setOpenOverlay(null)} />
       <Reach open={openOverlay === 'reach'} onClose={() => setOpenOverlay(null)} onAdd={() => setOpenOverlay(null)} />
       <Pro open={openOverlay === 'pro'} onClose={() => setOpenOverlay(null)} />

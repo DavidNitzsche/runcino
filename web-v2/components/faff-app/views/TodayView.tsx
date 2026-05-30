@@ -239,8 +239,8 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           <div className="cdlab">PROJECTED FINISH</div>
           <div className="cdsub">Goal {goal?.goal ?? '·'} · {goal?.delta ?? '·'}</div>
           <div className="cdbar"><div className="cdfill" style={{ width: `${goal?.goalPct ?? 0}%`, background: goal?.onTrack ? '#3EBD41' : '#FF8847' }} /></div>
-          <div className="cdwk" style={{ color: '#7be89a', opacity: 1 }}>
-            {goal?.onTrack ? 'On track for sub-3' : 'Behind goal pace'}
+          <div className="cdwk" style={{ color: goal?.onTrack ? '#7BE8A0' : '#FFCE8A', opacity: 1 }}>
+            {goal ? (goal.onTrack ? `On track for ${goal.goal}` : `${goal.delta}`) : 'No goal race set'}
           </div>
         </div>
       </div>
@@ -250,7 +250,7 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
         <div className="tbody cd">
           <div className="cdbig">{goal?.daysAway ?? '·'}</div>
           <div className="cdlab">DAYS TO GO</div>
-          <div className="cdsub">{goal ? `${formatDate(goal.date)} · Sacramento` : '·'}</div>
+          <div className="cdsub">{goal ? `${formatDate(goal.date)}${goal.location ? ' · ' + goal.location : ''}` : '·'}</div>
           <div className="cdbar"><div className="cdfill" style={{ width: `${goal?.goalPct ?? 0}%` }} /></div>
           <div className="cdwk">{goal?.phaseLabel ?? '·'}</div>
         </div>

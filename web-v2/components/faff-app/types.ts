@@ -56,12 +56,13 @@ export type FaffSeed = {
 export type GoalRace = {
   slug: string; name: string; date: string;     // ISO
   daysAway: number;
-  goal: string;        // e.g. "3:00"
-  projected: string;   // e.g. "2:58"
+  goal: string;        // e.g. "1:30:00"
+  projected: string;   // e.g. "1:29:45"
   onTrack: boolean;
-  delta: string;       // e.g. "2 min ahead"
+  delta: string;       // e.g. "15 sec ahead"
   phaseLabel: string;  // "Build phase · wk 14 / 26"
   goalPct: number;     // 0..100 for progress bar
+  location: string | null;  // e.g. "San Diego, CA"  — null if not on record
 };
 export type VolumeBar = { mi: number; label: string; current: boolean };
 export type PR = { k: string; v: string; date: string };

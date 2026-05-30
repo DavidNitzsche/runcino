@@ -36,45 +36,21 @@ export type RaceDetailSeed = {
 };
 
 const FALLBACK: RaceDetailSeed = {
-  slug: 'cim-marathon',
-  name: 'California International Marathon',
-  date: '2026-12-06', startTime: '7:00 AM',
-  course: 'Folsom → Sacramento, CA',
-  certification: 'Point-to-point · USATF certified',
-  registered: true, bib: '#pending', wave: 'Wave 1 · Seed sub-3:00',
-  daysAway: 192, distanceMi: 26.2, netElevFt: -340, gainFt: 1100, goalPace: '6:48',
-  aGoal: '2:58', bGoal: '3:05',
-  pacing: [
-    { seg: 'Miles 1–6',    sub: 'rolling · hold back',       bar: 62, barColor: '#14C08C', pace: '6:52', cum: '41:12'   },
-    { seg: 'Miles 7–13',   sub: 'settle, let it roll',       bar: 74, barColor: '#F3AD38', pace: '6:48', cum: '1:28:50' },
-    { seg: 'Miles 14–20',  sub: 'locked in',                 bar: 78, barColor: '#FF8847', pace: '6:46', cum: '2:16:12' },
-    { seg: 'Miles 21–26.2',sub: 'flat · empty the tank',     bar: 92, barColor: '#FC4D64', pace: '6:42', cum: '2:57:50' },
-  ],
-  splits: [
-    { label: '5K',     val: '21:18'   },
-    { label: '10K',    val: '42:34'   },
-    { label: 'HALF',   val: '1:29:20' },
-    { label: '30K',    val: '2:01:40' },
-    { label: '40K',    val: '2:42:10' },
-    { label: 'FINISH', val: '2:57:50' },
-  ],
-  gels: [
-    { mi: 'MI 4',  left: 15 }, { mi: 'MI 8', left: 31 }, { mi: 'MI 12', left: 46 },
-    { mi: 'MI 16 · caf', left: 61, caf: true }, { mi: 'MI 20', left: 76 }, { mi: 'MI 23 · caf', left: 88, caf: true },
-  ],
-  preRace: '3 hrs out · bagel + banana + 24oz electrolyte',
-  onCourse: '6 × PF 30 gel · every ~35 min · 2 with caffeine',
-  hydration: 'Drink mix · every 5K · extra tab if >55°F',
-  notables: [
-    { mi: '1–6',   tx: 'Rolling hills. The bumps live here. Stay relaxed, do not surge the climbs.' },
-    { mi: '7–20',  tx: 'Steady descent. Gentle net downhill. Let gravity do the work, hold form.' },
-    { mi: '21–26', tx: 'Flat &amp; fast. Pancake-flat into the Capitol. Where the race is won.' },
-  ],
-  insight: 'CIM is a <b>PR machine</b> · net downhill and famously fast · but it punishes runners who hammer the rolling first 10K. <b>Bank nothing early.</b> Run the tangents through the turns to save the extra 100–200m, then use the flat final 10K to close. Start temps are usually <b>38–48°F and sometimes foggy</b>; dress to be slightly cold on the line.',
-  start: { time: '7:00 AM · Folsom Dam',  detail: 'Wave 1 corral · be in by 6:40 AM' },
-  shuttle: { value: 'Book by Nov 20',     detail: 'Buses from Sacramento → start, 4:45–5:45 AM' },
-  pickup:  { value: 'Expo · Dec 4–5',     detail: 'SAFE Credit Union Convention Center' },
-  finish:  { value: 'State Capitol, L Street', detail: 'Gear check reunion · 0.3 mi to light rail' },
+  slug: 'race', name: 'Race', date: '', startTime: '·',
+  course: '·', certification: '·',
+  registered: false, bib: '·', wave: '·',
+  daysAway: 0, distanceMi: 0, netElevFt: 0, gainFt: 0, goalPace: '·',
+  aGoal: '·', bGoal: '·',
+  pacing: [],
+  splits: [],
+  gels: [],
+  preRace: '·', onCourse: '·', hydration: '·',
+  notables: [],
+  insight: 'Race details will appear here once the GPX and goal time are confirmed.',
+  start:   { time: '·', detail: '·' },
+  shuttle: { value: '·', detail: '·' },
+  pickup:  { value: '·', detail: '·' },
+  finish:  { value: '·', detail: '·' },
   elevPath: 'M0,58 L40,40 L80,70 L120,46 L160,78 L200,54 L240,86 L280,68 L320,96 L360,84 L400,104 L440,96 L480,112 L520,108 L560,120 L600,116 L640,128',
 };
 
@@ -131,7 +107,6 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
               >{bib}</span>
             </div>
             <div className="rp-chip">{r.wave}</div>
-            <div className="rp-chip">Boston qualifier</div>
           </div>
         </div>
         <div>
@@ -174,9 +149,9 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-ss"><div className="k">GOAL PACE</div><div className="v">{goalPace}<small>/mi</small></div></div>
       </div>
 
-      <div className="rp-sec">THE COURSE<span className="rp-secr">Net downhill · rolling first 10K · flat finish</span></div>
+      <div className="rp-sec">THE COURSE<span className="rp-secr">{r.netElevFt < -100 ? 'Net downhill' : r.netElevFt > 100 ? 'Net uphill' : 'Net flat'}</span></div>
       <div className="rp-panel">
-        <div className="rp-elevhead"><div className="t">Route · Folsom to the State Capitol</div><div className="s">GPX available</div></div>
+        <div className="rp-elevhead"><div className="t">Route{r.course ? ` · ${r.course}` : ''}</div><div className="s">GPX available</div></div>
         <div className="rp-map">
           <svg viewBox="0 0 640 158" preserveAspectRatio="none">
             <defs><pattern id="rmg" width="44" height="44" patternUnits="userSpaceOnUse"><path d="M44 0H0V44" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1"/></pattern></defs>
@@ -187,10 +162,12 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             <circle cx="40" cy="118" r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />
             <circle cx="606" cy="40" r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />
           </svg>
-          <span className="rp-mtag s" style={{ left: 14, bottom: 32 }}>FOLSOM</span>
-          <span className="rp-mtag f" style={{ right: 14, top: 12 }}>CAPITOL</span>
+          <span className="rp-mtag s" style={{ left: 14, bottom: 32 }}>START</span>
+          <span className="rp-mtag f" style={{ right: 14, top: 12 }}>FINISH</span>
           <div className="rp-mstat">
-            <span>{r.distanceMi} MI</span><span>↘ 1,440 FT LOSS</span><span>↗ {r.gainFt.toLocaleString()} FT GAIN</span><span>13 AID STATIONS</span>
+            <span>{r.distanceMi} MI</span>
+            <span>{r.netElevFt < 0 ? '↘' : '↗'} {Math.abs(r.netElevFt)} FT NET</span>
+            <span>↗ {r.gainFt.toLocaleString()} FT GAIN</span>
           </div>
         </div>
       </div>

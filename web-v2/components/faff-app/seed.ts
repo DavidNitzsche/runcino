@@ -15,6 +15,7 @@ import type {
   ActivityData, RecentRun,
 } from './types';
 import type { PlannedDay, CompletedRun, EffortKey } from './constants';
+import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 
 const DEFAULT_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -160,17 +161,46 @@ function adaptReadiness(glance: Glance | null, health: Health | null): Readiness
   };
 }
 
-function adaptGoalRace(glance: Glance | null, races: Races | null): GoalRace | null {
+function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Profile | null, training: Training | null): GoalRace | null {
   const aRace = races?.aRace ?? null;
+  // Real VDOT-based projection. Profile already carries the best
+  // recent VDOT from races; turn that into a predicted time at the
+  // goal race's distance.
+  let projected = aRace?.goal ?? null;
+  let onTrack = true;
+  let delta = 'on track';
+  if (aRace && profile?.physiology.vdot && aRace.distance_mi) {
+    try {
+      const predicted = predictRaceTime(profile.physiology.vdot, aRace.distance_mi);
+      const goalSec = parseRaceTime(aRace.goal);
+      if (predicted) projected = formatRaceTime(predicted) ?? aRace.goal;
+      if (predicted && goalSec) {
+        const diff = goalSec - predicted;
+        onTrack = diff >= -30; // 30s grace before flipping to behind
+        const m = Math.abs(Math.round(diff / 60));
+        const sec = Math.abs(Math.round(diff % 60));
+        delta = diff >= 0
+          ? (m > 0 ? `${m} min ahead` : `${sec} sec ahead`)
+          : (m > 0 ? `${m} min behind` : `${sec} sec behind`);
+      }
+    } catch { /* swallow */ }
+  }
+  // Real phase label from plan_phases when training-state has it.
+  const phaseLabel = training?.currentPhase && training.currentWeekIdx != null
+    ? `${training.currentPhase} phase · wk ${training.currentWeekIdx + 1} / ${training.weeks.length}`
+    : 'In active block';
+
   if (aRace) {
     const days = aRace.days;
     const goal = aRace.goal || '·';
     return {
       slug: aRace.slug, name: aRace.name, date: aRace.date,
-      daysAway: Math.max(0, days), goal, projected: goal,
-      onTrack: true, delta: 'on track',
-      phaseLabel: 'In active block',
+      daysAway: Math.max(0, days), goal,
+      projected: projected ?? goal,
+      onTrack, delta,
+      phaseLabel,
       goalPct: Math.min(100, Math.max(0, 100 - (days / 365) * 100)),
+      location: aRace.location ?? null,
     };
   }
   if (glance?.nextARaceName && glance.daysToARace != null) {
@@ -179,6 +209,7 @@ function adaptGoalRace(glance: Glance | null, races: Races | null): GoalRace | n
       daysAway: Math.max(0, glance.daysToARace),
       goal: '·', projected: '·', onTrack: true, delta: 'on track',
       phaseLabel: glance.phaseLabel || '·', goalPct: 50,
+      location: null,
     };
   }
   return null;
@@ -545,7 +576,7 @@ export async function buildSeed(): Promise<FaffSeed> {
 
   const { week, todayIdx, results } = adaptWeek(glance);
   const readiness = adaptReadiness(glance, health);
-  const goalRace = adaptGoalRace(glance, races);
+  const goalRace = adaptGoalRace(glance, races, profile, training);
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(glance, training);
   const season = adaptSeason(training);
   const healthSnapshot = adaptHealth(health);

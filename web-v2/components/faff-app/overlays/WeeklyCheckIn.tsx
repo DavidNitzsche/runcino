@@ -1,16 +1,25 @@
 'use client';
 
-const DAYS = [
-  { dn: 'M', dm: 'rest',     h: 0,   c: null,      done: false, miss: false },
-  { dn: 'T', dm: '6 easy',   h: 38,  c: '#14C08C', done: true,  miss: false },
-  { dn: 'W', dm: '8 tempo',  h: 64,  c: '#FF8847', done: true,  miss: false },
-  { dn: 'T', dm: 'easy',     h: 30,  c: null,      done: false, miss: true  },
-  { dn: 'F', dm: '5 rec',    h: 30,  c: '#27B4E0', done: true,  miss: false },
-  { dn: 'S', dm: '16 long',  h: 100, c: '#F3AD38', done: true,  miss: false },
-  { dn: 'S', dm: '4 shake',  h: 26,  c: '#27B4E0', done: true,  miss: false },
-];
+import type { FaffSeed } from '../types';
+import { EFF } from '../constants';
 
-export function WeeklyCheckIn({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * Weekly check-in overlay. Pulls the previous calendar week's structure
+ * + Faff's goal-race context from the seed so the recap reflects the
+ * real plan, not a hard-coded CIM teaser.
+ */
+export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose: () => void; seed: FaffSeed }) {
+  // Use last week's totals from the volume strip + this week's plan
+  // for the "NEXT WEEK" hero. Best-effort; we degrade gracefully.
+  const prevWeekMi = seed.volumeBars.length >= 2 ? seed.volumeBars[seed.volumeBars.length - 2].mi : 0;
+  const thisWeekMi = seed.thisWeekMiles;
+  const delta = thisWeekMi - prevWeekMi;
+  const phaseFull = seed.goalRace?.phaseLabel ?? 'Active block';
+  const phaseTop = phaseFull.split(' · ')[0] ?? 'Active block';
+  const max = Math.max(1, ...seed.week.map(d => parseFloat(d.dist) || 0));
+  const sessionsDone = seed.week.filter(d => d.done).length;
+  const sessionsPlanned = seed.week.filter(d => d.type !== 'rest').length;
+
   return (
     <div className={`ov${open ? ' open' : ''}`}>
       <div className="ovbg" onClick={onClose} />
@@ -19,46 +28,66 @@ export function WeeklyCheckIn({ open, onClose }: { open: boolean; onClose: () =>
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </div>
         <div className="wc-body">
-          <div className="wc-tag">WEEK 14 · BUILD PHASE</div>
-          <div className="wc-h">A strong<br/>week.</div>
-          <div className="wc-sub">May 19 – May 25</div>
+          <div className="wc-tag">{phaseTop.toUpperCase()}</div>
+          <div className="wc-h">{deltaHeadline(delta)}</div>
+          <div className="wc-sub">{seed.topDate}</div>
           <div className="wc-stats">
-            <div><div className="v">47<small> mi</small></div><div className="k">DISTANCE</div></div>
-            <div><div className="v">4<small>/5</small></div><div className="k">SESSIONS</div></div>
-            <div><div className="v up">+3<small> mi</small></div><div className="k">VS LAST WK</div></div>
+            <div><div className="v">{prevWeekMi}<small> mi</small></div><div className="k">LAST WEEK</div></div>
+            <div><div className="v">{sessionsDone}<small>/{sessionsPlanned}</small></div><div className="k">SESSIONS</div></div>
+            <div><div className={`v ${delta >= 0 ? 'up' : ''}`}>{delta >= 0 ? '+' : ''}{delta}<small> mi</small></div><div className="k">VS LAST WK</div></div>
           </div>
-          <div className="wc-lbl">THE WEEK</div>
+          <div className="wc-lbl">THIS WEEK</div>
           <div className="wc-week">
-            {DAYS.map((d, i) => (
-              <div key={i} className={`wc-day${d.miss ? ' miss' : ''}`}>
-                {d.h > 0 ? (
-                  <div className="bar" style={{ height: `${d.h}%`, background: d.c ?? 'transparent' }}>
-                    {d.done && (
-                      <svg className="chk" viewBox="0 0 24 24" fill="none" stroke="#9af0bf" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bar" style={{ height: '6%', background: 'rgba(255,255,255,.12)' }} />
-                )}
-                <div className="dn">{d.dn}</div>
-                <div className="dm">{d.dm}</div>
-              </div>
-            ))}
+            {seed.week.map((d, i) => {
+              const dist = parseFloat(d.dist) || 0;
+              const h = dist > 0 ? Math.round((dist / max) * 100) : 6;
+              const c = d.type === 'rest' ? null : EFF[d.type].dot;
+              return (
+                <div key={i} className={`wc-day${d.done ? '' : (d.type === 'rest' ? '' : ' miss')}`}>
+                  {dist > 0 ? (
+                    <div className="bar" style={{ height: `${h}%`, background: c ?? 'transparent' }}>
+                      {d.done && (
+                        <svg className="chk" viewBox="0 0 24 24" fill="none" stroke="#9af0bf" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bar" style={{ height: '6%', background: 'rgba(255,255,255,.12)' }} />
+                  )}
+                  <div className="dn">{d.dw[0]}</div>
+                  <div className="dm">{dist > 0 ? `${dist} ${d.type}` : 'rest'}</div>
+                </div>
+              );
+            })}
           </div>
           <div className="wc-lbl">FAFF SAYS</div>
           <div className="wc-coach">
             <span className="ct">COACH</span>
-            <span className="cx">You <b>nailed the long run and Wednesday&rsquo;s tempo</b>, both right on target. Skipping Thursday&rsquo;s easy was the right call after a short night. Load is climbing cleanly. Same shape next week, a touch more volume.</span>
+            <span className="cx">{seed.readiness.coach}</span>
           </div>
-          <div className="wc-lbl">NEXT WEEK</div>
-          <div className="wc-next">
-            <div className="wc-nexthero">Peak build, biggest week yet<small>50 mi · key session 2 × 3 mi @ threshold</small></div>
-            <div className="wc-nrow"><span className="nk">Volume</span><span className="nv">50 mi · +3</span></div>
-            <div className="wc-nrow"><span className="nk">Quality days</span><span className="nv">Tue threshold · Sat long</span></div>
-            <div className="wc-nrow"><span className="nk">CIM</span><span className="nv">191 days out</span></div>
-          </div>
+          {seed.goalRace && (
+            <>
+              <div className="wc-lbl">RACE WATCH</div>
+              <div className="wc-next">
+                <div className="wc-nexthero">{seed.goalRace.name}<small>{seed.goalRace.location ? `${seed.goalRace.location} · ` : ''}{formatDate(seed.goalRace.date)}</small></div>
+                <div className="wc-nrow"><span className="nk">Goal</span><span className="nv">{seed.goalRace.goal}</span></div>
+                <div className="wc-nrow"><span className="nk">Projected</span><span className="nv">{seed.goalRace.projected}</span></div>
+                <div className="wc-nrow"><span className="nk">Days out</span><span className="nv">{seed.goalRace.daysAway}</span></div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+function deltaHeadline(delta: number): React.ReactNode {
+  if (delta > 5) return <>Pushed the load.</>;
+  if (delta > 0) return <>Steady gain.</>;
+  if (delta === 0) return <>Held the line.</>;
+  if (delta > -5) return <>Soft step back.</>;
+  return <>Cutback week.</>;
+}
+function formatDate(iso: string) {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(iso));
 }
