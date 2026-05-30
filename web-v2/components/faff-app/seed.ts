@@ -406,7 +406,10 @@ function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
     mk('stride',  'STRIDE LENGTH',  'm',   strideForm.last, undefined,
        [Math.max(0.8, (strideForm.last || 1.1) - 0.3), (strideForm.last || 1.1) + 0.3],
        strideForm.series, 'neutral', 2),
-    { k: 'balance', label: 'L / R BALANCE', unit: '', current: 0, dom: [0, 0], series: [], status: 'neutral', special: 'balance' },
+    // 2026-05-30: L/R Balance removed. Apple Health doesn't expose a
+    // left/right balance signal — the card had a zero-data source and
+    // displayed only as "balanced" with no real underlying value. Bring
+    // it back if a sensor (Stryd, Garmin chest dynamics pod) is wired.
   ];
   return { readiness: adaptReadiness(null, health), body, form: form_ };
 }

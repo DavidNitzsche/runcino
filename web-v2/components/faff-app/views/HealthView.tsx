@@ -30,16 +30,9 @@ function fmt(m: HealthMetric, v: number): string {
 }
 
 function MetricCard({ m, active, onClick }: { m: HealthMetric; active: boolean; onClick: () => void }) {
-  if (m.special === 'balance') {
-    return (
-      <div className={`mcard${active ? ' on' : ''}`} onClick={onClick} role="button" tabIndex={0}>
-        <div className="mc-k"><span className="cdot" style={{ background: GREEN }} />L / R</div>
-        <div className="mc-v">49.4<small> / 50.6%</small></div>
-        <div className="mc-balmini"><div className="l" style={{ width: '49.4%' }} /><div className="r" style={{ width: '50.6%' }} /></div>
-        <div className="mc-tgt">balanced</div>
-      </div>
-    );
-  }
+  // 2026-05-30: L/R Balance branch removed. Apple Health doesn't expose a
+  // balance signal; the card had no real data and only displayed "balanced".
+  // Restore if a sensor (Stryd, Garmin chest pod) is wired.
   const W = 150, H = 32, P = 4;
   const [lo, hi] = m.dom;
   const X = (i: number) => P + (i / (m.series.length - 1)) * (W - P * 2);
@@ -67,19 +60,7 @@ function MetricCard({ m, active, onClick }: { m: HealthMetric; active: boolean; 
 }
 
 function Detail({ m, rangeLabel = '30-DAY', sliceN = 30 }: { m: HealthMetric; rangeLabel?: string; sliceN?: 7 | 30 }) {
-  if (m.special === 'balance') {
-    return (
-      <>
-        <div className="hd-head"><div className="hd-title">L / R BALANCE</div></div>
-        <div className="balbar">
-          <div className="lft" style={{ width: '49.4%' }} />
-          <div className="rgt" style={{ width: '50.6%' }} />
-          <div className="midl" />
-        </div>
-        <div className="ballbl"><span>L 49.4%</span><span>R 50.6%</span></div>
-      </>
-    );
-  }
+  // 2026-05-30: L/R Balance detail branch removed alongside the card.
   const fullSeries = m.series;
   const sliced = fullSeries.slice(-sliceN);
   const W = 1040, H = 220, P = 16;
@@ -216,7 +197,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
 }
 
 function sliceMetric(m: HealthMetric, range: 7 | 30): HealthMetric {
-  if (m.special || !m.series.length || range === 30) return m;
+  if (!m.series.length || range === 30) return m;
   return { ...m, series: m.series.slice(-range) };
 }
 function RangeToggle({ range, onChange }: { range: 7 | 30; onChange: (r: 7 | 30) => void }) {

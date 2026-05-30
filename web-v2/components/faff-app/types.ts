@@ -94,7 +94,6 @@ export type HealthMetric = {
   dom: [number, number];
   series: number[];     // 30 points
   status: 'good'|'warn'|'neutral';
-  special?: 'balance';
   decimals?: number;
   clock?: boolean;
 };
