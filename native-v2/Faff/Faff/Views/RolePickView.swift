@@ -51,6 +51,7 @@ struct RolePickView: View {
 
                 continueButton
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }

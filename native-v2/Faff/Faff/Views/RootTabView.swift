@@ -1,11 +1,12 @@
 //
 //  RootTabView.swift
 //  v3 host · 5 tabs (Today · Train · Activity · Health · Targets).
-//  Profile is reached via the avatar in each tab header, not a sixth tab.
+//  Profile is reached via the avatar in each tab header.
 //
-//  Each tab provides its own effort-mesh background; the host TabView's bar
-//  is restyled to the dark-glass spec from shell.css (blur 26, opacity .46
-//  inactive / 1.0 active, 25pt icons, 10pt/700 labels).
+//  Each tab is wrapped in its own NavigationStack so push detail screens
+//  (RunDetail, Planned, WatchMirror, RaceDay, Settings, etc.) land within
+//  the originating tab. Destinations are dispatched via a shared FaffRoute
+//  enum so every tab can navigate to every screen consistently.
 //
 
 import SwiftUI
@@ -33,6 +34,22 @@ enum FaffTab: String, CaseIterable, Identifiable {
     }
 }
 
+/// Push destinations available from any tab. Adding a new one is a single
+/// case here + a single line in `routeDestination` below.
+enum FaffRoute: Hashable {
+    case runDetail(id: String)
+    case planned(workoutId: String?)
+    case completed(runId: String)
+    case watchMirror
+    case treadmill
+    case raceDay(slug: String)
+    case weekAhead
+    case settings
+    case shoes
+    case pro
+    case paywall
+}
+
 struct RootTabView: View {
     @State private var selected: FaffTab = .today
     @State private var pushProfile = false
@@ -43,25 +60,54 @@ struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $selected) {
-            TodayView(onProfile: { pushProfile = true })
+            navStack { TodayView(onProfile: { pushProfile = true }) }
                 .tabItem { Label(FaffTab.today.label, systemImage: FaffTab.today.icon) }
                 .tag(FaffTab.today)
-            TrainView(onProfile: { pushProfile = true })
+            navStack { TrainView(onProfile: { pushProfile = true }) }
                 .tabItem { Label(FaffTab.train.label, systemImage: FaffTab.train.icon) }
                 .tag(FaffTab.train)
-            ActivityView(onProfile: { pushProfile = true })
+            navStack { ActivityView(onProfile: { pushProfile = true }) }
                 .tabItem { Label(FaffTab.activity.label, systemImage: FaffTab.activity.icon) }
                 .tag(FaffTab.activity)
-            HealthView(onProfile: { pushProfile = true })
+            navStack { HealthView(onProfile: { pushProfile = true }) }
                 .tabItem { Label(FaffTab.health.label, systemImage: FaffTab.health.icon) }
                 .tag(FaffTab.health)
-            TargetsView(onProfile: { pushProfile = true })
+            navStack { TargetsView(onProfile: { pushProfile = true }) }
                 .tabItem { Label(FaffTab.targets.label, systemImage: FaffTab.targets.icon) }
                 .tag(FaffTab.targets)
         }
         .tint(.white)
         .sheet(isPresented: $pushProfile) {
-            NavigationStack { ProfileView(onDismiss: { pushProfile = false }) }
+            NavigationStack {
+                ProfileView(onDismiss: { pushProfile = false })
+                    .navigationDestination(for: FaffRoute.self) { routeDestination($0) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func navStack<Content: View>(@ViewBuilder _ root: () -> Content) -> some View {
+        NavigationStack {
+            root()
+                .navigationBarHidden(true)
+                .navigationDestination(for: FaffRoute.self) { routeDestination($0) }
+        }
+    }
+
+    @ViewBuilder
+    private func routeDestination(_ route: FaffRoute) -> some View {
+        switch route {
+        case .runDetail(let id):   RunDetailView(runId: id).navigationBarHidden(true)
+        case .planned(let id):     PlannedView(workoutId: id).navigationBarHidden(true)
+        case .completed(let id):   CompletedView(runId: id).navigationBarHidden(true)
+        case .watchMirror:         WatchMirrorView().navigationBarHidden(true)
+        case .treadmill:           TreadmillView().navigationBarHidden(true)
+        case .raceDay(let slug):   RaceDayView(raceSlug: slug).navigationBarHidden(true)
+        case .weekAhead:           WeekAheadView().navigationBarHidden(true)
+        case .settings:            SettingsView().navigationBarHidden(true)
+        case .shoes:               ShoesView().navigationBarHidden(true)
+        case .pro:                 ProView().navigationBarHidden(true)
+        case .paywall:             PaywallView().navigationBarHidden(true)
         }
     }
 
@@ -72,13 +118,11 @@ struct RootTabView: View {
         app.backgroundColor = UIColor(red: 16/255, green: 9/255, blue: 7/255, alpha: 0.62)
         app.shadowColor = UIColor.white.withAlphaComponent(0.09)
 
-        // Active (selected)
         let onAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont(name: "Inter-Bold", size: 10) ?? .systemFont(ofSize: 10, weight: .bold),
             .foregroundColor: UIColor.white,
             .kern: 0.3
         ]
-        // Inactive
         let offAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont(name: "Inter-Bold", size: 10) ?? .systemFont(ofSize: 10, weight: .bold),
             .foregroundColor: UIColor.white.withAlphaComponent(0.46),

@@ -130,34 +130,37 @@ struct TargetsView: View {
     private func raceTile(_ race: RaceListItem) -> some View {
         let days = race.days_to_race ?? 0
         let iso = race.date ?? ""
-        return HStack(spacing: 14) {
-            Rectangle().fill(heatColor(days)).frame(width: 4)
-            VStack(spacing: 0) {
-                SpecLabel(text: monthOf(iso), size: 11, tracking: 1, color: Theme.txt.opacity(0.7))
-                Text("\(dayOf(iso))")
-                    .font(.display(24, weight: .bold))
-                    .tracking(-1)
-                    .foregroundStyle(Theme.txt)
-            }
-            .frame(width: 50)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(race.name ?? "Race")
-                    .font(.body(17, weight: .extraBold))
-                    .tracking(-0.3)
-                    .foregroundStyle(Theme.txt)
-                Text(race.distance_label ?? "")
+        return NavigationLink(value: FaffRoute.raceDay(slug: race.slug)) {
+            HStack(spacing: 14) {
+                Rectangle().fill(heatColor(days)).frame(width: 4)
+                VStack(spacing: 0) {
+                    SpecLabel(text: monthOf(iso), size: 11, tracking: 1, color: Theme.txt.opacity(0.7))
+                    Text("\(dayOf(iso))")
+                        .font(.display(24, weight: .bold))
+                        .tracking(-1)
+                        .foregroundStyle(Theme.txt)
+                }
+                .frame(width: 50)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(race.name ?? "Race")
+                        .font(.body(17, weight: .extraBold))
+                        .tracking(-0.3)
+                        .foregroundStyle(Theme.txt)
+                    Text(race.distance_label ?? "")
+                        .font(.display(11, weight: .semibold))
+                        .foregroundStyle(Theme.txt.opacity(0.6))
+                }
+                Spacer()
+                Text("\(days)d")
                     .font(.display(11, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.6))
+                    .foregroundStyle(Theme.txt.opacity(0.7))
             }
-            Spacer()
-            Text("\(days)d")
-                .font(.display(11, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.7))
+            .padding(15)
+            .background(Color(hex: 0x140610).opacity(0.46), in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20)
+                .stroke(race.priority == "A" ? Color(hex: 0xFF965A).opacity(0.6) : Color.white.opacity(0.14)))
         }
-        .padding(15)
-        .background(Color(hex: 0x140610).opacity(0.46), in: RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20)
-            .stroke(race.priority == "A" ? Color(hex: 0xFF965A).opacity(0.6) : Color.white.opacity(0.14)))
+        .buttonStyle(.plain)
     }
 
     private func goalTile(title: String, detail: String, start: String, now: String, goal: String, progress: Double) -> some View {

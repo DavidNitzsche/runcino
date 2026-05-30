@@ -32,6 +32,7 @@ struct PRSheet: View {
 
                 actions
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 28)
             .padding(.bottom, 30)
         }

@@ -277,9 +277,10 @@ struct ActivityView: View {
 
     private func runRow(_ run: LogRun) -> some View {
         let effort = FaffEffort.fromType(run.workoutType ?? run.type)
-        return HStack(spacing: 0) {
-            Rectangle().fill(effort.dot).frame(width: 4)
-            HStack(spacing: 13) {
+        return NavigationLink(value: FaffRoute.runDetail(id: run.id)) {
+            HStack(spacing: 0) {
+                Rectangle().fill(effort.dot).frame(width: 4)
+                HStack(spacing: 13) {
                 VStack(spacing: 2) {
                     SpecLabel(text: dowName(run.dow), size: 11, tracking: 0.5, color: Theme.txt.opacity(0.7))
                     Text(shortDate(run.date))
@@ -322,9 +323,11 @@ struct ActivityView: View {
                 }
             }
             .padding(14)
+            }
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.1)))
         }
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.1)))
+        .buttonStyle(.plain)
         .padding(.horizontal, 22).padding(.bottom, 10)
     }
 

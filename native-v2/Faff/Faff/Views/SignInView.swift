@@ -34,6 +34,7 @@ struct SignInView: View {
                 fine
                     .padding(.top, 18)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 30)
             .padding(.bottom, 34)
         }

@@ -102,6 +102,7 @@ struct OnboardingView: View {
                 withAnimation(Theme.Motion.smooth) { step = 1 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
         .padding(.bottom, 30)
     }
@@ -171,6 +172,7 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
         .padding(.bottom, 30)
     }
@@ -299,6 +301,7 @@ struct OnboardingView: View {
                 withAnimation(Theme.Motion.smooth) { step = 3 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
         .padding(.bottom, 30)
     }
@@ -428,6 +431,7 @@ struct OnboardingView: View {
                 onComplete()
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 26)
         .padding(.bottom, 30)
     }

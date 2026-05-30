@@ -26,6 +26,7 @@ struct WithinReachSheet: View {
                 Spacer(minLength: 0)
                 actions
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 26)
             .padding(.bottom, 30)
         }

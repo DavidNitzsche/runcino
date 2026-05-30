@@ -62,10 +62,22 @@ struct TodayView: View {
             VStack {
                 Spacer()
                 StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
-                    FaffPrimaryButton(
-                        title: startButtonTitle,
-                        accentDot: selectedEffort.dot
-                    ) { /* push WatchMirror */ }
+                    NavigationLink(value: FaffRoute.watchMirror) {
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(selectedEffort.dot)
+                                .frame(width: 11, height: 11)
+                                .shadow(color: selectedEffort.dot, radius: 4)
+                            Text(startButtonTitle)
+                                .font(.body(16.5, weight: .extraBold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 17)
+                        .background(Color(hex: 0x1B1814), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(height: 130)
             }
@@ -211,13 +223,6 @@ struct TodayView: View {
 
     // MARK: - Derived
 
-    private var titleForToday: String {
-        // "Wednesday 28 · TODAY"
-        let f = DateFormatter()
-        f.dateFormat = "EEEE d"
-        return f.string(from: Date()).uppercased()
-    }
-
     private var selectedDayEffort: FaffEffort? {
         guard let week = plan,
               let d = week.days.first(where: { $0.date_iso == selectedDayID })
@@ -292,6 +297,22 @@ struct TodayView: View {
 
     private var todaySelectedDay: PlanDay? {
         plan?.days.first { $0.date_iso == selectedDayID }
+    }
+
+    private var titleForToday: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE d"
+        let base = f.string(from: Date()).uppercased()
+        if selectedDayID.isEmpty { return base }
+        if selectedDayID == todayISO { return base }
+        guard let day = todaySelectedDay else { return base }
+        let iso = day.date_iso.split(separator: "-").compactMap { Int($0) }
+        guard iso.count == 3 else { return base }
+        let cal = Calendar.current
+        if let d = cal.date(from: DateComponents(year: iso[0], month: iso[1], day: iso[2])) {
+            return f.string(from: d).uppercased()
+        }
+        return base
     }
 
     private var segments: [(String, String)] {

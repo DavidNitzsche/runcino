@@ -43,6 +43,7 @@ struct PaywallView: View {
                 fine
                     .padding(.top, 13)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, 24)
             .padding(.top, 48)
             .padding(.bottom, 26)
