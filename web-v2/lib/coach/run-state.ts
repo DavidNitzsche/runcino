@@ -8,6 +8,8 @@
  */
 import { pool } from '@/lib/db/pool';
 import { computeZones } from '@/lib/training/zones';
+import { baselineTempF } from '@/lib/weather/lookup';
+import { weatherContext } from '@/lib/weather/heat-adjustment';
 
 export interface RunSplit {
   mile: number;
@@ -90,6 +92,16 @@ export interface RunDetail {
   cadence_avg: number | null;
   elev_gain_ft: number | null;
   temp_f: number | null;
+  /**
+   * Post-run weather context. When the run was meaningfully hotter or
+   * cooler than the runner's recent baseline, surfaces a one-line
+   * explainer ("Temp 78°F vs your typical 60°F. HR ~8 bpm elevated
+   * is expected.") + the estimated HR bump in bpm. Null when delta
+   * isn't material (< 8°F) or temps aren't known.
+   *
+   * Cite: Research/06-weather-adjustments.md §1 Heat Adjustment.
+   */
+  weather_context: { message: string; hr_bump_bpm: number } | null;
   suffer_score: number | null;
   kudos: number | null;
   // P2 #10 (2026-05-30): average running power from HealthKit for the
@@ -246,6 +258,20 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const day = r.date || (r.startLocal ?? '').slice(0, 10);
   const form = await loadFormMetrics(userId, day);
 
+  // Post-run weather context. When the run's tempF is known and the
+  // runner has a 14-day baseline at this lat/lon, surface a one-line
+  // "hotter than normal" / "cooler than normal" explainer + HR bump.
+  // Cite Research/06-weather-adjustments.md §1.
+  const actualTempF = Number(r.tempF) || null;
+  const startLat = Number(r.startLat ?? r.start_latitude);
+  const startLng = Number(r.startLng ?? r.start_longitude);
+  let weatherCtx: { message: string; hr_bump_bpm: number } | null = null;
+  if (actualTempF != null && day && isFinite(startLat) && isFinite(startLng)) {
+    const baseline = await baselineTempF(startLat, startLng, day).catch(() => null);
+    const ctx = weatherContext({ actualTempF, baselineTempF: baseline });
+    if (ctx) weatherCtx = { message: ctx.message, hr_bump_bpm: ctx.hrBumpBpm };
+  }
+
   // P44 — phase-by-phase breakdown from watch completion payload, when
   // a Faff-watch run for this date exists in coach_intents. Returns
   // empty array for non-watch runs (Apple Watch Workouts, Strava, manual)
@@ -336,6 +362,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     cadence_avg: Number(r.avgCadence) || form.cadence_spm,
     elev_gain_ft: Number(r.elevGainFt) || null,
     temp_f: Number(r.tempF) || null,
+    weather_context: weatherCtx,
     suffer_score: Number(r.sufferScore) || null,
     kudos: Number(r.kudosCount) || null,
     // P2 #10 (2026-05-30): surface the day's avg running power (W).
