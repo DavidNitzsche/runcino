@@ -106,17 +106,31 @@ function buildSpec(
     return out;
   };
 
+  // 2026-05-30 (post-mortem fix): every spec MUST carry its `kind`
+  // discriminator — both paceFromSpec (seed.ts) and glance-adapter's
+  // surface-driven path narrow off `spec.kind`. The original backfill
+  // omitted it, so all 62 rows shipped as kind-less and downstream
+  // consumers silently fell through to PACE_DEFAULT. Re-run with
+  // ?force=1 to rewrite the existing kind-less rows.
   switch (type) {
     case 'easy':
-    case 'recovery':
       return {
-        pace_target_s_per_mi_lo: type === 'recovery' ? recovery : easyLo,
-        pace_target_s_per_mi_hi: type === 'recovery' ? recovery + 30 : easyHi,
+        kind: 'easy',
+        pace_target_s_per_mi_lo: easyLo,
+        pace_target_s_per_mi_hi: easyHi,
         hr_cap_bpm: hrCapEasy(lthr),
         fuel_mi: [],
       };
+    case 'recovery':
+      return {
+        kind: 'recovery',
+        pace_target_s_per_mi_lo: recovery,
+        pace_target_s_per_mi_hi: recovery + 30,
+        hr_cap_bpm: hrCapEasy(lthr),
+      };
     case 'long':
       return {
+        kind: 'long',
         pace_target_s_per_mi_lo: longLo,
         pace_target_s_per_mi_hi: longHi,
         hr_cap_bpm: hrCapLong(lthr),
@@ -126,6 +140,7 @@ function buildSpec(
       const tempoDist = Math.max(2, Math.min(7, (distance_mi ?? 8) - 3));
       const wu = ((distance_mi ?? 8) - tempoDist) / 2;
       return {
+        kind: 'tempo',
         warmup_mi: Number(wu.toFixed(1)),
         tempo_distance_mi: Number(tempoDist.toFixed(1)),
         tempo_pace_s_per_mi: tempo,
@@ -134,11 +149,11 @@ function buildSpec(
       };
     }
     case 'threshold': {
-      // Cruise-intervals default: 4 × 1mi @ T-pace w/ 60s recovery.
       const repCount = 4;
       const repMi = 1.0;
       const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
       return {
+        kind: 'threshold',
         warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
         rep_count: repCount,
         rep_distance_mi: repMi,
@@ -150,11 +165,11 @@ function buildSpec(
     }
     case 'intervals':
     case 'vo2max': {
-      // VO2max default: 5 × 1km (≈0.62mi) at I-pace w/ 90s recovery.
       const repCount = 5;
       const repMi = 0.62;
       const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
       return {
+        kind: 'intervals',
         warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
         rep_count: repCount,
         rep_distance_mi: repMi,
@@ -165,7 +180,11 @@ function buildSpec(
       };
     }
     case 'race':
+      // No 'race' kind in WorkoutSpec union — race weeks render via
+      // race-day surface, not the breakdown card. Stash as 'long' so
+      // the row still gets a pace target the week-strip can show.
       return {
+        kind: 'long',
         pace_target_s_per_mi_lo: t - 10,
         pace_target_s_per_mi_hi: t + 5,
         hr_cap_bpm: lthr ? Math.round(lthr * 0.95) : null,
@@ -173,6 +192,7 @@ function buildSpec(
       };
     case 'shakeout':
       return {
+        kind: 'easy',
         pace_target_s_per_mi_lo: easyHi,
         pace_target_s_per_mi_hi: easyHi + 30,
         hr_cap_bpm: hrCapEasy(lthr),
@@ -190,6 +210,11 @@ function buildSpec(
 export async function POST(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
   const dry = req.nextUrl.searchParams.get('dry') === '1';
+  // force=1 also rewrites EXISTING workout_spec rows that are missing the
+  // `kind` discriminator. The first backfill pass shipped specs without
+  // `kind`, which made every downstream `switch (spec.kind)` consumer
+  // (paceFromSpec, glance-adapter) silently fall through to PACE_DEFAULT.
+  const force = req.nextUrl.searchParams.get('force') === '1';
 
   try {
     // 1. Find the active plan(s) for this user. archived_iso IS NULL matches
@@ -245,10 +270,14 @@ export async function POST(req: NextRequest) {
     const samples: Array<{ id: string; type: string; before: null; after: Record<string, unknown> | null }> = [];
 
     for (const plan of planRows) {
+      // Default: only NULL specs. force=1: also kind-less existing specs
+      // (the post-mortem case from the first backfill pass).
+      const whereSpec = force
+        ? `(workout_spec IS NULL OR (workout_spec IS NOT NULL AND NOT (workout_spec ? 'kind')))`
+        : `workout_spec IS NULL`;
       const rows = (await pool.query(
         `SELECT id, type, distance_mi FROM plan_workouts
-          WHERE plan_id = $1
-            AND workout_spec IS NULL`,
+          WHERE plan_id = $1 AND ${whereSpec}`,
         [plan.id],
       )).rows as Array<{ id: string; type: string; distance_mi: number | null }>;
 
