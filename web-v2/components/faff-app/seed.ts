@@ -395,9 +395,13 @@ function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
     mk('weight', 'WEIGHT',     'lb',  weightCurrent, undefined,
        [Math.max(120, (weightCurrent || 180) - 10), (weightCurrent || 180) + 10],
        weightSeries, 'good', 1),
+    // P2 #11 (2026-05-30): real VO2 trend over 6 months. health-state ships
+    // vo2Series as the sparse Apple Health readings. We sort + clamp into
+    // a 30-point chart (downsample if 30+ points, pad-with-last if fewer).
     mk('vo2',    'VO₂ MAX',    '',    vo2Current,    undefined,
        [Math.max(30, (vo2Current || 50) - 8), (vo2Current || 50) + 6],
-       Array(30).fill(vo2Current || 0), 'good'),
+       packVo2Series(health?.vo2Series ?? [], vo2Current),
+       'good', 1),
   ];
   // Real form metrics from health_samples (HealthKit ingest).
   const formRaw = (form?.ok ? form.value : null) ?? {};
@@ -763,6 +767,27 @@ function factsFromRuns(runs: LogRun[], miles: number, elev: number): ActivityDat
     { i: 'clock', v: `${hours.toLocaleString()} hours`, c: 'moving. A workweek every couple months.' },
     { i: 'cal',   v: longDayName, c: longCopy },
   ];
+}
+
+/** Pack a sparse VO2 series (HealthKit ships ~1-2 readings/week, 6-month
+ *  window can be 25-50 points) into a 30-point chart series. Sorted by
+ *  date ASC. Downsample with even spacing if > 30 points, pad with the
+ *  most recent reading (or 0) if fewer than 2 points exist. */
+function packVo2Series(series: Array<{ date: string; v: number }>, current: number): number[] {
+  const sorted = series.slice().sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0) return Array(30).fill(current || 0);
+  const vals = sorted.map((r) => r.v);
+  if (vals.length >= 30) {
+    const step = vals.length / 30;
+    const out: number[] = [];
+    for (let i = 0; i < 30; i++) out.push(vals[Math.floor(i * step)]);
+    return out;
+  }
+  // Fewer than 30 points — pad at the START with the first value so the
+  // line starts flat (older history is what it is) and rises into the
+  // recent readings on the right.
+  const pad = Array(30 - vals.length).fill(vals[0]);
+  return [...pad, ...vals];
 }
 
 function adaptShoes(profile: Profile | null): ShoeRec[] {

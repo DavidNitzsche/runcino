@@ -12,6 +12,9 @@ export interface HealthState {
   rhrSeries:   { date: string; bpm: number }[];     // last 30 days
   hrvSeries:   { date: string; ms: number }[];      // last 30 nights
   weightSeries: { date: string; lb: number }[];      // last 30 days
+  // P2 #11 (2026-05-30): VO2 max trend. HealthKit only emits 1-2 readings
+  // per week so we widen the window to 6 months for a meaningful chart.
+  vo2Series:    { date: string; v: number }[];       // up to 6 months
   // Summary
   sleep: { avg7n: number | null; avg30n: number | null; deficit7: number };
   rhr:   { current: number | null; baseline: number | null; delta: number | null };
@@ -42,6 +45,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     wRows,
     cadRow,
     vo2Row,
+    vo2SeriesRows,
   ] = await Promise.all([
     pool.query(
       `SELECT sample_date, value FROM health_samples
@@ -87,6 +91,15 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
         ORDER BY recorded_at DESC LIMIT 1`,
       [userId]
     ).then((r) => r.rows[0]),
+    // Series for the trend chart. 6-month window — HealthKit ships VO2 max
+    // sparsely (1-2 readings/wk) so 30 days is too few points for a chart.
+    pool.query(
+      `SELECT sample_date::date AS d, value FROM health_samples
+        WHERE user_id = $1 AND sample_type = 'vo2_max'
+          AND sample_date >= ($2::date - interval '180 days')
+        ORDER BY sample_date ASC`,
+      [userId, today]
+    ).then((r) => r.rows),
   ]);
 
   // Sleep
@@ -136,8 +149,12 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   // Cadence baseline
   const cadenceBaseline = cadRow?.avg ? Math.round(Number(cadRow.avg)) : null;
 
-  // VO2
+  // VO2 — current reading + 6-month series for the trend chart.
   const vo2Current = vo2Row?.value ? +Number(vo2Row.value).toFixed(1) : null;
+  const vo2Series = (vo2SeriesRows ?? []).map((r: { d: Date | string; value: number | string }) => ({
+    date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
+    v: +Number(r.value).toFixed(1),
+  })).filter((d) => d.v > 0);
 
   // Watch-list logic
   const rhrElevated     = rhrDelta != null && rhrDelta >= 5;
@@ -167,7 +184,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
 
   return {
     today,
-    sleepSeries, rhrSeries, hrvSeries, weightSeries,
+    sleepSeries, rhrSeries, hrvSeries, weightSeries, vo2Series,
     sleep: { avg7n, avg30n, deficit7 },
     rhr: { current: rhrCurrent, baseline: rhrBaseline, delta: rhrDelta },
     hrv: { current: hrvCurrent, baseline: hrvBaseline, pctAboveBaseline: hrvPct },
