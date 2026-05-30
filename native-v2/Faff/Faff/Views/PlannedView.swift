@@ -47,7 +47,7 @@ struct PlannedView: View {
 
                     section("WHY THIS, TODAY") {
                         CoachNote(
-                            body: coachBody,
+                            message: coachBody,
                             tag: "Coach",
                             accent: Theme.Accent.mintReady,
                             style: .note

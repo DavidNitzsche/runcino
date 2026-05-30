@@ -124,7 +124,7 @@ struct CompletedView: View {
         VStack(alignment: .leading, spacing: 3) {
             SpecLabel(text: k, size: 10, tracking: 1, color: Theme.txt.opacity(0.72))
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(v).font(.display(21, weight: .extraBold)).tracking(-0.5).foregroundStyle(Theme.txt)
+                Text(v).font(.display(21, weight: .bold)).tracking(-0.5).foregroundStyle(Theme.txt)
                 if let u = unit { Text(u).font(.body(11, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.8)) }
             }
         }
