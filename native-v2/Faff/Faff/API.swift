@@ -303,6 +303,22 @@ enum API {
         let date: String
     }
 
+    /// POST /api/coach/proposal · accept or decline a coach swap proposal.
+    /// `proposal` is the alternative the coach surfaced (shape varies by
+    /// proposal kind; passes through as-is for the server to apply).
+    /// Returns true on a 2xx; false on any failure.
+    static func postCoachProposal(action: String, proposal: [String: Any]) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/coach/proposal"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        TokenStore.shared.authorize(&req)
+        let body: [String: Any] = ["action": action, "proposal": proposal]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
+        return true
+    }
+
     /// GET /api/coach/facts?surface=<…> → deterministic coach facts for any
     /// of the supported surfaces (today / plan / races / race_detail /
     /// health / me). Returns nil on any decode or HTTP error so callers can

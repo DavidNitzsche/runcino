@@ -13,6 +13,7 @@ struct HealthView: View {
 
     @State private var state: HealthState?
     @State private var readiness: ReadinessSnapshot?
+    @State private var healthFacts: CoachFactsBlock?
     @State private var lens: Lens = .body
     @State private var metric: String = "hrv"
     @State private var sheet: Bool = false
@@ -32,6 +33,13 @@ struct HealthView: View {
                     heroBlock
                         .padding(.horizontal, 24).padding(.top, 14)
 
+                    if !whatsMovingFacts.isEmpty {
+                        SectionLabel(title: "WHAT'S MOVING")
+                            .padding(.horizontal, 22).padding(.top, 22)
+                        whatsMovingCard
+                            .padding(.horizontal, 22).padding(.top, 12)
+                    }
+
                     lensToggle
                         .padding(.horizontal, 22).padding(.top, 18)
 
@@ -45,10 +53,58 @@ struct HealthView: View {
             }
         }
         .task {
-            state = try? await API.fetchHealthState()
-            readiness = try? await API.fetchReadiness()
+            async let s = (try? await API.fetchHealthState())
+            async let r = (try? await API.fetchReadiness())
+            async let f = (try? await API.fetchCoachFacts(surface: "health"))
+            let (st, rd, fc) = await (s, r, f)
+            await MainActor.run {
+                self.state = st
+                self.readiness = rd
+                self.healthFacts = fc
+            }
         }
         .sheet(isPresented: $sheet) { ReadinessBreakdownSheet(snapshot: readiness) }
+    }
+
+    private var whatsMovingFacts: [CoachFact] { healthFacts?.facts ?? [] }
+
+    private var whatsMovingCard: some View {
+        GlassTile(padding: 0) {
+            VStack(spacing: 0) {
+                ForEach(Array(whatsMovingFacts.enumerated()), id: \.element.label) { i, f in
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                            if let meta = f.meta, !meta.isEmpty {
+                                Text(meta)
+                                    .font(.display(11, weight: .semibold))
+                                    .foregroundStyle(Theme.txt.opacity(0.62))
+                                    .lineLimit(2)
+                            }
+                        }
+                        Spacer(minLength: 12)
+                        Text(f.value)
+                            .font(.display(15, weight: .bold))
+                            .foregroundStyle(factTint(f.valueColor))
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .padding(14)
+                    if i < whatsMovingFacts.count - 1 {
+                        Divider().background(Color.white.opacity(0.08))
+                    }
+                }
+            }
+        }
+    }
+
+    private func factTint(_ tone: String?) -> Color {
+        switch (tone ?? "").lowercased() {
+        case "race":  return Theme.race
+        case "green": return Theme.green
+        case "amber": return Theme.goal
+        case "over":  return Theme.over
+        default:      return Theme.txt
+        }
     }
 
     // MARK: - Hero

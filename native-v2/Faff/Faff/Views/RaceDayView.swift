@@ -11,6 +11,7 @@ struct RaceDayView: View {
     let raceSlug: String
 
     @State private var detail: RaceDetailResponse?
+    @State private var raceFacts: CoachFactsBlock?
 
     var body: some View {
         let mesh = FaffEffort.race.mesh
@@ -56,6 +57,38 @@ struct RaceDayView: View {
                         morningTile
                     }
                     .padding(.top, 26)
+
+                    if let facts = raceFacts?.facts, !facts.isEmpty {
+                        section(title: "AT A GLANCE", right: nil) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(facts.enumerated()), id: \.element.label) { i, f in
+                                    HStack(alignment: .top) {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                                            if let meta = f.meta, !meta.isEmpty {
+                                                Text(meta)
+                                                    .font(.display(11, weight: .semibold))
+                                                    .foregroundStyle(Theme.txt.opacity(0.62))
+                                                    .lineLimit(2)
+                                            }
+                                        }
+                                        Spacer(minLength: 12)
+                                        Text(f.value)
+                                            .font(.display(15, weight: .bold))
+                                            .foregroundStyle(factTint(f.valueColor))
+                                            .multilineTextAlignment(.trailing)
+                                    }
+                                    .padding(14)
+                                    if i < facts.count - 1 {
+                                        Divider().background(Color.white.opacity(0.08))
+                                    }
+                                }
+                            }
+                            .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+                        }
+                        .padding(.top, 26)
+                    }
 
                     Spacer(minLength: 60)
                 }
@@ -358,11 +391,26 @@ struct RaceDayView: View {
 
     private var goalTime: String { detail?.race.goal ?? "2:59:30" }
     private var goalPace: String { "6:51" }
-    private var courseStat: String { "26.2 MI · −340 FT · FAST" }
+    private var courseStat: String {
+        let mi = detail?.race.distance_mi.map { String(format: "%.1f MI", $0) }
+        // RaceDetail has no elev field today; fall back to "" if absent.
+        return mi ?? ""
+    }
+
+    private func factTint(_ tone: String?) -> Color {
+        switch (tone ?? "").lowercased() {
+        case "race":  return Theme.race
+        case "green": return Theme.green
+        case "amber": return Theme.goal
+        case "over":  return Theme.over
+        default:      return Theme.txt
+        }
+    }
 
     private func load() async {
-        if let r = try? await API.fetchRaceDetail(slug: raceSlug) {
-            await MainActor.run { detail = r }
-        }
+        async let r = (try? await API.fetchRaceDetail(slug: raceSlug))
+        async let f = (try? await API.fetchCoachFacts(surface: "race_detail"))
+        let (rd, fc) = await (r, f)
+        await MainActor.run { self.detail = rd; self.raceFacts = fc }
     }
 }

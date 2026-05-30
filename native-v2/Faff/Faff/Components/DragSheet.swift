@@ -1,7 +1,17 @@
 //
 //  DragSheet.swift
 //  Drag-up sheet (peek → expanded) used on Today (completed/effort), Activity
-//  card detail, Health readiness breakdown. Drag handle + peek header + scrollable body.
+//  card detail, Health readiness breakdown. Drag handle + peek header +
+//  scrollable body.
+//
+//  Gesture model (2026-05-30 fix · user reported "hard to flick up"):
+//   · Drag gesture lives ONLY on the grab area (handle + peek header), not
+//     the inner ScrollView, so vertical scrolls in the body never compete
+//     with the sheet pan.
+//   · onEnded honors velocity via `predictedEndTranslation` instead of
+//     pure position. A small upward flick at any progress now snaps open.
+//   · Snap threshold loosened from 0.55 → 0.45 so even a static release
+//     past the midline expands.
 //
 
 import SwiftUI
@@ -24,15 +34,13 @@ struct DragSheet<Header: View, Body: View>: View {
             let y = collapsedY * CGFloat(progress)
 
             VStack(spacing: 0) {
-                Capsule()
-                    .fill(Color(hex: 0xDCD6CA))
-                    .frame(width: 42, height: 5)
-                    .padding(.top, 11)
-                    .padding(.bottom, 6)
-                header()
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
+                // GRAB AREA · handle + peek header. Drag gesture lives here
+                // only; the ScrollView below is free to scroll vertically
+                // without fighting the sheet pan.
+                grabRegion(collapsedY: collapsedY)
+
                 Divider().background(Color(hex: 0xEEE7DA))
+
                 ScrollView(showsIndicators: false) {
                     content()
                         .padding(.bottom, 130)
@@ -43,20 +51,45 @@ struct DragSheet<Header: View, Body: View>: View {
             .clipShape(RoundedCorner(radius: 30, corners: [.topLeft, .topRight]))
             .shadow(color: .black.opacity(0.4), radius: 18, x: 0, y: -10)
             .offset(y: y)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { g in
-                        if dragStart == nil { dragStart = CGFloat(progress) * collapsedY }
-                        let new = (dragStart! + g.translation.height)
-                        progress = Double(max(expandedY, min(collapsedY, new)) / collapsedY)
-                    }
-                    .onEnded { g in
-                        dragStart = nil
-                        let target: Double = progress < 0.55 ? 0 : 1
-                        withAnimation(Theme.Motion.sheet) { progress = target }
-                    }
-            )
         }
+    }
+
+    /// Grab strip (handle + peek header). Holds the drag gesture.
+    private func grabRegion(collapsedY: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(Color(hex: 0xDCD6CA))
+                .frame(width: 42, height: 5)
+                .padding(.top, 11)
+                .padding(.bottom, 6)
+                .frame(maxWidth: .infinity)
+            header()
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
+        }
+        .contentShape(Rectangle())          // make whole strip hittable
+        .gesture(panGesture(collapsedY: collapsedY))
+    }
+
+    private func panGesture(collapsedY: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .local)
+            .onChanged { g in
+                if dragStart == nil { dragStart = CGFloat(progress) * collapsedY }
+                let new = (dragStart! + g.translation.height)
+                progress = Double(max(0, min(collapsedY, new)) / collapsedY)
+            }
+            .onEnded { g in
+                dragStart = nil
+                // Honor velocity. predictedEndTranslation is roughly
+                // (translation + velocity × 0.1). A small upward flick at any
+                // progress collapses < 0.45 → snap open. Same for downward.
+                let predicted = (CGFloat(progress) * collapsedY) + (g.predictedEndTranslation.height - g.translation.height)
+                let predictedProgress = max(0, min(collapsedY, predicted)) / collapsedY
+                let target: Double = predictedProgress < 0.45 ? 0 : 1
+                withAnimation(.interpolatingSpring(stiffness: 240, damping: 28)) {
+                    progress = target
+                }
+            }
     }
 }
 

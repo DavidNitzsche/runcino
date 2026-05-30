@@ -13,6 +13,7 @@ struct TrainView: View {
     let onProfile: () -> Void
 
     @State private var state: TrainingState?
+    @State private var planFacts: CoachFactsBlock?
     @State private var focusedIndex: Int = 0
 
     /// Linear interpolation across phases for the mesh.
@@ -47,7 +48,44 @@ struct TrainView: View {
             }
             .padding(.bottom, 100)
         }
-        .task { state = try? await API.fetchTrainingState() }
+        .task {
+            async let s = (try? await API.fetchTrainingState())
+            async let f = (try? await API.fetchCoachFacts(surface: "plan"))
+            let (st, fc) = await (s, f)
+            await MainActor.run { self.state = st; self.planFacts = fc }
+        }
+    }
+
+    /// Compact coach overlay shown under the readout chip when planFacts loads.
+    /// Surfaces NEXT QUALITY / WEEKS TO RACE / THIS WEEK lines from the
+    /// /api/coach/facts?surface=plan block.
+    @ViewBuilder
+    private var coachOverlay: some View {
+        if let facts = planFacts?.facts, !facts.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(facts.prefix(3)) { f in
+                    HStack(spacing: 8) {
+                        SpecLabel(text: f.label, size: 9, tracking: 1.2, color: Theme.txt.opacity(0.55))
+                        Text(f.value)
+                            .font(.display(11, weight: .semibold))
+                            .foregroundStyle(tint(f.valueColor))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+
+    private func tint(_ tone: String?) -> Color {
+        switch (tone ?? "").lowercased() {
+        case "race":  return Theme.race
+        case "green": return Theme.green
+        case "amber": return Theme.goal
+        case "over":  return Theme.over
+        default:      return Theme.txt.opacity(0.9)
+        }
     }
 
     // MARK: - Header
@@ -113,6 +151,9 @@ struct TrainView: View {
             .background(Color.white.opacity(0.16), in: Capsule())
             .overlay(Capsule().stroke(Color.white.opacity(0.28)))
             .padding(.top, 8)
+
+            coachOverlay
+                .padding(.top, 14)
         }
     }
 
