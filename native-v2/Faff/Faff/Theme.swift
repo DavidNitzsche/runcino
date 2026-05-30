@@ -1,290 +1,369 @@
 //
 //  Theme.swift
-//  faff.run v3 design tokens — single source of truth.
+//  faff.run v3 · canonical design tokens (paint by number).
 //
-//  Canonical reference:
-//    Faff/shared/tokens.json (v1.4.0)
-//    Faff/design/tokens/typography.css (Oswald 700 lock-in 2026-05-28)
-//    Runcino/web-v2/app/globals.css (mirror for the production web client)
+//  Source of truth: the approved Faff Web App color palette, mirrored
+//  here verbatim. Every hex traces back to that palette. iOS does NOT
+//  reinterpret colors. To change a token, edit it in the web canonical
+//  first, then mirror here.
 //
-//  v3 changes vs v2 (2026-05-28 cutover):
-//    · Display font swap from HelveticaNeue-Bold → Oswald 700
-//    · Added: 12 state gradients (Theme.Gradient.easy, .quality, .long, ...)
-//    · Added: 5 HR-zone tokens (Theme.Zone.z1 … z5)
-//    · Added: Theme.Font.display(size:) / Theme.Font.body(size:weight:) helpers
-//    · Added: Theme.Font.displayRecipe — applies the 4-piece Oswald 700 bundle
-//    · BACKWARDS COMPATIBLE — all existing `Theme.bg`, `Theme.green`, etc.
-//      flat statics are preserved as aliases. Existing Views continue to work
-//      without changes.
-//
-//  Cardinal Rule #4 — Single source of truth: hex values traced to
-//  shared/tokens.json. Don't inline a colour anywhere else. To change a
-//  token: edit Faff/design/tokens/*.css, regenerate tokens.json, mirror
-//  here.
+//  Single dark skin (no Paper revert in v3, that was a v2 detour).
+//  Text on warm meshes (TEMPO/INTERVALS/TARGETS/RACE) does NOT auto
+//  invert · always `Theme.txt` (#F6F7F8).
 //
 
 import SwiftUI
 
-// MARK: - Theme (top-level — backwards-compatible flat surface)
+// MARK: - Theme
 
 enum Theme {
-    // ═════ ACTIVE SKIN · paper overhaul (2026-05-29) ═════
-    //
-    // The flat tokens below ALIAS the active skin. This is the iOS mirror
-    // of the web `[data-skin="paper"]` swap in web-v2/app/globals.css.
-    //
-    // Cardinal Rule #8 — dark stays revertable via token swap: BOTH full
-    // palettes live below (`Paper` + `Dark`). To revert the whole app to the
-    // original dark theme, flip these 16 aliases from `Paper.` → `Dark.`
-    // (and FaffApp's `.preferredColorScheme(.light)` back to `.dark`).
-    // Nothing else references raw colours — every View reads `Theme.bg` etc.
-    //
-    // NOTE (mirrors globals.css): only the NEUTRALS + the semantic palette
-    // swap. The 13 state Gradients below are intentionally NOT re-tuned —
-    // they're saturated enough to read on warm paper and carry the Poster
-    // accent + race-week wash on both skins.
 
-    // ───── Canvas ─────
-    static let bg      = Paper.bg
-    static let bgPage  = Paper.bgPage
-    static let card    = Paper.card
-    static let card2   = Paper.card2
+    // ───── Core neutrals ─────
+    static let bg     = Color(hex: 0x0A0C10)        // deep canvas
+    static let bgPage = Color(hex: 0x0A0C10)        // page bg (= bg in v3)
+    static let card   = Color(hex: 0x11141A)        // tile body
+    static let card2  = Color(hex: 0x13171F)        // raised card
+    static let line   = Color.white.opacity(0.08)   // hairline borders
+    static let line2  = Color.white.opacity(0.04)
+    static let ink    = Color(hex: 0xF6F7F8)        // alias of txt
+    static let txt    = Color(hex: 0xF6F7F8)        // primary text
+    static let mute   = Color(hex: 0x8A90A0)        // secondary text
+    static let dim    = Color(hex: 0x4B505E)        // tertiary text
 
-    // ───── Ink ─────
-    static let ink   = Paper.ink
-    static let mute  = Paper.mute
-    static let dim   = Paper.dim
+    // ───── Semantic accents ─────
+    static let green = Color(hex: 0x3EBD41)         // success / on-plan / READY
+    static let goal  = Color(hex: 0xF3AD38)         // goal markers / TODAY badge
+    static let over  = Color(hex: 0xFC4D64)         // over budget / warning
+    static let dist  = Color(hex: 0x27B4E0)         // distance / info
+    static let rest  = Color(hex: 0x008FEC)         // rest day (legacy alias)
+    static let race  = Color(hex: 0xFF8847)         // race day / ember accent
 
-    // ───── Lines ─────
-    static let line  = Paper.line
-    static let line2 = Paper.line2
-
-    // ───── Semantic palette ─────
-    static let green  = Paper.green
-    static let goal   = Paper.goal
-    static let over   = Paper.over
-    static let dist   = Paper.dist
-    static let rest   = Paper.rest
-    static let learn  = Paper.learn
-    static let race   = Paper.race
-
-    // ───── PAPER skin · warm spec-sheet (ACTIVE) ─────
-    // Values traced 1:1 to the `[data-skin="paper"]` block in globals.css.
-    enum Paper {
-        static let bg      = Color(hex: 0xECE7DD)   // recessed paper
-        static let bgPage  = Color(hex: 0xF2EFE9)   // THE canvas · warm paper
-        static let card    = Color(hex: 0xF7F4EE)   // raised paper card
-        static let card2   = Color(hex: 0xFBFAF6)   // lightest paper (top layer)
-
-        static let ink   = Color(hex: 0x14110D)     // near-black warm
-        static let mute  = Color(hex: 0x6B6358)     // warm grey label
-        static let dim   = Color(hex: 0xA9A093)     // faint warm grey
-
-        static let line  = Color(hex: 0x14110D).opacity(0.14)
-        static let line2 = Color(hex: 0x14110D).opacity(0.07)
-
-        static let green  = Color(hex: 0x1E9E47)    // ON TRACK / DONE (deepened)
-        static let goal   = Color(hex: 0xC2791A)    // WATCH / QUALITY (deepened)
-        static let over   = Color(hex: 0xD8344C)    // OFF TRACK / alert (deepened)
-        static let dist   = Color(hex: 0x1789B0)    // LONG / distance (deepened)
-        static let rest   = Color(hex: 0x1268C9)    // REST (deepened)
-        static let learn  = Color(hex: 0x7A4FD0)    // PHASE / insight (deepened)
-        static let race   = Color(hex: 0xDD5F22)    // RACE WEEK / horizon (deepened)
-    }
-
-    // ───── DARK skin · original v3 (REVERT TARGET · Cardinal Rule #8) ─────
-    enum Dark {
-        static let bg      = Color(hex: 0x0A0C10)
-        static let bgPage  = Color(hex: 0x15171C)
-        static let card    = Color(hex: 0x11141A)
-        static let card2   = Color(hex: 0x13171F)
-
-        static let ink   = Color(hex: 0xF6F7F8)
-        static let mute  = Color(hex: 0x8A90A0)
-        static let dim   = Color(hex: 0x4B505E)
-
-        static let line  = Color.white.opacity(0.08)
-        static let line2 = Color.white.opacity(0.04)
-
-        static let green  = Color(hex: 0x3EBD41)    // DONE
-        static let goal   = Color(hex: 0xF3AD38)    // QUALITY
-        static let over   = Color(hex: 0xFC4D64)    // over/alert
-        static let dist   = Color(hex: 0x27B4E0)    // LONG
-        static let rest   = Color(hex: 0x008FEC)    // REST
-        static let learn  = Color(hex: 0xB084FF)    // PHASE
-        static let race   = Color(hex: 0xFF8847)    // RACE WEEK
-    }
-
-    // ───── Radii ─────
+    // ───── Shape · matches colors_and_type.css --r-* ─────
+    static let rChip:  CGFloat = 14
     static let rCard:  CGFloat = 18
+    static let rTile:  CGFloat = 20
+    static let rSheet: CGFloat = 30
     static let rPill:  CGFloat = 999
-    static let rInput: CGFloat = 10
+    static let rInput: CGFloat = 14
 
-    // MARK: - HR Zone palette (v3 · 2026-05-28)
+    // ───── Glass surfaces (over the effort mesh) ─────
+    enum Glass {
+        static let fill   = Color.white.opacity(0.06)
+        static let line   = Color.white.opacity(0.12)
+        static let strong = Color(hex: 0x11141A).opacity(0.92)
+        static let blur:  CGFloat = 16
+    }
+
+    // ───── Spacing scale (px) · matches --sp-1..7 ─────
+    enum Sp {
+        static let s1: CGFloat = 4
+        static let s2: CGFloat = 8
+        static let s3: CGFloat = 12
+        static let s4: CGFloat = 16
+        static let s5: CGFloat = 22
+        static let s6: CGFloat = 28
+        static let s7: CGFloat = 40
+    }
+
+    // ───── Motion · matches --ease/--dur tokens ─────
+    enum Motion {
+        /// Mesh re-theme between effort states (Today day swap, Train phase scrub).
+        static let mesh: Animation = .easeInOut(duration: 0.7)
+        /// Drag-sheet / modal in/out.
+        static let sheet: Animation = .timingCurve(0.32, 0.72, 0, 1, duration: 0.42)
+        /// Press feedback.
+        static let tap: Animation = .easeOut(duration: 0.12)
+        /// Generic spring used for selection toggles.
+        static let spring: Animation = .timingCurve(0.32, 0.72, 0, 1, duration: 0.36)
+        /// Smooth ease used for plan-card / chip selections.
+        static let smooth: Animation = .timingCurve(0.4, 0, 0.2, 1, duration: 0.30)
+    }
+
+    // ───── Brandmark sweep · FAFF·RUN (Anton, skew −9°, 6s linear ∞) ─────
+    enum Brand {
+        static let sweepStops: [Color] = [
+            Color(hex: 0xF43F5E),     // 0%   hot pink
+            Color(hex: 0xFF5722),     // 17%  ember
+            Color(hex: 0xF5C518),     // 35%  gold
+            Color(hex: 0x14C08C),     // 55%  emerald
+            Color(hex: 0x4F8FF7),     // 75%  blue
+            Color(hex: 0xF43F5E)      // 100% back to hot pink
+        ]
+        static let dot = Color(hex: 0xF5C518)       // gold middot
+        static let skewDegrees: Double = -9
+        static let sweepDuration: TimeInterval = 6
+    }
+
+    // ───── HR zones · stacked bar palette (completed run TIME IN ZONES) ─────
     enum Zone {
-        static let z1 = Color(red: 0.357, green: 0.486, blue: 0.722)    // #5B7CB8 recovery
-        static let z2 = Color(red: 0.282, green: 0.702, blue: 0.710)    // #48B3B5 aerobic
-        static let z3 = Color(red: 0.561, green: 0.753, blue: 0.290)    // #8FC04A tempo
-        static let z4 = Color(red: 0.910, green: 0.608, blue: 0.227)    // #E89B3A threshold
-        static let z5 = Color(red: 0.839, green: 0.243, blue: 0.306)    // #D63E4E VO2max
+        static let z1 = Color(hex: 0x54DDD0)
+        static let z2 = Color(hex: 0x8EF0B0)
+        static let z3 = Color(hex: 0xFFE0A0)
+        static let z4 = Color(hex: 0xFF9560)
+        static let z5 = Color(hex: 0xFF5A52)
     }
 
-    // MARK: - State Gradients (v3 · 2026-05-28)
-    //
-    // One 135° linear gradient per day-state. Three-stop gradients match
-    // the web CSS in globals.css (var(--g-easy) etc.). Used by Poster
-    // backgrounds + race-week takeover surfaces.
-    enum Gradient {
-        static let easy = LinearGradient(
-            colors: [Color(hex: 0x3EBD41), Color(hex: 0x1F8A52), Color(hex: 0x0F4A3A)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let quality = LinearGradient(
-            colors: [Color(hex: 0xF3AD38), Color(hex: 0xE85D26), Color(hex: 0x7A2828)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let long = LinearGradient(
-            colors: [Color(hex: 0x27B4E0), Color(hex: 0x1A6A9E), Color(hex: 0x0C2A5E)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let rest = LinearGradient(
-            colors: [Color(hex: 0x008FEC), Color(hex: 0x4A3A8E), Color(hex: 0x1C1A3A)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let done = LinearGradient(
-            colors: [Color(hex: 0x3EBD41), Color(hex: 0x27B4E0), Color(hex: 0x1A4A8E)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let race = LinearGradient(
-            colors: [Color(hex: 0xFF8847), Color(hex: 0xE85D26), Color(hex: 0x7A2828)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let phase = LinearGradient(
-            colors: [Color(hex: 0xB084FF), Color(hex: 0x6A4ACE), Color(hex: 0x2A1A5A)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let missed = LinearGradient(
-            colors: [Color(hex: 0xF3AD38), Color(hex: 0xC47812), Color(hex: 0x5A3408)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let ease = LinearGradient(
-            colors: [Color(hex: 0xF3AD38), Color(hex: 0x7A4A26), Color(hex: 0x2A1A18)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let sick = LinearGradient(
-            colors: [Color(hex: 0x5A6580), Color(hex: 0x3A3A55), Color(hex: 0x1A1A2A)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let niggle = LinearGradient(
-            colors: [Color(hex: 0x3EBD41), Color(hex: 0x2A6A3A), Color(hex: 0x5A3408)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        static let new = LinearGradient(
-            colors: [Color(hex: 0xB084FF), Color(hex: 0x6A4ACE), Color(hex: 0x2A1A5A)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-        // P-SKIP (Phase 12 · 2026-05-28). Slate-purple gradient for the
-        // explicit "I am skipping today" state. Mirrors --g-skip in
-        // web-v2/app/globals.css (#6B7A8F → #4A4A5C → #1F1F2A · 135°).
-        static let skip = LinearGradient(
-            colors: [Color(hex: 0x6B7A8F), Color(hex: 0x4A4A5C), Color(hex: 0x1F1F2A)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
+    // ───── HR zones · split bars / pacing segments palette ─────
+    enum ZoneSplit {
+        static let z1 = Color(hex: 0x48B3B5)
+        static let z2 = Color(hex: 0x3EBD41)
+        static let z3 = Color(hex: 0xF3AD38)
+        static let z4 = Color(hex: 0xFF8847)
+        static let z5 = Color(hex: 0xFC4D64)
     }
 
-    // MARK: - Typography (v3 · Oswald 700 display + Inter body)
-    //
-    // Two-family system locked 2026-05-28 in shared/tokens.json v1.4.0.
-    //   · display: Oswald 700 — hero verbs, stat values, card titles
-    //   · body:    Inter 400/500/700 — paragraphs, labels, captions
-    //
-    // The DISPLAY RECIPE is a 4-piece bundle:
-    //   font-family    = Oswald
-    //   font-weight    = 700
-    //   tracking       = -0.015em (= -0.015 × pointSize in Swift)
-    //   line-height    = 0.86
-    // Apply all four together via `.displayRecipe(size:)` (see View+Recipe
-    // extension below) — partial application loses Oswald's intended
-    // optical character.
-    //
-    // FONT BUNDLING (one-time Xcode work · see deploy.md):
-    //   1. Drop these into Faff/Resources/Fonts/:
-    //        Oswald-Regular.ttf · Oswald-Medium.ttf · Oswald-Bold.ttf
-    //        Inter-Regular.ttf · Inter-Medium.ttf · Inter-SemiBold.ttf
-    //        Inter-Bold.ttf
-    //   2. In Xcode: drag the folder into the project navigator → check
-    //      "Add to target: Faff" → ensure they appear under Build Phases
-    //      → Copy Bundle Resources.
-    //   3. Info.plist already lists them under UIAppFonts (next commit).
-    //
-    // Until TTFs are bundled, .custom("Oswald", ...) falls back to system
-    // fonts. The fallback chain in Font.display() catches that.
-    enum Font {
-        static let displayFamily = "Oswald"
-        static let bodyFamily    = "Inter"
+    // ───── Shoe role colors (Garage chips, picker dots) ─────
+    enum Shoe {
+        static let race      = Color(hex: 0xFC4D64)
+        static let tempo     = Color(hex: 0xFF8847)
+        static let long      = Color(hex: 0xF3AD38)
+        static let easy      = Color(hex: 0x48B3B5)
+        static let recovery  = Color(hex: 0x27B4E0)
+    }
 
-        /// Display recipe constants — used by `displayRecipe(size:)` and any
-        /// callsite that wants the exact lock-in values.
-        static let displayWeight: SwiftUI.Font.Weight = .bold       // 700
-        static let displayTrackingFactor: CGFloat     = -0.015      // em
-        static let displayLineHeight: CGFloat         = 0.86
+    // ───── Accents · amber + mint (Coach tags, gap chip, callouts) ─────
+    enum Accent {
+        static let amberBright = Color(hex: 0xFFCE8A) // primary eyebrow / COACH tag
+        static let amberPale   = Color(hex: 0xFFE7C2) // gradient highlight end
+        static let amberGold   = Color(hex: 0xF5C518) // PR gold pill
+        static let mintReady   = Color(hex: 0x86EFA0) // good-state text
+        static let mintGlow    = Color(hex: 0x7BE8A0) // gap-chip glow / paths
+    }
 
-        /// Oswald 700 at the requested size, with system bold as fallback.
-        /// Prefer `.displayRecipe(size:)` on a View — it applies the full
-        /// 4-piece bundle (family + weight + tracking + line-height).
-        static func display(_ size: CGFloat) -> SwiftUI.Font {
-            // .custom returns a Font that falls back to the system bold if
-            // the named family isn't bundled. Safer than crashing.
-            return SwiftUI.Font.custom(displayFamily, size: size)
-                .weight(displayWeight)
+    // ───── Status tints (PR badges, log row badges) ─────
+    enum Status {
+        static let solidBorder = Color(hex: 0x3EBD41).opacity(0.40)
+        static let solidText   = Color(hex: 0x86EFA0)
+        static let prBorder    = Color(hex: 0xF5C518).opacity(0.50)
+        static let prText      = Color(hex: 0xF5C518)
+    }
+
+    // ───── Tweaks-panel accent options (the user-selectable accent recolors goal + race) ─────
+    enum TweakAccent: String, CaseIterable {
+        case ember, gold, violet, cool
+        var goal: Color {
+            switch self {
+            case .ember:  return Color(hex: 0xF3AD38)
+            case .gold:   return Color(hex: 0xF5C518)
+            case .violet: return Color(hex: 0xA78BFA)
+            case .cool:   return Color(hex: 0x27B4E0)
+            }
         }
-
-        /// Inter at the requested size + weight. Body family.
-        static func body(_ size: CGFloat,
-                         weight: SwiftUI.Font.Weight = .regular) -> SwiftUI.Font {
-            return SwiftUI.Font.custom(bodyFamily, size: size)
-                .weight(weight)
-        }
-
-        /// Tracking in Swift units for a given pointSize.
-        /// Use as `.tracking(Theme.Font.tracking(for: 72))`.
-        static func tracking(for size: CGFloat) -> CGFloat {
-            return displayTrackingFactor * size
+        var race: Color {
+            switch self {
+            case .ember:  return Color(hex: 0xFF8847)
+            case .gold:   return Color(hex: 0xF5A518)
+            case .violet: return Color(hex: 0xB794F4)
+            case .cool:   return Color(hex: 0x3AA0E0)
+            }
         }
     }
 }
 
-// MARK: - Color hex initializer
+// MARK: - Effort temperature scale
 //
-// Convenience: build a Color from a hex literal (e.g. 0x3EBD41). Used by
-// gradients + zone tokens above so we don't repeat the (0.243, 0.741, 0.255)
-// triple form for every value.
+// The product's organizing principle. Every workout / day has an effort
+// temperature. The mesh + accents track it.
+//
+// Color labels are TITLE-CASE per locked design intent ("Easy", not "EASY"
+// or "easy"). For all-caps display contexts the View applies .uppercased().
+
+enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
+    case recovery, easy, long, tempo, intervals, rest, race
+    var id: String { rawValue }
+
+    /// Title-case label used in coach copy. Apply .uppercased() in display.
+    var title: String {
+        switch self {
+        case .recovery:  return "Recovery"
+        case .easy:      return "Easy"
+        case .long:      return "Long"
+        case .tempo:     return "Tempo"
+        case .intervals: return "Intervals"
+        case .rest:      return "Rest"
+        case .race:      return "Race"
+        }
+    }
+
+    /// Effort-readout label ("Very easy" / "Easy" / "Moderate" / "Hard" / "Max" / "Off" / "Race").
+    /// Used as the meter caret label on Today and chip labels on splits.
+    var effortLabel: String {
+        switch self {
+        case .recovery:  return "Very easy"
+        case .easy:      return "Easy"
+        case .long:      return "Moderate"
+        case .tempo:     return "Hard"
+        case .intervals: return "Max"
+        case .rest:      return "Off"
+        case .race:      return "Race"
+        }
+    }
+
+    /// Dot color for chips, week strip dots, splits · the registration mark.
+    /// Authoritative source: colors_and_type.css (wins over app/tokens.css).
+    var dot: Color {
+        switch self {
+        case .recovery:  return Color(hex: 0x27B4E0)
+        case .easy:      return Color(hex: 0x14C08C)  // teal-green per --eff-easy
+        case .long:      return Color(hex: 0xF3AD38)
+        case .tempo:     return Color(hex: 0xFF8847)
+        case .intervals: return Color(hex: 0xFC4D64)
+        case .rest:      return Color(hex: 0x8A90A0)
+        case .race:      return Color(hex: 0xD63E4E)  // per --eff-race
+        }
+    }
+
+    /// 6-color mesh palette [c1, c2, c3, c4, c5, mBase] painting the
+    /// animated background. Cool to hot. mBase is the deep wash behind the
+    /// blobs. Per locked design: Today re-tints to the selected day's effort
+    /// over 0.7s ease.
+    var mesh: FaffMesh {
+        switch self {
+        case .recovery, .easy:
+            return FaffMesh(c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0, c4: 0x1F8F76, c5: 0x11605E, base: 0x06302E)
+        case .long:
+            return FaffMesh(c1: 0xFFE0A0, c2: 0xF3AD38, c3: 0xE89B3A, c4: 0xE07A2A, c5: 0xC47812, base: 0x3E2A0A)
+        case .tempo:
+            return FaffMesh(c1: 0xFFC98A, c2: 0xFF8847, c3: 0xF2673A, c4: 0xE85D26, c5: 0xC23A1C, base: 0x4A1208)
+        case .intervals:
+            return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        case .rest:
+            return FaffMesh(c1: 0xD6BE98, c2: 0xB2916A, c3: 0x8A6A48, c4: 0x5E4630, c5: 0x45331F, base: 0x1C140D)
+        case .race:
+            return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        }
+    }
+
+    /// Map a backend workout `type` string to an effort. Mirrors the web
+    /// classification.
+    static func fromType(_ raw: String?) -> FaffEffort {
+        switch (raw ?? "").lowercased() {
+        case "easy", "shakeout":                   return .easy
+        case "recovery":                           return .recovery
+        case "long":                               return .long
+        case "tempo", "threshold", "progression":  return .tempo
+        case "intervals", "vo2", "vo2max",
+             "fartlek", "track", "quality":        return .intervals
+        case "race", "race_a", "race_b", "race_c": return .race
+        case "rest", "off":                        return .rest
+        default:                                   return .easy
+        }
+    }
+}
+
+// MARK: - FaffMesh
+//
+// A 6-color palette for the animated background mesh. c1..c5 paint the
+// 5 blob layers; base is the deep wash behind them.
+
+struct FaffMesh: Equatable {
+    let c1: Color
+    let c2: Color
+    let c3: Color
+    let c4: Color
+    let c5: Color
+    let base: Color
+
+    init(c1: UInt32, c2: UInt32, c3: UInt32, c4: UInt32, c5: UInt32, base: UInt32) {
+        self.c1 = Color(hex: c1)
+        self.c2 = Color(hex: c2)
+        self.c3 = Color(hex: c3)
+        self.c4 = Color(hex: c4)
+        self.c5 = Color(hex: c5)
+        self.base = Color(hex: base)
+    }
+
+    init(_ c1: Color, _ c2: Color, _ c3: Color, _ c4: Color, _ c5: Color, base: Color) {
+        self.c1 = c1; self.c2 = c2; self.c3 = c3; self.c4 = c4; self.c5 = c5; self.base = base
+    }
+
+    /// View mesh for a tab that isn't dictated by an active workout.
+    static func forView(_ v: ViewMesh) -> FaffMesh {
+        switch v {
+        case .train:     return FaffMesh(c1: 0xFFE0A0, c2: 0xF3AD38, c3: 0xE89B3A, c4: 0xE07A2A, c5: 0xC47812, base: 0x3E2A0A)
+        case .activity:  return FaffMesh(c1: 0xD6BE98, c2: 0xB2916A, c3: 0x8A6A48, c4: 0x5E4630, c5: 0x45331F, base: 0x1C140D)
+        case .health:    return FaffMesh(c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0, c4: 0x1F8F76, c5: 0x11605E, base: 0x06302E)
+        case .targets:   return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        case .profile:   return FaffMesh(c1: 0x6B6358, c2: 0x4E4840, c3: 0x3A352E, c4: 0x2A2723, c5: 0x1E1C19, base: 0x121110)
+        case .spectator: return FaffMesh(c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0, c4: 0x1F8F76, c5: 0x11605E, base: 0x06302E)
+        case .race:      return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        }
+    }
+
+    /// Phase mesh for the Train scrubber. Lerps between adjacent phase
+    /// meshes as the user scrubs.
+    static func forPhase(_ p: TrainPhase) -> FaffMesh {
+        switch p {
+        case .base:  return forView(.health)
+        case .build: return forView(.train)
+        case .peak:  return FaffMesh(c1: 0xFFA566, c2: 0xFF5A52, c3: 0xEC2F54, c4: 0xC01D48, c5: 0xA8163F, base: 0x4E0A22)
+        case .taper: return FaffMesh(c1: 0x8EF0B0, c2: 0x34C194, c3: 0x1F8A68, c4: 0x128A64, c5: 0x137259, base: 0x06382E)
+        case .race:  return forView(.race)
+        }
+    }
+
+    /// Linear interpolation between two meshes. Used by the Train scrubber
+    /// to lerp between phase meshes as the user drags.
+    func lerp(to other: FaffMesh, t: Double) -> FaffMesh {
+        let k = max(0, min(1, t))
+        return FaffMesh(
+            FaffMesh.mix(c1,   other.c1,   t: k),
+            FaffMesh.mix(c2,   other.c2,   t: k),
+            FaffMesh.mix(c3,   other.c3,   t: k),
+            FaffMesh.mix(c4,   other.c4,   t: k),
+            FaffMesh.mix(c5,   other.c5,   t: k),
+            base: FaffMesh.mix(base, other.base, t: k)
+        )
+    }
+
+    private static func mix(_ a: Color, _ b: Color, t: Double) -> Color {
+        let ai = a.rgba, bi = b.rgba
+        return Color(
+            red:   ai.r + (bi.r - ai.r) * t,
+            green: ai.g + (bi.g - ai.g) * t,
+            blue:  ai.b + (bi.b - ai.b) * t,
+            opacity: ai.a + (bi.a - ai.a) * t
+        )
+    }
+}
+
+enum ViewMesh: String, CaseIterable, Hashable {
+    case train, activity, health, targets, profile, spectator, race
+}
+
+enum TrainPhase: String, CaseIterable, Hashable {
+    case base, build, peak, taper, race
+
+    var label: String {
+        switch self {
+        case .base:  return "BASE"
+        case .build: return "BUILD"
+        case .peak:  return "PEAK"
+        case .taper: return "TAPER"
+        case .race:  return "RACE"
+        }
+    }
+}
+
+// MARK: - Color hex init + RGBA decompose
+
 extension Color {
     init(hex: UInt32, alpha: Double = 1.0) {
-        let r = Double((hex >> 16) & 0xFF) / 255.0
-        let g = Double((hex >>  8) & 0xFF) / 255.0
-        let b = Double( hex        & 0xFF) / 255.0
+        let r = Double((hex >> 16) & 0xFF) / 255
+        let g = Double((hex >> 8)  & 0xFF) / 255
+        let b = Double( hex        & 0xFF) / 255
         self.init(.sRGB, red: r, green: g, blue: b, opacity: alpha)
     }
-}
 
-// MARK: - View extension · the display recipe modifier
-//
-// Apply the locked 4-piece Oswald 700 bundle in one call:
-//
-//     Text("EASY 6.1.").displayRecipe(size: 72)
-//
-// This sets family + weight + tracking + line-height all at once. The
-// vertical metrics from line-height 0.86 are approximated via
-// `.lineSpacing(size * (0.86 - 1.0))` — Swift doesn't expose a direct
-// "line-height" prop on Text. For multi-line display verbs the negative
-// lineSpacing tightens the leading to match the web.
-extension View {
-    /// Apply the Oswald 700 display recipe at the given size.
-    func displayRecipe(size: CGFloat) -> some View {
-        self
-            .font(Theme.Font.display(size))
-            .tracking(Theme.Font.tracking(for: size))
-            .lineSpacing(size * (Theme.Font.displayLineHeight - 1.0))
+    /// RGBA components in sRGB. Used by FaffMesh.lerp.
+    var rgba: (r: Double, g: Double, b: Double, a: Double) {
+        #if canImport(UIKit)
+        let ui = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (Double(r), Double(g), Double(b), Double(a))
+        #else
+        return (0, 0, 0, 1)
+        #endif
     }
 }

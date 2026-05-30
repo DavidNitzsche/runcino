@@ -26,6 +26,20 @@
 	<string>Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Faff Watch writes completed workouts to Apple Health so your training history stays in one place.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Anton-Regular.ttf</string>
+		<string>Oswald-Light.ttf</string>
+		<string>Oswald-Regular.ttf</string>
+		<string>Oswald-Medium.ttf</string>
+		<string>Oswald-SemiBold.ttf</string>
+		<string>Oswald-Bold.ttf</string>
+		<string>Inter-Regular.ttf</string>
+		<string>Inter-Medium.ttf</string>
+		<string>Inter-SemiBold.ttf</string>
+		<string>Inter-Bold.ttf</string>
+		<string>Inter-ExtraBold.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -33,35 +47,5 @@
 	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
-
-	<!--
-	  v3 typography (2026-05-28 cutover) — UIAppFonts registration.
-
-	  Two-family system locked in shared/tokens.json v1.4.0:
-	    · Oswald 700 carries the display recipe (hero verbs, card titles)
-	    · Inter 400/500/700 carries body + caps-tracked labels
-
-	  TTF acquisition (one-time, your Xcode work):
-	    1. Download from Google Fonts (SIL OFL — open source):
-	         https://fonts.google.com/specimen/Oswald
-	         https://fonts.google.com/specimen/Inter
-	    2. Drop the .ttf files into Faff/Resources/Fonts/
-	    3. In Xcode: right-click the project → Add Files → select the
-	       Fonts/ folder → "Add to target: Faff" → confirm they appear
-	       under Build Phases → Copy Bundle Resources.
-
-	  Until TTFs are bundled, Theme.Font.display() falls back to system
-	  bold (clean degrade, no crash). Production builds need the TTFs.
-	-->
-	<key>UIAppFonts</key>
-	<array>
-		<string>Oswald-Regular.ttf</string>
-		<string>Oswald-Medium.ttf</string>
-		<string>Oswald-Bold.ttf</string>
-		<string>Inter-Regular.ttf</string>
-		<string>Inter-Medium.ttf</string>
-		<string>Inter-SemiBold.ttf</string>
-		<string>Inter-Bold.ttf</string>
-	</array>
 </dict>
 </plist>

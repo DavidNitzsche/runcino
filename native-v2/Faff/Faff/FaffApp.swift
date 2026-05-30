@@ -26,12 +26,10 @@ struct FaffApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
-                // Paper overhaul 2026-05-29: the app is now a warm-paper
-                // (light) surface, so system chrome — status bar, tab bar,
-                // sheets, keyboard — must render light too. Revert to .dark
-                // alongside flipping Theme's Paper.→Dark. aliases (Rule #8).
-                .preferredColorScheme(.light)
-                .background(Theme.bgPage.ignoresSafeArea())
+                // v3 is dark-first. Effort mesh paints behind every screen;
+                // the system canvas under the mesh stays black.
+                .preferredColorScheme(.dark)
+                .background(Theme.bg.ignoresSafeArea())
                 // Wire the WatchConnectivity bridge + kick the HealthKit
                 // importer in ONE .task — build 78 had two stacked .task
                 // modifiers and SwiftUI silently dropped the second one
@@ -110,39 +108,4 @@ struct FaffApp: App {
     }
 }
 
-struct RootTabView: View {
-    @State private var selectedTab: Tab = .today
-
-    enum Tab: String, CaseIterable, Identifiable {
-        // Paper overhaul 2026-05-29: collapsed 5 tabs → 3 (TODAY / PLAN / ME)
-        // to mirror the web 3-tab nav. The race-destination path lives in
-        // PLAN (TrainingView), with Races reachable from there. Health, Log
-        // + Tips fold into ME (ProfileView) as one-tap sheets — same demote
-        // the web did (Races → /plan strip, Health → /today chips + link).
-        case today, plan, me
-        var id: String { rawValue }
-        var label: String {
-            switch self {
-            case .today: return "Today"
-            case .plan:  return "Plan"
-            case .me:    return "Me"
-            }
-        }
-        var systemImage: String {
-            switch self {
-            case .today: return "house.fill"
-            case .plan:  return "map.fill"     // the path to the finish line
-            case .me:    return "person.fill"
-            }
-        }
-    }
-
-    var body: some View {
-        TabView(selection: $selectedTab) {
-            TodayView()    .tabItem { Label(Tab.today.label, systemImage: Tab.today.systemImage) } .tag(Tab.today)
-            TrainingView() .tabItem { Label(Tab.plan.label,  systemImage: Tab.plan.systemImage) }  .tag(Tab.plan)
-            ProfileView()  .tabItem { Label(Tab.me.label,    systemImage: Tab.me.systemImage) }    .tag(Tab.me)
-        }
-        .tint(Theme.green)
-    }
-}
+// RootTabView lives in Views/RootTabView.swift (5-tab v3 host).

@@ -1,63 +1,135 @@
 //
 //  Fonts.swift
+//  v3 typography stack · Anton (brand) · Oswald (display + numerics) · Inter (body).
 //
-//  Two families total — Oswald display + Inter body (v3 lock-in 2026-05-28).
+//  PostScript names per Google Fonts OFL releases:
+//    Anton-Regular
+//    Oswald-Light / Oswald-Regular / Oswald-Medium / Oswald-SemiBold / Oswald-Bold
+//    Inter-Regular / Inter-Medium / Inter-SemiBold / Inter-Bold / Inter-ExtraBold
 //
-//    .display(size)  — Oswald-Bold. Hero numbers + headlines.
-//    .label(size)    — Inter-Bold caps-tracked. Small caps + chip + eyebrow.
-//    .body(size, w)  — Inter at the chosen weight. Paragraph copy.
-//
-//  v3 swap (2026-05-28 cutover): display moved HelveticaNeue-Bold → Oswald
-//  to match the web design system (shared/tokens.json v1.4.0). Existing
-//  view callsites picking up `Font.display(...)` automatically render in
-//  Oswald — no per-view edits required. Fallback chain keeps the app safe
-//  if the TTFs aren't bundled (clean degrade to system bold).
+//  All registered in project.yml UIAppFonts. If a face is missing at runtime
+//  (e.g. a font failed to bundle) UIFont(name:size:) returns nil and we fall
+//  back to a system substitute so the app doesn't fail silently with the
+//  default San Francisco.
 //
 
 import SwiftUI
+import UIKit
 
 extension Font {
-    /// Display font — Oswald-Bold. Hero numbers + headlines at any size.
-    /// Falls back to HelveticaNeue-Bold (built-in) then system bold if the
-    /// Oswald TTF didn't bundle into the build.
-    static func display(_ size: CGFloat) -> Font {
-        if UIFont(name: "Oswald-Bold", size: size) != nil {
-            return .custom("Oswald-Bold", size: size)
+
+    // ───── Anton · brand wordmark only ─────
+    static func brand(_ size: CGFloat) -> Font {
+        if UIFont(name: "Anton-Regular", size: size) != nil {
+            return .custom("Anton-Regular", size: size)
         }
-        if UIFont(name: "HelveticaNeue-Bold", size: size) != nil {
-            return .custom("HelveticaNeue-Bold", size: size)
-        }
-        return .system(size: size, weight: .bold)
+        return .system(size: size, weight: .black, design: .default).width(.condensed)
     }
 
-    /// Label font — Inter-Bold (caps-tracked usage downstream).
-    /// v3 swap: was HelveticaNeue-Bold; now matches the web's
-    /// caps-tracked labels (Inter 700wt + letter-spacing) so the iPhone
-    /// + web read with the same letterforms at small caps sizes.
+    // ───── Oswald · display + ALL numerics ─────
+    static func display(_ size: CGFloat, weight: OswaldWeight = .semibold) -> Font {
+        let name = weight.postScriptName
+        if UIFont(name: name, size: size) != nil {
+            return .custom(name, size: size)
+        }
+        return .system(size: size, weight: weight.systemWeight).width(.condensed)
+    }
+
+    /// Convenience for the dominant hero recipe (Oswald 700, tight tracking,
+    /// short line-height). Apply as `.font(.heroDisplay(size:))`.
+    static func heroDisplay(_ size: CGFloat) -> Font {
+        display(size, weight: .bold)
+    }
+
+    // ───── Inter · body / labels / eyebrows ─────
+    static func body(_ size: CGFloat, weight: InterWeight = .regular) -> Font {
+        let name = weight.postScriptName
+        if UIFont(name: name, size: size) != nil {
+            return .custom(name, size: size)
+        }
+        return .system(size: size, weight: weight.systemWeight)
+    }
+
+    /// Tracked-caps label recipe (Inter ExtraBold). The View applies
+    /// `.tracking()` and `.textCase(.uppercase)` via `.eyebrow()` modifier.
     static func label(_ size: CGFloat) -> Font {
-        if UIFont(name: "Inter-Bold", size: size) != nil {
-            return .custom("Inter-Bold", size: size)
+        body(size, weight: .extraBold)
+    }
+}
+
+enum OswaldWeight {
+    case light, regular, medium, semibold, bold
+
+    var postScriptName: String {
+        switch self {
+        case .light:    return "Oswald-Light"
+        case .regular:  return "Oswald-Regular"
+        case .medium:   return "Oswald-Medium"
+        case .semibold: return "Oswald-SemiBold"
+        case .bold:     return "Oswald-Bold"
         }
-        if UIFont(name: "HelveticaNeue-Bold", size: size) != nil {
-            return .custom("HelveticaNeue-Bold", size: size)
-        }
-        return .system(size: size, weight: .bold)
     }
 
-    /// Body font — Inter at given weight. Falls back to system if unavailable.
-    static func body(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        let interName: String
-        switch weight {
-        case .black, .heavy:   interName = "Inter-Black"
-        case .bold:            interName = "Inter-Bold"
-        case .semibold:        interName = "Inter-SemiBold"
-        case .medium:          interName = "Inter-Medium"
-        case .light, .thin:    interName = "Inter-Light"
-        default:               interName = "Inter-Regular"
+    var systemWeight: Font.Weight {
+        switch self {
+        case .light:    return .light
+        case .regular:  return .regular
+        case .medium:   return .medium
+        case .semibold: return .semibold
+        case .bold:     return .bold
         }
-        if UIFont(name: interName, size: size) != nil {
-            return .custom(interName, size: size)
+    }
+}
+
+enum InterWeight {
+    case regular, medium, semibold, bold, extraBold
+
+    var postScriptName: String {
+        switch self {
+        case .regular:   return "Inter-Regular"
+        case .medium:    return "Inter-Medium"
+        case .semibold:  return "Inter-SemiBold"
+        case .bold:      return "Inter-Bold"
+        case .extraBold: return "Inter-ExtraBold"
         }
-        return .system(size: size, weight: weight)
+    }
+
+    var systemWeight: Font.Weight {
+        switch self {
+        case .regular:   return .regular
+        case .medium:    return .medium
+        case .semibold:  return .semibold
+        case .bold:      return .bold
+        case .extraBold: return .heavy
+        }
+    }
+}
+
+// MARK: - Display recipe modifier
+//
+// The hero look used everywhere: Oswald + tight tracking + short line-height.
+
+struct DisplayRecipe: ViewModifier {
+    let size: CGFloat
+    let weight: OswaldWeight
+    func body(content: Content) -> some View {
+        content
+            .font(.display(size, weight: weight))
+            .tracking(-(size * 0.045))     // ~−2px @ 44pt
+    }
+}
+
+extension View {
+    /// Hero numeric recipe: Oswald + tight tracking.
+    func displayRecipe(size: CGFloat, weight: OswaldWeight = .bold) -> some View {
+        modifier(DisplayRecipe(size: size, weight: weight))
+    }
+
+    /// Tracked-caps eyebrow recipe (Inter ExtraBold, uppercase, default 2px tracking).
+    func eyebrow(size: CGFloat = 11, tracking: CGFloat = 2.0) -> some View {
+        self
+            .font(.label(size))
+            .tracking(tracking)
+            .textCase(.uppercase)
     }
 }
