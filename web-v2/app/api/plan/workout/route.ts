@@ -23,7 +23,7 @@ export async function PATCH(req: NextRequest) {
 
   // Resolve plan + auth (the row must belong to the user)
   const plan = (await pool.query(
-    `SELECT id FROM training_plans WHERE id = $1 AND (user_uuid = $2 OR user_id = 'me')`,
+    `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2`,
     [body.plan_id, userId]
   )).rows[0];
   if (!plan) return NextResponse.json({ error: 'plan not found' }, { status: 404 });

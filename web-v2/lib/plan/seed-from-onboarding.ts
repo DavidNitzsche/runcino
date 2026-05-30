@@ -290,7 +290,7 @@ function distributeVolume(
 async function clearActivePlansFor(userId: string): Promise<void> {
   await pool.query(
     `UPDATE training_plans SET archived_iso = NOW()
-      WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL`,
+      WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId],
   );
 }

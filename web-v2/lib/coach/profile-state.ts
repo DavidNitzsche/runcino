@@ -113,7 +113,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       [userId]
     ).then((r) => r.rows),
     pool.query(
-      `SELECT race_id FROM training_plans WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL
+      `SELECT race_id FROM training_plans WHERE user_uuid = $1 AND archived_iso IS NULL
         ORDER BY authored_iso DESC LIMIT 1`,
       [userId]
     ).then((r) => r.rows[0]),

@@ -329,7 +329,7 @@ export async function loadRaceHeader(userId: string, input: RaceHeaderInputs): P
   const planRow = await pool
     .query(
       `SELECT race_id FROM training_plans
-        WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL
+        WHERE user_uuid = $1 AND archived_iso IS NULL
         ORDER BY authored_iso DESC LIMIT 1`,
       [userId],
     )

@@ -160,7 +160,7 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
   // Race-anchored distance (if active plan ties to a race).
   const planRow = (await pool.query<{ race_id: string | null }>(
     `SELECT race_id FROM training_plans
-      WHERE (user_uuid = $1 OR user_id = 'me') AND archived_iso IS NULL
+      WHERE user_uuid = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
     [userUuid],
   ).catch(() => ({ rows: [] }))).rows[0];

@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   // ── ACCEPT path — find active plan, find today's row, patch it ──
   const plan = (await pool.query(
     `SELECT id FROM training_plans
-      WHERE (user_uuid = $1 OR user_id = 'me')
+      WHERE user_uuid = $1
         AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
     [userId]

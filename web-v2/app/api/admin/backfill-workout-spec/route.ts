@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
     //    (state-loader.ts, training-state.ts, race-header.ts).
     const planRows = (await pool.query(
       `SELECT id, race_id FROM training_plans
-        WHERE (user_uuid = $1 OR user_id = 'me')
+        WHERE user_uuid = $1
           AND archived_iso IS NULL
         ORDER BY authored_iso DESC NULLS LAST`,
       [userId],

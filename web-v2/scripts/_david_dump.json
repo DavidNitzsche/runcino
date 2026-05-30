@@ -1,0 +1,1165 @@
+{
+  "david_uuid": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+  "generated_at": "2026-05-30T19:22:44.775Z",
+  "users_row": [
+    {
+      "id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "email": "dnitch85@me.com",
+      "password_hash": "$2b$12$oPmczCjJKdBl6U7g2R3n0OX9AsGZy045Pj0Gk4eMnptLAEh/CYzfC",
+      "email_verified_at": null,
+      "name": "David Nitzsche",
+      "age": 40,
+      "sex": "M",
+      "location": "Los Angeles, CA",
+      "avatar_mode": "initials",
+      "avatar_upload_url": null,
+      "avatar_strava_url": null,
+      "level": "advanced",
+      "long_run_day": "sun",
+      "quality_days": [
+        "tue",
+        "thu"
+      ],
+      "rest_day": "sat",
+      "onboarding_complete": true,
+      "created_at": "2026-05-17T06:23:16.408Z",
+      "updated_at": "2026-05-22T21:10:23.804Z",
+      "last_login_at": "2026-05-25T19:55:37.690Z",
+      "status": "active",
+      "is_admin": true,
+      "approved_at": "2026-05-18T02:55:14.664Z",
+      "approved_by": null,
+      "strava_writeback": true,
+      "max_hr": 181,
+      "resting_hr": 52,
+      "accent_color": null,
+      "max_hr_validation_dismissed_at": null,
+      "pace_migration_ack_at": "2026-05-19T07:00:23.882Z",
+      "vdot_manual_override": null,
+      "vdot_manual_override_at": null,
+      "adaptive_vdot_dismissed_at": null,
+      "vdot_last_reviewed": "46.6",
+      "vdot_last_reviewed_at": "2026-05-19T18:43:38.182Z",
+      "vdot_shift_dismissed_at": null,
+      "vdot_shift_snoozed_at": null,
+      "activity_gap_status": null,
+      "activity_gap_at": null,
+      "activity_gap_resume_at": null,
+      "max_hr_updated_at": null,
+      "max_hr_override": null,
+      "resting_hr_override": null,
+      "timezone": "America/Los_Angeles",
+      "fuel_brand": null,
+      "fuel_gel_carbs_g": null,
+      "fuel_target_g_per_hr": null
+    }
+  ],
+  "profile_row": [
+    {
+      "user_id": "me",
+      "full_name": null,
+      "sex": "Male",
+      "age": 40,
+      "city": "Los Angeles",
+      "runner_id": null,
+      "since_year": null,
+      "hrmax": null,
+      "rhr": null,
+      "updated_at": "2026-05-13T05:18:59.867Z",
+      "user_uuid": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "vo2max_apple": null,
+      "vo2max_apple_updated_at": null,
+      "height_cm": "185.0",
+      "known_terms": [],
+      "user_settings": {},
+      "birthday": "1986-01-01T08:00:00.000Z",
+      "lthr": 162,
+      "hrmax_observed": 188,
+      "experience_level": "advanced",
+      "lthr_method": "derived: Disney HM (162) + Rose Bowl HM (159) avg, half-marathon avg HR ≈ LTHR",
+      "lthr_set_at": "2026-05-26T04:10:36.457Z",
+      "strava_connected_at": null,
+      "health_connected_at": null,
+      "onboarded_at": "2026-05-29T00:38:05.489Z",
+      "notification_token": null,
+      "cross_training_modes": [],
+      "strava_auto_push": false,
+      "phone_hr_alerts": false,
+      "apple_user_id": null,
+      "apple_email": null,
+      "strava_athlete_id": null,
+      "strava_access_token": "b5b67ce90f504b1d3a7f9ef6084684dfc938c08a",
+      "strava_refresh_token": "87a18290892613c9f764926548ef765412b48cc1",
+      "strava_expires_at": "2026-05-29T10:02:54.000Z",
+      "strava_push_privacy": "private",
+      "strava_push_title_format": "type_phases",
+      "goal_race_distance": null,
+      "goal_race_date": null,
+      "goal_race_time": null,
+      "timezone": null,
+      "onboarding_completed_at": null,
+      "connections_skipped": false,
+      "tt_goal_distance": null,
+      "tt_goal_time": null,
+      "weekly_mileage_target": null,
+      "weekly_frequency": null,
+      "history_avg_weekly_mi": null,
+      "history_longest_recent_mi": null,
+      "history_years_running": null,
+      "notification_prefs": {
+        "master_enabled": true,
+        "streak_enabled": true,
+        "quiet_hours_end": "06:00",
+        "race_day_enabled": true,
+        "race_eve_enabled": true,
+        "quiet_hours_start": "22:00",
+        "race_day_wake_time": "06:00",
+        "niggle_sick_enabled": true,
+        "weekly_checkin_time": "20:00",
+        "skip_recovery_enabled": true,
+        "weekly_checkin_enabled": true,
+        "strava_reconnect_enabled": true
+      }
+    }
+  ],
+  "user_prefs_row": [
+    {
+      "user_id": "me",
+      "long_run_day": "Sun",
+      "quality_days": "Tue / Thu",
+      "rest_day": "Sat",
+      "rest_cadence": null,
+      "units": null,
+      "updated_at": "2026-05-13T05:18:59.873Z",
+      "level": "advanced",
+      "long_run_dow": 0,
+      "quality_dows": "2,4",
+      "rest_dow": 6,
+      "user_uuid": "0645f40c-951d-4ccc-b86e-9979cd26c795"
+    }
+  ],
+  "runner_profile_all": [
+    {
+      "id": 1,
+      "birth_year": 1985,
+      "sex": "male",
+      "hrmax_bpm": 175,
+      "rhr_bpm": 39,
+      "updated_at": "2026-05-08T21:16:30.410Z",
+      "birth_date": "1985-08-05T07:00:00.000Z",
+      "health_flags": null,
+      "gps_watch_model": "AppleWatchUlta",
+      "kit_notes": null,
+      "last_period_date": null,
+      "cycle_phase": null,
+      "long_run_dow": null
+    }
+  ],
+  "connectors": [
+    {
+      "id": "73c564be-db99-4634-b591-cd4e35e562f5",
+      "provider": "apple_health",
+      "scope": null,
+      "last_sync_at": "2026-05-25T19:55:40.153Z",
+      "last_sync_status": "success",
+      "activities_count": 364,
+      "connected_at": "2026-05-20T18:39:21.189Z",
+      "disconnected_at": null
+    },
+    {
+      "id": "5e6a4746-2170-40c7-b7e5-f6a3350fbe59",
+      "provider": "strava",
+      "scope": "read,activity:read_all,profile:read_all",
+      "last_sync_at": "2026-05-25T21:24:14.065Z",
+      "last_sync_status": "success",
+      "activities_count": 110,
+      "connected_at": "2026-05-18T16:10:55.417Z",
+      "disconnected_at": null
+    }
+  ],
+  "active_training_plans": [],
+  "archived_training_plan_count": 27,
+  "races": [
+    {
+      "slug": "rose-bowl-half-2026",
+      "meta": {
+        "date": "2026-01-18",
+        "name": "Rose Bowl Half",
+        "priority": "A",
+        "courseSlug": "rose-bowl-half-2026",
+        "distanceMi": 13.109,
+        "goalDisplay": "1:38:38"
+      },
+      "saved_at": "2026-05-19T07:00:23.880Z",
+      "has_result": true
+    },
+    {
+      "slug": "disney-half-2026",
+      "meta": {
+        "date": "2026-02-01",
+        "name": "Disney Half Marathon",
+        "priority": "A",
+        "courseSlug": "disney-half-2026",
+        "distanceMi": 13.109,
+        "goalDisplay": "1:34:54"
+      },
+      "saved_at": "2026-05-19T05:52:03.857Z",
+      "has_result": true
+    },
+    {
+      "slug": "la-marathon-2026",
+      "meta": {
+        "date": "2026-03-08",
+        "name": "LA Marathon",
+        "priority": "A",
+        "courseSlug": "la-marathon-2026",
+        "distanceMi": 26.219,
+        "goalDisplay": "3:31:40"
+      },
+      "saved_at": "2026-05-19T05:52:03.852Z",
+      "has_result": true
+    },
+    {
+      "slug": "big-sur-marathon",
+      "meta": {
+        "date": "2026-04-26",
+        "name": "Big Sur Marathon",
+        "priority": "hilly-excluded",
+        "courseSlug": "big-sur-marathon",
+        "distanceMi": 26.2,
+        "goalDisplay": "3:40:00"
+      },
+      "saved_at": "2026-05-18T23:06:26.780Z",
+      "has_result": true
+    },
+    {
+      "slug": "sombrero-half",
+      "meta": {
+        "date": "2026-05-03",
+        "name": "Sombrero Half Marathon",
+        "priority": "C",
+        "courseSlug": "sombrero-half",
+        "distanceMi": 13.16,
+        "goalDisplay": "1:32:00"
+      },
+      "saved_at": "2026-05-18T23:06:26.775Z",
+      "has_result": true
+    },
+    {
+      "slug": "americas-finest-city",
+      "meta": {
+        "date": "2026-08-16",
+        "name": "Americas Finest City",
+        "priority": "A",
+        "courseSlug": "americas-finest-city",
+        "distanceMi": 13.1,
+        "goalDisplay": "1:30:00",
+        "distanceLabel": "Half Marathon"
+      },
+      "saved_at": "2026-05-19T00:57:56.980Z",
+      "has_result": false
+    },
+    {
+      "slug": "dodgers",
+      "meta": {
+        "date": "2026-09-26",
+        "name": "Dodgers",
+        "priority": "C",
+        "courseSlug": "dodgers",
+        "distanceMi": 6.21,
+        "goalDisplay": "0:45:00"
+      },
+      "saved_at": "2026-05-08T21:49:45.316Z",
+      "has_result": false
+    },
+    {
+      "slug": "run-malibu",
+      "meta": {
+        "date": "2026-11-08",
+        "name": "Run Malibu",
+        "priority": "B",
+        "courseSlug": "run-malibu",
+        "distanceMi": 13.1,
+        "goalDisplay": "1:30:00"
+      },
+      "saved_at": "2026-05-08T21:49:57.548Z",
+      "has_result": false
+    },
+    {
+      "slug": "cim",
+      "meta": {
+        "date": "2026-12-06",
+        "name": "CIM",
+        "priority": "A",
+        "courseSlug": "cim",
+        "distanceMi": 26.22,
+        "goalDisplay": "3:00:00"
+      },
+      "saved_at": "2026-05-06T20:51:08.011Z",
+      "has_result": false
+    },
+    {
+      "slug": "los-angeles-marathon",
+      "meta": {
+        "date": "2027-03-07",
+        "name": "Los Angeles Marathon",
+        "priority": "A",
+        "courseSlug": "los-angeles-marathon",
+        "distanceMi": 26.22,
+        "goalDisplay": "3:31:00",
+        "distanceLabel": "Marathon"
+      },
+      "saved_at": "2026-05-07T06:53:51.069Z",
+      "has_result": false
+    }
+  ],
+  "shoes": [
+    {
+      "id": 1,
+      "brand": "New Balance",
+      "model": "SC Trainer v3",
+      "color": "Orange Bottom",
+      "run_types": [
+        "race",
+        "long",
+        "tempo",
+        "intervals"
+      ],
+      "mileage": "40.25",
+      "mileage_cap": "300",
+      "retired": false,
+      "preferred": true
+    },
+    {
+      "id": 2,
+      "brand": "Asics",
+      "model": "Superblast 3",
+      "color": "Purple",
+      "run_types": [
+        "long",
+        "easy"
+      ],
+      "mileage": "71.88",
+      "mileage_cap": "500",
+      "retired": false,
+      "preferred": true
+    },
+    {
+      "id": 3,
+      "brand": "Asics",
+      "model": "Novablast 5",
+      "color": "Pink/Orange",
+      "run_types": [
+        "recovery",
+        "as_needed"
+      ],
+      "mileage": "11.12",
+      "mileage_cap": "400",
+      "retired": false,
+      "preferred": true
+    },
+    {
+      "id": 4,
+      "brand": "Nike",
+      "model": "Zoom Fly 6",
+      "color": "White/Grey",
+      "run_types": [
+        "tempo",
+        "intervals",
+        "as_needed"
+      ],
+      "mileage": "150",
+      "mileage_cap": "400",
+      "retired": false,
+      "preferred": true
+    },
+    {
+      "id": 5,
+      "brand": "Nike",
+      "model": "Vomero Plus",
+      "color": "White/Green",
+      "run_types": [
+        "as_needed"
+      ],
+      "mileage": "13.64",
+      "mileage_cap": "500",
+      "retired": false,
+      "preferred": true
+    },
+    {
+      "id": 6,
+      "brand": "New Balance",
+      "model": "SC Trainer v3",
+      "color": "White/Grey",
+      "run_types": [
+        "race",
+        "as_needed",
+        "long",
+        "intervals",
+        "tempo"
+      ],
+      "mileage": "79.71",
+      "mileage_cap": "300",
+      "retired": false,
+      "preferred": true
+    }
+  ],
+  "recent_strava": [
+    {
+      "id": "-241421579595571",
+      "date": "2026-05-29",
+      "name": "Run",
+      "mi": "7.71",
+      "sec": null
+    },
+    {
+      "id": "-1176022801177594",
+      "date": "2026-05-29",
+      "name": "Run",
+      "mi": "7.71",
+      "sec": null
+    },
+    {
+      "id": "-164879313431759",
+      "date": "2026-05-27",
+      "name": "Run",
+      "mi": "5.86",
+      "sec": null
+    },
+    {
+      "id": "-2660106955895943",
+      "date": "2026-05-27",
+      "name": "Run",
+      "mi": "5.86",
+      "sec": null
+    },
+    {
+      "id": "-573194905917117",
+      "date": "2026-05-26",
+      "name": "Run",
+      "mi": "7.61",
+      "sec": "3720"
+    }
+  ],
+  "strava_total": 125,
+  "recent_health_samples": [
+    {
+      "sample_type": "hrv",
+      "sample_date": "2026-05-30T07:00:00.000Z",
+      "value": "48",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "max_hr",
+      "sample_date": "2026-05-30T07:00:00.000Z",
+      "value": "63",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "respiratory_rate",
+      "sample_date": "2026-05-30T07:00:00.000Z",
+      "value": "15",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "resting_hr",
+      "sample_date": "2026-05-30T07:00:00.000Z",
+      "value": "51",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "sleep_hours",
+      "sample_date": "2026-05-30T07:00:00.000Z",
+      "value": "5.6",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "spo2",
+      "sample_date": "2026-05-30T07:00:00.000Z",
+      "value": "96.2",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "wrist_temp",
+      "sample_date": "2026-05-30T07:00:00.000Z",
+      "value": "35.9",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "hr_recovery",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "47",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "hrv",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "39",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "max_hr",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "69",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "respiratory_rate",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "15",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "resting_hr",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "48",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "sleep_hours",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "4.9",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "spo2",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "95.6",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "vo2_max",
+      "sample_date": "2026-05-29T07:00:00.000Z",
+      "value": "62.3",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "hrv",
+      "sample_date": "2026-05-28T07:00:00.000Z",
+      "value": "61",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "max_hr",
+      "sample_date": "2026-05-28T07:00:00.000Z",
+      "value": "67",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "respiratory_rate",
+      "sample_date": "2026-05-28T07:00:00.000Z",
+      "value": "15",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "resting_hr",
+      "sample_date": "2026-05-28T07:00:00.000Z",
+      "value": "42",
+      "source": "apple_health"
+    },
+    {
+      "sample_type": "sleep_hours",
+      "sample_date": "2026-05-28T07:00:00.000Z",
+      "value": "6.9",
+      "source": "apple_health"
+    }
+  ],
+  "health_sample_types": [
+    {
+      "sample_type": "hrv",
+      "n": 369,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-30T07:00:00.000Z"
+    },
+    {
+      "sample_type": "resting_hr",
+      "n": 367,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-30T07:00:00.000Z"
+    },
+    {
+      "sample_type": "respiratory_rate",
+      "n": 305,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-30T07:00:00.000Z"
+    },
+    {
+      "sample_type": "max_hr",
+      "n": 279,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-30T07:00:00.000Z"
+    },
+    {
+      "sample_type": "sleep_hours",
+      "n": 258,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-30T07:00:00.000Z"
+    },
+    {
+      "sample_type": "wrist_temp",
+      "n": 187,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-30T07:00:00.000Z"
+    },
+    {
+      "sample_type": "run_power",
+      "n": 177,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-25T07:00:00.000Z"
+    },
+    {
+      "sample_type": "vertical_ratio",
+      "n": 135,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-25T07:00:00.000Z"
+    },
+    {
+      "sample_type": "ground_contact_time",
+      "n": 135,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-25T07:00:00.000Z"
+    },
+    {
+      "sample_type": "stride_length",
+      "n": 135,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-25T07:00:00.000Z"
+    },
+    {
+      "sample_type": "vertical_oscillation",
+      "n": 135,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-25T07:00:00.000Z"
+    },
+    {
+      "sample_type": "cadence",
+      "n": 135,
+      "first": "2025-05-22T07:00:00.000Z",
+      "last": "2026-05-25T07:00:00.000Z"
+    },
+    {
+      "sample_type": "spo2",
+      "n": 40,
+      "first": "2026-04-21T07:00:00.000Z",
+      "last": "2026-05-30T07:00:00.000Z"
+    },
+    {
+      "sample_type": "active_energy",
+      "n": 35,
+      "first": "2026-04-21T07:00:00.000Z",
+      "last": "2026-05-25T07:00:00.000Z"
+    },
+    {
+      "sample_type": "vo2_max",
+      "n": 9,
+      "first": "2026-05-18T07:00:00.000Z",
+      "last": "2026-05-29T07:00:00.000Z"
+    },
+    {
+      "sample_type": "body_fat_pct",
+      "n": 5,
+      "first": "2026-04-23T07:00:00.000Z",
+      "last": "2026-05-24T07:00:00.000Z"
+    },
+    {
+      "sample_type": "lean_mass",
+      "n": 5,
+      "first": "2026-04-23T07:00:00.000Z",
+      "last": "2026-05-24T07:00:00.000Z"
+    },
+    {
+      "sample_type": "body_mass",
+      "n": 5,
+      "first": "2026-04-23T07:00:00.000Z",
+      "last": "2026-05-24T07:00:00.000Z"
+    },
+    {
+      "sample_type": "hr_recovery",
+      "n": 4,
+      "first": "2026-04-23T07:00:00.000Z",
+      "last": "2026-05-29T07:00:00.000Z"
+    }
+  ],
+  "daily_checkins": [
+    {
+      "date": "2026-05-25T07:00:00.000Z",
+      "energy": 6,
+      "soreness": 2,
+      "stress": 1
+    },
+    {
+      "date": "2026-05-24T07:00:00.000Z",
+      "energy": 5,
+      "soreness": 1,
+      "stress": 1
+    },
+    {
+      "date": "2026-05-23T07:00:00.000Z",
+      "energy": 8,
+      "soreness": 1,
+      "stress": 2
+    },
+    {
+      "date": "2026-05-22T07:00:00.000Z",
+      "energy": 6,
+      "soreness": 4,
+      "stress": 2
+    },
+    {
+      "date": "2026-05-21T07:00:00.000Z",
+      "energy": 7,
+      "soreness": 4,
+      "stress": 1
+    },
+    {
+      "date": "2026-05-20T07:00:00.000Z",
+      "energy": 7,
+      "soreness": 2,
+      "stress": 3
+    },
+    {
+      "date": "2026-05-19T07:00:00.000Z",
+      "energy": 6,
+      "soreness": 4,
+      "stress": 2
+    },
+    {
+      "date": "2026-05-18T07:00:00.000Z",
+      "energy": 6,
+      "soreness": 3,
+      "stress": 1
+    },
+    {
+      "date": "2026-05-17T07:00:00.000Z",
+      "energy": 6,
+      "soreness": 4,
+      "stress": 2
+    },
+    {
+      "date": "2026-05-15T07:00:00.000Z",
+      "energy": 9,
+      "soreness": 3,
+      "stress": 3
+    },
+    {
+      "date": "2026-05-13T07:00:00.000Z",
+      "energy": 7,
+      "soreness": 1,
+      "stress": 1
+    },
+    {
+      "date": "2026-05-12T07:00:00.000Z",
+      "energy": 7,
+      "soreness": 1,
+      "stress": 2
+    }
+  ],
+  "check_ins": [
+    {
+      "id": "9",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-29T03:40:43.288Z",
+      "rating": "solid",
+      "briefing_id": null,
+      "note": null,
+      "surface": "weekly_notification",
+      "extras": null
+    },
+    {
+      "id": "8",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-28T01:12:02.974Z",
+      "rating": "solid",
+      "briefing_id": null,
+      "note": null,
+      "surface": "today",
+      "extras": {
+        "kind": "post_run",
+        "note": "Felt really good. One of the best runs since getting back into the grind. Dialed. Paced. Full of energy. Ready to go.",
+        "niggle": "Felt really good. One of the best runs since getting back into the grind. Dialed. Paced. Full of energy. Ready to go.",
+        "run_id": "0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-27",
+        "extracted": {
+          "mood": "high",
+          "energy": "fresh",
+          "niggle": null,
+          "notable": "One of the best runs since getting back into the grind—felt dialed, paced, and full of energy.",
+          "body_implicit": "fresh",
+          "context_factors": [],
+          "execution_implicit": "nailed"
+        },
+        "coach_reply": "That's what we're building toward, David. When the effort feels controlled and the energy stays high, you know the aerobic base is coming back. Lock that feeling in—you'll draw on it when the work gets harder.",
+        "workout_kind": "easy"
+      }
+    },
+    {
+      "id": "7",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-27T23:21:58.493Z",
+      "rating": "solid",
+      "briefing_id": null,
+      "note": null,
+      "surface": "today",
+      "extras": {
+        "kind": "post_run",
+        "niggle": "Felt really good this run. Best one in a while. Watch app worked, told me exactly what I needed. Pace felt good. All around just a great one today.",
+        "run_id": "0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-27",
+        "execution": "chatty",
+        "body_state": "fresh",
+        "coach_reply": "David, that's the kind of run that reminds you why you do this. Lock in that feel — we're building on it.",
+        "workout_kind": "easy"
+      }
+    },
+    {
+      "id": "6",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-27T23:10:54.519Z",
+      "rating": "solid",
+      "briefing_id": null,
+      "note": null,
+      "surface": "today",
+      "extras": {
+        "kind": "post_run",
+        "niggle": "Best run I've had in a long time. Everything clicked. Felt controlled. The watch app worked great. Really strong. Loved it.",
+        "run_id": "0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-27",
+        "execution": "chatty",
+        "body_state": "fresh",
+        "workout_kind": "easy"
+      }
+    },
+    {
+      "id": "5",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-27T06:49:24.477Z",
+      "rating": "solid",
+      "briefing_id": null,
+      "note": null,
+      "surface": "today",
+      "extras": {
+        "kind": "post_run",
+        "niggle": "First speed day in about 3 weeks. Good to get back out there and feel the speed again but it was a grind. Getting back in the flow. ready for action.",
+        "run_id": "wko_64CBC17D-F6AC-44BF-96D1-6324FDE30F3A",
+        "execution": "grinded",
+        "body_state": "worked",
+        "workout_kind": "quality"
+      }
+    }
+  ],
+  "niggles": [
+    {
+      "id": "2",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "body_part": "calf",
+      "side": "right",
+      "severity": 4,
+      "status": "just_started",
+      "note": null,
+      "logged_at": "2026-05-29T01:01:03.644Z",
+      "cleared_at": "2026-05-29T01:01:04.119Z"
+    },
+    {
+      "id": "1",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "body_part": "hamstring",
+      "side": "left",
+      "severity": 3,
+      "status": "few_days",
+      "note": null,
+      "logged_at": "2026-05-29T01:00:00.612Z",
+      "cleared_at": "2026-05-29T01:00:46.831Z"
+    }
+  ],
+  "sick_episodes": [
+    {
+      "id": "2",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "symptoms": [
+        "fatigue"
+      ],
+      "started": "today",
+      "has_fever": false,
+      "note": null,
+      "logged_at": "2026-05-29T01:01:09.162Z",
+      "cleared_at": "2026-05-29T01:01:09.438Z"
+    },
+    {
+      "id": "1",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "symptoms": [
+        "head_cold",
+        "fatigue"
+      ],
+      "started": "yesterday",
+      "has_fever": false,
+      "note": "sore throat",
+      "logged_at": "2026-05-29T01:00:55.635Z",
+      "cleared_at": "2026-05-29T01:00:57.630Z"
+    }
+  ],
+  "coach_actions": [
+    {
+      "id": 2,
+      "action_type": "propose_goal_adjustment",
+      "mode": "propose",
+      "trigger": "fitness_shift",
+      "rationale": "Fitness behind goal by 41 sec/mi for 21 days.",
+      "created_at": "2026-05-25T04:27:24.897Z"
+    },
+    {
+      "id": 1,
+      "action_type": "propose_goal_adjustment",
+      "mode": "propose",
+      "trigger": "fitness_shift",
+      "rationale": "Fitness behind goal by 41 sec/mi for 21 days.",
+      "created_at": "2026-05-24T15:50:58.801Z"
+    }
+  ],
+  "coach_proposals": [
+    {
+      "id": 2,
+      "proposal_type": "goal_time_change",
+      "status": "expired",
+      "created_at": "2026-05-25T04:27:24.893Z"
+    },
+    {
+      "id": 1,
+      "proposal_type": "goal_time_change",
+      "status": "expired",
+      "created_at": "2026-05-24T15:50:58.794Z"
+    }
+  ],
+  "coach_intents": [
+    {
+      "id": "148",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-29T18:25:01.123Z",
+      "reason": "watch_completion",
+      "field": "0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-29",
+      "value": "{\"startedAt\":\"2026-05-29T17:08:07Z\",\"completedAt\":\"2026-05-29T18:13:59Z\",\"maxHr\":152,\"totalDistanceMi\":7.71,\"avgCadence\":166,\"workoutId\":\"0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-29\",\"phases\":[{\"actualDistanceMi\":6.1,\"index\":0,\"targetPaceSPerMi\":492,\"type\":\"work\",\"actualPaceSPerMi\":509,\"avgHr\":141,\"avgCadence\":167,\"completed\":true,\"maxHr\":152,\"actualDurationSec\":3107,\"label\":\"Run\"}],\"status\":\"completed\",\"avgHr\":139,\"totalDurationSec\":3951}",
+      "briefing_id": null,
+      "acknowledged_at": null
+    },
+    {
+      "id": "146",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-27T23:37:51.756Z",
+      "reason": "watch_completion",
+      "field": "0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-27",
+      "value": "{\"status\":\"completed\",\"startedAt\":\"2026-05-27T19:35:29Z\",\"totalDistanceMi\":5.86,\"avgCadence\":169,\"completedAt\":\"2026-05-27T20:24:52Z\",\"maxHr\":153,\"phases\":[{\"avgCadence\":169,\"actualDistanceMi\":5.8,\"targetPaceSPerMi\":492,\"completed\":true,\"avgHr\":141,\"index\":0,\"actualPaceSPerMi\":505,\"label\":\"Run\",\"type\":\"work\",\"actualDurationSec\":2933,\"maxHr\":153}],\"totalDurationSec\":2962,\"workoutId\":\"0645f40c-951d-4ccc-b86e-9979cd26c795-2026-05-27\",\"avgHr\":140}",
+      "briefing_id": null,
+      "acknowledged_at": null
+    },
+    {
+      "id": "3",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-26T04:18:27.021Z",
+      "reason": "profile_field_added",
+      "field": "height_cm",
+      "value": "185",
+      "briefing_id": null,
+      "acknowledged_at": null
+    },
+    {
+      "id": "2",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "ts": "2026-05-25T22:29:20.571Z",
+      "reason": "profile_field_added",
+      "field": "sex",
+      "value": "Male",
+      "briefing_id": null,
+      "acknowledged_at": null
+    }
+  ],
+  "briefings": [
+    {
+      "id": "819",
+      "surface": "profile",
+      "mode": "identity",
+      "generated_at": "2026-05-28T02:47:22.514Z"
+    },
+    {
+      "id": "822",
+      "surface": "races",
+      "mode": "building",
+      "generated_at": "2026-05-28T02:47:21.105Z"
+    },
+    {
+      "id": "765",
+      "surface": "races:ios",
+      "mode": "building",
+      "generated_at": "2026-05-28T02:46:51.133Z"
+    },
+    {
+      "id": "764",
+      "surface": "profile:ios",
+      "mode": "identity",
+      "generated_at": "2026-05-28T02:46:45.634Z"
+    }
+  ],
+  "coach_usage_last5": [
+    {
+      "day": "2026-05-28T07:00:00.000Z",
+      "surface": "today",
+      "mode": "post-run",
+      "input_tokens": 16271,
+      "output_tokens": 2755
+    },
+    {
+      "day": "2026-05-28T07:00:00.000Z",
+      "surface": "today",
+      "mode": "post-run",
+      "input_tokens": 14422,
+      "output_tokens": 2719
+    },
+    {
+      "day": "2026-05-28T07:00:00.000Z",
+      "surface": "profile",
+      "mode": "identity",
+      "input_tokens": 4337,
+      "output_tokens": 1449
+    },
+    {
+      "day": "2026-05-28T07:00:00.000Z",
+      "surface": "today",
+      "mode": "post-run",
+      "input_tokens": 6883,
+      "output_tokens": 1419
+    },
+    {
+      "day": "2026-05-28T07:00:00.000Z",
+      "surface": "races",
+      "mode": "building",
+      "input_tokens": 20143,
+      "output_tokens": 1274
+    }
+  ],
+  "device_tokens": [
+    {
+      "id": "1",
+      "platform": "ios",
+      "app_version": "2.0.0-test",
+      "last_seen_at": "2026-05-29T03:40:31.635Z",
+      "registered_at": "2026-05-29T03:40:31.635Z"
+    },
+    {
+      "id": "2",
+      "platform": "ios",
+      "app_version": "3.0.0",
+      "last_seen_at": "2026-05-30T18:27:41.586Z",
+      "registered_at": "2026-05-29T05:41:57.820Z"
+    }
+  ],
+  "workout_completions": [
+    {
+      "workout_id": "2026-05-25-easy",
+      "status": "completed",
+      "started_at": "2026-05-25T17:29:28.000Z",
+      "total_distance_mi": "6.16",
+      "total_duration_sec": 3269
+    },
+    {
+      "workout_id": "just-run-A80B5431-1A28-4E02-8DFE-06339E97DD35",
+      "status": "abandoned",
+      "started_at": "2026-05-24T21:17:41.000Z",
+      "total_distance_mi": null,
+      "total_duration_sec": 11
+    },
+    {
+      "workout_id": "just-run-DB6F4C43-97D0-48CD-86D8-75F8495BA683",
+      "status": "abandoned",
+      "started_at": "2026-05-24T21:17:23.000Z",
+      "total_distance_mi": null,
+      "total_duration_sec": 10
+    },
+    {
+      "workout_id": "just-run-1CC0CBE8-F3D7-4401-BCCE-D11739E95016",
+      "status": "abandoned",
+      "started_at": "2026-05-24T20:58:40.000Z",
+      "total_distance_mi": null,
+      "total_duration_sec": 4
+    },
+    {
+      "workout_id": "2026-05-24-long",
+      "status": "abandoned",
+      "started_at": "2026-05-24T15:21:17.000Z",
+      "total_distance_mi": null,
+      "total_duration_sec": 10
+    }
+  ],
+  "workout_routes_count": 24,
+  "notifications_pending": [
+    {
+      "id": "1",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "category": "skip_recovery",
+      "fire_at": "2026-05-29T07:15:00.000Z",
+      "payload": {
+        "body": "Today is easy 5.0mi. still feeling it?",
+        "data": {
+          "date_iso": "2026-05-29",
+          "deeplink": "faff://today"
+        },
+        "title": "YESTERDAY · SKIPPED",
+        "category": "skip_recovery",
+        "dedup_key": "skip-recovery:0645f40c-951d-4ccc-b86e-9979cd26c795:2026-05-29",
+        "action_buttons": [
+          {
+            "title": "READY",
+            "identifier": "READY"
+          },
+          {
+            "title": "STILL SKIPPING",
+            "identifier": "STILL_SKIPPING"
+          }
+        ],
+        "interruption_level": "active"
+      },
+      "created_at": "2026-05-29T03:52:26.256Z",
+      "processed_at": null,
+      "dedup_key": "skip-recovery:0645f40c-951d-4ccc-b86e-9979cd26c795:2026-05-29"
+    }
+  ],
+  "day_actions": [
+    {
+      "id": "11",
+      "user_id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "date_iso": "2026-05-28",
+      "action": "skip",
+      "note": null,
+      "created_at": "2026-05-29T03:52:26.235Z"
+    }
+  ],
+  "all_users": [
+    {
+      "id": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+      "email": "dnitch85@me.com",
+      "name": "David Nitzsche",
+      "status": "active",
+      "is_admin": true,
+      "created_at": "2026-05-17T06:23:16.408Z"
+    },
+    {
+      "id": "864fe38c-b63d-4cae-8563-7d159478afd6",
+      "email": "diagnostic-test-2@faff.run",
+      "name": "Diagnostic Bot",
+      "status": "active",
+      "is_admin": false,
+      "created_at": "2026-05-17T15:24:35.205Z"
+    },
+    {
+      "id": "43528dcd-933b-4487-9f68-7c6b2d87f044",
+      "email": "deploy-check-3@faff.run",
+      "name": "Deploy Bot",
+      "status": "active",
+      "is_admin": false,
+      "created_at": "2026-05-17T16:13:07.239Z"
+    },
+    {
+      "id": "052d86f2-f720-42b7-b4aa-0688245d833f",
+      "email": "deploy-check-4@faff.run",
+      "name": "Deploy 4",
+      "status": "active",
+      "is_admin": false,
+      "created_at": "2026-05-17T16:14:50.624Z"
+    }
+  ]
+}

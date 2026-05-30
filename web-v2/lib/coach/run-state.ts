@@ -269,10 +269,9 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
         `SELECT pw.workout_spec, pw.sub_label, pw.distance_mi
            FROM plan_workouts pw
            JOIN training_plans tp ON tp.id = pw.plan_id
-          WHERE (tp.user_uuid = $1 OR tp.user_id = 'me')
+          WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
             AND pw.date_iso = $2
-          ORDER BY (tp.user_uuid = $1) DESC
           LIMIT 1`,
         [userId, day],
       ).catch(() => ({ rows: [] as any[] }))).rows[0]
