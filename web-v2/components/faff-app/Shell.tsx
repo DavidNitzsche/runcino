@@ -21,6 +21,7 @@ import { Reach } from './overlays/Reach';
 import { Pro } from './overlays/Pro';
 import { Toast } from './Toast';
 import { TweaksPanel } from './TweaksPanel';
+import { RunDetailModal } from './overlays/RunDetailModal';
 
 const ROUTE_TO_VIEW: Record<string, ViewKey> = {
   '/':           'today',
@@ -49,7 +50,7 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
   const [meshOverride, setMeshOverride] = useState<Mesh | null>(null);
   const [curDay, setCurDay] = useState<number>(seed.todayIdx);
   const [sbCollapsed, setSbCollapsed] = useState(false);
-  const [openOverlay, setOpenOverlay] = useState<null | 'drawer' | 'paywall' | 'reach' | 'pro' | 'weekci' | { type: 'wk'; i: number }>(null);
+  const [openOverlay, setOpenOverlay] = useState<null | 'drawer' | 'paywall' | 'reach' | 'pro' | 'weekci' | { type: 'wk'; i: number } | { type: 'run'; id: string }>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const [toastVisible, setToastVisible] = useState(false);
 
@@ -139,7 +140,12 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
           />
         )}
         {view === 'race'     && <RaceView seed={seed} race={raceSeed} onBack={() => navigate('targets')} />}
-        {view === 'activity' && <ActivityView seed={seed} />}
+        {view === 'activity' && (
+          <ActivityView
+            seed={seed}
+            onOpenRun={(runId) => setOpenOverlay({ type: 'run', id: runId })}
+          />
+        )}
         {view === 'profile'  && (
           <ProfileView
             seed={seed}
@@ -168,6 +174,11 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
       <Paywall open={openOverlay === 'paywall'} onClose={() => setOpenOverlay(null)} />
       <Reach open={openOverlay === 'reach'} onClose={() => setOpenOverlay(null)} onAdd={() => setOpenOverlay(null)} />
       <Pro open={openOverlay === 'pro'} onClose={() => setOpenOverlay(null)} />
+      <RunDetailModal
+        open={typeof openOverlay === 'object' && openOverlay?.type === 'run'}
+        runId={typeof openOverlay === 'object' && openOverlay?.type === 'run' ? openOverlay.id : null}
+        onClose={() => setOpenOverlay(null)}
+      />
       <Toast visible={toastVisible} onClose={() => setToastVisible(false)} title="Tempo Run today" subtitle="67° & calm. Good window around 5 pm." />
       <TweaksPanel />
     </div>

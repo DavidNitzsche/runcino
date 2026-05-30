@@ -1,14 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import type { FaffSeed } from '../types';
+import type { FaffSeed, HeatCell } from '../types';
 
 const EC: Record<string,string> = {
   recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38',
   tempo: '#FF8847', intervals: '#FC4D64', race: '#D6263C',
 };
 const HEATC = ['rgba(255,255,255,.07)', '#1f6f7a', '#2f9a7e', '#E0913A', '#EF6038'];
-const HLBL = ['Rest day','4.0 mi · Recovery','7.2 mi · Easy','12.0 mi · Tempo','18.0 mi · Long'];
 const ICON: Record<string, React.ReactNode> = {
   mtn:   <path d="M3 19l6-11 4 6 3-5 5 10z"/>,
   route: <><path d="M6 19a3 3 0 0 1 0-6h9a3 3 0 0 0 0-6H7"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="5" r="1.6"/></>,
@@ -16,7 +15,7 @@ const ICON: Record<string, React.ReactNode> = {
   cal:   <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></>,
 };
 
-export function ActivityView({ seed }: { seed: FaffSeed }) {
+export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: (runId: string) => void }) {
   const [range, setRange] = useState<'month'|'year'|'all'>('year');
   const d = seed.activity.ranges[range];
   const max = Math.max(...d.vol.map(x => x.v));
@@ -120,24 +119,12 @@ export function ActivityView({ seed }: { seed: FaffSeed }) {
         ))}
       </div>
 
-      <div className="fll" style={{ marginTop: 30 }}>CONSISTENCY</div>
+      <div className="fll" style={{ marginTop: 30, display: 'flex', justifyContent: 'space-between' }}>
+        <span>CONSISTENCY</span>
+        <span style={{ opacity: 0.55, fontWeight: 700, letterSpacing: '2px' }}>LAST 18 WEEKS</span>
+      </div>
       <div className="av-panel">
-        <div className="av-streakrow">
-          <span className="av-streak"><span className="fl">▲</span> 21-day run streak</span>
-          <span className="av-streaksub">LAST 18 WEEKS</span>
-        </div>
-        <div className="av-heat">
-          {d.heat.map((col, ci) => (
-            <div key={ci} className="av-hcol">
-              {col.map((lv, di) => (
-                <div key={di} className="av-hcell" style={{ background: HEATC[lv] }} title={HLBL[lv]} />
-              ))}
-            </div>
-          ))}
-        </div>
-        <div className="av-hmlabels">
-          {d.heatLabels.map((l, i) => <span key={i}>{l}</span>)}
-        </div>
+        <Heatmap cols={d.heat} labels={d.heatLabels} onOpenRun={onOpenRun} />
         <div className="av-hkey">
           LESS
           {HEATC.map((c, i) => <i key={i} style={{ background: c }} />)}
@@ -163,7 +150,14 @@ export function ActivityView({ seed }: { seed: FaffSeed }) {
       <div className="fll" style={{ marginTop: 30 }}>RECENT RUNS</div>
       <div className="log">
         {seed.activity.recent.map((r, i) => (
-          <div className="lr" key={i}>
+          <div
+            className="lr"
+            key={i}
+            onClick={() => r.slug && onOpenRun?.(r.slug)}
+            role={r.slug ? 'button' : undefined}
+            tabIndex={r.slug ? 0 : undefined}
+            style={r.slug ? { cursor: 'pointer' } : undefined}
+          >
             <span className="ld">{r.date}</span>
             <span className="ldot" style={{ background: r.color }} />
             <span className="ln">{r.name}</span>
@@ -174,5 +168,70 @@ export function ActivityView({ seed }: { seed: FaffSeed }) {
         ))}
       </div>
     </>
+  );
+}
+
+function Heatmap({ cols, labels, onOpenRun }: { cols: HeatCell[][]; labels: string[]; onOpenRun?: (id: string) => void }) {
+  const [tip, setTip] = useState<{ x: number; y: number; label: string; mi: number; clickable: boolean } | null>(null);
+  return (
+    <div className="av-heat" style={{ position: 'relative' }}>
+      {cols.map((col, ci) => (
+        <div key={ci} className="av-hcol">
+          {col.map((cell, di) => {
+            const clickable = !!(cell.runId && onOpenRun);
+            return (
+              <div
+                key={di}
+                className="av-hcell"
+                style={{ background: HEATC[cell.lv], cursor: clickable ? 'pointer' : 'default' }}
+                onMouseEnter={(e) => {
+                  const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  const host = (e.currentTarget.parentElement?.parentElement as HTMLDivElement | null)?.getBoundingClientRect();
+                  if (host) {
+                    setTip({
+                      x: rect.left + rect.width / 2 - host.left,
+                      y: rect.top - host.top - 4,
+                      label: cell.label,
+                      mi: cell.mi,
+                      clickable,
+                    });
+                  }
+                }}
+                onMouseLeave={() => setTip(null)}
+                onClick={() => { if (clickable && cell.runId) onOpenRun!(cell.runId); }}
+                role={clickable ? 'button' : undefined}
+                tabIndex={clickable ? 0 : undefined}
+              />
+            );
+          })}
+        </div>
+      ))}
+      <div className="av-hmlabels" style={{ width: '100%' }}>
+        {labels.map((l, i) => <span key={i}>{l}</span>)}
+      </div>
+      {tip && (
+        <div
+          style={{
+            position: 'absolute',
+            left: tip.x,
+            top: tip.y,
+            transform: 'translate(-50%, -100%)',
+            pointerEvents: 'none',
+            background: '#0A0C10',
+            border: '1px solid rgba(255,255,255,.18)',
+            borderRadius: 8,
+            padding: '7px 11px',
+            fontSize: 11.5,
+            fontWeight: 700,
+            color: '#F6F7F8',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 8px 22px -10px rgba(0,0,0,.5)',
+            zIndex: 5,
+          }}
+        >
+          {tip.label}{tip.clickable ? ' · click for detail' : ''}
+        </div>
+      )}
+    </div>
   );
 }

@@ -441,7 +441,7 @@ function buildRange(runs: LogRun[], range: 'month'|'year'|'all'): ActivityData['
     recs: recordsFromRuns(subset),
     heat: heatGrid(subset, 18),
     heatLabels: monthLabelsFromHeat(),
-    facts: factsFromTotals(totalMiles, totalElev),
+    facts: factsFromRuns(subset, totalMiles, totalElev),
   };
 }
 
@@ -476,20 +476,39 @@ function effortMix(runs: LogRun[]): [string, string, number][] {
   const order: EffortKey[] = ['easy','long','tempo','intervals','recovery'];
   return order.map(k => [k, k[0].toUpperCase() + k.slice(1), Math.round(buckets[k] / total * 100)] as [string, string, number]);
 }
-function heatGrid(runs: LogRun[], weeks = 18): number[][] {
+function heatGrid(runs: LogRun[], weeks = 18): import('./types').HeatCell[][] {
   const today = new Date(); today.setHours(0,0,0,0);
-  const dailyMi: Record<string, number> = {};
-  for (const r of runs) dailyMi[r.date] = (dailyMi[r.date] ?? 0) + r.distance_mi;
-  const cols: number[][] = [];
+  // Index runs by date so each cell can carry name + type + run id.
+  type DayBucket = { mi: number; name: string; type: string | null; id: string };
+  const byDay: Record<string, DayBucket> = {};
+  for (const r of runs) {
+    const cur = byDay[r.date];
+    if (!cur) byDay[r.date] = { mi: r.distance_mi, name: r.name || 'Run', type: r.type ?? null, id: r.id };
+    else { cur.mi += r.distance_mi; }
+  }
+  const fmtDay = (d: Date) => {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+  };
+  const titleCase = (s: string | null) => {
+    if (!s) return '';
+    const low = s.toLowerCase();
+    return low[0].toUpperCase() + low.slice(1);
+  };
+  const cols: import('./types').HeatCell[][] = [];
   for (let c = weeks - 1; c >= 0; c--) {
-    const col: number[] = [];
+    const col: import('./types').HeatCell[] = [];
     for (let d = 0; d < 7; d++) {
       const day = new Date(today);
       day.setDate(today.getDate() - (c * 7 + (6 - d)));
       const iso = day.toISOString().slice(0, 10);
-      const mi = dailyMi[iso] ?? 0;
-      const lv = mi <= 0 ? 0 : mi < 4 ? 1 : mi < 8 ? 2 : mi < 14 ? 3 : 4;
-      col.push(lv);
+      const bucket = byDay[iso];
+      const mi = bucket?.mi ?? 0;
+      const lv: 0|1|2|3|4 = mi <= 0 ? 0 : mi < 4 ? 1 : mi < 8 ? 2 : mi < 14 ? 3 : 4;
+      const label = mi <= 0
+        ? `${fmtDay(day)} · Rest`
+        : `${fmtDay(day)} · ${mi.toFixed(1)} mi${bucket?.type ? ' · ' + titleCase(bucket.type) : ''}`;
+      col.push({ lv, date: iso, mi: Math.round(mi * 10) / 10, label, runId: bucket?.id });
     }
     cols.push(col);
   }
@@ -549,12 +568,42 @@ function paceToSec(p: string): number {
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   return 9999;
 }
-function factsFromTotals(miles: number, elev: number): ActivityData['ranges']['year']['facts'] {
+function factsFromRuns(runs: LogRun[], miles: number, elev: number): ActivityData['ranges']['year']['facts'] {
+  // Real moving time: sum each run's pace × distance when available, else
+  // approximate at 9 min/mi.
+  let totalSec = 0;
+  for (const r of runs) {
+    const paceSec = paceToSec(r.pace ?? '');
+    totalSec += paceSec < 9999 ? paceSec * r.distance_mi : r.distance_mi * 9 * 60;
+  }
+  const hours = Math.round(totalSec / 3600);
+
+  // Find the dominant day-of-week for "long" runs. Threshold = 60th
+  // percentile of all run distances (or 10 mi, whichever is greater).
+  const distances = runs.map(r => r.distance_mi).sort((a, b) => a - b);
+  const p60 = distances[Math.floor(distances.length * 0.6)] ?? 10;
+  const longThresh = Math.max(10, p60);
+  const longs = runs.filter(r => r.distance_mi >= longThresh);
+  const dowCount = new Array(7).fill(0);
+  for (const r of longs) {
+    const d = new Date(r.date + 'T12:00:00Z');
+    dowCount[d.getUTCDay()]++;
+  }
+  const totalLongs = longs.length;
+  let bestDow = 6, bestN = 0;
+  for (let i = 0; i < 7; i++) if (dowCount[i] > bestN) { bestN = dowCount[i]; bestDow = i; }
+  const DOW_PLURAL = ['Sundays','Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays'];
+  const longDayName = totalLongs >= 3 ? DOW_PLURAL[bestDow] : 'Long runs';
+  const longPct = totalLongs > 0 ? Math.round((bestN / totalLongs) * 100) : 0;
+  const longCopy = totalLongs >= 3
+    ? `your long-run anchor. ${longPct}% of long runs land there.`
+    : 'will surface once a long-run pattern emerges.';
+
   return [
     { i: 'mtn',   v: `${Math.round(elev).toLocaleString()} ft`, c: 'climbed. Stairs to the moon, give or take.' },
     { i: 'route', v: `${Math.round(miles).toLocaleString()} mi`, c: 'on the legs.' },
-    { i: 'clock', v: `${Math.round(miles * 9 / 60).toLocaleString()} hours`, c: 'moving. A workweek every couple months.' },
-    { i: 'cal',   v: 'Saturdays', c: 'tend to be the long-run anchor. The body knows the rhythm.' },
+    { i: 'clock', v: `${hours.toLocaleString()} hours`, c: 'moving. A workweek every couple months.' },
+    { i: 'cal',   v: longDayName, c: longCopy },
   ];
 }
 

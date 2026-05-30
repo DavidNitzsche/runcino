@@ -92,6 +92,13 @@ export type ActivityData = {
   ranges: Record<'month'|'year'|'all', ActivityRange>;
   recent: RecentRun[];
 };
+export type HeatCell = {
+  lv: 0 | 1 | 2 | 3 | 4;          // bin: 0=rest, 1=<4mi, 2=<8mi, 3=<14mi, 4=14mi+
+  date: string;                    // ISO YYYY-MM-DD
+  mi: number;                      // total miles that day (0 = rest)
+  label: string;                   // friendly label e.g. "12.0 mi · Tempo Run" or "Rest"
+  runId?: string;                  // first run on that day (for click → modal)
+};
 export type ActivityRange = {
   eyebrow: string; big: string; sub: string;
   totals: [string,string][];
@@ -99,7 +106,7 @@ export type ActivityRange = {
   vol: { l: string; v: number }[];
   mix: [string, string, number][];   // ['easy','Easy',48]
   recs: { k: string; v: string; c: string; t: string }[];
-  heat: number[][];                  // 18 cols × 7 rows of level 0..4
+  heat: HeatCell[][];                // 18 cols × 7 rows
   heatLabels: string[];              // ['JAN','FEB','MAR','APR','MAY']
   facts: { i: string; v: string; c: string }[];
 };
