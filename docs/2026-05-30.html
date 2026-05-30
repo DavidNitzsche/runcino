@@ -174,7 +174,7 @@
   <div class="stat"><div class="n">12</div><div class="l">Topic kinds</div></div>
   <div class="stat"><div class="n">7</div><div class="l">Notification categories</div></div>
   <div class="stat"><div class="n">10</div><div class="l">Course library</div></div>
-  <div class="stat"><div class="n">24</div><div class="l">Learn articles</div></div>
+  <div class="stat"><div class="n">41</div><div class="l">Learn articles (17 doctrine + 24 research)</div></div>
   <div class="stat"><div class="n">2,720</div><div class="l">David: health samples</div></div>
   <div class="stat"><div class="n">125</div><div class="l">David: Strava runs</div></div>
 </div>
@@ -199,6 +199,7 @@
   <li><a href="#onboarding"><strong>New user flow</strong> — onboarding sequence (new user → fully provisioned)</a></li>
   <li><a href="#preserved">David's baseline (the L1 template, fully populated)</a></li>
   <li><a href="#shipped">Shipped in this pass + what's queued</a></li>
+  <li><a href="#doctrine"><strong>L2 ·</strong> Doctrine codification — how learnings become canonical for all users</a></li>
   <li><a href="#agent-rules">Rules for agents reading this</a></li>
 </ol>
 </div>
@@ -585,8 +586,9 @@ writes derived rows.<br>
 </table>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<h2 id="surfaces">5 · Read paths — what each surface reads</h2>
+<h2 id="surfaces">5 · Read paths — per surface AND per client</h2>
 
+<h3>5a · By surface — what each /api route reads</h3>
 <table>
 <tr><th>Surface</th><th>API route</th><th>Reads</th></tr>
 <tr><td><strong>/today</strong></td><td><code>GET /api/today</code> (via server component), <code>/api/training/state</code>, <code>/api/readiness</code>, <code>/api/prescription</code>, <code>/api/briefing?surface=today</code></td><td><code>users, profile, user_prefs, training_plans, plan_workouts, plan_weeks, plan_phases, plan_mutations, races, daily_checkin, check_ins, niggles, sick_episodes, health_samples, briefings, coach_intents, coach_today_cache, strava_activities</code></td></tr>
@@ -596,10 +598,33 @@ writes derived rows.<br>
 <tr><td><strong>/runs/[id]</strong></td><td><code>/api/runs/[id]</code></td><td><code>strava_activities, workout_completions, workout_routes, post_run_rpe, shoes, plan_workouts (planned vs executed)</code></td></tr>
 <tr><td><strong>/log</strong></td><td><code>/api/log</code></td><td><code>strava_activities, workout_completions, skipped_workouts, recovery_sessions, strength_sessions, cross_training_sessions</code></td></tr>
 <tr><td><strong>/races · /races/[slug]</strong></td><td><code>/api/races</code>, <code>/api/race/[slug]</code>, <code>/api/race/gpx</code></td><td><code>races, course_library, training_plans (race-tied), plan_workouts (race-week)</code></td></tr>
-<tr><td><strong>/learn/[slug]</strong></td><td><code>/api/learn/[slug]</code></td><td><code>learn_articles</code></td></tr>
+<tr><td><strong>/learn/[slug]</strong></td><td><code>/api/learn/[slug]</code></td><td><code>learn_articles</code> (including <strong>SYSTEM DOCTRINE</strong> rows — see §19)</td></tr>
 <tr><td><strong>iOS /watch/today</strong></td><td><code>/api/watch/today</code></td><td><code>training_plans, plan_workouts (today's row), profile (LTHR), users (max_hr / resting_hr)</code></td></tr>
 <tr><td><strong>Onboarding wizard</strong></td><td><code>/api/onboarding/complete</code></td><td>Writes: <code>users, profile, user_prefs</code>; optionally reads <code>races</code> if a goal race was selected.</td></tr>
 </table>
+
+<h3>5b · By client — where each app points</h3>
+<p>
+  All three clients hit the <strong>same /api/* routes</strong>. The
+  client is responsible for rendering differently per form factor; the
+  server has no client-aware branching. Web uses session cookies; iOS
+  uses Bearer tokens; watch goes through the iOS bridge.
+</p>
+
+<table>
+<tr><th>Client</th><th>Auth</th><th>Reads (from /api/*)</th><th>Writes (to /api/*)</th><th>Never touches</th></tr>
+<tr><td><strong>Web app</strong> (faff.run)</td><td>cookie <code>faff_session</code>, server components read DB directly via <code>pool.query</code></td><td>Full depth — all 6 surfaces (<code>/today /training /races /race-detail /health /profile</code>) + <code>/learn/[slug]</code>, <code>/runs/[id]</code>, <code>/log</code>, <code>/usage</code>. Deep-read in 2 minutes.</td><td>All shared writes: <code>/api/checkin</code>, <code>/api/niggle</code>, <code>/api/sick</code>, <code>/api/today/skip</code>, <code>/api/plan/generate</code>, <code>/api/race</code>, <code>/api/shoe</code>, <code>/api/profile</code>, <code>/api/profile/notifications</code>, <code>/api/settings</code>, <code>/api/coach/proposal</code>, <code>/api/onboarding/complete</code>.</td><td>HealthKit ingest (iOS-only); watch completion ingest.</td></tr>
+<tr><td><strong>iOS app</strong> (TestFlight)</td><td>Bearer <code>Authorization: Bearer &lt;token&gt;</code> (kind=app)</td><td><code>/api/today</code>, <code>/api/training/state</code>, <code>/api/readiness</code>, <code>/api/prescription</code>, <code>/api/health/state</code>, <code>/api/health/series</code>, <code>/api/profile/state</code>, <code>/api/runs/[id]</code>, <code>/api/log</code>, <code>/api/races</code>, <code>/api/race/[slug]</code>, <code>/api/learn/[slug]</code>, <code>/api/strava/status</code>, <code>/api/briefing</code>.</td><td><strong>iOS-exclusive ingest:</strong> <code>POST /api/ingest/health</code> (HealthKit samples), <code>POST /api/watch/workouts/complete</code> (watch workouts), <code>POST /api/watch/route</code> (HKWorkoutRoute GPS), <code>POST /api/notifications/register</code> (APNs), <code>POST /api/notifications/ack</code>. Plus shared writes (same as web).</td><td>Admin routes (<code>/api/admin/*</code>); cron routes (<code>/api/cron/*</code>).</td></tr>
+<tr><td><strong>Watch app</strong> (paired via iOS)</td><td>No direct API access</td><td>iOS app calls <code>GET /api/watch/today</code>, forwards prescription to watch via WatchConnectivity framework. Watch renders numbers + interval structure.</td><td>Watch writes HealthKit workout on completion → iOS observer fires → iOS calls <code>POST /api/watch/workouts/complete</code> + <code>POST /api/watch/route</code>.</td><td>Coach prose (doctrine 4.5 — no coach voice on watch); any briefing payload; <code>learn_articles</code>; user-facing dashboards.</td></tr>
+</table>
+
+<h3>5c · The contract</h3>
+<ul>
+  <li><strong>One response shape per route.</strong> Web and iOS both consume the same JSON. Clients render differently; the server never branches on User-Agent or client kind.</li>
+  <li><strong>Bearer or cookie, never both.</strong> <code>userIdFromRequest()</code> in <code>lib/auth/session.ts</code> resolves one or the other. iOS = Bearer (<code>sessions.kind='app'</code>). Web = cookie (<code>sessions.kind='cookie'</code>). Both are 32-byte hex tokens, sha256-hashed at rest, 90-day TTL.</li>
+  <li><strong>Watch is a presentation layer.</strong> It never holds the source of truth; it never auths to the API. The iOS bridge is the data path.</li>
+  <li><strong>Doctrine reads go through <code>/api/learn/[slug]</code>.</strong> Both web + iOS read system-doctrine rows the same way. The watch never displays doctrine — it shows numbers and intervals only.</li>
+</ul>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <h2 id="connectors">6 · L4 — Connectors — OAuth, sync, the 12-provider model</h2>
@@ -1232,7 +1257,101 @@ two weeks. <strong>The schema is identical; only the values differ.</strong>
 </ul>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<h2 id="agent-rules">18 · Rules for agents reading this</h2>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="doctrine">18 · L2 — Doctrine codification — how learnings become canonical for all users</h2>
+
+<div class="ok">
+<strong>Locked 2026-05-30.</strong> David is the first runner, not the
+only one. Every learning surfaced during his journey becomes
+<strong>doctrine for every future user</strong> — they inherit the rule
+without having to re-derive it. The same goes for every locked
+behavior in <code>CLAUDE.md</code>, every coding rule in the project
+memory, every research-grounded threshold in <code>/Research/</code>.
+</div>
+
+<h3>The propagation flow</h3>
+<pre>┌──────────────────────────┐
+│  1. Pattern emerges      │  e.g. "Big Sur is elevation-distorted;
+│  (live use, conversation)│        we need to exclude it from VDOT"
+└────────┬─────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│  2. Rule is drafted      │  CLAUDE.md / project memory / Research/* /
+│                          │  inline code comment with citation to the
+│                          │  prior incident
+└────────┬─────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│  3. Code is updated      │  bestRecentVdot skips priority='hilly-excluded'
+│  to enforce the rule     │
+└────────┬─────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│  4. learn_articles row   │  slug='doctrine-race-priority-system'
+│  seeded — eyebrow=       │  body_md + citations_json
+│  SYSTEM DOCTRINE         │
+└────────┬─────────────────┘
+         │
+         ▼
+┌──────────────────────────┐
+│  5. Every future user    │  Coach engine reads /Research/ + code;
+│  inherits automatically  │  clients read learn_articles via /learn/[slug]
+└──────────────────────────┘</pre>
+
+<h3>What's locked today (17 system-doctrine rows)</h3>
+<p>Full text in <a href="SYSTEM_DOCTRINE.md"><code>docs/SYSTEM_DOCTRINE.md</code></a>. Each row is queryable at <code>GET /api/learn/doctrine-&lt;slug&gt;</code>.</p>
+
+<table>
+<tr><th>Bucket</th><th>Rules</th></tr>
+<tr><td><strong>Data-handling</strong></td><td>
+  <code>doctrine-race-data-source-of-truth</code> · canonical actual_result → meta → Strava ladder<br>
+  <code>doctrine-multi-writer-jsonb</code> · field-level update guards on shared JSONB columns<br>
+  <code>doctrine-per-finding-context-filters</code> · race-week / illness / weather filters applied per-finding, never inherited
+</td></tr>
+<tr><td><strong>Coaching</strong></td><td>
+  <code>doctrine-race-priority-system</code> · A / B / C / training-run / hilly-excluded<br>
+  <code>doctrine-vdot-computation</code> · cap [30,85] · race+0 / run-1 tiebreak<br>
+  <code>doctrine-readiness-algorithm</code> · 5 inputs · weights 25/25/20/15/15 · 4 bands<br>
+  <code>doctrine-acwr-injury-risk</code> · Gabbett 1.5 threshold<br>
+  <code>doctrine-plan-phases</code> · BASE → BUILD → PEAK → TAPER → RACE_WEEK<br>
+  <code>doctrine-race-week-thresholds</code> · building / sharpening / race-week / post-race<br>
+  <code>doctrine-health-watch-thresholds</code> · steady / amber (RHR+5) / red (RHR+8 AND sleep&lt;5h)<br>
+  <code>doctrine-notification-taxonomy</code> · closed list of 7 categories
+</td></tr>
+<tr><td><strong>Engine (deterministic)</strong></td><td>
+  <code>doctrine-briefing-driven</code> · no chat, no tools, no RAG<br>
+  <code>doctrine-truth-contract-prereqs</code> · topic prereqs gate before LLM<br>
+  <code>doctrine-one-voice</code> · "direct" · single voice locked
+</td></tr>
+<tr><td><strong>Voice + UX</strong></td><td>
+  <code>doctrine-page-is-alive</code> · state-driven composition<br>
+  <code>doctrine-three-questions</code> · today / body / trajectory<br>
+  <code>doctrine-coach-philosophy</code> · let the coach decide / truth contract / cards coach too
+</td></tr>
+</table>
+
+<h3>Where each client reads doctrine</h3>
+<table>
+<tr><th>Client</th><th>Access</th></tr>
+<tr><td><strong>Coach engine</strong> (server-side)</td><td>Reads <code>/Research/*.md</code> directly at prompt-assembly time + the code-encoded rules in <code>web-v2/lib/</code>. <strong>Does NOT read <code>learn_articles</code></strong> — that's the runner-facing surface.</td></tr>
+<tr><td><strong>Web app</strong></td><td><code>GET /api/learn/[slug]</code>. Doctrine surfaces as "Read the research →" links on briefing cards + in the in-app reader.</td></tr>
+<tr><td><strong>iOS app</strong></td><td>Same — <code>GET /api/learn/[slug]</code> via Bearer auth. Renders in the in-app reader.</td></tr>
+<tr><td><strong>Watch app</strong></td><td>Never reads doctrine. Watch is reductive — numbers + prescription only. The coach engine has already applied the doctrine before sending the prescription.</td></tr>
+</table>
+
+<h3>Rules for adding new doctrine</h3>
+<ul>
+  <li><strong>Append-only within the session.</strong> Locked rules are never silently mutated. When a rule turns out to be wrong, explicitly revise with a citation linking old → new.</li>
+  <li><strong>Cite the source.</strong> Every doctrine row has <code>citations_json</code> pointing to (a) the markdown rule (CLAUDE.md section or Research file), (b) the code module that enforces it, OR (c) the migration that locked it.</li>
+  <li><strong>Three places to write.</strong> Locked behaviors land in (i) <code>CLAUDE.md</code> for project memory, (ii) code (with the inline-comment citation), (iii) <code>learn_articles</code> with eyebrow='SYSTEM DOCTRINE'. The Research files are upstream of all three — they're the input doctrine that gets distilled.</li>
+  <li><strong>Locking is deliberate.</strong> A rule is "locked" when it's been validated and the team agrees it's the canonical answer. Pre-lock rules are <strong>candidates</strong> — they live in conversation or PR descriptions, not in any of the three places above.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="agent-rules">19 · Rules for agents reading this</h2>
 <ol>
   <li><strong>Read this doc before writing schema or new ingest paths.</strong>
     The canonical storage map (section 4) tells you which table a piece
