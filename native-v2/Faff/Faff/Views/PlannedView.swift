@@ -166,31 +166,33 @@ struct PlannedView: View {
 
     private var shapeBar: some View {
         let segs = shapeSegments
+        let totalFlex = segs.reduce(0.0) { $0 + $1.flex }
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .bottom, spacing: 3) {
-                ForEach(segs) { s in
-                    VStack {
-                        Spacer(minLength: 0)
-                        Text(s.tag)
-                            .font(.display(8, weight: .bold))
-                            .foregroundStyle(Color.black.opacity(0.55))
-                            .padding(.bottom, 5)
+            GeometryReader { geo in
+                let unit = (geo.size.width - CGFloat(max(0, segs.count - 1)) * 3) / CGFloat(max(0.0001, totalFlex))
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(segs) { s in
+                        VStack {
+                            Spacer(minLength: 0)
+                            Text(s.tag)
+                                .font(.display(8, weight: .bold))
+                                .foregroundStyle(Color.black.opacity(0.55))
+                                .padding(.bottom, 5)
+                        }
+                        .frame(width: max(0, unit * CGFloat(s.flex)), height: 54 * s.heightFrac)
+                        .background(s.color, in: UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6))
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54 * s.heightFrac)
-                    .background(s.color, in: UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6))
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(s.flex)
                 }
             }
             .frame(height: 54)
 
-            HStack {
-                ForEach(segs) { s in
+            HStack(spacing: 0) {
+                ForEach(Array(segs.enumerated()), id: \.offset) { idx, s in
+                    let align: Alignment = idx == 0 ? .leading : (idx == segs.count - 1 ? .trailing : .center)
                     Text(s.subLabel)
                         .font(.display(9, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.55))
-                        .frame(maxWidth: .infinity, alignment: s == segs.first ? .leading : (s == segs.last ? .trailing : .center))
+                        .frame(maxWidth: .infinity, alignment: align)
                 }
             }
         }

@@ -40,6 +40,7 @@ struct OnboardingView: View {
                     targetPanel.opacity(step == 2 ? 1 : 0)
                     projectionPanel.opacity(step == 3 ? 1 : 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(Theme.Motion.smooth, value: step)
                 .padding(.top, 32)
             }
