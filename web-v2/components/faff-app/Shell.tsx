@@ -43,7 +43,7 @@ const VIEW_TO_ROUTE: Record<ViewKey,string> = {
   race: '/races', activity: '/log', profile: '/me', spectator: '/spectator',
 };
 
-export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; initial?: ViewKey; raceSeed?: RaceDetailSeed }) {
+export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { seed: FaffSeed; initial?: ViewKey; raceSeed?: RaceDetailSeed; autoOpenRunId?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const [view, setView] = useState<ViewKey>(initial);
@@ -73,6 +73,11 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
     const b = setTimeout(() => setToastVisible(false), 6500);
     return () => { clearTimeout(a); clearTimeout(b); };
   }, []);
+
+  // /runs/[id] entry: auto-open the run detail modal on mount.
+  useEffect(() => {
+    if (autoOpenRunId) setOpenOverlay({ type: 'run', id: autoOpenRunId });
+  }, [autoOpenRunId]);
 
   const navigate = useCallback((v: ViewKey) => {
     setView(v);

@@ -66,7 +66,7 @@ function MetricCard({ m, active, onClick }: { m: HealthMetric; active: boolean; 
   );
 }
 
-function Detail({ m }: { m: HealthMetric }) {
+function Detail({ m, rangeLabel = '30-DAY', sliceN = 30 }: { m: HealthMetric; rangeLabel?: string; sliceN?: 7 | 30 }) {
   if (m.special === 'balance') {
     return (
       <>
@@ -80,18 +80,23 @@ function Detail({ m }: { m: HealthMetric }) {
       </>
     );
   }
+  const fullSeries = m.series;
+  const sliced = fullSeries.slice(-sliceN);
   const W = 1040, H = 220, P = 16;
   const [lo, hi] = m.dom;
-  const X = (i: number) => P + (i / (m.series.length - 1)) * (W - P * 2);
+  const X = (i: number) => P + (i / (sliced.length - 1)) * (W - P * 2);
   const Y = (v: number) => P + (1 - (v - lo) / (hi - lo)) * (H - P * 2);
-  const pts: [number, number][] = m.series.map((v, i) => [X(i), Y(v)]);
+  const pts: [number, number][] = sliced.map((v, i) => [X(i), Y(v)]);
   const line = smooth(pts);
-  const area = line + ` L${X(m.series.length - 1).toFixed(1)},${H - P} L${X(0).toFixed(1)},${H - P} Z`;
+  const area = line + ` L${X(sliced.length - 1).toFixed(1)},${H - P} L${X(0).toFixed(1)},${H - P} Z`;
+  const xlabels = sliceN === 7
+    ? ['7D AGO', '5D', '3D', 'TODAY']
+    : ['30D AGO', '20D', '10D', 'TODAY'];
   return (
     <>
       <div className="hd-head"><div className="hd-title">{m.label}</div></div>
       <div className="ftop">
-        <div className="fname">30-DAY</div>
+        <div className="fname">{rangeLabel}</div>
         {m.target != null && <div className="ftgt">target {fmt(m, m.target)}{m.unit}</div>}
       </div>
       <div className="fval">
@@ -107,11 +112,11 @@ function Detail({ m }: { m: HealthMetric }) {
           <path d={line} fill="none" stroke={STATUS_COLOR[m.status]} strokeWidth="2" vectorEffect="non-scaling-stroke" />
         </svg>
       </div>
-      <div className="xlabels"><span>30D AGO</span><span>20D</span><span>10D</span><span>TODAY</span></div>
+      <div className="xlabels">{xlabels.map((x, i) => <span key={i}>{x}</span>)}</div>
       <div className="ctx">
-        <div className="c"><div className="cck">7-DAY AVG</div><div className="ccv">{fmt(m, avg(m.series.slice(-7)))}</div></div>
-        <div className="c"><div className="cck">30-DAY AVG</div><div className="ccv">{fmt(m, avg(m.series))}</div></div>
-        <div className="c"><div className="cck">DELTA</div><div className="ccv">{(m.series.at(-1)! - m.series[0]).toFixed(m.decimals ?? 0)}{m.unit}</div></div>
+        <div className="c"><div className="cck">7-DAY AVG</div><div className="ccv">{fmt(m, avg(fullSeries.slice(-7)))}</div></div>
+        <div className="c"><div className="cck">30-DAY AVG</div><div className="ccv">{fmt(m, avg(fullSeries))}</div></div>
+        <div className="c"><div className="cck">DELTA</div><div className="ccv">{(sliced.at(-1)! - sliced[0]).toFixed(m.decimals ?? 0)}{m.unit}</div></div>
       </div>
     </>
   );
@@ -123,6 +128,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
   const { readiness, body, form } = seed.health;
   const [openBody, setOpenBody] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState<string | null>(null);
+  const [range, setRange] = useState<7 | 30>(30);
   const bodyOpen = body.find(m => m.k === openBody);
   const formOpen = form.find(m => m.k === openForm);
 
@@ -180,22 +186,54 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
       </div>
 
       <div className="hhero-sep" />
-      <div className="hseclbl">BODY</div>
+      <div className="hseclbl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
+        <span>BODY · FORM</span>
+        <RangeToggle range={range} onChange={setRange} />
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, margin: '20px 0 0' }}>BODY</div>
       <div className="cardgrid">
         {body.map(m => (
-          <MetricCard key={m.k} m={m} active={openBody === m.k} onClick={() => setOpenBody(openBody === m.k ? null : m.k)} />
+          <MetricCard key={m.k} m={sliceMetric(m, range)} active={openBody === m.k} onClick={() => setOpenBody(openBody === m.k ? null : m.k)} />
         ))}
       </div>
-      <div className="hdetail">{bodyOpen && <Detail m={bodyOpen} />}</div>
+      <div className="hdetail">{bodyOpen && <Detail m={bodyOpen} rangeLabel={range === 7 ? '7-DAY' : '30-DAY'} sliceN={range} />}</div>
 
       <div className="hseclbl">FORM</div>
       <div className="cardgrid">
         {form.map(m => (
-          <MetricCard key={m.k} m={m} active={openForm === m.k} onClick={() => setOpenForm(openForm === m.k ? null : m.k)} />
+          <MetricCard key={m.k} m={sliceMetric(m, range)} active={openForm === m.k} onClick={() => setOpenForm(openForm === m.k ? null : m.k)} />
         ))}
       </div>
-      <div className="hdetail">{formOpen && <Detail m={formOpen} />}</div>
+      <div className="hdetail">{formOpen && <Detail m={formOpen} rangeLabel={range === 7 ? '7-DAY' : '30-DAY'} sliceN={range} />}</div>
     </>
+  );
+}
+
+function sliceMetric(m: HealthMetric, range: 7 | 30): HealthMetric {
+  if (m.special || !m.series.length || range === 30) return m;
+  return { ...m, series: m.series.slice(-range) };
+}
+function RangeToggle({ range, onChange }: { range: 7 | 30; onChange: (r: 7 | 30) => void }) {
+  return (
+    <div style={{
+      display: 'inline-flex', gap: 4, background: 'rgba(8,10,14,.4)',
+      border: '1px solid rgba(255,255,255,.14)', borderRadius: 11, padding: 3,
+      letterSpacing: '.4px',
+    }}>
+      {[7, 30].map(r => (
+        <button
+          key={r}
+          onClick={() => onChange(r as 7 | 30)}
+          style={{
+            fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, color: range === r ? '#10131A' : 'rgba(255,255,255,.7)',
+            background: range === r ? '#fff' : 'transparent', border: 'none',
+            borderRadius: 8, padding: '6px 11px', cursor: 'pointer',
+          }}
+        >
+          {r === 7 ? '7-DAY' : '30-DAY'}
+        </button>
+      ))}
+    </div>
   );
 }
 

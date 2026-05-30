@@ -75,10 +75,15 @@ export async function PATCH(req: NextRequest) {
     const existing = (await pool.query(`SELECT meta FROM races WHERE slug = $1`, [body.slug])).rows[0];
     if (!existing) return NextResponse.json({ error: 'race not found' }, { status: 404 });
     const meta = { ...existing.meta };
-    // Editable plain fields
-    for (const k of ['name', 'date', 'distance_label', 'priority', 'goal', 'location']) {
+    // Editable plain fields. goal_safe + bib + wave + startTime + registered
+    // come from the Faff race-detail editable hero so the runner can stash
+    // a B-target and confirmed bib straight off the page.
+    for (const k of ['name', 'date', 'distance_label', 'priority', 'goal', 'goal_safe', 'bib', 'wave', 'startTime', 'location', 'registered']) {
       if (body[k] !== undefined) {
-        const metaKey = k === 'distance_label' ? 'distanceLabel' : k === 'goal' ? 'goalDisplay' : k;
+        const metaKey = k === 'distance_label' ? 'distanceLabel'
+          : k === 'goal' ? 'goalDisplay'
+          : k === 'goal_safe' ? 'goalSafeDisplay'
+          : k;
         meta[metaKey] = body[k];
       }
     }

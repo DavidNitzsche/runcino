@@ -411,10 +411,10 @@ function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
   return { readiness: adaptReadiness(null, health), body, form: form_ };
 }
 
-function adaptPRs(races: Races | null): PR[] {
-  if (!races?.past?.length) return [];
-  const byDist: Record<string, { val: string; date: string }> = {};
-  for (const r of races.past) {
+function adaptPRs(races: Races | null, log: LogT | null): PR[] {
+  // 1. Race finish times when the runner has logged them.
+  const byDist: Record<string, { val: string; date: string; source: 'race' | 'training' }> = {};
+  for (const r of (races?.past ?? [])) {
     if (!r.finishTime) continue;
     const lbl = (r.distance_label || '').toUpperCase();
     const key = lbl.includes('5K') ? '5K'
@@ -424,10 +424,52 @@ function adaptPRs(races: Races | null): PR[] {
     if (!key) continue;
     const cur = byDist[key];
     if (!cur || compareTimes(r.finishTime, cur.val) < 0) {
-      byDist[key] = { val: r.finishTime, date: niceLong(r.date) };
+      byDist[key] = { val: r.finishTime, date: niceLong(r.date), source: 'race' };
     }
   }
-  return ['5K','10K','HALF','MARATHON'].filter(k => byDist[k]).map(k => ({ k, v: byDist[k].val, date: byDist[k].date }));
+  // 2. Training-derived PRs from log runs for any bucket the races
+  //    didn't fill. Looks for runs whose distance lands in the bucket
+  //    and picks the one with the fastest overall finish time.
+  const allRuns = (log?.weeks ?? []).flatMap(w => w.runs);
+  const buckets: { key: string; lo: number; hi: number }[] = [
+    { key: '5K',       lo: 3.05, hi: 3.30 },
+    { key: '10K',      lo: 6.10, hi: 6.50 },
+    { key: 'HALF',     lo: 12.9, hi: 13.5 },
+    { key: 'MARATHON', lo: 25.5, hi: 27.0 },
+  ];
+  for (const b of buckets) {
+    if (byDist[b.key]) continue;
+    const cands = allRuns.filter(r => r.distance_mi >= b.lo && r.distance_mi <= b.hi && r.pace);
+    if (!cands.length) continue;
+    // Pick by fastest pace × distance (= total time).
+    cands.sort((a, c) => paceSec(a.pace!) * a.distance_mi - paceSec(c.pace!) * c.distance_mi);
+    const best = cands[0];
+    const canonicalMi = b.key === 'MARATHON' ? 26.2188 : b.key === 'HALF' ? 13.1094 : b.key === '10K' ? 6.21371 : 3.10686;
+    const totalSec = paceSec(best.pace!) * canonicalMi;
+    byDist[b.key] = {
+      val: hms(Math.round(totalSec)),
+      date: `${niceLong(best.date)} · training`,
+      source: 'training',
+    };
+  }
+  return ['5K','10K','HALF','MARATHON']
+    .filter(k => byDist[k])
+    .map(k => ({ k, v: byDist[k].val, date: byDist[k].date }));
+}
+function paceSec(p: string): number {
+  if (!p) return 0;
+  const parts = p.split(':').map(x => parseInt(x, 10) || 0);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+function hms(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.round(sec % 60);
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
 }
 function compareTimes(a: string, b: string): number {
   const toSec = (t: string) => {
@@ -753,7 +795,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const season = adaptSeason(training);
   const healthSnapshot = adaptHealth(health, formMetrics);
   healthSnapshot.readiness = readiness;
-  const prs = adaptPRs(races);
+  const prs = adaptPRs(races, log);
   const racesList = adaptRaces(races);
   const activity = adaptActivity(log);
   const shoes = adaptShoes(profile);
