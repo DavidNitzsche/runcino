@@ -111,6 +111,10 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   const injury = await detectInjuryActive(userId);
   if (injury) triggers.push(injury);
 
+  // 8. PR_BANK · new race finish that implies VDOT jump > 1.5 pts
+  const prBank = await detectPrBank(userId);
+  if (prBank) triggers.push(prBank);
+
   const actions: AdaptationAction[] = [];
   for (const t of triggers) {
     actions.push(...await actionsForTrigger(userId, t));
@@ -424,6 +428,83 @@ async function detectInjuryActive(userId: string): Promise<AdaptationTrigger | n
   };
 }
 
+/**
+ * PR_BANK · recent race finish whose VDOT exceeds users.vdot_last_reviewed
+ * by > 1.5 pts. Action: mark next 14d plan_workouts as paces-stale so the
+ * runner's prescription gets recomputed off the new VDOT before the next
+ * quality session. Cite: Research/01-pace-zones-vdot.md §VDOT-recalibrate.
+ */
+async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
+  const r = (await pool.query<{
+    new_vdot: number | null;
+    old_vdot: number | null;
+    slug: string | null;
+    raced_at: string | null;
+  }>(
+    `WITH last_review AS (
+       SELECT vdot_last_reviewed::numeric AS old_vdot FROM users WHERE id = $1
+     )
+     SELECT u.old_vdot
+       FROM last_review u`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r || r.old_vdot == null) return null;
+
+  // Find races in last 14d, A/B priority, with a finishS — derive VDOT
+  // and compare to old_vdot.
+  const recent = (await pool.query<{
+    slug: string;
+    date: string;
+    distance_mi: string | null;
+    finish_s: string | null;
+  }>(
+    `SELECT slug,
+            meta->>'date' AS date,
+            (meta->>'distanceMi')::numeric::text AS distance_mi,
+            actual_result->>'finishS' AS finish_s
+       FROM races
+      WHERE user_uuid = $1
+        AND meta->>'priority' IN ('A','B')
+        AND (meta->>'date')::date >= CURRENT_DATE - 14
+        AND (meta->>'date')::date < CURRENT_DATE
+        AND actual_result->>'finishS' IS NOT NULL
+      ORDER BY (meta->>'date') DESC LIMIT 3`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows;
+  if (recent.length === 0) return null;
+
+  // Lazy-import vdotFromRace; same file group, no cycle.
+  const { vdotFromRace } = await import('../training/vdot');
+  let bestNewVdot = 0;
+  let bestSlug = '';
+  let bestDate = '';
+  for (const raceRow of recent) {
+    const fs = raceRow.finish_s ? Number(raceRow.finish_s) : 0;
+    const mi = raceRow.distance_mi ? Number(raceRow.distance_mi) : 0;
+    const v = fs > 0 && mi > 0 ? vdotFromRace(fs, mi) : null;
+    if (v != null && v > bestNewVdot) {
+      bestNewVdot = v;
+      bestSlug = raceRow.slug;
+      bestDate = raceRow.date;
+    }
+  }
+  const oldVdot = Number(r.old_vdot);
+  const delta = bestNewVdot - oldVdot;
+  if (delta <= 1.5) return null;
+  return {
+    kind: 'pr_bank',
+    severity: 'info',
+    reason: `New race fitness · VDOT ${bestNewVdot.toFixed(1)} vs prior ${oldVdot.toFixed(1)} (+${delta.toFixed(1)}). Paces need recompute.`,
+    evidence: {
+      new_vdot: bestNewVdot,
+      old_vdot: oldVdot,
+      delta,
+      race_slug: bestSlug,
+      raced_at: bestDate,
+    },
+  };
+}
+
 async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger | null> {
   // Last 7d running volume vs experience cap.
   const r = (await pool.query(
@@ -519,12 +600,24 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         why: `Volume ${Math.round(t.evidence.last7d_mi)}mi exceeded ${t.evidence.level} cap. Shave next 7 days 17%.`,
       }];
     }
-    case 'pr_bank':
+    case 'pr_bank': {
+      // Mark next 14d plan_workouts as paces-stale so the briefing
+      // surface re-derives pace targets from the new VDOT.
+      const rows = (await pool.query(
+        `SELECT pw.id FROM plan_workouts pw
+            JOIN training_plans tp ON tp.id = pw.plan_id
+           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+             AND pw.date_iso::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 14
+           ORDER BY pw.date_iso::date ASC`,
+        [userId]
+      )).rows;
+      if (rows.length === 0) return [];
       return [{
         kind: 'mark_dirty',
-        workoutIds: [],   // caller fills with next 7-14d ids
-        why: 'New PR. Pace prescriptions need recompute from updated VDOT.',
+        workoutIds: rows.map((r: any) => r.id),
+        why: `New race fitness — VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces need recompute.`,
       }];
+    }
     case 'niggle_reported': {
       // Q-04 default. ≥7/10 → 48h suspension (downgrade next 2d to rest);
       // 5-6/10 → downgrade next quality day to easy.
