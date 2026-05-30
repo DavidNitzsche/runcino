@@ -152,7 +152,19 @@ export function TodayView({
             </div>
           )}
         </div>
-        <WorkoutCard d={d} done={!!d.done} result={result} shoes={seed.shoes} seedShoe={KIT[d.type].shoe} />
+        <WorkoutCard
+          d={d}
+          done={!!d.done}
+          result={result}
+          shoes={seed.shoes}
+          // 2026-05-30: persisted today-shoe overrides the coach recommendation
+          // when the runner has tapped one in the picker. Falls back to the KIT
+          // default (recommendShoe-style) when no override exists.
+          seedShoe={(seed.todayShoeId != null
+            ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
+            : null) ?? KIT[d.type].shoe}
+          persistShoe={curDay === seed.todayIdx}
+        />
       </div>
 
       <Tiles seed={seed} onOpenRace={onOpenRace} />
@@ -239,7 +251,7 @@ function paceToSec(p: string): number {
   return 0;
 }
 
-function WorkoutCard({ d, done, result, shoes, seedShoe }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; shoes: FaffSeed['shoes']; seedShoe: string }) {
+function WorkoutCard({ d, done, result, shoes, seedShoe, persistShoe }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; shoes: FaffSeed['shoes']; seedShoe: string; persistShoe: boolean }) {
   if (done) {
     return <CompletedResultCard d={d} fallback={result} />;
   }
@@ -282,7 +294,7 @@ function WorkoutCard({ d, done, result, shoes, seedShoe }: { d: FaffSeed['week']
         <div className="kc"><div className="kcl">WEATHER</div><div className="kcv">{k.weather}</div></div>
         <div className="kc">
           <div className="kcl">SHOE</div>
-          <ShoePicker shoes={shoes} initial={seedShoe} />
+          <ShoePicker shoes={shoes} initial={seedShoe} persist={persistShoe} />
         </div>
         <div className="kc"><div className="kcl">FUEL</div><div className="kcv">{k.fuel}</div></div>
       </div>
@@ -291,9 +303,10 @@ function WorkoutCard({ d, done, result, shoes, seedShoe }: { d: FaffSeed['week']
   );
 }
 
-function ShoePicker({ shoes, initial }: { shoes: FaffSeed['shoes']; initial: string }) {
+function ShoePicker({ shoes, initial, persist }: { shoes: FaffSeed['shoes']; initial: string; persist: boolean }) {
   const [picked, setPicked] = useState(initial);
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -302,6 +315,24 @@ function ShoePicker({ shoes, initial }: { shoes: FaffSeed['shoes']; initial: str
     if (open) document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
+  // 2026-05-30: persist today's shoe selection to day_actions via
+  // /api/today/shoe so the choice survives reload + shows up on the past-run
+  // detail modal once the run is logged. Optimistic — UI commits the pick
+  // immediately, POST runs async, failures are silent (next reload reverts).
+  async function commit(s: FaffSeed['shoes'][number]) {
+    setPicked(s.nm);
+    setOpen(false);
+    if (!persist) return;
+    setSaving(true);
+    try {
+      await fetch('/api/today/shoe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shoe_id: String(s.id) }),
+      });
+    } catch { /* swallow — UI is optimistic */ }
+    finally { setSaving(false); }
+  }
   if (!shoes.length) {
     return <div className="kcv">{picked}</div>;
   }
@@ -309,7 +340,7 @@ function ShoePicker({ shoes, initial }: { shoes: FaffSeed['shoes']; initial: str
     <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
       <div
         className="kcv"
-        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}
         onClick={() => setOpen(o => !o)}
         role="button"
         tabIndex={0}
@@ -328,7 +359,7 @@ function ShoePicker({ shoes, initial }: { shoes: FaffSeed['shoes']; initial: str
           {shoes.map(s => (
             <div
               key={s.nm}
-              onClick={() => { setPicked(s.nm); setOpen(false); }}
+              onClick={() => { void commit(s); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 9,
                 padding: '9px 10px', borderRadius: 9, cursor: 'pointer',

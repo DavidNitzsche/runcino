@@ -61,6 +61,10 @@ export type FaffSeed = {
 
   // profile
   shoes: ShoeRec[];
+  // 2026-05-30: today's per-day shoe assignment from day_actions (action='shoe').
+  // Server-persisted via /api/today/shoe. If unset, the ShoePicker falls back
+  // to the coach-system recommendation in KIT[d.type].shoe (recommendShoe()).
+  todayShoeId: number | null;
   connections: ConnectionRow[];
 };
 

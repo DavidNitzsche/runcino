@@ -108,6 +108,28 @@ async function loadFormMetrics() {
 }
 type Form = Awaited<ReturnType<typeof loadFormMetrics>>;
 
+/** Per-day shoe assignment from day_actions (action='shoe', note=shoe_id).
+ *  Returns the shoe_id (numeric or string) for today's row if present,
+ *  else null. Errors swallowed — UI falls back to recommended shoe. */
+async function loadTodayShoe(): Promise<{ ok: true; value: number | null }> {
+  try {
+    const { pool } = await import('@/lib/db/pool');
+    // Same PDT-shifted today computation as state-loader.ts §state.today.
+    const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
+    const r = await pool.query(
+      `SELECT note FROM day_actions
+        WHERE user_id = $1 AND date_iso = $2 AND action = 'shoe'
+        LIMIT 1`,
+      [DEFAULT_USER_ID, today]
+    ).catch(() => ({ rows: [] as Array<{ note: string | null }> }));
+    const note = r.rows[0]?.note ?? null;
+    const id = note != null ? Number(note) : null;
+    return { ok: true, value: Number.isFinite(id) && id != null ? id : null };
+  } catch {
+    return { ok: true, value: null };
+  }
+}
+
 type Glance   = Awaited<ReturnType<typeof import('@/lib/coach/glance-state').loadGlanceState>>;
 type Health   = Awaited<ReturnType<typeof import('@/lib/coach/health-state').loadHealthState>>;
 type Training = Awaited<ReturnType<typeof import('@/lib/coach/training-state').loadTrainingState>>;
@@ -780,8 +802,8 @@ function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['
 /* ─────────────────────────  Public entry point  ───────────────────────── */
 
 export async function buildSeed(): Promise<FaffSeed> {
-  const [gRes, hRes, tRes, rRes, lRes, pRes, fRes] = await Promise.all([
-    loadGlance(), loadHealth(), loadTraining(), loadRaces(), loadLog(), loadProfile(), loadFormMetrics(),
+  const [gRes, hRes, tRes, rRes, lRes, pRes, fRes, sRes] = await Promise.all([
+    loadGlance(), loadHealth(), loadTraining(), loadRaces(), loadLog(), loadProfile(), loadFormMetrics(), loadTodayShoe(),
   ]);
   const glance   = gRes.ok ? gRes.value : null;
   const health   = hRes.ok ? hRes.value : null;
@@ -790,6 +812,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const log      = lRes.ok ? lRes.value : null;
   const profile  = pRes.ok ? pRes.value : null;
   const formMetrics: Form = fRes;
+  const todayShoeId: number | null = sRes.value;
 
   const { week, todayIdx, results } = adaptWeek(glance);
   const readiness = adaptReadiness(glance, health);
@@ -834,6 +857,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     races: racesList,
     activity,
     shoes,
+    todayShoeId,
     connections,
   };
 }
