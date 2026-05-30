@@ -26,6 +26,7 @@ import { pool } from '@/lib/db/pool';
 import { findSubscriptionByVerifyToken, userIdForAthlete } from '@/lib/strava/webhook';
 import { getStravaToken } from '@/lib/strava/auth';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { autoMergeForDate } from '@/lib/runs/merge';
 
 export const dynamic = 'force-dynamic';
 // Node runtime — we hit pg + Strava fetch with timeouts; the Edge
@@ -241,7 +242,14 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
         await markProcessed(eventRowId, 'skipped', 'fetch returned null');
         return;
       }
-      await upsertStravaActivity(userId, activity);
+      const upserted = await upsertStravaActivity(userId, activity);
+      // Dedup against any HKWorkout / watch / manual row on the same
+      // local date — without this, the runner sees two rows for the
+      // same run (one from Strava, one from the watch ingest path).
+      // autoMergeForDate is idempotent — no-op when nothing matches.
+      if (upserted?.date) {
+        await autoMergeForDate(userId, upserted.date).catch(() => {});
+      }
       await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
       await markProcessed(eventRowId, 'ok');
     } catch (e: any) {
@@ -309,18 +317,19 @@ async function fetchStravaActivity(userId: string, activityId: number): Promise<
  * /log, /today, merge writers) work unchanged.
  *
  * Dedupe key: the Strava activity id (the table's BIGINT `id` column).
- * If a hollow HKWorkout/manual row exists for the same start time, the
- * autoMergeForDate writer in /lib/runs/merge will flag dupes on next
- * read — same as the HKWorkout ingest path.
+ * After upsert, the caller invokes autoMergeForDate(userId, date) to
+ * flag any HKWorkout/manual row covering the same run — same as the
+ * HKWorkout ingest path. Returns { date } so the caller can scope the
+ * dedup sweep correctly.
  */
-async function upsertStravaActivity(userId: string, activity: any): Promise<void> {
+async function upsertStravaActivity(userId: string, activity: any): Promise<{ date: string } | null> {
   const id = activity?.id;
-  if (!Number.isFinite(Number(id))) return;
+  if (!Number.isFinite(Number(id))) return null;
 
   // Only running types — Strava can fire for rides/walks/swims/etc.
   // The existing strava_activities row set has historically been runs only.
   const sport = String(activity?.sport_type ?? activity?.type ?? '').toLowerCase();
-  if (!sport.includes('run')) return;
+  if (!sport.includes('run')) return null;
 
   const startLocal = String(activity?.start_date_local ?? activity?.start_date ?? '');
   const date = startLocal.slice(0, 10);
@@ -366,6 +375,7 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<void
      VALUES ($1::bigint, $2, $3)`,
     [String(id), userId, data]
   );
+  return { date };
 }
 
 function stravaTypeToFaff(activity: any): string {

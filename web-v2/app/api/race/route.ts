@@ -23,11 +23,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'name + date required' }, { status: 400 });
   }
   const slug = slugify(`${body.name}-${body.date}`);
+  // Default priority='A' (locked 2026-05-30 SIM-03): when a runner adds a
+  // race to their calendar, they almost always care about it — treating
+  // it as a goal race is the right default. Use 'B' for tune-ups and 'C'
+  // for training-effort races; both require explicit caller intent.
   const meta = {
     name: body.name,
     date: body.date,
     distanceLabel: body.distance_label ?? null,
-    priority: body.priority ?? 'C',
+    priority: body.priority ?? 'A',
     goalDisplay: body.goal ?? null,
     location: body.location ?? null,
   };
