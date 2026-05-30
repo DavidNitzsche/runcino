@@ -50,8 +50,8 @@ struct RunDetailView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             chipsRow
                             ScrubbableTrace(
-                                points: currentMetric.points,
-                                labels: currentMetric.labels,
+                                points: tracePointsFor(currentMetric),
+                                labels: traceLabelsFor(currentMetric),
                                 color: currentMetric.color,
                                 fill: true,
                                 target: nil,
@@ -274,8 +274,28 @@ struct RunDetailView: View {
 
     private var effort: FaffEffort { FaffEffort.fromType(run?.type ?? "tempo") }
 
-    private var eyebrowText: String { "WED, MAY 27 · 6:48 AM · TEMPO" }
-    private var workoutName: String { run?.name ?? "Tempo Run" }
+    private var eyebrowText: String {
+        guard let r = run else { return "RUN DETAIL" }
+        let f = DateFormatter(); f.dateFormat = "EEE, MMM d"
+        let dateLabel: String = {
+            let parts = r.date.split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3 else { return r.date }
+            let cal = Calendar.current
+            if let d = cal.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) {
+                return f.string(from: d).uppercased()
+            }
+            return r.date.uppercased()
+        }()
+        let typeLabel = (r.type ?? "RUN").uppercased()
+        var pieces = [dateLabel]
+        if let start = r.start_local, let timeOnly = start.split(separator: "T").last,
+           let parsed = timeOnly.split(separator: ":").first {
+            pieces.append("\(parsed):\(timeOnly.split(separator: ":").dropFirst().first ?? "") AM".replacingOccurrences(of: "  ", with: " "))
+        }
+        pieces.append(typeLabel)
+        return pieces.joined(separator: " · ")
+    }
+    private var workoutName: String { run?.name ?? "Run" }
 
     private var distanceValue: String {
         if let d = run?.distance_mi { return String(format: "%.1f", d) }
@@ -377,12 +397,45 @@ struct RunDetailView: View {
     }
 
     private var traceAvgLabel: String {
+        guard let r = run else { return "" }
         switch currentMetric {
-        case .pace: return "AVG 6:47 /mi"
-        case .hr:   return "AVG 158 bpm"
-        case .elev: return "+240 ft GAIN"
-        case .cad:  return "AVG 167 spm"
+        case .pace: return "AVG \(r.pace ?? "—") /mi"
+        case .hr:   return r.hr_avg.map { "AVG \($0) bpm" } ?? ""
+        case .elev: return r.elev_gain_ft.map { "+\($0) ft GAIN" } ?? ""
+        case .cad:  return r.cadence_avg.map { "AVG \($0) spm" } ?? ""
         }
+    }
+
+    private func tracePointsFor(_ m: TraceMetric) -> [Double] {
+        if let splits = run?.splits, !splits.isEmpty {
+            let pts: [Double?] = splits.map { s in
+                switch m {
+                case .pace: return paceToSeconds(s.pace).map(Double.init)
+                case .hr:   return s.hr.map(Double.init)
+                case .elev: return s.elev_change_ft.map(Double.init)
+                case .cad:  return s.cadence.map(Double.init)
+                }
+            }
+            let real = pts.compactMap { $0 }
+            if real.count >= 2 { return real }
+        }
+        return m.points
+    }
+
+    private func traceLabelsFor(_ m: TraceMetric) -> [String] {
+        if let splits = run?.splits, !splits.isEmpty {
+            return splits.map { s in
+                let v: String
+                switch m {
+                case .pace: v = s.pace.map { "\($0) /mi" } ?? "—"
+                case .hr:   v = s.hr.map { "\($0) bpm" } ?? "—"
+                case .elev: v = s.elev_change_ft.map { "\($0) ft" } ?? "—"
+                case .cad:  v = s.cadence.map { "\($0) spm" } ?? "—"
+                }
+                return "mi \(s.mile) · \(v)"
+            }
+        }
+        return m.labels
     }
 
     private func load() async {
