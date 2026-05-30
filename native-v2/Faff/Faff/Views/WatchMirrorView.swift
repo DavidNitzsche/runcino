@@ -123,7 +123,7 @@ struct WatchMirrorView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 SpecLabel(text: "NEXT · MILE 18", size: 9, tracking: 1.5, color: Theme.txt.opacity(0.6))
-                Text("Long climb — hold effort, ease pace")
+                Text("Long climb · hold effort, ease pace")
                     .font(.body(15, weight: .extraBold))
                     .foregroundStyle(Theme.txt)
             }

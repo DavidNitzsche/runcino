@@ -148,7 +148,7 @@ struct PlannedView: View {
                     .font(.display(16, weight: .bold))
                     .foregroundStyle(Theme.txt)
             }
-            Text("Faff eased your targets +8s/mi for the heat — run threshold by effort, not the number. Expect HR to read ~6 bpm high; that's the weather, not lost fitness. Hydrate before you start.")
+            Text("Faff eased your targets +8s/mi for the heat · run threshold by effort, not the number. Expect HR to read ~6 bpm high; that's the weather, not lost fitness. Hydrate before you start.")
                 .font(.body(13, weight: .medium))
                 .foregroundStyle(Theme.txt.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
@@ -305,12 +305,12 @@ struct PlannedView: View {
     }
 
     private var coachBody: String {
-        "This is your weekly threshold stimulus — it lifts the pace you can hold before lactate piles up. Hold the line at effort and it feeds straight into CIM's 6:51 goal pace. Don't bank time early; the back half is the test."
+        "This is your weekly threshold stimulus · it lifts the pace you can hold before lactate piles up. Hold the line at effort and it feeds straight into CIM's 6:51 goal pace. Don't bank time early; the back half is the test."
     }
 
     private var executeCues: [String] {
         [
-            "Settle the first threshold mile — don't sprint into it.",
+            "Settle the first threshold mile · don't sprint into it.",
             "If HR spikes past Z4 in the heat, hold effort and let pace drift.",
             "Finish the last mile the strongest, not the fastest."
         ]
@@ -372,7 +372,7 @@ struct PlannedView: View {
                 let title = "\(p.label) · \(subLabelFor(p))"
                 let detail: String = {
                     if let tp = p.targetPaceSPerMi { return "@ \(PaceFormat.mmss(tp))/mi · target pace" }
-                    return "fully easy — let HR settle"
+                    return "fully easy · let HR settle"
                 }()
                 return SessionRow(id: i, title: title, subtitle: detail, color: colorFor(p.type))
             }

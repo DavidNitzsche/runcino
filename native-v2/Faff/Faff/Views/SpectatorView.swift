@@ -167,7 +167,7 @@ struct SpectatorView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "flag.fill")
                         .font(.system(size: 11, weight: .bold))
-                    Text("He's almost to you — get ready to cheer!")
+                    Text("He's almost to you · get ready to cheer!")
                         .font(.body(13, weight: .extraBold))
                 }
                 .foregroundStyle(Color(hex: 0x9AF0BF))

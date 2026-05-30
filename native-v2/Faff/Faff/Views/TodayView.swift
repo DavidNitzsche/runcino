@@ -5,8 +5,8 @@
 //  Per locked design intent:
 //   · Today day card pops MORE, not less (selected day elevates)
 //   · 7-day week strip: tapping a day repaints the hero in place (does NOT
-//     push the workout detail overlay — that's a Train-only behavior)
-//   · Hero is "effort readout", not a slider — labeled pointer on a gradient
+//     push the workout detail overlay · that's a Train-only behavior)
+//   · Hero is "effort readout", not a slider · labeled pointer on a gradient
 //   · Drag-up sheet reveals workout breakdown + conditions + coach
 //
 

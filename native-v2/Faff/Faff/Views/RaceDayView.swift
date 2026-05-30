@@ -137,7 +137,7 @@ struct RaceDayView: View {
             }
             .padding(.top, 12)
 
-            Text("You closed the gap. You're peaked and projected under goal — everything from here is execution.")
+            Text("You closed the gap. You're peaked and projected under goal · everything from here is execution.")
                 .font(.body(14, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.9))
                 .lineSpacing(2)
@@ -269,10 +269,10 @@ struct RaceDayView: View {
 
     private var planSegments: some View {
         VStack(spacing: 0) {
-            planSegRow(dot: Color(hex: 0xFFD27A), mi: "MI 1–3",   name: "Settle in",         sub: "controlled start — let them go",       pace: "6:55")
-            planSegRow(dot: Color(hex: 0xFF9442), mi: "MI 3–10",  name: "The rollers",       sub: "even effort — don't fight the hills",  pace: "6:52")
-            planSegRow(dot: Color(hex: 0xFF6A3C), mi: "MI 10–20", name: "Find your rhythm",  sub: "net downhill — lock into goal",        pace: "6:49")
-            planSegRow(dot: Color(hex: 0xE2293F), mi: "MI 20–26.2", name: "Empty the tank", sub: "downhill finish — negative split",    pace: "6:43")
+            planSegRow(dot: Color(hex: 0xFFD27A), mi: "MI 1–3",   name: "Settle in",         sub: "controlled start · let them go",       pace: "6:55")
+            planSegRow(dot: Color(hex: 0xFF9442), mi: "MI 3–10",  name: "The rollers",       sub: "even effort · don't fight the hills",  pace: "6:52")
+            planSegRow(dot: Color(hex: 0xFF6A3C), mi: "MI 10–20", name: "Find your rhythm",  sub: "net downhill · lock into goal",        pace: "6:49")
+            planSegRow(dot: Color(hex: 0xE2293F), mi: "MI 20–26.2", name: "Empty the tank", sub: "downhill finish · negative split",    pace: "6:43")
         }
     }
 

@@ -171,7 +171,7 @@ struct ActivityView: View {
     }
 
     private var recordsGrid: some View {
-        // Mock records grid (the LogState doesn't ship PRs today — coming from
+        // Mock records grid (the LogState doesn't ship PRs today · coming from
         // /api/profile/state.nextARace + run history aggregates). Placeholder
         // until the wire ships them.
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {

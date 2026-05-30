@@ -235,7 +235,7 @@ struct CompletedView: View {
             Text("Faff Coach")
                 .font(.label(10)).tracking(1.5).textCase(.uppercase)
                 .foregroundStyle(Color(hex: 0xEE6038))
-            Text("Dialed in. You held 6:34 across the tempo block — 4 seconds under target — and miles 5 and 6 were your quickest, so you finished into it rather than fading. HR settled right in Z4 with no spikes. Textbook threshold execution; this is exactly the fitness CIM needs.")
+            Text("Dialed in. You held 6:34 across the tempo block · 4 seconds under target · and miles 5 and 6 were your quickest, so you finished into it rather than fading. HR settled right in Z4 with no spikes. Textbook threshold execution; this is exactly the fitness CIM needs.")
                 .font(.body(14.5, weight: .medium))
                 .foregroundStyle(Color(hex: 0x3C362F))
                 .lineSpacing(3)
@@ -289,7 +289,7 @@ struct CompletedView: View {
     }
 
     private var winLine: String {
-        "Held 6:34 — 4s under target"
+        "Held 6:34 · 4s under target"
     }
 
     private var distanceFmt: String {
