@@ -15,6 +15,11 @@
  */
 
 import { computeZones, type ZoneTable } from './zones';
+import {
+  applyHeatToPace,
+  abilityTierFromVdot,
+  type AbilityTier,
+} from '@/lib/weather/heat-adjustment';
 
 export type WorkoutType =
   | 'easy' | 'long' | 'tempo' | 'threshold' | 'intervals' | 'race'
@@ -48,12 +53,33 @@ export interface Prescription {
   total_mi: number;
   citation: string;
   zones?: ZoneTable | null;
+  /**
+   * Heat-adjustment context (Q-04 / Research/06). When `tempF` is
+   * known + non-trivial slowdown applies, every pace_target in steps
+   * has been adjusted via applyHeatToPace, and this field carries the
+   * one-line explanation for the coach voice. Null when no heat
+   * adjustment was applied.
+   */
+  weather?: {
+    tempF: number;
+    abilityTier: AbilityTier;
+    noteLine: string;       // e.g. "75°F · pace adjusted +12s/mi for heat"
+    appliedPctMin: number;  // slowdown percent low (range)
+    appliedPctMax: number;  // slowdown percent high
+  } | null;
 }
 
 interface ProfileInputs {
   lthr?: number | null;
   goal_seconds?: number | null;        // race goal total seconds
   goal_distance_mi?: number | null;    // race distance
+  /** Optional: applies heat slowdown to every step's pace_target.
+   *  See lib/weather/heat-adjustment.ts for the Maughan curve. */
+  weather?: {
+    tempF: number | null;
+    raceDistanceMi?: number;     // defaults to goal_distance_mi
+    abilityTier?: AbilityTier;   // defaults to mid_pack; pass abilityTierFromVdot(vdot)
+  } | null;
 }
 
 // ── Pace derivation ─────────────────────────────────────────────────────
@@ -86,14 +112,54 @@ function fmtPaceRange(loS: number | null, hiS: number | null): string | null {
 
 function paces(p: ProfileInputs) {
   const t = tPaceSecPerMi(p);
+  if (!t) {
+    return {
+      easy: null, long: null, marathon: null, tempo: null,
+      threshold: null, interval: null, rep: null,
+    };
+  }
+  // Optional heat adjustment per Research/06 Maughan curve. We adjust
+  // each pace target by the runner's distance-scaled slowdown so the
+  // displayed pace already reflects the temperature.
+  const w = p.weather;
+  const tempF = w?.tempF;
+  const tier = w?.abilityTier ?? 'mid_pack';
+  const refDist = w?.raceDistanceMi ?? p.goal_distance_mi ?? 13.1;
+  const adj = (sec: number): number =>
+    tempF != null ? applyHeatToPace(sec, tempF, refDist, tier) : sec;
   return {
-    easy:      t ? fmtPaceRange(t + 60,  t + 110) : null, // T + 60-110s
-    long:      t ? fmtPaceRange(t + 55,  t + 90)  : null, // T + 55-90s
-    marathon:  t ? fmtPace(t + 18)                : null, // T + 18s
-    tempo:     t ? fmtPaceRange(t + 5,   t + 18)  : null, // T + 5-18s
-    threshold: t ? fmtPace(t)                     : null, // exact T
-    interval:  t ? fmtPace(t - 18)                : null, // T - 18s (~10K pace)
-    rep:       t ? fmtPace(t - 30)                : null, // T - 30s (~5K pace)
+    easy:      fmtPaceRange(adj(t + 60),  adj(t + 110)),  // T + 60-110s
+    long:      fmtPaceRange(adj(t + 55),  adj(t + 90)),   // T + 55-90s
+    marathon:  fmtPace(adj(t + 18)),                       // T + 18s
+    tempo:     fmtPaceRange(adj(t + 5),   adj(t + 18)),   // T + 5-18s
+    threshold: fmtPace(adj(t)),                            // exact T
+    interval:  fmtPace(adj(t - 18)),                       // T - 18s (~10K pace)
+    rep:       fmtPace(adj(t - 30)),                       // T - 30s (~5K pace)
+  };
+}
+
+/**
+ * Compute the slowdown range applied by the heat adjustment, for the
+ * prescription's `weather` field. Returns null when weather isn't set
+ * or the slowdown is trivial.
+ */
+function weatherSummary(p: ProfileInputs): Prescription['weather'] {
+  const w = p.weather;
+  if (!w || w.tempF == null) return null;
+  const tier = w.abilityTier ?? 'mid_pack';
+  const refDist = w.raceDistanceMi ?? p.goal_distance_mi ?? 13.1;
+  // Sample slowdown at threshold pace (60s baseline) — same percent
+  // applies to every pace target.
+  const before = 360; // 6:00/mi reference
+  const after = applyHeatToPace(before, w.tempF, refDist, tier);
+  const pct = ((after - before) / before) * 100;
+  if (pct < 0.5) return null; // trivial — don't surface
+  return {
+    tempF: w.tempF,
+    abilityTier: tier,
+    appliedPctMin: Math.round(pct * 10) / 10,
+    appliedPctMax: Math.round(pct * 10) / 10,
+    noteLine: `${Math.round(w.tempF)}°F · pace adjusted +${(pct).toFixed(1)}% for heat (Research/06 Maughan)`,
   };
 }
 

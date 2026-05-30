@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType } from '@/lib/training/prescriptions';
+import { lookupTempF, baselineTempF } from '@/lib/weather/lookup';
+import { abilityTierFromVdot } from '@/lib/weather/heat-adjustment';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -61,8 +63,59 @@ export async function GET(req: NextRequest) {
   const goal_seconds = parseGoalSeconds(meta.goalDisplay);
   const goal_distance_mi = meta.distanceMi ? Number(meta.distanceMi) : distanceMiFromLabel(meta.distanceLabel);
 
+  // ── Weather: pull tempF for the workout date (forecast lookup).
+  //
+  // Q-04 / Research/06 — apply Maughan heat slowdown to displayed paces.
+  // Caller can pass explicit ?tempF=N OR ?date=YYYY-MM-DD (we look up
+  // the cache for the runner's recent lat/lon bucket). Falls back to
+  // baseline avg over last 14d when exact date not cached yet.
+  const explicitTempF = Number(sp.get('tempF'));
+  let tempF: number | null = isFinite(explicitTempF) ? explicitTempF : null;
+  if (tempF == null) {
+    // Use the runner's most-recent Strava activity coords as a proxy
+    // for "where they usually run". Slim lookup; never blocks the
+    // prescription if it fails.
+    try {
+      const r = await pool.query<{ start_lat: string | null; start_lng: string | null }>(
+        `SELECT (data->>'startLat')::text AS start_lat, (data->>'startLng')::text AS start_lng
+           FROM strava_activities
+          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+            AND NOT (data ? 'mergedIntoId')
+            AND data->>'startLat' IS NOT NULL
+          ORDER BY (data->>'date') DESC LIMIT 1`,
+        [userId]
+      );
+      const row = r.rows[0];
+      const lat = Number(row?.start_lat);
+      const lon = Number(row?.start_lng);
+      if (isFinite(lat) && isFinite(lon)) {
+        const dateParam = sp.get('date');
+        if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+          tempF = await lookupTempF(lat, lon, dateParam);
+        }
+        // Fall back to 14-day baseline if no exact-date forecast cached.
+        if (tempF == null) {
+          tempF = await baselineTempF(lat, lon, today, 14);
+        }
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  // Get VDOT for ability-tier inference (heat impact varies by tier).
+  const userRow = (await pool.query<{ vdot: string | null }>(
+    `SELECT vdot_last_reviewed::text AS vdot FROM users WHERE id = $1 LIMIT 1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const vdot = userRow?.vdot != null ? Number(userRow.vdot) : null;
+  const abilityTier = abilityTierFromVdot(vdot);
+
   const prescription = prescriptionFor(type, weeklyMi, {
     lthr, goal_seconds, goal_distance_mi,
+    weather: tempF != null ? {
+      tempF,
+      raceDistanceMi: goal_distance_mi ?? undefined,
+      abilityTier,
+    } : null,
   }, isFinite(targetMi as number) ? (targetMi as number) : undefined);
 
   // Prescriptions are deterministic from (type, weeklyMi, lthr, goal_*).
