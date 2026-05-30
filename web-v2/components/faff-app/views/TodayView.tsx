@@ -16,6 +16,25 @@ export function TodayView({
   const e = EFF[d.type];
   const isRest = d.type === 'rest';
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
+  // 2026-05-30: lazy-fetch the real run summary for past days so the hero
+  // stats grid + heroExtra row don't render seed.results placeholder "·"
+  // values. Shared with WorkoutCard/CompletedResultCard.
+  const { data: runData, loading: runLoading } = useRunSummary(d.done ? d.activityId : null);
+  // Resolved values prefer the live fetch over the seed placeholder when
+  // the fetch has landed. Until it lands we keep the placeholder so the
+  // grid doesn't flash empty.
+  const resolvedTime    = runData?.time_moving ?? result?.time;
+  const resolvedPace    = runData?.pace ?? result?.apace;
+  const resolvedHr      = runData?.hr_avg ?? result?.hr;
+  const resolvedTempF   = runData?.temp_f ?? null;
+  const resolvedGainFt  = runData?.elev_gain_ft != null ? Math.round(runData.elev_gain_ft) : result?.gain;
+  const resolvedShoeNm  = (() => {
+    if (runData?.shoe_id != null && runData.shoes) {
+      const s = runData.shoes.find(x => x.id === runData.shoe_id);
+      if (s) return `${s.brand} ${s.model}`.trim();
+    }
+    return result?.shoe;
+  })();
 
   return (
     <>
@@ -98,8 +117,8 @@ export function TodayView({
             ) : d.done && result ? (
               <>
                 <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
-                <div><div className="v">{result.time}</div><div className="k">TIME</div></div>
-                <div><div className="v">{result.apace}<small>/mi</small></div><div className="k">AVG PACE</div></div>
+                <div><div className="v">{resolvedTime ?? '·'}</div><div className="k">TIME{runLoading && !runData ? ' …' : ''}</div></div>
+                <div><div className="v">{resolvedPace ?? '·'}<small>/mi</small></div><div className="k">AVG PACE</div></div>
               </>
             ) : (
               <>
@@ -123,7 +142,7 @@ export function TodayView({
             <div className="effort done">
               <div className="ehr">
                 <span>TIME IN ZONES</span>
-                <span>avg ♥ <b>{result.hr}</b> · peak <b>{result.peak}</b></span>
+                <span>avg ♥ <b>{resolvedHr || '·'}</b> · peak <b>{runData?.hr_max || result.peak || '·'}</b></span>
               </div>
               <div className="bk-zbar">
                 {result.zones.map((p, zi) => p > 0 ? (
@@ -143,12 +162,14 @@ export function TodayView({
           {d.done && result && (
             <div className="heroExtra on">
               <div className="hx-cond">
-                <div><div className="kcl">WEATHER</div><div className="kcv">{result.weather}</div></div>
-                <div><div className="kcl">SHOE</div><div className="kcv">{result.shoe}</div></div>
-                <div><div className="kcl">ELEV GAIN</div><div className="kcv">{result.gain} ft</div></div>
-                <div><div className="kcl">CALORIES</div><div className="kcv">{result.cal} kcal</div></div>
+                <div><div className="kcl">WEATHER</div><div className="kcv">{resolvedTempF != null ? `${Math.round(resolvedTempF)}°F` : (result.weather?.trim() || '·')}</div></div>
+                <div><div className="kcl">SHOE</div><div className="kcv">{resolvedShoeNm?.trim() || '·'}</div></div>
+                <div><div className="kcl">ELEV GAIN</div><div className="kcv">{resolvedGainFt != null && resolvedGainFt > 0 ? `${resolvedGainFt} ft` : '·'}</div></div>
+                {runData?.power_avg_w != null
+                  ? <div><div className="kcl">AVG POWER</div><div className="kcv">{runData.power_avg_w} W</div></div>
+                  : <div><div className="kcl">CALORIES</div><div className="kcv">{result.cal > 0 ? `${result.cal} kcal` : '·'}</div></div>}
               </div>
-              <div className="hx-recap"><span className="ct">RECAP</span>{result.recap}</div>
+              {result.recap && <div className="hx-recap"><span className="ct">RECAP</span>{result.recap}</div>}
             </div>
           )}
         </div>
@@ -156,6 +177,8 @@ export function TodayView({
           d={d}
           done={!!d.done}
           result={result}
+          runData={runData}
+          runLoading={runLoading}
           shoes={seed.shoes}
           // 2026-05-30: shoe pick fallback chain:
           //   1. Persisted day_actions pick (seed.todayShoeId) — runner choice.
@@ -179,22 +202,35 @@ type RunSummary = {
   pace: string | null; time_moving: string | null;
   hr_avg: number | null; hr_max: number | null;
   elev_gain_ft: number | null;
+  temp_f: number | null;
+  power_avg_w: number | null;
+  shoe_id: number | null;
+  shoes?: Array<{ id: number; brand: string; model: string }>;
   splits: Array<{ mile: number; pace: string | null }>;
 };
-function CompletedResultCard({ d, fallback }: { d: FaffSeed['week'][number]; fallback?: FaffSeed['results'][number] }) {
+
+/** Lazy-fetch /api/runs/[id] for a past day. Shared by the TodayView hero
+ *  stats grid AND the WorkoutCard's CompletedResultCard so both surfaces
+ *  show real numbers (instead of seed.results placeholder · symbols). */
+function useRunSummary(activityId: string | null | undefined): { data: RunSummary | null; loading: boolean } {
   const [data, setData] = useState<RunSummary | null>(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (!d.activityId) return;
+    if (!activityId) { setData(null); return; }
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/runs/${encodeURIComponent(d.activityId)}`)
+    fetch(`/api/runs/${encodeURIComponent(activityId)}`)
       .then(r => r.ok ? r.json() : null)
       .then((j: RunSummary | null) => { if (!cancelled && j) setData(j); })
       .catch(() => { /* swallow */ })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [d.activityId]);
+  }, [activityId]);
+  return { data, loading };
+}
+
+function CompletedResultCard({ d, fallback, runData, loading }: { d: FaffSeed['week'][number]; fallback?: FaffSeed['results'][number]; runData: RunSummary | null; loading: boolean }) {
+  const data = runData;
   const splits = data?.splits?.slice(0, 16) ?? [];
   const minPaceSec = Math.min(...splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0), 999999);
   const maxPaceSec = Math.max(...splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0), 0);
@@ -254,9 +290,9 @@ function paceToSec(p: string): number {
   return 0;
 }
 
-function WorkoutCard({ d, done, result, shoes, seedShoe, persistShoe }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; shoes: FaffSeed['shoes']; seedShoe: string; persistShoe: boolean }) {
+function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, persistShoe }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; runData: RunSummary | null; runLoading: boolean; shoes: FaffSeed['shoes']; seedShoe: string; persistShoe: boolean }) {
   if (done) {
-    return <CompletedResultCard d={d} fallback={result} />;
+    return <CompletedResultCard d={d} fallback={result} runData={runData} loading={runLoading} />;
   }
   // Rest day gets a recovery-focused panel, not the workout shape.
   if (d.type === 'rest') {
