@@ -106,11 +106,65 @@ struct RunDetailView: View {
                     }
                     .padding(.top, 12)
 
+                    section(title: "SHARE", right: nil) {
+                        stravaPushButton
+                    }
+                    .padding(.top, 18)
+
                     Spacer(minLength: 60)
                 }
             }
+            .refreshable { await load() }
         }
         .task { await load() }
+    }
+
+    @State private var stravaPushState: StravaPushState = .idle
+    enum StravaPushState { case idle, pushing, done, failed }
+
+    private var stravaPushButton: some View {
+        Button {
+            guard stravaPushState != .pushing && stravaPushState != .done else { return }
+            stravaPushState = .pushing
+            Task {
+                let ok = (try? await API.pushRunToStrava(runId: runId)) ?? false
+                await MainActor.run {
+                    stravaPushState = ok ? .done : .failed
+                }
+            }
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: stravaIcon)
+                    .font(.system(size: 13, weight: .bold))
+                Text(stravaLabel)
+                    .font(.body(14, weight: .extraBold))
+                    .tracking(0.3)
+            }
+            .foregroundStyle(Theme.txt)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(Color(hex: 0xFC4D24).opacity(stravaPushState == .done ? 0.18 : 0.32),
+                        in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xFC4D24).opacity(0.6), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(stravaPushState == .pushing || stravaPushState == .done)
+    }
+
+    private var stravaIcon: String {
+        switch stravaPushState {
+        case .idle:    return "arrow.up.right.square.fill"
+        case .pushing: return "ellipsis"
+        case .done:    return "checkmark"
+        case .failed:  return "exclamationmark.triangle.fill"
+        }
+    }
+    private var stravaLabel: String {
+        switch stravaPushState {
+        case .idle:    return "PUSH TO STRAVA"
+        case .pushing: return "PUSHING..."
+        case .done:    return "PUSHED"
+        case .failed:  return "PUSH FAILED · TAP TO RETRY"
+        }
     }
 
     private var header: some View {

@@ -47,29 +47,29 @@ struct TargetsView: View {
                 .padding(.bottom, 130)
             }
         }
-        .task {
-            async let r = (try? await API.fetchRaces())
-            async let p = (try? await API.fetchProfileState())
-            async let f = (try? await API.fetchCoachFacts(surface: "races"))
-            let (rs, pr, fc) = await (r, p, f)
-            await MainActor.run {
-                self.races = rs
-                self.profile = pr
-                self.raceFacts = fc
-                // Derive standing goals from the user's race set. Each upcoming
-                // A or B race becomes a "finish under target" goal once we have
-                // a goal time; otherwise it's "finish the distance".
-                self.standingGoals = (rs?.races ?? [])
-                    .filter { $0.priority == "A" || $0.priority == "B" }
-                    .prefix(3)
-                    .map { race in
-                        StandingGoal(
-                            title: RaceName.short(race.name, abbreviateAlways: true),
-                            detail: race.distance_label?.uppercased() ?? "",
-                            sub: race.name ?? ""
-                        )
-                    }
-            }
+        .task { await reload() }
+        .refreshable { await reload() }
+    }
+
+    private func reload() async {
+        async let r = (try? await API.fetchRaces())
+        async let p = (try? await API.fetchProfileState())
+        async let f = (try? await API.fetchCoachFacts(surface: "races"))
+        let (rs, pr, fc) = await (r, p, f)
+        await MainActor.run {
+            self.races = rs
+            self.profile = pr
+            self.raceFacts = fc
+            self.standingGoals = (rs?.races ?? [])
+                .filter { $0.priority == "A" || $0.priority == "B" }
+                .prefix(3)
+                .map { race in
+                    StandingGoal(
+                        title: RaceName.short(race.name, abbreviateAlways: true),
+                        detail: race.distance_label?.uppercased() ?? "",
+                        sub: race.name ?? ""
+                    )
+                }
         }
     }
 

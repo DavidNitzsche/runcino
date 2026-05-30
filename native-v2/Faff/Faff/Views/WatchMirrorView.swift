@@ -9,9 +9,11 @@ import SwiftUI
 
 struct WatchMirrorView: View {
     @State private var liveOk: Bool = true
+    @State private var workout: WatchWorkout?
 
     var body: some View {
-        let mesh = FaffEffort.tempo.mesh
+        let effort = workout.map { FaffEffort.fromType($0.paceLabel ?? "tempo") } ?? .tempo
+        let mesh = effort.mesh
         ZStack {
             FaffMeshView(mesh: mesh)
 
@@ -19,17 +21,27 @@ struct WatchMirrorView: View {
                 followPill
                     .padding(.top, 8)
 
-                hero
-                    .padding(.top, 16)
-                    .padding(.horizontal, 24)
+                if let w = workout {
+                    plannedHero(workout: w)
+                        .padding(.top, 22)
+                        .padding(.horizontal, 24)
 
-                threeStatRow
-                    .padding(.top, 18)
-                    .padding(.horizontal, 24)
-
-                courseSection
-                    .padding(.top, 18)
-                    .padding(.horizontal, 24)
+                    if !w.phases.isEmpty {
+                        phaseList(phases: w.phases)
+                            .padding(.top, 24)
+                            .padding(.horizontal, 24)
+                    }
+                } else {
+                    hero
+                        .padding(.top, 16)
+                        .padding(.horizontal, 24)
+                    threeStatRow
+                        .padding(.top, 18)
+                        .padding(.horizontal, 24)
+                    courseSection
+                        .padding(.top, 18)
+                        .padding(.horizontal, 24)
+                }
 
                 Spacer(minLength: 0)
 
@@ -40,13 +52,14 @@ struct WatchMirrorView: View {
                     .padding(.bottom, 28)
             }
         }
+        .task { workout = try? await API.fetchWatchWorkout() }
     }
 
     private var followPill: some View {
         HStack(spacing: 9) {
             LivePulseDot(color: liveOk ? Color(hex: 0x9AF0BF) : Color(hex: 0xFF5A52), size: 8)
                 .frame(width: 12, height: 12)
-            Text("FOLLOWING APPLE WATCH · CIM COURSE")
+            Text(workout != nil ? "FOLLOWING APPLE WATCH · MIRRORED" : "STANDING BY")
                 .font(.label(11)).tracking(1.5)
                 .foregroundStyle(Theme.txt)
         }
@@ -54,6 +67,85 @@ struct WatchMirrorView: View {
         .background(Color.white.opacity(0.1), in: Capsule())
         .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 1))
         .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private func plannedHero(workout w: WatchWorkout) -> some View {
+        VStack(spacing: 12) {
+            SpecLabel(text: "PLANNED", size: 10, tracking: 2.5, color: Theme.txt.opacity(0.6))
+            Text(w.name)
+                .displayRecipe(size: 46, weight: .bold)
+                .foregroundStyle(Theme.txt)
+                .multilineTextAlignment(.center)
+                .shadow(color: .black.opacity(0.32), radius: 26, y: 3)
+            HStack(spacing: 22) {
+                if let mi = w.distanceMi {
+                    statBlock(value: String(format: "%.1f", mi), key: "MI")
+                }
+                statBlock(value: "~\(w.totalEstimatedMinutes)", key: "MIN EST")
+                if let label = w.paceLabel {
+                    statBlock(value: label, key: "TARGET")
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    private func statBlock(value: String, key: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.display(22, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Theme.txt)
+            SpecLabel(text: key, size: 9, tracking: 1.4, color: Theme.txt.opacity(0.6))
+        }
+    }
+
+    private func phaseList(phases: [WatchPhase]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SpecLabel(text: "PHASES", size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
+            ForEach(phases) { p in
+                HStack(alignment: .top, spacing: 13) {
+                    Rectangle()
+                        .fill(phaseColor(p.type))
+                        .frame(width: 3)
+                        .frame(minHeight: 34)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(p.label)
+                            .font(.body(14, weight: .extraBold))
+                            .tracking(-0.2)
+                            .foregroundStyle(Theme.txt)
+                        Text(phaseSubtitle(p))
+                            .font(.display(11, weight: .semibold))
+                            .foregroundStyle(Theme.txt.opacity(0.66))
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private func phaseSubtitle(_ p: WatchPhase) -> String {
+        var parts: [String] = []
+        if p.durationSec > 0 {
+            let m = p.durationSec / 60
+            parts.append("\(m) min")
+        }
+        if let mi = p.distanceMi { parts.append(String(format: "%.2f mi", mi)) }
+        if let pace = p.targetPaceSPerMi {
+            parts.append("@ \(pace / 60):\(String(format: "%02d", pace % 60))/mi")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func phaseColor(_ type: WatchPhaseType) -> Color {
+        switch type {
+        case .warmup:   return Color(hex: 0x34C194)
+        case .work:     return Color(hex: 0xFF8847)
+        case .recovery: return Color(hex: 0x27B4E0)
+        case .cooldown: return Color(hex: 0x14C08C)
+        default:        return Theme.mute
+        }
     }
 
     private var hero: some View {

@@ -25,7 +25,7 @@ struct FaffApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            RootContainer()
                 // v3 is dark-first. Effort mesh paints behind every screen;
                 // the system canvas under the mesh stays black.
                 .preferredColorScheme(.dark)
@@ -109,3 +109,70 @@ struct FaffApp: App {
 }
 
 // RootTabView lives in Views/RootTabView.swift (5-tab v3 host).
+
+/// Routes the user between the auth/onboarding gate and the main app.
+///
+/// Gate policy (soft, opt-in):
+///   · If `faff.onboarded` UserDefaults is true, or AppCache has any prior
+///     surface data, treat as a returning user and drop straight into
+///     RootTabView. This preserves every existing TestFlight install (David,
+///     internal testers) so a new build never strands them on a SignIn page.
+///   · Else show SignIn → RolePick → Onboarding → mark onboarded → main app.
+///     New TestFlight installs that have never opened the app see this flow.
+///
+/// `TokenStore.isSignedIn` exists as a real session-token signal but isn't
+/// enforced as a gate today (beta uses DEFAULT_USER_ID fallback server-side).
+struct RootContainer: View {
+    @State private var step: GateStep = .checking
+
+    enum GateStep: Equatable {
+        case checking
+        case signIn
+        case rolePick
+        case onboarding
+        case main
+    }
+
+    var body: some View {
+        ZStack {
+            switch step {
+            case .checking:
+                Color.clear.task { await decideInitialStep() }
+            case .signIn:
+                SignInView(onSignedIn: { advance(.rolePick) })
+            case .rolePick:
+                RolePickView(onPick: { _ in advance(.onboarding) })
+            case .onboarding:
+                OnboardingView(onComplete: { complete() })
+            case .main:
+                RootTabView()
+            }
+        }
+    }
+
+    private func decideInitialStep() async {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "faff.onboarded") {
+            step = .main; return
+        }
+        // Returning user heuristic: any cached surface bytes means they've
+        // launched the app before and got real data back. Mark onboarded so
+        // they never see the gate.
+        let hasCachedSurfaces = AppCache.read(.todayWorkout, as: TodayWorkoutWrapper.self) != nil
+            || AppCache.read(.planWeek, as: PlanWeek.self) != nil
+            || AppCache.read(.logState, as: LogState.self) != nil
+        if hasCachedSurfaces || TokenStore.shared.isSignedIn {
+            defaults.set(true, forKey: "faff.onboarded")
+            step = .main; return
+        }
+        step = .signIn
+    }
+
+    private func advance(_ next: GateStep) {
+        withAnimation(.easeInOut(duration: 0.32)) { step = next }
+    }
+    private func complete() {
+        UserDefaults.standard.set(true, forKey: "faff.onboarded")
+        advance(.main)
+    }
+}

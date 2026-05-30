@@ -52,18 +52,21 @@ struct HealthView: View {
                 .padding(.bottom, 120)
             }
         }
-        .task {
-            async let s = (try? await API.fetchHealthState())
-            async let r = (try? await API.fetchReadiness())
-            async let f = (try? await API.fetchCoachFacts(surface: "health"))
-            let (st, rd, fc) = await (s, r, f)
-            await MainActor.run {
-                self.state = st
-                self.readiness = rd
-                self.healthFacts = fc
-            }
-        }
+        .task { await reload() }
+        .refreshable { await reload() }
         .sheet(isPresented: $sheet) { ReadinessBreakdownSheet(snapshot: readiness) }
+    }
+
+    private func reload() async {
+        async let s = (try? await API.fetchHealthState())
+        async let r = (try? await API.fetchReadiness())
+        async let f = (try? await API.fetchCoachFacts(surface: "health"))
+        let (st, rd, fc) = await (s, r, f)
+        await MainActor.run {
+            self.state = st
+            self.readiness = rd
+            self.healthFacts = fc
+        }
     }
 
     private var whatsMovingFacts: [CoachFact] { healthFacts?.facts ?? [] }

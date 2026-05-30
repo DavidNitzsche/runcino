@@ -19,6 +19,7 @@ struct TodayView: View {
     @State private var workout: WatchWorkout?
     @State private var readiness: ReadinessSnapshot?
     @State private var briefing: Briefing?
+    @State private var profile: ProfileState?
     @State private var selectedDayID: String = ""
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
@@ -52,7 +53,7 @@ struct TodayView: View {
                     }
                     .buttonStyle(.plain)
                     Button { onProfile() } label: {
-                        Text("DK")
+                        Text(avatarInitials)
                             .font(.display(12, weight: .bold))
                             .foregroundStyle(Theme.txt)
                             .frame(width: 32, height: 32)
@@ -195,23 +196,59 @@ struct TodayView: View {
 
     private var sheetContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            pBlock(title: "THE SESSION") {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(segments, id: \.0) { (label, desc) in
-                        HStack(alignment: .top, spacing: 13) {
-                            Rectangle()
-                                .fill(selectedEffort.dot)
-                                .frame(width: 3)
-                                .frame(minHeight: 34)
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(label)
-                                    .font(.body(15, weight: .extraBold))
-                                    .tracking(-0.2)
-                                    .foregroundStyle(Color(hex: 0x14110D))
-                                Text(desc)
-                                    .font(.body(13))
-                                    .foregroundStyle(Color(hex: 0x736C61))
+            // Prefer the server-emitted prescription rows when present
+            // (briefing.workout_breakdown · PACE / HR CAP / DURATION / FUEL).
+            // Falls back to client-derived phases when the briefing didn't
+            // emit per-day breakdown rows (rest days, missed states, etc).
+            if let rows = briefing?.workout_breakdown, !rows.isEmpty {
+                pBlock(title: "PRESCRIPTION") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(rows) { r in
+                            HStack(alignment: .top, spacing: 13) {
+                                Rectangle()
+                                    .fill(selectedEffort.dot)
+                                    .frame(width: 3)
+                                    .frame(minHeight: 34)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(r.label)
+                                        .font(.body(15, weight: .extraBold))
+                                        .tracking(-0.2)
+                                        .foregroundStyle(Color(hex: 0x14110D))
+                                    HStack(spacing: 6) {
+                                        Text(r.body)
+                                            .font(.body(13))
+                                            .foregroundStyle(Color(hex: 0x736C61))
+                                        if let tail = r.tail, !tail.isEmpty {
+                                            Text(tail)
+                                                .font(.body(11, weight: .semibold))
+                                                .foregroundStyle(Color(hex: 0xA39A8C))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                pBlock(title: "THE SESSION") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(segments, id: \.0) { (label, desc) in
+                            HStack(alignment: .top, spacing: 13) {
+                                Rectangle()
+                                    .fill(selectedEffort.dot)
+                                    .frame(width: 3)
+                                    .frame(minHeight: 34)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(label)
+                                        .font(.body(15, weight: .extraBold))
+                                        .tracking(-0.2)
+                                        .foregroundStyle(Color(hex: 0x14110D))
+                                    Text(desc)
+                                        .font(.body(13))
+                                        .foregroundStyle(Color(hex: 0x736C61))
+                                }
                             }
                         }
                     }
@@ -361,6 +398,22 @@ struct TodayView: View {
         plan?.days.first { $0.date_iso == selectedDayID }
     }
 
+    /// Derived avatar initials. Prefers profile.identity.full_name; falls
+    /// back to the first letter of city; final fallback is "FA" (Faff).
+    private var avatarInitials: String {
+        if let n = profile?.identity.full_name, !n.isEmpty {
+            let parts = n.split(separator: " ")
+            let first = parts.first.map(String.init)?.prefix(1) ?? ""
+            let last = parts.count > 1 ? String(parts.last!).prefix(1) : ""
+            let raw = String(first) + String(last)
+            if !raw.isEmpty { return raw.uppercased() }
+        }
+        if let c = profile?.identity.city, let f = c.first {
+            return String(f).uppercased()
+        }
+        return "FA"
+    }
+
     private var titleForToday: String {
         let f = DateFormatter()
         f.dateFormat = "EEEE d"
@@ -443,14 +496,16 @@ struct TodayView: View {
         async let r = (try? await API.fetchReadiness())
         async let b = (try? await API.briefing(surface: "today", mode: nil))
         async let s = (try? await API.fetchTodaySkipped()) ?? false
+        async let pr = (try? await API.fetchProfileState())
 
-        let (planWeek, watch, ready, brief, skip) = await (p, w, r, b, s)
+        let (planWeek, watch, ready, brief, skip, prof) = await (p, w, r, b, s, pr)
         await MainActor.run {
             self.plan = planWeek
             self.workout = watch
             self.readiness = ready
             self.briefing = brief
             self.skipped = skip
+            self.profile = prof
             if let today = planWeek?.today_iso, selectedDayID.isEmpty { selectedDayID = today }
         }
     }

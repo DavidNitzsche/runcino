@@ -40,7 +40,13 @@ struct ActivityView: View {
                 .padding(.bottom, 120)
             }
         }
-        .task { log = try? await API.fetchLog(limit: 120) }
+        .task { await reload() }
+        .refreshable { await reload() }
+    }
+
+    private func reload() async {
+        let l = try? await API.fetchLog(limit: 120)
+        await MainActor.run { self.log = l }
     }
 
     // MARK: - Toggle

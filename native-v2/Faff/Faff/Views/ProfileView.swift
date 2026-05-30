@@ -50,12 +50,15 @@ struct ProfileView: View {
                 .padding(.bottom, 80)
             }
         }
-        .task {
-            async let p = (try? await API.fetchProfileState())
-            async let f = (try? await API.fetchCoachFacts(surface: "me"))
-            let (pr, fc) = await (p, f)
-            await MainActor.run { self.profile = pr; self.meFacts = fc }
-        }
+        .task { await reload() }
+        .refreshable { await reload() }
+    }
+
+    private func reload() async {
+        async let p = (try? await API.fetchProfileState())
+        async let f = (try? await API.fetchCoachFacts(surface: "me"))
+        let (pr, fc) = await (p, f)
+        await MainActor.run { self.profile = pr; self.meFacts = fc }
     }
 
     private var coachStats: [CoachFact] {
