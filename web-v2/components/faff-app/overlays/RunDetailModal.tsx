@@ -23,6 +23,7 @@ type RunDetail = {
   cadence_avg: number | null;
   elev_gain_ft: number | null;
   temp_f: number | null;
+  power_avg_w: number | null;
   splits: Array<{ mile: number; pace: string | null; hr: number | null; elev_change_ft: number | null }>;
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
   has_route: boolean;
@@ -131,6 +132,9 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 <div className="i"><div className="k">WEATHER</div><div className="v">{data.temp_f != null ? `${Math.round(data.temp_f)}°F` : '·'}</div></div>
                 <div className="i"><div className="k">CADENCE</div><div className="v">{data.cadence_avg ? `${Math.round(data.cadence_avg)} spm` : '·'}</div></div>
                 <div className="i"><div className="k">MAX HR</div><div className="v">{data.hr_max ? `${data.hr_max} bpm` : '·'}</div></div>
+                {data.power_avg_w != null && (
+                  <div className="i"><div className="k">AVG POWER</div><div className="v">{data.power_avg_w}<small> W</small></div></div>
+                )}
                 <div className="i"><div className="k">SHOE</div><div className="v">{currentShoeName(data) || '·'}</div></div>
               </div>
             </>

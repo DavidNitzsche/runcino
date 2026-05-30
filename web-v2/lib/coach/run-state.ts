@@ -92,6 +92,11 @@ export interface RunDetail {
   temp_f: number | null;
   suffer_score: number | null;
   kudos: number | null;
+  // P2 #10 (2026-05-30): average running power from HealthKit for the
+  // day this run lives on. health_samples.sample_type='run_power' is
+  // already ingested. Watts; null when the user doesn't ship a power
+  // signal (no Stryd, no Apple Watch running power, etc.).
+  power_avg_w: number | null;
 
   // P32 — shoe assignment surfaced for the modal picker.
   shoe_id: number | null;
@@ -334,6 +339,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     temp_f: Number(r.tempF) || null,
     suffer_score: Number(r.sufferScore) || null,
     kudos: Number(r.kudosCount) || null,
+    // P2 #10 (2026-05-30): surface the day's avg running power (W).
+    // Already loaded into form.run_power_w by loadFormMetrics() from
+    // health_samples; mirror it at the top level so RunDetailModal
+    // doesn't need to dig into the form nest.
+    power_avg_w: form.run_power_w,
 
     shoe_id: shoeId,
     shoes,
