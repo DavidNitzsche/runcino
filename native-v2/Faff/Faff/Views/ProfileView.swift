@@ -161,21 +161,26 @@ struct ProfileView: View {
     private var settingsCard: some View {
         GlassTile(padding: 0) {
             VStack(spacing: 0) {
-                settingsRow("Units & display", value: "Miles")
+                settingsRow("Units & display", value: "Miles", route: .settings)
                 Divider().background(Color.white.opacity(0.08))
-                settingsRow("Notifications", value: nil)
+                settingsRow("Notifications", value: nil, route: .settings)
                 Divider().background(Color.white.opacity(0.08))
-                settingsRow("Faff Pro", value: "Active")
+                settingsRow("Shoe garage", value: nil, route: .shoes)
+                Divider().background(Color.white.opacity(0.08))
+                settingsRow("Faff Pro", value: "Active", route: .pro)
             }
         }
     }
-    private func settingsRow(_ title: String, value: String?) -> some View {
-        HStack {
-            Text(title).font(.body(15, weight: .extraBold)).foregroundStyle(Theme.txt)
-            Spacer()
-            if let v = value { Text(v).font(.display(12, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.7)) }
-            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.5))
+    private func settingsRow(_ title: String, value: String?, route: FaffRoute) -> some View {
+        NavigationLink(value: route) {
+            HStack {
+                Text(title).font(.body(15, weight: .extraBold)).foregroundStyle(Theme.txt)
+                Spacer()
+                if let v = value { Text(v).font(.display(12, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.7)) }
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.5))
+            }
+            .padding(14)
         }
-        .padding(14)
+        .buttonStyle(.plain)
     }
 }
