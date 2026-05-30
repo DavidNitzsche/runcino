@@ -181,13 +181,17 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   const watchLast: Date | null = watchRow?.last ? new Date(watchRow.last) : null;
   const watchConnected = watchLast != null && (Date.now() - watchLast.getTime()) < 1000 * 60 * 60 * 24 * 30;
 
-  // VDOT — compute from the best race in the last 6 months.
-  // Only A/B priority races count (skip C and custom flags like
-  // 'hilly-excluded'). Auto-matches each race to its actual completed
-  // run in the runs table to get finish time (race meta doesn't persist
-  // it).
+  // VDOT — compute from the best race in the last 6 months PLUS any
+  // training-derived VDOT from quality runs (threshold/tempo/intervals
+  // OR runs at ≥80% maxHR). Only A/B priority races count (skip C and
+  // custom flags like 'hilly-excluded').
+  //
+  // Source-of-truth ladder per CLAUDE.md (locked 2026-05-19):
+  //   1. races.actual_result.finishS — curated chip time (canonical)
+  //   2. meta.finishTime — legacy stored time
+  //   3. Strava match by date+distance — provisional fallback
   const raceRows = (await pool.query(
-    `SELECT slug, meta FROM races
+    `SELECT slug, meta, actual_result FROM races
       WHERE (user_uuid = $1 OR user_uuid IS NULL)
         AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
         AND (meta->>'date')::date < $2::date
@@ -195,7 +199,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     [userId, today]
   ).catch(() => ({ rows: [] }))).rows;
 
-  // For VDOT, also need to match each race to its run for finish time.
+  // For Strava-match fallback (step 3) — only fires when steps 1+2 miss.
   const earliestDate = raceRows.length
     ? raceRows.reduce((min: string, r: any) => {
         const d = r.meta?.date ?? '';
@@ -212,6 +216,43 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     [userId, earliestDate, today]
   ).catch(() => ({ rows: [] }))).rows : [];
 
+  // Also fetch recent quality runs (last 60d) for training-derived VDOT.
+  // workoutType comes from the plan_workouts row when matched, else null.
+  // We pass null → vdotFromRun gates on HR≥80%MaxHR instead.
+  // Excludes runs on race days so a hilly-excluded/C race effort doesn't
+  // sneak in as training data (it'd defeat the race-priority filter).
+  const qualityCutoff = new Date(Date.parse(today + 'T12:00:00Z') - 60 * 86400000).toISOString().slice(0, 10);
+  const recentRuns = (await pool.query(
+    `SELECT
+       sa.id::text AS id,
+       COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date,
+       sa.data->>'workoutType' AS workout_type,
+       (sa.data->>'distanceMi')::numeric AS distance_mi,
+       (sa.data->>'movingTimeS')::numeric AS finish_seconds,
+       (sa.data->>'avgHr')::numeric AS avg_hr
+       FROM strava_activities sa
+      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
+        AND NOT (sa.data ? 'mergedIntoId')
+        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2
+        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) < $3
+        AND (sa.data->>'distanceMi')::numeric >= 4
+        AND (sa.data->>'movingTimeS')::numeric > 60
+        AND NOT EXISTS (
+          SELECT 1 FROM races r
+           WHERE (r.user_uuid = $1 OR r.user_uuid IS NULL)
+             AND ABS((r.meta->>'date')::date - COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date) <= 1
+        )`,
+    [userId, qualityCutoff, today]
+  ).catch(() => ({ rows: [] }))).rows;
+
+  // Max HR for the run-gate (HR ≥ 80% MaxHR). We read users.max_hr_override
+  // first, then users.max_hr (auto-ratcheted from Apple Health), then null.
+  const userMaxHr = (await pool.query(
+    `SELECT COALESCE(max_hr_override, max_hr) AS m FROM users WHERE id = $1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0]?.m;
+  const maxHrValue = userMaxHr != null ? Number(userMaxHr) : null;
+
   function distFromLabel(label: string | null | undefined): number | null {
     const l = String(label ?? '').toLowerCase();
     if (l.includes('marathon') && !l.includes('half')) return 26.2;
@@ -223,9 +264,11 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
 
   const raceCandidates = raceRows.map((r: any) => {
     const m = r.meta ?? {};
+    const ar = r.actual_result ?? {};
     const distMi = m.distanceMi ? Number(m.distanceMi) : distFromLabel(m.distanceLabel);
-    // First try meta.finishTime, then match a run by date+distance
-    let finishSec = parseRaceTime(m.finishTime);
+    // Canonical source-of-truth ladder: actual_result.finishS → meta.finishTime → Strava match.
+    let finishSec: number | null = ar.finishS != null ? Number(ar.finishS) : null;
+    if (!finishSec) finishSec = parseRaceTime(m.finishTime);
     if (!finishSec && distMi && m.date) {
       let bestMatch: any = null;
       let bestScore = Infinity;
@@ -254,7 +297,18 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       finish_seconds: finishSec,
     };
   });
-  const { best: bestVdot } = bestRecentVdot(raceCandidates, today, 180);
+
+  const runCandidates = recentRuns.map((r: any) => ({
+    id: String(r.id),
+    date: r.date,
+    workout_type: r.workout_type,
+    distance_mi: r.distance_mi ? Number(r.distance_mi) : null,
+    finish_seconds: r.finish_seconds ? Number(r.finish_seconds) : null,
+    avg_hr: r.avg_hr ? Number(r.avg_hr) : null,
+    max_hr: maxHrValue,
+  }));
+
+  const { best: bestVdot } = bestRecentVdot(raceCandidates, today, 180, runCandidates);
   const vdot: number | null = bestVdot?.vdot ?? null;
 
   // === LTHR + true MaxHR ===

@@ -110,6 +110,7 @@ export function parseRaceTime(s: string | null | undefined): number | null {
 }
 
 export interface RaceVdotCandidate {
+  source: 'race';
   slug: string;
   name: string;
   date: string;
@@ -119,27 +120,135 @@ export interface RaceVdotCandidate {
   vdot: number;
 }
 
-/** Best (highest) VDOT from races within the lookback window.
- *  Skips C-races and races without a finish time.
- *  Skips races more than `lookbackDays` old (default: 180). */
+export interface RunVdotCandidate {
+  source: 'run';
+  id: string;
+  date: string;
+  workout_type: string | null;
+  distance_mi: number;
+  finish_seconds: number;
+  vdot: number;
+}
+
+export type VdotCandidate = RaceVdotCandidate | RunVdotCandidate;
+
+/**
+ * Workout types considered "quality" — runs done at honest, sustained effort
+ * such that the pace × duration tells us something real about fitness.
+ *
+ * Easy/recovery runs are excluded: a conversational-pace run from a runner
+ * sandbagging easy days produces a wildly understated VDOT, so we don't read
+ * VDOT off them at all.
+ */
+const QUALITY_RUN_TYPES = new Set([
+  'threshold', 'tempo', 'cruise', 'intervals', 'vo2', 'vo2max',
+  'marathon_pace', 'mp', 'race', 'time_trial', 'tune_up',
+]);
+
+/**
+ * Derive VDOT from a single sustained training run.
+ *
+ * Treats the run as a "virtual race" at its actual pace + distance and
+ * inverts Daniels' formula (same as vdotFromRace). The catch: a run is only
+ * VDOT-readable if effort was honest, otherwise pace doesn't reflect fitness.
+ * Gates:
+ *   - Workout type is in QUALITY_RUN_TYPES (the plan called for hard work), OR
+ *   - avg HR ≥ 80% of max HR (independent evidence of threshold-or-harder effort)
+ * AND distance ≥ 4 miles (shorter runs are too noisy to lock VDOT off of).
+ *
+ * Returns null when the run doesn't pass the gate or VDOT lands outside [30,85].
+ *
+ * Cite: Research/01-pace-zones-vdot.md §Daniels-T-pace + §VDOT-table (same
+ * Daniels formula as vdotFromRace, applied to workout pace).
+ */
+export function vdotFromRun(input: {
+  finishSeconds: number;
+  distanceMi: number;
+  workoutType?: string | null;
+  avgHr?: number | null;
+  maxHr?: number | null;
+}): number | null {
+  if (!input.finishSeconds || input.finishSeconds < 60) return null;
+  if (!input.distanceMi || input.distanceMi < 4) return null;
+
+  const wType = String(input.workoutType ?? '').toLowerCase();
+  const isQuality = QUALITY_RUN_TYPES.has(wType);
+  const hrFloor = input.maxHr ? input.maxHr * 0.80 : null;
+  const isHardEffort =
+    input.avgHr != null && hrFloor != null && input.avgHr >= hrFloor;
+
+  if (!isQuality && !isHardEffort) return null;
+
+  return vdotFromRace(input.finishSeconds, input.distanceMi);
+}
+
+/**
+ * Best (highest) VDOT from races AND optional training runs within the
+ * lookback window.
+ *
+ * Race candidates: skip C-races; skip without finish time; cap at lookback.
+ * Run candidates: gated by vdotFromRun's quality filter (see above).
+ *
+ * Tie-break: race VDOT counts at face value; run VDOT is penalized by 1
+ * point for sort purposes (a single real race always wins ties against
+ * a training-derived estimate). This is the "race wins ties" doctrine.
+ *
+ * Skips items more than `lookbackDays` old (default: 180).
+ */
 export function bestRecentVdot(
   races: Array<{ slug: string; name: string; date: string; priority: 'A'|'B'|'C'|null; distance_mi: number | null; finish_seconds: number | null }>,
   todayISO: string,
   lookbackDays = 180,
-): { best: RaceVdotCandidate | null; considered: RaceVdotCandidate[] } {
+  runs?: Array<{
+    id: string;
+    date: string;
+    workout_type: string | null;
+    distance_mi: number | null;
+    finish_seconds: number | null;
+    avg_hr?: number | null;
+    max_hr?: number | null;
+  }>,
+): { best: VdotCandidate | null; considered: VdotCandidate[] } {
   const cutoff = new Date(Date.parse(todayISO + 'T12:00:00Z') - lookbackDays * 86400000).toISOString().slice(0, 10);
-  const candidates: RaceVdotCandidate[] = [];
+
+  const raceCandidates: RaceVdotCandidate[] = [];
   for (const r of races) {
     if (!r.date || !r.distance_mi || !r.finish_seconds) continue;
     if (r.date < cutoff) continue;
     if (r.priority === 'C') continue;
     const v = vdotFromRace(r.finish_seconds, r.distance_mi);
     if (v == null) continue;
-    candidates.push({
+    raceCandidates.push({
+      source: 'race',
       slug: r.slug, name: r.name, date: r.date, priority: r.priority,
       distance_mi: r.distance_mi, finish_seconds: r.finish_seconds, vdot: v,
     });
   }
-  candidates.sort((a, b) => b.vdot - a.vdot);
-  return { best: candidates[0] ?? null, considered: candidates };
+
+  const runCandidates: RunVdotCandidate[] = [];
+  if (runs && runs.length > 0) {
+    for (const r of runs) {
+      if (!r.date || r.date < cutoff) continue;
+      if (!r.distance_mi || !r.finish_seconds) continue;
+      const v = vdotFromRun({
+        finishSeconds: r.finish_seconds,
+        distanceMi: r.distance_mi,
+        workoutType: r.workout_type,
+        avgHr: r.avg_hr ?? null,
+        maxHr: r.max_hr ?? null,
+      });
+      if (v == null) continue;
+      runCandidates.push({
+        source: 'run',
+        id: r.id, date: r.date, workout_type: r.workout_type,
+        distance_mi: r.distance_mi, finish_seconds: r.finish_seconds, vdot: v,
+      });
+    }
+  }
+
+  // Sort key: races at face value, runs -1 so a real race wins ties.
+  const sortKey = (c: VdotCandidate) => (c.source === 'race' ? c.vdot : c.vdot - 1);
+  const considered = [...raceCandidates, ...runCandidates]
+    .sort((a, b) => sortKey(b) - sortKey(a));
+  return { best: considered[0] ?? null, considered };
 }

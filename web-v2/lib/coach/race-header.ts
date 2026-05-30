@@ -27,9 +27,29 @@ import {
   predictRaceTime,
   formatRaceTime,
 } from '@/lib/training/vdot';
+import { loadNearestSnapshot } from '@/lib/training/projection-snapshots';
 import type { ReadinessBreakdown } from './readiness';
 
 export type RaceHeaderStatus = 'on_track' | 'watch' | 'off';
+
+/**
+ * Projection trend — change in the projected finish time over a lookback
+ * window. Computed by re-running the VDOT chain as of `today - lookbackDays`
+ * and diffing against today's projection.
+ *
+ * deltaSec convention: current_projection_sec - past_projection_sec.
+ *   - Negative → projection got faster (fitness improved) — render "↓".
+ *   - Positive → projection slowed down — render "↑" with caution tone.
+ *   - Zero / null → not enough data or no change.
+ *
+ * Null when there's no past anchor (cold-start runner, no data 30d ago).
+ */
+export interface ProjectionTrend {
+  deltaSec: number;
+  lookbackDays: number;
+  pastVdot: number | null;     // for debugging + audit
+  currentVdot: number | null;
+}
 
 export interface RaceHeader {
   mode: 'race' | 'goal' | 'base';
@@ -39,6 +59,7 @@ export interface RaceHeader {
   phaseLabel: string | null;  // "BUILD"
   goalLabel: string | null;   // "1:45"
   projLabel: string | null;   // "1:44:50" — only when computable
+  projectionTrend: ProjectionTrend | null;
   status: RaceHeaderStatus | null;
   statusLabel: string | null; // "ON TRACK"
   statusTone: 'green' | 'amber' | 'over' | 'none';
@@ -125,6 +146,7 @@ export function buildGlanceOnlyHeader(input: RaceHeaderInputs): RaceHeader {
       phaseLabel: phaseLabel ?? null,
       goalLabel: null,
       projLabel: null,
+      projectionTrend: null,
       status: null,
       statusLabel: null,
       statusTone: 'none',
@@ -140,30 +162,45 @@ export function buildGlanceOnlyHeader(input: RaceHeaderInputs): RaceHeader {
     phaseLabel: phaseLabel ?? null,
     goalLabel: null,
     projLabel: null,
+    projectionTrend: null,
     status,
     statusLabel: meta.label,
     statusTone: meta.tone,
   };
 }
 
-/** Derive current VDOT from real A/B race history (faithful to profile-state). */
-async function loadCurrentVdot(userId: string, today: string): Promise<number | null> {
+/**
+ * Derive current VDOT from real A/B race history + training-derived
+ * estimates from recent quality runs. Source-of-truth ladder per
+ * CLAUDE.md (locked 2026-05-19):
+ *   1. races.actual_result.finishS — curated chip time (canonical)
+ *   2. meta.finishTime — legacy stored time
+ *   3. Strava match by date+distance — provisional fallback
+ * Plus training-derived VDOT from runs in QUALITY_RUN_TYPES or HR≥80%MaxHR
+ * (penalized -1 point so a real race always wins ties; see vdot.ts).
+ *
+ * `asOfDate` is today by default; pass a past ISO date to compute the VDOT
+ * as it would have been at that point — used for projectionTrend.
+ */
+async function loadCurrentVdot(userId: string, today: string, asOfDate?: string): Promise<number | null> {
+  const asOf = asOfDate ?? today;
   const raceRows = (await pool
     .query(
-      `SELECT slug, meta FROM races
+      `SELECT slug, meta, actual_result FROM races
         WHERE (user_uuid = $1 OR user_uuid IS NULL)
           AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
           AND (meta->>'date')::date < $2::date
           AND meta->>'priority' IN ('A', 'B')`,
-      [userId, today],
+      [userId, asOf],
     )
     .catch(() => ({ rows: [] }))).rows;
-  if (!raceRows.length) return null;
 
-  const earliestDate = raceRows.reduce((min: string, r: { meta?: { date?: string } }) => {
-    const d = r.meta?.date ?? '';
-    return !min || (d && d < min) ? d : min;
-  }, '');
+  const earliestDate = raceRows.length
+    ? raceRows.reduce((min: string, r: { meta?: { date?: string } }) => {
+        const d = r.meta?.date ?? '';
+        return !min || (d && d < min) ? d : min;
+      }, '')
+    : '';
 
   const candidateRuns = earliestDate
     ? (await pool
@@ -174,15 +211,18 @@ async function loadCurrentVdot(userId: string, today: string): Promise<number | 
               AND (data->>'distanceMi')::numeric > 2.5
               AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2
               AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) <= $3`,
-          [userId, earliestDate, today],
+          [userId, earliestDate, asOf],
         )
         .catch(() => ({ rows: [] }))).rows
     : [];
 
-  const candidates = raceRows.map((r: { slug: string; meta?: Record<string, unknown> }) => {
+  const candidates = raceRows.map((r: { slug: string; meta?: Record<string, unknown>; actual_result?: Record<string, unknown> }) => {
     const m = (r.meta ?? {}) as Record<string, unknown>;
+    const ar = (r.actual_result ?? {}) as Record<string, unknown>;
     const distMi = m.distanceMi ? Number(m.distanceMi) : distFromLabel(m.distanceLabel as string);
-    let finishSec = parseRaceTime(m.finishTime as string);
+    // Canonical ladder: actual_result.finishS → meta.finishTime → Strava match.
+    let finishSec: number | null = ar.finishS != null ? Number(ar.finishS) : null;
+    if (!finishSec) finishSec = parseRaceTime(m.finishTime as string);
     if (!finishSec && distMi && m.date) {
       let best: Record<string, unknown> | null = null;
       let bestScore = Infinity;
@@ -211,7 +251,52 @@ async function loadCurrentVdot(userId: string, today: string): Promise<number | 
     };
   });
 
-  const { best } = bestRecentVdot(candidates, today, 180);
+  // Training-derived VDOT — recent quality runs (last 60 days).
+  // Excludes runs on race days: a race-effort attempt belongs in the races
+  // ladder (counted as race when priority='A'/'B', explicitly excluded when
+  // 'C'/'hilly-excluded'/'training-run'). Including the same effort here
+  // would defeat the priority filter.
+  const qualityCutoff = new Date(Date.parse(asOf + 'T12:00:00Z') - 60 * 86400000).toISOString().slice(0, 10);
+  const recentRuns = (await pool.query(
+    `SELECT
+       sa.id::text AS id,
+       COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date,
+       sa.data->>'workoutType' AS workout_type,
+       (sa.data->>'distanceMi')::numeric AS distance_mi,
+       (sa.data->>'movingTimeS')::numeric AS finish_seconds,
+       (sa.data->>'avgHr')::numeric AS avg_hr
+       FROM strava_activities sa
+      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
+        AND NOT (sa.data ? 'mergedIntoId')
+        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2
+        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) < $3
+        AND (sa.data->>'distanceMi')::numeric >= 4
+        AND (sa.data->>'movingTimeS')::numeric > 60
+        AND NOT EXISTS (
+          SELECT 1 FROM races r
+           WHERE (r.user_uuid = $1 OR r.user_uuid IS NULL)
+             AND ABS((r.meta->>'date')::date - COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date) <= 1
+        )`,
+    [userId, qualityCutoff, asOf]
+  ).catch(() => ({ rows: [] }))).rows;
+
+  const userMaxHr = (await pool.query(
+    `SELECT COALESCE(max_hr_override, max_hr) AS m FROM users WHERE id = $1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0]?.m;
+  const maxHrValue = userMaxHr != null ? Number(userMaxHr) : null;
+
+  const runCandidates = recentRuns.map((r: { id: string; date: string; workout_type: string | null; distance_mi: string | null; finish_seconds: string | null; avg_hr: string | null }) => ({
+    id: String(r.id),
+    date: r.date,
+    workout_type: r.workout_type,
+    distance_mi: r.distance_mi != null ? Number(r.distance_mi) : null,
+    finish_seconds: r.finish_seconds != null ? Number(r.finish_seconds) : null,
+    avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
+    max_hr: maxHrValue,
+  }));
+
+  const { best } = bestRecentVdot(candidates, asOf, 180, runCandidates);
   return best?.vdot ?? null;
 }
 
@@ -233,6 +318,7 @@ export async function loadRaceHeader(userId: string, input: RaceHeaderInputs): P
       phaseLabel: phaseLabel ?? null,
       goalLabel: null,
       projLabel: null,
+      projectionTrend: null,
       status: null,
       statusLabel: null,
       statusTone: 'none',
@@ -271,11 +357,42 @@ export async function loadRaceHeader(userId: string, input: RaceHeaderInputs): P
   // PROJ — only from real VDOT. Never fabricated.
   let projSec: number | null = null;
   let projLabel: string | null = null;
+  let currentVdot: number | null = null;
   if (raceDistanceMi) {
-    const vdot = await loadCurrentVdot(userId, today).catch(() => null);
-    if (vdot != null) {
-      projSec = predictRaceTime(vdot, raceDistanceMi);
+    currentVdot = await loadCurrentVdot(userId, today).catch(() => null);
+    if (currentVdot != null) {
+      projSec = predictRaceTime(currentVdot, raceDistanceMi);
       projLabel = formatRaceTime(projSec);
+    }
+  }
+
+  // Projection trend — projection as-of 30 days ago vs today's projection.
+  // Read path: try projection_snapshots first (O(1) lookup), fall back to
+  // live re-compute (180d window, O(1) Postgres query but heavier). Snapshot
+  // table is populated by the daily cron at 00:30 local.
+  // Returns null when there's no past anchor (cold-start, no data 30d ago)
+  // or when the race distance is unknown.
+  const TREND_LOOKBACK_DAYS = 30;
+  let projectionTrend: ProjectionTrend | null = null;
+  if (projSec != null && raceDistanceMi) {
+    const pastDateISO = new Date(Date.parse(today + 'T12:00:00Z') - TREND_LOOKBACK_DAYS * 86400000)
+      .toISOString().slice(0, 10);
+    const snap = await loadNearestSnapshot(userId, pastDateISO, raceDistanceMi).catch(() => null);
+    let pastVdot: number | null = snap?.vdot ?? null;
+    let pastProjSec: number | null = snap?.projection_sec ?? null;
+    if (pastVdot == null) {
+      pastVdot = await loadCurrentVdot(userId, today, pastDateISO).catch(() => null);
+      if (pastVdot != null) {
+        pastProjSec = predictRaceTime(pastVdot, raceDistanceMi);
+      }
+    }
+    if (pastVdot != null && pastProjSec != null) {
+      projectionTrend = {
+        deltaSec: projSec - pastProjSec,
+        lookbackDays: TREND_LOOKBACK_DAYS,
+        pastVdot,
+        currentVdot,
+      };
     }
   }
 
@@ -291,6 +408,7 @@ export async function loadRaceHeader(userId: string, input: RaceHeaderInputs): P
     phaseLabel: phaseLabel ?? null,
     goalLabel,
     projLabel,
+    projectionTrend,
     status,
     statusLabel: meta.label,
     statusTone: meta.tone,

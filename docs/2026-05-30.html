@@ -1,0 +1,1306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Backend Data Plan · Source of Truth · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card2: #1a1d24;
+    --green: #3EBD41; --goal: #F3AD38; --over: #FC4D64;
+    --dist: #27B4E0; --learn: #B084FF; --race: #FF7028;
+    --health: #FF7028; --strava: #FC4D64; --watch: #3EBD41;
+    --manual: #B084FF; --coach: #F3AD38;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 60px; letter-spacing: -0.5px; margin: 0; line-height: 0.92; text-transform: uppercase; }
+  .sub { color: var(--mute); margin-top: 10px; font-size: 14px; max-width: 720px; line-height: 1.5; }
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 32px; letter-spacing: 0.3px; margin: 56px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; text-transform: uppercase; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 28px 0 10px; }
+  h4 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 22px; margin: 18px 0 6px; letter-spacing: 0.3px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; } ol { padding-left: 22px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  em { color: rgba(246,247,248,0.95); font-style: italic; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: 'JetBrains Mono', ui-monospace, monospace; color: var(--dist); }
+
+  .lead { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.40); border-radius: 14px; padding: 22px 26px; margin: 18px 0 32px; }
+  .lead h2 { margin: 0 0 12px; font-size: 22px; color: var(--green); border: 0; padding: 0; text-transform: uppercase; }
+  .lead p { font-size: 14.5px; }
+  .note { background: rgba(243,173,56,0.06); border: 1px solid rgba(243,173,56,0.35); border-radius: 12px; padding: 16px 20px; margin: 16px 0; font-size: 14px; }
+  .note strong { color: var(--goal); text-transform: uppercase; letter-spacing: 0.6px; font-size: 11.5px; }
+  .ok { background: rgba(62,189,65,0.06); border: 1px solid rgba(62,189,65,0.30); border-radius: 12px; padding: 16px 20px; margin: 16px 0; font-size: 14px; }
+  .ok strong { color: var(--green); text-transform: uppercase; letter-spacing: 0.6px; font-size: 11.5px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10.5px; font-weight: 700; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; }
+  td.high { color: var(--over); font-weight: 600; } td.med { color: var(--goal); font-weight: 600; }
+  td.low { color: var(--dist); font-weight: 600; } td.ok { color: var(--green); font-weight: 600; }
+  td.mute { color: var(--mute); }
+  td code { color: var(--ink); background: rgba(255,255,255,0.05); }
+
+  pre { background: rgba(0,0,0,0.5); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12px; font-family: 'JetBrains Mono', ui-monospace, monospace; color: rgba(246,247,248,0.88); margin: 8px 0; line-height: 1.55; border-left: 3px solid var(--dist); }
+  a { color: var(--dist); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  details { margin: 10px 0; }
+  details summary { cursor: pointer; color: var(--dist); font-size: 13px; font-weight: 600; padding: 4px 0; }
+  details[open] summary { color: var(--ink); }
+
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; font-family: 'Inter', sans-serif; }
+  .p-canonical { background: rgba(62,189,65,0.18); color: #aef0b0; }
+  .p-deprecated { background: rgba(252,77,100,0.18); color: #ffb3bd; }
+  .p-shared { background: rgba(176,132,255,0.18); color: #d4baff; }
+  .p-cache { background: rgba(39,180,224,0.18); color: #b6e7f7; }
+  .p-stub { background: rgba(243,173,56,0.18); color: #ffd789; }
+  .p-health { background: rgba(255,112,40,0.18); color: #ffc09a; }
+  .p-strava { background: rgba(252,77,100,0.18); color: #ffb3bd; }
+  .p-watch { background: rgba(62,189,65,0.18); color: #aef0b0; }
+  .p-manual { background: rgba(176,132,255,0.18); color: #d4baff; }
+  .p-coach { background: rgba(243,173,56,0.18); color: #ffd789; }
+
+  /* Data-flow diagrams */
+  .flow { background: var(--card2); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin: 18px 0; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.45; }
+  .flow .src { color: var(--health); font-weight: 700; }
+  .flow .strv { color: var(--strava); font-weight: 700; }
+  .flow .wch { color: var(--watch); font-weight: 700; }
+  .flow .man { color: var(--manual); font-weight: 700; }
+  .flow .coa { color: var(--coach); font-weight: 700; }
+  .flow .arr { color: var(--mute); }
+  .flow .tbl { color: var(--dist); font-weight: 600; }
+  .flow .note { background: transparent; border: 0; padding: 0; margin: 4px 0 12px 24px; color: var(--mute); font-size: 11.5px; font-family: 'Inter', sans-serif; }
+
+  .toc { background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; margin: 24px 0 18px; }
+  .toc ol { padding-left: 22px; margin: 0; }
+  .toc li { margin: 5px 0; font-size: 14px; }
+
+  .meta-row { display: flex; gap: 12px; margin-top: 12px; font-size: 12px; color: var(--mute); flex-wrap: wrap; }
+  .meta-row span { padding: 3px 9px; background: rgba(255,255,255,0.04); border-radius: 4px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stat .n { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 28px; color: var(--ink); }
+  .stat .l { font-size: 10.5px; color: var(--mute); text-transform: uppercase; letter-spacing: 1.2px; margin-top: 4px; }
+
+  .source-card { display: grid; grid-template-columns: 100px 1fr; gap: 18px; padding: 16px 18px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); margin: 12px 0; }
+  .source-card.health { border-left: 4px solid var(--health); }
+  .source-card.strava { border-left: 4px solid var(--strava); }
+  .source-card.watch { border-left: 4px solid var(--watch); }
+  .source-card.manual { border-left: 4px solid var(--manual); }
+  .source-card.coach { border-left: 4px solid var(--coach); }
+  .source-card .lhs { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .source-card .lhs.health { color: var(--health); }
+  .source-card .lhs.strava { color: var(--strava); }
+  .source-card .lhs.watch { color: var(--watch); }
+  .source-card .lhs.manual { color: var(--manual); }
+  .source-card .lhs.coach { color: var(--coach); }
+  .source-card .rhs { font-size: 13.5px; line-height: 1.55; }
+
+  hr { border: 0; border-top: 1px solid var(--line); margin: 36px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Backend.<br>Data Plan.</h1>
+<p class="sub">
+  This is the <strong>source of truth</strong> for the Faff backend. Every
+  field, every table, every ingest source, every read path. If you are an
+  agent (web, iOS, Claude) and need to know where a piece of data lives,
+  comes from, or goes — read this. Anchored on the existing live
+  database. Preserves David Nitzsche's account (<code>0645f40c-951d-4ccc-b86e-9979cd26c795</code>)
+  and his 27 plans / 125 runs / 2,720 health samples / 10 races without
+  modification.
+</p>
+<div class="meta-row">
+  <span>2026-05-30</span>
+  <span>DB: Railway Postgres (production)</span>
+  <span>App: Next.js web-v2</span>
+  <span>Clients: faff.run + iOS TestFlight</span>
+  <span>56 tables · 56 API routes</span>
+</div>
+
+<div class="lead">
+<h2>READ THIS FIRST · THE FOUR LAYERS</h2>
+<p>
+  Faff's backend is <strong>four layers stacked on one Postgres
+  database</strong>. Every piece of information in the system belongs
+  to exactly one layer. Every agent — web, iOS, Claude — should know
+  which layer it is reading from and writing to.
+</p>
+<p style="background: rgba(255,255,255,0.04); padding: 10px 14px; border-radius: 8px; font-size: 13px; margin: 10px 0 18px;">
+  <strong>The coach is briefing-driven.</strong> The engine generates
+  structured briefings per (surface, mode); the runner replies via
+  typed reply chips on briefing cards. Doctrine lives as markdown files
+  under <code>/Research/</code> and is read by the engine at runtime;
+  the runner-facing <code>learn_articles</code> table surfaces summaries
+  back to the in-app reader. The brand voice is "direct" — honest,
+  time-aware, never hype.
+</p>
+<table style="margin: 12px 0 4px;">
+<tr><th>Layer</th><th>Owns</th><th>Scope</th><th>Tables</th></tr>
+<tr><td><strong>L1 · Per-user data</strong></td><td>One runner's identity, physiology, runs, plan, races, check-ins, shoes, notifications, sessions. Today David's account is the canonical example; every new sign-up follows the same template identically.</td><td>Keyed by <code>user_uuid</code> (FK to <code>users.id</code>). 30 tables.</td><td><code>users, profile, user_prefs, sessions, device_tokens, connector_tokens, health_samples, strava_activities, training_plans, plan_workouts, races, shoes, briefings, coach_intents</code> …</td></tr>
+<tr><td><strong>L2 · Research / doctrine</strong></td><td>The coaching knowledge base — what the engine "knows." 28 markdown files under <code>/Research/</code>; runner-facing summaries in <code>learn_articles</code>; curated race courses in <code>course_library</code>.</td><td><strong>Shared by all users.</strong> Read-only at runtime; updated centrally.</td><td>Files: <code>Research/00a..22, 24</code>. DB: <code>learn_articles</code> (24 rows), <code>course_library</code> (10 rows).</td></tr>
+<tr><td><strong>L3 · Coach layer</strong></td><td>The engine that reads L1 (runner data) + L2 (doctrine) and produces personalized output: briefings, plan adaptations, proposals, intents, audit logs, telemetry.</td><td>Per-user output, written by server-side coach engine only.</td><td><code>briefings, coach_actions, coach_proposals, coach_intents, coach_reads_cache, coach_today_cache, coach_usage, plan_mutations, runner_notes</code></td></tr>
+<tr><td><strong>L4 · Ingest layer</strong></td><td>How external data enters the system. Five sources: Apple HealthKit (iOS bridge), Strava (OAuth + webhook), Apple Watch (workout completions), manual runner input, coach engine derivations.</td><td>One API route per source. Auth: Bearer (iOS) or cookie (web). All idempotent UPSERTs.</td><td>Routes write into L1 tables. See section 3 for the full map.</td></tr>
+</table>
+<p style="margin-top: 18px;">
+  <strong>One database, two clients, one auth model.</strong> Railway
+  Postgres holds everything. <code>web-v2/</code> exposes 56 REST
+  routes. Both faff.run web and the iOS TestFlight app consume those
+  same routes via opaque session tokens (Bearer or cookie). There is
+  no separate "API server" or "iOS backend."
+</p>
+<p>
+  <strong>This doc is the contract.</strong> When a new user signs up,
+  exactly the same L1 row template fills in. The L2 research layer is
+  shared and grows centrally. The L3 coach layer fires automatically
+  off the runner's L1 + L2 reads. The L4 ingest paths plug in new
+  providers (Garmin, Coros, Polar, Whoop, Oura — schema is already
+  pre-allowlisted) without schema changes.
+</p>
+</div>
+
+<div class="stat-grid">
+  <div class="stat"><div class="n">56</div><div class="l">DB tables</div></div>
+  <div class="stat"><div class="n">6</div><div class="l">Surfaces (today/training/races/race-detail/health/profile)</div></div>
+  <div class="stat"><div class="n">12</div><div class="l">Topic kinds</div></div>
+  <div class="stat"><div class="n">7</div><div class="l">Notification categories</div></div>
+  <div class="stat"><div class="n">10</div><div class="l">Course library</div></div>
+  <div class="stat"><div class="n">24</div><div class="l">Learn articles</div></div>
+  <div class="stat"><div class="n">2,720</div><div class="l">David: health samples</div></div>
+  <div class="stat"><div class="n">125</div><div class="l">David: Strava runs</div></div>
+</div>
+
+<div class="toc">
+<strong>Sections</strong>
+<ol>
+  <li><a href="#architecture">Architecture &amp; stack</a></li>
+  <li><a href="#identity"><strong>L1 ·</strong> Identity &amp; auth — the canonical per-user model</a></li>
+  <li><a href="#ingest"><strong>L4 ·</strong> Ingest paths — where data comes from</a> (HealthKit, Strava, Watch, manual, coach)</li>
+  <li><a href="#storage"><strong>L1 ·</strong> Canonical storage map — where each field lives</a></li>
+  <li><a href="#surfaces">Read paths — what each surface reads</a></li>
+  <li><a href="#connectors"><strong>L4 ·</strong> Connectors — OAuth, sync, the 12-provider model</a></li>
+  <li><a href="#plan"><strong>L1 ·</strong> Training plan — artifact + workouts + adaptation</a></li>
+  <li><a href="#shared"><strong>L2 ·</strong> Research / doctrine layer — files + course_library + learn_articles</a></li>
+  <li><a href="#coach"><strong>L3 ·</strong> Coach layer — engine, cache, outputs</a></li>
+  <li><a href="#briefing"><strong>L3 ·</strong> Briefing payload — the (surface × mode × topics) contract</a></li>
+  <li><a href="#readiness"><strong>L3 ·</strong> Readiness scoring algorithm</a></li>
+  <li><a href="#races-goals">Races &amp; personal goals — the runner's targets</a></li>
+  <li><a href="#cold-start">Cold-start — coaching a brand-new runner</a></li>
+  <li><a href="#notifications">Notification taxonomy — closed list of 7</a></li>
+  <li><a href="#onboarding"><strong>New user flow</strong> — onboarding sequence (new user → fully provisioned)</a></li>
+  <li><a href="#preserved">David's baseline (the L1 template, fully populated)</a></li>
+  <li><a href="#shipped">Shipped in this pass + what's queued</a></li>
+  <li><a href="#agent-rules">Rules for agents reading this</a></li>
+</ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="architecture">1 · Architecture &amp; stack</h2>
+
+<table>
+<tr><th>Layer</th><th>Where</th><th>Responsibility</th></tr>
+<tr><td>DB</td><td>Railway Postgres (prod). Public proxy: <code>crossover.proxy.rlwy.net</code>. Internal: <code>*.railway.internal</code>.</td><td>One shared instance. All persistent state.</td></tr>
+<tr><td>API</td><td><code>web-v2/app/api/*/route.ts</code> — 56 Next.js route handlers.</td><td>Every read/write through HTTP. No separate API server.</td></tr>
+<tr><td>DB client</td><td><code>web-v2/lib/db/pool.ts</code> — shared <code>pg.Pool</code> singleton.</td><td><code>DATABASE_URL</code> from env. <code>max: 8</code> connections.</td></tr>
+<tr><td>Auth</td><td><code>web-v2/lib/auth/session.ts</code> — opaque session tokens (32 bytes hex, sha256-hashed at rest, 90d TTL).</td><td>Bearer header + cookie. Falls back to <code>DEFAULT_USER_ID</code> env for back-compat.</td></tr>
+<tr><td>Web client</td><td>Next.js app at faff.run. Server components read DB directly; client components hit <code>/api/*</code>.</td><td>Deployed via Railway from <code>web-v2/</code>.</td></tr>
+<tr><td>iOS client</td><td>SwiftUI app, TestFlight build 100. <code>ios/</code> directory.</td><td>Hits same <code>/api/*</code> routes via Bearer. Pushes HealthKit + Watch data.</td></tr>
+<tr><td>Schema mgmt</td><td><strong>Two layers</strong>: <code>legacy/web/lib/db.ts:bootstrap()</code> creates base tables idempotently on cold start. <code>web-v2/db/migrations/100..122.sql</code> adds v2 tables on top.</td><td>All idempotent (<code>IF NOT EXISTS</code>). Safe to re-run.</td></tr>
+<tr><td>External</td><td>Anthropic API (coach engine), Open-Meteo (weather cache), Strava OAuth + webhooks, Apple HealthKit (via iOS).</td><td>Cached locally where applicable.</td></tr>
+</table>
+
+<h3>The flow at runtime</h3>
+<pre>┌────────────────┐    ┌────────────────┐    ┌────────────────┐
+│  iOS app       │    │  faff.run web  │    │  Strava / APNs │
+│  (Bearer tok)  │    │  (cookie sess) │    │  (webhooks)    │
+└───────┬────────┘    └───────┬────────┘    └───────┬────────┘
+        │                     │                     │
+        │  HTTPS              │  HTTPS              │  HTTPS
+        ▼                     ▼                     ▼
+   ┌────────────────────────────────────────────────────────┐
+   │  Next.js · web-v2/app/api/*/route.ts  (56 routes)      │
+   │  · userIdFromRequest()  → sessions / Bearer            │
+   │  · pool.query()         → Railway Postgres             │
+   └─┬──────────────────────────────────────────────────┬───┘
+     │                                                  │
+     │  reads/writes                                    │  reads only
+     ▼                                                  ▼
+   ┌──────────────────────────┐               ┌──────────────────┐
+   │  Railway Postgres        │               │  /Research/*.md  │
+   │  (56 tables, all state)  │               │  (doctrine)      │
+   └──────────────────────────┘               └──────────────────┘</pre>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="identity">2 · L1 — Identity &amp; auth — the canonical per-user model</h2>
+<p style="color: var(--mute); font-size: 13px; margin-top: -4px; margin-bottom: 18px;">
+  This section defines the row template that EVERY user — David today,
+  any future sign-up — fills in. The schema is identical; only the
+  values differ.
+</p>
+
+<div class="ok">
+<strong>Canonical answer</strong> · For every agent: <code>users</code>
+holds auth/identity primary keys (id, email, name, admin status,
+timezone). <code>profile</code> holds the rich runner data (LTHR, height,
+experience level, fueling, notification prefs, Strava OAuth tokens).
+<code>user_prefs</code> holds the weekly training schedule (long-run dow,
+quality dows, rest dow). All three are keyed by <code>user_uuid</code>
+in the v2 read path. The legacy <code>user_id='me'</code> column on
+<code>profile</code> + <code>user_prefs</code> is the single-tenant
+fallback for David's account only and is being phased out — new sign-ups
+never write <code>'me'</code>.
+</div>
+
+<h3>users · auth + identity primary</h3>
+<p><span class="pill p-canonical">canonical</span> Read by:
+<code>session.ts</code>, every auth route, admin endpoints, the iOS app
+on launch.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Source</th><th>What it's for</th></tr>
+<tr><td><code>id</code></td><td>UUID PK</td><td>Generated on sign-up</td><td>The join key. Every per-user table references this as <code>user_uuid</code> or <code>user_id UUID</code>.</td></tr>
+<tr><td><code>email</code></td><td>CITEXT UNIQUE</td><td>Sign-up (Apple/Strava OAuth)</td><td>Login. Auto-promotes to admin if = <code>LEGACY_OWNER_EMAIL</code>.</td></tr>
+<tr><td><code>name</code></td><td>TEXT</td><td>Onboarding / Apple/Strava</td><td>Display.</td></tr>
+<tr><td><code>age, sex, location</code></td><td>INT, TEXT, TEXT</td><td>Onboarding</td><td>Coach personalization. Sex drives Research/13 lookups; age drives Research/14.</td></tr>
+<tr><td><code>max_hr, resting_hr</code></td><td>INT</td><td>Apple Health ratchet (auto-bumped from <code>health_samples</code>) OR manual</td><td>HR zone math. The "live" auto values.</td></tr>
+<tr><td><code>max_hr_override, resting_hr_override</code></td><td>INT</td><td>User manual</td><td>Wins over auto when set. Auth ingest never touches these.</td></tr>
+<tr><td><code>vdot_last_reviewed, vdot_last_reviewed_at</code></td><td>NUMERIC, TS</td><td>Race result aggregator</td><td>Triggers shift-guard banner when VDOT moves &gt; 2 pts.</td></tr>
+<tr><td><code>vdot_manual_override, vdot_manual_override_at</code></td><td>NUMERIC, TS</td><td>Adaptive-VDOT "Apply" button</td><td>Trumps race-derived until new race lands after override_at.</td></tr>
+<tr><td><code>timezone</code></td><td>TEXT</td><td>iOS bridge sends IANA id</td><td>Every "today" computation respects this. Falls back to <code>FAFF_TZ</code> if null.</td></tr>
+<tr><td><code>onboarding_complete</code></td><td>BOOL</td><td>End of wizard</td><td>Gates /today; redirects to /onboarding when false.</td></tr>
+<tr><td><code>strava_writeback</code></td><td>BOOL</td><td>User preference</td><td>Auto-renames Strava activities to match planned workout.</td></tr>
+<tr><td><code>status, is_admin, approved_at, approved_by</code></td><td>TEXT, BOOL, TS, UUID</td><td>Admin approval flow</td><td>Private-beta gate. New sign-ups land <code>'pending'</code>.</td></tr>
+<tr><td><code>pace_migration_ack_at</code></td><td>TS</td><td>Banner click</td><td>One-time canonical-Daniels migration ack.</td></tr>
+<tr><td><code>activity_gap_status, activity_gap_at, activity_gap_resume_at</code></td><td>TEXT, TS, TS</td><td>User mark or auto-detect</td><td>'planned' / 'injured' gaps. Suppresses L7 signals.</td></tr>
+<tr><td class="mute"><code>level, long_run_day, quality_days, rest_day</code></td><td class="mute">TEXT</td><td class="mute">(unused in v2)</td><td class="mute">From multi-tenant bootstrap design but v2 reads <code>profile.experience_level</code> + <code>user_prefs.long_run_dow</code> etc. instead. Don't write these in new code.</td></tr>
+</table>
+
+<h3>profile · the runner data</h3>
+<p><span class="pill p-canonical">canonical</span> Read by:
+<code>state-loader.ts</code>, <code>run-state.ts</code>, <code>glance-state.ts</code>,
+<code>adapt.ts</code>, <code>generate.ts</code>, the Strava lib, notification
+prefs lib, every profile/settings UI surface.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Source</th><th>What it's for</th></tr>
+<tr><td><code>user_uuid</code></td><td>UUID FK</td><td>Sign-up</td><td>The join key.</td></tr>
+<tr><td><code>user_id</code></td><td>TEXT</td><td>(legacy <code>'me'</code> for David's row only)</td><td>Phase-out column. New users: only set <code>user_uuid</code>.</td></tr>
+<tr><td><code>full_name</code></td><td>TEXT</td><td>Onboarding</td><td>Coach voice address.</td></tr>
+<tr><td><code>sex, age, city</code></td><td>TEXT, INT, TEXT</td><td>Onboarding (also in <code>users</code>)</td><td>UI display. Coach reads from <code>users</code> primarily.</td></tr>
+<tr><td><code>height_cm</code></td><td>NUMERIC(5,1)</td><td>Onboarding</td><td>Cadence thresholds (overstriding depends on leg length).</td></tr>
+<tr><td><code>birthday</code></td><td>TIMESTAMPTZ</td><td>Onboarding</td><td>HR <code>220-age</code> sanity check.</td></tr>
+<tr><td><code>experience_level</code></td><td>TEXT (beginner/intermediate/advanced/advanced_plus)</td><td>Onboarding</td><td><strong>Canonical level field.</strong> Plan generator + adapter read this.</td></tr>
+<tr><td><code>lthr, lthr_method, lthr_set_at</code></td><td>INT, TEXT, TS</td><td>Onboarding (computed from race avg HR) or manual</td><td>Threshold HR. Watch + coach prescribes off this.</td></tr>
+<tr><td><code>hrmax_observed</code></td><td>INT</td><td>Peak HR across activities</td><td>Validates <code>users.max_hr</code>.</td></tr>
+<tr><td><code>vo2max_apple, vo2max_apple_updated_at</code></td><td>INT, TS</td><td>Apple Health</td><td>Wellness signal only (NEVER training signal). Cold-start fallback when no race data.</td></tr>
+<tr><td><code>known_terms</code></td><td>TEXT[]</td><td>Coach engine writes when fun_fact card surfaces</td><td>Suppresses repeated explainers.</td></tr>
+<tr><td><code>cross_training_modes</code></td><td>TEXT[]</td><td>Onboarding</td><td>Bike/swim/hike preferences.</td></tr>
+<tr><td><code>fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr</code></td><td>TEXT, SMALLINT, SMALLINT</td><td>Profile setting</td><td>Drives training-fueling planner. Coach quotes "2 Maurten 100s" instead of generic "2 gels".</td></tr>
+<tr><td><code>strava_athlete_id, strava_access_token, strava_refresh_token, strava_expires_at</code></td><td>BIGINT, TEXT, TEXT, TS</td><td>Strava OAuth callback</td><td><strong>Canonical Strava OAuth tokens in v2.</strong> The duplicate copies in <code>connector_tokens</code> are kept in sync but profile.* wins.</td></tr>
+<tr><td><code>strava_connected_at, strava_auto_push, strava_push_privacy, strava_push_title_format</code></td><td>TS, BOOL, TEXT, TEXT</td><td>Strava OAuth + settings</td><td>Push prefs.</td></tr>
+<tr><td><code>apple_user_id, apple_email</code></td><td>TEXT</td><td>Sign in with Apple</td><td>Apple identity provider key.</td></tr>
+<tr><td><code>health_connected_at</code></td><td>TS</td><td>iOS HealthKit consent</td><td>"Connected" badge.</td></tr>
+<tr><td><code>notification_token, notification_prefs</code></td><td>TEXT, JSONB</td><td>iOS APNs registration + Settings UI</td><td>JSONB has master_enabled, quiet hours, race_day_enabled, weekly_checkin_time, etc.</td></tr>
+<tr><td><code>onboarded_at, onboarding_completed_at, connections_skipped</code></td><td>TS, TS, BOOL</td><td>Onboarding wizard</td><td>Funnel timestamps.</td></tr>
+<tr><td><code>goal_race_distance, goal_race_date, goal_race_time</code></td><td>TEXT, DATE, TEXT</td><td>Onboarding wizard (cached)</td><td>Snapshot used by plan-builder before <code>races</code> row exists.</td></tr>
+<tr><td><code>tt_goal_distance, tt_goal_time</code></td><td>TEXT</td><td>Settings</td><td>Time-trial / secondary goal.</td></tr>
+<tr><td><code>weekly_mileage_target, weekly_frequency</code></td><td>NUMERIC, INT</td><td>Onboarding</td><td>Volume targets.</td></tr>
+<tr><td><code>history_avg_weekly_mi, history_longest_recent_mi, history_years_running</code></td><td>NUMERIC, NUMERIC, INT</td><td>Onboarding</td><td>Pre-Strava history snapshot.</td></tr>
+<tr><td><code>user_settings</code></td><td>JSONB</td><td>Settings UI / coach engine</td><td>Flexible per-runner toggles (e.g. unit preferences).</td></tr>
+<tr><td class="mute"><code>hrmax, rhr</code></td><td class="mute">INT</td><td class="mute">(legacy, unused in v2)</td><td class="mute">Old single-table HR storage. v2 reads <code>users.max_hr</code> / <code>users.resting_hr</code>.</td></tr>
+</table>
+
+<h3>user_prefs · weekly schedule</h3>
+<p><span class="pill p-canonical">canonical</span> Read by the
+plan-builder, adapter, and watch workout selector.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>What it holds</th></tr>
+<tr><td><code>user_uuid</code></td><td>UUID FK</td><td>Join key.</td></tr>
+<tr><td><code>level</code></td><td>TEXT</td><td>Duplicate of <code>profile.experience_level</code>. Plan-builder reads from profile.</td></tr>
+<tr><td><code>long_run_dow</code></td><td>INT (0=Sun..6=Sat)</td><td>Long-run day. <strong>Numeric form</strong> — plan-builder canonical.</td></tr>
+<tr><td><code>quality_dows</code></td><td>TEXT ("2,4")</td><td>Comma-separated dows for quality. Plan-builder canonical.</td></tr>
+<tr><td><code>rest_dow</code></td><td>INT</td><td>Rest day. Plan-builder canonical.</td></tr>
+<tr><td><code>long_run_day, quality_days, rest_day</code></td><td>TEXT</td><td>Legacy string form ("Sun" / "Tue / Thu" / "Sat"). Some legacy surfaces read.</td></tr>
+<tr><td><code>units</code></td><td>TEXT</td><td>'imperial' / 'metric'. Driven by Settings.</td></tr>
+</table>
+
+<h3>sessions · server-side opaque tokens</h3>
+<p><span class="pill p-canonical">canonical</span> One row per active
+authentication. <code>session_token</code> is sha256 of the raw 32-byte
+token (the client holds raw; server never persists raw).</p>
+<table>
+<tr><th>Column</th><th>What</th></tr>
+<tr><td><code>id, user_id, session_token, kind ('cookie'|'app'), expires_at, revoked_at, created_at, last_used_at, ip_address, user_agent</code></td><td>90-day TTL by default. Cron <code>cleanExpired()</code> purges.</td></tr>
+</table>
+
+<h3>device_tokens · APNs push tokens</h3>
+<p><span class="pill p-canonical">canonical</span> Per (user × device).
+Revoked on unregister or token refresh.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="ingest">3 · L4 — Ingest paths — where data comes from</h2>
+<p>
+  Every byte of runner data enters the system through one of five paths.
+  Each path has a single owning API route, a clear authentication
+  contract, and a defined destination table in L1. <strong>Every
+  signed-up user (David today, any future sign-up) uses these same
+  five paths.</strong>
+</p>
+
+<div class="source-card health">
+<div class="lhs health">Apple<br>HealthKit</div>
+<div class="rhs">
+<strong>Path:</strong> iOS app reads HealthKit on a schedule + on observer
+fires → POST <code>/api/ingest/health</code> with Bearer.<br>
+<strong>Auth:</strong> Bearer (session kind=app).<br>
+<strong>Writes to:</strong>
+<ul>
+  <li><code>health_samples</code> — every sample (UPSERT on <code>(user_id, sample_type, sample_date)</code>). 19 sample types supported today: hrv, resting_hr, max_hr, respiratory_rate, sleep_hours, wrist_temp, run_power, cadence, vertical_ratio, ground_contact_time, stride_length, vertical_oscillation, spo2, active_energy, vo2_max, body_fat_pct, lean_mass, body_mass, hr_recovery.</li>
+  <li><code>users.max_hr</code> / <code>users.resting_hr</code> — auto-ratchet from new <code>max_hr</code> / <code>resting_hr</code> samples (unless <code>*_override</code> is set).</li>
+  <li><code>profile.vo2max_apple</code> — wellness signal only.</li>
+  <li><code>profile.health_connected_at</code> — bumped on first ingest.</li>
+  <li><code>connector_tokens(provider='apple_health')</code> — last_sync_at, activities_count.</li>
+</ul>
+<strong>Cadence:</strong> iOS bridge runs on background fetch + HealthKit observer fires + app launch. Idempotent UPSERTs.<br>
+<strong>David today:</strong> 2,720 samples, 19 types, range 2025-05-22 → 2026-05-30.
+</div>
+</div>
+
+<div class="source-card strava">
+<div class="lhs strava">Strava</div>
+<div class="rhs">
+<strong>Paths (3):</strong>
+<ol>
+  <li><strong>OAuth connect</strong> · GET <code>/api/auth/strava</code> → upserts <code>users</code> (if new), writes <code>profile.strava_access_token</code> + refresh + expires + <code>strava_athlete_id</code>, writes/updates <code>connector_tokens(provider='strava')</code>.</li>
+  <li><strong>Activity sync</strong> · cron <code>/api/cron/keep-warm</code> + on-demand from web. Calls Strava API with refreshed token, normalizes each activity, UPSERTs <code>strava_activities</code> (PK = Strava activity id). Tombstones go to <code>deleted_activity_ids</code>.</li>
+  <li><strong>Webhook</strong> · Strava POSTs to <code>/api/strava/webhook</code> on activity create/update/delete. Logged to <code>strava_webhook_events</code>; triggers a sync of just that activity.</li>
+</ol>
+<strong>Auth:</strong> OAuth code (sign-in flow). Webhooks use a shared verify token.<br>
+<strong>Writes to:</strong>
+<ul>
+  <li><code>strava_activities</code> · normalized payload in <code>data JSONB</code>; full Strava response in <code>detail JSONB</code>. Auto-attached shoe via <code>shoe_id</code>.</li>
+  <li><code>strava_pushes</code> · audit when <code>strava_writeback</code> renames the activity.</li>
+  <li><code>strava_sync_state</code> · cursor (currently global key/value).</li>
+  <li><code>strava_webhook_events</code> · raw webhook log.</li>
+</ul>
+<strong>David today:</strong> 125 activities, connected 2026-05-18, latest sync 2026-05-25.
+</div>
+</div>
+
+<div class="source-card watch">
+<div class="lhs watch">Apple<br>Watch</div>
+<div class="rhs">
+<strong>Path:</strong> Watch executes a workout from the prescribed plan → on completion, iOS HealthKit observer reads HKWorkout + HKWorkoutRoute → POST <code>/api/watch/workouts/complete</code> + POST <code>/api/watch/route</code>.<br>
+<strong>Auth:</strong> Bearer.<br>
+<strong>Writes to:</strong>
+<ul>
+  <li><code>workout_completions</code> · prescribed-vs-executed per-interval (<code>phases JSONB</code>). UPSERT on (<code>user_id</code>, <code>workout_id</code>).</li>
+  <li><code>workout_routes</code> · polyline + per-mile splits. UPSERT on (<code>user_id</code>, <code>started_at</code>). Powers the map for watch-only runs that never reach Strava.</li>
+  <li><code>health_samples</code> · workout HR samples flow through the HealthKit ingest path.</li>
+</ul>
+<strong>Read by:</strong> <code>/runs/[id]</code> for the recap; <code>/api/watch/today</code> to send back the next prescribed workout.<br>
+<strong>David today:</strong> 10 workout_completions, 24 workout_routes.
+</div>
+</div>
+
+<div class="source-card manual">
+<div class="lhs manual">Manual<br>(runner)</div>
+<div class="rhs">
+<strong>Paths:</strong> One API route per kind. All Bearer-authenticated.
+<ul>
+  <li><code>POST /api/checkin</code> → <code>check_ins</code> (v2 reply-chip flow, post-briefing rating + note + extras) + <code>daily_checkin</code> (legacy energy/soreness/stress 1-10).</li>
+  <li><code>POST /api/niggle</code> → <code>niggles</code> (body part + severity 1-10 + status). Recovery selection writes <code>niggle_recovery</code>.</li>
+  <li><code>POST /api/sick</code> → <code>sick_episodes</code> (symptoms[], has_fever, started). Recovery writes <code>sick_recovery</code>.</li>
+  <li><code>POST /api/run/manual</code> → <code>strava_activities</code> with a synthetic id (for watch-only or untracked runs that user logs by hand).</li>
+  <li><code>POST /api/shoe</code> → <code>shoes</code> (brand, model, color, run_types[], mileage_cap). Mileage auto-increments on run attribution.</li>
+  <li><code>POST /api/race</code> → <code>races</code> (slug, meta JSONB, course_source). Auto-matches <code>course_library</code> by slug.</li>
+  <li><code>POST /api/profile</code> + <code>POST /api/profile/notifications</code> + <code>POST /api/settings</code> → <code>profile</code> + <code>users</code> + <code>user_prefs</code>.</li>
+  <li><code>POST /api/today/skip</code> → <code>skipped_workouts</code>.</li>
+  <li><code>POST /api/coach/proposal</code> accept/reject → <code>coach_proposals.status</code>.</li>
+  <li><strong>(not yet exposed)</strong> Runner free-text notes → <code>runner_notes</code> (schema ready, no UI yet).</li>
+  <li><strong>(not yet exposed)</strong> Strength sessions, cross-training sessions, recovery sessions → respective tables (schema ready).</li>
+</ul>
+<strong>David today:</strong> 12 daily_checkin, 8 check_ins, 2 niggles, 2 sick_episodes, 6 shoes, 10 races, 1 day_action.
+</div>
+</div>
+
+<div class="source-card coach">
+<div class="lhs coach">Coach<br>engine</div>
+<div class="rhs">
+<strong>Path:</strong> Triggered by user actions (open /today, ack
+intent, accept proposal) or cron (<code>refresh-briefings</code>,
+<code>run-adaptations</code>). Reads doctrine from
+<code>/Research/*.md</code> + the runner's data, calls Anthropic API,
+writes derived rows.<br>
+<strong>Writes to:</strong>
+<ul>
+  <li><code>briefings</code> · generated payload (surface, mode, signature, payload JSONB).</li>
+  <li><code>coach_actions</code> · audit of every adapt/notify/propose (mode: unilateral/propose/notify).</li>
+  <li><code>coach_proposals</code> · runner-facing accept/reject items.</li>
+  <li><code>coach_intents</code> · closed-loop commitments ("Lock in 168 cadence"). UI surfaces with reply chips.</li>
+  <li><code>coach_reads_cache</code> · TTL'd per-runner cache of computed reads. Invalidated on relevant input changes.</li>
+  <li><code>coach_today_cache</code> · global signature cache for /today briefings.</li>
+  <li><code>coach_usage</code> · per-call telemetry (input/output/cache tokens, cost_micro_usd).</li>
+  <li><code>plan_mutations</code> · audit row when the adapter changes a plan_workout.</li>
+  <li><code>plan_workouts</code> field updates (the adapter mutates rows in place).</li>
+</ul>
+<strong>David today:</strong> 372 coach_usage rows, 4 briefings, 4 coach_intents, 2 coach_actions, 2 coach_proposals.
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="storage">4 · L1 — Canonical storage map — where each field lives</h2>
+<p>
+  When an agent needs to read or write a piece of information, this is
+  the table to use. Listed by data domain.
+</p>
+
+<h3>Identity &amp; auth</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Notes</th></tr>
+<tr><td>User PK (UUID)</td><td><code>users.id</code></td><td>Every per-user table FK to this.</td></tr>
+<tr><td>Email, name, age, sex, location</td><td><code>users.*</code></td><td>profile.* duplicates exist; users wins.</td></tr>
+<tr><td>Sign-in identity provider IDs</td><td><code>profile.apple_user_id</code>, <code>profile.strava_athlete_id</code></td><td>Lookup keys for matching incoming auth to existing user.</td></tr>
+<tr><td>Session tokens</td><td><code>sessions.session_token</code> (sha256-hashed)</td><td>Opaque, 32-byte hex, 90d TTL.</td></tr>
+<tr><td>APNs device tokens</td><td><code>device_tokens.device_token</code></td><td>Per (user, device).</td></tr>
+<tr><td>Admin status</td><td><code>users.is_admin</code></td><td>Auto-promoted for <code>LEGACY_OWNER_EMAIL</code>.</td></tr>
+<tr><td>Approval state</td><td><code>users.status</code></td><td>'pending' | 'active' | 'denied'.</td></tr>
+<tr><td>Timezone</td><td><code>users.timezone</code></td><td>IANA identifier from iOS bridge.</td></tr>
+</table>
+
+<h3>Runner physiology &amp; calibration</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Source</th></tr>
+<tr><td>Max HR (auto)</td><td><code>users.max_hr</code></td><td>Apple Health ratchet.</td></tr>
+<tr><td>Max HR (manual override)</td><td><code>users.max_hr_override</code></td><td>User input, wins over auto.</td></tr>
+<tr><td>Resting HR (auto)</td><td><code>users.resting_hr</code></td><td>Apple Health rolling baseline.</td></tr>
+<tr><td>Resting HR (manual override)</td><td><code>users.resting_hr_override</code></td><td></td></tr>
+<tr><td>LTHR (threshold HR)</td><td><code>profile.lthr</code></td><td>Computed from race avg HR or manual.</td></tr>
+<tr><td>Peak HR observed</td><td><code>profile.hrmax_observed</code></td><td>Validates user-entered max_hr.</td></tr>
+<tr><td>Current VDOT</td><td><code>users.vdot_last_reviewed</code> · OR override at <code>users.vdot_manual_override</code></td><td>Race-derived aggregate, recomputed on each new result.</td></tr>
+<tr><td>VO2max from Apple</td><td><code>profile.vo2max_apple</code></td><td>Wellness signal only; never replaces VDOT.</td></tr>
+<tr><td>Height (cm)</td><td><code>profile.height_cm</code></td><td>Cadence thresholds depend on leg length.</td></tr>
+<tr><td>Birthday</td><td><code>profile.birthday</code></td><td>HR <code>220-age</code> sanity check.</td></tr>
+<tr><td>Experience level</td><td><code>profile.experience_level</code></td><td>beginner/intermediate/advanced/advanced_plus. <strong>Plan generator canonical.</strong></td></tr>
+</table>
+
+<h3>Runner preferences</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Notes</th></tr>
+<tr><td>Long-run day-of-week</td><td><code>user_prefs.long_run_dow</code> (INT 0-6)</td><td>Numeric is canonical.</td></tr>
+<tr><td>Quality days-of-week</td><td><code>user_prefs.quality_dows</code> ("2,4")</td><td>Comma-separated.</td></tr>
+<tr><td>Rest day</td><td><code>user_prefs.rest_dow</code> (INT)</td><td></td></tr>
+<tr><td>Cross-training modes</td><td><code>profile.cross_training_modes</code> TEXT[]</td><td>'bike', 'swim', 'hike', etc.</td></tr>
+<tr><td>Fueling preferences</td><td><code>profile.fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr</code></td><td>Drives training-fueling planner.</td></tr>
+<tr><td>Notification preferences (rich)</td><td><code>profile.notification_prefs</code> JSONB</td><td>master, quiet_hours, race_day, weekly_checkin_time, etc.</td></tr>
+<tr><td>Units (imperial/metric)</td><td><code>user_prefs.units</code></td><td></td></tr>
+<tr><td>Brand accent color</td><td><code>users.accent_color</code></td><td>#RRGGBB or null.</td></tr>
+<tr><td>Strava push prefs</td><td><code>profile.strava_auto_push, strava_push_privacy, strava_push_title_format</code></td><td>Drives writeback behavior.</td></tr>
+<tr><td>Strava writeback master switch</td><td><code>users.strava_writeback</code></td><td></td></tr>
+</table>
+
+<h3>Activity &amp; run data</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Notes</th></tr>
+<tr><td>Run / activity</td><td><code>strava_activities</code></td><td>PK = Strava id (or synthetic for manual). <code>data JSONB</code> normalized; <code>detail JSONB</code> full Strava response.</td></tr>
+<tr><td>Watch workout (prescribed-vs-executed)</td><td><code>workout_completions</code></td><td>UPSERT on (user_id, workout_id). Phases JSONB.</td></tr>
+<tr><td>GPS route + per-mile splits (watch-only)</td><td><code>workout_routes</code></td><td>Polyline + splits JSON.</td></tr>
+<tr><td>Activity tombstones</td><td><code>deleted_activity_ids</code></td><td>Re-sync should not resurrect.</td></tr>
+<tr><td>Watch/Strava merge override</td><td><code>run_merge_overrides</code></td><td>Manual fix when auto-merge gets it wrong.</td></tr>
+<tr><td>Post-run RPE + notes</td><td><code>post_run_rpe</code></td><td>UPSERT on (user_id, activity_id).</td></tr>
+<tr><td>Shoes</td><td><code>shoes</code></td><td>Mileage auto-incremented by shoe-picker; manual pick clears <code>shoe_auto_assigned_at</code>.</td></tr>
+<tr><td>Strava writeback audit</td><td><code>strava_pushes</code></td><td>Per push: kind, status.</td></tr>
+</table>
+
+<h3>Health / wellness time-series</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Notes</th></tr>
+<tr><td>HealthKit samples (all kinds)</td><td><code>health_samples</code></td><td>UPSERT on (user_id, sample_type, sample_date). 19 sample_type values today.</td></tr>
+<tr><td>Daily check-in (legacy)</td><td><code>daily_checkin</code></td><td>Energy/soreness/stress 1-10 per day.</td></tr>
+<tr><td>Reply chip post-briefing</td><td><code>check_ins</code></td><td>v2 surface. rating + briefing_id + extras JSONB.</td></tr>
+<tr><td>Niggle log</td><td><code>niggles</code></td><td>Active = <code>cleared_at IS NULL</code>.</td></tr>
+<tr><td>Niggle recovery selection</td><td><code>niggle_recovery</code></td><td>Joins by niggle_id.</td></tr>
+<tr><td>Sick episode</td><td><code>sick_episodes</code></td><td>Active = <code>cleared_at IS NULL</code>.</td></tr>
+<tr><td>Sick recovery</td><td><code>sick_recovery</code></td><td></td></tr>
+<tr><td>Active injury</td><td><code>runner_injuries</code></td><td><code>resolved_date IS NULL</code> = active. Triggers INJURY mode.</td></tr>
+<tr><td>Active illness</td><td><code>runner_illnesses</code></td><td>Triggers ILLNESS mode.</td></tr>
+<tr><td>Strength session</td><td><code>strength_sessions</code></td><td>Coach prescribes 2/wk per Research/07.</td></tr>
+<tr><td>Cross-training session</td><td><code>cross_training_sessions</code></td><td>Bike/swim/hike. Credits fitness preservation in INJURY mode.</td></tr>
+<tr><td>Recovery session</td><td><code>recovery_sessions</code></td><td>Massage/sauna/cold plunge.</td></tr>
+</table>
+
+<h3>Plan &amp; races</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Notes</th></tr>
+<tr><td>Race (one per goal)</td><td><code>races</code></td><td>Slug UNIQUE. <code>meta JSONB</code>, <code>actual_result JSONB</code>, <code>course_geometry JSONB</code> (or attached from <code>course_library</code>).</td></tr>
+<tr><td>Training plan (artifact)</td><td><code>training_plans</code></td><td>One row per plan version. <code>archived_iso IS NULL</code> = active.</td></tr>
+<tr><td>Phase (BASE / BUILD / PEAK / TAPER / RACE_WEEK)</td><td><code>plan_phases</code></td><td>References plan_id.</td></tr>
+<tr><td>Week (with flags is_cutback, is_peak, is_race_week)</td><td><code>plan_weeks</code></td><td>References plan_id + phase_id.</td></tr>
+<tr><td>Workout (one per scheduled day)</td><td><code>plan_workouts</code></td><td>type, distance_mi, pace_target_s_per_mi, workout_spec JSONB (intervals).</td></tr>
+<tr><td>Plan adaptation audit</td><td><code>plan_mutations</code></td><td>trigger_kind, signal_snapshot, changed_fields, status (applied/proposed/declined).</td></tr>
+<tr><td>Skipped workout</td><td><code>skipped_workouts</code></td><td>UNIQUE per (user, date).</td></tr>
+<tr><td>Day action (snooze, replan, etc.)</td><td><code>day_actions</code></td><td>Generic per-day action log.</td></tr>
+<tr><td>Adaptation log inside plan</td><td><code>training_plans.adaptation_log JSONB</code> + <code>last_adapted_at</code></td><td>Compact running list of recent adaptations.</td></tr>
+</table>
+
+<h3>Coach engine outputs</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Notes</th></tr>
+<tr><td>Generated briefing (rendered)</td><td><code>briefings</code></td><td>surface, mode, signature (cache key), payload JSONB.</td></tr>
+<tr><td>Closed-loop runner commitment</td><td><code>coach_intents</code></td><td>field, value, briefing_id, acknowledged_at.</td></tr>
+<tr><td>Coach audit log</td><td><code>coach_actions</code></td><td>action_type, mode, trigger, rationale, payload.</td></tr>
+<tr><td>Pending proposal</td><td><code>coach_proposals</code></td><td>status pending → accepted/rejected/expired.</td></tr>
+<tr><td>Free-text journal</td><td><code>runner_notes</code></td><td>kind (general/injury/illness/schedule/other). coach_ack written back when coach reads it.</td></tr>
+<tr><td>Personal non-race goals</td><td><code>personal_goals</code></td><td>volume/speed/distance/habit/strength/health.</td></tr>
+<tr><td>Per-runner cache</td><td><code>coach_reads_cache</code></td><td>UNIQUE (user_uuid, read_kind, cache_key). TTL'd.</td></tr>
+<tr><td>Per-day briefing cache</td><td><code>coach_today_cache</code></td><td>Global signature cache (TODO: per-user, see Shipped section).</td></tr>
+<tr><td>Cost telemetry</td><td><code>coach_usage</code></td><td>input/output/cache tokens, cost_micro_usd.</td></tr>
+</table>
+
+<h3>Notifications</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th></tr>
+<tr><td>Push token per device</td><td><code>device_tokens</code></td></tr>
+<tr><td>Push preferences</td><td><code>profile.notification_prefs</code> JSONB</td></tr>
+<tr><td>Scheduled notification</td><td><code>notifications_pending</code> (category, fire_at, payload, dedup_key)</td></tr>
+<tr><td>Delivered/failed audit</td><td><code>notifications_log</code></td></tr>
+</table>
+
+<h3>Connectors</h3>
+<table>
+<tr><th>Information</th><th>Canonical location</th><th>Notes</th></tr>
+<tr><td>Strava OAuth tokens (read path)</td><td><code>profile.strava_access_token, strava_refresh_token, strava_expires_at</code></td><td>v2 reads from profile.</td></tr>
+<tr><td>Apple Health "connected" state</td><td><code>profile.health_connected_at</code> + <code>connector_tokens(provider='apple_health')</code></td><td>Apple Health uses no OAuth — connector_tokens row carries sync metadata only.</td></tr>
+<tr><td>Per-provider sync state</td><td><code>connector_tokens.last_sync_at, last_sync_status, activities_count</code></td><td>Will become canonical for OAuth credentials in M2 (see Shipped).</td></tr>
+<tr><td>Strava sync cursor</td><td><code>strava_sync_state</code></td><td>Global key/value today; per-user in M2.</td></tr>
+<tr><td>Strava webhook events</td><td><code>strava_webhook_events</code></td><td>Raw log.</td></tr>
+<tr><td>Strava webhook subscriptions</td><td><code>strava_webhook_subscriptions</code></td><td>Subscription state.</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="surfaces">5 · Read paths — what each surface reads</h2>
+
+<table>
+<tr><th>Surface</th><th>API route</th><th>Reads</th></tr>
+<tr><td><strong>/today</strong></td><td><code>GET /api/today</code> (via server component), <code>/api/training/state</code>, <code>/api/readiness</code>, <code>/api/prescription</code>, <code>/api/briefing?surface=today</code></td><td><code>users, profile, user_prefs, training_plans, plan_workouts, plan_weeks, plan_phases, plan_mutations, races, daily_checkin, check_ins, niggles, sick_episodes, health_samples, briefings, coach_intents, coach_today_cache, strava_activities</code></td></tr>
+<tr><td><strong>/plan</strong></td><td><code>/api/plan/week</code>, <code>/api/plan/workout</code></td><td><code>training_plans, plan_phases, plan_weeks, plan_workouts, plan_mutations, races</code></td></tr>
+<tr><td><strong>/me · /profile</strong></td><td><code>/api/profile/state</code>, <code>/api/profile</code>, <code>/api/settings</code></td><td><code>users, profile, user_prefs, shoes, connector_tokens, device_tokens, races</code></td></tr>
+<tr><td><strong>/health</strong></td><td><code>/api/health/state</code>, <code>/api/health/series</code></td><td><code>users, profile, health_samples, daily_checkin, check_ins, niggles, sick_episodes</code></td></tr>
+<tr><td><strong>/runs/[id]</strong></td><td><code>/api/runs/[id]</code></td><td><code>strava_activities, workout_completions, workout_routes, post_run_rpe, shoes, plan_workouts (planned vs executed)</code></td></tr>
+<tr><td><strong>/log</strong></td><td><code>/api/log</code></td><td><code>strava_activities, workout_completions, skipped_workouts, recovery_sessions, strength_sessions, cross_training_sessions</code></td></tr>
+<tr><td><strong>/races · /races/[slug]</strong></td><td><code>/api/races</code>, <code>/api/race/[slug]</code>, <code>/api/race/gpx</code></td><td><code>races, course_library, training_plans (race-tied), plan_workouts (race-week)</code></td></tr>
+<tr><td><strong>/learn/[slug]</strong></td><td><code>/api/learn/[slug]</code></td><td><code>learn_articles</code></td></tr>
+<tr><td><strong>iOS /watch/today</strong></td><td><code>/api/watch/today</code></td><td><code>training_plans, plan_workouts (today's row), profile (LTHR), users (max_hr / resting_hr)</code></td></tr>
+<tr><td><strong>Onboarding wizard</strong></td><td><code>/api/onboarding/complete</code></td><td>Writes: <code>users, profile, user_prefs</code>; optionally reads <code>races</code> if a goal race was selected.</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="connectors">6 · L4 — Connectors — OAuth, sync, the 12-provider model</h2>
+<p>
+  <code>connector_tokens</code> is the universal connector table.
+  CHECK constraint allows 12 providers; only 2 are wired today.
+</p>
+
+<h3>Live today</h3>
+<table>
+<tr><th>Provider</th><th>Auth</th><th>Sync model</th><th>Tables touched</th></tr>
+<tr><td><strong>apple_health</strong></td><td>No OAuth — iOS HealthKit consent client-side</td><td>iOS bridge pushes samples via Bearer to <code>/api/ingest/health</code>. Schedule: background fetch + observer fires + app launch.</td><td><code>health_samples</code>, <code>users.max_hr/resting_hr</code>, <code>profile.vo2max_apple/health_connected_at</code>, <code>connector_tokens(provider='apple_health')</code></td></tr>
+<tr><td><strong>strava</strong></td><td>OAuth 2.0 via <code>/api/auth/strava</code></td><td>OAuth refresh + activity sync (<code>/api/cron/keep-warm</code>) + webhook events (<code>/api/strava/webhook</code>). Token expiry ~6 hrs; auto-refresh.</td><td><code>profile.strava_*</code>, <code>connector_tokens(provider='strava')</code>, <code>strava_activities</code>, <code>strava_pushes</code>, <code>strava_sync_state</code>, <code>strava_webhook_events</code></td></tr>
+</table>
+
+<h3>Pre-allowlisted (schema ready, not yet implemented)</h3>
+<p>
+  The <code>connector_tokens.provider</code> CHECK constraint includes:
+  <code>garmin</code>, <code>coros</code>, <code>polar</code>,
+  <code>suunto</code>, <code>wahoo</code>, <code>google_fit</code>,
+  <code>final_surge</code>, <code>training_peaks</code>,
+  <code>whoop</code>, <code>oura</code>. Adding any of these requires:
+</p>
+<ol>
+  <li>OAuth route at <code>/api/auth/&lt;provider&gt;</code>.</li>
+  <li>Sync job (cron or webhook) that normalizes to either <code>strava_activities</code> shape (runs) or <code>health_samples</code> shape (biometrics).</li>
+  <li>If sample_type isn't already supported, extend the <code>health_samples</code> taxonomy.</li>
+  <li>No new table required — they all write to existing destinations.</li>
+</ol>
+
+<h3>The HealthKit connect flow (iOS)</h3>
+<pre>iOS app launch
+   │
+   ├─ Sign in with Apple   →  POST /api/auth/apple
+   │                          ↳ upsert users (by apple_user_id)
+   │                          ↳ create sessions(kind='app')
+   │                          ↳ return Bearer + user payload
+   │
+   ├─ Request HealthKit authorization (client-side, native sheet)
+   │   ↳ user grants categories: workouts, HR, HRV, sleep, etc.
+   │
+   ├─ POST /api/ingest/health   (Bearer + samples payload)
+   │   ↳ UPSERT health_samples per (user_id, sample_type, sample_date)
+   │   ↳ ratchet users.max_hr / resting_hr if exceeded
+   │   ↳ bump profile.health_connected_at on first sample
+   │   ↳ UPSERT connector_tokens(provider='apple_health')
+   │
+   └─ Register APNs token   →  POST /api/notifications/register
+       ↳ UPSERT device_tokens</pre>
+
+<h3>The Strava connect flow (web or iOS)</h3>
+<pre>User clicks "Connect Strava"
+   │
+   ├─ Redirect to strava.com/oauth/authorize?...&redirect_uri=/api/auth/strava
+   │
+   └─ Strava redirects back with code
+       │
+       └─ GET /api/auth/strava?code=XXX
+           ↳ exchange code → access + refresh + expires
+           ↳ fetch athlete profile
+           ↳ if no users row matches strava_athlete_id, create one
+           ↳ write profile.strava_athlete_id / access / refresh / expires
+           ↳ UPSERT connector_tokens(provider='strava')
+           ↳ set profile.strava_connected_at = NOW()
+           ↳ create sessions(kind='cookie') for web; return Bearer for iOS
+           ↳ kick a background sync of last 30 days of activities</pre>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="plan">7 · L1 — Training plan — artifact + workouts + adaptation</h2>
+
+<div class="ok">
+<strong>Status</strong> · David's active plan exists and is now properly
+claimed to his UUID: <code>8599e3a1-07ab-4610-9f77-eae6a6f80032</code>.
+Race-prep for Americas Finest City Half (2026-08-16), authored 2026-05-20.
+13 weeks · 5 phases (BASE / BUILD / PEAK / TAPER / RACE_WEEK) · 91 workouts ·
+spans 2026-05-18 → 2026-08-16.
+</div>
+
+<h3>The four-level hierarchy</h3>
+<pre>training_plans          1 row per plan version (active when archived_iso IS NULL)
+   ├─ plan_phases       1 row per phase (typically 5 per plan)
+   │     │
+   ├─ plan_weeks        1 row per week (typically 12-16 per plan)
+   │     │   ↳ FK to phase_id
+   │     │
+   └─ plan_workouts     1 row per scheduled day (7 × weeks)
+         │   ↳ FK to plan_id + week_id
+         │   ↳ Carries original_* + workout_spec JSONB (interval breakdown)
+         │
+         plan_mutations  audit log of coach-driven changes to plan_workouts</pre>
+
+<h3>Plan-builder flow (POST /api/plan/generate)</h3>
+<pre>Inputs:
+  • race row (or maintenance mode)
+  • profile.experience_level
+  • profile.lthr · users.max_hr · users.resting_hr · users.vdot_last_reviewed
+  • user_prefs.long_run_dow · quality_dows · rest_dow
+  • profile.weekly_mileage_target · weekly_frequency · history_*
+  • profile.fuel_brand · fuel_target_g_per_hr
+
+Process:
+  1. Archive any active plan for this user (sets archived_iso)
+  2. Pick template from Research/22 by distance × experience × weeks-to-race
+  3. Generate phases per Research/00a §13
+  4. Generate weeks (insert cutback / peak / race_week flags)
+  5. Generate workouts; compute pace_target_s_per_mi from VDOT
+  6. Compute workout_spec (intervals breakdown) for quality workouts
+  7. Write training_plans + plan_phases + plan_weeks + plan_workouts
+
+Output: the active plan_id.</pre>
+
+<h3>Plan-adapter flow (POST /api/cron/run-adaptations or manual)</h3>
+<pre>For each active plan:
+  1. Read recent signals: strava_activities (last 14d), health_samples (sleep/HRV/RHR),
+     daily_checkin, check_ins, niggles, sick_episodes, skipped_workouts.
+  2. Detect triggers per Research/00b decision matrix:
+     · runner-skip · low-readiness · niggle · sick · hilly-deviation ·
+     · failed-quality · pace-slip · sleep-debt · etc.
+  3. For each trigger, generate a mutation against the next N plan_workouts.
+  4. Decide unilateral vs propose vs notify per autonomy contract.
+  5. Write plan_mutations row (status = applied | proposed | declined).
+  6. If applied: UPDATE plan_workouts in place.
+  7. If proposed: write coach_proposals row.
+  8. Write coach_actions audit.</pre>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="shared">8 · L2 — Research / doctrine layer</h2>
+<p>
+  The shared knowledge base every coach engine pulls from. Two parts:
+  <strong>(a) doctrine files</strong> under <code>/Research/</code> (28
+  markdown files — canonical, read by the engine at runtime) and
+  <strong>(b) two DB tables</strong> (<code>course_library</code> +
+  <code>learn_articles</code>) that surface curated, runner-facing
+  versions. <strong>Everyone reads this layer; no individual user
+  writes to it</strong> — updates flow through deliberate seed runs.
+</p>
+
+<h3>Part A · Doctrine files (canonical knowledge base)</h3>
+<table>
+<tr><th>File group</th><th>What it covers</th><th>Read by</th></tr>
+<tr><td><code>Research/00a, 00b</code></td><td>Consolidated training + recovery references rewritten for AI consumption.</td><td>Coach engine on every state load.</td></tr>
+<tr><td><code>Research/01..04</code></td><td>Foundational inputs: VDOT pace zones, race-time prediction, HR zones, workout vocabulary.</td><td>Plan-builder, adapter, pace prescription.</td></tr>
+<tr><td><code>Research/05..08</code></td><td>Practical coaching: injury return, weather adjustments, strength, pacing + race-week.</td><td>Adapter mutation triggers, race-week taper.</td></tr>
+<tr><td><code>Research/09..16</code></td><td>Specialized: cross-training, mobility, course-specific, travel, sex, age, wearable data, form biomechanics.</td><td>Mode-specific reads (INJURY, ILLNESS, TRAVEL, MASTERS, etc.).</td></tr>
+<tr><td><code>Research/17..19</code></td><td>Equipment + fueling.</td><td>Shoe assignment, fueling planner.</td></tr>
+<tr><td><code>Research/20..22, 24</code></td><td>Mental training, form corrections, plan templates, VDOT age/sex grading.</td><td>Plan template selection, age-graded VDOT.</td></tr>
+<tr><td><code>Research/GLOSSARY, SOURCES, INDEX</code></td><td>Cross-cut.</td><td>Citation surfacing.</td></tr>
+</table>
+
+<h3>Part B · DB-backed shared tables</h3>
+<p>Two global tables every signed-up runner reads. Populated centrally,
+not user-writable.</p>
+
+<h3>course_library · GPX library for known races</h3>
+<p><span class="pill p-shared">shared</span> 10 rows seeded.</p>
+<table>
+<tr><th>slug</th><th>Name</th><th>Distance (mi)</th><th>Gain (ft)</th><th>Source</th></tr>
+<tr><td><code>americas-finest-city</code></td><td>America's Finest City Half Marathon</td><td>13.1</td><td>210</td><td>JSON metadata + sources cited</td></tr>
+<tr><td><code>big-sur-marathon</code></td><td>Big Sur International Marathon</td><td>26.22</td><td>2,182</td><td>Official course page (primary verified)</td></tr>
+<tr><td><code>cim</code></td><td>California International Marathon</td><td>26.2</td><td>100</td><td>JSON metadata</td></tr>
+<tr><td><code>sombrero-half</code></td><td>Sombrero Half Marathon</td><td>13.16</td><td>283</td><td>JSON metadata</td></tr>
+<tr><td><code>disney-half-2026</code></td><td>Disney Half Marathon</td><td>13.109</td><td>—</td><td>Stub from David's race row</td></tr>
+<tr><td><code>rose-bowl-half-2026</code></td><td>Rose Bowl Half</td><td>13.109</td><td>—</td><td>Stub</td></tr>
+<tr><td><code>la-marathon-2026</code></td><td>LA Marathon (2026)</td><td>26.219</td><td>—</td><td>Stub</td></tr>
+<tr><td><code>los-angeles-marathon</code></td><td>Los Angeles Marathon (2027)</td><td>26.22</td><td>—</td><td>Stub</td></tr>
+<tr><td><code>run-malibu</code></td><td>Run Malibu</td><td>13.1</td><td>—</td><td>Stub</td></tr>
+<tr><td><code>dodgers</code></td><td>Dodgers 10K</td><td>6.21</td><td>—</td><td>Stub</td></tr>
+</table>
+<p class="sub">
+  Rich rows carry <code>geometry_json</code> with phase annotations, expected
+  facts (gain/peak/elevation), tolerances, and source citations. Stub rows
+  carry name + distance only and are ready for GPX import via
+  <code>POST /api/gpx/import</code>. <em>Note: the geometry_json schema
+  reserves a <code>trackPoints[]</code> array for actual GPS lat/lon —
+  currently empty placeholders until real GPX files are imported.</em>
+</p>
+
+<h3>learn_articles · the in-app research reader</h3>
+<p><span class="pill p-shared">shared</span> 24 rows seeded from
+<code>Research/INDEX.md</code>. One per doctrine file.</p>
+<table>
+<tr><th>Eyebrow group</th><th>Count</th><th>Slugs</th></tr>
+<tr><td>Foundational input layer</td><td>4</td><td><code>research-01-pace-zones-vdot · research-02-race-time-prediction · research-03-heart-rate-zones · research-04-workout-vocabulary</code></td></tr>
+<tr><td>Practical coaching logic</td><td>4</td><td><code>research-05-injury-return-protocols · research-06-weather-adjustments · research-07-strength-programming · research-08-pacing-and-race-week</code></td></tr>
+<tr><td>Specialized knowledge</td><td>8</td><td><code>research-09-cross-training · research-10-mobility-warmup · research-11-course-specific-training · research-12-travel-timezone · research-13-sex-specific-training · research-14-age-considerations · research-15-wearable-data · research-16-form-biomechanics</code></td></tr>
+<tr><td>Equipment and fueling</td><td>3</td><td><code>research-17-footwear · research-18-fueling-products · research-19-hydration-electrolytes</code></td></tr>
+<tr><td>Auxiliary</td><td>3</td><td><code>research-20-mental-training · research-21-form-corrections · research-22-plan-templates</code></td></tr>
+<tr><td>Foundational rewrites</td><td>2</td><td><code>research-00a-distance-running-training · research-00b-recovery-protocols</code></td></tr>
+</table>
+<p class="sub">
+  Each row carries body_md (summary), citations_json pointing back to the
+  source file in <code>/Research/</code>, and an empty
+  <code>related_slugs[]</code> ready for cross-linking. The coach engine
+  reads the full markdown at runtime (via filesystem); the in-app reader
+  serves the row.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="coach">9 · L3 — Coach layer</h2>
+<p>
+  The engine that closes the loop. <strong>Reads from L1 + L2;
+  writes derived state per-user.</strong> Triggered by user actions
+  (open /today, ack intent, accept proposal) or cron jobs
+  (<code>refresh-briefings</code>, <code>run-adaptations</code>).
+  Calls Anthropic's API with a structured prompt assembled from the
+  runner's L1 state and the relevant L2 doctrine.
+</p>
+
+<h3>What the coach reads (every call)</h3>
+<table>
+<tr><th>Input</th><th>From layer</th><th>Tables / sources</th></tr>
+<tr><td>Identity, physiology, schedule</td><td>L1</td><td><code>users, profile, user_prefs</code></td></tr>
+<tr><td>Recent runs (last 14d)</td><td>L1</td><td><code>strava_activities, workout_completions, workout_routes</code></td></tr>
+<tr><td>Active plan + this week</td><td>L1</td><td><code>training_plans, plan_workouts, plan_weeks, plan_phases, plan_mutations</code></td></tr>
+<tr><td>Health signals</td><td>L1</td><td><code>health_samples</code> (sleep, HRV, RHR, max_hr, cadence, sleep_debt)</td></tr>
+<tr><td>Manual logs</td><td>L1</td><td><code>daily_checkin, check_ins, niggles, sick_episodes, skipped_workouts, runner_notes</code></td></tr>
+<tr><td>Goals + races</td><td>L1</td><td><code>races, personal_goals</code></td></tr>
+<tr><td>Prior intents + proposals</td><td>L3</td><td><code>coach_intents, coach_proposals, coach_actions</code></td></tr>
+<tr><td>Doctrine</td><td>L2</td><td><code>/Research/*.md</code> (filesystem) + <code>learn_articles</code> for surface links</td></tr>
+<tr><td>Course knowledge</td><td>L2</td><td><code>course_library</code> for upcoming races</td></tr>
+</table>
+
+<h3>What the coach writes (per call)</h3>
+<table>
+<tr><th>Output</th><th>Table</th><th>Trigger</th></tr>
+<tr><td>Rendered briefing payload</td><td><code>briefings</code></td><td>/today, /health, race-detail render</td></tr>
+<tr><td>Runner commitment</td><td><code>coach_intents</code></td><td>Reply chip on a briefing card</td></tr>
+<tr><td>Adaptation action</td><td><code>coach_actions</code></td><td>Every adapt/notify/propose</td></tr>
+<tr><td>Plan change audit</td><td><code>plan_mutations</code></td><td>Per modified plan_workout</td></tr>
+<tr><td>Plan change applied</td><td><code>plan_workouts</code> (in place)</td><td>Mode = unilateral (autonomy contract §10.1)</td></tr>
+<tr><td>Pending proposal</td><td><code>coach_proposals</code></td><td>Mode = propose (autonomy contract §10.2)</td></tr>
+<tr><td>Cached read</td><td><code>coach_reads_cache</code></td><td>First compute; invalidated on input change</td></tr>
+<tr><td>Cost telemetry</td><td><code>coach_usage</code></td><td>Every Anthropic API call</td></tr>
+</table>
+
+<h3>Why doctrine lives in files, not DB</h3>
+<p>
+  The 28 markdown files under <code>/Research/</code> are the canonical
+  reference. Storing them in DB would require write surfaces, version
+  conflicts, and lossy round-trips through JSON. Files are
+  append-only, citation-rich, diff-friendly. The DB stores the runner's
+  derived state; the files store the principles that derive it. The
+  corpus is small enough (~28 docs) that the engine loads relevant
+  sections directly at prompt-assembly time.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="briefing">10 · L3 — Briefing payload — the (surface × mode × topics) contract</h2>
+<p>
+  The coach engine's output is a typed briefing payload, written to
+  <code>briefings.payload</code> as JSONB. Every surface (web, iOS) reads
+  the same shape and renders accordingly. <strong>This is the contract
+  between the coach engine and every client.</strong>
+</p>
+
+<h3>Payload shape</h3>
+<pre>{
+  "surface": "today" | "training" | "races" | "race-detail" | "health" | "profile",
+  "mode":    string,           // depends on surface — see matrix below
+  "lead":    string,           // 1-line tagline
+  "voice":   string[],         // 1-3 paragraphs of coach prose
+  "topics":  Topic[],          // typed cards — see kinds below
+  "_state":  CoachState        // snapshot the LLM saw (for debugging + render)
+}</pre>
+
+<h3>The (surface × mode) matrix — canonical, from <code>web-v2/lib/coach/router.ts</code></h3>
+<table>
+<tr><th>Surface</th><th>Valid modes</th><th>Mode meaning</th><th>How resolved</th></tr>
+<tr><td><code>today</code></td><td><code>pre-run</code> · <code>post-run</code> · <code>rest-day</code> · <code>race-day</code></td><td>Time-of-day / training-day type.</td><td>Today is rest day → rest-day; race today → race-day; ran today → post-run; else pre-run.</td></tr>
+<tr><td><code>training</code></td><td><code>base</code> · <code>build</code> · <code>peak</code> · <code>taper</code> · <code>race-week</code></td><td>Phase of the active plan.</td><td>From <code>training_plans.phaseLabel</code> at <code>today</code>.</td></tr>
+<tr><td><code>races</code></td><td><code>building</code> (&gt;60d) · <code>sharpening</code> (30-60d) · <code>race-week</code> (≤7d) · <code>off-season</code></td><td>Proximity to next A-race.</td><td><code>nextARace.days_to_race</code>.</td></tr>
+<tr><td><code>race-detail</code></td><td><code>building</code> · <code>sharpening</code> · <code>race-week</code> · <code>post-race</code></td><td>Per-race proximity (with post-race after the date).</td><td>Same proximity buckets, scoped to one race.</td></tr>
+<tr><td><code>health</code></td><td><code>steady</code> · <code>green</code> · <code>watch-amber</code> · <code>watch-red</code></td><td>Recovery signal severity.</td><td>RHR vs baseline + sleep deficit; <code>watch-red</code> when RHR +8 bpm AND sleep deficit ≥5h.</td></tr>
+<tr><td><code>profile</code></td><td><code>identity</code></td><td>Single mode — identity = "who you are as a runner."</td><td>Always.</td></tr>
+</table>
+
+<h3>Candidate topic kinds per (surface, mode)</h3>
+<p>
+  The router emits a list of <strong>candidate</strong> topic kinds per
+  mode. Each topic kind has a Zod schema + a <code>prereqs(state)</code>
+  function in <code>lib/topics/types.ts</code> that returns true iff the
+  topic has the data it needs. Topics whose prereqs fail are filtered
+  before reaching the LLM — <em>this is the truth contract</em>: the
+  coach never surfaces a topic that doesn't have its data.
+</p>
+
+<table>
+<tr><th>Topic kind</th><th>What it surfaces</th><th>Where it can appear</th></tr>
+<tr><td><code>next_workout</code></td><td>The next planned session — type, distance, target pace, intervals.</td><td>today (all), training</td></tr>
+<tr><td><code>run_recap</code></td><td>Just-completed run — splits, HR, pace vs prescribed.</td><td>today (post-run)</td></tr>
+<tr><td><code>sleep_deficit</code></td><td>Recent sleep shortfall vs target.</td><td>today (pre-run/post-run), training, health</td></tr>
+<tr><td><code>race_horizon</code></td><td>Next A-race countdown + projected finish vs goal.</td><td>today, training, races, race-detail</td></tr>
+<tr><td><code>cadence_experiment</code></td><td>Cadence target experiment (height-gated).</td><td>today (post-run)</td></tr>
+<tr><td><code>profile_gap</code></td><td>Missing input that's holding the coach back (e.g., no height → no cadence target).</td><td>today, profile</td></tr>
+<tr><td><code>niggle</code></td><td>Active niggle being tracked.</td><td>today, health</td></tr>
+<tr><td><code>load_ramp</code></td><td>ACWR / volume ramp signal.</td><td>today, training</td></tr>
+<tr><td><code>weekly_volume</code></td><td>Week-to-date mileage vs planned.</td><td>today, training</td></tr>
+<tr><td><code>long_run_horizon</code></td><td>Long-run progression — last + next.</td><td>today, training</td></tr>
+<tr><td><code>fun_fact</code></td><td>Educational explainer when a technical term shows up in coach voice (HRV, VDOT, etc.).</td><td>today (rest-day mostly)</td></tr>
+<tr><td><code>watch_list</code></td><td>Things the coach is watching but not yet acting on.</td><td>today (pre-run), training</td></tr>
+</table>
+
+<h3>Truth contract — prereqs gate topics</h3>
+<p>
+  Every topic kind enforces its own prereqs:
+</p>
+<ul>
+  <li><code>cadence_experiment</code> requires <code>profile.height_cm</code> set — otherwise it's suppressed and a <code>profile_gap</code> card surfaces in its place asking for height.</li>
+  <li><code>race_horizon</code> requires <code>state.nextARace</code> not null.</li>
+  <li><code>run_recap</code> requires <code>state.latest_activity.date === state.today</code>.</li>
+  <li><code>sleep_deficit</code> requires recent <code>sleep_hours</code> samples in <code>health_samples</code>.</li>
+  <li>Etc. — each kind's prereq is in <code>lib/topics/types.ts</code>.</li>
+</ul>
+<p>
+  Topics that pass prereqs are candidates; the LLM picks which actually
+  render based on what's worth saying that morning. Topics rejected by
+  prereqs <strong>never reach the LLM</strong> — this is what makes the
+  coach incapable of hallucinating "your cadence is 168" when no cadence
+  samples exist.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="readiness">11 · L3 — Readiness scoring algorithm</h2>
+<p>
+  The readiness number that anchors <code>/today</code> and
+  <code>/health</code>. Weighted composite (0-100), banded by score.
+  Lives in <code>_state.readiness</code> inside every TODAY briefing payload.
+</p>
+<table>
+<tr><th>Input</th><th>Weight</th><th>What it measures</th><th>Source</th></tr>
+<tr><td>Sleep</td><td>25%</td><td>7-night sleep average vs target (~7.5h). Penalizes cumulative debt.</td><td><code>health_samples</code> sample_type=<code>sleep_hours</code></td></tr>
+<tr><td>HRV</td><td>25%</td><td>Today vs baseline (28-day). Above = recovered. Below = stressed.</td><td><code>health_samples</code> sample_type=<code>hrv</code></td></tr>
+<tr><td>RHR</td><td>20%</td><td>Today vs baseline. Below = fitness adaptation. Above ≥5 bpm = warn.</td><td><code>health_samples</code> sample_type=<code>resting_hr</code></td></tr>
+<tr><td>Check-in</td><td>15%</td><td>Last 1-2 reply-chip ratings (e.g., SOLID / OK / TIRED).</td><td><code>check_ins.rating</code></td></tr>
+<tr><td>Load (ACWR)</td><td>15%</td><td>acute7 / chronic28 ratio (Gabbett). &gt;1.5 = elevated injury risk.</td><td>Computed from <code>strava_activities.data-&gt;&gt;'distanceMi'</code></td></tr>
+</table>
+
+<h3>Bands</h3>
+<table>
+<tr><th>Score</th><th>Band</th><th>Coach posture</th></tr>
+<tr><td>≥70</td><td><code>READY</code></td><td>Green-light prescribed work.</td></tr>
+<tr><td>50-69</td><td><code>MODERATE</code></td><td>Proceed but watch how the workout lands.</td></tr>
+<tr><td>30-49</td><td><code>BACK-OFF</code></td><td>Downshift prescription. Easy day or shorten.</td></tr>
+<tr><td>&lt;30</td><td><code>REST</code></td><td>Skip or replace with recovery work.</td></tr>
+</table>
+<p>
+  Each input contributes a signed weight to the total. The breakdown is
+  preserved in <code>_state.readiness.inputs</code> so the UI can show
+  WHY the score is what it is (e.g., "SLEEP -8 because -0.8h vs 7.5h
+  target" or "RHR +3 because 46 vs baseline 49").
+</p>
+<p class="sub">
+  Per-finding context filters apply (per CLAUDE.md doctrine
+  "Per-finding context filters"): each input independently applies
+  context filters (race-week suppression, illness/injury override,
+  weather distortion). The parent score's filters do NOT propagate
+  automatically.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="races-goals">12 · Races &amp; personal goals — the runner's targets</h2>
+<p>
+  Two types of target: race goals (the primary motivator) and personal
+  goals (non-race goals the runner sets OR the coach surfaces when the
+  runner is close). Races outrank personal goals; the coach orbits the
+  next A-race.
+</p>
+
+<h3>Race priority system</h3>
+<p>
+  Each <code>races</code> row carries <code>meta.priority</code> set by
+  the runner (or inferred and confirmed):
+</p>
+<table>
+<tr><th>Priority</th><th>Meaning</th><th>Plan/coach impact</th></tr>
+<tr><td><strong>A</strong></td><td>Goal race. Trained for, tapered for, planned around.</td><td>Drives the active <code>training_plans</code>. <code>race_horizon</code> topic surfaces from ~60 days out.</td></tr>
+<tr><td><strong>B</strong></td><td>Supporting race. Treated as a hard tune-up.</td><td>Plan adjusts for taper-lite + recovery; doesn't reset the arc.</td></tr>
+<tr><td><strong>C</strong></td><td>Low-priority race. Run as training.</td><td>Plan barely flexes; coach narrates as a training-effort day.</td></tr>
+<tr><td><strong>training-run</strong></td><td>Listed but not raced as effort (anniversary run, club run, etc.).</td><td>Lower VDOT-aggregate weight (0.2× per <code>compute-vdot</code>).</td></tr>
+<tr><td><strong>hilly-excluded</strong></td><td>Real race result but elevation-distorted (e.g., Big Sur).</td><td>Excluded from VDOT aggregate so it doesn't pull current fitness down.</td></tr>
+</table>
+
+<h3>Multi-race continuity</h3>
+<p>
+  Races stack chronologically. The coach narrates the <strong>arc</strong> — today's
+  workout serves this week, this week serves the next phase, the phase
+  serves the next A-race, that A-race feeds the one after it. David's
+  current arc: <strong>AFC Half (Aug 16)
+  → CIM Marathon (Dec 6) → LA Marathon (March 2027)</strong>.
+</p>
+<ul>
+  <li>The active plan is anchored to ONE race (<code>training_plans.race_id</code>).</li>
+  <li>When the goal race passes, the plan archives (<code>archived_iso</code>).</li>
+  <li>The next plan generation reads the next A-priority race (ordered by date).</li>
+  <li>The coach reads ALL future A-races into <code>state</code> for continuity narration (e.g., "Race in the books. Recovery this week, then shift to marathon prep for CIM").</li>
+</ul>
+
+<h3>Personal goals (non-race)</h3>
+<p>
+  Stored in <code>personal_goals</code> table (today empty for David).
+  Two ways they enter the coach's prescription:
+</p>
+<ol>
+  <li><strong>User-set.</strong> Runner adds a goal explicitly (sub-20 5K, hit 40 mpw, 2 strength sessions/week). Plan respects it; coach acknowledges progress.</li>
+  <li><strong>Coach-surfaced.</strong> When the runner is close to a non-race milestone — within striking distance of a PR, on a consistency streak — the coach surfaces it ("1 min away from your 5K best; want to take a shot in the next 3 weeks?"). This is not in <code>personal_goals</code> table by default — it's an inferred goal the runner can promote into one if they accept.</li>
+</ol>
+<p>
+  Schema (<code>personal_goals</code>): <code>goal_type</code> ∈
+  (volume, speed, distance, habit, strength, health), <code>target</code>,
+  <code>current</code>, <code>deadline</code>, <code>tolerance</code>,
+  <code>rationale</code>. Coach reads active rows into state and
+  surfaces a topic when close to <code>target</code>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="cold-start">13 · Cold-start — coaching a brand-new runner</h2>
+<p>
+  A new sign-up has zero runs, zero health samples, zero check-ins,
+  zero plan. The coach must <strong>actively guide them in</strong> —
+  not punt with "go run" and wait for data.
+</p>
+
+<h3>The first 14 days</h3>
+<table>
+<tr><th>State</th><th>What the coach does</th></tr>
+<tr><td>Just signed up · onboarding incomplete</td><td>Coach is silent. Onboarding wizard collects the L1 row (identity, schedule, goal race, LTHR, height).</td></tr>
+<tr><td>Onboarding done · 0 runs</td><td>Coach generates a starter plan from the runner's experience level (<code>profile.experience_level</code>), goal race (or maintenance mode if none), and weekly target. First week is conservative — establish rhythm before any quality. Coach narrates the ramp explicitly.</td></tr>
+<tr><td>0-7 days · 1-3 runs</td><td>Coach reads early runs as form/cadence/HR-zone calibration. <code>profile_gap</code> cards surface for missing inputs (height for cadence target, HR data for zones). Hedge language: "Hard to call fitness yet — only a few runs in."</td></tr>
+<tr><td>7-14 days · 4-10 runs</td><td>Plan starts adapting. Real readiness scoring begins as health samples accumulate. Coach continues to hedge until baselines lock.</td></tr>
+<tr><td>14+ days</td><td>Full coach mode. Trends, ACWR, VDOT, projection — all online.</td></tr>
+</table>
+
+<h3>The principle</h3>
+<p>
+  The coach's job is <strong>to get the runner from zero to a sustainable
+  weekly rhythm</strong>, not to wait for them to build it. Plan
+  generation respects experience level: a beginner gets 3-4 days/week
+  starting at conservative distance; an "advanced" sign-up gets a
+  higher-volume ramp. Cold-start state is not a flag in the DB — it's
+  computed at runtime from data availability and the
+  <code>profile.experience_level</code> + <code>profile.history_*</code>
+  fields collected at onboarding.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="notifications">14 · Notification taxonomy — closed list of 7</h2>
+<p>
+  Push notification categories. The runner toggles each independently
+  in <code>profile.notification_prefs</code> JSONB. <strong>This is the
+  complete and closed list</strong> — adding a new category requires
+  both a new pref flag AND a new APNs payload kind.
+</p>
+<table>
+<tr><th>Category</th><th>When it fires</th><th>Pref flag</th></tr>
+<tr><td><code>race_day</code></td><td>Race-day morning at <code>race_day_wake_time</code> (default 05:30).</td><td><code>race_day_enabled</code></td></tr>
+<tr><td><code>race_eve</code></td><td>Night before a race — pacing, weather, kit check.</td><td><code>race_eve_enabled</code></td></tr>
+<tr><td><code>weekly_checkin</code></td><td>Sunday evening at <code>weekly_checkin_time</code> (default 20:00) — week recap + next-week preview.</td><td><code>weekly_checkin_enabled</code></td></tr>
+<tr><td><code>streak</code></td><td>Consistency milestones — first 30-day streak, etc. Includes anti-streak guardrails (no rewards for through-injury runs).</td><td><code>streak_enabled</code></td></tr>
+<tr><td><code>niggle_sick</code></td><td>Active niggle / sick episode follow-up ("how's the calf today?").</td><td><code>niggle_sick_enabled</code></td></tr>
+<tr><td><code>skip_recovery</code></td><td>After a skip — recovery acknowledgment + next-day adjustment.</td><td><code>skip_recovery_enabled</code></td></tr>
+<tr><td><code>strava_reconnect</code></td><td>OAuth expired or webhook stopped delivering — runner needs to reconnect.</td><td><code>strava_reconnect_enabled</code></td></tr>
+</table>
+<p>
+  Plus <strong>quiet hours</strong>: <code>quiet_hours_start</code> /
+  <code>quiet_hours_end</code> (default 22:00 → 06:00) — no
+  notification fires during this window regardless of category.
+  Plus the kill switch: <code>master_enabled</code>.
+</p>
+<p>
+  Each notification write goes to <code>notifications_pending</code>
+  (scheduled) → APNs send → <code>notifications_log</code> (delivered/failed).
+  <code>dedup_key</code> prevents duplicate sends for the same logical
+  notification (e.g., "race-eve for race X").
+</p>
+
+<h3>Cache architecture</h3>
+<table>
+<tr><th>Table</th><th>Scope</th><th>Invalidates on</th></tr>
+<tr><td><code>coach_reads_cache</code></td><td>Per (user_uuid, read_kind, cache_key)</td><td>activity ingest (load-dependent reads); race result (VDOT-derived); health sample (readiness/sleep_deficit); check-in (readiness); plan mutation (prescription/projection); goal change (all goal-anchored).</td></tr>
+<tr><td><code>coach_today_cache</code></td><td>Global by (surface, signature) — should become per-user (queued)</td><td>signature hash change.</td></tr>
+<tr><td><code>workout_weather_cache</code></td><td>Global by (lat_round, lon_round, date)</td><td>Never expires; Open-Meteo backfill.</td></tr>
+</table>
+
+<h3>Coach output tables</h3>
+<table>
+<tr><th>Table</th><th>What gets written</th><th>Read by</th></tr>
+<tr><td><code>briefings</code></td><td>Rendered briefing payload per (user, surface, mode, signature).</td><td>UI on render.</td></tr>
+<tr><td><code>coach_intents</code></td><td>Runner commitments from briefing cards.</td><td>Next briefing (closed-loop verification); watch (live guidance).</td></tr>
+<tr><td><code>coach_actions</code></td><td>Every adapt/notify/propose action — audit log.</td><td>PlanAdaptedCard timeline; COACH-WATCHING strip.</td></tr>
+<tr><td><code>coach_proposals</code></td><td>Surfaces needing accept/reject (goal change, race conflict, plan rewrite).</td><td>ProposalCard on Overview.</td></tr>
+<tr><td><code>coach_usage</code></td><td>Per-call telemetry.</td><td>/api/usage admin dashboard.</td></tr>
+<tr><td><code>plan_mutations</code></td><td>Audit row for every plan_workout change.</td><td>PlanAdaptedCard; coach explanations.</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="onboarding">15 · New user flow — onboarding sequence (any sign-up → fully provisioned)</h2>
+<p>
+  When ANY new user signs up — Apple Sign-in, Strava OAuth, or email
+  (when enabled) — they get the same L1 row template David has today,
+  filled in by the same 10 steps. The L2 research layer is already
+  populated and accessible immediately. The L3 coach layer fires on
+  first /today render once L1 has enough data.
+</p>
+
+<table>
+<tr><th>Step</th><th>API route</th><th>Rows created</th><th>Notes</th></tr>
+<tr><td>1</td><td><code>POST /api/auth/apple</code> or <code>GET /api/auth/strava</code></td><td><code>users</code>, <code>sessions</code>, possibly <code>profile</code> stub, <code>connector_tokens(strava)</code> if Strava OAuth</td><td>Returns Bearer (iOS) or sets cookie (web).</td></tr>
+<tr><td>2</td><td><code>POST /api/notifications/register</code></td><td><code>device_tokens</code></td><td>iOS only; happens after permission prompt.</td></tr>
+<tr><td>3</td><td><code>POST /api/profile</code> (onboarding wizard)</td><td>UPSERT <code>profile</code>: full_name, sex, age, height_cm, birthday, experience_level, lthr (or compute later), goal_race_*</td><td>One PUT-style write.</td></tr>
+<tr><td>4</td><td><code>POST /api/settings</code></td><td>UPSERT <code>user_prefs</code>: long_run_dow, quality_dows, rest_dow, units</td><td></td></tr>
+<tr><td>5</td><td><code>POST /api/profile/notifications</code></td><td>UPDATE <code>profile.notification_prefs JSONB</code></td><td>master, quiet hours, etc.</td></tr>
+<tr><td>6</td><td>(implicit on first iOS launch)</td><td><code>health_samples</code>, <code>users.max_hr</code>/<code>resting_hr</code>, <code>profile.health_connected_at</code></td><td>iOS bridge pushes HealthKit on consent.</td></tr>
+<tr><td>7</td><td><code>POST /api/race</code></td><td><code>races</code></td><td>One per goal race. Auto-attaches <code>course_library</code> on slug match.</td></tr>
+<tr><td>8</td><td><code>POST /api/plan/generate</code></td><td><code>training_plans</code> + <code>plan_phases</code> + <code>plan_weeks</code> + <code>plan_workouts</code> (cascade)</td><td>Builds the active plan.</td></tr>
+<tr><td>9</td><td><code>POST /api/shoe</code> (optional)</td><td><code>shoes</code></td><td>One per pair.</td></tr>
+<tr><td>10</td><td><code>POST /api/onboarding/complete</code></td><td>UPDATE <code>users.onboarding_complete=true</code> + <code>profile.onboarded_at=NOW()</code></td><td>Flips the /today gate.</td></tr>
+</table>
+
+<div class="note">
+<strong>Gap to close</strong> · No atomic
+<code>POST /api/onboarding/bootstrap</code> exists today. A network blip
+between steps 3-4-5 leaves a half-onboarded user. Suggested:
+single endpoint that wraps all <code>users + profile + user_prefs</code>
+writes in a transaction so partial state is impossible.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="preserved">16 · David's baseline — the L1 template, fully populated</h2>
+<div class="ok">
+Nothing about David's account was modified except the
+<code>training_plans.user_uuid</code> backfill on plan
+<code>8599e3a1</code>. Every column below is what any future user's L1
+row will look like once they go through onboarding + use the app for
+two weeks. <strong>The schema is identical; only the values differ.</strong>
+</div>
+
+<table>
+<tr><th>Domain</th><th>What's there</th></tr>
+<tr><td>Identity</td><td><code>users.id = 0645f40c-951d-4ccc-b86e-9979cd26c795</code> · email <code>dnitch85@me.com</code> · name <code>David Nitzsche</code> · status <code>active</code> · is_admin <code>true</code> · approved 2026-05-18 · TZ <code>America/Los_Angeles</code> · age 40 · sex M · Los Angeles, CA</td></tr>
+<tr><td>Physiology</td><td>max_hr 181 · resting_hr 52 · LTHR 162 · VDOT 46.6 (reviewed 2026-05-19) · height 185 cm · birthday 1986-01-01 · experience advanced</td></tr>
+<tr><td>Schedule</td><td>long-run Sun (dow 0) · quality Tue+Thu (dow 2,4) · rest Sat (dow 6)</td></tr>
+<tr><td>Connectors</td><td>Apple Health (connected 2026-05-20, 364 syncs, last 2026-05-25) · Strava (connected 2026-05-18, 110 syncs, last 2026-05-25)</td></tr>
+<tr><td>Notification prefs</td><td>Master on · quiet 22:00→06:00 · race day on · weekly check-in Sun 20:00 · streak / niggle/sick / skip-recovery / Strava reconnect on</td></tr>
+<tr><td>Strava prefs</td><td>writeback on · auto_push off · push privacy <code>private</code> · push title format <code>type_phases</code></td></tr>
+<tr><td>Health samples</td><td>2,720 rows · 19 sample types · range 2025-05-22 → 2026-05-30 · top: hrv (369), resting_hr (367), respiratory_rate (305), max_hr (279), sleep_hours (258)</td></tr>
+<tr><td>Strava activities</td><td>125 runs · range covered by sync</td></tr>
+<tr><td>Training plan (ACTIVE)</td><td><code>8599e3a1-07ab-4610-9f77-eae6a6f80032</code> · race-prep · AFC Half · goal 2026-08-16 · 13 weeks · 91 workouts · BASE/BUILD/PEAK/TAPER/RACE_WEEK · authored 2026-05-20 · <strong>now claimed to David's UUID</strong></td></tr>
+<tr><td>Archived plans</td><td>27 prior versions (rapid-iterate on plan-builder)</td></tr>
+<tr><td>Races</td><td>10 rows · 5 raced (Rose Bowl HM 1:38:38, Disney HM 1:34:54, LA M 3:31:40, Big Sur M 3:40:00 [hilly-excluded], Sombrero HM 1:32:00 [training-run]) · 5 upcoming (AFC Half 8/16, Dodgers 10K 9/26, Run Malibu 11/8, CIM 12/6, LA Marathon 2027-03-07)</td></tr>
+<tr><td>Shoes</td><td>6 active pairs · NB SC Trainer v3 (orange + white) · Asics Superblast 3 · Asics Novablast 5 · Nike Zoom Fly 6 · Nike Vomero Plus</td></tr>
+<tr><td>Check-ins / wellness</td><td>12 daily_checkin · 8 check_ins · 2 niggles · 2 sick_episodes</td></tr>
+<tr><td>Coach data</td><td>4 briefings · 4 coach_intents · 2 coach_actions · 2 coach_proposals · 372 coach_usage rows</td></tr>
+<tr><td>Watch data</td><td>10 workout_completions · 24 workout_routes</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="shipped">17 · Shipped in this pass + what's queued</h2>
+
+<h3>Shipped now</h3>
+<ul>
+  <li class="ok">✓ <strong>Active plan claimed.</strong> Backfilled
+    <code>training_plans.user_uuid</code> on
+    <code>8599e3a1</code> to David's UUID. Verified via
+    <code>scripts/_backfill_plan_claim.mjs</code>.</li>
+  <li class="ok">✓ <strong>course_library seeded.</strong> 10 rows
+    via <code>scripts/_seed_course_library.mjs</code>. 4 rich
+    (AFC, Big Sur, CIM, Sombrero) with phase annotations + source
+    citations + facts; 6 stubs (Disney, Rose Bowl, LA M ×2,
+    Run Malibu, Dodgers) ready for GPX import.</li>
+  <li class="ok">✓ <strong>learn_articles seeded.</strong> 24 rows
+    via <code>scripts/_seed_learn_articles.mjs</code> — one per
+    Research doctrine file, body summary + source citation back to
+    the markdown.</li>
+  <li class="ok">✓ <strong>Canonical model documented.</strong> The
+    "duplication" flagged in the prior pass was a documentation gap,
+    not a code bug — v2 code already reads <code>profile.experience_level</code>,
+    <code>profile.lthr</code>, <code>user_prefs.long_run_dow</code> etc.
+    as canonical. The unused columns on <code>users</code>
+    (<code>level</code>, <code>long_run_day</code>, etc.) are
+    documented as "do not write" but not yet dropped (non-destructive).</li>
+  <li class="ok">✓ <strong>(surface × mode × topics) matrix locked.</strong>
+    Pulled the canonical enum from <code>lib/coach/router.ts</code> +
+    <code>lib/topics/types.ts</code>. 6 surfaces, 19 valid (surface, mode)
+    pairs, 12 topic kinds. Section 10.</li>
+  <li class="ok">✓ <strong>Readiness algorithm documented.</strong>
+    5 inputs (sleep 25%, HRV 25%, RHR 20%, check-in 15%, load 15%),
+    4 bands (READY / MODERATE / BACK-OFF / REST). Section 11.</li>
+  <li class="ok">✓ <strong>Personal goals as first-class.</strong>
+    User-set OR coach-surfaced when close (e.g., "1 min away from
+    5K PR"). Section 12.</li>
+  <li class="ok">✓ <strong>Cold-start coaching documented.</strong>
+    The coach actively guides new runners from day zero; the plan
+    builder respects experience level + history. Hedge language until
+    14 days of data lock baselines. Section 13.</li>
+  <li class="ok">✓ <strong>Notification taxonomy locked.</strong>
+    7 categories pulled from <code>lib/notifications/prefs.ts</code>
+    + their pref flags + quiet-hours + master kill switch. Section 14.</li>
+</ul>
+
+<h3>Queued (no code change needed today)</h3>
+<ul>
+  <li><strong>Atomic onboarding bootstrap.</strong> Single endpoint
+    <code>POST /api/onboarding/bootstrap</code> that wraps
+    users/profile/user_prefs writes in one transaction.</li>
+  <li><strong>Per-user <code>coach_today_cache</code>.</strong> Add
+    <code>user_uuid</code> column + include in cache key.</li>
+  <li><strong>Per-user <code>strava_sync_state</code>.</strong>
+    Compound key by user.</li>
+  <li><strong>Real GPX import.</strong> The stub
+    <code>course_library</code> rows need lat/lon trackPoints. Source
+    is the per-race GPX (recorded by David or from official course
+    pages); import via <code>POST /api/gpx/import</code>.</li>
+  <li><strong>Drop unused columns on <code>users</code>.</strong>
+    <code>level</code>, <code>long_run_day</code>,
+    <code>quality_days</code>, <code>rest_day</code>, <code>strava_writeback</code>
+    is read but the schedule columns are not. Single migration
+    <code>123_drop_unused_user_columns.sql</code> after grep
+    confirms zero remaining reads.</li>
+  <li><strong>Drop orphan tables.</strong> <code>runner_profile</code>
+    (1 row, no v2 refs), <code>coach_intent</code> (singular, 0 rows),
+    <code>workout_rpe</code> (global 2 rows, superseded by
+    <code>post_run_rpe</code>). Single migration
+    <code>124_drop_orphans.sql</code>.</li>
+  <li><strong>Wire more connectors.</strong> Garmin/Coros/Polar/Whoop/Oura
+    schemas are ready; need OAuth + sync code.</li>
+  <li><strong>Surface runner_notes UI.</strong> Schema ready; no UI yet
+    for free-text "talk to the coach."</li>
+  <li><strong>Wire personal_goals UI.</strong> Schema ready; David has
+    no non-race goals tracked yet.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2 id="agent-rules">18 · Rules for agents reading this</h2>
+<ol>
+  <li><strong>Read this doc before writing schema or new ingest paths.</strong>
+    The canonical storage map (section 4) tells you which table a piece
+    of info belongs to. Pick that one.</li>
+  <li><strong>Never write <code>user_id='me'</code> for new users.</strong>
+    That value is reserved for the legacy David row. New users get a
+    UUID-only row.</li>
+  <li><strong>Always scope per-user reads by <code>user_uuid = $1</code>.</strong>
+    The legacy fallback <code>OR user_uuid IS NULL</code> exists in
+    older code paths only — do not add new ones. If you find one, the
+    fix is to backfill the row, not extend the fallback.</li>
+  <li><strong>L1 is per-user. L2 is shared. L3 is per-user but
+    server-only.</strong> Never let an L1 surface (UI form, mobile
+    page) write directly to an L2 table. Never let a runner write to
+    an L3 table from the client — proposals/intents come back via
+    documented routes that the coach engine reconciles.</li>
+  <li><strong>Doctrine lives in files, derived state lives in DB.</strong>
+    Never insert into <code>learn_articles</code> from manual edits at
+    runtime; updates should come from a deliberate seed run after
+    Research changes.</li>
+  <li><strong>UPSERT, never duplicate.</strong> Every per-user table has
+    a logical uniqueness constraint (e.g.
+    <code>health_samples (user_id, sample_type, sample_date)</code>);
+    use ON CONFLICT.</li>
+  <li><strong>Manual user input writes are idempotent.</strong> Re-posting
+    the same check-in / niggle / RPE should update, not duplicate.</li>
+  <li><strong>iOS and web both hit the same routes.</strong> Don't fork.
+    Authentication kind (cookie vs Bearer) is the only difference, and
+    <code>userIdFromRequest()</code> abstracts it.</li>
+  <li><strong>Coach engine reads are cached aggressively.</strong> Hit
+    <code>coach_reads_cache</code> first; invalidate explicitly when
+    inputs change.</li>
+  <li><strong>Strava writeback is opt-in via <code>users.strava_writeback</code>.</strong>
+    Don't push back to Strava without it.</li>
+  <li><strong>Never drop columns without a migration in
+    <code>web-v2/db/migrations/</code>.</strong> Schema changes need
+    review before they land. Reads can be updated independently.</li>
+</ol>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2>Appendix · Probe &amp; seed scripts</h2>
+<table>
+<tr><th>Script</th><th>Purpose</th></tr>
+<tr><td><code>web-v2/scripts/_probe.mjs</code></td><td>List tables + find user row by email.</td></tr>
+<tr><td><code>web-v2/scripts/_schema_dump.mjs</code></td><td>Full schema + per-table David-row counts → JSON.</td></tr>
+<tr><td><code>web-v2/scripts/_david_dump.mjs</code></td><td>David's actual row data from every populated table → JSON.</td></tr>
+<tr><td><code>web-v2/scripts/_plan_investigate.mjs</code></td><td>Inspect training_plans across user_uuid IS NULL / 'me' fallback paths.</td></tr>
+<tr><td><code>web-v2/scripts/_active_plan_detail.mjs</code></td><td>Full detail on the active plan (phases, weeks, this week's workouts).</td></tr>
+<tr><td><code>web-v2/scripts/_backfill_plan_claim.mjs</code></td><td>Backfill <code>training_plans.user_uuid</code> for the legacy unclaimed plan.</td></tr>
+<tr><td><code>web-v2/scripts/_seed_course_library.mjs</code></td><td>Seed course_library from <code>legacy/web/data/courses/*.json</code> + race stubs.</td></tr>
+<tr><td><code>web-v2/scripts/_seed_learn_articles.mjs</code></td><td>Seed learn_articles from <code>Research/INDEX.md</code>.</td></tr>
+</table>
+
+<h3>How to run any of them</h3>
+<pre>cd web-v2
+export $(grep -v '^#' .env.local | grep -v '^$' | xargs)
+node scripts/_probe.mjs
+node scripts/_schema_dump.mjs   /tmp/schema.json
+node scripts/_david_dump.mjs    /tmp/david.json</pre>
+
+<p class="sub" style="margin-top: 40px;">
+  Generated 2026-05-30. Source: live Railway Postgres + repo at
+  <code>/Volumes/WP/06 Claude Code/Runcino/</code>. Anchored on
+  David Nitzsche (<code>0645f40c-951d-4ccc-b86e-9979cd26c795</code>).
+  This file is the contract — every agent reading or writing the
+  Faff backend should treat it as authoritative.
+</p>
+
+</div>
+</body>
+</html>
