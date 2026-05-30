@@ -192,15 +192,15 @@ function adaptReadiness(glance: Glance | null, health: Health | null): Readiness
   });
   const trend = trendRaw.length === 7 ? trendRaw : Array(7).fill(r.score);
   const trendDays = (health?.hrvSeries.slice(-7) ?? []).map(d => new Date(d.date + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase());
-  // Filter the 'subjective' check-in input — that surface was removed from
-  // the app (no daily mood/wellness check-in in production any more).
-  const drivers = (r.inputs || [])
-    .filter(i => i.key !== 'subjective')
-    .map(i => {
-      const dir: 'pos' | 'neg' = i.weight >= 0 ? 'pos' : 'neg';
-      const pct = Math.min(100, Math.abs(i.weight) * 5);
-      return { name: (i.label.split(' ·')[0] || i.key).toUpperCase(), why: `${i.observedV} · ${i.observedSub}`.trim(), pct, pts: Math.abs(i.weight), dir };
-    });
+  // 2026-05-30: subjective was removed from the readiness formula entirely
+  // (see lib/coach/readiness.ts). Score now reflects only objective HealthKit
+  // signals + load. Subjective check-ins feed the coach voice directly rather
+  // than skewing the number.
+  const drivers = (r.inputs || []).map(i => {
+    const dir: 'pos' | 'neg' = i.weight >= 0 ? 'pos' : 'neg';
+    const pct = Math.min(100, Math.abs(i.weight) * 5);
+    return { name: (i.label.split(' ·')[0] || i.key).toUpperCase(), why: `${i.observedV} · ${i.observedSub}`.trim(), pct, pts: Math.abs(i.weight), dir };
+  });
   return {
     score: r.score, label, baseline,
     trend, trendDays: trendDays.length === 7 ? trendDays : ['MON','TUE','WED','THU','FRI','SAT','SUN'],

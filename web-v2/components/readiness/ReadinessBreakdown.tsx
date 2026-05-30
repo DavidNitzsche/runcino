@@ -9,9 +9,10 @@
  *   - VALUE column stacked three competing pieces (number / delta / sentence)
  *   - EFFECT pill isolated on right — couldn't scan top-down
  *
- * New: 5 vertical story rows, each one self-contained:
+ * New: 4 vertical story rows, each one self-contained (5 originally; subjective
+ * was dropped 2026-05-30 — see lib/coach/readiness.ts):
  *   - 3px accent strip on the LEFT colored by effect (red drag / green lift / grey neutral)
- *   - eyebrow with input name + weight share ("SLEEP · 25%")
+ *   - eyebrow with input name + weight share ("SLEEP · 30%")
  *   - headline ("6.7h — about 6h short for the week")
  *   - narrative sentence (the actual insight, large + bright)
  *   - +/- chip in the top-right corner as secondary precision
