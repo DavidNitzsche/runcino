@@ -132,3 +132,48 @@ canonical column unless they hit a settings save later.
 ---
 
 *New questions appended below as the audit continues.*
+
+---
+
+## Status of Q-01 through Q-07
+
+| # | Topic | Status |
+|---|---|---|
+| Q-01 | Beginner-runner volume floor | ✓ Applied default · floor scales by experience_level + ramp 5-8%/wk |
+| Q-02 | 5K/10K plan structures | ✓ Applied default · per-distance block sizes + quality mixes (see commit e84308d) |
+| Q-03 | ILLNESS-mode trigger | ✓ Applied default · SICK_EPISODE_ACTIVE writes coach_proposals; never auto-modifies |
+| Q-04 | NIGGLE-REPORTED threshold | ✓ Applied default · 5-6/10 downgrades quality; ≥7/10 suspends 48h |
+| Q-05 | Race-added auto-plan | ✓ Applied default · auto-generates only when no active plan exists |
+| Q-06 | RPE route migration | ✓ Ported · `/api/runs/[id]/rpe` GET + POST writes to post_run_rpe |
+| Q-07 | users.timezone vs profile.timezone | ✓ Patched · onboarding now writes both columns; canonical = users.timezone |
+
+All seven open questions have **defaults applied** by the autonomous
+pass. If any default is wrong, the fix is a small revert + alternate
+implementation (each is < 50 lines). The defaults match what David's
+memory + the doctrine docs suggested as right answers.
+
+---
+
+## Decisions still queued for David (low-priority)
+
+### Q-08 · INJURY mode plan-builder branch
+`runner_injuries.resolved_date IS NULL` should drive a totally
+different plan structure (walk-run scaffold, eccentric loading, etc.
+per Research/05). This is a multi-day implementation. Should I:
+- A · Add the detector to adapt.ts and write coach_proposals (same as SICK)?
+- B · Build a parallel `lib/plan/injury-builder.ts` that handles INJURY-mode plans end-to-end?
+- C · Defer until a real injury is logged?
+
+**Default:** A — proposes the modification, runner accepts. Matches
+the Q-03 illness pattern.
+
+### Q-09 · Citation porting from legacy
+legacy/web has 122 Research citations across 22 files. web-v2 has 28.
+Should I:
+- A · Port all citations as-is, marking with `// Cite (ported):` comments?
+- B · Re-derive citations from current v2 code (might be cleaner but more work)?
+- C · Leave gap and rely on /Research/ being authoritative regardless?
+
+**Default:** C for now — the engine reads /Research/ directly; citations
+in code are nice-to-have but not blocking. Revisit when a research-
+question debate surfaces and we need a clear traceback.

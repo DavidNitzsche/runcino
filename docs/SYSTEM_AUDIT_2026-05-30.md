@@ -200,14 +200,43 @@ See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 
 ---
 
-## Up next (queued)
+## Shipped through this autonomous pass
 
-1. Port `/api/activity/rpe` from legacy → web-v2 so the iOS post-run
-   RPE capture has somewhere to land.
-2. Add NIGGLE / SICK / RACE_ADDED triggers to `lib/plan/adapt.ts`.
-3. Wire `users.timezone` from onboarding body (currently only writes
-   to `profile.timezone`).
-4. Citation audit pass: fix non-canonical Research file paths.
-5. Plan library: parameterize 5K/10K/HM/M templates and add an
-   experience-level multiplier.
-6. Extract shared plan-builder primitives into `lib/plan/core.ts`.
+Commits (oldest → newest):
+
+| # | Commit | What |
+|---|---|---|
+| 1 | `fafe5fe` | VDOT chain + projection-trend extension (earlier work) |
+| 2 | `ce1137d` | Doctrine codification — 17 system-doctrine rows |
+| 3 | `cae565d` | Onboarding audit + 4 input-doctrine rows |
+| 4 | `40710ca` | **P0 · cross-user data leak fix** (14 query sites) |
+| 5 | `d44cd39` | Race priority default 'A' · Strava webhook autoMerge |
+| 6 | `96738ad` | Q-01 volume floor · Q-05 race-add auto-plan · Q-06 RPE route · Q-07 timezone · SIM-07 citations |
+| 7 | `c800775` | NIGGLE_REPORTED + SICK_EPISODE_ACTIVE adaptation triggers |
+| 8 | `e84308d` | Q-02 distance-specific block + quality mix (5K/10K/HM/M) |
+
+## Up next (queued — still in scope)
+
+1. **GOAL_CHANGED trigger** — when `users.vdot_last_reviewed` shifts
+   > 2 pts, paces should refresh across the plan. Half-implemented via
+   `vdot_shift_*` columns; needs the adapter detector.
+2. **INJURY mode** — `runner_injuries` rows with `resolved_date IS NULL`
+   should trigger an INJURY-mode plan-builder branch. Schema ready;
+   doctrine in Research/05; nothing wired today.
+3. **Citation alignment audit** — port the 100 missing Research
+   citations from legacy/web → web-v2 so doctrine grounding is
+   consistent across the cutover.
+4. **runner_notes UI + writer** — schema exists, no surface to write
+   to it; the "talk to the coach" journal is missing.
+5. **personal_goals UI + writer** — David's `personal_goals` is empty;
+   the doctrine-row says these should be user-set OR coach-surfaced
+   when close to a milestone, but no UI exists.
+6. **users.timezone vs profile.timezone consolidation** — fix wrote
+   both columns from onboarding; full migration to drop the duplicate
+   is queued.
+7. **Cold-start tests for additional surfaces** — verified /today &
+   /profile no longer leak; should also verify /races, /plan, /health,
+   /log for a fresh user.
+8. **Extract `lib/plan/core.ts`** — race-prep + maintenance generators
+   share volume + day layout logic. Extract a shared core so doctrine
+   changes don't need two-file edits.
