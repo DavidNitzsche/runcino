@@ -92,6 +92,13 @@ export interface CoachState {
   rhrBaseline: number | null;
   cadenceBaseline: number | null;
 
+  // P2 #9 (2026-05-30): Apple Watch heart-rate recovery, 1 minute after
+  // workout end. Drops > ~30 bpm is well-conditioned cardio; < 15 bpm is
+  // a yellow flag. Pulled from health_samples.sample_type='hr_recovery'.
+  // Feeds a small (5%) weight in readiness; null when no recent sample.
+  hrRecoveryCurrent: number | null;
+  hrRecoveryBaseline: number | null;
+
   // Acute:Chronic load — distance-based. acute7 = avg daily mi over last 7d,
   // chronic28 = avg daily mi over last 28d. Ratio = acute7 / chronic28.
   // Drives the LOAD pillar of readiness (Gabbett ACWR).

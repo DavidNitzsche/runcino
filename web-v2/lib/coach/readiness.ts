@@ -6,11 +6,14 @@
  *
  * Weights (2026-05-30: dropped subjective, renormalized to objective signals
  * only — subjective check-ins now feed the coach voice directly rather than
- * the readiness number, so the score reflects what HealthKit actually says):
- *   - Sleep 30%  → 7-night avg vs 7.5h target. ±2 per 0.25h.
- *   - HRV   30%  → last night vs 30-day baseline. ±1 per 2%.
- *   - RHR   25%  → 3-day avg vs 60-day baseline. −2 per bpm above.
- *   - Load  15%  → A:C ratio (7d:28d). >1.5 = -8 per Gabbett.
+ * the readiness number, so the score reflects what HealthKit actually says.
+ * 2026-05-30 P2 #9: added HR Recovery 5% pillar from Apple Watch post-workout
+ * 60s drop):
+ *   - Sleep        28%  → 7-night avg vs 7.5h target. ±2 per 0.25h.
+ *   - HRV          28%  → last night vs 30-day baseline. ±1 per 2%.
+ *   - RHR          24%  → 3-day avg vs 60-day baseline. −2 per bpm above.
+ *   - Load         15%  → A:C ratio (7d:28d). >1.5 = -8 per Gabbett.
+ *   - HR Recovery   5%  → most recent vs 30d baseline. ±1 per 2 bpm delta.
  */
 import type { CoachState } from '@/lib/topics/types';
 
@@ -22,8 +25,8 @@ export interface ReadinessBreakdown {
 }
 
 export interface ReadinessInput {
-  key: 'sleep' | 'hrv' | 'rhr' | 'load';
-  label: string;          // 'SLEEP · 30%'
+  key: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
+  label: string;          // 'SLEEP · 28%'
   weight: number;         // contribution (signed)
   observedV: string;      // '6.7h' / '71ms' / etc
   observedSub: string;    // 'vs 7.5h target' / '+27%' / etc
@@ -52,14 +55,14 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
           ? `About ${debt.toFixed(0)}h short for the week. Watch for fatigue creep.`
           : `Just under target. A few hours short, but nothing concerning.`;
     inputs.push({
-      key: 'sleep', label: 'SLEEP · 30%', weight: w,
+      key: 'sleep', label: 'SLEEP · 28%', weight: w,
       // Tag the value as the 7-night average so it doesn't read as "last night".
       observedV: `${state.sleep7Avg.toFixed(1)}h · 7-night avg`,
       observedSub: delta >= 0 ? `+${delta.toFixed(1)}h vs 7.5h target` : `${delta.toFixed(1)}h vs 7.5h target`,
       meaning,
     });
   } else {
-    inputs.push({ key: 'sleep', label: 'SLEEP · 30%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No sleep data yet. Wear the watch overnight.' });
+    inputs.push({ key: 'sleep', label: 'SLEEP · 28%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No sleep data yet. Wear the watch overnight.' });
   }
 
   // HRV (30%)
@@ -78,14 +81,14 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
             ? `Below baseline. Could be stress, sleep, or accumulating load. Watch tomorrow.`
             : `Well below baseline. Pull back today and check rest.`;
     inputs.push({
-      key: 'hrv', label: 'HRV · 30%', weight: w,
+      key: 'hrv', label: 'HRV · 28%', weight: w,
       observedV: `${state.hrvCurrent}ms`,
       // State both numbers, no delta. Same rule the coach voice follows.
       observedSub: `baseline ${state.hrvBaseline}ms`,
       meaning,
     });
   } else {
-    inputs.push({ key: 'hrv', label: 'HRV · 30%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No HRV data yet. Needs a few overnights of watch wear.' });
+    inputs.push({ key: 'hrv', label: 'HRV · 28%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No HRV data yet. Needs a few overnights of watch wear.' });
   }
 
   // RHR (25%)
@@ -102,13 +105,13 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
           ? `A few beats above baseline. Could be sleep deficit, dehydration, or a volume bump. Single-day rise is fine; watch for a streak.`
           : `Notably elevated. Sleep, illness brewing, dehydration, or overreach. If it stays up 3+ days, ease the load.`;
     inputs.push({
-      key: 'rhr', label: 'RHR · 25%', weight: w,
+      key: 'rhr', label: 'RHR · 24%', weight: w,
       observedV: `${state.rhrCurrent} bpm`,
       observedSub: `baseline ${state.rhrBaseline} bpm`,
       meaning,
     });
   } else {
-    inputs.push({ key: 'rhr', label: 'RHR · 25%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No resting HR data yet.' });
+    inputs.push({ key: 'rhr', label: 'RHR · 24%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No resting HR data yet.' });
   }
 
   // LOAD (15%) — Gabbett's Acute:Chronic Workload Ratio (ACWR).
@@ -159,6 +162,41 @@ export function computeReadiness(state: CoachState): ReadinessBreakdown {
       observedV: 'building history',
       observedSub: '',
       meaning: 'Acute:Chronic load ratio needs at least 3 runs in the last 28 days to be meaningful.',
+    });
+  }
+
+  // HR RECOVERY (5%) — 60s post-workout HR drop from the Apple Watch.
+  // Sevenfit literature pegs ~30 bpm as well-conditioned, ~20 average,
+  // < 15 a yellow flag. We compare today's reading to the 30-day baseline:
+  // a faster-than-baseline drop is a small lift, a slower drop is a small drag.
+  // Weight cap ±5 keeps it appropriately minor — readiness isn't the place
+  // to weigh one workout's recovery beat.
+  if (state.hrRecoveryCurrent != null && state.hrRecoveryBaseline != null) {
+    const delta = state.hrRecoveryCurrent - state.hrRecoveryBaseline;
+    // ±1 per 2 bpm delta vs baseline, cap ±5.
+    const w = Math.max(-5, Math.min(5, Math.round(delta / 2)));
+    score += w;
+    const meaning = delta >= 6
+      ? `Faster than your baseline. Strong cardio recovery signal — the engine is rebounding well.`
+      : delta >= 2
+        ? `Slightly above your baseline. Recovery system is on.`
+        : delta >= -2
+          ? `At your baseline. Steady cardio recovery.`
+          : delta >= -6
+            ? `Below your baseline. Could be a hard recent session, sleep deficit, or heat — single-day dip is fine.`
+            : `Well below your baseline. Cardiac recovery is sluggish. Watch tomorrow.`;
+    inputs.push({
+      key: 'hr_recovery', label: 'HR RECOVERY · 5%', weight: w,
+      observedV: `${state.hrRecoveryCurrent} bpm drop`,
+      observedSub: `baseline ${state.hrRecoveryBaseline} bpm`,
+      meaning,
+    });
+  } else {
+    inputs.push({
+      key: 'hr_recovery', label: 'HR RECOVERY · 5%', weight: 0,
+      observedV: 'no data',
+      observedSub: '',
+      meaning: 'HR recovery comes from Apple Watch post-workout. Will appear once a few sessions are in.',
     });
   }
 

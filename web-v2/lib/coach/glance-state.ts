@@ -380,6 +380,11 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       : null,
     sleep7Avg, sleep7Deficit, hrvCurrent, hrvBaseline,
     rhrCurrent, rhrBaseline, cadenceBaseline,
+    // 2026-05-30 P2 #9: glance-state is the briefing-fast-path loader
+    // and doesn't pull HR recovery from health_samples. Pass null so the
+    // pillar renders "no data" — full HR Recovery wiring lives in
+    // state-loader for the /api/readiness endpoint + watch payload.
+    hrRecoveryCurrent: null, hrRecoveryBaseline: null,
     loadAcute7, loadChronic28, loadAcwr,
     recentCheckIns: checkIns.rows.map((r: any) => ({ ts: r.ts, rating: r.rating })),
     activeNiggle: null,  // glance state doesn't pull niggle extras
