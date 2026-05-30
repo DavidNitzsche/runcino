@@ -71,6 +71,9 @@ export type PlannedDay = {
   type: EffortKey; name: string;
   dist: string; pace: string; est: string;
   done?: boolean; today?: boolean;
+  /** Strava activity / run id when the day has been completed. Drives the
+   *  lazy-fetched run-detail in week-row clicks + today's RESULT card. */
+  activityId?: string | null;
 };
 
 export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: string[] }> = {

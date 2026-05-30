@@ -202,7 +202,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
 function ReadinessGauge({ score, label }: { score: number; label: string }) {
   return (
     <div className="gauge">
-      <svg viewBox="0 0 300 300" width="300" height="300">
+      <svg viewBox="0 0 300 300" width="100%" height="100%">
         <defs>
           <linearGradient id="rgauge" x1="0" y1="1" x2="1" y2="0">
             <stop offset="0" stopColor="#FC4D64" />

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FaffSeed } from '../types';
-import { EFF, SEGS, KIT } from '../constants';
+import { EFF, SEGS, KIT, ROLECOL } from '../constants';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace,
@@ -152,7 +152,7 @@ export function TodayView({
             </div>
           )}
         </div>
-        <WorkoutCard d={d} done={!!d.done} result={result} />
+        <WorkoutCard d={d} done={!!d.done} result={result} shoes={seed.shoes} seedShoe={KIT[d.type].shoe} />
       </div>
 
       <Tiles seed={seed} onOpenRace={onOpenRace} />
@@ -160,39 +160,104 @@ export function TodayView({
   );
 }
 
-function WorkoutCard({ d, done, result }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number] }) {
-  if (done && result) {
+type RunSummary = {
+  pace: string | null; time_moving: string | null;
+  hr_avg: number | null; hr_max: number | null;
+  elev_gain_ft: number | null;
+  splits: Array<{ mile: number; pace: string | null }>;
+};
+function CompletedResultCard({ d, fallback }: { d: FaffSeed['week'][number]; fallback?: FaffSeed['results'][number] }) {
+  const [data, setData] = useState<RunSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!d.activityId) return;
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/runs/${encodeURIComponent(d.activityId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((j: RunSummary | null) => { if (!cancelled && j) setData(j); })
+      .catch(() => { /* swallow */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [d.activityId]);
+  const splits = data?.splits?.slice(0, 16) ?? [];
+  const minPaceSec = Math.min(...splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0), 999999);
+  const maxPaceSec = Math.max(...splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0), 0);
+  const span = Math.max(1, maxPaceSec - minPaceSec);
+  const gainFt = data?.elev_gain_ft != null ? Math.round(data.elev_gain_ft) : (fallback?.gain ?? 0);
+  return (
+    <div className="wcard">
+      <div className="wcl">RESULT <span style={{ color: '#7BE8A0', marginLeft: 6 }}>✓ COMPLETED</span></div>
+      {!data && loading && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>Loading run…</div>}
+      <div className="bk-elev" style={{ marginTop: 10 }}>
+        <svg viewBox="0 0 360 58" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="bke" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={EFF[d.type].dot} stopOpacity=".4" />
+              <stop offset="1" stopColor={EFF[d.type].dot} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d="M0,38 L40,24 L80,42 L120,18 L160,34 L200,15 L240,33 L280,22 L320,40 L360,28 L360,58 L0,58 Z" fill="url(#bke)" />
+          <path d="M0,38 L40,24 L80,42 L120,18 L160,34 L200,15 L240,33 L280,22 L320,40 L360,28" fill="none" stroke={EFF[d.type].dot} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        </svg>
+      </div>
+      <div className="bk-elevstat">
+        <span>{d.dist} MI</span>
+        <span>↗ {gainFt} FT</span>
+        {data?.time_moving && <span>{data.time_moving}</span>}
+      </div>
+      {splits.length > 0 ? (
+        <>
+          <div className="kcl" style={{ margin: '18px 0 9px' }}>MILE SPLITS</div>
+          <div className="splits" style={{ marginTop: 4 }}>
+            {splits.map((s, i) => {
+              const sec = paceToSec(s.pace ?? '');
+              const fill = sec > 0 ? Math.round(40 + (1 - (sec - minPaceSec) / span) * 55) : 30;
+              return (
+                <div className="spr" key={i}>
+                  <span className="spm">{s.mile}</span>
+                  <div className="sptrk"><div className="spf" style={{ width: `${fill}%`, background: EFF[d.type].dot }} /></div>
+                  <span className="spp">{s.pace ?? '·'}<small>/mi</small></span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 12, opacity: 0.6, marginTop: 14 }}>
+          {d.activityId ? 'Splits unavailable for this run.' : 'No matched run yet for this day.'}
+        </div>
+      )}
+    </div>
+  );
+}
+function paceToSec(p: string): number {
+  if (!p) return 0;
+  const parts = p.split(':').map(x => parseInt(x, 10) || 0);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+function WorkoutCard({ d, done, result, shoes, seedShoe }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; shoes: FaffSeed['shoes']; seedShoe: string }) {
+  if (done) {
+    return <CompletedResultCard d={d} fallback={result} />;
+  }
+  // Rest day gets a recovery-focused panel, not the workout shape.
+  if (d.type === 'rest') {
     return (
       <div className="wcard">
-        <div className="wcl">RESULT <span style={{ color: '#7BE8A0', marginLeft: 6 }}>✓ COMPLETED</span></div>
-        <div className="kcl" style={{ margin: '2px 0 0' }}>ROUTE · RESEDA LOOP</div>
-        <div className="bk-elev">
-          <svg viewBox="0 0 360 58" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="bke" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor={EFF[d.type].dot} stopOpacity=".4" />
-                <stop offset="1" stopColor={EFF[d.type].dot} stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d="M0,38 L40,24 L80,42 L120,18 L160,34 L200,15 L240,33 L280,22 L320,40 L360,28 L360,58 L0,58 Z" fill="url(#bke)" />
-            <path d="M0,38 L40,24 L80,42 L120,18 L160,34 L200,15 L240,33 L280,22 L320,40 L360,28" fill="none" stroke={EFF[d.type].dot} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-          </svg>
+        <div className="wcl">RECOVERY</div>
+        <div style={{ fontFamily: 'Oswald, sans-serif', fontSize: 28, fontWeight: 600, lineHeight: 1, marginTop: 4 }}>Today is for healing.</div>
+        <div style={{ fontSize: 13.5, fontWeight: 500, lineHeight: 1.5, opacity: 0.86, marginTop: 12 }}>
+          Six days on. This is where the work sets in. Sleep, hydrate, mobilize. Let the load land.
         </div>
-        <div className="bk-elevstat">
-          <span>{d.dist} MI</span>
-          <span>↗ {result.gain} FT</span>
-          <span>34.20° N</span>
+        <div className="kit" style={{ marginTop: 22 }}>
+          <div className="kc"><div className="kcl">SLEEP TARGET</div><div className="kcv">8h</div></div>
+          <div className="kc"><div className="kcl">MOBILITY</div><div className="kcv">15 min</div></div>
+          <div className="kc"><div className="kcl">FUEL</div><div className="kcv">Balanced + hydrate</div></div>
         </div>
-        <div className="kcl" style={{ margin: '18px 0 9px' }}>MILE SPLITS</div>
-        <div className="splits" style={{ marginTop: 4 }}>
-          {result.splits.map((s, i) => (
-            <div className="spr" key={i}>
-              <span className="spm">{s[0]}</span>
-              <div className="sptrk"><div className="spf" style={{ width: `${s[1]}%`, background: EFF[d.type].dot }} /></div>
-              <span className="spp">{s[2]}<small>/mi</small></span>
-            </div>
-          ))}
-        </div>
+        <div className="wcoach"><span className="ct">COACH</span>Rest is training. An easy 20-min walk is fine, but do not turn it into a session.</div>
       </div>
     );
   }
@@ -215,10 +280,69 @@ function WorkoutCard({ d, done, result }: { d: FaffSeed['week'][number]; done: b
       </div>
       <div className="kit">
         <div className="kc"><div className="kcl">WEATHER</div><div className="kcv">{k.weather}</div></div>
-        <div className="kc"><div className="kcl">SHOE</div><div className="kcv">{k.shoe}</div></div>
+        <div className="kc">
+          <div className="kcl">SHOE</div>
+          <ShoePicker shoes={shoes} initial={seedShoe} />
+        </div>
         <div className="kc"><div className="kcl">FUEL</div><div className="kcv">{k.fuel}</div></div>
       </div>
       <div className="wcoach"><span className="ct">COACH</span>{k.coach}</div>
+    </div>
+  );
+}
+
+function ShoePicker({ shoes, initial }: { shoes: FaffSeed['shoes']; initial: string }) {
+  const [picked, setPicked] = useState(initial);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  if (!shoes.length) {
+    return <div className="kcv">{picked}</div>;
+  }
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <div
+        className="kcv"
+        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        onClick={() => setOpen(o => !o)}
+        role="button"
+        tabIndex={0}
+      >
+        {picked}
+        <span style={{ fontSize: 9, opacity: 0.55 }}>▾</span>
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', zIndex: 80, top: '100%', left: 0, marginTop: 6,
+          background: '#171922', border: '1px solid rgba(255,255,255,.16)',
+          borderRadius: 13, padding: 6, boxShadow: '0 22px 54px -20px rgba(0,0,0,.85)',
+          minWidth: 220,
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, opacity: 0.5, padding: '6px 10px 8px' }}>WORN ON THIS RUN</div>
+          {shoes.map(s => (
+            <div
+              key={s.nm}
+              onClick={() => { setPicked(s.nm); setOpen(false); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 9,
+                padding: '9px 10px', borderRadius: 9, cursor: 'pointer',
+                fontSize: 13, fontWeight: 600, color: '#F6F7F8',
+                background: s.nm === picked ? 'rgba(255,206,138,.12)' : undefined,
+              }}
+            >
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: ROLECOL[s.role] ?? '#14C08C' }} />
+              {s.nm}
+              <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, opacity: 0.5 }}>{s.role}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

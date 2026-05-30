@@ -79,6 +79,35 @@ async function loadRaces()    { return safe(async () => (await import('@/lib/coa
 async function loadLog()      { return safe(async () => (await import('@/lib/coach/log-state')).loadLogState(DEFAULT_USER_ID, { filters: { source: null, type: null, phase: null, shoe: null } })); }
 async function loadProfile()  { return safe(async () => (await import('@/lib/coach/profile-state')).loadProfileState(DEFAULT_USER_ID)); }
 
+/** Form-metric series straight from health_samples. Pulls 30-day series
+ *  for the running-form signals HealthKit ships (cadence, GCT, vertical
+ *  oscillation, stride length, vertical ratio) plus 30-day VO2 if present.
+ *  The Faff Health view renders these in the FORM strip. */
+async function loadFormMetrics() {
+  return safe(async () => {
+    const { pool } = await import('@/lib/db/pool');
+    const rows = await pool.query(
+      `SELECT sample_type, sample_date::date AS d, value
+         FROM health_samples
+        WHERE user_id = $1
+          AND sample_type IN ('cadence','ground_contact_time','vertical_oscillation','stride_length','vertical_ratio')
+          AND sample_date >= NOW() - interval '30 days'
+        ORDER BY sample_date ASC`,
+      [DEFAULT_USER_ID]
+    );
+    const acc: Record<string, Array<{ date: string; value: number }>> = {};
+    for (const r of rows.rows) {
+      const key = r.sample_type;
+      (acc[key] ??= []).push({
+        date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
+        value: Number(r.value),
+      });
+    }
+    return acc;
+  });
+}
+type Form = Awaited<ReturnType<typeof loadFormMetrics>>;
+
 type Glance   = Awaited<ReturnType<typeof import('@/lib/coach/glance-state').loadGlanceState>>;
 type Health   = Awaited<ReturnType<typeof import('@/lib/coach/health-state').loadHealthState>>;
 type Training = Awaited<ReturnType<typeof import('@/lib/coach/training-state').loadTrainingState>>;
@@ -93,11 +122,25 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
     return { week: FALLBACK_WEEK, todayIdx: 1, results: {} };
   }
   const DOW = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  // Canonical pace defaults per effort type (used when the plan workout
+  // didn't carry a paceTargetSPerMi — e.g. long runs with mixed blocks).
+  const PACE_DEFAULT: Record<EffortKey, number | null> = {
+    easy: 525, recovery: 570, long: 460, tempo: 398, intervals: 365, rest: null,
+  };
   const week: PlannedDay[] = glance.weekDays.map((d): PlannedDay => {
     const eff = mapType(d.plannedType);
     const dist = d.plannedMi > 0 ? d.plannedMi.toFixed(1) : ' · ';
     const fullDate = new Date(d.date + 'T12:00:00Z');
     const fullLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(fullDate);
+    const paceSec = (d as { paceTargetSPerMi?: number | null }).paceTargetSPerMi ?? PACE_DEFAULT[eff];
+    const paceStr = paceSec != null && paceSec > 0
+      ? `${Math.floor(paceSec / 60)}:${String(Math.round(paceSec % 60)).padStart(2, '0')}`
+      : (eff === 'rest' ? 'Rest' : '·');
+    // Real estimated duration from pace × distance (was a flat 9 min/mi).
+    const estMin = d.plannedMi > 0 && paceSec && paceSec > 0 ? Math.round(d.plannedMi * paceSec / 60) : null;
+    const est = estMin != null
+      ? (estMin >= 60 ? `~${Math.floor(estMin/60)}:${String(estMin%60).padStart(2,'0')}` : `~${estMin} min`)
+      : (d.plannedMi > 0 ? `~${Math.round(d.plannedMi * 9)} min` : ' · ');
     return {
       dw: DOW[(d.dow + 6) % 7],
       dn: fullDate.getUTCDate(),
@@ -105,10 +148,11 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
       type: eff,
       name: d.plannedLabel || humanName(eff, d.plannedMi),
       dist,
-      pace: '·',
-      est: d.plannedMi > 0 ? `~${Math.round(d.plannedMi * 9)} min` : ' · ',
+      pace: paceStr,
+      est,
       done: d.isPast && d.doneMi > 0,
       today: d.isToday,
+      activityId: d.activityId,
     };
   });
   const todayIdx = Math.max(0, week.findIndex(w => w.today));
@@ -148,11 +192,15 @@ function adaptReadiness(glance: Glance | null, health: Health | null): Readiness
   });
   const trend = trendRaw.length === 7 ? trendRaw : Array(7).fill(r.score);
   const trendDays = (health?.hrvSeries.slice(-7) ?? []).map(d => new Date(d.date + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase());
-  const drivers = (r.inputs || []).map(i => {
-    const dir: 'pos' | 'neg' = i.weight >= 0 ? 'pos' : 'neg';
-    const pct = Math.min(100, Math.abs(i.weight) * 5);
-    return { name: (i.label.split(' ·')[0] || i.key).toUpperCase(), why: `${i.observedV} · ${i.observedSub}`.trim(), pct, pts: Math.abs(i.weight), dir };
-  });
+  // Filter the 'subjective' check-in input — that surface was removed from
+  // the app (no daily mood/wellness check-in in production any more).
+  const drivers = (r.inputs || [])
+    .filter(i => i.key !== 'subjective')
+    .map(i => {
+      const dir: 'pos' | 'neg' = i.weight >= 0 ? 'pos' : 'neg';
+      const pct = Math.min(100, Math.abs(i.weight) * 5);
+      return { name: (i.label.split(' ·')[0] || i.key).toUpperCase(), why: `${i.observedV} · ${i.observedSub}`.trim(), pct, pts: Math.abs(i.weight), dir };
+    });
   return {
     score: r.score, label, baseline,
     trend, trendDays: trendDays.length === 7 ? trendDays : ['MON','TUE','WED','THU','FRI','SAT','SUN'],
@@ -263,14 +311,33 @@ function adaptVolumeBars(log: LogT | null, training: Training | null): { bars: V
 }
 
 function adaptSeason(training: Training | null) {
-  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1 };
+  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, weekDays: [] };
   const miles = training.weeks.map(w => Math.round(w.plannedMi || 0));
   const nowIdx = Math.max(0, Math.min(miles.length - 1, training.currentWeekIdx ?? 0));
   const raceIdx = miles.length - 1;
-  return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5 };
+  const DOW = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  // Lookup canonical pace per effort type for non-current weeks (training-
+  // state doesn't ship the per-row pace_target_s_per_mi; we backfill from
+  // the effort-typed default so rows render with a representative pace).
+  const PACE_DEFAULT: Record<string, number | null> = {
+    easy: 525, recovery: 570, long: 460, tempo: 398, intervals: 365, rest: null,
+  };
+  const weekDays = training.weeks.map(w => (w.days ?? []).map(d => {
+    const t = mapType(d.type);
+    return {
+      dow: DOW[(d.dow + 6) % 7],
+      type: t as import('./constants').EffortKey,
+      name: d.label || humanName(t, d.mi),
+      mi: d.mi || 0,
+      paceSec: PACE_DEFAULT[t] ?? null,
+      done: !!d.activityId,
+      activityId: d.activityId,
+    };
+  }));
+  return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, weekDays };
 }
 
-function adaptHealth(health: Health | null): HealthSnapshot {
+function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
   const series = (arr: Array<{ date: string } & Record<string, unknown>> | undefined, field: string): number[] => {
     if (!arr || arr.length === 0) return [];
     const xs = arr.map(d => Number((d as Record<string, unknown>)[field])).filter(v => Number.isFinite(v));
@@ -310,14 +377,38 @@ function adaptHealth(health: Health | null): HealthSnapshot {
        [Math.max(30, (vo2Current || 50) - 8), (vo2Current || 50) + 6],
        Array(30).fill(vo2Current || 0), 'good'),
   ];
-  const form: HealthMetric[] = [
-    mk('cadence', 'CADENCE',        'spm', cadenceCurrent, 170, [150, 185], Array(30).fill(cadenceCurrent || 0), cadenceCurrent >= 170 ? 'good' : 'warn'),
-    mk('gct',     'GROUND CONTACT', 'ms',  0, undefined, [180, 260], [], 'neutral'),
-    mk('vosc',    'VERTICAL OSC',   'cm', 0, undefined, [6, 11],    [], 'neutral', 1),
-    mk('stride',  'STRIDE LENGTH',  'm',  0, undefined, [0.9, 1.4], [], 'neutral', 2),
+  // Real form metrics from health_samples (HealthKit ingest).
+  const formRaw = (form?.ok ? form.value : null) ?? {};
+  const formSeries = (k: string): { last: number; series: number[] } => {
+    const rows = formRaw[k] ?? [];
+    if (rows.length === 0) return { last: 0, series: [] };
+    const xs = rows.map(r => r.value).filter(Number.isFinite);
+    return { last: xs.at(-1) ?? 0, series: xs };
+  };
+  const cadenceForm = formSeries('cadence');
+  const gctForm     = formSeries('ground_contact_time');
+  const voscForm    = formSeries('vertical_oscillation');
+  const strideForm  = formSeries('stride_length');
+  const cadCurrent  = cadenceForm.last || cadenceCurrent;
+  const form_: HealthMetric[] = [
+    mk('cadence', 'CADENCE',        'spm', cadCurrent, 170,
+       [Math.max(140, (cadCurrent || 170) - 20), (cadCurrent || 170) + 15],
+       cadenceForm.series.length ? cadenceForm.series : Array(30).fill(cadCurrent || 0),
+       cadCurrent >= 170 ? 'good' : 'warn'),
+    mk('gct',     'GROUND CONTACT', 'ms',  Math.round(gctForm.last), undefined,
+       [Math.max(160, (gctForm.last || 220) - 30), (gctForm.last || 220) + 30],
+       gctForm.series.map(v => Math.round(v)),
+       gctForm.last > 0 && gctForm.last < 240 ? 'good' : 'neutral'),
+    mk('vosc',    'VERTICAL OSC',   'cm',  voscForm.last, undefined,
+       [Math.max(4, (voscForm.last || 8) - 3), (voscForm.last || 8) + 3],
+       voscForm.series,
+       voscForm.last > 0 && voscForm.last < 9 ? 'good' : 'neutral', 1),
+    mk('stride',  'STRIDE LENGTH',  'm',   strideForm.last, undefined,
+       [Math.max(0.8, (strideForm.last || 1.1) - 0.3), (strideForm.last || 1.1) + 0.3],
+       strideForm.series, 'neutral', 2),
     { k: 'balance', label: 'L / R BALANCE', unit: '', current: 0, dom: [0, 0], series: [], status: 'neutral', special: 'balance' },
   ];
-  return { readiness: adaptReadiness(null, health), body, form };
+  return { readiness: adaptReadiness(null, health), body, form: form_ };
 }
 
 function adaptPRs(races: Races | null): PR[] {
@@ -644,8 +735,8 @@ function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['
 /* ─────────────────────────  Public entry point  ───────────────────────── */
 
 export async function buildSeed(): Promise<FaffSeed> {
-  const [gRes, hRes, tRes, rRes, lRes, pRes] = await Promise.all([
-    loadGlance(), loadHealth(), loadTraining(), loadRaces(), loadLog(), loadProfile(),
+  const [gRes, hRes, tRes, rRes, lRes, pRes, fRes] = await Promise.all([
+    loadGlance(), loadHealth(), loadTraining(), loadRaces(), loadLog(), loadProfile(), loadFormMetrics(),
   ]);
   const glance   = gRes.ok ? gRes.value : null;
   const health   = hRes.ok ? hRes.value : null;
@@ -653,13 +744,14 @@ export async function buildSeed(): Promise<FaffSeed> {
   const races    = rRes.ok ? rRes.value : null;
   const log      = lRes.ok ? lRes.value : null;
   const profile  = pRes.ok ? pRes.value : null;
+  const formMetrics: Form = fRes;
 
   const { week, todayIdx, results } = adaptWeek(glance);
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
   const season = adaptSeason(training);
-  const healthSnapshot = adaptHealth(health);
+  const healthSnapshot = adaptHealth(health, formMetrics);
   healthSnapshot.readiness = readiness;
   const prs = adaptPRs(races);
   const racesList = adaptRaces(races);

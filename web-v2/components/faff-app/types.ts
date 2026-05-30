@@ -36,6 +36,17 @@ export type FaffSeed = {
     raceIdx: number;
     miles: number[];   // length = raceIdx (e.g. 26 weeks of mileage)
     maxMi: number;
+    /** Per-week real plan workouts so non-current weeks render the real
+     *  plan instead of phase-template fluff. */
+    weekDays: Array<Array<{
+      dow: string;          // MON / TUE / ...
+      type: import('./constants').EffortKey;
+      name: string;
+      mi: number;
+      paceSec: number | null;
+      done: boolean;
+      activityId?: string | null;
+    }>>;
   };
 
   // health view

@@ -178,23 +178,18 @@ export function TrainView({
                   </div>
                 );
               })
-            : (PHASE_TPL[key as Exclude<PhaseKey,'race'>] ?? PHASE_TPL.build).map((row, di) => {
-                const total = miles[cur];
-                const type = row[1];
-                const info = SEASON_TYPE_NAME[type];
-                const col = SEASON_TYPE_COLOR[type] ?? '#8A90A0';
-                const rest = type === 'rest';
-                const mi = Math.round(total * row[2]);
-                const meta = rest ? 'full recovery' : `${mi} mi · ${info[1]}`;
-                const past = cur < nowIdx;
+            : (seed.season.weekDays[cur] ?? []).map((d, di) => {
+                const col = SEASON_TYPE_COLOR[d.type as keyof typeof SEASON_TYPE_COLOR] ?? '#8A90A0';
+                const rest = d.type === 'rest';
+                const meta = rest ? 'full recovery' : `${d.mi.toFixed(1)} mi${d.paceSec ? ' · ' + paceFromSec(d.paceSec) : ''}`;
                 return (
                   <div className="twr" key={di}>
-                    <span className="td">{DOW[di]}</span>
+                    <span className="td">{d.dow}</span>
                     <span className="tdot" style={{ background: col }} />
-                    <span className="tn">{info[0]}</span>
+                    <span className="tn">{d.name}</span>
                     <span className="tm">{meta}</span>
                     <span className="tc">
-                      {past && (
+                      {d.done && (
                         <svg className="ck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                       )}
                     </span>
@@ -210,4 +205,8 @@ export function TrainView({
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+}
+function paceFromSec(s: number): string {
+  if (!s) return '·';
+  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 }

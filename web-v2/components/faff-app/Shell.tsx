@@ -127,7 +127,14 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
         {view === 'train'    && (
           <TrainView
             seed={seed}
-            onOpenDetail={(i) => setOpenOverlay({ type: 'wk', i })}
+            onOpenDetail={(i) => {
+              const day = seed.week[i];
+              // Past days that have a Strava-matched run go straight to the
+              // run detail modal so the user sees real splits/zones, not the
+              // planned workout breakdown.
+              if (day?.activityId) setOpenOverlay({ type: 'run', id: day.activityId });
+              else setOpenOverlay({ type: 'wk', i });
+            }}
             onMeshChange={setMeshOverride}
           />
         )}
