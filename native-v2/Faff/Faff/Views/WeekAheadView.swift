@@ -91,8 +91,14 @@ struct WeekAheadView: View {
 
             VStack(spacing: 4) {
                 ForEach(agendaRows) { d in
-                    AgendaRow(day: d)
-                        .padding(.horizontal, 18)
+                    if d.effort == .rest {
+                        AgendaRow(day: d).padding(.horizontal, 18)
+                    } else {
+                        NavigationLink(value: d.runId.map { FaffRoute.runDetail(id: $0) } ?? FaffRoute.planned(workoutId: nil)) {
+                            AgendaRow(day: d).padding(.horizontal, 18)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
@@ -202,6 +208,7 @@ private struct AgendaDay: Identifiable {
     let effort: FaffEffort
     let isToday: Bool
     let isDone: Bool
+    var runId: String? = nil
 }
 
 private struct AgendaRow: View {
