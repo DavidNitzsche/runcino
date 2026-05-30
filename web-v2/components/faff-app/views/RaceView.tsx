@@ -50,6 +50,12 @@ export type RaceDetailSeed = {
   pickup: { value: string; detail: string };
   finish: { value: string; detail: string };
   elevPath: string;
+  // 2026-05-30: real route shape projected from course_geometry trackPoints.
+  // null when GPX hasn't been uploaded for this race — the map renders an
+  // "Route unavailable" panel instead of the old hardcoded zigzag.
+  routePath: string | null;
+  routeStart: [number, number] | null;
+  routeEnd: [number, number] | null;
 };
 
 const FALLBACK: RaceDetailSeed = {
@@ -70,6 +76,9 @@ const FALLBACK: RaceDetailSeed = {
   pickup:  { value: '·', detail: '·' },
   finish:  { value: '·', detail: '·' },
   elevPath: 'M0,58 L40,40 L80,70 L120,46 L160,78 L200,54 L240,86 L280,68 L320,96 L360,84 L400,104 L440,96 L480,112 L520,108 L560,120 L600,116 L640,128',
+  routePath: null,
+  routeStart: null,
+  routeEnd: null,
 };
 
 export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?: RaceDetailSeed; onBack: () => void }) {
@@ -249,19 +258,31 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
 
       <div className="rp-sec">THE COURSE<span className="rp-secr">{r.netElevFt < -100 ? 'Net downhill' : r.netElevFt > 100 ? 'Net uphill' : 'Net flat'}</span></div>
       <div className="rp-panel">
-        <div className="rp-elevhead"><div className="t">Route{r.course ? ` · ${r.course}` : ''}</div><div className="s">GPX available</div></div>
+        <div className="rp-elevhead">
+          <div className="t">Route{r.course ? ` · ${r.course}` : ''}</div>
+          <div className="s">{r.routePath ? 'GPX loaded' : 'No GPX yet'}</div>
+        </div>
         <div className="rp-map">
           <svg viewBox="0 0 640 158" preserveAspectRatio="none">
             <defs><pattern id="rmg" width="44" height="44" patternUnits="userSpaceOnUse"><path d="M44 0H0V44" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1"/></pattern></defs>
             <rect width="640" height="158" fill="url(#rmg)" />
           </svg>
-          <svg viewBox="0 0 640 158" preserveAspectRatio="xMidYMid meet">
-            <polyline points="40,118 90,96 140,108 196,74 250,88 300,60 356,76 410,52 470,70 524,44 580,58 606,40" fill="none" stroke="#FF8847" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="40" cy="118" r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />
-            <circle cx="606" cy="40" r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />
-          </svg>
-          <span className="rp-mtag s" style={{ left: 14, bottom: 32 }}>START</span>
-          <span className="rp-mtag f" style={{ right: 14, top: 12 }}>FINISH</span>
+          {r.routePath ? (
+            <svg viewBox="0 0 640 158" preserveAspectRatio="xMidYMid meet">
+              <path d={r.routePath} fill="none" stroke="#FF8847" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+              {r.routeStart && <circle cx={r.routeStart[0]} cy={r.routeStart[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
+              {r.routeEnd && <circle cx={r.routeEnd[0]} cy={r.routeEnd[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />}
+            </svg>
+          ) : (
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55,
+            }}>
+              ROUTE UNAVAILABLE · UPLOAD GPX TO SEE THE COURSE
+            </div>
+          )}
+          {r.routePath && <span className="rp-mtag s" style={{ left: 14, bottom: 32 }}>START</span>}
+          {r.routePath && <span className="rp-mtag f" style={{ right: 14, top: 12 }}>FINISH</span>}
           <div className="rp-mstat">
             <span>{r.distanceMi} MI</span>
             <span>{r.netElevFt < 0 ? '↘' : '↗'} {Math.abs(r.netElevFt)} FT NET</span>

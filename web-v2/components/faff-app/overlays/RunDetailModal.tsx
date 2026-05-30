@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { ZC } from '../constants';
+import { decodePolyline, polylineToSvgPath, polylineEndpoints, elevPathFromSplits } from '@/lib/route/polyline';
 
 /**
  * Run-detail overlay. Opens off Activity / Recent Runs / Heatmap clicks
@@ -83,8 +84,9 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 {data.time_moving && <div><div className="k">TIME</div><div className="v">{data.time_moving}</div></div>}
                 {data.pace && <div><div className="k">AVG PACE</div><div className="v">{data.pace}<small>/mi</small></div></div>}
                 {data.hr_avg && <div><div className="k">AVG HR</div><div className="v">{data.hr_avg}<small> bpm</small></div></div>}
-                {data.elev_gain_ft != null && <div><div className="k">GAIN</div><div className="v">{Math.round(data.elev_gain_ft)}<small> ft</small></div></div>}
+                {data.elev_gain_ft != null && data.elev_gain_ft > 0 && <div><div className="k">GAIN</div><div className="v">{Math.round(data.elev_gain_ft)}<small> ft</small></div></div>}
               </div>
+              <RouteAndElev data={data} />
               {data.splits?.length > 0 && (() => {
                 const maxFill = Math.max(...data.splits.map(s => paceToSec(s.pace ?? '') || 0));
                 const minFill = Math.min(...data.splits.filter(s => paceToSec(s.pace ?? '') > 0).map(s => paceToSec(s.pace!) || 0));
@@ -142,6 +144,73 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
         </div>
       </div>
     </div>
+  );
+}
+
+/** Route map + elevation profile. Both pull from real run data:
+ *   - Route: decoded Strava polyline (lat/lng pairs projected to SVG).
+ *   - Elev: cumulative integration of splits[].elev_change_ft.
+ *  Each renders only when the underlying data exists — no fake fallbacks. */
+function RouteAndElev({ data }: { data: RunDetail }) {
+  const route = useMemo(() => {
+    if (!data.route_polyline) return null;
+    const decoded = decodePolyline(data.route_polyline);
+    const path = polylineToSvgPath(decoded, 700, 168, 14);
+    const ends = polylineEndpoints(decoded, 700, 168, 14);
+    return path ? { path, endpoints: ends } : null;
+  }, [data.route_polyline]);
+  const elev = useMemo(() => {
+    if (!data.splits?.length) return null;
+    return elevPathFromSplits(data.splits, 360, 58, 4);
+  }, [data.splits]);
+
+  if (!route && !elev) return null;
+  return (
+    <>
+      {route && (
+        <>
+          <div className="fll" style={{ marginTop: 22 }}>ROUTE</div>
+          <div className="rdmap">
+            <svg viewBox="0 0 700 168" preserveAspectRatio="none">
+              <defs>
+                <pattern id="rdm-rdmodal" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M40 0H0V40" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1"/>
+                </pattern>
+              </defs>
+              <rect width="700" height="168" fill="url(#rdm-rdmodal)" />
+            </svg>
+            <svg viewBox="0 0 700 168" preserveAspectRatio="xMidYMid meet">
+              <path d={route.path} fill="none" stroke="#FF8847" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+              {route.endpoints && <circle cx={route.endpoints.start[0]} cy={route.endpoints.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
+              {route.endpoints && <circle cx={route.endpoints.end[0]} cy={route.endpoints.end[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />}
+            </svg>
+            <span className="rdmaptag start">START</span>
+            <span className="rdmaptag end">FINISH</span>
+            <div className="rdmapstat">
+              <span>{data.distance_mi.toFixed(1)} MI</span>
+              {data.elev_gain_ft != null && data.elev_gain_ft > 0 && <span>↗ {Math.round(data.elev_gain_ft)} FT</span>}
+            </div>
+          </div>
+        </>
+      )}
+      {elev && (
+        <>
+          <div className="fll" style={{ marginTop: 22 }}>ELEVATION</div>
+          <div className="bk-elev" style={{ marginTop: 6 }}>
+            <svg viewBox="0 0 360 58" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="rdmev" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor="#FF8847" stopOpacity=".42" />
+                  <stop offset="1" stopColor="#FF8847" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path d={elev.area} fill="url(#rdmev)" />
+              <path d={elev.line} fill="none" stroke="#FF8847" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            </svg>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

@@ -177,6 +177,56 @@ function elevPathFromGeometry(geom: CourseGeom | null): string {
   return 'M' + out.join(' L');
 }
 
+/** 2026-05-30: real route shape from course trackPoints, projected into a
+ *  640×158 SVG viewBox. Returns null when no GPX is on file — RaceView
+ *  hides the map and shows a "Route unavailable" note instead of the old
+ *  hardcoded zigzag. */
+function routePathFromGeometry(geom: CourseGeom | null): {
+  path: string;
+  start: [number, number];
+  end: [number, number];
+} | null {
+  if (!geom?.trackPoints?.length || geom.trackPoints.length < 2) return null;
+  const latLng: Array<[number, number]> = geom.trackPoints.map((p) => [p.lat, p.lon]);
+  // Inline the same Mercator-ish projection as lib/route/polyline so the
+  // race detail can stay server-built without pulling in a browser-only
+  // util. Identical math.
+  let minLat = latLng[0][0], maxLat = latLng[0][0];
+  let minLng = latLng[0][1], maxLng = latLng[0][1];
+  for (const [la, ln] of latLng) {
+    if (la < minLat) minLat = la; if (la > maxLat) maxLat = la;
+    if (ln < minLng) minLng = ln; if (ln > maxLng) maxLng = ln;
+  }
+  const latSpan = maxLat - minLat || 1e-9;
+  const lngSpan = maxLng - minLng || 1e-9;
+  const midLat = (minLat + maxLat) / 2;
+  const lngScale = Math.cos((midLat * Math.PI) / 180);
+  const xSpan = lngSpan * lngScale || 1e-9;
+  const viewW = 640, viewH = 158, pad = 14;
+  const w = viewW - 2 * pad;
+  const h = viewH - 2 * pad;
+  const scale = Math.min(w / xSpan, h / latSpan);
+  const drawW = xSpan * scale;
+  const drawH = latSpan * scale;
+  const offX = pad + (w - drawW) / 2;
+  const offY = pad + (h - drawH) / 2;
+  const project = ([la, ln]: [number, number]): [number, number] => [
+    offX + (ln - minLng) * lngScale * scale,
+    offY + (maxLat - la) * scale,
+  ];
+  const stride = Math.max(1, Math.floor(latLng.length / 400));
+  const cmds: string[] = [];
+  for (let i = 0; i < latLng.length; i += stride) {
+    const [x, y] = project(latLng[i]);
+    cmds.push(`${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  return {
+    path: cmds.join(' '),
+    start: project(latLng[0]),
+    end: project(latLng[latLng.length - 1]),
+  };
+}
+
 export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | null> {
   try {
     const [{ loadRacesState }, { pool }] = await Promise.all([
@@ -250,6 +300,14 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       pickup:  { value: '·', detail: 'Reserve ahead via race site' },
       finish:  { value: race.location ?? '·', detail: '·' },
       elevPath: elevPathFromGeometry(geom),
+      ...(() => {
+        const r = routePathFromGeometry(geom);
+        return {
+          routePath: r?.path ?? null,
+          routeStart: r?.start ?? null,
+          routeEnd: r?.end ?? null,
+        };
+      })(),
     };
   } catch {
     return null;

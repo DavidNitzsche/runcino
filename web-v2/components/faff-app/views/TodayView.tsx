@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
+import { elevPathFromSplits } from '@/lib/route/polyline';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace,
@@ -206,7 +207,8 @@ type RunSummary = {
   power_avg_w: number | null;
   shoe_id: number | null;
   shoes?: Array<{ id: number; brand: string; model: string }>;
-  splits: Array<{ mile: number; pace: string | null }>;
+  splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null }>;
+  route_polyline?: string | null;
 };
 
 /** Lazy-fetch /api/runs/[id] for a past day. Shared by the TodayView hero
@@ -236,25 +238,36 @@ function CompletedResultCard({ d, fallback, runData, loading }: { d: FaffSeed['w
   const maxPaceSec = Math.max(...splits.map(s => paceToSec(s.pace ?? '')).filter(n => n > 0), 0);
   const span = Math.max(1, maxPaceSec - minPaceSec);
   const gainFt = data?.elev_gain_ft != null ? Math.round(data.elev_gain_ft) : (fallback?.gain ?? 0);
+  // 2026-05-30: real elevation profile from this run's actual splits.
+  // Was a hardcoded zigzag — identical on every past run. Now we
+  // integrate elev_change_ft cumulatively to draw the real shape. If the
+  // run is essentially flat (<3ft swing) or has no elev data we hide the
+  // chart entirely rather than show a fake.
+  const elev = (() => {
+    if (!splits.length) return null;
+    return elevPathFromSplits(splits, 360, 58, 4);
+  })();
   return (
     <div className="wcard">
       <div className="wcl">RESULT <span style={{ color: '#7BE8A0', marginLeft: 6 }}>✓ COMPLETED</span></div>
       {!data && loading && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>Loading run…</div>}
-      <div className="bk-elev" style={{ marginTop: 10 }}>
-        <svg viewBox="0 0 360 58" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="bke" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={EFF[d.type].dot} stopOpacity=".4" />
-              <stop offset="1" stopColor={EFF[d.type].dot} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <path d="M0,38 L40,24 L80,42 L120,18 L160,34 L200,15 L240,33 L280,22 L320,40 L360,28 L360,58 L0,58 Z" fill="url(#bke)" />
-          <path d="M0,38 L40,24 L80,42 L120,18 L160,34 L200,15 L240,33 L280,22 L320,40 L360,28" fill="none" stroke={EFF[d.type].dot} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-        </svg>
-      </div>
+      {elev && (
+        <div className="bk-elev" style={{ marginTop: 10 }}>
+          <svg viewBox="0 0 360 58" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id={`bke-${d.activityId ?? d.dw}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor={EFF[d.type].dot} stopOpacity=".4" />
+                <stop offset="1" stopColor={EFF[d.type].dot} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={elev.area} fill={`url(#bke-${d.activityId ?? d.dw})`} />
+            <path d={elev.line} fill="none" stroke={EFF[d.type].dot} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+          </svg>
+        </div>
+      )}
       <div className="bk-elevstat">
         <span>{d.dist} MI</span>
-        <span>↗ {gainFt} FT</span>
+        {gainFt > 0 && <span>↗ {gainFt} FT</span>}
         {data?.time_moving && <span>{data.time_moving}</span>}
       </div>
       {splits.length > 0 ? (

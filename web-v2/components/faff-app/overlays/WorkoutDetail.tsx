@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, PLAN_CUES, ZC, hexA } from '../constants';
+import { decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
 
 const Check = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -93,7 +95,7 @@ function CompletedBody({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
         <div><div className="k">AVG HR</div>  <div className="v">{det.hr}<small> bpm</small></div></div>
         <div><div className="k">GAIN</div>    <div className="v">{det.gain}<small> ft</small></div></div>
       </div>
-      <RouteMap dist={d.dist} gain={det.gain} />
+      <RouteMap dist={d.dist} gain={det.gain} activityId={d.activityId ?? null} />
       <div className="fll" style={{ marginTop: 22 }}>MILE SPLITS</div>
       <div className="splits">
         {det.splits.map((s, i) => (
@@ -218,7 +220,33 @@ function RestBody() {
   );
 }
 
-function RouteMap({ dist, gain }: { dist: string; gain: number }) {
+function RouteMap({ dist, gain, activityId }: { dist: string; gain: number; activityId: string | null }) {
+  // 2026-05-30: lazy-fetch the run detail so we can render the actual
+  // encoded route polyline instead of a hardcoded zigzag. When the run
+  // has no GPS payload, show an honest "Route unavailable" surface.
+  const [routePath, setRoutePath] = useState<string | null>(null);
+  const [endpoints, setEndpoints] = useState<{ start: [number, number]; end: [number, number] } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!activityId) return;
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/runs/${encodeURIComponent(activityId)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((j: { route_polyline?: string | null } | null) => {
+        if (cancelled || !j?.route_polyline) return;
+        const decoded = decodePolyline(j.route_polyline);
+        const path = polylineToSvgPath(decoded, 700, 168, 14);
+        const ends = polylineEndpoints(decoded, 700, 168, 14);
+        if (path) setRoutePath(path);
+        if (ends) setEndpoints(ends);
+      })
+      .catch(() => { /* swallow — fall through to unavailable state */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activityId]);
+
   return (
     <>
       <div className="fll" style={{ marginTop: 8 }}>ROUTE</div>
@@ -231,15 +259,24 @@ function RouteMap({ dist, gain }: { dist: string; gain: number }) {
           </defs>
           <rect width="700" height="168" fill="url(#rdg2)" />
         </svg>
-        <svg viewBox="0 0 700 168" preserveAspectRatio="xMidYMid meet">
-          <polyline points="44,128 96,70 150,104 210,52 286,86 330,40 392,96 452,58 520,110 584,64 642,118 660,96" fill="none" stroke="#FF8847" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx="44" cy="128" r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />
-          <circle cx="660" cy="96" r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />
-        </svg>
-        <span className="rdmaptag start">START</span>
-        <span className="rdmaptag end">FINISH</span>
+        {routePath ? (
+          <svg viewBox="0 0 700 168" preserveAspectRatio="xMidYMid meet">
+            <path d={routePath} fill="none" stroke="#FF8847" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+            {endpoints && <circle cx={endpoints.start[0]} cy={endpoints.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
+            {endpoints && <circle cx={endpoints.end[0]} cy={endpoints.end[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />}
+          </svg>
+        ) : (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, pointerEvents: 'none',
+          }}>
+            {loading ? 'LOADING ROUTE…' : 'NO GPS TRACK FOR THIS RUN'}
+          </div>
+        )}
+        {routePath && <span className="rdmaptag start">START</span>}
+        {routePath && <span className="rdmaptag end">FINISH</span>}
         <div className="rdmapstat">
-          <span>{dist} MI</span><span>↗ {gain} FT</span>
+          <span>{dist} MI</span>{gain > 0 && <span>↗ {gain} FT</span>}
         </div>
       </div>
     </>
