@@ -49,59 +49,57 @@ struct RunDetailView: View {
                     section(title: "TRACE", right: traceAvgLabel) {
                         VStack(alignment: .leading, spacing: 12) {
                             chipsRow
-                            ScrubbableTrace(
-                                points: tracePointsFor(currentMetric),
-                                labels: traceLabelsFor(currentMetric),
-                                color: currentMetric.color,
-                                fill: true,
-                                target: nil,
-                                band: nil,
-                                readout: $traceReadout
-                            )
-                            .frame(height: 120)
-                            Text(traceReadout ?? "drag the trace to read any point")
-                                .font(.display(11, weight: .bold))
-                                .foregroundStyle(Theme.txt.opacity(0.72))
+                            if traceIsEmpty(currentMetric) {
+                                emptyTrace
+                            } else {
+                                ScrubbableTrace(
+                                    points: tracePointsFor(currentMetric),
+                                    labels: traceLabelsFor(currentMetric),
+                                    color: currentMetric.color,
+                                    fill: true,
+                                    target: nil,
+                                    band: nil,
+                                    readout: $traceReadout
+                                )
+                                .frame(height: 120)
+                                Text(traceReadout ?? "drag the trace to read any point")
+                                    .font(.display(11, weight: .bold))
+                                    .foregroundStyle(Theme.txt.opacity(0.72))
+                            }
                         }
                     }
                     .padding(.top, 26)
 
-                    section(title: "ROUTE", right: "8.0 MI · +240 FT") {
+                    section(title: "ROUTE", right: routeStatLabel) {
                         routePanel
                     }
                     .padding(.top, 26)
 
-                    section(title: "TIME IN ZONE", right: "54 MIN") {
-                        ZoneBar(zones: zonePcts, height: 14, legend: true)
-                    }
-                    .padding(.top, 26)
-
-                    section(title: "VS PLAN", right: nil) {
-                        HStack(alignment: .top, spacing: 13) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("1.5 wu · 5.0 @ 6:38 · 1.5 cd")
-                                    .font(.body(14, weight: .bold))
-                                    .foregroundStyle(Theme.txt)
-                                Text("tempo block ran 6:35 avg · 3s under target")
-                                    .font(.display(11, weight: .bold))
-                                    .foregroundStyle(Theme.txt.opacity(0.6))
-                            }
-                            Spacer()
-                            Pill(text: "NAILED IT", color: Color(hex: 0x9AF0BF), textColor: Color(hex: 0x007722), size: 10, tracking: 0.5)
+                    if let zones = zonePcts {
+                        section(title: "TIME IN ZONE", right: timeInZoneLabel) {
+                            ZoneBar(zones: zones, height: 14, legend: true)
                         }
+                        .padding(.top, 26)
                     }
-                    .padding(.top, 26)
 
-                    section(title: "COACH", right: nil) {
-                        CoachNote(
-                            message: "Clean execution. You held the tempo block 3s under target with HR steady in Z4. Cadence touched 170 mid-run. Nothing to fix, bank it.",
-                            tag: "Faff",
-                            accent: Theme.Accent.mintReady,
-                            style: .note
-                        )
-                        .padding(.horizontal, -24)
+                    if let planSpec = vsPlanLabel {
+                        section(title: "VS PLAN", right: nil) {
+                            HStack(alignment: .top, spacing: 13) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(planSpec)
+                                        .font(.body(14, weight: .bold))
+                                        .foregroundStyle(Theme.txt)
+                                    if let r = run?.planned_distance_mi {
+                                        Text("planned \(String(format: "%.1f", r)) mi · ran \(String(format: "%.1f", run?.distance_mi ?? 0)) mi")
+                                            .font(.display(11, weight: .bold))
+                                            .foregroundStyle(Theme.txt.opacity(0.6))
+                                    }
+                                }
+                                Spacer()
+                            }
+                        }
+                        .padding(.top, 26)
                     }
-                    .padding(.top, 12)
 
                     section(title: "DETAILS", right: nil) {
                         detailsTile
@@ -371,29 +369,30 @@ struct RunDetailView: View {
         return m * 60 + sec
     }
 
-    private var zonePcts: [ZonePct] {
-        if let z = run?.hrZonePcts {
-            let t = z.z1 + z.z2 + z.z3 + z.z4 + z.z5
-            guard t > 0 else { return defaultZones }
-            return [
-                ZonePct(zone: 1, pct: z.z1 / t, timeLabel: "\(Int(round(z.z1 / t * 54)))m"),
-                ZonePct(zone: 2, pct: z.z2 / t, timeLabel: "\(Int(round(z.z2 / t * 54)))m"),
-                ZonePct(zone: 3, pct: z.z3 / t, timeLabel: "\(Int(round(z.z3 / t * 54)))m"),
-                ZonePct(zone: 4, pct: z.z4 / t, timeLabel: "\(Int(round(z.z4 / t * 54)))m"),
-                ZonePct(zone: 5, pct: z.z5 / t, timeLabel: "\(Int(round(z.z5 / t * 54)))m")
-            ]
-        }
-        return defaultZones
+    /// Real zone distribution from the run, or nil if HR-zone data wasn't
+    /// computed for this source (e.g. raw Apple Watch HR without LTHR ranges).
+    /// Don't fall back to demo data · "pull in what you can" means honest gaps.
+    private var zonePcts: [ZonePct]? {
+        guard let z = run?.hrZonePcts else { return nil }
+        let t = z.z1 + z.z2 + z.z3 + z.z4 + z.z5
+        guard t > 0 else { return nil }
+        let totalSec = paceTimeSeconds(run?.time_moving) ?? 0
+        let mins = max(1, totalSec / 60)
+        return [
+            ZonePct(zone: 1, pct: z.z1 / t, timeLabel: "\(Int(round(z.z1 / t * Double(mins))))m"),
+            ZonePct(zone: 2, pct: z.z2 / t, timeLabel: "\(Int(round(z.z2 / t * Double(mins))))m"),
+            ZonePct(zone: 3, pct: z.z3 / t, timeLabel: "\(Int(round(z.z3 / t * Double(mins))))m"),
+            ZonePct(zone: 4, pct: z.z4 / t, timeLabel: "\(Int(round(z.z4 / t * Double(mins))))m"),
+            ZonePct(zone: 5, pct: z.z5 / t, timeLabel: "\(Int(round(z.z5 / t * Double(mins))))m")
+        ]
     }
 
-    private var defaultZones: [ZonePct] {
-        [
-            ZonePct(zone: 1, pct: 0.11, timeLabel: "6m"),
-            ZonePct(zone: 2, pct: 0.17, timeLabel: "9m"),
-            ZonePct(zone: 3, pct: 0.41, timeLabel: "22m"),
-            ZonePct(zone: 4, pct: 0.26, timeLabel: "14m"),
-            ZonePct(zone: 5, pct: 0.06, timeLabel: "3m")
-        ]
+    private func paceTimeSeconds(_ time: String?) -> Int? {
+        guard let time = time else { return nil }
+        let parts = time.split(separator: ":").compactMap { Int($0) }
+        if parts.count == 3 { return parts[0]*3600 + parts[1]*60 + parts[2] }
+        if parts.count == 2 { return parts[0]*60 + parts[1] }
+        return nil
     }
 
     private var traceAvgLabel: String {
@@ -406,36 +405,72 @@ struct RunDetailView: View {
         }
     }
 
-    private func tracePointsFor(_ m: TraceMetric) -> [Double] {
-        if let splits = run?.splits, !splits.isEmpty {
-            let pts: [Double?] = splits.map { s in
-                switch m {
-                case .pace: return paceToSeconds(s.pace).map(Double.init)
-                case .hr:   return s.hr.map(Double.init)
-                case .elev: return s.elev_change_ft.map(Double.init)
-                case .cad:  return s.cadence.map(Double.init)
-                }
-            }
-            let real = pts.compactMap { $0 }
-            if real.count >= 2 { return real }
+    private var routeStatLabel: String {
+        let mi = run.map { String(format: "%.1f MI", $0.distance_mi) } ?? ""
+        let elev = run?.elev_gain_ft.map { "+\($0) FT" } ?? ""
+        return [mi, elev].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    private var timeInZoneLabel: String {
+        guard let secs = paceTimeSeconds(run?.time_moving) else { return "" }
+        return "\(secs / 60) MIN"
+    }
+
+    /// Builds a "1.5 wu · 5.0 @ 6:38 · 1.5 cd"-style spec from the planned
+    /// workout when present. Returns nil for runs without a plan attached
+    /// (so the VS PLAN section + COACH section hide entirely rather than
+    /// showing fake tempo-block copy).
+    private var vsPlanLabel: String? {
+        guard let s = run?.planned_spec, let kind = Optional(s.kind), !kind.isEmpty else { return nil }
+        return run?.planned_sub_label
+    }
+
+    private var emptyTrace: some View {
+        VStack(spacing: 6) {
+            SpecLabel(text: "NO PER-MILE DATA", size: 10, tracking: 1.2, color: Theme.txt.opacity(0.45))
+            Text("This run was logged without \(currentMetric.label.lowercased())-per-mile splits.")
+                .font(.body(12, weight: .medium))
+                .foregroundStyle(Theme.txt.opacity(0.62))
+                .multilineTextAlignment(.center)
         }
-        return m.points
+        .frame(maxWidth: .infinity)
+        .frame(height: 120)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
+    }
+
+    private func tracePointsFor(_ m: TraceMetric) -> [Double] {
+        guard let splits = run?.splits, !splits.isEmpty else { return [] }
+        let pts: [Double?] = splits.map { s in
+            switch m {
+            case .pace: return paceToSeconds(s.pace).map(Double.init)
+            case .hr:   return s.hr.map(Double.init)
+            case .elev: return s.elev_change_ft.map(Double.init)
+            case .cad:  return s.cadence.map(Double.init)
+            }
+        }
+        let real = pts.compactMap { $0 }
+        return real.count >= 2 ? real : []
     }
 
     private func traceLabelsFor(_ m: TraceMetric) -> [String] {
-        if let splits = run?.splits, !splits.isEmpty {
-            return splits.map { s in
-                let v: String
-                switch m {
-                case .pace: v = s.pace.map { "\($0) /mi" } ?? "—"
-                case .hr:   v = s.hr.map { "\($0) bpm" } ?? "—"
-                case .elev: v = s.elev_change_ft.map { "\($0) ft" } ?? "—"
-                case .cad:  v = s.cadence.map { "\($0) spm" } ?? "—"
-                }
-                return "mi \(s.mile) · \(v)"
+        guard let splits = run?.splits, !splits.isEmpty else { return [] }
+        return splits.map { s in
+            let v: String
+            switch m {
+            case .pace: v = s.pace.map { "\($0) /mi" } ?? "—"
+            case .hr:   v = s.hr.map { "\($0) bpm" } ?? "—"
+            case .elev: v = s.elev_change_ft.map { "\($0) ft" } ?? "—"
+            case .cad:  v = s.cadence.map { "\($0) spm" } ?? "—"
             }
+            return "mi \(s.mile) · \(v)"
         }
-        return m.labels
+    }
+
+    /// Returns true when no real data exists for this metric. Render an empty
+    /// state instead of a fake demo curve.
+    private func traceIsEmpty(_ m: TraceMetric) -> Bool {
+        tracePointsFor(m).count < 2
     }
 
     private func load() async {

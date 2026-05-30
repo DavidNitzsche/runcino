@@ -97,14 +97,16 @@ struct CompletedView: View {
                 .shadow(color: .black.opacity(0.32), radius: 30, y: 2)
                 .padding(.top, 7)
 
-            HStack(spacing: 7) {
-                Circle().fill(Color(hex: 0x3FAE6E)).frame(width: 16, height: 16)
-                    .overlay(Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white))
-                Text(winLine)
-                    .font(.body(13, weight: .extraBold))
-                    .foregroundStyle(Color(hex: 0xC4F5D6))
+            if let win = winLine {
+                HStack(spacing: 7) {
+                    Circle().fill(Color(hex: 0x3FAE6E)).frame(width: 16, height: 16)
+                        .overlay(Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white))
+                    Text(win)
+                        .font(.body(13, weight: .extraBold))
+                        .foregroundStyle(Color(hex: 0xC4F5D6))
+                }
+                .padding(.top, 12)
             }
-            .padding(.top, 12)
 
             HStack(spacing: 22) {
                 keyStat("Distance", "\(distanceFmt)", "mi")
@@ -151,7 +153,6 @@ struct CompletedView: View {
             zonesBlock
             routeBlock
             infoGridBlock
-            coachBlock
         }
         .foregroundStyle(Color(hex: 0x3C362F))
     }
@@ -167,10 +168,19 @@ struct CompletedView: View {
         }
     }
 
+    @ViewBuilder
     private var zonesBlock: some View {
-        sheetSection(title: "Time in Zones", right: "avg ♥ 156 · peak 174") {
-            ZoneBar(zones: zonePcts, height: 14, legend: true)
+        if let zones = zonePcts {
+            sheetSection(title: "Time in Zones", right: hrSummaryLine) {
+                ZoneBar(zones: zones, height: 14, legend: true)
+            }
         }
+    }
+
+    private var hrSummaryLine: String? {
+        guard let avg = run?.hr_avg else { return nil }
+        if let peak = run?.hr_max { return "avg ♥ \(avg) · peak \(peak)" }
+        return "avg ♥ \(avg)"
     }
 
     private var routeBlock: some View {
@@ -208,10 +218,10 @@ struct CompletedView: View {
     private var infoGridBlock: some View {
         sheetSection(title: "Conditions & Kit", right: nil) {
             let cells: [(String, String)] = [
-                ("Weather", "\(weatherTemp)° · Clear"),
+                ("Weather", weatherTemp),
                 ("Shoe", shoeName),
-                ("Fuel", "PF 30 ✓ mi 5"),
-                ("Calories", "742 kcal")
+                ("Cadence", run?.cadence_avg.map { "\($0) spm" } ?? "—"),
+                ("Elev gain", run?.elev_gain_ft.map { "\($0) ft" } ?? "—")
             ]
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)], spacing: 1) {
                 ForEach(0..<cells.count, id: \.self) { i in
@@ -228,20 +238,6 @@ struct CompletedView: View {
             .background(Color(hex: 0xEEE7DA))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-    }
-
-    private var coachBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Faff Coach")
-                .font(.label(10)).tracking(1.5).textCase(.uppercase)
-                .foregroundStyle(Color(hex: 0xEE6038))
-            Text("Dialed in. You held 6:34 across the tempo block · 4 seconds under target · and miles 5 and 6 were your quickest, so you finished into it rather than fading. HR settled right in Z4 with no spikes. Textbook threshold execution; this is exactly the fitness CIM needs.")
-                .font(.body(14.5, weight: .medium))
-                .foregroundStyle(Color(hex: 0x3C362F))
-                .lineSpacing(3)
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
     }
 
     private func sheetSection<C: View>(title: String, right: String?, @ViewBuilder content: () -> C) -> some View {
@@ -278,65 +274,89 @@ struct CompletedView: View {
     }
 
     private var dayLabel: String {
-        "Wednesday 28"
+        guard let iso = run?.date else { return "—" }
+        let parts = iso.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let d = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return iso }
+        let f = DateFormatter(); f.dateFormat = "EEEE d"
+        return f.string(from: d)
     }
 
     private var timeWeatherLine: String {
-        if let t = run?.start_local, let temp = run?.temp_f {
-            return "Ran \(t) · \(Int(temp))° clear"
+        var parts: [String] = []
+        if let t = run?.start_local,
+           let timeOnly = t.split(separator: "T").last,
+           let hhmm = timeOnly.split(separator: ":").prefix(2).joined(separator: ":") as String? {
+            parts.append("Ran \(hhmm)")
         }
-        return "Ran 6:12 AM · 64° clear"
+        if let temp = run?.temp_f { parts.append("\(Int(temp))°") }
+        return parts.joined(separator: " · ")
     }
 
-    private var winLine: String {
-        "Held 6:34 · 4s under target"
+    /// If the planned spec was a target-pace workout and we hit close to
+    /// target, surface the gap. Otherwise hide the win line entirely so we
+    /// don't fabricate copy.
+    private var winLine: String? {
+        guard let r = run else { return nil }
+        guard let plannedPace = plannedTargetPaceLabel(from: r), let actual = r.pace else { return nil }
+        return "Ran \(actual) vs target \(plannedPace)"
+    }
+
+    private func plannedTargetPaceLabel(from r: RunDetail) -> String? {
+        guard let s = r.planned_spec else { return nil }
+        if let tp = s.rep_pace_s_per_mi.map({ Int($0) }) { return formatPace(tp) }
+        if let tp = s.tempo_pace_s_per_mi.map({ Int($0) }) { return formatPace(tp) }
+        if let tp = s.mp_pace_s_per_mi.map({ Int($0) }) { return formatPace(tp) }
+        return nil
+    }
+
+    private func formatPace(_ secs: Int) -> String {
+        String(format: "%d:%02d", secs / 60, secs % 60)
     }
 
     private var distanceFmt: String {
         if let d = run?.distance_mi { return String(format: "%.2f", d) }
-        return "8.02"
+        return "—"
     }
 
     private var timeFmt: String {
-        run?.time_moving ?? "1:00:46"
+        run?.time_moving ?? "—"
     }
 
     private var paceFmt: String {
-        run?.pace ?? "7:34"
+        run?.pace ?? "—"
     }
 
-    private var weatherTemp: Int {
-        if let t = run?.temp_f { return Int(t) }
-        return 64
+    private var weatherTemp: String {
+        run?.temp_f.map { "\(Int($0))°" } ?? "—"
     }
 
     private var shoeName: String {
-        run?.shoes?.first?.displayName ?? "Zoom Fly 6"
+        run?.shoes?.first?.displayName ?? "—"
     }
 
-    private var zonePcts: [ZonePct] {
-        if let z = run?.hrZonePcts {
-            let total = z.z1 + z.z2 + z.z3 + z.z4 + z.z5
-            guard total > 0 else { return defaultZones }
-            return [
-                ZonePct(zone: 1, pct: z.z1 / total, timeLabel: "\(Int(round(z.z1 / total * 60)))m"),
-                ZonePct(zone: 2, pct: z.z2 / total, timeLabel: "\(Int(round(z.z2 / total * 60)))m"),
-                ZonePct(zone: 3, pct: z.z3 / total, timeLabel: "\(Int(round(z.z3 / total * 60)))m"),
-                ZonePct(zone: 4, pct: z.z4 / total, timeLabel: "\(Int(round(z.z4 / total * 60)))m"),
-                ZonePct(zone: 5, pct: z.z5 / total, timeLabel: "\(Int(round(z.z5 / total * 60)))m")
-            ]
-        }
-        return defaultZones
-    }
-
-    private var defaultZones: [ZonePct] {
-        [
-            ZonePct(zone: 1, pct: 0.06, timeLabel: "4m"),
-            ZonePct(zone: 2, pct: 0.34, timeLabel: "21m"),
-            ZonePct(zone: 3, pct: 0.22, timeLabel: "13m"),
-            ZonePct(zone: 4, pct: 0.36, timeLabel: "22m"),
-            ZonePct(zone: 5, pct: 0.02, timeLabel: "1m")
+    /// Real zone distribution from the run, or nil if HR-zone data wasn't
+    /// computed for this source. Don't fall back to demo data.
+    private var zonePcts: [ZonePct]? {
+        guard let z = run?.hrZonePcts else { return nil }
+        let total = z.z1 + z.z2 + z.z3 + z.z4 + z.z5
+        guard total > 0 else { return nil }
+        let mins = max(1, paceTimeSeconds(run?.time_moving) ?? 0) / 60
+        return [
+            ZonePct(zone: 1, pct: z.z1 / total, timeLabel: "\(Int(round(z.z1 / total * Double(mins))))m"),
+            ZonePct(zone: 2, pct: z.z2 / total, timeLabel: "\(Int(round(z.z2 / total * Double(mins))))m"),
+            ZonePct(zone: 3, pct: z.z3 / total, timeLabel: "\(Int(round(z.z3 / total * Double(mins))))m"),
+            ZonePct(zone: 4, pct: z.z4 / total, timeLabel: "\(Int(round(z.z4 / total * Double(mins))))m"),
+            ZonePct(zone: 5, pct: z.z5 / total, timeLabel: "\(Int(round(z.z5 / total * Double(mins))))m")
         ]
+    }
+
+    private func paceTimeSeconds(_ time: String?) -> Int? {
+        guard let time = time else { return nil }
+        let parts = time.split(separator: ":").compactMap { Int($0) }
+        if parts.count == 3 { return parts[0]*3600 + parts[1]*60 + parts[2] }
+        if parts.count == 2 { return parts[0]*60 + parts[1] }
+        return nil
     }
 
     private var stripDays: [WeekStripDay] {
