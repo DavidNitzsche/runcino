@@ -22,6 +22,7 @@ struct TodayView: View {
     @State private var selectedDayID: String = ""
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
+    @State private var showNudge: Bool = false
 
     var body: some View {
         let mesh = selectedEffort.mesh
@@ -29,11 +30,42 @@ struct TodayView: View {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
-                PageHeader(title: titleForToday,
-                           avatarInitials: "DK",
-                           onAvatarTap: onProfile)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 8)
+                HStack(spacing: 12) {
+                    SpecLabel(text: titleForToday, size: 13, tracking: 2.5, color: Theme.txt)
+                    Spacer()
+                    Button { showNudge = true } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bell.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(Theme.txt)
+                                .frame(width: 32, height: 32)
+                                .background(Theme.Glass.fill, in: Circle())
+                                .overlay(Circle().stroke(Theme.Glass.line, lineWidth: 1))
+                            if hasNudge {
+                                Circle()
+                                    .fill(Theme.race)
+                                    .frame(width: 8, height: 8)
+                                    .overlay(Circle().stroke(Theme.bg, lineWidth: 1.5))
+                                    .offset(x: -2, y: 2)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    Button { onProfile() } label: {
+                        Text("DK")
+                            .font(.display(12, weight: .bold))
+                            .foregroundStyle(Theme.txt)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                LinearGradient(colors: [Color(hex: 0xFF7A45), Color(hex: 0xD6263C)],
+                                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
 
                 if let week = plan {
                     let days = makeStripDays(from: week)
@@ -87,6 +119,18 @@ struct TodayView: View {
         .task {
             await loadAll()
         }
+        .sheet(isPresented: $showNudge) {
+            NudgeSheet(
+                onAccept: { showNudge = false },
+                onKeep: { showNudge = false }
+            )
+        }
+    }
+
+    /// Pip on the bell when readiness drops materially below baseline.
+    /// Threshold: score < 65 (the band where coach intervenes per design).
+    private var hasNudge: Bool {
+        (readiness?.score ?? 100) < 65
     }
 
     // MARK: - Hero
