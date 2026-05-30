@@ -1,6 +1,9 @@
-import { redirect } from 'next/navigation';
+import { Shell } from '@/components/faff-app/Shell';
+import { buildSeed } from '@/components/faff-app/seed';
 
-// Root → TODAY. TODAY is the home surface; everything else hangs off of it via tabs.
-export default function Home() {
-  redirect('/today');
+export const dynamic = 'force-dynamic';
+
+export default async function RootPage() {
+  const seed = await buildSeed();
+  return <Shell seed={seed} initial="today" />;
 }
