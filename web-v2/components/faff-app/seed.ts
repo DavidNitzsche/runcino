@@ -533,6 +533,9 @@ function factsFromTotals(miles: number, elev: number): ActivityData['ranges']['y
 function adaptShoes(profile: Profile | null): ShoeRec[] {
   if (!profile?.shoes?.length) return [];
   return profile.shoes.filter(s => !s.retired).map(s => ({
+    id: Number(s.id),
+    brand: s.brand,
+    model: s.model,
     nm: s.name || `${s.brand} ${s.model}`.trim(),
     role: (s.runTypes?.[0] ?? 'easy').toString().toUpperCase().replace(/[^A-Z]/g, ''),
     mi: Math.round(s.mileage || 0),

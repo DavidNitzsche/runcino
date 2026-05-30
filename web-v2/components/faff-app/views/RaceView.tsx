@@ -3,6 +3,17 @@
 import { useState } from 'react';
 import type { FaffSeed } from '../types';
 
+async function patchRace(slug: string, payload: Record<string, unknown>): Promise<boolean> {
+  try {
+    const res = await fetch('/api/race', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, ...payload }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 export type RaceDetailSeed = {
   slug: string;
   name: string;
@@ -64,13 +75,22 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
   function commitA(text: string) {
     const sec = parseHMS(text);
     if (sec <= 0) { setAGoal(r.aGoal); return; }
-    setAGoal(fmtHMS(sec));
+    const next = fmtHMS(sec);
+    setAGoal(next);
     setGoalPace(sec2pace(sec));
+    void patchRace(r.slug, { goal: next });
   }
   function commitB(text: string) {
     const sec = parseHMS(text);
     if (sec <= 0) { setBGoal(r.bGoal); return; }
-    setBGoal(fmtHMS(sec));
+    const next = fmtHMS(sec);
+    setBGoal(next);
+    void patchRace(r.slug, { goal_safe: next });
+  }
+  function commitBib(text: string) {
+    const next = (text || '').trim() || r.bib;
+    setBib(next);
+    void patchRace(r.slug, { bib: next });
   }
 
   return (
@@ -103,7 +123,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                 contentEditable
                 suppressContentEditableWarning
                 spellCheck={false}
-                onBlur={(e) => setBib(e.currentTarget.textContent || r.bib)}
+                onBlur={(e) => commitBib(e.currentTarget.textContent || '')}
               >{bib}</span>
             </div>
             <div className="rp-chip">{r.wave}</div>

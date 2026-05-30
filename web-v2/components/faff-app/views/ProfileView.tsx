@@ -1,26 +1,79 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { FaffSeed, ShoeRec } from '../types';
 import { ROLECOL } from '../constants';
 
 const ROLES = ['RACE','TEMPO','LONG','EASY','RECOVERY'];
 
 export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed; onOpenPro: () => void; onOpenPaywall: () => void }) {
+  const router = useRouter();
   const [garage, setGarage] = useState<ShoeRec[]>(seed.shoes);
   const [editing, setEditing] = useState<number | null>(null);
   const [units, setUnits] = useState('Miles · °F');
   const [notif, setNotif] = useState(true);
+  const [pending, setPending] = useState(false);
 
-  useEffect(() => {
+  // Pick up server-seed updates so refreshes reflect the truth.
+  useEffect(() => { setGarage(seed.shoes); }, [seed.shoes]);
+
+  async function persistAdd(rec: ShoeRec) {
+    setPending(true);
     try {
-      const raw = localStorage.getItem('faffGarageOverlay');
-      if (raw) setGarage(JSON.parse(raw) as ShoeRec[]);
+      // Split nm into brand + first word, rest is model.
+      const parts = rec.nm.trim().split(/\s+/);
+      const brand = parts[0] || 'Brand';
+      const model = parts.slice(1).join(' ') || rec.nm;
+      const res = await fetch('/api/shoe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand, model,
+          run_types: [rec.role.toLowerCase()],
+          mileage: rec.mi,
+          mileage_cap: rec.max,
+        }),
+      });
+      if (!res.ok) throw new Error(`POST /api/shoe ${res.status}`);
+      router.refresh();
+    } catch { /* keep UI optimistic; refresh will reconcile */ }
+    finally { setPending(false); }
+  }
+
+  async function persistPatch(rec: ShoeRec) {
+    if (rec.id == null) return persistAdd(rec);
+    setPending(true);
+    try {
+      const res = await fetch('/api/shoe', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: rec.id,
+          mileage: rec.mi,
+          mileage_cap: rec.max,
+          run_types: [rec.role.toLowerCase()],
+        }),
+      });
+      if (!res.ok) throw new Error(`PATCH /api/shoe ${res.status}`);
+      router.refresh();
     } catch { /* swallow */ }
-  }, []);
-  function saveGarage(next: ShoeRec[]) {
-    setGarage(next);
-    try { localStorage.setItem('faffGarageOverlay', JSON.stringify(next)); } catch { /* swallow */ }
+    finally { setPending(false); }
+  }
+
+  async function persistDelete(rec: ShoeRec) {
+    if (rec.id == null) { setGarage(g => g.filter(s => s !== rec)); return; }
+    setPending(true);
+    try {
+      const res = await fetch('/api/shoe', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: rec.id }),
+      });
+      if (!res.ok) throw new Error(`DELETE /api/shoe ${res.status}`);
+      router.refresh();
+    } catch { /* swallow */ }
+    finally { setPending(false); }
   }
 
   return (
@@ -92,17 +145,26 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       <ShoeEditor
         editing={editing}
         garage={garage}
+        pending={pending}
         onClose={() => setEditing(null)}
         onSave={(rec) => {
           if (editing == null) return;
-          const next = editing >= 0 ? garage.map((s, i) => i === editing ? rec : s) : [...garage, rec];
-          saveGarage(next);
+          if (editing >= 0) {
+            const existing = garage[editing];
+            const updated: ShoeRec = { ...existing, ...rec, id: existing.id };
+            setGarage(g => g.map((s, i) => i === editing ? updated : s));
+            void persistPatch(updated);
+          } else {
+            setGarage(g => [...g, rec]);
+            void persistAdd(rec);
+          }
           setEditing(null);
         }}
         onDelete={() => {
           if (editing == null || editing < 0) return;
-          const next = garage.filter((_, i) => i !== editing);
-          saveGarage(next);
+          const rec = garage[editing];
+          setGarage(g => g.filter((_, i) => i !== editing));
+          void persistDelete(rec);
           setEditing(null);
         }}
       />
@@ -111,10 +173,11 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
 }
 
 function ShoeEditor({
-  editing, garage, onClose, onSave, onDelete,
+  editing, garage, pending, onClose, onSave, onDelete,
 }: {
   editing: number | null;
   garage: ShoeRec[];
+  pending: boolean;
   onClose: () => void;
   onSave: (s: ShoeRec) => void;
   onDelete: () => void;
@@ -165,8 +228,8 @@ function ShoeEditor({
           </div>
         </div>
         <div className="se-acts">
-          {!isAdd && <button className="se-del" onClick={onDelete}>Remove shoe</button>}
-          <button className="se-save" onClick={() => onSave({ nm: nm.trim() || 'New shoe', role, mi: Math.max(0, mi), max: Math.max(50, max) })}>Save</button>
+          {!isAdd && <button className="se-del" onClick={onDelete} disabled={pending}>Remove shoe</button>}
+          <button className="se-save" disabled={pending} onClick={() => onSave({ nm: nm.trim() || 'New shoe', role, mi: Math.max(0, mi), max: Math.max(50, max) })}>{pending ? 'Saving…' : 'Save'}</button>
         </div>
       </div>
     </div>
