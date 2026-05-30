@@ -192,8 +192,21 @@ export async function POST(req: NextRequest) {
     if (before) a--;
     return (a >= 13 && a <= 100) ? a : null;
   })() : null;
+  // ── Atomic onboarding write (txn) ────────────────────────────────
+  //
+  // Pass-4 fix: previously the users + profile + user_prefs writes were
+  // three independent pool.query calls. A network blip between them
+  // could leave a runner with users set but no profile, or profile
+  // without user_prefs — exactly the half-onboarded state that crashed
+  // /today (audit Q-4 in OPEN_QUESTIONS.md).
+  //
+  // Now: single connection, BEGIN, all three writes, COMMIT. Either all
+  // succeed or none. Idempotent — re-running just upserts.
+  const client = await pool.connect();
   try {
-    await pool.query(
+    await client.query('BEGIN');
+
+    await client.query(
       `UPDATE users SET
           timezone = $1,
           name = COALESCE(NULLIF(name, ''), $2),
@@ -202,16 +215,33 @@ export async function POST(req: NextRequest) {
         WHERE id = $5`,
       [timezone, name, ageNum, sex, userId]
     );
-  } catch {
-    // Non-fatal — the profile write below still proceeds.
+
+    // user_prefs · row creation if missing. Defaults match what the
+    // plan generator falls back to when prefs are absent (Sun/Tue+Thu/Sat).
+    // Onboarding doesn't currently ASK for these; we create the row so
+    // the first plan + the Settings UI both have a real row to read +
+    // edit.
+    await client.query(
+      `INSERT INTO user_prefs (user_uuid, long_run_dow, quality_dows, rest_dow, units, updated_at)
+       VALUES ($1, 0, '2,4', 6, 'imperial', NOW())
+       ON CONFLICT (user_uuid) DO NOTHING`,
+      [userId]
+    );
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+    return NextResponse.json({
+      error: 'onboarding atomic txn failed',
+      detail: err instanceof Error ? err.message : String(err),
+    }, { status: 500 });
   }
 
-  // ── Upsert profile ───────────────────────────────────────────────
+  // ── Upsert profile (still inside txn) ────────────────────────────
   // The PATCH at /api/profile is gated by an ALLOWED set that doesn't
   // include the new onboarding columns. Going direct to the DB keeps
   // that surface untouched and lets this endpoint stay specific.
   try {
-    const update = await pool.query(
+    const update = await client.query(
       `UPDATE profile SET
           goal_race_distance      = $1,
           goal_race_date          = $2,
@@ -245,7 +275,7 @@ export async function POST(req: NextRequest) {
 
     if (update.rowCount === 0) {
       // No row yet — first-ever onboarder. Insert one.
-      await pool.query(
+      await client.query(
         `INSERT INTO profile (
             user_uuid,
             goal_race_distance, goal_race_date, goal_race_time,
@@ -269,11 +299,16 @@ export async function POST(req: NextRequest) {
         ]
       );
     }
+
+    await client.query('COMMIT');
   } catch (err: any) {
+    await client.query('ROLLBACK').catch(() => {});
     return NextResponse.json({
       error: 'onboarding persist failed',
       detail: err?.message ?? String(err),
     }, { status: 500 });
+  } finally {
+    client.release();
   }
 
   // ── Seed the runner's first plan ───────────────────────────────
