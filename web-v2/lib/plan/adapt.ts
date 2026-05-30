@@ -41,7 +41,9 @@ export type AdaptationTriggerKind =
   | 'rhr_spike'
   | 'sleep_crater'
   | 'volume_overshoot'
-  | 'pr_bank';
+  | 'pr_bank'
+  | 'niggle_reported'     // Q-04 · active niggle severity threshold
+  | 'sick_episode_active'; // Q-03 · active illness — propose, never auto
 
 export interface AdaptationTrigger {
   kind: AdaptationTriggerKind;
@@ -95,6 +97,14 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   // 4. Volume overshoot
   const overshoot = await detectVolumeOvershoot(userId);
   if (overshoot) triggers.push(overshoot);
+
+  // 5. Niggle reported (Q-04 default: graduated severity response)
+  const niggle = await detectNiggleReported(userId);
+  if (niggle) triggers.push(niggle);
+
+  // 6. Sick episode active (Q-03 default: propose, don't auto-modify)
+  const sick = await detectSickEpisodeActive(userId);
+  if (sick) triggers.push(sick);
 
   const actions: AdaptationAction[] = [];
   for (const t of triggers) {
@@ -310,6 +320,70 @@ async function detectSleepCrater(userId: string): Promise<AdaptationTrigger | nu
   return null;
 }
 
+/**
+ * Q-04 default · NIGGLE_REPORTED triggers when an active niggle (cleared_at
+ * IS NULL) crosses severity thresholds. Graduated response per
+ * Research/05-injury-return-protocols.md §Pain-Stop-Rules:
+ *   - severity 5-6 → 'warn' · downgrade next quality day to easy
+ *   - severity ≥ 7 → 'override' · suspend running for ~48h
+ *
+ * Cite: Research/05-injury-return-protocols.md §Pain-Stop-Rules (5/10
+ *       interrupts the planned session; 7/10 rests the area).
+ */
+async function detectNiggleReported(userId: string): Promise<AdaptationTrigger | null> {
+  const r = (await pool.query(
+    `SELECT id, body_part, side, severity, status, logged_at::text AS logged_at
+       FROM niggles
+      WHERE user_id = $1 AND cleared_at IS NULL
+      ORDER BY severity DESC, logged_at DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r) return null;
+  const severity = Number(r.severity);
+  if (severity < 5) return null;
+  return {
+    kind: 'niggle_reported',
+    severity: severity >= 7 ? 'override' : 'warn',
+    reason: severity >= 7
+      ? `Active ${r.body_part}${r.side ? ' (' + r.side + ')' : ''} niggle at ${severity}/10. Suspend running 48h.`
+      : `Active ${r.body_part}${r.side ? ' (' + r.side + ')' : ''} niggle at ${severity}/10. Downgrade next quality day.`,
+    evidence: { niggle_id: r.id, body_part: r.body_part, side: r.side, severity, status: r.status },
+  };
+}
+
+/**
+ * Q-03 default · SICK_EPISODE_ACTIVE triggers when sick_episodes.cleared_at
+ * IS NULL. By doctrine we DO NOT auto-modify the plan for illness — runner
+ * agency matters. The trigger fires; actionsForTrigger writes a
+ * coach_proposals row that the runner accepts/rejects from the UI.
+ *
+ * Cite: Research/05-injury-return-protocols.md §illness-return (above-the-
+ *       neck cold = run easy; below-the-neck OR fever = no running).
+ */
+async function detectSickEpisodeActive(userId: string): Promise<AdaptationTrigger | null> {
+  const r = (await pool.query(
+    `SELECT id, symptoms, has_fever, started, logged_at::text AS logged_at
+       FROM sick_episodes
+      WHERE user_id = $1 AND cleared_at IS NULL
+      ORDER BY logged_at DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r) return null;
+  return {
+    kind: 'sick_episode_active',
+    severity: r.has_fever ? 'override' : 'warn',
+    reason: r.has_fever
+      ? 'Active illness with fever. Suspend running entirely until cleared.'
+      : 'Active illness reported. Above-the-neck symptoms: easy running only.',
+    evidence: {
+      episode_id: r.id,
+      has_fever: !!r.has_fever,
+      symptoms: r.symptoms,
+      started: r.started,
+    },
+  };
+}
+
 async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger | null> {
   // Last 7d running volume vs experience cap.
   const r = (await pool.query(
@@ -411,6 +485,54 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         workoutIds: [],   // caller fills with next 7-14d ids
         why: 'New PR. Pace prescriptions need recompute from updated VDOT.',
       }];
+    case 'niggle_reported': {
+      // Q-04 default. ≥7/10 → 48h suspension (downgrade next 2d to rest);
+      // 5-6/10 → downgrade next quality day to easy.
+      const severity = Number(t.evidence.severity ?? 0);
+      const horizon = severity >= 7 ? 'CURRENT_DATE + 2' : 'CURRENT_DATE + 2';
+      const where = severity >= 7
+        ? `pw.date_iso::date BETWEEN CURRENT_DATE AND ${horizon}`
+        : `pw.type IN ('threshold','tempo','intervals','vo2max','long')
+            AND pw.date_iso::date BETWEEN CURRENT_DATE AND ${horizon}`;
+      const rows = (await pool.query(
+        `SELECT pw.id FROM plan_workouts pw
+            JOIN training_plans tp ON tp.id = pw.plan_id
+           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND ${where}
+           ORDER BY pw.date_iso::date ASC`,
+        [userId]
+      )).rows;
+      if (rows.length === 0) return [];
+      return [{
+        kind: 'downgrade',
+        workoutIds: rows.map((r: any) => r.id),
+        newType: severity >= 7 ? 'rest' : 'easy',
+        why: t.reason,
+      }];
+    }
+    case 'sick_episode_active': {
+      // Q-03 default — propose, never auto-modify. Writes a coach_proposals
+      // row that the runner accepts/rejects from the UI. Returns no actions
+      // so applyAdaptations doesn't mutate plan_workouts.
+      try {
+        await pool.query(
+          `INSERT INTO coach_proposals (user_uuid, user_id, proposal_type, payload, status, created_at)
+           VALUES ($1, $1::text, 'illness_adjust', $2::jsonb, 'pending', NOW())
+           ON CONFLICT DO NOTHING`,
+          [userId, JSON.stringify({
+            reason: t.reason,
+            evidence: t.evidence,
+            suggested:
+              t.severity === 'override'
+                ? 'Suspend all running until cleared. Cross-train if symptoms allow.'
+                : 'Drop all quality. Run easy for 3-5 days; reassess.',
+          })],
+        );
+      } catch {
+        // Proposal write failure is non-fatal; runner still sees the
+        // niggle/sick UI surface even without a proposal row.
+      }
+      return [];
+    }
     default:
       return [];
   }
