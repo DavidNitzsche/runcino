@@ -928,6 +928,10 @@ export async function buildSeed(): Promise<FaffSeed> {
     city: profile?.identity.city ?? '',
     initial: (fullName?.[0] ?? 'F').toUpperCase(),
     pro: true,
+    experienceLevel: profile?.identity.experience_level ?? null,
+    // Honest beta label until a billing system is wired (single-user beta
+    // per CLAUDE.md). Switch to a real renewal date when subscriptions ship.
+    subscriptionLabel: 'Faff Pro · Beta',
   };
   const weekOf = goalRace
     ? `Week ${season.nowIdx + 1} of ${Math.max(1, season.raceIdx + 1)} · ${(glance?.phaseLabel ?? 'Active block')}`

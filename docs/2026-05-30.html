@@ -174,7 +174,7 @@
   <div class="stat"><div class="n">12</div><div class="l">Topic kinds</div></div>
   <div class="stat"><div class="n">7</div><div class="l">Notification categories</div></div>
   <div class="stat"><div class="n">10</div><div class="l">Course library</div></div>
-  <div class="stat"><div class="n">45</div><div class="l">Learn articles (21 doctrine + 24 research)</div></div>
+  <div class="stat"><div class="n">41</div><div class="l">Learn articles (17 doctrine + 24 research)</div></div>
   <div class="stat"><div class="n">2,720</div><div class="l">David: health samples</div></div>
   <div class="stat"><div class="n">125</div><div class="l">David: Strava runs</div></div>
 </div>
@@ -1120,84 +1120,14 @@ not user-writable.</p>
 </table>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<h2 id="onboarding">15 · New user flow — onboarding sequence + input tiers</h2>
+<h2 id="onboarding">15 · New user flow — onboarding sequence (any sign-up → fully provisioned)</h2>
 <p>
   When ANY new user signs up — Apple Sign-in, Strava OAuth, or email
-  (when enabled) — they get the same L1 row template David has today.
-  The L2 research layer is already populated and accessible immediately.
-  The L3 coach layer fires on first /today render once L1 has enough
-  data.
+  (when enabled) — they get the same L1 row template David has today,
+  filled in by the same 10 steps. The L2 research layer is already
+  populated and accessible immediately. The L3 coach layer fires on
+  first /today render once L1 has enough data.
 </p>
-
-<p>
-  <strong>Full audit:</strong> <a href="ONBOARDING_AUDIT.md"><code>docs/ONBOARDING_AUDIT.md</code></a>
-  — every input the coach needs, where it comes from (Apple Health
-  auto / Strava auto / onboarding ask / settings ask / coach gap card),
-  the fallback when the canonical source isn't available, and the gaps
-  in the current flow.
-</p>
-
-<h3>Input tiers — what the coach asks for, in priority order</h3>
-<table>
-<tr><th>Tier</th><th>Status</th><th>Fields</th><th>What it gates</th></tr>
-<tr><td><strong>T1 · Identity</strong></td><td>REQUIRED at onboarding</td><td>name, email, timezone, user UUID</td><td>Plan generation, briefing greeting, time-aware UX</td></tr>
-<tr><td><strong>T2 · Physiology</strong></td><td>REQUIRED for accurate coaching</td><td>age (birthday), sex, height_cm, experience_level</td><td>HR zones, age-grading, cadence thresholds, fueling math</td></tr>
-<tr><td><strong>T3 · Connected-source data</strong></td><td>AUTO when Apple Health / Strava connected; manual fallback otherwise</td><td>max_hr, resting_hr, LTHR, sleep, HRV, weight, VO2 max, HR recovery, cadence, run power</td><td>Readiness, training load, run history</td></tr>
-<tr><td><strong>T4 · Volume + history</strong></td><td>REQUIRED for plan generation</td><td>weekly_mileage_target, weekly_frequency, history_avg_weekly_mi, history_longest_recent_mi, history_years_running</td><td>Plan-builder's volume target + level inference</td></tr>
-<tr><td><strong>T5 · Schedule + units</strong></td><td>REQUIRED before first plan (defaults exist)</td><td>long_run_dow, quality_dows, rest_dow, units (mi/km, F/C), briefing_time</td><td>Workout day-of-week, distance/pace/temp units</td></tr>
-<tr><td><strong>T6 · Pro features</strong></td><td>OPTIONAL</td><td>fuel_brand, fuel_target_g_per_hr, cross_training_modes, notification prefs per category</td><td>Fueling, cross-training credits, push categories</td></tr>
-</table>
-
-<h3>The fallback ladder — physiology fields (T3)</h3>
-<p>
-  For every physiology field, the resolution order is:
-</p>
-<ol>
-  <li><strong>MANUAL OVERRIDE</strong> — <code>users.*_override</code> or <code>profile.*</code> set explicitly via Settings or onboarding. Wins everything else.</li>
-  <li><strong>AUTO from CONNECTOR</strong> — Apple Health ratchets <code>users.max_hr</code>; 60d avg fills <code>users.resting_hr</code>; race avg HR derives <code>profile.lthr</code>.</li>
-  <li><strong>POPULATION FORMULA</strong> — <code>220 - age</code> for max HR; always wrapped in a hedge ("hard to call zones without a verified max HR yet").</li>
-  <li><strong>PROFILE_GAP CARD</strong> — coach surfaces "we need X to coach Y better" on TODAY when even the formula doesn't apply.</li>
-</ol>
-<p>
-  The contract: <strong>the coaching engine never crashes for missing
-  inputs.</strong> Every code path has a fallback, defers gracefully,
-  or surfaces a gap card.
-</p>
-
-<h3>What Apple Health gives us (when connected)</h3>
-<p>
-  19 sample types auto-flow into <code>health_samples</code> via the iOS
-  bridge: <code>sleep_hours</code>, <code>hrv</code>, <code>resting_hr</code>,
-  <code>max_hr</code>, <code>vo2_max</code>, <code>body_mass</code>,
-  <code>body_fat_pct</code>, <code>lean_mass</code>, <code>run_power</code>,
-  <code>cadence</code>, <code>ground_contact_time</code>,
-  <code>stride_length</code>, <code>vertical_oscillation</code>,
-  <code>vertical_ratio</code>, <code>spo2</code>,
-  <code>respiratory_rate</code>, <code>wrist_temp</code>,
-  <code>hr_recovery</code>, <code>active_energy</code>.
-</p>
-
-<h3>What needs a manual fallback when Apple Health isn't connected</h3>
-<table>
-<tr><th>Field</th><th>Has manual fallback today?</th><th>If no</th></tr>
-<tr><td>Max HR</td><td class="ok">✓ <code>users.max_hr_override</code></td><td>—</td></tr>
-<tr><td>Resting HR</td><td class="ok">✓ <code>users.resting_hr_override</code></td><td>—</td></tr>
-<tr><td>LTHR</td><td class="ok">✓ <code>profile.lthr</code></td><td>—</td></tr>
-<tr><td>Weight</td><td class="high">✗ GAP</td><td>Running economy + race-pace calorie burn estimates degrade silently.</td></tr>
-<tr><td>Sleep hours</td><td class="high">✗ GAP</td><td>Readiness Sleep pillar (25% weight) returns null; degrades the whole composite.</td></tr>
-<tr><td>HRV</td><td class="high">✗ GAP</td><td>Readiness HRV pillar (25% weight) returns null.</td></tr>
-<tr><td>VO2 Max</td><td class="mute">— (wellness only)</td><td>OK to be null. Used only as cold-start fallback when no race data exists.</td></tr>
-<tr><td>Cadence, GCT, stride length, vertical osc, run power</td><td class="high">✗ GAP</td><td>Form / cadence_experiment cards suppress; profile_gap card surfaces explaining the missing data.</td></tr>
-</table>
-
-<p>
-  <strong>Recommendation:</strong> add a lightweight daily check-in path
-  (sleep duration + felt recovery rating) so the readiness chain has a
-  value for web-only users without Apple Health. The <code>check_ins</code>
-  table can carry these fields on the existing v2 reply-chip surface.
-</p>
-
-<h3>Onboarding sequence (any sign-up → fully provisioned)</h3>
 
 <table>
 <tr><th>Step</th><th>API route</th><th>Rows created</th><th>Notes</th></tr>
@@ -1371,7 +1301,7 @@ memory, every research-grounded threshold in <code>/Research/</code>.
 │  inherits automatically  │  clients read learn_articles via /learn/[slug]
 └──────────────────────────┘</pre>
 
-<h3>What's locked today (21 system-doctrine rows)</h3>
+<h3>What's locked today (17 system-doctrine rows)</h3>
 <p>Full text in <a href="SYSTEM_DOCTRINE.md"><code>docs/SYSTEM_DOCTRINE.md</code></a>. Each row is queryable at <code>GET /api/learn/doctrine-&lt;slug&gt;</code>.</p>
 
 <table>
@@ -1390,12 +1320,6 @@ memory, every research-grounded threshold in <code>/Research/</code>.
   <code>doctrine-race-week-thresholds</code> · building / sharpening / race-week / post-race<br>
   <code>doctrine-health-watch-thresholds</code> · steady / amber (RHR+5) / red (RHR+8 AND sleep&lt;5h)<br>
   <code>doctrine-notification-taxonomy</code> · closed list of 7 categories
-</td></tr>
-<tr><td><strong>Inputs &amp; onboarding</strong> (new)</td><td>
-  <code>doctrine-input-tiers</code> · 6-tier required-input model (identity / physiology / connected / volume / schedule / pro)<br>
-  <code>doctrine-fallback-ladder</code> · manual override → connector auto → population formula → profile_gap card<br>
-  <code>doctrine-apple-health-optional</code> · recommended not required; every signal has a manual or derived fallback (some pending)<br>
-  <code>doctrine-onboarding-min-set</code> · T1 + T2.birthday + T2.sex + T4.experience_level (with at least one volume seed) is the minimum to coach safely
 </td></tr>
 <tr><td><strong>Engine (deterministic)</strong></td><td>
   <code>doctrine-briefing-driven</code> · no chat, no tools, no RAG<br>

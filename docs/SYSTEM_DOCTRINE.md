@@ -5,13 +5,12 @@ rule below is **doctrine for all users** — David is the first runner,
 not the only one. Every future sign-up inherits this doctrine without
 re-deriving it.
 
-The rules fall into five buckets:
+The rules fall into four buckets:
 
 1. **Data-handling rules** — how the system writes and reads its own data
 2. **Coaching rules** — how the engine produces prescriptions
-3. **Inputs & onboarding rules** — what the coach needs per runner and where it comes from
-4. **Engine rules** — how the LLM-free deterministic chain behaves
-5. **Voice + UX rules** — how the coach speaks and how the page is composed
+3. **Engine rules** — how the LLM-free deterministic chain behaves
+4. **Voice + UX rules** — how the coach speaks and how the page is composed
 
 Every rule has a citation. When a rule changes, the citation must be
 updated; the rule itself is append-only inside the active session — never
@@ -188,53 +187,9 @@ Citation: `web-v2/lib/notifications/prefs.ts`, `migration 121_notifications.sql`
 
 ---
 
-## 3 · Inputs & onboarding rules
+## 3 · Engine rules (deterministic)
 
-### 3.1 · Input tiers — what the coach asks for per runner
-
-**Locked 2026-05-30.** Every runner is described by **six tiers** of input. Every signed-up user — David, the next runner, the 1000th — arrives at first coaching with the SAME inputs filled. The PATH to fill them differs (Apple Health auto-fills some; manual entry fills others), but the SET of fields is fixed.
-
-| Tier | Status | Fields | Gates |
-|---|---|---|---|
-| **T1 · Identity** | REQUIRED at onboarding | name, email, timezone, user UUID | Plan generation, greeting, time-aware UX |
-| **T2 · Physiology** | REQUIRED for accurate coaching | age (birthday), sex, height_cm, experience_level | HR zones, age-grading, cadence thresholds |
-| **T3 · Connected-source** | AUTO when connected, MANUAL fallback when not | max_hr, resting_hr, LTHR, sleep, HRV, weight, VO2 max, HR recovery, cadence, run power, etc. | Readiness, training load, form metrics |
-| **T4 · Volume + history** | REQUIRED for plan generation | weekly_mileage_target, weekly_frequency, history_avg_weekly_mi, history_longest_recent_mi, history_years_running | Plan-builder's volume target + level inference |
-| **T5 · Schedule + units** | REQUIRED before first plan (defaults exist) | long_run_dow, quality_dows, rest_dow, units, briefing_time | Workout day-of-week, distance / pace / temp units |
-| **T6 · Pro features** | OPTIONAL | fuel_brand, fuel_target_g_per_hr, cross_training_modes, notification prefs per category | Fueling, cross-training credits, push categories |
-
-Citation: `docs/ONBOARDING_AUDIT.md`, `learn_articles.slug='doctrine-input-tiers'`.
-
-### 3.2 · Fallback ladder — physiology fields
-
-**Locked 2026-05-30.** For every physiology field, the resolution order is:
-
-1. **MANUAL OVERRIDE** — `users.*_override` or `profile.*` set explicitly. Wins everything else.
-2. **AUTO from CONNECTOR** — Apple Health ratchets `users.max_hr`; 60d avg fills `users.resting_hr`; race avg HR derives `profile.lthr`.
-3. **POPULATION FORMULA** — `220 - age` for max HR. Always wrapped in a hedge.
-4. **PROFILE_GAP CARD** — coach surfaces "we need X to coach Y better" on TODAY.
-
-The contract: the coaching engine never crashes for missing inputs. Every code path has a fallback, defers gracefully, or surfaces a gap card.
-
-Citation: `learn_articles.slug='doctrine-fallback-ladder'`.
-
-### 3.3 · Apple Health is recommended, not required
-
-**Locked 2026-05-30.** Apple Health auto-flows 19 sample types when connected. The system MUST work without it. Manual-fallback coverage today: max_hr / resting_hr / LTHR have manual paths; weight / sleep / HRV / HR recovery / cadence / run power do NOT (open gaps).
-
-Citation: `learn_articles.slug='doctrine-apple-health-optional'`.
-
-### 3.4 · Onboarding minimum-viable set
-
-**Locked 2026-05-30.** Minimum inputs to coach safely: T1 identity in full; T2 physiology (birthday, sex, experience_level — height is recommended); T4 volume (Strava 4+ weeks OR onboarding history chips); a goal (race OR maintenance). Without a verified anchor (max_hr OR LTHR OR race-derived estimate), the coach defers rather than publishes wrong HR zones.
-
-Citation: `learn_articles.slug='doctrine-onboarding-min-set'`.
-
----
-
-## 4 · Engine rules (deterministic)
-
-### 4.1 · Coach is briefing-driven, not chat-driven
+### 3.1 · Coach is briefing-driven, not chat-driven
 
 The engine produces structured briefings per (surface, mode) — never a
 chat thread. Runner replies via typed reply chips on briefing cards
@@ -243,7 +198,7 @@ chat thread. Runner replies via typed reply chips on briefing cards
 Citation: `docs/2026-05-30.html §READ THIS FIRST`, no chat tables in
 schema, no `conversations`/`messages`/`tool_call_log`/`kb_chunks` tables.
 
-### 4.2 · Doctrine lives in files, not the DB
+### 3.2 · Doctrine lives in files, not the DB
 
 The 28 Research markdown files under `/Research/` are the canonical
 reference. The engine reads them at runtime. No RAG, no embeddings, no
@@ -253,7 +208,7 @@ surface, not the engine's retrieval source.
 
 Citation: `Research/INDEX.md`, `docs/2026-05-30.html §8 L2 — Research / doctrine layer`.
 
-### 4.3 · Truth contract — prereqs gate topics
+### 3.3 · Truth contract — prereqs gate topics
 
 Every topic kind has a `prereqs(state)` function. Topics whose prereqs
 fail are filtered before the LLM ever sees them. Examples:
@@ -263,7 +218,7 @@ requires `nextARace` not null; `run_recap` requires
 
 Citation: `web-v2/lib/topics/types.ts`, `docs/2026-05-30.html §10`.
 
-### 4.4 · Race wins ties (training vs race VDOT)
+### 3.4 · Race wins ties (training vs race VDOT)
 
 Race candidates carry VDOT at face value. Training-run candidates carry
 VDOT - 1 for sort purposes. A single real race always wins ties against
@@ -271,7 +226,7 @@ a training estimate.
 
 Citation: `web-v2/lib/training/vdot.ts:bestRecentVdot` sortKey.
 
-### 4.5 · One voice — locked
+### 3.5 · One voice — locked
 
 "Direct" voice — honest, time-aware, no hype, no exclamation marks, no
 emoji, no em dashes. Voice variants (encouraging / technical) are NOT
@@ -280,7 +235,7 @@ supported. Coach voice extends across every surface and every client.
 Citation: `docs/coach/PHILOSOPHY.md §Voice`,
 `Design/running-app-design-brief.md §Tone of voice`.
 
-### 4.6 · Cap-at-85 ceiling
+### 3.6 · Cap-at-85 ceiling
 
 Both `vdotFromRace` and `vdotFromRun` return null when computed VDOT is
 outside `[30, 85]`. This is the Daniels' table boundary (extended through
@@ -292,9 +247,9 @@ Citation: `web-v2/lib/training/vdot.ts:rawVdot` clamp, memory
 
 ---
 
-## 5 · Voice + UX rules
+## 4 · Voice + UX rules
 
-### 5.1 · Three locked principles (coach philosophy)
+### 4.1 · Three locked principles (coach philosophy)
 
 1. **Let the coach decide** — the page is what the coach decided to show, not a template the coach fills in.
 2. **Truth contract** — never invent; speak qualitatively about unreliable numbers; defer prescriptions when data-limited.
@@ -302,7 +257,7 @@ Citation: `web-v2/lib/training/vdot.ts:rawVdot` clamp, memory
 
 Citation: `docs/coach/PHILOSOPHY.md §Three locked principles`.
 
-### 5.2 · The page is alive
+### 4.2 · The page is alive
 
 Composition is state-driven, not template-driven. A page rendered at race
 week and a page rendered 4 months out look meaningfully different. Beats
@@ -313,7 +268,7 @@ Citation: `CLAUDE.md §Operating posture`,
 `Design/running-app-design-brief.md §The page is alive`,
 `BuildResearch/C1-overview-and-today.md §Conditional layouts`.
 
-### 5.3 · Three questions, in order
+### 4.3 · Three questions, in order
 
 Every surface answers, in this order:
 
@@ -326,7 +281,7 @@ hierarchy is wrong.
 
 Citation: `Design/running-app-design-brief.md §The three questions`.
 
-### 5.4 · Color is semantic, not decorative
+### 4.4 · Color is semantic, not decorative
 
 Five locked accents, each with ONE job: `recovery` (green), `active`
 (blue), `race` (orange), `warn` (rose), `milestone` (gold). Plus the
@@ -334,7 +289,7 @@ phase palette for terrain encoding. No ornamental multi-color.
 
 Citation: `Design/running-app-design-brief.md §Color palette`.
 
-### 5.5 · One hero per screen
+### 4.5 · One hero per screen
 
 Hero = display-type, accent color, real silence. One per screen, maximum.
 Equal weight across the page is failure.

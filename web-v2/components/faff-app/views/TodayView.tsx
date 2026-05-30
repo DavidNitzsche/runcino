@@ -429,12 +429,23 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
       <div className="tile">
         <div className="fll">THE GAP{goal ? ` · ${goal.name.toUpperCase().replace(' MARATHON','').slice(0,12)}` : ''}</div>
         <div className="tbody cd">
-          <div className="cdbig" style={{ color: goal?.onTrack ? '#3EBD41' : '#FF8847' }}>{goal?.projected ?? '·'}</div>
-          <div className="cdlab">PROJECTED FINISH</div>
-          <div className="cdsub">Goal {goal?.goal ?? '·'} · {goal?.delta ?? '·'}</div>
+          {/* 2026-05-30: when projection hasn't computed (no recent race result
+              yet → no VDOT seed), show the goal as the big number so the tile
+              doesn't read as broken. Bottom row explains why. */}
+          <div className="cdbig" style={{ color: goal?.projected ? (goal.onTrack ? '#3EBD41' : '#FF8847') : '#9099A8' }}>
+            {goal?.projected ?? goal?.goal ?? '—'}
+          </div>
+          <div className="cdlab">{goal?.projected ? 'PROJECTED FINISH' : (goal ? 'TARGET FINISH' : 'NO GOAL SET')}</div>
+          {goal?.projected
+            ? <div className="cdsub">Goal {goal.goal} · {goal.delta}</div>
+            : (goal ? <div className="cdsub" style={{ opacity: 0.7 }}>Log a recent race to project</div> : <div className="cdsub" style={{ opacity: 0.7 }}>Pick a primary race on /races</div>)}
           <div className="cdbar"><div className="cdfill" style={{ width: `${goal?.goalPct ?? 0}%`, background: goal?.onTrack ? '#3EBD41' : '#FF8847' }} /></div>
           <div className="cdwk" style={{ color: goal?.onTrack ? '#7BE8A0' : '#FFCE8A', opacity: 1 }}>
-            {goal ? (goal.onTrack ? `On track for ${goal.goal}` : `${goal.delta}`) : 'No goal race set'}
+            {goal
+              ? (goal.projected
+                  ? (goal.onTrack ? `On track for ${goal.goal}` : `${goal.delta}`)
+                  : 'Projection pending')
+              : 'No goal race set'}
           </div>
         </div>
       </div>
@@ -442,11 +453,13 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
       <div className="tile click" onClick={onOpenRace} role="button" tabIndex={0}>
         <div className="fll">RACE DAY{goal ? ` · ${goal.name.toUpperCase().replace(' MARATHON','').slice(0,12)}` : ''}</div>
         <div className="tbody cd">
-          <div className="cdbig">{goal?.daysAway ?? '·'}</div>
-          <div className="cdlab">DAYS TO GO</div>
-          <div className="cdsub">{goal ? `${formatDate(goal.date)}${goal.location ? ' · ' + goal.location : ''}` : '·'}</div>
+          <div className="cdbig">{goal?.daysAway ?? '—'}</div>
+          <div className="cdlab">{goal ? 'DAYS TO GO' : 'NO GOAL SET'}</div>
+          <div className="cdsub" style={{ opacity: goal ? 1 : 0.7 }}>
+            {goal ? `${formatDate(goal.date)}${goal.location ? ' · ' + goal.location : ''}` : 'Pick a primary race on /races'}
+          </div>
           <div className="cdbar"><div className="cdfill" style={{ width: `${goal?.goalPct ?? 0}%` }} /></div>
-          <div className="cdwk">{goal?.phaseLabel ?? '·'}</div>
+          <div className="cdwk">{goal?.phaseLabel ?? (goal ? 'Building' : '—')}</div>
         </div>
       </div>
 

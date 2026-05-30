@@ -89,7 +89,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         <div className="pfav">{seed.user.initial}</div>
         <div className="pfid">
           <div className="pfn">{seed.user.name}</div>
-          <div className="pfm">{seed.user.city} · Runner</div>
+          <div className="pfm">{seed.user.city ? `${seed.user.city} · ` : ''}{prettyExperience(seed.user.experienceLevel)}</div>
         </div>
         <span className="pfpro" onClick={onOpenPro} style={{ cursor: 'pointer' }}>FAFF PRO</span>
       </div>
@@ -132,10 +132,10 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           <span className="setk">NOTIFICATIONS</span><span className="setv" style={{ opacity: notif ? 1 : 0.5 }}>{notif ? 'On' : 'Off'}</span><span className="sgo">›</span>
         </div>
         <div className="setr">
-          <span className="setk">COACHING ROLE</span><span className="setv">Runner</span><span className="sgo">›</span>
+          <span className="setk">EXPERIENCE</span><span className="setv">{prettyExperience(seed.user.experienceLevel)}</span><span className="sgo">›</span>
         </div>
         <div className="setr" onClick={onOpenPaywall}>
-          <span className="setk">SUBSCRIPTION</span><span className="setv">Faff Pro · renews Dec</span><span className="sgo">›</span>
+          <span className="setk">SUBSCRIPTION</span><span className="setv">{seed.user.subscriptionLabel}</span><span className="sgo">›</span>
         </div>
         <div className="setr danger">
           <span className="setk">SIGN OUT</span><span className="setv"></span>
@@ -170,6 +170,17 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       />
     </>
   );
+}
+
+/** Map profile.experience_level enum to the runner-facing label. */
+function prettyExperience(lvl: string | null): string {
+  switch (lvl) {
+    case 'beginner':      return 'Beginner runner';
+    case 'intermediate':  return 'Intermediate runner';
+    case 'advanced':      return 'Advanced runner';
+    case 'advanced_plus': return 'Elite runner';
+    default:              return 'Runner';
+  }
 }
 
 function ShoeEditor({

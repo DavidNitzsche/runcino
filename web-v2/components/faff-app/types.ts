@@ -17,7 +17,13 @@ export type FaffSeed = {
   topDate: string;          // "Wednesday, May 28"
   weekOf: string;           // "Week 14 of 26 · Build phase"
   // sidebar profile chip
-  user: { name: string; city: string; initial: string; pro: boolean };
+  user: {
+    name: string; city: string; initial: string; pro: boolean;
+    // 2026-05-30: real profile fields surfaced for Profile view rows so
+    // they don't render hardcoded "Runner" / "renews Dec" strings.
+    experienceLevel: string | null;   // 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus'
+    subscriptionLabel: string;        // honest single-user-beta default until billing is wired
+  };
 
   // today's view
   week: PlannedDay[];              // 7 days, mon..sun
