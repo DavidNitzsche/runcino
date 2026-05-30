@@ -10,24 +10,24 @@
  *   1. MISSED_KEY_WORKOUT — planned threshold/intervals not completed
  *      within ±1d. → Reschedule that workout 2-3d forward; downgrade
  *      next quality day to recovery (avoid stacking).
- *      Cite: 00a §missed-workout-policy
+ *      Cite: Research/00a-distance-running-training.md §missed-workout-policy
  *
  *   2. RHR_SPIKE — 3-day avg RHR > 7 bpm above 14-day baseline.
  *      → Convert next quality day to easy; flag readiness.
- *      Cite: 05-readiness-and-recovery.md §rhr-deviation
+ *      Cite: Research/15-wearable-data.md §RHR-Recovery-Indicators
  *
  *   3. SLEEP_CRATER — 2+ nights < 5h.
  *      → Convert next quality day to easy.
- *      Cite: 05 §sleep-quality
+ *      Cite: Research/00b-recovery-protocols.md §sleep-as-recovery
  *
  *   4. VOLUME_OVERSHOOT — last 7d running volume > 25% above current
  *      experience-level cap (P33).
  *      → Shave next 7d by 15-20% (proportional).
- *      Cite: 00a §ramp-rules
+ *      Cite: Research/00a-distance-running-training.md §progressive-overload (ACWR + 10% rule)
  *
  *   5. PR_BANK — recent race finish that implies VDOT jump > 1.5 pts.
  *      → Recompute paces; mark plan_workouts as needing prescription refresh.
- *      Cite: 03-pacing-and-zones.md §vdot-recalc
+ *      Cite: Research/01-pace-zones-vdot.md §VDOT-recalibrate
  *
  * Output: array of `AdaptationAction`s. The caller applies them in
  * a single DB transaction, then bumps the plan's `last_adapted_at` so

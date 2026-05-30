@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { generatePlan } from '@/lib/plan/generate';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -36,15 +37,35 @@ export async function POST(req: NextRequest) {
     location: body.location ?? null,
   };
 
+  const userId = body.user_id ?? DAVID_USER_ID;
   try {
     await pool.query(
       `INSERT INTO races (slug, user_uuid, meta)
        VALUES ($1, $2, $3)
        ON CONFLICT (slug) DO UPDATE SET meta = EXCLUDED.meta`,
-      [slug, body.user_id ?? DAVID_USER_ID, meta]
+      [slug, userId, meta]
     );
-    await bustBriefingCacheForEvent(body.user_id ?? DAVID_USER_ID, 'race_crud');
-    return NextResponse.json({ ok: true, slug });
+    await bustBriefingCacheForEvent(userId, 'race_crud');
+
+    // Q-05 · auto-generate plan on first A-race when there's no active
+    // plan. If there IS an active plan tied to some other race, we DO
+    // NOT auto-switch — would be too aggressive. Instead leave it to
+    // the runner to explicitly /plan/generate (or accept a future
+    // coach_proposals item, when wired).
+    let plan: { ok: boolean; plan_id?: string; weeks_generated?: number; reason?: string } | null = null;
+    if (meta.priority === 'A') {
+      const active = (await pool.query<{ race_id: string | null }>(
+        `SELECT race_id FROM training_plans WHERE user_uuid = $1 AND archived_iso IS NULL LIMIT 1`,
+        [userId],
+      ).catch(() => ({ rows: [] }))).rows[0];
+      if (!active) {
+        plan = await generatePlan({ userId, raceSlug: slug }).catch((e: unknown) => ({
+          ok: false, reason: e instanceof Error ? e.message : String(e),
+        }));
+      }
+    }
+
+    return NextResponse.json({ ok: true, slug, plan });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

@@ -164,6 +164,20 @@ export async function POST(req: NextRequest) {
   const histAvgMi = histAvg ? HIST_AVG_MIDPOINTS[histAvg] : null;
   const histLongMi = histLong ? HIST_LONG_MIDPOINTS[histLong] : null;
 
+  // ── Sync users.timezone (canonical) + users.name ─────────────────
+  // The data plan §2 names users.timezone as the canonical timezone
+  // column (read by state-loader, briefing time logic). Without this
+  // mirror, the onboarding runner's tz lives in profile.timezone only
+  // and the coach engine never sees it — Q-07 in OPEN_QUESTIONS.md.
+  try {
+    await pool.query(
+      `UPDATE users SET timezone = $1, name = COALESCE(NULLIF(name, ''), $2) WHERE id = $3`,
+      [timezone, name, userId]
+    );
+  } catch {
+    // Non-fatal — the profile write below still proceeds.
+  }
+
   // ── Upsert profile ───────────────────────────────────────────────
   // The PATCH at /api/profile is gated by an ALLOWED set that doesn't
   // include the new onboarding columns. Going direct to the DB keeps

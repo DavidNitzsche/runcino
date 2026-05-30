@@ -164,17 +164,44 @@ function sizeBlocks(totalWeeks: number, raceDistanceMi: number): BlockPlan {
 
 // ── Volume curve ────────────────────────────────────────────────────────
 
+/** Experience-level volume floor + ramp tuning (Q-01 / SIM-02).
+ *
+ * Without these, a true beginner running 5 mpw who picks a goal race got
+ * an immediate jump to 15 mpw (3× their actual base) in week 1 — way
+ * over the 10% rule. With these, each level has a sensible floor that
+ * matches research-grounded base mileage by experience.
+ *
+ * Cite: Research/00a-distance-running-training.md §volume-by-experience
+ * Cite: Research/22-plan-templates.md §minimum-base-by-level
+ */
+type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
+const VOLUME_FLOOR_MPW: Record<Exclude<LevelKey, null>, number> = {
+  beginner: 10,
+  intermediate: 15,
+  advanced: 20,
+  advanced_plus: 25,
+};
+const RAMP_PCT: Record<Exclude<LevelKey, null>, number> = {
+  beginner: 0.05,         // conservative 5%/wk for new runners
+  intermediate: 0.07,
+  advanced: 0.07,
+  advanced_plus: 0.08,    // capable of slightly more aggressive ramp
+};
+
 /** Returns target mileage for each week 0..N-1 (chronological).
  *
  * Cite: Research/00a-distance-running-training.md §progressive-overload (10%/wk cap, deload every 4th wk)
  * Cite: Research/08-pacing-and-race-week.md §taper (cut volume, hold intensity)
  *
- * We ramp non-deload weeks 7% and cutback weeks to 85% of the previous PEAK
- * (not the previous week) so the trend climbs cleanly across cycles.
+ * Non-deload weeks ramp by RAMP_PCT (level-scaled, 5-8%); cutback weeks
+ * land at 85% of the previous PEAK so the trend climbs cleanly across
+ * cycles. Floor scales by experience_level.
  */
-function volumeCurve(baseMi: number, blocks: BlockPlan): number[] {
+function volumeCurve(baseMi: number, blocks: BlockPlan, level: LevelKey): number[] {
   const vols: number[] = [];
-  let weekVol = Math.max(15, baseMi); // floor: nothing under 15 mpw makes sense for race prep
+  const floor = level ? VOLUME_FLOOR_MPW[level] : VOLUME_FLOOR_MPW.intermediate;
+  const ramp  = level ? RAMP_PCT[level]         : RAMP_PCT.intermediate;
+  let weekVol = Math.max(floor, baseMi);
   let lastPeak = weekVol;
 
   let cursor = 0;
@@ -190,7 +217,7 @@ function volumeCurve(baseMi: number, blocks: BlockPlan): number[] {
           if (isDeload) {
             weekVol = Math.round(lastPeak * 0.85);
           } else {
-            weekVol = Math.round(weekVol * 1.07);
+            weekVol = Math.round(weekVol * (1 + ramp));
             lastPeak = Math.max(lastPeak, weekVol);
           }
         }
@@ -432,7 +459,16 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
 
   const blocks = sizeBlocks(totalWeeks, raceDistanceMi);
   const recentMi = await recentWeeklyMileage(userId);
-  const vols = volumeCurve(recentMi, blocks);
+
+  // Read experience_level for volume-curve scaling (Q-01 / SIM-02 fix).
+  // Falls back to 'intermediate' shape when unknown.
+  const expRow = (await pool.query<{ experience_level: string | null }>(
+    `SELECT experience_level FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const level = (expRow?.experience_level ?? null) as LevelKey;
+
+  const vols = volumeCurve(recentMi, blocks, level);
 
   // 4. Build each week
   const weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean }> = [];
