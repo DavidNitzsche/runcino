@@ -206,7 +206,7 @@ struct TrainView: View {
             let wk = s.weeks[min(max(0, focusedIndex), s.weeks.count - 1)]
             HStack(spacing: 5) {
                 ForEach(wk.days, id: \.date) { day in
-                    VStack(spacing: 5) {
+                    let dayContent = VStack(spacing: 5) {
                         Text(["S","M","T","W","T","F","S"][day.dow % 7])
                             .font(.label(9)).tracking(0.4)
                             .foregroundStyle(Theme.txt.opacity(0.5))
@@ -223,6 +223,19 @@ struct TrainView: View {
                             .foregroundStyle(Theme.txt.opacity(0.62))
                     }
                     .frame(maxWidth: .infinity)
+                    if let runId = day.activityId {
+                        NavigationLink(value: FaffRoute.runDetail(id: runId)) {
+                            dayContent
+                        }
+                        .buttonStyle(.plain)
+                    } else if day.type.lowercased() != "rest" {
+                        NavigationLink(value: FaffRoute.planned(workoutId: nil)) {
+                            dayContent
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        dayContent
+                    }
                 }
             }
             .padding(.top, 6)
