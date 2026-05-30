@@ -124,9 +124,11 @@ function CompletedBody({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
         <div className="i"><div className="k">FUEL</div><div className="v">{det.fuel ?? ' · '}</div></div>
         <div className="i"><div className="k">CALORIES</div><div className="v">{det.cal} kcal</div></div>
       </div>
-      <div className="coach" style={{ marginTop: 22 }}>
-        <span className="ct">COACH</span><span className="cx">{det.recap}</span>
-      </div>
+      {det.recap && (
+        <div className="coach" style={{ marginTop: 22 }}>
+          <span className="ct">COACH</span><span className="cx">{det.recap}</span>
+        </div>
+      )}
     </>
   );
 }

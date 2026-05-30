@@ -167,7 +167,7 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
       zones: [0, 0, 0, 0, 0],
       weather: ' · ', shoe: ' · ', cal: 0, gain: 0,
       splits: [],
-      recap: 'Real per-run telemetry surfaces from /runs/[id]; the daily tile shows the headline.',
+      recap: '',
     };
   });
   return { week, todayIdx, results };
