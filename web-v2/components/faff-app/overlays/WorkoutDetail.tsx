@@ -219,7 +219,7 @@ function RestBody() {
 function RouteMap({ dist, gain }: { dist: string; gain: number }) {
   return (
     <>
-      <div className="fll" style={{ marginTop: 8 }}>ROUTE · RESEDA LOOP</div>
+      <div className="fll" style={{ marginTop: 8 }}>ROUTE</div>
       <div className="rdmap">
         <svg viewBox="0 0 700 168" preserveAspectRatio="none">
           <defs>
@@ -237,7 +237,7 @@ function RouteMap({ dist, gain }: { dist: string; gain: number }) {
         <span className="rdmaptag start">START</span>
         <span className="rdmaptag end">FINISH</span>
         <div className="rdmapstat">
-          <span>{dist} MI</span><span>↗ {gain} FT</span><span>34.20° N</span><span>Reseda, CA</span>
+          <span>{dist} MI</span><span>↗ {gain} FT</span>
         </div>
       </div>
     </>
