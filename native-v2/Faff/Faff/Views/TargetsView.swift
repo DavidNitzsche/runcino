@@ -58,14 +58,17 @@ struct TargetsView: View {
 
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(next?.name ?? "Set a target")
+                    Text(RaceName.short(next?.name, abbreviateAlways: (next?.name.count ?? 0) > 14))
                         .font(.display(50, weight: .bold))
                         .tracking(-2.5)
                         .foregroundStyle(Theme.txt)
                         .shadow(color: .black.opacity(0.32), radius: 22, y: 2)
-                    Text(next?.location ?? "Open · no date set")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(next?.name ?? "Set a target")
                         .font(.body(13, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.82))
+                        .lineLimit(2)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {

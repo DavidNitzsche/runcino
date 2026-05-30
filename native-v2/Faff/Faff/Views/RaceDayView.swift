@@ -342,14 +342,13 @@ struct RaceDayView: View {
 
     // MARK: - Data
 
-    private var raceName: String { detail?.race.name ?? "California International Marathon" }
+    private var raceName: String { detail?.race.name ?? "Race" }
 
     private var raceShortCode: String {
-        if let name = detail?.race.name {
-            let initials = name.split(separator: " ").compactMap { $0.first.map(String.init) }.prefix(3).joined()
-            return initials.isEmpty ? "CIM" : initials.uppercased()
-        }
-        return "CIM"
+        // Always abbreviate the hero — even "Boston Marathon" reads as "BM".
+        // Falls back to "RACE" if no name yet.
+        guard let name = detail?.race.name, !name.isEmpty else { return "RACE" }
+        return RaceName.short(name, abbreviateAlways: true)
     }
 
     private var heroEyebrow: String {
