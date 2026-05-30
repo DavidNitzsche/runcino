@@ -10,6 +10,10 @@ import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType } from '@/lib/training/prescriptions';
 import { lookupTempF, baselineTempF } from '@/lib/weather/lookup';
 import { abilityTierFromVdot } from '@/lib/weather/heat-adjustment';
+import {
+  computeFueling,
+  type WorkoutFuelingType,
+} from '@/lib/training/fueling';
 
 const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -117,6 +121,53 @@ export async function GET(req: NextRequest) {
       abilityTier,
     } : null,
   }, isFinite(targetMi as number) ? (targetMi as number) : undefined);
+
+  // ── Fueling: compute gels + carb intake per Research/18 ─────────
+  //
+  // Pulls the runner's product preferences from users.fuel_* so the
+  // brief can quote "2 Maurten 100s at 30 + 60 min" instead of generic
+  // "2 gels". Race-aware ramp applies when an A-race is within 56d
+  // (Costa et al. gut-training §13).
+  const fuelRow = (await pool.query<{
+    fuel_brand: string | null;
+    fuel_gel_carbs_g: number | null;
+    fuel_target_g_per_hr: number | null;
+  }>(
+    `SELECT fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr FROM users WHERE id = $1 LIMIT 1`,
+    [userId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+
+  // Derive workout type + duration estimate for fueling math.
+  const fuelingType: WorkoutFuelingType =
+    type === 'long' || type === 'race' ? type
+    : type === 'threshold' || type === 'tempo' || type === 'intervals' ? 'quality'
+    : type === 'rest' ? 'rest'
+    : 'easy';
+  // Conservative ~ 9 min/mi default for duration estimate.
+  const durationEstMin = Math.round(prescription.total_mi * 9);
+
+  const daysToARace = meta?.date
+    ? Math.max(0, Math.round((Date.parse(meta.date + 'T12:00:00Z') - Date.now()) / 86400000))
+    : null;
+
+  const fueling = computeFueling({
+    durationEstMin,
+    distanceMi: prescription.total_mi,
+    workoutType: fuelingType,
+    tempF,
+    daysToARace,
+    raceFuelTargetGPerHr: fuelRow?.fuel_target_g_per_hr ?? null,
+    gelCarbsG: fuelRow?.fuel_gel_carbs_g ?? null,
+    gelLabel: fuelRow?.fuel_brand ?? null,
+  });
+  prescription.fueling = fueling.needed ? {
+    needed: fueling.needed,
+    gels: fueling.gels,
+    atMins: fueling.atMins,
+    carbsTotalG: fueling.carbsTotalG,
+    shortLine: fueling.shortLine,
+    why: fueling.why,
+  } : null;
 
   // Prescriptions are deterministic from (type, weeklyMi, lthr, goal_*).
   // The same query string returns the same output until the runner's

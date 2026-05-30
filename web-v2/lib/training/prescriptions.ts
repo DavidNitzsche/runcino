@@ -54,6 +54,24 @@ export interface Prescription {
   citation: string;
   zones?: ZoneTable | null;
   /**
+   * Fueling plan for this workout. Computed from total_mi + workout
+   * type + temperature + the runner's product preferences
+   * (users.fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr).
+   *
+   * shortLine drops in directly to the briefing voice — "2 Maurten
+   * 100s at 30 + 60 min" when products are set; "2 gels" otherwise.
+   *
+   * Cite: Research/18-fueling-products.md §1 + §13.
+   */
+  fueling?: {
+    needed: boolean;
+    gels: number;
+    atMins: number[];
+    carbsTotalG: number;
+    shortLine: string;
+    why: string;
+  } | null;
+  /**
    * Heat-adjustment context (Q-04 / Research/06). When `tempF` is
    * known + non-trivial slowdown applies, every pace_target in steps
    * has been adjusted via applyHeatToPace, and this field carries the
