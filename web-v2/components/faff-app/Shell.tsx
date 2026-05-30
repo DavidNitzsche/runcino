@@ -79,6 +79,26 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     if (autoOpenRunId) setOpenOverlay({ type: 'run', id: autoOpenRunId });
   }, [autoOpenRunId]);
 
+  // Auto-open Weekly Check-in on Monday once per week. The recap surfaces
+  // the PREVIOUS week's training, so Monday is the right beat. We stash a
+  // dismissal key per ISO week-of-year so it only fires once per Monday.
+  useEffect(() => {
+    if (autoOpenRunId) return;            // skip if we're deep-linking a run
+    const now = new Date();
+    if (now.getDay() !== 1) return;       // 1 = Monday
+    const weekKey = `faffWeekRecap-${now.getFullYear()}-W${isoWeekNumber(now)}`;
+    try {
+      if (localStorage.getItem(weekKey)) return;
+      const t = setTimeout(() => {
+        setOpenOverlay('weekci');
+        try { localStorage.setItem(weekKey, '1'); } catch { /* swallow */ }
+      }, 1500);
+      return () => clearTimeout(t);
+    } catch {
+      /* SSR / private mode safe */
+    }
+  }, [autoOpenRunId]);
+
   const navigate = useCallback((v: ViewKey) => {
     setView(v);
     setMeshOverride(null);
@@ -229,4 +249,15 @@ function Mesh({ mesh }: { mesh: Mesh }) {
       <div className="fade" />
     </>
   );
+}
+
+/** ISO week number (1-53). Used as a per-week dismissal key for the
+ *  Monday weekly check-in pop-up. */
+function isoWeekNumber(d: Date): number {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // Set to Thursday of the same ISO week (Mon = 1 ... Sun = 7).
+  const dayNum = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
 }

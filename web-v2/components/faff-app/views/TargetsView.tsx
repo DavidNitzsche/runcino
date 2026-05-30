@@ -3,9 +3,13 @@
 import type { FaffSeed } from '../types';
 
 export function TargetsView({
-  seed, onOpenRace, onOpenReach,
-}: { seed: FaffSeed; onOpenRace: (slug: string) => void; onOpenReach: () => void }) {
+  seed, onOpenRace,
+}: { seed: FaffSeed; onOpenRace: (slug: string) => void; onOpenReach?: () => void }) {
   const goal = seed.goalRace;
+  // The "Coach spotted something" banner stays hidden until the coach
+  // engine actually emits a within-reach signal (no such surface yet).
+  // When that ships, accept a `coachInsight` prop and render the banner
+  // conditionally on its presence.
   return (
     <>
       <div className="top">
@@ -13,17 +17,6 @@ export function TargetsView({
           <div className="date">Targets</div>
           <div className="wk">Goals &amp; races</div>
         </div>
-      </div>
-
-      <div className="reachbn" onClick={onOpenReach} role="button" tabIndex={0}>
-        <div className="ri">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#FFE9B0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>
-        </div>
-        <div className="rt">
-          <div className="rl">COACH SPOTTED SOMETHING</div>
-          <div className="rx">A 5K PR is within one good effort. Want to make it a goal?</div>
-        </div>
-        <span className="arr">›</span>
       </div>
 
       <div className="goalhero">
