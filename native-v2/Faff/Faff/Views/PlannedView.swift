@@ -30,41 +30,44 @@ struct PlannedView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 18)
 
-                    section("CONDITIONS · RECALIBRATED") {
-                        heatCard
+                    if workout?.fueling?.heatAdjusted == true {
+                        section("CONDITIONS · RECALIBRATED") {
+                            heatCard
+                        }
+                        .padding(.top, 24)
                     }
-                    .padding(.top, 24)
 
-                    section("THE SHAPE") {
-                        shapeBar
-                    }
-                    .padding(.top, 24)
+                    if !(workout?.phases.isEmpty ?? true) {
+                        section("THE SHAPE") {
+                            shapeBar
+                        }
+                        .padding(.top, 24)
 
-                    section("THE SESSION") {
-                        sessionList
+                        section("THE SESSION") {
+                            sessionList
+                        }
+                        .padding(.top, 24)
                     }
-                    .padding(.top, 24)
 
-                    section("WHY THIS, TODAY") {
-                        CoachNote(
-                            message: coachBody,
-                            tag: "Coach",
-                            accent: Theme.Accent.mintReady,
-                            style: .note
-                        )
-                        .padding(.horizontal, -24)
+                    if let coach = coachLine {
+                        section("WHY THIS, TODAY") {
+                            CoachNote(
+                                message: coach,
+                                tag: "Coach",
+                                accent: Theme.Accent.mintReady,
+                                style: .note
+                            )
+                            .padding(.horizontal, -24)
+                        }
+                        .padding(.top, 12)
                     }
-                    .padding(.top, 12)
 
-                    section("FUEL & HYDRATION") {
-                        fuelTile
+                    if let fueling = workout?.fueling, fueling.needed {
+                        section("FUEL & HYDRATION") {
+                            fuelTile(fueling: fueling)
+                        }
+                        .padding(.top, 6)
                     }
-                    .padding(.top, 6)
-
-                    section("EXECUTE") {
-                        executeBullets
-                    }
-                    .padding(.top, 24)
 
                     Spacer(minLength: 140)
                 }
@@ -140,15 +143,12 @@ struct PlannedView: View {
                 Image(systemName: "sun.max.fill")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color(hex: 0xFF8C5A))
-                Text("Hot at run time")
+                Text("Heat-adjusted")
                     .font(.body(14, weight: .extraBold))
                     .foregroundStyle(Theme.txt)
                 Spacer()
-                Text("84°F")
-                    .font(.display(16, weight: .bold))
-                    .foregroundStyle(Theme.txt)
             }
-            Text("Faff eased your targets +8s/mi for the heat · run threshold by effort, not the number. Expect HR to read ~6 bpm high; that's the weather, not lost fitness. Hydrate before you start.")
+            Text("Targets eased for today's conditions. Run threshold by effort, expect HR a few bpm above the usual range. Hydrate before you start.")
                 .font(.body(13, weight: .medium))
                 .foregroundStyle(Theme.txt.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
@@ -219,13 +219,18 @@ struct PlannedView: View {
         }
     }
 
-    private var fuelTile: some View {
+    private func fuelTile(fueling: WatchFueling) -> some View {
         GlassTile(padding: 6) {
             VStack(spacing: 0) {
-                fuelRow("Before", "16 oz water + electrolytes")
-                fuelRow("Carry", "SkyFlask · PF 60 mix")
-                fuelRow("During", "PF 30 gel @ mi 5")
-                fuelRow("Heat add", "+1 electrolyte tab")
+                fuelRow("Gels", "\(fueling.gels) · \(fueling.gPerHr) g/hr")
+                if !fueling.atMins.isEmpty {
+                    let mins = fueling.atMins.map(String.init).joined(separator: " · ")
+                    fuelRow("At minutes", mins)
+                }
+                fuelRow("Total carbs", "\(fueling.totalCarbsG) g")
+                if !fueling.shortLine.isEmpty {
+                    fuelRow("Coach", fueling.shortLine)
+                }
             }
         }
     }
@@ -238,21 +243,6 @@ struct PlannedView: View {
         }
         .padding(.vertical, 11)
         .padding(.horizontal, 10)
-    }
-
-    private var executeBullets: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(executeCues, id: \.self) { cue in
-                HStack(alignment: .top, spacing: 10) {
-                    Text("•").font(.body(14)).foregroundStyle(Theme.txt.opacity(0.7))
-                    Text(cue)
-                        .font(.body(14, weight: .semibold))
-                        .foregroundStyle(Theme.txt.opacity(0.9))
-                        .lineSpacing(2)
-                }
-                .padding(.vertical, 4)
-            }
-        }
     }
 
     // MARK: - Data
@@ -304,16 +294,12 @@ struct PlannedView: View {
         "PLANNED · WEEK 14 BUILD"
     }
 
-    private var coachBody: String {
-        "This is your weekly threshold stimulus · it lifts the pace you can hold before lactate piles up. Hold the line at effort and it feeds straight into CIM's 6:51 goal pace. Don't bank time early; the back half is the test."
-    }
-
-    private var executeCues: [String] {
-        [
-            "Settle the first threshold mile · don't sprint into it.",
-            "If HR spikes past Z4 in the heat, hold effort and let pace drift.",
-            "Finish the last mile the strongest, not the fastest."
-        ]
+    /// Coach copy for this workout. Sourced from the watch workout's
+    /// fueling.why when present (the only per-workout coach text that
+    /// reliably ships from the server today). Hides otherwise.
+    private var coachLine: String? {
+        if let w = workout?.fueling?.why, !w.isEmpty { return w }
+        return nil
     }
 
     private var shapeSegments: [ShapeSeg] {
