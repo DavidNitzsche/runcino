@@ -55,7 +55,7 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
 
   // Reflect URL to view (for back/forward navigation).
   useEffect(() => {
-    const v = (pathname && ROUTE_TO_VIEW[pathname]) || (pathname?.startsWith('/race/') ? 'race' : null);
+    const v = (pathname && ROUTE_TO_VIEW[pathname]) || (pathname?.startsWith('/races/') ? 'race' : null);
     if (v && v !== view) setView(v);
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,7 +116,11 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
             curDay={curDay}
             onPickDay={(i) => setCurDay(i)}
             onOpenDrawer={() => setOpenOverlay('drawer')}
-            onOpenRace={() => navigate('race')}
+            onOpenRace={() => {
+              const slug = seed.goalRace?.slug;
+              if (slug) router.push(`/races/${slug}`);
+              else router.push('/races');
+            }}
           />
         )}
         {view === 'train'    && (
@@ -130,7 +134,7 @@ export function Shell({ seed, initial = 'today', raceSeed }: { seed: FaffSeed; i
         {view === 'targets'  && (
           <TargetsView
             seed={seed}
-            onOpenRace={(slug) => router.push(`/race/${slug}`)}
+            onOpenRace={(slug) => router.push(`/races/${slug}`)}
             onOpenReach={() => setOpenOverlay('reach')}
           />
         )}
