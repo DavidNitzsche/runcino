@@ -538,7 +538,9 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hg-gauge{display:flex;flex-direction:column;align-items:center;}
 .gauge{position:relative;width:300px;height:300px;}
 .gauge svg{display:block;}
-.hrv2{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none;}
+/* Center the score in the bowl of the half-arc gauge, not the bounding box.
+   Arc endpoints sit at y≈83% of the container; visual bowl center is ~62%. */
+.hrv2{position:absolute;left:0;right:0;top:62%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none;}
 .hrv2 b{font-family:'Oswald',sans-serif;font-size:64px;font-weight:600;line-height:.8;}
 .hst{font-size:11px;font-weight:700;letter-spacing:3px;margin-top:7px;color:#9af0bf;}
 .hhsub{font-size:13.5px;font-weight:600;line-height:1.35;opacity:.92;text-align:center;margin-top:8px;max-width:240px;}

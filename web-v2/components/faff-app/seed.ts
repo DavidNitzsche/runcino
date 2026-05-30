@@ -215,23 +215,51 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
   return null;
 }
 
-function adaptVolumeBars(_glance: Glance | null, training: Training | null): { bars: VolumeBar[]; thisWeek: number; avg: number } {
-  if (training?.weeks?.length) {
-    const idx = training.currentWeekIdx ?? training.weeks.length - 1;
-    const slice = training.weeks.slice(Math.max(0, idx - 7), idx + 1);
-    const bars: VolumeBar[] = slice.map((w, i) => {
-      const isCurrent = i === slice.length - 1;
-      const totalDone = (w.days ?? []).reduce((s, d) => s + (d.doneMi || 0), 0);
-      const totalPlanned = w.plannedMi || 0;
-      const mi = isCurrent ? Math.round(totalDone) : Math.round(totalDone || totalPlanned);
-      return { mi, label: isCurrent ? 'this week' : `wk of ${shortDate(w.startDate)}`, current: isCurrent };
-    });
-    const thisWeek = bars.at(-1)?.mi ?? 0;
-    const avg = Math.round(bars.slice(0, -1).reduce((s, b) => s + b.mi, 0) / Math.max(1, bars.length - 1));
-    return { bars, thisWeek, avg };
+function adaptVolumeBars(log: LogT | null, training: Training | null): { bars: VolumeBar[]; thisWeek: number; avg: number } {
+  // Prefer real Strava-driven weeks (log-state) for trailing-8 volume —
+  // they reflect ACTUAL run mileage and span back well before the active
+  // plan started. Fall back to training weeks (plan_workouts.distance_mi
+  // + done miles) when there is no Strava history.
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const dow = (now.getDay() + 6) % 7;
+  const monday = new Date(now); monday.setDate(now.getDate() - dow);
+
+  // Build 8 contiguous Mon-Sun buckets ending on the current week.
+  const weeks: { monday: Date; mi: number; isCurrent: boolean }[] = [];
+  for (let i = 7; i >= 0; i--) {
+    const m = new Date(monday); m.setDate(monday.getDate() - i * 7);
+    weeks.push({ monday: m, mi: 0, isCurrent: i === 0 });
   }
-  const fallback: VolumeBar[] = Array.from({ length: 8 }).map((_, i) => ({ mi: 0, label: i === 7 ? 'this week' : `wk ${i + 1}`, current: i === 7 }));
-  return { bars: fallback, thisWeek: 0, avg: 0 };
+
+  if (log?.weeks?.length) {
+    // log-state's weeks have a `monday` field — index by ISO date for fast lookup.
+    const byMon: Record<string, number> = {};
+    for (const w of log.weeks) byMon[w.monday] = (byMon[w.monday] ?? 0) + (w.totalMi || 0);
+    for (const w of weeks) {
+      const iso = w.monday.toISOString().slice(0, 10);
+      w.mi = Math.round(byMon[iso] ?? 0);
+    }
+  } else if (training?.weeks?.length) {
+    const byMon: Record<string, number> = {};
+    for (const tw of training.weeks) {
+      const totalDone = (tw.days ?? []).reduce((s, d) => s + (d.doneMi || 0), 0);
+      byMon[tw.startDate] = Math.round(totalDone || tw.plannedMi || 0);
+    }
+    for (const w of weeks) {
+      const iso = w.monday.toISOString().slice(0, 10);
+      w.mi = byMon[iso] ?? 0;
+    }
+  }
+
+  const bars: VolumeBar[] = weeks.map(w => ({
+    mi: w.mi,
+    label: w.isCurrent ? 'this week' : `wk of ${shortDate(w.monday.toISOString())}`,
+    current: w.isCurrent,
+  }));
+  const thisWeek = bars.at(-1)?.mi ?? 0;
+  const prior = bars.slice(0, -1).filter(b => b.mi > 0);
+  const avg = prior.length ? Math.round(prior.reduce((s, b) => s + b.mi, 0) / prior.length) : 0;
+  return { bars, thisWeek, avg };
 }
 
 function adaptSeason(training: Training | null) {
@@ -556,7 +584,7 @@ function adaptConnections(profile: Profile | null): ConnectionRow[] {
 function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['form'] {
   const acwr = glance?.loadAcwr ?? null;
   const fitness = training?.weeks ? Math.round(training.weeks.reduce((s, w) => s + (w.plannedMi || 0), 0) / Math.max(1, training.weeks.length)) : 0;
-  const fatigue = glance?.weekDone ?? 0;
+  const fatigue = Math.round(glance?.weekDone ?? 0);
   const delta = fitness - fatigue;
   const label = acwr != null
     ? (acwr > 1.5 ? 'OVER-REACH' : acwr > 1.1 ? 'BUILDING' : acwr > 0.7 ? 'STEADY' : 'FRESH')
@@ -580,7 +608,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const { week, todayIdx, results } = adaptWeek(glance);
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
-  const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(glance, training);
+  const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
   const season = adaptSeason(training);
   const healthSnapshot = adaptHealth(health);
   healthSnapshot.readiness = readiness;
