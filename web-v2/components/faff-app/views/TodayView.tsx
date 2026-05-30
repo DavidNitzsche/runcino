@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
 import { elevPathFromSplits } from '@/lib/route/polyline';
@@ -303,6 +304,61 @@ function paceToSec(p: string): number {
   return 0;
 }
 
+type DayForecast = {
+  date: string;
+  temp_min_f: number | null;
+  temp_max_f: number | null;
+  conditions: string | null;
+  precip_chance_pct: number | null;
+  wind_mph: number | null;
+};
+
+/** Lazy-fetch the day's forecast for a planned (not done) date. Used to
+ *  replace the old KIT[d.type].weather hardcoded "64° · Calm" placeholder
+ *  with a real temp range + conditions. Past days surface actual Strava
+ *  weather via the run-detail fetch. */
+function useDayForecast(dateIso: string | null | undefined): DayForecast | null {
+  const [data, setData] = useState<DayForecast | null>(null);
+  useEffect(() => {
+    if (!dateIso) { setData(null); return; }
+    let cancelled = false;
+    fetch(`/api/forecast/${dateIso}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((j: DayForecast | null) => { if (!cancelled && j) setData(j); })
+      .catch(() => { /* swallow — card hides if no forecast */ });
+    return () => { cancelled = true; };
+  }, [dateIso]);
+  return data;
+}
+
+/** "62-78° · cloudy" or "62-78°" when no condition label. Returns null
+ *  when the forecast is missing both min and max. */
+function formatForecast(f: DayForecast | null): string | null {
+  if (!f) return null;
+  const lo = f.temp_min_f != null ? Math.round(f.temp_min_f) : null;
+  const hi = f.temp_max_f != null ? Math.round(f.temp_max_f) : null;
+  const range = lo != null && hi != null && lo !== hi
+    ? `${lo}-${hi}°`
+    : (hi != null ? `${hi}°` : (lo != null ? `${lo}°` : null));
+  if (!range) return null;
+  const cond = f.conditions ? prettyCondition(f.conditions) : null;
+  return cond ? `${range} · ${cond}` : range;
+}
+function prettyCondition(c: string): string {
+  switch (c) {
+    case 'clear':        return 'Clear';
+    case 'mostly_clear': return 'Mostly clear';
+    case 'cloudy':       return 'Cloudy';
+    case 'fog':          return 'Fog';
+    case 'rain':         return 'Rain';
+    case 'snow':         return 'Snow';
+    case 'rain_shower':  return 'Showers';
+    case 'snow_shower':  return 'Snow showers';
+    case 'thunderstorm': return 'Storm';
+    default:             return c;
+  }
+}
+
 function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, persistShoe }: { d: FaffSeed['week'][number]; done: boolean; result?: FaffSeed['results'][number]; runData: RunSummary | null; runLoading: boolean; shoes: FaffSeed['shoes']; seedShoe: string; persistShoe: boolean }) {
   if (done) {
     return <CompletedResultCard d={d} fallback={result} runData={runData} loading={runLoading} />;
@@ -327,6 +383,13 @@ function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, pe
   }
   const sg = SEGS[d.type];
   const k = KIT[d.type];
+  // 2026-05-30: real forecast for the day of the run replaces the
+  // hardcoded "64° · Calm" placeholder. Shows a temp range (no run-time
+  // pinned yet, so range is honest), conditions when present. Falls
+  // through to "—" when no forecast is available (date out of range, or
+  // no home GPS yet) — better than fake weather.
+  const forecast = useDayForecast(d.iso);
+  const weatherLabel = formatForecast(forecast) ?? '—';
   return (
     <div className="wcard">
       <div className="wcl">WORKOUT</div>
@@ -343,7 +406,7 @@ function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, pe
         ))}
       </div>
       <div className="kit">
-        <div className="kc"><div className="kcl">WEATHER</div><div className="kcv">{k.weather}</div></div>
+        <div className="kc"><div className="kcl">WEATHER</div><div className="kcv">{weatherLabel}</div></div>
         <div className="kc">
           <div className="kcl">SHOE</div>
           <ShoePicker shoes={shoes} initial={seedShoe} persist={persistShoe} />
@@ -359,18 +422,50 @@ function ShoePicker({ shoes, initial, persist }: { shoes: FaffSeed['shoes']; ini
   const [picked, setPicked] = useState(initial);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  // 2026-05-30: dropdown menu rendered via React Portal to document.body.
+  // The parent .wcard / .tile both have backdrop-filter, which establishes
+  // a CSS stacking context — z-index on the menu can't escape it (David's
+  // screenshot: dropdown rendered behind Training Form tile). Portaling
+  // gets the menu out of the stacking hierarchy entirely.
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; minWidth: number }>({ top: 0, left: 0, minWidth: 220 });
+
+  useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function place() {
+      const el = triggerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setPos({
+        top: r.bottom + window.scrollY + 6,
+        left: r.left + window.scrollX,
+        minWidth: Math.max(220, r.width),
+      });
+    }
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     if (open) document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
-  // 2026-05-30: persist today's shoe selection to day_actions via
-  // /api/today/shoe so the choice survives reload + shows up on the past-run
-  // detail modal once the run is logged. Optimistic — UI commits the pick
-  // immediately, POST runs async, failures are silent (next reload reverts).
+
   async function commit(s: FaffSeed['shoes'][number]) {
     setPicked(s.nm);
     setOpen(false);
@@ -385,11 +480,44 @@ function ShoePicker({ shoes, initial, persist }: { shoes: FaffSeed['shoes']; ini
     } catch { /* swallow — UI is optimistic */ }
     finally { setSaving(false); }
   }
+
   if (!shoes.length) {
     return <div className="kcv">{picked}</div>;
   }
+
+  const menu = open && mounted ? createPortal(
+    <div
+      ref={menuRef}
+      style={{
+        position: 'absolute', zIndex: 9999,
+        top: pos.top, left: pos.left, minWidth: pos.minWidth,
+        background: '#171922', border: '1px solid rgba(255,255,255,.16)',
+        borderRadius: 13, padding: 6, boxShadow: '0 22px 54px -20px rgba(0,0,0,.85)',
+      }}
+    >
+      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, opacity: 0.5, padding: '6px 10px 8px' }}>WORN ON THIS RUN</div>
+      {shoes.map(s => (
+        <div
+          key={s.nm}
+          onClick={() => { void commit(s); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 9,
+            padding: '9px 10px', borderRadius: 9, cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, color: '#F6F7F8',
+            background: s.nm === picked ? 'rgba(255,206,138,.12)' : undefined,
+          }}
+        >
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: ROLECOL[s.role] ?? '#14C08C' }} />
+          {s.nm}
+          <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, opacity: 0.5 }}>{s.role}</span>
+        </div>
+      ))}
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={triggerRef} style={{ display: 'inline-block' }}>
       <div
         className="kcv"
         style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: saving ? 0.7 : 1 }}
@@ -400,32 +528,7 @@ function ShoePicker({ shoes, initial, persist }: { shoes: FaffSeed['shoes']; ini
         {picked}
         <span style={{ fontSize: 9, opacity: 0.55 }}>▾</span>
       </div>
-      {open && (
-        <div style={{
-          position: 'absolute', zIndex: 80, top: '100%', left: 0, marginTop: 6,
-          background: '#171922', border: '1px solid rgba(255,255,255,.16)',
-          borderRadius: 13, padding: 6, boxShadow: '0 22px 54px -20px rgba(0,0,0,.85)',
-          minWidth: 220,
-        }}>
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, opacity: 0.5, padding: '6px 10px 8px' }}>WORN ON THIS RUN</div>
-          {shoes.map(s => (
-            <div
-              key={s.nm}
-              onClick={() => { void commit(s); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 9,
-                padding: '9px 10px', borderRadius: 9, cursor: 'pointer',
-                fontSize: 13, fontWeight: 600, color: '#F6F7F8',
-                background: s.nm === picked ? 'rgba(255,206,138,.12)' : undefined,
-              }}
-            >
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: ROLECOL[s.role] ?? '#14C08C' }} />
-              {s.nm}
-              <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, opacity: 0.5 }}>{s.role}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {menu}
     </div>
   );
 }

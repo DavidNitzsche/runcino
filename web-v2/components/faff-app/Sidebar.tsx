@@ -1,7 +1,18 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { FaffSeed, ViewKey } from './types';
+
+/** ISO week number (1-53). Mirrors Shell.tsx so the chip's dismissal key
+ *  matches the auto-open modal's. */
+function isoWeekNumber(d: Date): number {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
 
 const TABS: Array<{ k: ViewKey; href: string; label: string; icon: React.ReactNode }> = [
   { k: 'today',    href: '/today',    label: 'Today',    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg> },
@@ -22,6 +33,31 @@ export function Sidebar({
   onOpenUpsell: () => void;
   onOpenRecap: () => void;
 }) {
+  // 2026-05-30: Week Recap chip only surfaces on Monday — the week closes
+  // after Sunday's long run, recap appears Monday morning. Stash a per-ISO-
+  // week dismissal flag in localStorage so tapping it (or auto-open) hides
+  // the chip for the rest of the week. Matches the auto-open key in Shell.tsx.
+  const [showRecap, setShowRecap] = useState(false);
+  useEffect(() => {
+    const now = new Date();
+    if (now.getDay() !== 1) { setShowRecap(false); return; }   // Monday only
+    try {
+      const key = `faffWeekRecap-${now.getFullYear()}-W${isoWeekNumber(now)}`;
+      setShowRecap(!localStorage.getItem(key));
+    } catch {
+      setShowRecap(true);
+    }
+  }, []);
+  function handleOpenRecap() {
+    onOpenRecap();
+    // Tapping the chip dismisses it for the week (same key the auto-open uses).
+    try {
+      const now = new Date();
+      const key = `faffWeekRecap-${now.getFullYear()}-W${isoWeekNumber(now)}`;
+      localStorage.setItem(key, '1');
+    } catch { /* SSR / private mode safe */ }
+    setShowRecap(false);
+  }
   return (
     <aside className="side">
       <div className="panel">
@@ -46,14 +82,18 @@ export function Sidebar({
           ))}
         </nav>
 
-        <button className="sb-recap" onClick={onOpenRecap}>
-          <span className="dot" />
-          <span className="tx">
-            <span className="el">WEEK {seed.season.nowIdx + 1} RECAP</span>
-            <span className="et">Ready to review</span>
-          </span>
-          <span className="arr">›</span>
-        </button>
+        {showRecap && (
+          <button className="sb-recap" onClick={handleOpenRecap}>
+            <span className="dot" />
+            <span className="tx">
+              {/* The chip recaps LAST week (the one that just closed), so the
+                  label points back, not at the in-progress nowIdx week. */}
+              <span className="el">WEEK {Math.max(1, seed.season.nowIdx)} RECAP</span>
+              <span className="et">Ready to review</span>
+            </span>
+            <span className="arr">›</span>
+          </button>
+        )}
 
         <div className="spacer" />
 

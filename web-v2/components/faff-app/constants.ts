@@ -68,6 +68,9 @@ export const ZC = ['#14C08C','#3EBD41','#F3AD38','#FF8847','#FC4D64'];
 
 export type PlannedDay = {
   dw: string; dn: number; full: string;
+  /** ISO YYYY-MM-DD for the day. Optional during FALLBACK rendering when
+   *  the seed loader hasn't resolved real dates yet. */
+  iso?: string;
   type: EffortKey; name: string;
   dist: string; pace: string; est: string;
   done?: boolean; today?: boolean;

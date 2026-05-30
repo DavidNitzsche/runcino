@@ -102,6 +102,90 @@ function num(v: any): number | null {
   return Math.round(n * 10) / 10;
 }
 
+export interface DayForecast {
+  date: string;                   // YYYY-MM-DD
+  temp_min_f: number | null;      // day's low
+  temp_max_f: number | null;      // day's high
+  conditions: string | null;      // coarse label
+  precip_chance_pct: number | null;
+  wind_mph: number | null;
+  source: 'open-meteo';
+}
+
+/**
+ * Fetch a single-day forecast for a (lat, lng) on a given YYYY-MM-DD.
+ * Used by the /today + /train surfaces to render a temp range for
+ * planned-but-not-yet-run days. For past days the historical archive
+ * endpoint (fetchRunWeather) is what enriches the actual conditions.
+ *
+ * Returns null when the date is too far out (Open-Meteo forecast covers
+ * ~16 days forward) or the network call fails.
+ */
+export async function fetchDayForecast(
+  lat: number,
+  lng: number,
+  dateIso: string,
+): Promise<DayForecast | null> {
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast` +
+      `?latitude=${lat}` +
+      `&longitude=${lng}` +
+      `&start_date=${dateIso}` +
+      `&end_date=${dateIso}` +
+      `&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max,windspeed_10m_max` +
+      `&temperature_unit=fahrenheit` +
+      `&windspeed_unit=mph` +
+      `&timezone=auto`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    const d = j?.daily;
+    if (!d?.time?.length) return null;
+    return {
+      date: dateIso,
+      temp_min_f: num(d.temperature_2m_min?.[0]),
+      temp_max_f: num(d.temperature_2m_max?.[0]),
+      conditions: conditionFromCode(d.weathercode?.[0]),
+      precip_chance_pct: num(d.precipitation_probability_max?.[0]),
+      wind_mph: num(d.windspeed_10m_max?.[0]),
+      source: 'open-meteo',
+    };
+  } catch (err) {
+    console.error('[weather] fetchDayForecast failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Resolve the runner's "home base" lat/lng from the most recent run that
+ * shipped GPS. Falls back to null when no run has GPS — caller hides the
+ * weather card entirely in that case.
+ */
+export async function resolveHomeLatLng(userId: string): Promise<{ lat: number; lng: number } | null> {
+  const r = (await pool.query(
+    `SELECT data
+       FROM strava_activities
+      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        AND NOT (data ? 'mergedIntoId')
+        AND (
+              (data ? 'startLat'    AND data ? 'startLng')    OR
+              (data ? 'start_lat'   AND data ? 'start_lng')   OR
+              (data ? 'routeStartLat' AND data ? 'routeStartLng')
+            )
+      ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal',10)) DESC
+      LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r?.data) return null;
+  const d = r.data;
+  const lat = Number(d.startLat ?? d.start_lat ?? d.routeStartLat);
+  const lng = Number(d.startLng ?? d.start_lng ?? d.routeStartLng);
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  return { lat, lng };
+}
+
 /**
  * Enrich one strava_activities row. Reads start GPS from the route
  * polyline's first coord (fall back to nothing if no route — we can't

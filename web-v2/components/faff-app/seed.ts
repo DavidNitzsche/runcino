@@ -213,6 +213,7 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
       dw: DOW[(d.dow + 6) % 7],
       dn: fullDate.getUTCDate(),
       full: fullLabel,
+      iso: d.date,
       type: eff,
       name: d.plannedLabel || humanName(eff, d.plannedMi),
       dist,
