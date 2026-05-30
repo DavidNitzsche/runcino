@@ -2,7 +2,7 @@
 
 const BULLETS = [
   'Daily AI plan that retunes to your recovery',
-  'Sub-3 projection and live goal gap',
+  'Live race projection and the goal gap',
   'Unlimited run history and analytics',
   'Shoe Garage with wear tracking',
   'Sleep, HRV, and training-load insights',
