@@ -104,7 +104,14 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   return { triggers, actions, applied: false };
 }
 
-/** Apply the actions to plan_workouts in a single transaction. */
+/** Apply the actions to plan_workouts in a single transaction.
+ *
+ *  P1 #8 (2026-05-30): also writes a coach_intents row per applied action
+ *  so the closed-loop history exists — every readiness/volume-driven plan
+ *  mutation is recorded with its trigger reason. The next briefing voice
+ *  reads pending intents (acknowledged_at IS NULL) so the coach can
+ *  acknowledge the change once and move on.
+ */
 export async function applyAdaptations(userId: string, actions: AdaptationAction[]): Promise<number> {
   if (actions.length === 0) return 0;
   let touched = 0;
@@ -112,12 +119,25 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
   try {
     await client.query('BEGIN');
     for (const a of actions) {
+      // Map action kind → coach_intents reason. Prefix with plan_adapt_
+      // so the briefing voice can detect any prescription-mutation row by
+      // a single string-prefix scan in the LLM context.
+      const reason =
+        a.kind === 'reschedule' ? 'plan_adapt_reschedule'
+        : a.kind === 'downgrade' ? 'plan_adapt_downgrade'
+        : a.kind === 'shave'     ? 'plan_adapt_shave'
+        : a.kind === 'mark_dirty' ? 'plan_adapt_mark_dirty'
+        : 'plan_adapt_other';
+
       if (a.kind === 'reschedule' && a.newDate && a.workoutIds) {
         for (const wid of a.workoutIds) {
           await client.query(
             `UPDATE plan_workouts SET date_iso = $1 WHERE id = $2`,
             [a.newDate, wid]
           );
+          await writeIntent(client, userId, reason, wid, {
+            kind: a.kind, newDate: a.newDate, why: a.why,
+          });
           touched++;
         }
       } else if (a.kind === 'downgrade' && a.newType && a.workoutIds) {
@@ -126,6 +146,9 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
             `UPDATE plan_workouts SET type = $1 WHERE id = $2`,
             [a.newType, wid]
           );
+          await writeIntent(client, userId, reason, wid, {
+            kind: a.kind, newType: a.newType, why: a.why,
+          });
           touched++;
         }
       } else if (a.kind === 'shave' && a.workoutIds && a.shaveFraction) {
@@ -136,6 +159,9 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
               WHERE id = $2`,
             [a.shaveFraction, wid]
           );
+          await writeIntent(client, userId, reason, wid, {
+            kind: a.kind, shaveFraction: a.shaveFraction, why: a.why,
+          });
           touched++;
         }
       } else if (a.kind === 'mark_dirty' && a.workoutIds) {
@@ -146,6 +172,9 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
               WHERE id = $1`,
             [wid]
           );
+          await writeIntent(client, userId, reason, wid, {
+            kind: a.kind, why: a.why,
+          });
           touched++;
         }
       }
@@ -164,6 +193,31 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
     client.release();
   }
   return touched;
+}
+
+/** Insert a coach_intents row for the given adaptation action. The next
+ *  briefing voice picks this up via the pending-intents index so the
+ *  coach can acknowledge the change. Value is JSON-stringified so it
+ *  fits the text column without schema change. */
+async function writeIntent(
+  client: { query: (q: string, p: unknown[]) => Promise<unknown> },
+  userId: string,
+  reason: string,
+  workoutId: string,
+  value: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await client.query(
+      `INSERT INTO coach_intents (user_id, reason, field, value)
+       VALUES ($1, $2, $3, $4)`,
+      [userId, reason, workoutId, JSON.stringify(value)]
+    );
+  } catch (e: unknown) {
+    // Don't roll back the whole adaptation for an intents-log failure;
+    // the plan change is more important than the audit row.
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[applyAdaptations] writeIntent failed:', msg);
+  }
 }
 
 // ── Detectors ──────────────────────────────────────────────────────────
