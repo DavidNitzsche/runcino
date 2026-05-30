@@ -9,6 +9,7 @@ struct ProfileView: View {
     let onDismiss: () -> Void
 
     @State private var profile: ProfileState?
+    @State private var meFacts: CoachFactsBlock?
 
     var body: some View {
         ZStack {
@@ -22,8 +23,12 @@ struct ProfileView: View {
                     userRow
                         .padding(.horizontal, 24).padding(.top, 22)
 
-                    statRow
-                        .padding(.horizontal, 24).padding(.top, 24)
+                    if !coachStats.isEmpty {
+                        SectionLabel(title: "AT A GLANCE")
+                            .padding(.horizontal, 22).padding(.top, 26)
+                        coachStatsCard
+                            .padding(.horizontal, 22).padding(.top, 12)
+                    }
 
                     if let shoes = profile?.shoes, !shoes.isEmpty {
                         SectionLabel(title: "SHOE GARAGE")
@@ -45,7 +50,55 @@ struct ProfileView: View {
                 .padding(.bottom, 80)
             }
         }
-        .task { profile = try? await API.fetchProfileState() }
+        .task {
+            async let p = (try? await API.fetchProfileState())
+            async let f = (try? await API.fetchCoachFacts(surface: "me"))
+            let (pr, fc) = await (p, f)
+            await MainActor.run { self.profile = pr; self.meFacts = fc }
+        }
+    }
+
+    private var coachStats: [CoachFact] {
+        meFacts?.facts ?? []
+    }
+
+    private var coachStatsCard: some View {
+        GlassTile(padding: 0) {
+            VStack(spacing: 0) {
+                ForEach(Array(coachStats.enumerated()), id: \.element.label) { i, f in
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            SpecLabel(text: f.label, size: 10, tracking: 1.5, color: Theme.txt.opacity(0.55))
+                            if let meta = f.meta, !meta.isEmpty {
+                                Text(meta)
+                                    .font(.display(11, weight: .semibold))
+                                    .foregroundStyle(Theme.txt.opacity(0.6))
+                                    .lineLimit(2)
+                            }
+                        }
+                        Spacer(minLength: 12)
+                        Text(f.value)
+                            .font(.display(15, weight: .bold))
+                            .foregroundStyle(factColor(f.valueColor))
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .padding(14)
+                    if i < coachStats.count - 1 {
+                        Divider().background(Color.white.opacity(0.08))
+                    }
+                }
+            }
+        }
+    }
+
+    private func factColor(_ tone: String?) -> Color {
+        switch (tone ?? "").lowercased() {
+        case "race":  return Theme.race
+        case "green": return Theme.green
+        case "amber": return Theme.goal
+        case "over":  return Theme.over
+        default:      return Theme.txt
+        }
     }
 
     private var headerRow: some View {
