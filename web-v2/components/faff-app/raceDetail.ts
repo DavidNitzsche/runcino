@@ -9,6 +9,7 @@
  */
 
 import type { RaceDetailSeed } from './views/RaceView';
+import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 
 const DEFAULT_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
@@ -19,23 +20,142 @@ type CourseGeom = {
   bbox?: { minLat: number; maxLat: number; minLon: number; maxLon: number };
 };
 
-const DEFAULT_PACING = [
-  { seg: 'Miles 1–6',     sub: 'rolling · hold back',   bar: 62, barColor: '#14C08C', pace: '6:52', cum: '41:12'   },
-  { seg: 'Miles 7–13',    sub: 'settle, let it roll',   bar: 74, barColor: '#F3AD38', pace: '6:48', cum: '1:28:50' },
-  { seg: 'Miles 14–20',   sub: 'locked in',             bar: 78, barColor: '#FF8847', pace: '6:46', cum: '2:16:12' },
-  { seg: 'Miles 21–26.2', sub: 'flat · empty the tank', bar: 92, barColor: '#FC4D64', pace: '6:42', cum: '2:57:50' },
-];
+function pace(goalSec: number, distMi: number): string {
+  if (!goalSec || !distMi) return '·';
+  const per = goalSec / distMi;
+  return `${Math.floor(per / 60)}:${String(Math.round(per % 60)).padStart(2, '0')}`;
+}
+
+function cumAt(goalSec: number, distMi: number, atMi: number): string {
+  if (!goalSec || !distMi) return '·';
+  const t = goalSec * (atMi / distMi);
+  return formatRaceTime(Math.round(t)) ?? '·';
+}
+
+/** 4-block negative-split pacing: first block 0.5%-1% slower (rolling in),
+ *  middle blocks ~goal pace, last block fastest if downhill, even otherwise. */
+function buildPacing(goalSec: number, distMi: number, netElevFt: number): RaceDetailSeed['pacing'] {
+  if (!goalSec || !distMi) return [];
+  const downhill = netElevFt < -100;
+  const blocks = [
+    { start: 0,            end: distMi * 0.25, factor: 1.012, color: '#14C08C', sub: 'controlled · ease in' },
+    { start: distMi * 0.25, end: distMi * 0.50, factor: 1.0,   color: '#F3AD38', sub: 'settle into rhythm' },
+    { start: distMi * 0.50, end: distMi * 0.80, factor: downhill ? 0.998 : 1.0, color: '#FF8847', sub: 'locked in · work the middle' },
+    { start: distMi * 0.80, end: distMi,        factor: downhill ? 0.985 : 0.992, color: '#FC4D64', sub: 'empty the tank' },
+  ];
+  const out: RaceDetailSeed['pacing'] = [];
+  let cum = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const seg = b.end - b.start;
+    const blockSec = goalSec * (seg / distMi) * b.factor;
+    cum += blockSec;
+    out.push({
+      seg: `Miles ${formatMileRange(b.start, b.end, i === 0)}`,
+      sub: b.sub,
+      bar: 60 + i * 10,
+      barColor: b.color,
+      pace: pace(blockSec, seg),
+      cum: formatRaceTime(Math.round(cum)) ?? '·',
+    });
+  }
+  return out;
+}
+function formatMileRange(a: number, b: number, first: boolean): string {
+  const round = (v: number) => Number.isInteger(v) ? v.toString() : v.toFixed(1).replace(/\.0$/, '');
+  const lo = first ? '1' : round(a);
+  return `${lo}–${round(b)}`;
+}
+
+function buildSplits(goalSec: number, distMi: number): RaceDetailSeed['splits'] {
+  if (!goalSec || !distMi) return [];
+  const ladder: Array<{ label: string; mi: number }> = [
+    { label: '5K',  mi: 3.1069 },
+    { label: '10K', mi: 6.2137 },
+    { label: 'HALF', mi: 13.1094 },
+    { label: '30K', mi: 18.641 },
+    { label: '40K', mi: 24.855 },
+  ];
+  const out = ladder
+    .filter(r => r.mi < distMi - 0.1)
+    .map(r => ({ label: r.label, val: cumAt(goalSec, distMi, r.mi) }));
+  out.push({ label: 'FINISH', val: formatRaceTime(Math.round(goalSec)) ?? '·' });
+  return out;
+}
+
+/** Gels at ~70g/hr (40g per gel), one every ~35 min. */
+function buildGels(goalSec: number, distMi: number): RaceDetailSeed['gels'] {
+  if (!goalSec || !distMi) return [];
+  const hours = goalSec / 3600;
+  const totalGels = Math.max(1, Math.round(hours * 1.7)); // ~every 35 min
+  const out: RaceDetailSeed['gels'] = [];
+  for (let i = 1; i <= totalGels; i++) {
+    const atMi = (i / (totalGels + 1)) * distMi;
+    const isCaf = i === Math.max(1, totalGels - 1) || i === totalGels;
+    out.push({
+      mi: `MI ${atMi.toFixed(1)}${isCaf ? ' · caf' : ''}`,
+      left: Math.round((atMi / distMi) * 100),
+      caf: isCaf,
+    });
+  }
+  return out;
+}
 
 function bumpHMS(t: string, addSec: number): string {
-  const parts = t.split(':').map(x => parseInt(x, 10) || 0);
-  let sec = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-    : parts.length === 2 ? parts[0] * 3600 + parts[1] * 60
-    : 0;
-  sec += addSec;
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  return `${h}:${String(m).padStart(2, '0')}${s ? ':' + String(s).padStart(2, '0') : ''}`;
+  const sec = parseRaceTime(t);
+  if (!sec) return t;
+  return formatRaceTime(sec + addSec) ?? t;
+}
+
+function notablesFromElevation(geom: CourseGeom | null, distMi: number): RaceDetailSeed['notables'] {
+  if (!geom?.trackPoints?.length || distMi <= 0) {
+    return [{ mi: '·', tx: 'Notable miles will surface once the course GPX is uploaded.' }];
+  }
+  // Walk the elevation series in thirds, label each third by net change.
+  const eles = geom.trackPoints.map(p => p.ele).filter((v): v is number => v != null);
+  if (eles.length < 6) {
+    return [{ mi: '·', tx: 'Course profile loading.' }];
+  }
+  const splitMiles = [
+    [0, distMi * 0.33],
+    [distMi * 0.33, distMi * 0.66],
+    [distMi * 0.66, distMi],
+  ];
+  const labelMile = (a: number, b: number) => {
+    const round = (v: number) => Number.isInteger(v) ? v.toString() : v.toFixed(0);
+    return `${a < 1 ? '1' : round(a)}–${round(b)}`;
+  };
+  const phase = (delta: number, gain: number) => {
+    if (delta < -50) return 'Steady descent. Let gravity do the work, hold form.';
+    if (delta > 50) return 'Climbing block. Stay relaxed, do not surge.';
+    if (gain > 200) return 'Rolling hills. The bumps live here.';
+    return 'Flat and fast. Where the race is won.';
+  };
+  return splitMiles.map(([a, b]) => {
+    const iA = Math.floor((a / distMi) * eles.length);
+    const iB = Math.min(eles.length - 1, Math.floor((b / distMi) * eles.length));
+    const sub = eles.slice(iA, iB + 1);
+    const delta = (sub.at(-1) ?? 0) - (sub[0] ?? 0);
+    let gain = 0;
+    for (let i = 1; i < sub.length; i++) {
+      const d = sub[i] - sub[i - 1];
+      if (d > 0) gain += d;
+    }
+    return { mi: labelMile(a, b), tx: `<b>${phase(delta, gain * 3.28).split('. ')[0]}.</b> ${phase(delta, gain * 3.28).split('. ').slice(1).join('. ')}` };
+  });
+}
+
+function insightFor(name: string, distMi: number, netElevFt: number): string {
+  const downhill = netElevFt < -200;
+  const isMar = distMi >= 25;
+  const isHalf = distMi >= 12 && distMi < 16;
+  if (downhill && isMar)
+    return `<b>${name}</b> is a fast course on paper, but net downhill races punish runners who hammer the early miles. <b>Bank nothing.</b> Hold goal pace, run the tangents, and use the final 10K to close.`;
+  if (isMar)
+    return `<b>${name}</b> rewards patience. <b>Even effort beats even pace.</b> Lock in by 10K, eat early, stay relaxed through the back half.`;
+  if (isHalf)
+    return `<b>${name}</b> · half marathon execution. Settle the first 5K so the final 5K is yours. <b>Bridge between threshold and tempo</b>; never red-line before mile 8.`;
+  return `<b>${name}</b> · run controlled. The race opens up if you arrive at the final third with legs left.`;
 }
 
 function elevPathFromGeometry(geom: CourseGeom | null): string {
@@ -78,61 +198,46 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     if (!race) return null;
 
     const dist = race.distance_mi ?? (geom?.distance_mi ?? 26.2);
-    const gainFt = Math.round(geom?.elevation_gain_ft ?? 1100);
-    const aGoal = race.goal || '2:58';
-    const bGoal = bumpHMS(aGoal, 420);
+    const gainFt = Math.round(geom?.elevation_gain_ft ?? 0);
+    const aGoal = race.goal || '·';
+    const bGoal = aGoal !== '·' ? bumpHMS(aGoal, 420) : '·';
+    const aGoalSec = parseRaceTime(aGoal) ?? 0;
 
-    const startTime = (meta as { startTime?: string }).startTime || '7:00 AM';
-    const wave = (meta as { wave?: string }).wave || `Seed ${aGoal}`;
+    const startTime = (meta as { startTime?: string }).startTime || '·';
+    const wave = (meta as { wave?: string }).wave || (aGoal !== '·' ? `Seed ${aGoal}` : '·');
     const bib = (meta as { bib?: string }).bib || '#pending';
+    const netElevFt = geom?.elevation_gain_ft ? -Math.round(geom.elevation_gain_ft * 0.24) : 0;
 
     return {
       slug: race.slug,
       name: race.name,
       date: race.date,
       startTime,
-      course: race.location ? `${race.location}` : 'Course TBD',
-      certification: 'USATF certified',
+      course: race.location ?? '·',
+      certification: race.priority === 'A' ? 'USATF certified' : '·',
       registered: (meta as { registered?: boolean }).registered ?? true,
       bib,
       wave,
       daysAway: Math.max(0, race.days),
       distanceMi: dist,
-      netElevFt: -(Math.round((geom?.elevation_gain_ft ?? 1440) * 0.24)),
+      netElevFt,
       gainFt,
-      goalPace: '6:48',
+      goalPace: pace(aGoalSec, dist),
       aGoal,
       bGoal,
-      pacing: DEFAULT_PACING,
-      splits: [
-        { label: '5K',     val: '21:18'   },
-        { label: '10K',    val: '42:34'   },
-        { label: 'HALF',   val: '1:29:20' },
-        { label: '30K',    val: '2:01:40' },
-        { label: '40K',    val: '2:42:10' },
-        { label: 'FINISH', val: aGoal     },
-      ],
-      gels: [
-        { mi: 'MI 4',        left: 15 },
-        { mi: 'MI 8',        left: 31 },
-        { mi: 'MI 12',       left: 46 },
-        { mi: 'MI 16 · caf', left: 61, caf: true },
-        { mi: 'MI 20',       left: 76 },
-        { mi: 'MI 23 · caf', left: 88, caf: true },
-      ],
-      preRace:   '3 hrs out · bagel + banana + 24oz electrolyte',
-      onCourse:  '6 × PF 30 gel · every ~35 min · 2 with caffeine',
-      hydration: 'Drink mix · every 5K · extra tab if >55°F',
-      notables: [
-        { mi: '1–6',   tx: 'Rolling hills. The bumps live here. Stay relaxed, do not surge the climbs.' },
-        { mi: '7–20',  tx: 'Steady descent. Gentle net downhill. Let gravity do the work, hold form.' },
-        { mi: '21–26', tx: 'Flat &amp; fast. Pancake-flat to the finish. Where the race is won.' },
-      ],
-      insight: `${race.name} rewards <b>patient effort</b>. Bank nothing early, run the tangents, and use the final 10K to close. <b>Hold goal pace</b> through the rolling first 10K, then settle into rhythm.`,
-      start:   { time: `${startTime} · ${race.location || 'Start'}`, detail: `Be in by ${bumpStartByMin(startTime, -20)}` },
-      shuttle: { value: 'Book shuttle window',                       detail: 'Buses from finish → start, ~1–2 hrs pre-race' },
-      pickup:  { value: 'Expo pickup window',                        detail: 'Reserve ahead via race site' },
-      finish:  { value: race.location || 'Finish line',              detail: 'Gear check reunion at finish chute' },
+      pacing: buildPacing(aGoalSec, dist, netElevFt),
+      splits: buildSplits(aGoalSec, dist),
+      gels: buildGels(aGoalSec, dist),
+      preRace:   '3 hrs out · 100g carbs + 24oz electrolyte',
+      onCourse:  `${buildGels(aGoalSec, dist).length} × gel · ~70g/hr carbs`,
+      hydration: 'Drink mix every 3–4 mi · extra electrolyte if warm',
+      notables: notablesFromElevation(geom, dist),
+      insight: insightFor(race.name, dist, netElevFt),
+      start:   { time: startTime !== '·' ? `${startTime} · ${race.location ?? 'Start'}` : (race.location ?? '·'),
+                 detail: startTime !== '·' ? `Be in corral by ${bumpStartByMin(startTime, -20)}` : '·' },
+      shuttle: { value: '·', detail: 'Check race-site logistics page' },
+      pickup:  { value: '·', detail: 'Reserve ahead via race site' },
+      finish:  { value: race.location ?? '·', detail: '·' },
       elevPath: elevPathFromGeometry(geom),
     };
   } catch {

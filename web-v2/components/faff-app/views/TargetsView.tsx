@@ -29,10 +29,10 @@ export function TargetsView({
       <div className="goalhero">
         <div className="ghleft">
           <div className="ghk">PRIMARY GOAL</div>
-          <div className="ghtitle">SUB&minus;{goal?.goal ?? '3:00'}</div>
-          <div className="ghsub">{goal?.name ?? 'California International Marathon'} · {goal ? formatDate(goal.date) : 'Dec 6'}</div>
+          <div className="ghtitle">{goal ? `SUB${'−'}${goal.goal}` : 'NO GOAL'}</div>
+          <div className="ghsub">{goal ? `${goal.name}${goal.location ? ' · ' + goal.location : ''} · ${formatDate(goal.date)}` : 'Set a primary race to start tracking your gap'}</div>
           <div className="ghcd">
-            <b>{goal?.daysAway ?? 192}</b> days out · <span className={goal?.onTrack ? 'ok2' : ''}>{goal?.onTrack ? 'on track' : 'behind goal pace'}</span>
+            <b>{goal?.daysAway ?? '·'}</b> days out · <span className={goal?.onTrack ? 'ok2' : ''}>{goal ? (goal.onTrack ? `on track · ${goal.delta}` : goal.delta) : '·'}</span>
           </div>
         </div>
         <div className="ghgauge">
@@ -53,7 +53,7 @@ export function TargetsView({
             <circle cx="150" cy="150" r="4" fill="#10131A" />
           </svg>
           <div className="gapval center">
-            <div className="grbig">{goal?.projected ?? '2:58'}</div>
+            <div className="grbig">{goal?.projected ?? '·'}</div>
             <div className="grstat">PROJECTED</div>
           </div>
         </div>

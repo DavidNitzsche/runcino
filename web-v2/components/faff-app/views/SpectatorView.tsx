@@ -46,9 +46,9 @@ export function SpectatorView({ seed, onExit }: { seed: FaffSeed; onExit: () => 
         <div className="hcard">
           <div className="fll">RACE DAY</div>
           <div className="hcb cd">
-            <div className="cdbig" style={{ fontSize: 52 }}>{goal?.daysAway ?? 192}</div>
-            <div className="cdlab">DAYS TO {(goal?.name ?? 'CIM').split(' ')[0].toUpperCase()}</div>
-            <div className="cdsub">{goal ? formatDate(goal.date) : 'Dec 6'} · Sacramento</div>
+            <div className="cdbig" style={{ fontSize: 52 }}>{goal?.daysAway ?? '·'}</div>
+            <div className="cdlab">DAYS TO {(goal?.name ?? 'GOAL').split(' ')[0].toUpperCase()}</div>
+            <div className="cdsub">{goal ? `${formatDate(goal.date)}${goal.location ? ' · ' + goal.location : ''}` : '·'}</div>
           </div>
         </div>
       </div>

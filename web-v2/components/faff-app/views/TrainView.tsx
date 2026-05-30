@@ -77,20 +77,20 @@ export function TrainView({
     <>
       <div className="top">
         <div>
-          <div className="date">Marathon Block</div>
-          <div className="wk">{seed.goalRace ? `${seed.goalRace.name} · ${formatDate(seed.goalRace.date)}` : 'CIM · Sacramento · Dec 6'}</div>
+          <div className="date">{seed.goalRace ? `${seed.goalRace.phaseLabel.split(' · ')[0]} block` : 'Active block'}</div>
+          <div className="wk">{seed.goalRace ? `${seed.goalRace.name}${seed.goalRace.location ? ' · ' + seed.goalRace.location : ''} · ${formatDate(seed.goalRace.date)}` : 'No goal race set'}</div>
         </div>
       </div>
 
       <div className="season">
         <div className="season-top">
           <div className="season-head">
-            <div className="season-eyebrow">ROAD TO <b>{(seed.goalRace?.name ?? 'CIM').split(' ')[0].toUpperCase()}</b> · SUB {seed.goalRace?.goal ?? '3:00'}</div>
+            <div className="season-eyebrow">ROAD TO <b>{(seed.goalRace?.name ?? 'GOAL').split(' ')[0].toUpperCase()}</b>{seed.goalRace ? ` · SUB ${seed.goalRace.goal}` : ''}</div>
             <div className="season-phase">{p.name}</div>
           </div>
           <div className="season-meta">
             <div className="season-readout">
-              <span>{isRace ? `26.2 MI · SUB ${seed.goalRace?.goal ?? '3:00'}` : `WK ${cur + 1} · ${miles[cur]} MI`}</span>
+              <span>{isRace ? (seed.goalRace ? `${seed.goalRace.goal}` : 'RACE DAY') : `WK ${cur + 1} · ${miles[cur]} MI`}</span>
               <span className={`now-tag${cur === nowIdx ? ' on' : ''}`}><i />NOW</span>
             </div>
             <div className="season-weeks">{p.lab}</div>
@@ -149,14 +149,14 @@ export function TrainView({
 
       <div className="fll" id="weekHeading" style={{ marginTop: 26, display: 'flex', justifyContent: 'space-between' }}>
         <span>{label}</span>
-        <span style={{ opacity: 0.6 }}>{isRace ? `${formatDate(seed.goalRace?.date ?? '2026-12-06')}` : `${miles[cur]} MI`}</span>
+        <span style={{ opacity: 0.6 }}>{isRace ? (seed.goalRace ? formatDate(seed.goalRace.date) : '·') : `${miles[cur]} MI`}</span>
       </div>
 
       {isRace ? (
         <div className="season-racestats" style={{ marginTop: 14 }}>
-          <div className="rc"><div className="k">GOAL</div><div className="v">Sub {seed.goalRace?.goal ?? '3:00'}</div></div>
-          <div className="rc"><div className="k">PACE</div><div className="v">6:51<span style={{ fontSize: 13, opacity: 0.6 }}>/mi</span></div></div>
-          <div className="rc"><div className="k">DISTANCE</div><div className="v">26.2<span style={{ fontSize: 13, opacity: 0.6 }}> mi</span></div></div>
+          <div className="rc"><div className="k">GOAL</div><div className="v">{seed.goalRace ? `Sub ${seed.goalRace.goal}` : '·'}</div></div>
+          <div className="rc"><div className="k">PROJECTED</div><div className="v">{seed.goalRace?.projected ?? '·'}</div></div>
+          <div className="rc"><div className="k">DISTANCE</div><div className="v">{seed.goalRace ? '·' : '·'}<span style={{ fontSize: 13, opacity: 0.6 }}> mi</span></div></div>
         </div>
       ) : (
         <div className="twk">
