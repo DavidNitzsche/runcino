@@ -164,15 +164,43 @@ export async function POST(req: NextRequest) {
   const histAvgMi = histAvg ? HIST_AVG_MIDPOINTS[histAvg] : null;
   const histLongMi = histLong ? HIST_LONG_MIDPOINTS[histLong] : null;
 
-  // ── Sync users.timezone (canonical) + users.name ─────────────────
+  // ── Sync users.timezone (canonical) + users.name + sex/age ───────
   // The data plan §2 names users.timezone as the canonical timezone
   // column (read by state-loader, briefing time logic). Without this
   // mirror, the onboarding runner's tz lives in profile.timezone only
   // and the coach engine never sees it — Q-07 in OPEN_QUESTIONS.md.
+  //
+  // 2026-05-30 pass-4: also accept birthday / sex / height_cm from the
+  // onboarding body. Per docs/ONBOARDING_AUDIT.md T2-physiology, these
+  // SHOULD be asked at onboarding (not as a separate profile edit weeks
+  // later). UI form upgrades coming; backend accepts them now so the
+  // form can wire any time without another API change.
+  const birthday = typeof body.birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.birthday)
+    ? body.birthday : null;
+  const sex = typeof body.sex === 'string' && /^(M|F|m|f|male|female)$/i.test(body.sex)
+    ? (body.sex.toUpperCase().startsWith('M') ? 'M' : 'F') : null;
+  const heightCm = Number.isFinite(Number(body.height_cm))
+    && Number(body.height_cm) >= 120 && Number(body.height_cm) <= 230
+    ? Number(body.height_cm) : null;
+  const ageNum = birthday ? (() => {
+    const b = new Date(birthday + 'T12:00:00Z');
+    if (isNaN(b.getTime())) return null;
+    const now = new Date();
+    let a = now.getUTCFullYear() - b.getUTCFullYear();
+    const before = now.getUTCMonth() < b.getUTCMonth() ||
+      (now.getUTCMonth() === b.getUTCMonth() && now.getUTCDate() < b.getUTCDate());
+    if (before) a--;
+    return (a >= 13 && a <= 100) ? a : null;
+  })() : null;
   try {
     await pool.query(
-      `UPDATE users SET timezone = $1, name = COALESCE(NULLIF(name, ''), $2) WHERE id = $3`,
-      [timezone, name, userId]
+      `UPDATE users SET
+          timezone = $1,
+          name = COALESCE(NULLIF(name, ''), $2),
+          age = COALESCE(age, $3),
+          sex = COALESCE(sex, $4)
+        WHERE id = $5`,
+      [timezone, name, ageNum, sex, userId]
     );
   } catch {
     // Non-fatal — the profile write below still proceeds.
@@ -199,7 +227,11 @@ export async function POST(req: NextRequest) {
           weekly_frequency        = $10,
           history_avg_weekly_mi   = $11,
           history_longest_recent_mi = $12,
-          history_years_running   = $13
+          history_years_running   = $13,
+          birthday                = COALESCE(birthday, $15::date),
+          sex                     = COALESCE(sex, $16),
+          height_cm               = COALESCE(height_cm, $17),
+          age                     = COALESCE(age, $18)
         WHERE user_uuid = $14
         RETURNING user_uuid`,
       [
@@ -207,6 +239,7 @@ export async function POST(req: NextRequest) {
         ttDistance, ttTime, weeklyMi, weeklyFreq,
         histAvgMi, histLongMi, histYears,
         userId,
+        birthday, sex, heightCm, ageNum,
       ]
     );
 
@@ -221,15 +254,18 @@ export async function POST(req: NextRequest) {
             connections_skipped,
             tt_goal_distance, tt_goal_time,
             weekly_mileage_target, weekly_frequency,
-            history_avg_weekly_mi, history_longest_recent_mi, history_years_running
+            history_avg_weekly_mi, history_longest_recent_mi, history_years_running,
+            birthday, sex, height_cm, age
           ) VALUES (
             $1, $2, $3, $4, $5, $6, NOW(), NOW(), $7,
-            $8, $9, $10, $11, $12, $13, $14
+            $8, $9, $10, $11, $12, $13, $14,
+            $15::date, $16, $17, $18
           )`,
         [
           userId, distance, date, time, name, timezone, connectionsSkipped,
           ttDistance, ttTime, weeklyMi, weeklyFreq,
           histAvgMi, histLongMi, histYears,
+          birthday, sex, heightCm, ageNum,
         ]
       );
     }
