@@ -43,7 +43,8 @@ export type AdaptationTriggerKind =
   | 'volume_overshoot'
   | 'pr_bank'
   | 'niggle_reported'     // Q-04 · active niggle severity threshold
-  | 'sick_episode_active'; // Q-03 · active illness — propose, never auto
+  | 'sick_episode_active' // Q-03 · active illness — propose, never auto
+  | 'injury_active';      // Q-08 · active runner_injuries row — propose
 
 export interface AdaptationTrigger {
   kind: AdaptationTriggerKind;
@@ -105,6 +106,10 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   // 6. Sick episode active (Q-03 default: propose, don't auto-modify)
   const sick = await detectSickEpisodeActive(userId);
   if (sick) triggers.push(sick);
+
+  // 7. Active injury (Q-08 default: propose INJURY-mode adjustments)
+  const injury = await detectInjuryActive(userId);
+  if (injury) triggers.push(injury);
 
   const actions: AdaptationAction[] = [];
   for (const t of triggers) {
@@ -384,6 +389,41 @@ async function detectSickEpisodeActive(userId: string): Promise<AdaptationTrigge
   };
 }
 
+/**
+ * Q-08 default · INJURY_ACTIVE triggers when `runner_injuries.resolved_date
+ * IS NULL`. Like SICK_EPISODE_ACTIVE, this is a propose-only trigger —
+ * the runner accepts/rejects the modified plan from the UI. Severity:
+ * 'override' if severity in (moderate, major); 'warn' if 'minor'.
+ *
+ * Cite: Research/05-injury-return-protocols.md §General-Principles
+ *       (pain ≥ 5/10 stops the session; structured return phases).
+ */
+async function detectInjuryActive(userId: string): Promise<AdaptationTrigger | null> {
+  const r = (await pool.query(
+    `SELECT id, site, severity, return_protocol, start_date::text AS start_date
+       FROM runner_injuries
+      WHERE user_uuid = $1 AND resolved_date IS NULL
+      ORDER BY start_date DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!r) return null;
+  const severe = r.severity === 'moderate' || r.severity === 'major';
+  return {
+    kind: 'injury_active',
+    severity: severe ? 'override' : 'warn',
+    reason: severe
+      ? `Active ${r.site} injury (${r.severity}). Switch to INJURY-mode walk-run + cross-train.`
+      : `Active ${r.site} injury (minor). Drop quality; easy mileage only with daily pain check.`,
+    evidence: {
+      injury_id: r.id,
+      site: r.site,
+      severity: r.severity,
+      return_protocol: r.return_protocol,
+      start_date: r.start_date,
+    },
+  };
+}
+
 async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger | null> {
   // Last 7d running volume vs experience cap.
   const r = (await pool.query(
@@ -530,6 +570,29 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       } catch {
         // Proposal write failure is non-fatal; runner still sees the
         // niggle/sick UI surface even without a proposal row.
+      }
+      return [];
+    }
+    case 'injury_active': {
+      // Q-08 default — same propose-only pattern as illness. Walk-run +
+      // cross-train suggestion comes from Research/05; the runner
+      // accepts in the UI.
+      try {
+        await pool.query(
+          `INSERT INTO coach_proposals (user_uuid, user_id, proposal_type, payload, status, created_at)
+           VALUES ($1, $1::text, 'injury_adjust', $2::jsonb, 'pending', NOW())
+           ON CONFLICT DO NOTHING`,
+          [userId, JSON.stringify({
+            reason: t.reason,
+            evidence: t.evidence,
+            suggested:
+              t.severity === 'override'
+                ? 'Walk-run scaffold + cross-train. Pain-monitor in-session, 24h, location (per Research/05). Suspend running ≥ 5/10 pain.'
+                : 'Easy mileage only; daily pain check before each session. Drop quality. Reassess after 7 days.',
+          })],
+        );
+      } catch {
+        // Non-fatal — runner still sees the injury UI surface.
       }
       return [];
     }
