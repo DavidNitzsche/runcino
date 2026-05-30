@@ -63,8 +63,13 @@ export type FaffSeed = {
   shoes: ShoeRec[];
   // 2026-05-30: today's per-day shoe assignment from day_actions (action='shoe').
   // Server-persisted via /api/today/shoe. If unset, the ShoePicker falls back
-  // to the coach-system recommendation in KIT[d.type].shoe (recommendShoe()).
+  // to the coach recommendation in shoeRecByType (lib/shoe/recommend.ts).
   todayShoeId: number | null;
+  // Coach-system shoe recommendation per effort type, computed from the
+  // runner's actual garage via recommendShoe(shoes, runType). Empty string
+  // when no shoe is tagged for that type — caller falls back to KIT[type]
+  // static placeholder.
+  shoeRecByType: Record<string, string>;
   connections: ConnectionRow[];
 };
 

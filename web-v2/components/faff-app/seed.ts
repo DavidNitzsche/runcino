@@ -777,6 +777,24 @@ function adaptShoes(profile: Profile | null): ShoeRec[] {
     max: Math.round(s.cap || 400),
   }));
 }
+
+/** Coach shoe recommendation per effort type. Pulls from the runner's
+ *  actual garage and applies recommendShoe (lib/shoe/recommend.ts) —
+ *  NOT from Strava. Returns a map of effort-key → display name. */
+async function buildShoeRecByType(profile: Profile | null): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (!profile?.shoes?.length) return out;
+  const { recommendShoe, shoeDisplayName } = await import('@/lib/shoe/recommend');
+  // Match the rec rule against each effort type we display.
+  // 'rest' has no shoe rec. Map 'race' to the racing flat slot too even
+  // though it's not in EffortKey — useful when the race-week view leans on it.
+  for (const t of ['easy', 'long', 'recovery', 'tempo', 'intervals', 'race'] as const) {
+    const rec = recommendShoe(profile.shoes, t);
+    const name = shoeDisplayName(rec);
+    if (name) out[t] = name;
+  }
+  return out;
+}
 function adaptConnections(profile: Profile | null): ConnectionRow[] {
   const strava = profile?.connections.strava.connected ?? false;
   const health = profile?.connections.appleHealth.connected ?? false;
@@ -825,6 +843,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const racesList = adaptRaces(races);
   const activity = adaptActivity(log);
   const shoes = adaptShoes(profile);
+  const shoeRecByType = await buildShoeRecByType(profile);
   const connections = adaptConnections(profile);
   const form = adaptForm(training, glance);
 
@@ -858,6 +877,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     activity,
     shoes,
     todayShoeId,
+    shoeRecByType,
     connections,
   };
 }

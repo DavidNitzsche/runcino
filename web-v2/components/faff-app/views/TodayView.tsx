@@ -157,12 +157,15 @@ export function TodayView({
           done={!!d.done}
           result={result}
           shoes={seed.shoes}
-          // 2026-05-30: persisted today-shoe overrides the coach recommendation
-          // when the runner has tapped one in the picker. Falls back to the KIT
-          // default (recommendShoe-style) when no override exists.
+          // 2026-05-30: shoe pick fallback chain:
+          //   1. Persisted day_actions pick (seed.todayShoeId) — runner choice.
+          //   2. Coach recommendation per effort type (seed.shoeRecByType) —
+          //      computed via recommendShoe(shoes, runType) from the runner's
+          //      actual garage. NOT Strava.
+          //   3. KIT static default — only when garage is empty.
           seedShoe={(seed.todayShoeId != null
             ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-            : null) ?? KIT[d.type].shoe}
+            : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
           persistShoe={curDay === seed.todayIdx}
         />
       </div>
