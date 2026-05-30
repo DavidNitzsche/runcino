@@ -37,6 +37,15 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
   const [editingTz, setEditingTz] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Body fields (T2 physiology · pass-5 onboarding A+ work).
+  // Optional but strongly encouraged — without these the coach hedges
+  // every HR-derived prescription. UI keeps them light: birthday is a
+  // YYYY-MM-DD date input; sex is M/F (medical/research split, not
+  // identity); height is cm with a placeholder for the common 5'10"
+  // (178cm) so the runner doesn't have to do the math cold.
+  const [birthday, setBirthday] = useState<string>('');
+  const [sex, setSex] = useState<'M' | 'F' | ''>('');
+  const [heightCm, setHeightCm] = useState<string>('');
 
   // Detect timezone on mount if not already set in the URL.
   useEffect(() => {
@@ -80,6 +89,11 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
           name: name.trim(),
           timezone,
           connectionsSkipped: initial.connectionsSkipped,
+          // T2 physiology — optional, COALESCE'd server-side so empty
+          // fields don't clobber existing values.
+          birthday: birthday || undefined,
+          sex: sex || undefined,
+          height_cm: heightCm ? Number(heightCm) : undefined,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -263,6 +277,65 @@ export function Step3Confirm({ initial, initialName }: Step3ConfirmProps) {
             </div>
           </FormRow>
         )}
+
+        {/* T2 physiology · optional but strongly encouraged.
+            Without these the coach hedges every HR-derived prescription.
+            Birthday → age (HR zone math, age-graded VDOT).
+            Sex → Research/13 personalization, screening.
+            Height → cadence-overstriding threshold (Research/16/21). */}
+        <FormRow label="BIRTHDAY" hint="OPTIONAL · UNLOCKS AGE-GRADED ZONES">
+          <input
+            type="date"
+            value={birthday}
+            onChange={(e) => setBirthday(e.target.value)}
+            style={{
+              background: 'transparent', border: 'none', color: 'var(--ink)',
+              fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 17,
+              padding: 0, width: '100%', outline: 'none',
+              colorScheme: 'dark',
+            }}
+          />
+        </FormRow>
+
+        <FormRow label="SEX" hint="OPTIONAL · RESEARCH/13 PERSONALIZATION">
+          <div style={{ display: 'flex', gap: 10 }}>
+            {(['M', 'F'] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setSex(sex === opt ? '' : opt)}
+                style={{
+                  background: sex === opt ? 'rgba(255,255,255,0.18)' : 'transparent',
+                  border: `1px solid ${sex === opt ? 'var(--ink)' : 'rgba(255,255,255,0.20)'}`,
+                  color: sex === opt ? 'var(--ink)' : 'var(--mute)',
+                  fontFamily: 'var(--f-body)', fontWeight: 700, fontSize: 14,
+                  letterSpacing: '0.6px',
+                  padding: '6px 18px', borderRadius: 10, cursor: 'pointer',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {opt === 'M' ? 'Male' : 'Female'}
+              </button>
+            ))}
+          </div>
+        </FormRow>
+
+        <FormRow label="HEIGHT (CM)" hint="OPTIONAL · UNLOCKS CADENCE COACHING">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={120}
+            max={230}
+            value={heightCm}
+            onChange={(e) => setHeightCm(e.target.value)}
+            placeholder="e.g. 178"
+            style={{
+              background: 'transparent', border: 'none', color: 'var(--ink)',
+              fontFamily: 'var(--f-body)', fontWeight: 600, fontSize: 17,
+              padding: 0, width: '100%', outline: 'none',
+            }}
+          />
+        </FormRow>
       </div>
 
       {error && (
