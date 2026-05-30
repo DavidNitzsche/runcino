@@ -191,7 +191,23 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         runId={typeof openOverlay === 'object' && openOverlay?.type === 'run' ? openOverlay.id : null}
         onClose={() => setOpenOverlay(null)}
       />
-      <Toast visible={toastVisible} onClose={() => setToastVisible(false)} title="Tempo Run today" subtitle="67° & calm. Good window around 5 pm." />
+      <Toast
+        visible={toastVisible}
+        onClose={() => setToastVisible(false)}
+        title={(() => {
+          const today = seed.week[seed.todayIdx];
+          if (!today) return "Today's session";
+          if (today.type === 'rest') return 'Rest day';
+          return `${today.name} today`;
+        })()}
+        subtitle={(() => {
+          const today = seed.week[seed.todayIdx];
+          if (!today || today.type === 'rest') return 'Sleep, hydrate, mobilize.';
+          const distance = today.dist === ' · ' ? '' : `${today.dist} mi`;
+          const pace = today.pace && today.pace !== 'Rest' && today.pace !== '·' ? ` @ ${today.pace}` : '';
+          return `${distance}${pace}`.trim() || 'Open Today to see the session.';
+        })()}
+      />
       <TweaksPanel />
     </div>
   );

@@ -49,7 +49,7 @@ export function Sidebar({
         <button className="sb-recap" onClick={onOpenRecap}>
           <span className="dot" />
           <span className="tx">
-            <span className="el">WEEK 14 RECAP</span>
+            <span className="el">WEEK {seed.season.nowIdx + 1} RECAP</span>
             <span className="et">Ready to review</span>
           </span>
           <span className="arr">›</span>

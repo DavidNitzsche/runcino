@@ -123,6 +123,12 @@ function Detail({ m, rangeLabel = '30-DAY', sliceN = 30 }: { m: HealthMetric; ra
 }
 
 function avg(a: number[]) { return a.reduce((s, v) => s + v, 0) / a.length; }
+function formatSleep(hours: number | undefined): string {
+  if (!hours || hours <= 0) return '·';
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return `${h}:${String(m).padStart(2, '0')}`;
+}
 
 export function HealthView({ seed }: { seed: FaffSeed }) {
   const { readiness, body, form } = seed.health;
@@ -163,9 +169,9 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             </div>
             <div className="hr-bottom">
               <div className="feeders">
-                <div className="feeder"><div className="fk">SLEEP</div><div className="fv">7:12</div></div>
-                <div className="feeder"><div className="fk">HRV</div><div className="fv">68<span className="fg"> ↑</span></div></div>
-                <div className="feeder"><div className="fk">RHR</div><div className="fv">48<span className="fg"> ↓</span></div></div>
+                <div className="feeder"><div className="fk">SLEEP</div><div className="fv">{formatSleep(body.find(m => m.k === 'sleep')?.current)}</div></div>
+                <div className="feeder"><div className="fk">HRV</div><div className="fv">{Math.round(body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}</div></div>
+                <div className="feeder"><div className="fk">RHR</div><div className="fv">{Math.round(body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}</div></div>
               </div>
               <div className="hr-trendcol">
                 <div className="hr-trendhead">

@@ -51,7 +51,7 @@ export function Drawer({
           ))}
         </div>
         <div className="rtlabels">{readiness.trendDays.map((d, i) => <span key={i} className={i === readiness.trendDays.length - 1 ? 'tw' : ''}>{d}</span>)}</div>
-        <div className="rtnote">Up from a <b>74</b> average last week. You are trending into a peak.</div>
+        <div className="rtnote">{trendNote(readiness)}</div>
         <div className="dlink" onClick={onViewFullHealth} role="button" tabIndex={0}>
           View full health{' '}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -59,4 +59,15 @@ export function Drawer({
       </div>
     </>
   );
+}
+
+function trendNote(r: { score: number; trend: number[] }): React.ReactNode {
+  const trend = r.trend ?? [];
+  if (trend.length === 0) return 'Trend will appear once a week of readings is in.';
+  const prior = trend.slice(0, Math.max(1, trend.length - 1));
+  const priorAvg = Math.round(prior.reduce((s, v) => s + v, 0) / prior.length);
+  const delta = r.score - priorAvg;
+  if (Math.abs(delta) <= 2) return <>Holding around <b>{priorAvg}</b>. Steady week.</>;
+  if (delta > 0) return <>Up from a <b>{priorAvg}</b> average. You are trending into a peak.</>;
+  return <>Down from a <b>{priorAvg}</b> average. Watch the load.</>;
 }

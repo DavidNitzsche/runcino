@@ -536,7 +536,9 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hhero-sep{height:1px;background:rgba(255,255,255,.1);margin:22px 2px 0;}
 .hhero-grid{display:grid;grid-template-columns:420px 1fr;gap:44px;align-items:center;}
 .hg-gauge{display:flex;flex-direction:column;align-items:center;}
-.gauge{position:relative;width:380px;height:380px;}
+/* Health-page readiness gauge specifically — scoped so the Targets goal
+   gauge keeps its narrower 184px footprint. */
+.hg-gauge .gauge{position:relative;width:380px;height:380px;}
 .gauge svg{display:block;}
 /* Center the score in the bowl of the half-arc gauge, not the bounding box.
    Arc endpoints sit at y≈83% of the container; visual bowl center is ~62%. */

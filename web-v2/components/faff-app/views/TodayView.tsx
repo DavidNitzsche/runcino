@@ -91,9 +91,9 @@ export function TodayView({
           <div className="stats">
             {isRest ? (
               <>
-                <div><div className="v">7:42<small> hrs</small></div><div className="k">SLEEP</div></div>
-                <div><div className="v">48<small> bpm</small></div><div className="k">RESTING HR</div></div>
-                <div><div className="v">62<small> ms</small></div><div className="k">HRV</div></div>
+                <div><div className="v">{formatSleep(seed.health.body.find(m => m.k === 'sleep')?.current)}</div><div className="k">SLEEP</div></div>
+                <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}<small> bpm</small></div><div className="k">RESTING HR</div></div>
+                <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}<small> ms</small></div><div className="k">HRV</div></div>
               </>
             ) : d.done && result ? (
               <>
@@ -420,6 +420,12 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
   );
 }
 
+function formatSleep(hours: number | undefined): React.ReactNode {
+  if (!hours || hours <= 0) return <>·</>;
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return <>{h}:{String(m).padStart(2, '0')}<small> hrs</small></>;
+}
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
