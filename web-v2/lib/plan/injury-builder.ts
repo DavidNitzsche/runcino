@@ -209,5 +209,9 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
     }
   }
 
+  // Plan mutation → invalidate memoized lookup so /today sees the new
+  // INJURY plan immediately.
+  (await import('./lookup')).bustPlanLookupCache(userId);
+
   return { ok: true, plan_id: planId, weeks_generated: totalWeeks };
 }

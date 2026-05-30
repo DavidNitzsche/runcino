@@ -13,6 +13,7 @@ import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
+import { loadActivePlan } from '@/lib/plan/lookup';
 import type { WorkoutSpec } from '@/lib/faff/types';
 
 export interface GlanceWeekDay {
@@ -101,13 +102,8 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     [userId]
   )).rows[0];
 
-  // Active plan summary
-  const plan = (await pool.query(
-    `SELECT id, race_id FROM training_plans
-      WHERE user_uuid = $1 AND archived_iso IS NULL
-      ORDER BY authored_iso DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
+  // Active plan summary (memoized — shared across state-loaders)
+  const plan = await loadActivePlan(userId);
 
   let weekPlanned: number | null = null;
   let phaseLabel: string | null = null;

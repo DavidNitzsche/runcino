@@ -6,6 +6,7 @@
  * groups by week, surfaces per-week totals.
  */
 import { pool } from '@/lib/db/pool';
+import { loadActivePlan } from '@/lib/plan/lookup';
 
 export interface LogRun {
   id: string;
@@ -155,14 +156,8 @@ export async function loadLogState(
     [userId, limit]
   )).rows;
 
-  // Active plan → drives workoutType (plan_workouts) + phaseLabel (plan_phases)
-  // joins. Mirrors glance-state.ts loader.
-  const plan = (await pool.query(
-    `SELECT id FROM training_plans
-      WHERE user_uuid = $1 AND archived_iso IS NULL
-      ORDER BY authored_iso DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
+  // Active plan (memoized — shared across state-loaders)
+  const plan = await loadActivePlan(userId);
 
   // plan_workouts keyed by ISO date — gives us the runner-friendly type
   // assigned by the plan ("long", "quality", "easy", etc.) for that date.

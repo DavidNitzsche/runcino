@@ -9,6 +9,7 @@ import { pool } from '@/lib/db/pool';
 import type { CoachState } from '@/lib/topics/types';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
+import { loadActivePlan } from '@/lib/plan/lookup';
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
@@ -91,14 +92,9 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       source: d.source ?? null,
     }));
 
-  // CURRENT WEEK from plan
-  const plan = (await pool.query(
-    `SELECT id, race_id
-       FROM training_plans
-      WHERE user_uuid = $1 AND archived_iso IS NULL
-      ORDER BY authored_iso DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
+  // CURRENT WEEK from plan — uses the memoized loadActivePlan helper so
+  // /today's 5-7 parallel state-loaders share one DB query per 60s window.
+  const plan = await loadActivePlan(userId);
 
   let weekPlanned: number | null = null;
   let phaseLabel: string | null = null;

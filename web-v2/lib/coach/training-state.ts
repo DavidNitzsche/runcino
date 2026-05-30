@@ -9,6 +9,7 @@
  * Lives separately from state-loader so the TODAY load stays light.
  */
 import { pool } from '@/lib/db/pool';
+import { loadActivePlan } from '@/lib/plan/lookup';
 
 export interface PlanWeek {
   idx: number;
@@ -47,12 +48,7 @@ export interface TrainingState {
 export async function loadTrainingState(userId: string): Promise<TrainingState> {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
 
-  const plan = (await pool.query(
-    `SELECT id, race_id FROM training_plans
-      WHERE user_uuid = $1 AND archived_iso IS NULL
-      ORDER BY authored_iso DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
+  const plan = await loadActivePlan(userId);
 
   if (!plan) {
     return {

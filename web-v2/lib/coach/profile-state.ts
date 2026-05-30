@@ -7,6 +7,7 @@ import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
 import { bestRecentVdot, parseRaceTime } from '@/lib/training/vdot';
 import { loadNextARace } from './race-lookup';
+import { loadActivePlan } from '@/lib/plan/lookup';
 
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
@@ -112,11 +113,10 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
         ORDER BY id`,
       [userId]
     ).then((r) => r.rows),
-    pool.query(
-      `SELECT race_id FROM training_plans WHERE user_uuid = $1 AND archived_iso IS NULL
-        ORDER BY authored_iso DESC LIMIT 1`,
-      [userId]
-    ).then((r) => r.rows[0]),
+    // Active plan via the memoized loadActivePlan helper. Inside this
+    // Promise.all batch we still hit the lookup, but subsequent state-
+    // loaders firing on /today + /profile share the cached value.
+    loadActivePlan(userId).then((p) => p ? { race_id: p.race_id } : undefined),
     pool.query(
       `SELECT MAX(COALESCE(data->>'date', LEFT(data->>'startLocal',10))::text) AS last
          FROM strava_activities

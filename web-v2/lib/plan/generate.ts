@@ -395,6 +395,9 @@ async function clearActivePlansFor(userId: string): Promise<void> {
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId]
   );
+  // Plan mutation → invalidate memoized lookup so the next /today render
+  // sees the new active plan.
+  (await import('./lookup')).bustPlanLookupCache(userId);
 }
 
 async function persistPlan(args: {

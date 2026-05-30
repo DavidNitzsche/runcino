@@ -28,6 +28,7 @@ import {
   formatRaceTime,
 } from '@/lib/training/vdot';
 import { loadNearestSnapshot } from '@/lib/training/projection-snapshots';
+import { loadActivePlan } from '@/lib/plan/lookup';
 import type { ReadinessBreakdown } from './readiness';
 
 export type RaceHeaderStatus = 'on_track' | 'watch' | 'off';
@@ -326,15 +327,9 @@ export async function loadRaceHeader(userId: string, input: RaceHeaderInputs): P
   }
 
   // Active plan → race row (goal display + distance + date).
-  const planRow = await pool
-    .query(
-      `SELECT race_id FROM training_plans
-        WHERE user_uuid = $1 AND archived_iso IS NULL
-        ORDER BY authored_iso DESC LIMIT 1`,
-      [userId],
-    )
-    .then((r) => r.rows[0] as { race_id?: string } | undefined)
-    .catch(() => undefined);
+  // Memoized via loadActivePlan so this query is shared with the other
+  // state-loaders that fire in parallel on /today + /races.
+  const planRow = await loadActivePlan(userId).then((p) => p ? { race_id: p.race_id } : undefined);
 
   let goalLabel: string | null = null;
   let raceDistanceMi: number | null = null;

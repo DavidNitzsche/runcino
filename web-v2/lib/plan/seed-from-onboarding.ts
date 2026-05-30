@@ -293,6 +293,8 @@ async function clearActivePlansFor(userId: string): Promise<void> {
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId],
   );
+  // Plan mutation → invalidate memoized lookup.
+  (await import('./lookup')).bustPlanLookupCache(userId);
 }
 
 async function persistMaintenancePlan(args: {
