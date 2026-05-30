@@ -12,7 +12,7 @@ struct ActivityView: View {
 
     enum Mode { case stats, feed }
 
-    @State private var mode: Mode = .stats
+    @State private var mode: Mode = .feed
     @State private var log: LogState?
     @State private var range: Range = .year
     @State private var heatmapTip: String?
@@ -94,8 +94,8 @@ struct ActivityView: View {
 
             StatRow(stats: [
                 Stat(value: "\(log?.totalRuns ?? 0)", key: "RUNS"),
-                Stat(value: "—",                       key: "TIME"),
-                Stat(value: "—",                       key: "ELEV GAIN")
+                Stat(value: totalTimeLabel,           key: "TIME"),
+                Stat(value: totalElevLabel,           key: "ELEV GAIN")
             ], valueFont: 20, keyColor: Theme.txt.opacity(0.55))
             .padding(.horizontal, 22).padding(.top, 22)
 
@@ -171,17 +171,97 @@ struct ActivityView: View {
     }
 
     private var recordsGrid: some View {
-        // Mock records grid (the LogState doesn't ship PRs today · coming from
-        // /api/profile/state.nextARace + run history aggregates). Placeholder
-        // until the wire ships them.
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            recordTile("FASTEST MILE", "5:48", "Mar 14", color: Color(hex: 0xFC4D64))
-            recordTile("FASTEST 5K",   "19:42", "Feb 1",  color: Color(hex: 0xFF8847))
-            recordTile("FASTEST 10K",  "41:18", "Apr 5",  color: Color(hex: 0xFF8847))
-            recordTile("LONGEST RUN",  "26.2",  "Big Sur · Apr 26", color: Color(hex: 0xD6263C), unit: "mi")
-            recordTile("BIGGEST WEEK", "58.6",  "Mar 2-8", color: Color(hex: 0xF3AD38), unit: "mi")
-            recordTile("MARATHON PR",  "3:31:40", "LA · Mar 8", color: Color(hex: 0xD6263C))
+        // Real PRs derived from /api/log run history.
+        let prs = computeRecords()
+        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            ForEach(prs, id: \.key) { r in
+                recordTile(r.key, r.value, r.caption, color: r.color, unit: r.unit)
+            }
         }
+    }
+
+    private struct PR { let key: String; let value: String; let caption: String; let color: Color; let unit: String? }
+
+    private func computeRecords() -> [PR] {
+        let runs = (log?.weeks ?? []).flatMap { $0.runs }
+        guard !runs.isEmpty else { return [] }
+
+        // Fastest pace overall (any run, smallest pace)
+        let fastestPace = runs.compactMap { r -> (LogRun, Int)? in
+            guard let secs = paceSeconds(r.pace) else { return nil }
+            return (r, secs)
+        }.min(by: { $0.1 < $1.1 })
+
+        // Longest run (biggest distance_mi)
+        let longestRun = runs.max(by: { $0.distance_mi < $1.distance_mi })
+
+        // Biggest week (sum distance_mi across weeks)
+        let biggestWeek = (log?.weeks ?? []).max(by: { $0.totalMi < $1.totalMi })
+
+        // Average pace for tempo / threshold runs
+        let temposLast = runs.first(where: { ($0.workoutType ?? "").lowercased().contains("threshold") || ($0.workoutType ?? "").lowercased().contains("tempo") })
+
+        // Best HR efficiency: lowest avg_hr at high distance
+        let mostElev = runs.max(by: { ($0.elev_gain_ft ?? 0) < ($1.elev_gain_ft ?? 0) })
+
+        var prs: [PR] = []
+        if let (r, _) = fastestPace, let p = r.pace {
+            prs.append(PR(key: "FASTEST PACE", value: p, caption: shortDate(r.date),
+                          color: Color(hex: 0xFC4D64), unit: nil))
+        }
+        if let lr = longestRun {
+            prs.append(PR(key: "LONGEST RUN", value: String(format: "%.1f", lr.distance_mi),
+                          caption: shortDate(lr.date), color: Color(hex: 0xD6263C), unit: "mi"))
+        }
+        if let bw = biggestWeek {
+            prs.append(PR(key: "BIGGEST WEEK", value: String(format: "%.1f", bw.totalMi),
+                          caption: bw.label, color: Color(hex: 0xF3AD38), unit: "mi"))
+        }
+        if let mh = mostElev, let elev = mh.elev_gain_ft, elev > 0 {
+            prs.append(PR(key: "MOST CLIMB", value: "\(elev)",
+                          caption: shortDate(mh.date), color: Color(hex: 0x8A6A48), unit: "ft"))
+        }
+        if let t = temposLast, let p = t.pace {
+            prs.append(PR(key: "LAST THRESHOLD", value: p,
+                          caption: shortDate(t.date), color: Color(hex: 0xFF8847), unit: "/mi"))
+        }
+        if let totalMi = log?.totalMi, totalMi > 0 {
+            prs.append(PR(key: "RANGE TOTAL", value: String(format: "%.0f", totalMi),
+                          caption: rangeLabel.capitalized, color: Color(hex: 0xFF8847), unit: "mi"))
+        }
+        return prs
+    }
+
+    private var totalTimeLabel: String {
+        // Sum time_moving from runs; format as "Xh Ym" if total > 1h, else "Mm".
+        let runs = (log?.weeks ?? []).flatMap { $0.runs }
+        let totalSecs = runs.compactMap { paceTimeSeconds($0.time_moving) }.reduce(0, +)
+        if totalSecs == 0 { return "—" }
+        let h = totalSecs / 3600
+        let m = (totalSecs % 3600) / 60
+        return h > 0 ? "\(h)h" : "\(m)m"
+    }
+
+    private var totalElevLabel: String {
+        let runs = (log?.weeks ?? []).flatMap { $0.runs }
+        let total = runs.compactMap { $0.elev_gain_ft }.reduce(0, +)
+        guard total > 0 else { return "—" }
+        if total >= 1000 { return String(format: "%.1fk", Double(total) / 1000) }
+        return "\(total)"
+    }
+
+    private func paceSeconds(_ pace: String?) -> Int? {
+        guard let pace = pace else { return nil }
+        let parts = pace.split(separator: ":")
+        guard parts.count == 2, let m = Int(parts[0]), let s = Int(parts[1]) else { return nil }
+        return m * 60 + s
+    }
+    private func paceTimeSeconds(_ time: String?) -> Int? {
+        guard let time = time else { return nil }
+        let parts = time.split(separator: ":").compactMap { Int($0) }
+        if parts.count == 3 { return parts[0]*3600 + parts[1]*60 + parts[2] }
+        if parts.count == 2 { return parts[0]*60 + parts[1] }
+        return nil
     }
 
     private func recordTile(_ k: String, _ v: String, _ caption: String, color: Color, unit: String? = nil) -> some View {
