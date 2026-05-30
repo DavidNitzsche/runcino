@@ -38,7 +38,7 @@ enum FaffTab: String, CaseIterable, Identifiable {
 /// case here + a single line in `routeDestination` below.
 enum FaffRoute: Hashable {
     case runDetail(id: String)
-    case planned(workoutId: String?)
+    case planned(date: String?)
     case completed(runId: String)
     case watchMirror
     case treadmill
@@ -98,7 +98,7 @@ struct RootTabView: View {
     private func routeDestination(_ route: FaffRoute) -> some View {
         switch route {
         case .runDetail(let id):   RunDetailView(runId: id).navigationBarHidden(true)
-        case .planned(let id):     PlannedView(workoutId: id).navigationBarHidden(true)
+        case .planned(let d):      PlannedView(date: d).navigationBarHidden(true)
         case .completed(let id):   CompletedView(runId: id).navigationBarHidden(true)
         case .watchMirror:         WatchMirrorView().navigationBarHidden(true)
         case .treadmill:           TreadmillView().navigationBarHidden(true)

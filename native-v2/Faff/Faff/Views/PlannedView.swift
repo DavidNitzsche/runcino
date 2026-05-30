@@ -7,7 +7,9 @@
 import SwiftUI
 
 struct PlannedView: View {
-    let workoutId: String?
+    /// ISO date for the planned day. nil → fetch today's workout (legacy
+    /// behavior). Non-nil → fetch /api/watch/today?date=<iso>.
+    let date: String?
 
     @State private var workout: WatchWorkout? =
         AppCache.read(.todayWorkout, as: TodayWorkoutWrapper.self)?.workout
@@ -371,7 +373,13 @@ struct PlannedView: View {
     }
 
     private func load() async {
-        if workout == nil, let w = try? await API.fetchWatchWorkout() {
+        // Always fetch when a date is provided · the AppCache only holds
+        // today's workout, so a different day must hit the wire.
+        if let date {
+            let w = try? await API.fetchWatchWorkout(date: date)
+            await MainActor.run { workout = w }
+        } else if workout == nil {
+            let w = try? await API.fetchWatchWorkout()
             await MainActor.run { workout = w }
         }
     }

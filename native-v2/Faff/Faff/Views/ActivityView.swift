@@ -16,6 +16,8 @@ struct ActivityView: View {
     @State private var log: LogState?
     @State private var range: Range = .year
     @State private var heatmapTip: String?
+    @State private var fetchLimit: Int = 200    // pull lots; server caps at total
+    @State private var loadingMore: Bool = false
 
     enum Range: String, CaseIterable { case month, year, all
         var label: String { rawValue.uppercased() == "ALL" ? "ALL TIME" : rawValue.uppercased() }
@@ -45,7 +47,7 @@ struct ActivityView: View {
     }
 
     private func reload() async {
-        let l = try? await API.fetchLog(limit: 120)
+        let l = try? await API.fetchLog(limit: fetchLimit)
         await MainActor.run { self.log = l }
     }
 
@@ -336,16 +338,29 @@ struct ActivityView: View {
                     }
                 }
             }
-            Button { /* load more */ } label: {
-                Text("LOAD EARLIER RUNS")
+            // Footer · honest about how many runs we've pulled. Tap to
+            // double the limit (server returns total runs so this caps out
+            // naturally when there's nothing earlier left to fetch).
+            let loadedRuns = (log?.weeks ?? []).flatMap { $0.runs }.count
+            Button {
+                guard !loadingMore else { return }
+                loadingMore = true
+                fetchLimit = min(fetchLimit * 2, 1000)
+                Task {
+                    await reload()
+                    await MainActor.run { loadingMore = false }
+                }
+            } label: {
+                Text(loadingMore ? "LOADING…" : "LOAD EARLIER RUNS · \(loadedRuns) SO FAR")
                     .font(.body(12, weight: .extraBold))
                     .tracking(0.5)
-                    .foregroundStyle(Theme.txt)
+                    .foregroundStyle(Theme.txt.opacity(loadingMore ? 0.4 : 1))
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.26), style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
             }
             .buttonStyle(.plain)
+            .disabled(loadingMore)
             .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 40)
         }
     }

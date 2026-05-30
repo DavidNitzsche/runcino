@@ -297,7 +297,7 @@ struct TrainView: View {
                         }
                         .buttonStyle(.plain)
                     } else if day.type.lowercased() != "rest" {
-                        NavigationLink(value: FaffRoute.planned(workoutId: nil)) {
+                        NavigationLink(value: FaffRoute.planned(date: day.date)) {
                             dayContent
                         }
                         .buttonStyle(.plain)

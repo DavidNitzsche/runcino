@@ -143,7 +143,7 @@ struct WeekAheadView: View {
                     if d.effort == .rest {
                         AgendaRow(day: d).padding(.horizontal, 18)
                     } else {
-                        NavigationLink(value: d.runId.map { FaffRoute.runDetail(id: $0) } ?? FaffRoute.planned(workoutId: nil)) {
+                        NavigationLink(value: d.runId.map { FaffRoute.runDetail(id: $0) } ?? FaffRoute.planned(date: d.id)) {
                             AgendaRow(day: d).padding(.horizontal, 18)
                         }
                         .buttonStyle(.plain)

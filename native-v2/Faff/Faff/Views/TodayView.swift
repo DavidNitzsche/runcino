@@ -25,6 +25,7 @@ struct TodayView: View {
     @State private var skipped: Bool = false
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
+    @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
 
     var body: some View {
         let mesh = selectedEffort.mesh
@@ -140,6 +141,21 @@ struct TodayView: View {
         }
         .task {
             await loadAll()
+        }
+        .onChange(of: selectedDayID) { _, newID in
+            // Tapped a day in the week strip · fetch that day's planned
+            // workout so the drag sheet + hero reflect Sunday's long run
+            // instead of today's rest day, etc.
+            guard !newID.isEmpty else { return }
+            Task {
+                if newID == todayISO {
+                    // Today's workout was already loaded by loadAll().
+                    await MainActor.run { dayWorkout = nil }
+                } else {
+                    let w = try? await API.fetchWatchWorkout(date: newID)
+                    await MainActor.run { dayWorkout = w }
+                }
+            }
         }
         .sheet(isPresented: $showNudge) {
             NudgeSheet(
@@ -350,9 +366,17 @@ struct TodayView: View {
         }
     }
 
+    /// The workout to render in the hero + drag sheet. For the today
+    /// selection, prefer `workout` (cached at launch). For any other day
+    /// in the strip, use `dayWorkout` fetched on selection change.
+    private var displayWorkout: WatchWorkout? {
+        if selectedDayID == todayISO { return workout }
+        return dayWorkout
+    }
+
     private var workoutName: String {
-        // Use the WatchWorkout's name if today, else derive from PlanDay type.
-        if selectedDayID == todayISO, let n = workout?.name {
+        // Use the WatchWorkout's name if available, else derive from PlanDay type.
+        if let n = displayWorkout?.name {
             // Insert a soft break before the last word if 2+ words
             let words = n.split(separator: " ")
             if words.count >= 2 { return words.dropLast().joined(separator: " ") + "\n" + words.last! }
@@ -371,12 +395,15 @@ struct TodayView: View {
     }
 
     private var distanceStr: String {
-        if let dist = todaySelectedDay?.distance_mi { return "\(formatMi(dist)) mi" }
+        // Prefer the selected day's planned distance (server-of-truth for
+        // future days). Fall back to the watch-workout distanceMi.
+        if let dist = todaySelectedDay?.distance_mi, dist > 0 { return "\(formatMi(dist)) mi" }
+        if let mi = displayWorkout?.distanceMi { return "\(formatMi(mi)) mi" }
         return "—"
     }
 
     private var paceStr: String {
-        if let phase = workout?.phases.first, let p = phase.targetPaceSPerMi {
+        if let phase = displayWorkout?.phases.first, let p = phase.targetPaceSPerMi {
             return formatPace(secondsPerMi: p)
         }
         return "—"
@@ -406,7 +433,9 @@ struct TodayView: View {
         if let day = todaySelectedDay, let runId = day.completedRunId {
             return .runDetail(id: runId)
         }
-        return .planned(workoutId: nil)
+        // Pass the selected day's ISO so PlannedView fetches that day's
+        // workout (not always today's).
+        return .planned(date: selectedDayID.isEmpty ? nil : selectedDayID)
     }
 
     private var plainWorkoutName: String { workoutName.replacingOccurrences(of: "\n", with: " ") }
@@ -452,7 +481,7 @@ struct TodayView: View {
     }
 
     private var segments: [(String, String)] {
-        if let phases = workout?.phases, !phases.isEmpty {
+        if let phases = displayWorkout?.phases, !phases.isEmpty {
             return phases.map { p in
                 let pace = p.targetPaceSPerMi.map { "@ \(formatPace(secondsPerMi: $0))" } ?? ""
                 return (p.label, pace)
