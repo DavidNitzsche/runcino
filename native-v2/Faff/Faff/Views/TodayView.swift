@@ -62,7 +62,7 @@ struct TodayView: View {
             VStack {
                 Spacer()
                 StickyCTABar(bgColor: Color(hex: 0xFAF7F1)) {
-                    NavigationLink(value: FaffRoute.watchMirror) {
+                    NavigationLink(value: ctaRoute) {
                         HStack(spacing: 10) {
                             Circle()
                                 .fill(selectedEffort.dot)
@@ -286,7 +286,24 @@ struct TodayView: View {
     }
 
     private var startButtonTitle: String {
-        skipped ? "Log Recovery" : "Start \(plainWorkoutName)"
+        if skipped { return "Log Recovery" }
+        if selectedEffort == .rest { return "Log Recovery" }
+        if selectedDayID == todayISO { return "Start \(plainWorkoutName)" }
+        return "View \(plainWorkoutName)"
+    }
+
+    /// Route the CTA pushes to:
+    ///   · today + active workout → live (watchMirror)
+    ///   · future planned day → planned detail
+    ///   · rest day / past completed → planned detail (or run detail in future)
+    private var ctaRoute: FaffRoute {
+        if selectedDayID == todayISO && selectedEffort != .rest && !skipped {
+            return .watchMirror
+        }
+        if let day = todaySelectedDay, let runId = day.completedRunId {
+            return .runDetail(id: runId)
+        }
+        return .planned(workoutId: nil)
     }
 
     private var plainWorkoutName: String { workoutName.replacingOccurrences(of: "\n", with: " ") }
