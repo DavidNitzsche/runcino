@@ -647,7 +647,8 @@ struct TodayView: View {
                 date: dayNumber(d.date_iso),
                 effort: FaffEffort.fromType(d.sub_label ?? d.type),
                 isToday: d.is_today,
-                isDone: d.completedRunId != nil
+                isDone: d.completedRunId != nil,
+                isSkipped: d.skipped ?? false
             )
         }
     }

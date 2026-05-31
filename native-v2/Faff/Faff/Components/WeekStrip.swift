@@ -14,6 +14,11 @@ struct WeekStripDay: Identifiable, Hashable {
     let effort: FaffEffort
     var isToday: Bool = false
     var isDone: Bool = false
+    /// Runner tapped Skip Today on this date · day_actions row exists.
+    /// Renders as a dimmed cell with a slash glyph instead of an
+    /// effort dot. Distinct from `isDone` (completed run) and from
+    /// the not-yet-run state (planned but no completion).
+    var isSkipped: Bool = false
 }
 
 struct WeekStrip: View {
@@ -39,6 +44,18 @@ struct WeekStrip: View {
                             Capsule()
                                 .fill(Color.white.opacity(0.5))
                                 .frame(width: 9, height: 2)
+                        } else if d.isSkipped {
+                            // Runner tapped Skip Today · render a dimmed
+                            // slash glyph so the cell reads "intentional
+                            // skip" instead of "planned-but-not-yet-done."
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.white.opacity(0.30), lineWidth: 1)
+                                    .frame(width: 14, height: 14)
+                                Image(systemName: "slash.circle")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(Theme.txt.opacity(0.45))
+                            }
                         } else if d.isDone {
                             // Completed runs: a filled mint check ring over
                             // the effort dot. The mint ring reads "done"
@@ -70,6 +87,7 @@ struct WeekStrip: View {
                         RoundedRectangle(cornerRadius: 15)
                             .stroke(isSelected ? Color.white.opacity(0.5) : Color.clear, lineWidth: 1)
                     )
+                    .opacity(d.isSkipped ? 0.6 : 1.0)
                 }
                 .buttonStyle(.plain)
             }

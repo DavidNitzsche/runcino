@@ -117,6 +117,25 @@ export async function GET(req: NextRequest) {
     actualByDate = new Map();
   }
 
+  // 2026-05-31 · expose skipped days. day_actions writes action='skip'
+  // when the runner taps Skip Today (POST /api/today/skip). Web /today
+  // already renders SKIPPED for that day; iPhone WeekStrip was getting
+  // completedRunId=null with no signal to distinguish "skipped" from
+  // "didn't run yet." Now both clients can render the skip glyph.
+  const skippedDates = new Set<string>();
+  try {
+    const r = await pool.query<{ date_iso: string }>(
+      `SELECT date_iso::text AS date_iso
+         FROM day_actions
+        WHERE user_uuid = $1 AND action = 'skip'
+          AND date_iso BETWEEN $2::date AND $3::date`,
+      [userId, weekStart, weekEnd],
+    );
+    for (const row of r.rows) skippedDates.add(row.date_iso);
+  } catch {
+    // Best-effort · skip indicator just won't show this week.
+  }
+
   return NextResponse.json({
     plan_id: plan.id,
     week_start_iso: weekStart,
@@ -137,6 +156,8 @@ export async function GET(req: NextRequest) {
         // (recovery jogs can be logged on rest days).
         completedRunId: actual?.id ?? null,
         done_mi: actual ? actual.mi : null,
+        // 2026-05-31 · runner tapped Skip Today (day_actions row).
+        skipped: skippedDates.has(r.date_iso),
       };
     }),
   });

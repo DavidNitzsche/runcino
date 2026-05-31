@@ -699,6 +699,11 @@ struct PlanDay: Decodable, Identifiable {
     // Both optional — server emits null when no canonical run that day.
     let completedRunId: String?
     let done_mi: Double?
+    /// True when the runner tapped Skip Today on this date (day_actions
+    /// row written by POST /api/today/skip). Lets the WeekStrip render
+    /// SKIPPED instead of just "planned but not run." Added 2026-05-31 ·
+    /// optional so older server responses still decode.
+    let skipped: Bool?
 }
 
 // MARK: - Readiness (P27.2)
