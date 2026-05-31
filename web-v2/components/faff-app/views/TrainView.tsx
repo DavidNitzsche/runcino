@@ -183,8 +183,25 @@ export function TrainView({
       dow: string; type: string; name: string; mi: number;
       paceSec: number | null; done: boolean; activityId?: string | null;
       donePaceSec?: number | null; doneAvgHr?: number | null;
+      doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
       date?: string;
     };
+    // Quality workouts have a work segment + warmup/recovery/cooldown.
+    // The whole-run avg pace buries the rep pace under all the slow miles,
+    // so for these types we extract the "work pace" from splits:
+    // sort splits by pace, take the fastest N where N = the spec's rep
+    // count (default 3), average them. That's a fair stand-in for "did
+    // the runner hit the reps."
+    const QUALITY_TYPES = new Set(['intervals', 'tempo', 'threshold']);
+    function workPaceForQuality(pick: DayShape): number | null {
+      const splits = (pick.doneSplits ?? []).map((s) => s.paceSec).filter((p): p is number => p != null && p > 0);
+      if (splits.length < 2) return null;
+      // N = rep count from spec if known, else min(3, splits.length)
+      const repCount = Math.max(2, Math.min(splits.length - 1, 5));
+      const sorted = [...splits].sort((a, b) => a - b);
+      const fastest = sorted.slice(0, repCount);
+      return Math.round(fastest.reduce((s, x) => s + x, 0) / fastest.length);
+    }
     const adapts = seed.season.adaptations ?? [];
     const verbForKind = (k: string) => k === 'reschedule' ? 'rescheduled' : k === 'downgrade' ? 'eased' : k === 'shave' ? 'shaved' : 'adjusted';
     seed.season.weekDays.forEach((days, i) => {
@@ -203,20 +220,39 @@ export function TrainView({
       const title = pick.name || ttype;
       const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
       const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : isMid && i >= raceIdx - 3 ? 'KEY' : '';
-      // Influence: hit/miss vs planned target. Tolerance is type-aware —
-      // intervals/tempo demand tighter execution than long runs.
+      // Influence: hit/miss vs planned target.
+      //   Easy / long  — compare whole-run avg pace (steady aerobic effort).
+      //   Quality      — extract WORK pace from the fastest N splits, since
+      //                  the avg buries the rep pace under warmup + recovery
+      //                  + cooldown miles ("8:36 avg" on a 6:47 rep day).
+      // Tolerance is type-aware: intervals/tempo demand tighter execution.
       let influence: Mile['influence'] = null;
-      if (state === 'DONE' && pick.donePaceSec && pick.paceSec) {
-        const delta = pick.donePaceSec - pick.paceSec;
-        const tol = pick.type === 'long' ? 18 : 10; // s/mi
-        if (Math.abs(delta) <= tol) {
-          influence = { kind: 'hit', copy: `Hit · ${fmtPace(pick.donePaceSec)} actual` };
-        } else if (delta > 0 && delta <= tol * 2) {
-          influence = { kind: 'close', copy: `Just off · ${fmtPace(pick.donePaceSec)} actual` };
-        } else if (delta > 0) {
-          influence = { kind: 'off', copy: `Off pace · ${fmtPace(pick.donePaceSec)} actual` };
+      if (state === 'DONE' && pick.paceSec) {
+        let comparePace: number | null = null;
+        let label = 'actual';
+        if (QUALITY_TYPES.has(pick.type)) {
+          comparePace = workPaceForQuality(pick);
+          label = 'work pace';
         } else {
-          influence = { kind: 'hit', copy: `Faster · ${fmtPace(pick.donePaceSec)} actual` };
+          comparePace = pick.donePaceSec ?? null;
+        }
+        if (comparePace) {
+          const delta = comparePace - pick.paceSec;
+          const tol = pick.type === 'long' ? 18 : 12; // s/mi
+          if (Math.abs(delta) <= tol) {
+            influence = { kind: 'hit', copy: `Hit · ${fmtPace(comparePace)} ${label}` };
+          } else if (delta > 0 && delta <= tol * 2) {
+            influence = { kind: 'close', copy: `Just off · ${fmtPace(comparePace)} ${label}` };
+          } else if (delta > 0) {
+            influence = { kind: 'off', copy: `Off pace · ${fmtPace(comparePace)} ${label}` };
+          } else {
+            influence = { kind: 'hit', copy: `Faster · ${fmtPace(comparePace)} ${label}` };
+          }
+        } else if (pick.donePaceSec) {
+          // Quality workout with no usable splits — fall back to a neutral
+          // "Logged" tag instead of falsely claiming "off pace" from the
+          // whole-run avg (the bug David caught: 8:36 avg on a 6:47 rep day).
+          influence = { kind: 'hit', copy: 'Logged' };
         }
       }
       // Adaptation cross-reference. Two angles:

@@ -34,6 +34,11 @@ export interface PlanWeek {
     // ("→ 6:45 actual · Hit" or "→ 7:10 actual · Off pace").
     donePaceSec: number | null;
     doneAvgHr: number | null;
+    /** Per-mile splits from the matched activity. Lets TrainView compute
+     *  work-segment pace for quality workouts (intervals / tempo /
+     *  threshold) instead of using the whole-run avg, which buries the
+     *  rep pace under warmup + recovery + cooldown miles. */
+    doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
   }>;
   isCurrent: boolean;
 }
@@ -100,7 +105,8 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
                 NULLIF(data->>'paceSPerMi','')::numeric AS pace_sec,
                 NULLIF(data->>'avgPaceMinPerMi','')             AS pace_str,
                 NULLIF(data->>'movingTimeS','')::numeric AS moving_s,
-                NULLIF(data->>'avgHr','')::numeric AS avg_hr
+                NULLIF(data->>'avgHr','')::numeric AS avg_hr,
+                data->'splits' AS splits
            FROM strava_activities
           WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
             AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text`,
@@ -113,13 +119,12 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     if (!m) return null;
     return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   }
-  const actualByDate = new Map<string, { mi: number; id: string | null; paceSec: number | null; avgHr: number | null }>();
+  type Split = { paceSec: number | null; hr: number | null };
+  const actualByDate = new Map<string, { mi: number; id: string | null; paceSec: number | null; avgHr: number | null; splits: Split[] }>();
   for (const r of stravaRows) {
-    const cur = actualByDate.get(r.day) ?? { mi: 0, id: null, paceSec: null, avgHr: null };
+    const cur = actualByDate.get(r.day) ?? { mi: 0, id: null, paceSec: null, avgHr: null, splits: [] as Split[] };
     cur.mi += Number(r.mi) || 0;
     if (!cur.id) cur.id = r.activity_id ?? null;
-    // Prefer the richer activity's pace + HR. paceSPerMi wins, then
-    // string "8:45" parse, then derived from movingTimeS / mi.
     if (cur.paceSec == null) {
       const direct = r.pace_sec != null ? Number(r.pace_sec) : null;
       const fromStr = parsePaceStr(r.pace_str);
@@ -127,6 +132,16 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       cur.paceSec = direct ?? fromStr ?? fromMoving ?? null;
     }
     if (cur.avgHr == null && r.avg_hr != null) cur.avgHr = Math.round(Number(r.avg_hr));
+    // Splits from the richer activity (longer one) — gives us per-mile pace
+    // for quality workouts so the influence comparison can extract work-segment
+    // pace instead of the whole-run average.
+    if (cur.splits.length === 0 && Array.isArray(r.splits)) {
+      for (const s of r.splits as Array<Record<string, unknown>>) {
+        const sec = Number(s.paceSPerMi) || (s.pace_s_per_mi as number | undefined) || parsePaceStr((s.pace as string | undefined) ?? null) || null;
+        const hr  = Number(s.hr ?? s.avgHr) || null;
+        cur.splits.push({ paceSec: sec, hr });
+      }
+    }
     actualByDate.set(r.day, cur);
   }
 
@@ -145,6 +160,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
           activityId: actual?.id ?? null,
           donePaceSec: actual?.paceSec ?? null,
           doneAvgHr: actual?.avgHr ?? null,
+          doneSplits: actual?.splits ?? [],
         };
       });
     const plannedMi = Math.round(days.reduce((s, d) => s + d.mi, 0) * 10) / 10;

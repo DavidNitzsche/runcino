@@ -478,7 +478,10 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
     // backfill) for the per-day pace cell. PACE_DEFAULT is only the fallback
     // for plan-builder rows that authored without a VDOT.
     const specPace = paceFromSpec((d as { spec?: import('@/lib/faff/types').WorkoutSpec | null }).spec);
-    const anyD = d as unknown as { id?: string; donePaceSec?: number | null; doneAvgHr?: number | null };
+    const anyD = d as unknown as {
+      id?: string; donePaceSec?: number | null; doneAvgHr?: number | null;
+      doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
+    };
     return {
       id: anyD.id,
       dow: DOW[(d.dow + 6) % 7],
@@ -490,6 +493,7 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       activityId: d.activityId,
       donePaceSec: anyD.donePaceSec ?? null,
       doneAvgHr: anyD.doneAvgHr ?? null,
+      doneSplits: anyD.doneSplits ?? [],
     };
   }));
   // Real plan_phases rows so TrainView can render the actual phase shape

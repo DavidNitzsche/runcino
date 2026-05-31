@@ -63,6 +63,10 @@ export type FaffSeed = {
        *  TrainView's KEY WORKOUTS list to render hit/miss tags. */
       donePaceSec?: number | null;
       doneAvgHr?: number | null;
+      /** Per-mile splits — used to extract work-segment pace for quality
+       *  workouts (intervals / tempo / threshold) so the influence
+       *  comparison isn't burying the rep pace under warmup/recovery miles. */
+      doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
     }>>;
     /** Closed-loop plan adaptations from coach_intents (P1 #8 — written by
      *  applyAdaptations whenever a readiness/volume signal forced a plan
