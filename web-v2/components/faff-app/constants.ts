@@ -16,7 +16,12 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   // long, ember for tempo, red for intervals, tan for rest day.
   recovery:  { mesh: ['#7FE6D6','#5AA9D6','#2F7FAE','#1F6A8A','#1A5A7A','#08222E'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
   easy:      { mesh: ['#7FE6D6','#5AA9D6','#2F7FAE','#1F6A8A','#1A5A7A','#08222E'], dot: '#14C08C', mark: 26, lbl: 'EASY' },
-  long:      { mesh: ['#FFE0A0','#F3AD38','#E89B3A','#E07A2A','#C47812','#3E2A0A'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
+  // 2026-05-31: dialed back from the canonical-token mesh — peak #FFE0A0
+  // bloomed into highlighter-yellow at scale (David: "is yellow our long
+  // color?"). New palette is warm honey / burnt amber, sits between easy
+  // (teal) and tempo (copper). Effort dot stays at the brand token
+  // (#F3AD38) so week-strip dots + segment markers don't shift.
+  long:      { mesh: ['#E8C580','#C8983E','#A07628','#74521C','#42280E','#1A0C04'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
   // 2026-05-31: dialed back from the original screamy ember palette
   // (#FFC98A/#FF8847/#F2673A...) — felt closer to race-day intensity than
   // a sustained tempo. New palette is copper / burnt amber so tempo sits
