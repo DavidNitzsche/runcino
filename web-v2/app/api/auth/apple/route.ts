@@ -144,10 +144,24 @@ export async function POST(req: NextRequest) {
   // Mint a session.
   const userAgent = req.headers.get('user-agent') ?? undefined;
   const sess = await createSession(userUuid, { kind: 'apple', userAgent });
-  return NextResponse.json({
+  const res = NextResponse.json({
     ok: true,
     token: sess.token,
     expires_at: sess.expiresAt,
     user_uuid: userUuid,
   });
+  // 2026-05-30 P1 SSR-leak fix follow-up: also set the session as a
+  // cookie so React server components / page loaders can resolve the
+  // runner without the Bearer header (SSR has no client-side state).
+  // The Bearer header path keeps working for API calls. HttpOnly so
+  // JS can't read it; Secure in prod; SameSite=Lax so navigating to
+  // /faff from anywhere on the domain carries the cookie.
+  res.cookies.set('faff_session', sess.token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    expires: new Date(sess.expiresAt),
+  });
+  return res;
 }
