@@ -99,17 +99,30 @@ export function computeFueling(input: FuelingInput): FuelingPlan {
 
   const carbsTotal = Math.round((effectiveRate * durationEstMin) / 60);
   const gelG = gelCarbsG && gelCarbsG > 0 ? gelCarbsG : DEFAULT_GEL_CARBS_G;
-  const gels = carbsTotal > 0 ? Math.max(1, Math.round(carbsTotal / gelG)) : 0;
+  const initialGels = carbsTotal > 0 ? Math.max(1, Math.round(carbsTotal / gelG)) : 0;
 
   // Distribute evenly across the run, first gel at ~30 min.
+  //
+  // Long runs (≥3h) used to push the last two gels past durationEst-5
+  // and the clamp would collapse them onto the same minute, producing
+  // "... + 175 + 175 min" in the DayDetailModal render. Dedupe by
+  // tracking which minutes we've already scheduled and fold the gel
+  // count down to match the distinct slots that actually fit — "9 gels
+  // at 30/50/.../170/175" is honest; "10 gels at 30/50/.../170/175/175"
+  // is broken render. The total-carb target still drives the gPerHr the
+  // coach voices; this is purely a presentation-of-schedule fix.
   const atMins: number[] = [];
-  if (gels > 0) {
-    const stride = gels === 1 ? 0 : Math.max(20, Math.round((durationEstMin - 30) / gels));
-    for (let i = 0; i < gels; i++) {
+  const seen = new Set<number>();
+  if (initialGels > 0) {
+    const stride = initialGels === 1 ? 0 : Math.max(20, Math.round((durationEstMin - 30) / initialGels));
+    for (let i = 0; i < initialGels; i++) {
       const at = Math.min(durationEstMin - 5, 30 + i * stride);
+      if (seen.has(at)) continue;
+      seen.add(at);
       atMins.push(at);
     }
   }
+  const gels = atMins.length;
 
   const productLabel = gelLabel ? `${gelLabel}` : 'gel';
   const plural = gels === 1 ? productLabel : `${productLabel}s`;
