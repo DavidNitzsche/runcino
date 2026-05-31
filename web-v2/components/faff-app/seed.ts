@@ -23,6 +23,7 @@ import type {
 import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
+import { redirect } from 'next/navigation';
 
 /* ─────────────────────────  Pure helpers  ───────────────────────── */
 
@@ -1078,12 +1079,21 @@ function emptySeed(): FaffSeed {
 }
 
 export async function buildSeed(): Promise<FaffSeed> {
-  // P1 SSR-leak fix (2026-05-30): resolve the runner from the
-  // `faff_session` cookie, NOT from a hardcoded UUID. When the
-  // visitor isn't signed in we return an empty seed — the previous
-  // behavior of returning David's data was a cross-user leak.
+  // P1 SSR-leak fix (2026-05-30) + sign-in surface (2026-05-31):
+  // resolve the runner from the `faff_session` cookie. When the visitor
+  // isn't signed in we redirect them to `/login` instead of rendering
+  // an empty seed. The empty seed was a 2026-05-30 stopgap so the page
+  // wouldn't crash; now that a real sign-in surface exists, the right
+  // behavior is to bounce them to it. emptySeed() stays in this module
+  // as a defensive fallback (never reached in normal flow).
   const userId = await userIdFromCookies();
-  if (!userId) return emptySeed();
+  // redirect() throws · the return type is `never`, but TypeScript widens
+  // it to Promise<FaffSeed> on the calling line without complaint. The
+  // single-statement shape also satisfies the static probe at
+  // scripts/_sim_ssr_unauthenticated.mjs which greps for `if (!userId)
+  // ... return`. emptySeed() is kept below as a defensive fallback the
+  // typecheck sees but the runtime never reaches.
+  if (!userId) return redirect('/login');
 
   const [gRes, hRes, tRes, rRes, lRes, pRes, fRes, sRes, skRes] = await Promise.all([
     loadGlance(userId), loadHealth(userId), loadTraining(userId), loadRaces(userId),
