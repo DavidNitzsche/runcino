@@ -53,6 +53,7 @@ const PUBLIC_ROUTES = [
   '/api/learn/[slug]',             // GET — global learn article
   '/api/usage',                    // GET — cost rollup (admin/debug)
   '/api/auth/apple',               // POST — Sign in with Apple (mints session)
+  '/api/auth/email',               // POST — email + password (mints session)
   '/api/strava/webhook',           // GET/POST — Strava-signed callback
 ];
 

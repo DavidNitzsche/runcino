@@ -23,6 +23,7 @@ struct SignInView: View {
     )
 
     @State private var toast: String?
+    @State private var emailSheet: Bool = false
 
     var body: some View {
         ZStack {
@@ -61,6 +62,9 @@ struct SignInView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $emailSheet) {
+            EmailSignInSheet(onSignedIn: onSignedIn)
+        }
     }
 
     private var hero: some View {
@@ -107,13 +111,15 @@ struct SignInView: View {
             }
             .buttonStyle(.plain)
 
-            // Email: text-only ghost button. Same toast pattern.
+            // Email: real path now (2026-05-31). Apple is the primary
+            // flow on this build · email is here as the fallback so
+            // David can get in while the Apple signin issue is sorted.
             Button {
-                showToast("Email sign-in coming soon.")
+                emailSheet = true
             } label: {
                 Text("Sign in with email")
                     .font(.body(15, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.7))
+                    .foregroundStyle(Theme.txt.opacity(0.85))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             }

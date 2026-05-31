@@ -26,7 +26,17 @@ import { createSession } from '@/lib/auth/session';
 const SESSION_COOKIE = 'faff_session';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
-interface SuccessBody { ok: true; redirect: '/today' | '/onboarding'; }
+interface SuccessBody {
+  ok: true;
+  redirect: '/today' | '/onboarding';
+  // iPhone clients need the bearer token in the JSON body (Bearer auth,
+  // not cookies). Web ignores these fields and follows `redirect`. Added
+  // 2026-05-31 so the iPhone EmailSignInSheet can save into TokenStore
+  // without parsing the Set-Cookie header.
+  token: string;
+  expires_at: string;
+  user_uuid: string;
+}
 interface ErrorBody   { ok: false; error: string; }
 
 export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody | ErrorBody>> {
@@ -87,7 +97,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
   await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userRow.user_uuid]).catch(() => {});
 
   const redirect: '/today' | '/onboarding' = userRow.onboarding_complete ? '/today' : '/onboarding';
-  const res = NextResponse.json<SuccessBody>({ ok: true, redirect });
+  const res = NextResponse.json<SuccessBody>({
+    ok: true,
+    redirect,
+    token: sess.token,
+    expires_at: sess.expiresAt,
+    user_uuid: userRow.user_uuid,
+  });
   res.cookies.set(SESSION_COOKIE, sess.token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

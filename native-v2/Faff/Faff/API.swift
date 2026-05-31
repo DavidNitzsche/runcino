@@ -113,6 +113,34 @@ enum API {
         _ = try await API.authedSend(req)
     }
 
+    // MARK: - Email + password (fallback while Apple flow is being fixed)
+
+    struct EmailSignInResponse: Decodable {
+        let ok: Bool
+        let token: String?
+        let expires_at: String?
+        let user_uuid: String?
+        let created: Bool?
+        let error: String?
+    }
+
+    /// POST /api/auth/email · single endpoint that handles both signin
+    /// (email exists with a password_hash) and signup (new email · name
+    /// required). Same response shape as signInWithApple so TokenStore
+    /// can persist the result with one helper. `name` is required only
+    /// when the email isn't on file yet · the backend returns 404 in
+    /// that case so the iPhone can re-prompt for it.
+    static func signInWithEmail(email: String, password: String, name: String? = nil) async throws -> EmailSignInResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/auth/email"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["email": email, "password": password]
+        if let n = name, !n.isEmpty { body["name"] = n }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return try JSONDecoder().decode(EmailSignInResponse.self, from: data)
+    }
+
     // MARK: - P39 auth — Sign in with Apple
 
     struct AppleSignInResponse: Decodable {

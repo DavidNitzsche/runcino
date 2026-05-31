@@ -28,6 +28,7 @@
 		39609C4FA97B179028535FD4 /* ShoesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FCD25057781DAE979CCDBFC /* ShoesView.swift */; };
 		3A64039201C05E24C914B07D /* SettingsCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7664FBCD6CBCAE37BCC24B3B /* SettingsCache.swift */; };
 		3BA6B12FCF16C3B5BD62797B /* WeekStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */; };
+		3DFD4C5161A0FAD5F32AB8CA /* EmailSignInSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */; };
 		3F8961DDB77A018095E82A1D /* ProView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 188559D9B23742DBC413C75E /* ProView.swift */; };
 		3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761D6D9F643EAA00C64D9BBC /* Runs.swift */; };
 		4167E13357AE78F92DB3AB54 /* CoachNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D6283403CA7FE36BA1199 /* CoachNote.swift */; };
@@ -189,6 +190,7 @@
 		79F2EC545B990808978B44F0 /* WatchFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFixtures.swift; sourceTree = "<group>"; };
 		7A2DDEC15725161C4032FEC9 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 		7AB076FD4BB8D790F2DB9B79 /* FaceKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceKit.swift; sourceTree = "<group>"; };
+		7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailSignInSheet.swift; sourceTree = "<group>"; };
 		801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FaffTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		80D79010E6307A7B819FD164 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		81938656B7079C01BB12693C /* ColdStartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdStartView.swift; sourceTree = "<group>"; };
@@ -358,6 +360,7 @@
 				E94BF41A96C49C2F0DFE896D /* ActivityView.swift */,
 				81938656B7079C01BB12693C /* ColdStartView.swift */,
 				5A1E512B91F90E427F7D89B1 /* CompletedView.swift */,
+				7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */,
 				A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */,
 				2D2748856DA0BE8CFF0A0E62 /* LearnArticleSheet.swift */,
 				C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */,
@@ -621,6 +624,7 @@
 				14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */,
 				317B8EDA830CCC1FE06624A4 /* CompletedView.swift in Sources */,
 				A4BFA53D2EB8255A25E154AD /* DragSheet.swift in Sources */,
+				3DFD4C5161A0FAD5F32AB8CA /* EmailSignInSheet.swift in Sources */,
 				30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */,
 				456E4CFA1CB168E314A39A1D /* FaffMesh.swift in Sources */,
 				4CACFB0EB456705EF1BAABB5 /* FaffPayloads.swift in Sources */,
