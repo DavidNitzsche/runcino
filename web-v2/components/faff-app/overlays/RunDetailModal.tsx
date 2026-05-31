@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { ZC } from '../constants';
 import { decodePolyline, polylineToSvgPath, polylineEndpoints, elevPathFromSplits } from '@/lib/route/polyline';
+import { RPEEntryCard } from '../toolkit';
 
 /**
  * Run-detail overlay. Opens off Activity / Recent Runs / Heatmap clicks
@@ -237,6 +238,15 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                   {data.weather_context.message}
                 </div>
               )}
+              {/* RPE entry (Borg CR10) · post-run subjective rating. The
+                  card lazy-fetches the prior RPE so re-opening a rated
+                  run shows the existing value. Closes coverage row 727
+                  ("RPE + post-run notes") + line 787 ("Show prior RPE
+                  on re-open"). */}
+              <div className="fll" style={{ marginTop: 22 }}>HOW IT FELT</div>
+              <div style={{ marginTop: 6 }}>
+                <RPEEntryCard runId={data.id} />
+              </div>
             </>
           )}
         </div>

@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FaffSeed, ShoeRec } from '../types';
 import { ROLECOL } from '../constants';
+import {
+  CoachActivityTimeline,
+  NotificationPrefsList,
+} from '../toolkit';
 
 const ROLES = ['RACE','TEMPO','LONG','EASY','RECOVERY'];
 
@@ -12,7 +16,6 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
   const [garage, setGarage] = useState<ShoeRec[]>(seed.shoes);
   const [editing, setEditing] = useState<number | null>(null);
   const [units, setUnits] = useState('Miles · °F');
-  const [notif, setNotif] = useState(true);
   const [pending, setPending] = useState(false);
 
   // Pick up server-seed updates so refreshes reflect the truth.
@@ -138,9 +141,6 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           <span className="setv">{seed.connections.filter(c => c.on).map(c => c.nm).join(' · ') || 'None'}</span>
           <span className="sgo">›</span>
         </div>
-        <div className="setr" onClick={() => setNotif(!notif)}>
-          <span className="setk">NOTIFICATIONS</span><span className="setv" style={{ opacity: notif ? 1 : 0.5 }}>{notif ? 'On' : 'Off'}</span><span className="sgo">›</span>
-        </div>
         <div className="setr">
           <span className="setk">EXPERIENCE</span><span className="setv">{prettyExperience(seed.user.experienceLevel)}</span><span className="sgo">›</span>
         </div>
@@ -150,6 +150,21 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         <div className="setr danger">
           <span className="setk">SIGN OUT</span><span className="setv"></span>
         </div>
+      </div>
+
+      {/* Notification preferences · live GET + PATCH against
+          /api/profile/notifications. Closes coverage line 1806 (notification
+          taxonomy) + line 1468 (per-category prefs). */}
+      <div className="fll" style={{ marginTop: 30 }}>NOTIFICATIONS</div>
+      <div style={{ marginTop: 6 }}>
+        <NotificationPrefsList />
+      </div>
+
+      {/* Coach activity log · last 30 days of coach_intents rows in plain
+          English. Closes coverage line 1999 (coach_intents activity log). */}
+      <div className="fll" style={{ marginTop: 30 }}>COACH ACTIVITY</div>
+      <div style={{ marginTop: 6 }}>
+        <CoachActivityTimeline limit={20} />
       </div>
 
       <ShoeEditor

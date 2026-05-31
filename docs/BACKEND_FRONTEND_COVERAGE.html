@@ -235,12 +235,14 @@
   <td>Daily cron runs 9 adaptation triggers (RHR spike, sleep crater, niggle,
       volume overshoot, etc.). When one fires, it writes a coach_intents row
       explaining what changed and why.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. Today should surface "the coach
-      adjusted your plan because X" when last_adapted_at &lt; 24h and a
-      coach_intents row with reason LIKE 'plan_adapt_*' exists. Currently
-      the user has no visibility into adaptations.</td>
-  <td><code>lib/plan/adapt.ts</code> · <code>coach_intents</code> table</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit AdaptationCard.</strong> TodayView renders
+      AdaptationCard between the readiness header and the proposals strip
+      (last 36h recent intent, override severity tint). Backed by new
+      GET /api/coach/intents which classifies severity + narrates each row
+      in plain English.</td>
+  <td><code>lib/plan/adapt.ts</code> · <code>coach_intents</code> table ·
+      <code>app/api/coach/intents/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -402,12 +404,11 @@
       the live faff-app TodayView doesn't expose the band label to the
       runner. It's the single best leading indicator of overreach yet
       it's silent.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: small "LOAD · sweet spot" chip in the
-      readiness row on faff-app TodayView. Color per band (amber for
-      detrain/elevated, green for build/sweet_spot, red for spike).
-      <strong>Can add inline</strong> · data is in the seed already
-      via loadGlanceState.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit LoadBandChip.</strong> TodayView renders
+      LoadBandChip in the readiness row with the Gabbett-band classifier
+      (detraining / building / sweet_spot / elevated / spike). Seed.form
+      now exposes raw <code>acwr</code> for the bucket.</td>
   <td><code>lib/coach/glance-state.ts:283</code> ·
       <code>lib/coach/fact-reciter.ts:loadBand</code></td>
   <td class="client-web">WEB</td>
@@ -484,11 +485,13 @@
   <td>Every time the coach adapts the plan (cron-driven), a row is written
       to plan_mutations recording the before/after diff. The plan_workouts
       row gets updated in place but the history persists.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. Worth a "your plan has been
-      adjusted N times" pill on the Plan page, expandable to see what
-      changed and when.</td>
-  <td><code>plan_mutations</code> table · <code>lib/plan/adapt.ts</code></td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit WhatChangedExpander.</strong> TrainView
+      renders a PLAN ADJUSTMENTS expander under the KEY WORKOUTS list,
+      backed by GET /api/coach/intents filtered to reason LIKE
+      'plan_adapt_%'. Plain-English summary per row with severity tint.</td>
+  <td><code>plan_mutations</code> table · <code>lib/plan/adapt.ts</code> ·
+      <code>app/api/coach/intents/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -577,15 +580,15 @@
       existing "Plan mutation history" + "Adaptation events on Today"
       rows surface that A change happened; this is the next layer down:
       enumerate WHICH detector fired and what threshold tripped.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: a "Plan adjustments this week" expandable
-      block on /plan showing each fired trigger as one line: "Tuesday
-      tempo dropped to easy · sleep dipped 1.7h below baseline." Pulls
-      from coach_intents with reason LIKE 'plan_adapt_*'. Builds trust
-      that the coach is actually reading signals, not random.
-      <strong>Design tweak needed</strong> for the disclosure layout.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit WhatChangedExpander.</strong> Same surface
+      as the row above · TrainView's PLAN ADJUSTMENTS expander enumerates
+      every fired plan_adapt_* trigger with the toolkit's plain-English
+      summary narration per reason key (volume_overshoot, rhr_spike,
+      sleep_crater, missed_key_workout, niggle_reported, sick_episode_active,
+      injury_active, goal_changed, pr_bank).</td>
   <td><code>lib/plan/adapt.ts:detectMissedKeyWorkout…detectVolumeOvershoot</code> ·
-      <code>coach_intents</code></td>
+      <code>coach_intents</code> · <code>app/api/coach/intents/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
@@ -724,11 +727,12 @@
   <td><strong>RPE + post-run notes</strong></td>
   <td>Runner can rate effort (Borg CR10 1-10) and add notes. Backend writes
       to post_run_rpe table for use in future adaptation decisions.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td>API exists (/api/runs/[id]/rpe). UI input surface unknown. Check
-      design then either render the input or flag for a design tweak.
-      <strong>Also found by IOS on 2026-05-31</strong>: iPhone RunDetailView
-      doesn't render the RPE input either · same gap on both clients.</td>
+  <td class="cov-full">FULL · WEB</td>
+  <td><strong>SHIPPED · toolkit RPEEntryCard.</strong> RunDetailModal renders
+      the Borg CR10 scale + notes textarea under a HOW IT FELT eyebrow.
+      Lazy-fetches prior RPE on open so re-opens pre-fill with the existing
+      value (closes the "Show prior RPE on re-open" companion row). iPhone
+      still TODO.</td>
   <td><code>app/api/runs/[id]/rpe/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
@@ -1215,11 +1219,12 @@
       Pushes work; race detail has no countdown ladder showing the
       runner "you're 14 days out · here's what's next." Only the raw
       days-out integer renders.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: vertical countdown ladder on race detail
-      in race-week mode (T-7 through T-0) where today's marker glows.
-      Mirrors the notification cadence as an always-visible timeline.
-      <strong>Design tweak needed</strong> for layout.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit CountdownLadder.</strong> RaceView renders
+      a T-7 → T-0 vertical ladder when the race is within race week
+      (daysAway ≤ 7), with today's marker highlighted in amber and the
+      race day rung tinted race-red. Mirrors the notification cadence as
+      an always-visible timeline.</td>
   <td><code>app/api/cron/notifications/route.ts</code> ·
       <code>lib/notifications/templates.ts:renderRaceCountdown</code></td>
   <td class="client-web">WEB</td>
@@ -1349,10 +1354,12 @@
       HRV, weight, RHR via POST /api/health/manual with research-grounded
       validation ranges. Backend stamps user_id (text) + writes to
       health_samples.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. A "log it manually" entry point
-      for web-only users. iOS users get it via HealthKit so this is
-      web-specific. Small "+ add measurement" pill at the top of Health.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ManualHealthSheet.</strong> HealthView
+      surfaces a "+ Log measurement" pill in the BODY · FORM header that
+      opens a bottom-sheet for 6 metric types (sleep / HRV / RHR / weight /
+      hr_recovery / VO2max) with per-type range validation. POSTs to
+      /api/health/manual.</td>
   <td><code>app/api/health/manual/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
@@ -1599,12 +1606,15 @@
       bailed runner currently has no in-app prompt to come back and
       connect Strava / Apple Health later · the affordance died after
       the skip.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: when connections_skipped=true AND
-      profile has no connected source, surface a one-time "Connect a
-      source for richer data" card on /me. Dismissable so it doesn't
-      nag forever. <strong>Can add inline</strong>.</td>
-  <td><code>profile.connections_skipped</code> · migration 115</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ReconnectBanner (auto Strava variant).</strong>
+      TodayView mounts ReconnectBanner at the top, which reads
+      /api/strava/status. The "disconnected" variant covers the
+      connections-skipped case with a CONNECT CTA; "needs_reauth"
+      handles stale tokens. The banner auto-hides when state is
+      connected so it never nags.</td>
+  <td><code>profile.connections_skipped</code> · migration 115 ·
+      <code>app/api/strava/status/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
@@ -1803,13 +1813,15 @@
       workout_reminder, race_week_brief, plan_change_notification,
       weekly_recap, pr_alert, injury_proposal. Each has fire conditions +
       delivery time rules.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: Settings → Notifications surface with 7
-      toggles, one per category. Currently runners can't disable specific
-      categories. <strong>Can add inline</strong> to a Settings → Notifications
-      page using the existing toggle component.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit NotificationPrefsList.</strong> ProfileView
+      renders a NOTIFICATIONS section with switch rows for each of the
+      8 prefs keys (master + 7 categories). Live GET + PATCH against
+      /api/profile/notifications with optimistic-update + rollback on
+      failure.</td>
   <td><code>learn_articles slug='doctrine-notification-taxonomy'</code> ·
-      <code>notifications_pending.category</code></td>
+      <code>notifications_pending.category</code> ·
+      <code>app/api/profile/notifications/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -1996,13 +2008,14 @@
       the plan_adapt_* family from the adaptation cron. No surface
       lets the runner see "what the coach has done for me lately"
       across these signals · they live as silent receipts.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: a "Coach activity" history accessible
-      from Profile, listing the last 30 days of coach_intents rows
-      grouped by reason. Each line in plain English: "May 14 · LTHR
-      updated from Big Sur Half · 162 bpm." Trust + receipts in one
-      view. <strong>Design tweak needed</strong> for the layout.</td>
-  <td><code>coach_intents</code> table · multiple writers</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit CoachActivityTimeline.</strong> ProfileView
+      renders a COACH ACTIVITY section showing the last 20 coach_intents
+      rows as a vertical timeline grouped by day, each row colored by
+      severity (info / warn / override) with a plain-English summary
+      narration per reason key. Backed by GET /api/coach/intents.</td>
+  <td><code>coach_intents</code> table · multiple writers ·
+      <code>app/api/coach/intents/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { FaffSeed, HealthMetric } from '../types';
+import { ManualHealthSheet } from '../toolkit';
 
 const GREEN = '#62e08a', AMBER = '#ffb24d', NEUT = '#bfeee2';
 const STATUS_COLOR: Record<HealthMetric['status'], string> = { good: GREEN, warn: AMBER, neutral: NEUT };
@@ -112,10 +114,12 @@ function formatSleep(hours: number | undefined): string {
 }
 
 export function HealthView({ seed }: { seed: FaffSeed }) {
+  const router = useRouter();
   const { readiness, body, form } = seed.health;
   const [openBody, setOpenBody] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState<string | null>(null);
   const [range, setRange] = useState<7 | 30>(30);
+  const [logOpen, setLogOpen] = useState(false);
   const bodyOpen = body.find(m => m.k === openBody);
   const formOpen = form.find(m => m.k === openForm);
 
@@ -175,7 +179,21 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
       <div className="hhero-sep" />
       <div className="hseclbl" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
         <span>BODY · FORM</span>
-        <RangeToggle range={range} onChange={setRange} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            type="button"
+            onClick={() => setLogOpen(true)}
+            style={{
+              fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4,
+              textTransform: 'uppercase', color: 'var(--dist)', background: 'rgba(39,180,224,.08)',
+              border: '1px solid rgba(39,180,224,.28)', borderRadius: 14,
+              padding: '8px 14px', cursor: 'pointer',
+            }}
+          >
+            + Log measurement
+          </button>
+          <RangeToggle range={range} onChange={setRange} />
+        </div>
       </div>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, opacity: 0.55, margin: '20px 0 0' }}>BODY</div>
       <div className="cardgrid">
@@ -192,6 +210,28 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
         ))}
       </div>
       <div className="hdetail">{formOpen && <Detail m={formOpen} rangeLabel={range === 7 ? '7-DAY' : '30-DAY'} sliceN={range} />}</div>
+
+      {/* Manual health entry sheet · POSTs to /api/health/manual.
+          Closes coverage line 1352 (web-only manual entry). */}
+      {logOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 50,
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            background: 'rgba(0,0,0,.55)',
+          }}
+          onClick={() => setLogOpen(false)}
+        >
+          <div style={{ width: '100%', maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <ManualHealthSheet
+              onSaved={() => router.refresh()}
+              onClose={() => setLogOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

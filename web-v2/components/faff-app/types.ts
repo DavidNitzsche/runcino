@@ -34,7 +34,7 @@ export type FaffSeed = {
   volumeBars: VolumeBar[];         // 8-week strip
   thisWeekMiles: number;
   weeklyAvg: number;
-  form: { fitness: number; fatigue: number; delta: number; label: string };
+  form: { fitness: number; fatigue: number; delta: number; label: string; acwr: number | null };
 
   // train view (26-week plan)
   season: {

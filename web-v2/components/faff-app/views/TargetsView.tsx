@@ -1,11 +1,17 @@
 'use client';
 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { FaffSeed } from '../types';
+import { LogNonRunSheet, NewGoalSheet } from '../toolkit';
 
 export function TargetsView({
   seed, onOpenRace,
 }: { seed: FaffSeed; onOpenRace: (slug: string) => void; onOpenReach?: () => void }) {
+  const router = useRouter();
   const goal = seed.goalRace;
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   // The "Coach spotted something" banner stays hidden until the coach
   // engine actually emits a within-reach signal (no such surface yet).
   // When that ships, accept a `coachInsight` prop and render the banner
@@ -89,7 +95,66 @@ export function TargetsView({
           </div>
         ))}
       </div>
+
+      {/* Action pills · personal goals + non-run logging. POSTs to
+          /api/goals and /api/strength|cross-training respectively.
+          Closes coverage lines 1830 (personal goals) + 1847/1863 (non-run logging). */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 24 }}>
+        <button
+          type="button"
+          onClick={() => setGoalOpen(true)}
+          style={{
+            fontFamily: 'inherit', fontSize: 11, fontWeight: 700, letterSpacing: 1.4,
+            textTransform: 'uppercase', color: 'var(--bg)', background: 'var(--txt)',
+            border: 0, borderRadius: 14, padding: '11px 18px', cursor: 'pointer',
+          }}
+        >
+          + New goal
+        </button>
+        <button
+          type="button"
+          onClick={() => setLogOpen(true)}
+          style={{
+            fontFamily: 'inherit', fontSize: 11, fontWeight: 700, letterSpacing: 1.4,
+            textTransform: 'uppercase', color: 'var(--txt)', background: 'rgba(255,255,255,.07)',
+            border: '1px solid var(--glass-line)', borderRadius: 14,
+            padding: '11px 18px', cursor: 'pointer',
+          }}
+        >
+          + Log strength / cross
+        </button>
+      </div>
+
+      {goalOpen ? (
+        <SheetOverlay onDismiss={() => setGoalOpen(false)}>
+          <NewGoalSheet onSaved={() => router.refresh()} onClose={() => setGoalOpen(false)} />
+        </SheetOverlay>
+      ) : null}
+      {logOpen ? (
+        <SheetOverlay onDismiss={() => setLogOpen(false)}>
+          <LogNonRunSheet onSaved={() => router.refresh()} onClose={() => setLogOpen(false)} />
+        </SheetOverlay>
+      ) : null}
     </>
+  );
+}
+
+function SheetOverlay({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+        background: 'rgba(0,0,0,.55)',
+      }}
+      onClick={onDismiss}
+    >
+      <div style={{ width: '100%', maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
   );
 }
 

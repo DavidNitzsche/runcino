@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
+import { WhatChangedExpander } from '../toolkit';
 
 interface PhaseMeta {
   k: PhaseKey;
@@ -524,6 +525,14 @@ export function TrainView({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Plan mutation history · WhatChangedExpander filters
+              coach_intents to reason LIKE 'plan_adapt_%'. Closes
+              coverage lines 487 (plan mutation history) + 580
+              (9 adaptation trigger types). */}
+          <div style={{ marginTop: 18 }}>
+            <WhatChangedExpander label="PLAN ADJUSTMENTS" reasonPrefix="plan_adapt" />
           </div>
         </div>
       </div>

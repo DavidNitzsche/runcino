@@ -7,6 +7,12 @@ import { EFF, SEGS, KIT, ROLECOL } from '../constants';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { RouteMap } from '../RouteMap';
+import {
+  AdaptationCard,
+  LoadBandChip,
+  ReconnectBanner,
+  type LoadBand,
+} from '../toolkit';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace,
@@ -53,8 +59,29 @@ export function TodayView({
     return result?.shoe;
   })();
 
+  // Toolkit-derived load band from the seed's ACWR. Closes the
+  // "ACWR sweet-spot band signal" gap (coverage line 405). Surfaced
+  // as a small chip in the readiness row so the runner can see whether
+  // load is detraining / building / sweet spot / elevated / spike.
+  const loadBand: LoadBand | null = (() => {
+    const a = seed.form.acwr;
+    if (a == null) return null;
+    if (a < 0.8) return 'detraining';
+    if (a < 1.0) return 'building';
+    if (a <= 1.3) return 'sweet_spot';
+    if (a <= 1.5) return 'elevated';
+    return 'spike';
+  })();
+
   return (
     <>
+      {/* Reconnect banner · auto-hides when Strava is connected. Closes
+          coverage row 1602 (connections-skipped) when the banner reads
+          the strava status as `disconnected`. */}
+      <div style={{ marginBottom: 12 }}>
+        <ReconnectBanner />
+      </div>
+
       <div className="top">
         <div>
           <div className="date">{d.full}</div>
@@ -77,6 +104,17 @@ export function TodayView({
           </div>
         </div>
       </div>
+
+      {/* Load band chip + adaptation card row. Renders nothing when there's
+          no signal — keeps the surface clean on quiet days. */}
+      {(loadBand || true) ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, alignItems: 'flex-start' }}>
+          {loadBand ? <LoadBandChip band={loadBand} /> : null}
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <AdaptationCard />
+          </div>
+        </div>
+      ) : null}
 
       {seed.pendingProposals.length > 0 ? (
         <div style={{ marginTop: 8 }}>

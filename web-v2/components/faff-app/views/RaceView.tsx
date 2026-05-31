@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { FaffSeed } from '../types';
+import { CountdownLadder, MARATHON_COUNTDOWN } from '../toolkit';
 
 async function patchRace(slug: string, payload: Record<string, unknown>): Promise<boolean> {
   try {
@@ -262,6 +263,14 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-ss"><div className="k">TOTAL GAIN</div><div className="v">+{r.gainFt.toLocaleString()}<small> ft</small></div></div>
         <div className="rp-ss"><div className="k">GOAL PACE</div><div className="v">{goalPace}<small>/mi</small></div></div>
       </div>
+
+      {/* Race week countdown · only renders inside T-7 → T-0 window. */}
+      {!r.isPast && r.daysAway >= 0 && r.daysAway <= 7 ? (
+        <div style={{ marginTop: 16 }}>
+          <div className="rp-sec">RACE WEEK</div>
+          <CountdownLadder entries={MARATHON_COUNTDOWN} today={r.daysAway} />
+        </div>
+      ) : null}
 
       <div className="rp-sec">
         THE COURSE
