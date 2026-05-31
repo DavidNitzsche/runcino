@@ -3,8 +3,9 @@
 ## TL;DR
 
 Implement the Faff web sign-in screen from `designs/faff-web-signin.html` against
-the existing `web-v2/` backend. Apple sign-in already works. Build Google +
-email/password to match.
+the existing `web-v2/` backend. **Apple is the only working path.** Render the
+Google + email buttons as the design shows (visual parity) but mark them as
+deferred · no functional handler yet.
 
 ## Read these in order before writing any code
 
@@ -67,72 +68,29 @@ Visual checklist (verify against the standalone HTML):
 - Fine-print bottom · agreement copy
 - Subtle grain overlay (the SVG-encoded fractal noise) and the bottom-fade
 
-### 2. New API route `POST /api/auth/email`
+### 2. Google + Email buttons · visual only, no handler
 
-Email/password sign-in. Pattern after `web-v2/app/api/auth/apple/route.ts`.
+The Google and email buttons stay in the design for visual fidelity but are
+not wired in this PR. `onClick` for both → small toast "Coming soon · use
+Continue with Apple for now." Style them at full opacity (don't grey them ·
+the design treats all three buttons as equally polished) · they're functional
+no-ops, not visibly disabled.
 
-Request body:
-```ts
-{ email: string; password: string }
-```
+No `/api/auth/email` or `/api/auth/google` routes get built in this PR.
 
-Steps:
-1. Validate shape (zod or manual)
-2. `SELECT id, password_hash, status, onboarding_complete, is_admin,
-    email_verified_at FROM users WHERE email = $1`
-3. If no row OR status != 'active' → 401
-4. **Bootstrap branch** · first login for admins who never set a password via
-   this surface:
-   - IF `is_admin = TRUE AND email_verified_at IS NULL`:
-     - `UPDATE users SET password_hash = bcrypt(password),
-        email_verified_at = NOW() WHERE id = $userId`
-     - Skip the bcrypt.compare step (the stored hash may be stale legacy
-       bcrypt with a different cost / algo and is being replaced)
-     - Continue to step 6 (mint session)
-   - This branch is gated · admin-and-unverified only · closes after first
-     successful login (because `email_verified_at` is now stamped) · safe
-     against non-admin bypass
-5. **Normal branch** · `bcrypt.compare(password, password_hash)` · if false
-   → 401 (use `bcryptjs` for Edge compatibility; if Node-runtime, regular
-   `bcrypt` is fine)
-6. INSERT a `sessions` row with token + expires_at (mirror apple route ~140)
-7. `res.cookies.set('faff_session', sess.token, { httpOnly: true, secure: prod,
-   sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 30 })`
-8. Update `users.last_login_at = NOW()`
-9. Return `{ ok: true, redirect: onboarding_complete ? '/today' : '/onboarding' }`
-
-The bootstrap branch lets David (or any future bootstrap admin) sign in for
-the first time without a separate password-reset script · he types whatever
-password he wants to use going forward, step 4 sets it, step 6 mints the
-session, he's in. Subsequent logins go through the normal branch.
-
-### 3. New API route `POST /api/auth/google`
-
-OAuth flow. Use NextAuth or `@auth/core` if it's already a dependency; otherwise
-direct OAuth (lighter). On callback:
-1. Verify Google ID token (via `google-auth-library` or jwks endpoint)
-2. Look up `users WHERE email = $googleEmail` · if not found, INSERT new row
-   (`status='active'`, `is_admin=false`, `onboarding_complete=false`)
-3. Mint session + set cookie exactly like email route
-4. Redirect to `/today` or `/onboarding`
-
-Strong recommendation: stub the Google route as `501 NOT IMPLEMENTED` in this
-PR and hide the button (or grey it with a "Coming soon" hover) if OAuth setup
-adds too much scope. The user is iPhone-first; Apple is the primary path. Don't
-block the PR on Google.
-
-### 4. New probe `web-v2/scripts/_sim_login_surface.mjs`
+### 3. New probe `web-v2/scripts/_sim_login_surface.mjs`
 
 Static-audit probe that asserts:
 - `/login` page exists and contains `data-test="signin-apple"`, `signin-google`,
-  `signin-email` markers (add these to the buttons)
-- `POST /api/auth/email` exists and returns 401 on bad creds, 200 on good
-- `POST /api/auth/google` exists (even if 501)
+  `signin-email` markers (add these to the buttons even though Google and
+  email are deferred · future PRs will need to find them)
 - Apple route still works (don't break it)
-- Cookie name in all three is `faff_session` (consistent with SSR loaders)
+- Cookie name is `faff_session` (consistent with SSR loaders)
+- The Google and email buttons fire a toast but make no fetch
 
 The probe runs in static mode (file-existence + route-signature checks) by
-default; pass `--live` to actually POST to the routes with synthetic creds.
+default; pass `--live` to actually exercise the Apple flow with a synthetic
+session.
 
 ## What you do NOT have to build (out of scope)
 
@@ -145,24 +103,13 @@ default; pass `--live` to actually POST to the routes with synthetic creds.
 - Magic-link auth · explicitly not in this design
 - Two-factor · not in this design
 
-## How David signs in first time (no separate script)
+## How David signs in
 
-Two paths, his choice:
-
-**Primary · Continue with Apple.** His `users.email` is `dnitch85@me.com` (an
-Apple ID). The existing `/api/auth/apple` route looks up by email, finds his
-row, mints session, sets cookie, redirects to `/today`. **Click → done. Zero
-ceremony.**
-
-**Alternative · Sign in with email.** His current state is `is_admin = true,
-email_verified_at = NULL`, which triggers the bootstrap branch in step 4 of the
-email route. First attempt with whatever password he types sets that password
-as authoritative AND stamps email_verified_at. Subsequent attempts use normal
-bcrypt verification. Safe · gated on admin-and-unverified · closes after first
-use.
-
-Either path lands him on `/today` with all his data visible (8/8 david-intact
-post-login). No script. No CLI. No password reset link he has to wait for.
+Click "Continue with Apple." His Apple ID is `dnitch85@me.com` which matches
+his `users.email`. The existing `/api/auth/apple` route looks up by email,
+finds his row, mints session, sets cookie, redirects to `/today`. **Click →
+done.** No script · no password · no setup. His 91-workout marathon-prep plan
+renders on first paint.
 
 ## Acceptance criteria
 
@@ -174,11 +121,9 @@ The PR is complete when:
 4. The `/login` route renders pixel-close to `designs/faff-web-signin.html`
    (open both in a browser side-by-side; the production version drops the
    `.win` mockup wrapper — full viewport instead)
-5. David signs in either via Apple OR via email (with the bootstrap branch
-   accepting whatever password he types on first attempt because his row has
-   `is_admin = true AND email_verified_at = NULL`) and lands on `/today` with
-   his data visible (8/8 david-intact pass post-login). **No CLI script
-   needed.**
+5. David clicks "Continue with Apple" and lands on `/today` with his data
+   visible (8/8 david-intact pass post-login). The Google and email buttons
+   fire a toast but don't break the flow.
 6. Cold-start user (no session) hitting `/login` sees the form. Hitting any
    protected route (e.g. `/today`) redirects them to `/login`
 7. The middlware / SSR cookie check from `web-v2/components/faff-app/seed.ts`
@@ -210,15 +155,14 @@ The PR is complete when:
 Commit and push to main with a single commit message:
 
 ```
-feat(auth): web sign-in screen + email/password + Google stub
+feat(auth): web sign-in screen wired to Apple
 
-Implements designs/faff-web-signin.html. Three auth paths:
-  - Apple: existing /api/auth/apple (unchanged)
-  - Email: new /api/auth/email (bcrypt password, sets faff_session cookie)
-  - Google: new /api/auth/google (501 stub for now; button shown but greyed)
+Implements designs/faff-web-signin.html. Apple is the working path;
+Google + email buttons render at full visual fidelity per the design
+but fire "Coming soon" toasts in this PR (deferred to future work).
 
-New: /login route · _reset_user_password.mjs helper · _sim_login_surface
-probe. All 10 backend probes + tsc still pass.
+New: /login route + _sim_login_surface probe. All 10 backend probes
++ tsc still pass.
 
 Closes: web sign-in surface gap flagged in docs/AUDIT_FINAL_2026-05-30.html
 ```
