@@ -108,10 +108,37 @@
 <p class="lede">
   Running log of <strong>every backend capability</strong> the system has, and
   whether it's actually surfaced in a frontend client. Maintained by the web
-  agent and the iPhone agent as they discover things while building.
-  Sorted by app surface so David can scan by page and see what's missing or
-  partial. Plain English only.
+  agent, the iPhone agent, and the design agent as items move through the
+  lifecycle below. Sorted by app surface. Plain English only.
 </p>
+
+<div class="protocol" style="background:linear-gradient(135deg,rgba(255,112,40,0.10),rgba(245,197,24,0.06));border-color:rgba(255,112,40,0.40);">
+<h3 style="color:#ff7028;">Lifecycle · state machine for every row</h3>
+<p>
+  Each row moves through five states. The state is encoded as a CAPS prefix on
+  the <strong>Recommendation</strong> column · prefix followed by the existing
+  body content (proposal, file ref, commit, etc).
+</p>
+<ol style="margin-top:8px;">
+  <li><strong style="color:#FC4D64;">GAP</strong> · web/iOS agent flagged this · waiting for design judgment. Body: original recommendation flavor ("design tweak needed" / "can add inline · &lt;proposal&gt;" / "safe to leave · &lt;why&gt;").</li>
+  <li><strong style="color:#B084FF;">DESIGNING</strong> · design agent working. Body: short direction + expected file location.</li>
+  <li><strong style="color:#F5C518;">DESIGN-READY</strong> · spec ready · implementation queue. Body: <code>designs/&lt;file&gt;.html</code> · what's expected.</li>
+  <li><strong style="color:#27B4E0;">IMPLEMENTING</strong> · web or iOS building. Body: branch name · target date.</li>
+  <li><strong style="color:#14C08C;">SHIPPED</strong> · merged to main. Body: <code>commit &lt;sha&gt; · WEB / IOS / BOTH</code>.</li>
+</ol>
+<p style="margin-top:10px;">
+  <strong style="color:var(--mute);">SAFE-TO-LEAVE</strong> · terminal · the
+  implementation queue skips. Use for admin-only routes, internal derivations,
+  capabilities that surface indirectly.
+</p>
+<p style="margin-top:10px;">
+  <strong>Who updates what</strong> · the design agent runs in Claude Design
+  (canvas tool, no direct repo write) so the implementation agents own the
+  lifecycle prefix updates. Design agent's memo references rows by surface
+  section + capability name · implementation agents grep, find, update the
+  prefix as work moves through.
+</p>
+</div>
 
 <div class="protocol">
 <h3>How to use this doc · for the agents</h3>
