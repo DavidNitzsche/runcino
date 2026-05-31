@@ -119,6 +119,15 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
   return (
     <div
       className={`win${sbCollapsed ? ' sb-collapsed' : ''}`}
+      // data-view feeds the offscreen-pause CSS rule (handoff spec §4):
+      // animations only run while Today is the active view. The other
+      // views still render the mesh as backdrop, but the blob loops
+      // freeze so we're not burning GPU cycles on a surface no one is
+      // looking at.
+      data-view={view}
+      // --mbase kept as an alias for back-compat with .gate-mesh (login)
+      // and .win backgrounds defined in globals.css before the spec
+      // moved to --base. Mesh component writes the canonical --base.
       style={{ ['--mbase' as string]: mesh[5] } as CSSProperties}
     >
       <Mesh mesh={mesh} />
@@ -244,9 +253,25 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
 }
 
 function Mesh({ mesh }: { mesh: Mesh }) {
+  // Per "Effort Mesh Background" handoff spec (locked 2026-05-31): write
+  // every stop as a CSS variable on the mesh container so the
+  // reduced-motion fallback gradient (defined in globals.css) can read
+  // the same active palette. Each blob also gets its inline background
+  // so React triggers the .7s transition on per-day re-theme, but the
+  // class-level `background: var(--cN)` rule stays as a no-anim
+  // baseline for the prefers-reduced-motion branch.
+  const meshVars = {
+    ['--c1' as string]: mesh[0],
+    ['--c2' as string]: mesh[1],
+    ['--c3' as string]: mesh[2],
+    ['--c4' as string]: mesh[3],
+    ['--c5' as string]: mesh[4],
+    ['--base' as string]: mesh[5],
+    background: mesh[5],
+  } as CSSProperties;
   return (
     <>
-      <div className="mesh" style={{ background: mesh[5] }}>
+      <div className="mesh" style={meshVars}>
         <div className="blobs">
           <div className="blob b1" style={{ background: mesh[0] }} />
           <div className="blob b2" style={{ background: mesh[1] }} />

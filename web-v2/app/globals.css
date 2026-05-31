@@ -15,17 +15,31 @@
   /* canonical effort temperature scale (web app values, per brand bible) */
   --eff-recovery:#27B4E0; --eff-easy:#14C08C; --eff-long:#F3AD38;
   --eff-tempo:#FF8847; --eff-intervals:#FC4D64; --eff-race:#D63E4E;
-  /* today = tempo / race-ember mesh */
-  --c1:#FFC98A; --c2:#FF8847; --c3:#F2673A; --c4:#E85D26; --c5:#C23A1C; --mbase:#4A1208;
+  /* ────────────────────────────────────────────────────────────────
+     Effort Mesh Background · canonical defaults (handoff spec locked
+     2026-05-31). Today's effort overrides these vars per day via
+     <Mesh> in Shell.tsx; this fallback covers SSR's first paint
+     before hydration and any descendant that reads the vars without
+     a closer ancestor having written them.
+     Default = tempo (luminous, no brown) per spec §1.
+     --base is canonical; --mbase kept as alias for back-compat with
+     .gate-mesh (login) and any older selectors that haven't migrated. */
+  --c1:#FFD2A4; --c2:#FF9A54; --c3:#FB6E3C; --c4:#F4502F; --c5:#E23A47;
+  --base:#9E2438; --mbase:#9E2438;
 }
 html,body{height:100%;}
 body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211d18;overscroll-behavior:none;}
 .disp{font-family:'Oswald',sans-serif;}
-.win{width:100%;min-height:100vh;position:relative;overflow:hidden;background:var(--mbase);display:flex;}
-.mesh{position:absolute;inset:0;z-index:0;background:var(--mbase);transition:background .7s ease;}
+.win{width:100%;min-height:100vh;position:relative;overflow:hidden;background:var(--base);display:flex;transition:background .7s ease;}
+/* Effort Mesh Background · §2 blob layout + §4 web implementation.
+   The Mesh component writes --c1..--c5 + --base per the active day's
+   effort; per-blob inline `background` keeps React's .7s transition
+   smooth on re-theme. Class-level `background: var(--cN)` is the
+   no-anim baseline the reduced-motion fallback gradient reads. */
+.mesh{position:absolute;inset:0;z-index:0;background:var(--base);transition:background .7s ease;}
 .blobs{position:absolute;inset:-12%;filter:blur(46px);animation:breathe 17s ease-in-out infinite;}
-@keyframes breathe{0%,100%{filter:blur(46px) saturate(1) brightness(1) hue-rotate(0deg)}50%{filter:blur(52px) saturate(1.16) brightness(1.07) hue-rotate(8deg)}}
-.blob{position:absolute;border-radius:50%;opacity:.9;transition:background .7s ease;}
+@keyframes breathe{0%,100%{filter:blur(46px) saturate(1) brightness(1)}50%{filter:blur(52px) saturate(1.14) brightness(1.06)}}
+.blob{position:absolute;border-radius:50%;opacity:.92;transition:background .7s ease;}
 .b1{left:-12%;top:-14%;width:74%;height:74%;background:var(--c1);animation:d1 22s ease-in-out infinite alternate;}
 .b2{left:34%;top:-10%;width:70%;height:72%;background:var(--c2);animation:d2 26s ease-in-out infinite alternate;}
 .b3{left:4%;top:18%;width:96%;height:88%;background:var(--c5);animation:d3 30s ease-in-out infinite alternate;}
@@ -36,7 +50,20 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 @keyframes d3{from{transform:translate(0,0) scale(1)}to{transform:translate(6%,-7%) scale(1.12)}}
 @keyframes d4{from{transform:translate(0,0) scale(1.05)}to{transform:translate(9%,-6%) scale(.95)}}
 @keyframes d5{from{transform:translate(0,0) scale(.97)}to{transform:translate(-8%,-8%) scale(1.12)}}
-.grain{position:absolute;inset:0;z-index:1;opacity:.045;mix-blend-mode:overlay;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+/* Offscreen pause · spec §4. Stop burning GPU cycles on the mesh while
+   the runner is on Plan / Health / Races / Profile / Activity. Today
+   stays animated. Pausing leaves the last frame visible so the
+   backdrop still shows the active palette. */
+.win:not([data-view="today"]) .blobs,
+.win:not([data-view="today"]) .blob{animation-play-state:paused;}
+/* Reduced motion · spec §4. Replace the animated blob field with a
+   single linear gradient that uses the same active stops so the
+   brand still reads but nothing moves. Never a dead flat fill. */
+@media (prefers-reduced-motion: reduce){
+  .blobs,.blob{animation:none;}
+  .mesh{background:linear-gradient(143deg,var(--c1),var(--c2) 24%,var(--c4) 64%,var(--base) 118%);}
+}
+.grain{position:absolute;inset:0;z-index:1;opacity:.05;mix-blend-mode:overlay;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
 .fade{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.36) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,0) 56%,rgba(0,0,0,.46) 100%);}
 /* sidebar */
 .side{position:relative;z-index:3;width:250px;flex:0 0 auto;display:flex;padding:0;color:var(--txt);}

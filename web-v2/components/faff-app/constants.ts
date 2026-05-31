@@ -11,25 +11,17 @@ export type ViewKey =
   | 'today' | 'train' | 'health' | 'targets' | 'race' | 'activity' | 'profile' | 'spectator';
 
 export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl: string }> = {
-  // Effort dots match canonical --eff-* tokens (brand bible colors_and_type.css).
-  // Mesh choice follows "temperature" idea: cool for recovery/easy, amber for
-  // long, ember for tempo, red for intervals, tan for rest day.
-  recovery:  { mesh: ['#7FE6D6','#5AA9D6','#2F7FAE','#1F6A8A','#1A5A7A','#08222E'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
-  easy:      { mesh: ['#7FE6D6','#5AA9D6','#2F7FAE','#1F6A8A','#1A5A7A','#08222E'], dot: '#14C08C', mark: 26, lbl: 'EASY' },
-  // 2026-05-31: dialed back from the canonical-token mesh — peak #FFE0A0
-  // bloomed into highlighter-yellow at scale (David: "is yellow our long
-  // color?"). New palette is warm honey / burnt amber, sits between easy
-  // (teal) and tempo (copper). Effort dot stays at the brand token
-  // (#F3AD38) so week-strip dots + segment markers don't shift.
-  long:      { mesh: ['#E8C580','#C8983E','#A07628','#74521C','#42280E','#1A0C04'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
-  // 2026-05-31: dialed back from the original screamy ember palette
-  // (#FFC98A/#FF8847/#F2673A...) — felt closer to race-day intensity than
-  // a sustained tempo. New palette is copper / burnt amber so tempo sits
-  // visually between long (amber) and intervals (red): controlled hard,
-  // not max. Effort dot stays at the canonical brand token (#FF8847).
-  tempo:     { mesh: ['#E8B088','#C97A4A','#A85A2E','#7A3E1C','#4A2410','#1C0A04'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
-  intervals: { mesh: ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
-  rest:      { mesh: ['#D6BE98','#B2916A','#8A6A48','#5E4630','#45331F','#1C140D'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
+  // Effort meshes · canonical "Effort Mesh Background" handoff spec
+  // (2026-05-31, locked). Luminous values, no brown. Recovery + easy
+  // intentionally share the teal mesh; they differ only by the accent
+  // dot. Spec: light to deep [c1, c2, c3, c4, c5, base]. Per-day
+  // re-theme cross-fades all 6 stops over 0.7s (handled in CSS).
+  recovery:  { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
+  easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#48B3B5', mark: 26, lbl: 'EASY' },
+  long:      { mesh: ['#FFE7B0','#F8BC4E','#F0A638','#EC8C2A','#D9791C','#A85A14'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
+  tempo:     { mesh: ['#FFD2A4','#FF9A54','#FB6E3C','#F4502F','#E23A47','#9E2438'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
+  intervals: { mesh: ['#FFDA84','#FF8A54','#FF526C','#E82B49','#C61E46','#7E1432'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
+  rest:      { mesh: ['#C4C8D2','#9CA2B0','#787E8E','#58606E','#3E4350','#252935'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
 };
 
 // View meshes · canonical "you" green for personal surfaces (health/profile),
