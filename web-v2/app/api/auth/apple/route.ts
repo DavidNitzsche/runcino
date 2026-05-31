@@ -33,9 +33,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { createSession } from '@/lib/auth/session';
 
-const APPLE_AUDIENCE = process.env.APPLE_AUDIENCE ?? 'run.faff.app';   // bundle id
+const APPLE_AUDIENCE = process.env.APPLE_AUDIENCE ?? 'run.faff.app';   // iOS bundle id
+const APPLE_SERVICES_ID = process.env.APPLE_SERVICES_ID ?? null;       // web Services ID (separate from bundle id)
 const APPLE_ISSUER = 'https://appleid.apple.com';
 const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
+
+// Both surfaces (iPhone native flow + web Sign in with Apple JS) POST here.
+// iPhone JWT claims.aud = the iOS bundle id. Web JWT claims.aud = the
+// configured Services ID. Accept either · they're both us.
+const ACCEPTED_AUDIENCES: ReadonlySet<string> = new Set<string>(
+  [APPLE_AUDIENCE, APPLE_SERVICES_ID].filter((s): s is string => !!s),
+);
 
 // In-memory JWKS cache. Apple rotates rarely.
 let _jwksCache: { fetched_at: number; keys: any[] } | null = null;
@@ -63,7 +71,9 @@ async function verifyAppleToken(token: string): Promise<any> {
   const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
 
   if (claims.iss !== APPLE_ISSUER) throw new Error(`bad iss: ${claims.iss}`);
-  if (claims.aud !== APPLE_AUDIENCE) throw new Error(`bad aud: ${claims.aud}`);
+  if (!ACCEPTED_AUDIENCES.has(claims.aud)) {
+    throw new Error(`bad aud: ${claims.aud} (accepted: ${Array.from(ACCEPTED_AUDIENCES).join(', ')})`);
+  }
   if (claims.exp && claims.exp * 1000 < Date.now()) throw new Error('token expired');
 
   // Signature verification path is INTENTIONALLY claims-only for now.
