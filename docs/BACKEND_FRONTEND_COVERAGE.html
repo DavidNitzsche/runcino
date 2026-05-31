@@ -216,6 +216,42 @@
   <td><code>lib/plan/adapt.ts</code> · <code>coach_intents</code> table</td>
   <td class="client-web">WEB</td>
 </tr>
+<tr>
+  <td><strong>Strava reconnect banner</strong></td>
+  <td>When Strava OAuth fails (token expired, runner revoked from Strava,
+      rate-limit ban), backend returns state='needs_reauth' or
+      'disconnected' with a human reason. A <code>ReconnectBanner</code>
+      component exists to render this, but it's wired into the dead
+      <code>app/today/TodayClient.tsx</code> route, not the live
+      faff-app TodayView. So runners whose sync has broken see no
+      indication in the main /today render path.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Can add inline · pull <code>ReconnectBanner</code> into
+      faff-app TodayView above THIS WEEK</strong>. The fetch already
+      exists, the component already exists, the styling fits the
+      readiness chip area. One import + one conditional render.</td>
+  <td><code>app/api/strava/status/route.ts</code> ·
+      <code>components/strava/ReconnectBanner.tsx</code> ·
+      <code>lib/strava/connection-status.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Skip → next-morning recovery probe</strong></td>
+  <td>When a runner skips today, the backend enqueues a notification for
+      07:15 the next morning ("Yesterday's skip · ready to roll today?").
+      Tapping the notification's READY / STILL_SKIPPING action posts
+      back via <code>/api/notifications/ack</code> and clears the skip
+      or extends it. Push delivery works; there's no in-app surface
+      asking the same question for runners who skip the push.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a small "Still skipping today?" pill on
+      /today when a skip exists for yesterday AND today shows a planned
+      workout. Two buttons mirroring the push actions. <strong>Design
+      tweak needed</strong> for the pill copy + placement.</td>
+  <td><code>lib/notifications/templates.ts:renderSkipRecovery</code> ·
+      <code>app/api/today/skip/route.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -253,6 +289,41 @@
   <td><code>workout_library</code> table · <code>lib/plan/workout-library.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
+<tr>
+  <td><strong>Plan freshness pill</strong></td>
+  <td><code>training_plans.last_adapted_at</code> is exposed through
+      <code>/api/training/state</code> so the runner can verify the
+      adaptation cron is alive ("PLAN REFRESHED 4H AGO" iOS pattern).
+      iOS already renders this on its Train tab; web has no equivalent.
+      Silent crons that die leave the runner staring at stale plans
+      with no signal that anything is wrong.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Can add inline · small "Plan refreshed 4h ago" pill in the
+      TrainView header</strong> right under the phase label. Greys out
+      after 36h to flag "the cron may have stalled · refresh manually."
+      iOS has parity, web is the lone gap.</td>
+  <td><code>training_plans.last_adapted_at</code> ·
+      <code>lib/plan/lookup.ts:ActivePlan</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Manual plan regenerate</strong></td>
+  <td>POST <code>/api/plan/generate</code> rebuilds the entire plan
+      from the current goal race + profile + recent training history.
+      Currently the only path to invoke it is creating a brand-new A
+      race (auto-fires) or hitting the endpoint directly. A runner
+      whose plan feels stale has no in-app button to ask for a regen.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a "Regenerate plan" affordance buried in
+      PLAN → settings or three-dot menu. Confirmation modal warns the
+      action archives the current plan and replaces it. <strong>Safe
+      to leave</strong> for v1 since most regens should go through the
+      coach's automatic adaptation; revisit if runners ask for explicit
+      control.</td>
+  <td><code>app/api/plan/generate/route.ts</code> ·
+      <code>lib/plan/generate.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -263,7 +334,28 @@
   weather, the "why," and the citation. Web + iOS.
 </p>
 
-<div class="empty">No agent entries yet · this is where to log capabilities the design doesn't render.</div>
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Structured prescription endpoint</strong></td>
+  <td>GET <code>/api/prescription?type=threshold&amp;weeklyMi=43</code>
+      returns the full broken-out recipe: warmup / main set with reps
+      and target paces / cooldown, plus HR zone the work falls in,
+      total carbs target, gel timing, and the heat-adjusted pace when
+      forecast is hot. Each piece is doctrine-cited (Daniels VDOT,
+      Friel LTHR, Costa fueling, Maughan slowdown). Web Day Detail
+      currently renders the headline numbers but not the full
+      reps × paces breakdown.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><strong>Design tweak needed</strong>. The drawer should show the
+      actual workout structure (e.g. "WU 2mi · 5×1mi @ 6:42 / 2min jog
+      · CD 1mi") not just the type label. The endpoint already returns
+      structured.blocks with the per-segment paces.</td>
+  <td><code>app/api/prescription/route.ts</code> ·
+      <code>lib/training/prescriptions.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
 
@@ -306,7 +398,43 @@
   out, projection. Web + iOS.
 </p>
 
-<div class="empty">No agent entries yet.</div>
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Auto-plan on A-race create</strong></td>
+  <td>POST <code>/api/race</code> with <code>priority='A'</code> AND no
+      active plan auto-fires <code>generatePlan()</code>. The runner
+      saves a race and immediately has 13-16 weeks of plan rows.
+      Currently the POST response carries <code>plan: { ok,
+      weeks_generated }</code>, but the Races view doesn't surface this
+      back to the runner. Whether a plan was actually built is invisible
+      after the "save" succeeds.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: after RaceCrudUI saves an A-race, show a
+      one-shot toast ("Plan built · 16 weeks scheduled, see TRAIN")
+      with a link to /training. <strong>Can add inline</strong> to the
+      existing post-save flow.</td>
+  <td><code>app/api/race/route.ts:53</code> ·
+      <code>components/races/RaceCrudUI.tsx</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Priority B/C race semantics</strong></td>
+  <td>Backend honors three race priorities: A (goal race, drives the
+      plan), B (tune-up, used for VDOT calibration but doesn't reroute
+      the plan), C (training-effort race, treated as a long workout).
+      The plan generator behaves differently per priority. The races
+      list shows all three with the same chip; the runner can't tell
+      what role each plays in their training.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: distinct chip + sub-label per priority:
+      "GOAL · drives your plan" / "TUNE-UP · calibrates pace" /
+      "TRAINING · runs as a long day." <strong>Design tweak needed</strong>
+      for the legend.</td>
+  <td><code>lib/plan/generate.ts</code> · <code>races.meta.priority</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
 
@@ -349,6 +477,44 @@
       <code>lib/training/projection-snapshots.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
+<tr>
+  <td><strong>Race-week packing list</strong></td>
+  <td><code>defaultPackingList()</code> builds a doctrine-driven checklist
+      (gear / fueling / race_day / recovery / logistics) parameterized
+      by distance + priority + forecast (hot/cold/wet add items). Items
+      flagged must / recommended / optional. Per-runner overrides go to
+      <code>races.meta.packing</code> jsonb. The
+      <code>RaceWeekChecklist</code> component renders it but only inside
+      <code>app/today/TodayClient.tsx</code> · the live faff-app RaceView
+      doesn't import it, so race-week runners never see the list.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Can add inline · render <code>&lt;RaceWeekChecklist /&gt;</code>
+      inside RaceView when daysAway ≤ 7</strong>. Component already
+      exists; just needs to be lifted out of dead TodayClient and
+      mounted on race detail. Race-week deliverable lives in dead code
+      today.</td>
+  <td><code>lib/races/packing.ts:defaultPackingList</code> ·
+      <code>components/races/PhaseAwareBlocks.tsx:RaceWeekChecklist</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Race-day weather forecast</strong></td>
+  <td>GET <code>/api/forecast/[date]</code> returns the actual
+      Open-Meteo forecast for the race location 16 days out. Race-week
+      mode could show temp / wind / precip for race morning, but
+      currently the only consumer is TodayView for tomorrow's planned
+      run. RaceView shows nothing weather-related except "Past results
+      &amp; weather history" placeholder text.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: race-day forecast tile in the race-week
+      block. Show day-of temp range, conditions, and an "expected pace
+      penalty" line when the heat-adjustment table predicts a slowdown.
+      <strong>Can add inline</strong> · the endpoint takes a date, RaceView
+      already knows the race date.</td>
+  <td><code>app/api/forecast/[date]/route.ts</code> ·
+      <code>lib/weather/openmeteo.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -358,7 +524,63 @@
   Past runs, lifetime history, consistency heatmap. Web + iOS.
 </p>
 
-<div class="empty">No agent entries yet.</div>
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Cross-training log (bike / swim / ski / row / hike)</strong></td>
+  <td>Full CRUD at <code>/api/cross-training</code>. Backend stores
+      modality + duration + intensity + avg HR + notes. The coach
+      reads recent rows to credit non-impact volume during build phases
+      and preserve fitness during INJURY mode. Schema lives in
+      <code>cross_training_sessions</code>. Web has no UI to log or
+      view sessions; the table is silently populated by nothing.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a "+ Log cross-train" button on /log
+      next to Manual Run, opens a modal with modality picker + duration
+      + intensity. Renders sessions in the run feed with a distinct
+      effort-rest grey treatment. Research/09 carryover matrix means
+      this isn't optional copy padding; the coach actually uses these
+      rows. <strong>Design tweak needed</strong> for the entry modal +
+      feed treatment.</td>
+  <td><code>app/api/cross-training/route.ts</code> ·
+      <code>cross_training_sessions</code> table</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Strength session log</strong></td>
+  <td>POST / GET <code>/api/strength</code> stores strength workouts
+      (date / type / duration / notes). Research/07 prescribes 2/wk
+      for distance runners; the coach flags 3-week gaps as a CHALLENGE.
+      Without a UI, runners can't log their lifts and the coach never
+      sees the habit. Today the "do strength" recommendation lives in
+      doctrine but the runner has nowhere to check it off.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: simple weekly "Strength · 0 / 2 this
+      week" tile on Log (or on Today as a habit row) with a one-tap
+      "did strength" log. Each tap writes a row with default duration.
+      <strong>Can add inline · borrow the shoe-tap pattern</strong> for
+      lightweight per-day log.</td>
+  <td><code>app/api/strength/route.ts</code> ·
+      <code>strength_sessions</code> table</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Run merge recompute (admin)</strong></td>
+  <td>POST <code>/api/admin/recompute-runs?days=14</code> re-runs the
+      duplicate-detector across recent days. Surfaces the
+      <code>mergedIntoId</code> flag on Strava/watch/manual duplicates
+      so the aggregations stop double-counting. Useful when a sync
+      misses or an import lands late.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Safe to leave</strong>. Admin/operator surface; the
+      day-to-day cron + autoMergeForDate(date) inline hook handle
+      99% of cases. Promote to a UI only if the duplicate problem
+      reappears at scale.</td>
+  <td><code>app/api/admin/recompute-runs/route.ts</code> ·
+      <code>lib/runs/merge.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
 
@@ -382,6 +604,42 @@
   <td><code>app/api/health/manual/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
+<tr>
+  <td><strong>HR zones table (Friel LTHR or %MHR fallback)</strong></td>
+  <td><code>buildZones()</code> in <code>lib/training/zones.ts</code>
+      returns the runner's 5 HR zones with exact bpm ranges, method
+      label ("lthr-friel" vs "pct-mhr"), anchor value ("LTHR: 162"),
+      and the citation. RunDetailModal renders zones for a single run;
+      Health view doesn't render the full table the runner trains
+      against. Profile shows the headline numbers but not the band
+      breakdown.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: a 5-row band table on /health showing
+      Z1-Z5 with bpm ranges + purpose + "your current resting HR" anchor.
+      Tells the runner what "Z2" actually means in their numbers, not
+      just "easy effort." <strong>Can add inline</strong> as a card on
+      Health below the readiness ring.</td>
+  <td><code>lib/training/zones.ts:buildZones</code> ·
+      <code>profile.lthr</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>LTHR auto-calibration notice</strong></td>
+  <td>When a half-marathon (or marathon + 5 bpm cardiac drift correction)
+      lands in <code>races.actual_result</code>, the backend silently
+      updates <code>profile.lthr</code> using the Friel protocol. The
+      runner's HR zones shift quietly with no notice. Method is stamped
+      in <code>profile.lthr_method</code> for audit but never surfaced.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: on Health view, when a recent race
+      updated LTHR (e.g. last 30 days), show a single line "LTHR updated
+      from Big Sur Half · 162 bpm." Trust signal that the system reads
+      their races. <strong>Design tweak needed</strong> for copy +
+      placement (could fold into a "Recent calibrations" pill).</td>
+  <td><code>lib/training/lthr.ts:calibrateLthr</code> ·
+      <code>profile.lthr_method</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -391,7 +649,43 @@
   Settings, shoes, connections, subscription, sign out. Web + iOS.
 </p>
 
-<div class="empty">No agent entries yet.</div>
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Personal non-race goals</strong></td>
+  <td>Full CRUD at <code>/api/goals</code>. Six goal types: volume,
+      speed, distance, habit, strength, health. Each carries target +
+      deadline + current value + tolerance + rationale. The coach can
+      surface them ("1 min from your 5K PR, want to take a shot?") and
+      they show up against the running totals for habit tracking
+      (strength sessions, weekly mileage). Schema is
+      <code>personal_goals</code>. No UI exists to create, list, or
+      complete a goal.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a /me → GOALS sub-section listing active
+      goals as rings (current / target) with progress and deadline.
+      "+ Add goal" opens a typed wizard. The coach already reads these
+      rows; without a UI to set them, the affordance is invisible.
+      <strong>Design tweak needed</strong> for the wizard.</td>
+  <td><code>app/api/goals/route.ts</code> · <code>personal_goals</code> table</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>LLM spend rollup</strong></td>
+  <td>GET <code>/api/usage?days=14</code> returns daily briefing counts
+      + token totals + USD cost. /usage page exists but redirects to
+      /today. Useful for verifying the 2026-05-28 LLM rip actually
+      brought spend to zero (target $0/day) and catching any regression
+      where a forgotten Anthropic call sneaks back in.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><strong>Safe to leave</strong> as an operator-only surface for
+      now (Cardinal Rule #1 means cost should stay $0; if it doesn't
+      something else is wrong). Promote to a Profile → Advanced row if
+      multi-user beta surfaces real spend.</td>
+  <td><code>app/api/usage/route.ts</code> · <code>lib/coach/usage.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
 
@@ -484,6 +778,41 @@
       (from payload) + the planned change. <strong>Design tweak needed</strong>
       for the modal layout.</td>
   <td><code>coach_proposals</code> table · <code>/api/coach/proposal/[id]/{accept,decline}</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Streak milestone surface</strong></td>
+  <td><code>maybeFireStreakMilestone(userId)</code> runs after every run
+      ingest and fires a push at 7 / 14 / 30 / 100 consecutive days.
+      The push template carries "Longest ever" vs "Personal pattern"
+      framing. No in-app surface confirms the milestone for runners who
+      missed the push or have notifications off. The accomplishment
+      lives entirely in the lock-screen and disappears.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a streak chip on /today's readiness row
+      ("STREAK · 30 days") that, when tapped, surfaces the milestone
+      card with the "longest ever" badge. Persistent for ~7 days after
+      a milestone fires. <strong>Can add inline</strong>.</td>
+  <td><code>lib/notifications/streak-check.ts</code> ·
+      <code>notifications_log</code> table</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Weekly check-in (Sunday 20:00)</strong></td>
+  <td>Cron enqueues a weekly check-in notification Sunday 20:00 local
+      asking the runner to rate the week (SOLID / TIRED / WRECKED) with
+      optional notes. The ack handler writes to <code>check_ins</code>
+      which the coach reads on the next briefing. Push works; the
+      in-app equivalent surface (a Monday-morning "tell me how last
+      week felt" card) doesn't exist on web.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: Monday-morning weekly recap card on
+      /today when no check-in exists for the prior week. Three
+      tap-and-go buttons mirroring the push actions. The cron + the
+      data model are done; only the in-app surface is missing.
+      <strong>Design tweak needed</strong> for the card layout.</td>
+  <td><code>app/api/cron/notifications/route.ts</code> ·
+      <code>app/api/checkin/route.ts</code> · <code>check_ins</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
