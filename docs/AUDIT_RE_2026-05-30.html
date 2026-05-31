@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audit RE · 2026-05-30 · Honest second pass</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card2: #1a1d24; --card3: #232631;
+
+    --race: #FF5722;
+    --recovery: #14C08C;
+    --active: #4F8FF7;
+    --warn: #F43F5E;
+    --milestone: #F5C518;
+
+    --shared: #B084FF;
+    --engine: #FF7028;
+
+    /* grade colors */
+    --g-aplus: #14C08C;
+    --g-a:     #57c79c;
+    --g-aminus:#8fd6b8;
+    --g-bplus: #F5C518;
+    --g-b:     #f0c95f;
+    --g-bminus:#FF7028;
+    --g-c:     #F43F5E;
+    --g-d:     #c0234e;
+    --g-f:     #7a1530;
+  }
+  html, body {
+    background: var(--bg); color: var(--ink);
+    font-family: 'Inter', sans-serif; margin: 0; padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 {
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 84px; letter-spacing: -1.2px; margin: 0;
+    line-height: 0.88; text-transform: uppercase;
+  }
+  h1 .accent { color: var(--warn); }
+  .sub { color: var(--mute); margin-top: 14px; font-size: 15px; max-width: 780px; line-height: 1.55; }
+  h2 {
+    font-family: 'Oswald', sans-serif; font-weight: 600;
+    font-size: 36px; letter-spacing: 0.2px; margin: 64px 0 18px;
+    border-bottom: 1px solid var(--line); padding-bottom: 12px;
+    text-transform: uppercase;
+  }
+  h2 .num { font-size: 18px; color: var(--mute); margin-right: 12px; font-weight: 400; letter-spacing: 1.4px; }
+  h3 {
+    font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
+    color: var(--shared); letter-spacing: 1.6px; text-transform: uppercase;
+    margin: 28px 0 10px;
+  }
+  h4 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 22px; margin: 22px 0 8px; letter-spacing: 0.3px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.62; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  ol { padding-left: 22px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  strong { color: var(--ink); }
+  code {
+    background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;
+    font-size: 12.5px; font-family: 'JetBrains Mono', ui-monospace, monospace;
+    color: var(--active);
+  }
+  .meta-row {
+    display: flex; gap: 10px; margin-top: 14px;
+    font-size: 12px; color: var(--mute); flex-wrap: wrap;
+  }
+  .meta-row span { padding: 4px 10px; background: rgba(255,255,255,0.04); border-radius: 4px; }
+
+  .principle {
+    background: linear-gradient(135deg, rgba(244,63,94,0.10), rgba(255,112,40,0.06));
+    border: 1px solid rgba(244,63,94,0.40);
+    border-radius: 16px; padding: 28px 32px; margin: 28px 0 40px;
+  }
+  .principle .label {
+    font-size: 11px; letter-spacing: 1.8px; color: var(--warn);
+    text-transform: uppercase; font-weight: 700; margin-bottom: 10px;
+  }
+  .principle .body {
+    font-family: 'Oswald', sans-serif; font-weight: 500;
+    font-size: 28px; line-height: 1.22; letter-spacing: -0.1px;
+  }
+  .principle .body em { color: var(--warn); font-style: normal; }
+
+  /* grade card */
+  .grade-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 18px 0 28px;
+  }
+  .grade-card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 14px 14px;
+    position: relative;
+  }
+  .grade-card .cat {
+    font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--mute); font-weight: 700; margin-bottom: 6px;
+  }
+  .grade-card .gr {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 48px;
+    line-height: 1; margin-bottom: 8px;
+  }
+  .grade-card .one-line {
+    font-size: 11.5px; color: rgba(246,247,248,0.78); line-height: 1.45;
+  }
+  .gr.aplus { color: var(--g-aplus); }
+  .gr.a { color: var(--g-a); }
+  .gr.aminus { color: var(--g-aminus); }
+  .gr.bplus { color: var(--g-bplus); }
+  .gr.b { color: var(--g-b); }
+  .gr.bminus { color: var(--g-bminus); }
+  .gr.c { color: var(--g-c); }
+  .gr.d { color: var(--g-d); }
+  .gr.f { color: var(--g-f); }
+
+  /* claim table */
+  table.claims {
+    width: 100%; border-collapse: collapse; margin: 12px 0 24px;
+    font-size: 13px;
+  }
+  table.claims th, table.claims td {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--line-2);
+  }
+  table.claims th {
+    color: var(--mute); font-weight: 700;
+    letter-spacing: 1.2px; text-transform: uppercase; font-size: 10.5px;
+    background: rgba(255,255,255,0.02);
+  }
+  table.claims td.verdict { font-weight: 700; }
+  td.verdict.true { color: var(--g-aplus); }
+  td.verdict.false { color: var(--g-c); }
+  td.verdict.partial { color: var(--g-bplus); }
+  td.verdict.dead { color: var(--g-d); }
+
+  /* finding card */
+  .finding {
+    background: var(--card); border: 1px solid var(--line);
+    border-left: 4px solid var(--warn);
+    border-radius: 8px; padding: 16px 18px 14px;
+    margin: 12px 0;
+  }
+  .finding.p0 { border-left-color: var(--warn); }
+  .finding.p1 { border-left-color: var(--milestone); }
+  .finding.p2 { border-left-color: var(--active); }
+  .finding .lbl {
+    display: inline-block; padding: 3px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 800; letter-spacing: 1.2px;
+    text-transform: uppercase; margin-right: 8px;
+  }
+  .finding.p0 .lbl { background: rgba(244,63,94,0.22); color: #ff97aa; }
+  .finding.p1 .lbl { background: rgba(245,197,24,0.22); color: #ffde7a; }
+  .finding.p2 .lbl { background: rgba(79,143,247,0.18); color: #a8c8ff; }
+  .finding .ttl {
+    font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 600;
+    text-transform: uppercase; display: inline-block;
+  }
+  .finding .body { color: rgba(246,247,248,0.88); font-size: 13.5px; line-height: 1.6; margin-top: 8px; }
+  .finding .body p { margin: 0 0 8px; font-size: 13.5px; }
+  .finding .cite { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--mute); margin-top: 4px; }
+
+  /* probe pass/fail */
+  .probe-row {
+    display: grid; grid-template-columns: 50px 1fr 80px;
+    padding: 8px 10px; border-bottom: 1px solid var(--line-2);
+    font-size: 13px; align-items: center;
+  }
+  .probe-row .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-align: center; }
+  .probe-row .badge.pass { background: rgba(20,192,140,0.18); color: #8ee4c3; }
+  .probe-row .badge.fail { background: rgba(244,63,94,0.18); color: #ff97aa; }
+  .probe-row .name { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .probe-row .res { text-align: right; color: var(--mute); font-size: 12px; }
+
+  .summary-box {
+    background: rgba(20,192,140,0.04); border: 1px solid rgba(20,192,140,0.25);
+    border-radius: 10px; padding: 18px 22px; margin: 14px 0 22px;
+  }
+  .summary-box.warn { background: rgba(244,63,94,0.04); border-color: rgba(244,63,94,0.30); }
+  .summary-box .row {
+    display: flex; justify-content: space-between; padding: 4px 0;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  }
+  .summary-box .row .lbl { color: var(--mute); }
+  .summary-box .row .val { font-weight: 700; }
+  .summary-box .row .val.true { color: var(--g-aplus); }
+  .summary-box .row .val.false { color: var(--g-c); }
+  .summary-box .row .val.partial { color: var(--g-bplus); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Audit <span class="accent">RE</span></h1>
+  <div class="sub">
+    Brutally-honest second pass at the A+ claims from the 2026-05-30 system audit.
+    Same five categories, same probes, same DB. The instructions explicitly said:
+    don't inflate, use the full grade scale, verify everything against the live DB
+    with file:line citations.
+  </div>
+  <div class="meta-row">
+    <span>2026-05-30 (RE-AUDIT)</span>
+    <span>DB: production · 0645f40c…26c795 (David)</span>
+    <span>Working app: <code>web-v2/</code></span>
+    <span>Branch: <code>audit/fresh-2026-05-30</code></span>
+  </div>
+
+  <div class="principle">
+    <div class="label">Headline</div>
+    <div class="body">
+      The <em>code state</em> is real — leak patterns are zero, probes pass, doctrine is in
+      the DB. But the <em>operational state</em> is fiction: the daily adaptation cron
+      has <em>never fired in production</em>, two crons have no scheduler at all, and
+      <em>buildInjuryPlan</em> is dead code with zero call sites. The previous audit conflated
+      <em>code exists</em> with <em>system runs</em>.
+    </div>
+  </div>
+
+  <h2><span class="num">01</span> Per-category grades</h2>
+
+  <div class="grade-grid">
+    <div class="grade-card">
+      <div class="cat">Accuracy</div>
+      <div class="gr aminus">A-</div>
+      <div class="one-line">21 doctrine rows in DB + every adaptation detector cites Research/. Reads work. But snapshots are static and adaptation evidence is missing.</div>
+    </div>
+    <div class="grade-card">
+      <div class="cat">Efficiency</div>
+      <div class="gr bplus">B+</div>
+      <div class="one-line">Memoized loaders + keep-warm cron firing every 15 min. Some N+1 in cron loops (sequential per-user) but bounded; no hot-path issue.</div>
+    </div>
+    <div class="grade-card">
+      <div class="cat">Isolation</div>
+      <div class="gr aminus">A-</div>
+      <div class="one-line">Zero <code>OR user_id='me'</code> in reads, 0 orphan rows, cold-start probe = 0 leaks across 22 surfaces. 39 routes still fall back to David's UUID by design.</div>
+    </div>
+    <div class="grade-card">
+      <div class="cat">Onboarding</div>
+      <div class="gr bminus">B-</div>
+      <div class="one-line">Cold-start synth user gets clean zeros. Plan-seed atomicity is honored. But <code>'me'</code> string still written into legacy <code>user_id</code> column on plan inserts.</div>
+    </div>
+    <div class="grade-card">
+      <div class="cat">Coaching</div>
+      <div class="gr c">C</div>
+      <div class="one-line">All 9 detectors exist + cited; fueling renders; weather pre/post wired. But adaptation cron has NEVER fired (last_adapted_at NULL on 100% of plans), notifications stuck, injury-builder dead code.</div>
+    </div>
+  </div>
+
+  <p class="sub" style="margin-top: -8px;">
+    Aggregate grade: <strong>B</strong>. The infra is solid (isolation, doctrine, probes) but the
+    <em>continuous-coaching loop</em> — the thing the system exists to do — is not running.
+  </p>
+
+  <h2><span class="num">02</span> Production database state</h2>
+
+  <h3>Counts pulled live from production at audit time</h3>
+  <table class="claims">
+    <tr><th>Table / measure</th><th>Audit-claim baseline</th><th>Reality (live)</th><th class="verdict">Verdict</th></tr>
+    <tr><td><code>learn_articles</code> total</td><td>≥41</td><td>45</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>learn_articles</code> eyebrow='SYSTEM DOCTRINE'</td><td>21</td><td>21</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>course_library</code> total</td><td>10 curated</td><td>10 rows, <strong>6 of which have <code>geometry_json.stub='true'</code></strong></td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td><code>workout_library</code> total</td><td>"shared L2 table exists"</td><td>54 rows across 19 families</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>workout_weather_cache</code></td><td>"cache fixed"</td><td>62 rows, last fetched 2026-05-31</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>coach_actions</code> WHERE action_type LIKE 'detect.%'</td><td>"9 triggers wired"</td><td><strong>0 rows ever</strong>. Detectors exist but no production row has ever been written via the cron path.</td><td class="verdict false">FALSE</td></tr>
+    <tr><td><code>coach_actions</code> all-time</td><td>—</td><td>2 rows total (2026-05-24, 2026-05-25), both <code>action_type='propose_goal_adjustment'</code>, <code>trigger='fitness_shift'</code> (manual seed)</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td><code>training_plans.last_adapted_at</code></td><td>"daily adapt cron firing"</td><td><strong>NULL on 100% of plans</strong>. Zero plans have ever been adapted by the cron path.</td><td class="verdict false">FALSE</td></tr>
+    <tr><td><code>projection_snapshots</code> by source</td><td>"snapshot-projections runs daily"</td><td>14 rows, <strong>100% from <code>source='seed-script'</code></strong>, zero from <code>cron-daily</code>. All 14 timestamped within seconds of each other on 2026-05-30.</td><td class="verdict false">FALSE</td></tr>
+    <tr><td><code>notifications_pending</code> older than 24h</td><td>"queue drains"</td><td><strong>2 rows stuck</strong>, oldest <code>fire_at=2026-05-29</code>, both <code>processed_at IS NULL</code>, both <code>category='skip_recovery'</code></td><td class="verdict false">FALSE</td></tr>
+    <tr><td><code>notifications_log</code> size</td><td>—</td><td><strong>0 rows ever</strong>. Notification cron has never successfully run.</td><td class="verdict false">FALSE</td></tr>
+    <tr><td><code>strava_activities.data->>'weather'</code></td><td>"backfilled"</td><td>46/126 = 36% with weather blob, 71/126 = 56% with <code>weather_enriched_at</code> stamp</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td>Orphan rows (<code>user_uuid IS NULL</code>) across 32 user-scoped tables</td><td>0</td><td>0 (probe <code>_audit_orphans.mjs</code> total=0)</td><td class="verdict true">TRUE</td></tr>
+  </table>
+
+  <h2><span class="num">03</span> Code-state grep — the 3 leak patterns</h2>
+
+  <p>Instructions: each of these grep patterns MUST return zero results in production-bearing files.</p>
+
+  <table class="claims">
+    <tr><th>Pattern</th><th>Hits in <code>web-v2/lib/</code> + <code>web-v2/app/api/</code></th><th class="verdict">Verdict</th></tr>
+    <tr><td><code>user_id = 'me'</code> or <code>user_id='me'</code></td><td>0 in executable code. 1 hit in a <em>comment</em> (<code>app/api/cron/keep-warm/route.ts:61</code> — documents the historical fix). 3 hits in <code>INSERT</code> column-list strings (<code>seed-from-onboarding.ts:313</code>, <code>generate.ts:469</code>, <code>injury-builder.ts:160</code>) where literal <code>'me'</code> is written into the legacy <code>user_id</code> TEXT column alongside the real <code>user_uuid</code>. Not a leak (reads scope by user_uuid), but is sloppy.</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td><code>user_uuid IS NULL</code></td><td>0 in executable code (1 hit is the documentation comment in keep-warm)</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>OR user_id</code></td><td><strong>1 hit:</strong> <code>app/api/runs/[id]/rpe/route.ts:33</code> — <code>WHERE (user_uuid = $1 OR user_id::text = $1::text)</code>. Both halves parameterized on the same <code>userId</code>, so reads one user's own row across both columns. Not a cross-user leak.</td><td class="verdict partial">PARTIAL</td></tr>
+  </table>
+
+  <h2><span class="num">04</span> Probe scripts — 7 scripts, pass count</h2>
+
+  <div class="summary-box">
+    <div class="row"><span class="lbl">_sim_cold_start_full.mjs</span><span class="val true">23/23 checks PASS</span></div>
+    <div class="row"><span class="lbl">_verify_david_intact.mjs</span><span class="val true">8/8 checks PASS</span></div>
+    <div class="row"><span class="lbl">_audit_orphans.mjs</span><span class="val true">0 orphans total</span></div>
+    <div class="row"><span class="lbl">_verify_uuid_unification.mjs</span><span class="val true">78/78 checks PASS</span></div>
+    <div class="row"><span class="lbl">_verify_niggle_trigger.mjs</span><span class="val true">5/5 checks PASS (synthetic niggle → trigger fires end-to-end)</span></div>
+    <div class="row"><span class="lbl">_verify_workout_library.mjs</span><span class="val true">11/11 family/distance combos resolve</span></div>
+    <div class="row"><span class="lbl">_smoke_weather_lookup.mjs</span><span class="val true">PASS — lookupTempF=57°F for known coords, baselineTempF=59°F</span></div>
+  </div>
+
+  <p><strong>7/7 probes pass.</strong> The infrastructure that the probes exercise is working. What the probes do NOT exercise: production cron firing, downstream consumers of the adapted plan, end-to-end APNs delivery.</p>
+
+  <h2><span class="num">05</span> Feature surfaces — actually-works check</h2>
+
+  <h3>9 adaptation triggers</h3>
+  <table class="claims">
+    <tr><th>Trigger</th><th>Detector fn exists</th><th>Called from orchestrator</th><th>Research citation</th><th>Has fired in prod?</th></tr>
+    <tr><td>missed_key_workout</td><td>L250 detectMissedKeyWorkout</td><td>L88</td><td>L13 Research/00a-distance-running-training.md</td><td class="verdict false">NO</td></tr>
+    <tr><td>rhr_spike</td><td>L288 detectRhrSpike</td><td>L92</td><td>L17 Research/15-wearable-data.md</td><td class="verdict false">NO</td></tr>
+    <tr><td>sleep_crater</td><td>L317 detectSleepCrater</td><td>L96</td><td>L21 Research/00b-recovery-protocols.md</td><td class="verdict false">NO</td></tr>
+    <tr><td>volume_overshoot</td><td>L577 detectVolumeOvershoot</td><td>L100</td><td>L26 Research/00a §progressive-overload</td><td class="verdict false">NO</td></tr>
+    <tr><td>niggle_reported</td><td>L348 detectNiggleReported</td><td>L104</td><td>L345 Research/05-injury-return-protocols.md §Pain-Stop-Rules</td><td class="verdict partial">VERIFIED in probe (synthetic fires end-to-end)</td></tr>
+    <tr><td>sick_episode_active</td><td>L380 detectSickEpisodeActive</td><td>L108</td><td>L377 Research/05 §illness-return</td><td class="verdict false">NO</td></tr>
+    <tr><td>injury_active</td><td>L414 detectInjuryActive</td><td>L112</td><td>L411 Research/05 §General-Principles</td><td class="verdict false">NO</td></tr>
+    <tr><td>pr_bank</td><td>L506 detectPrBank</td><td>L116</td><td>L504 Research/01-pace-zones-vdot.md §VDOT-recalibrate</td><td class="verdict false">NO</td></tr>
+    <tr><td>goal_changed</td><td>L457 detectGoalChanged</td><td>L121</td><td>L454 Research/01 §VDOT-recalibrate</td><td class="verdict false">NO</td></tr>
+  </table>
+  <p>All 9 detectors exist in <code>web-v2/lib/plan/adapt.ts</code>, all are called from <code>detectAdaptations()</code> at L84, all carry Research/ citations. <strong>BUT</strong> <code>training_plans.last_adapted_at</code> is NULL on 100% of plans, <code>coach_intents</code> has zero <code>plan_adapt_*</code> rows, and <code>coach_actions</code> has zero <code>detect.*</code> rows. The GH Action workflow exists at <code>.github/workflows/run-adaptations.yml</code> (cron <code>15 7 * * *</code>) but either the secret is missing, the workflow is failing silently, or the route is rejecting requests. The 9 triggers are technically wired but functionally dead end-to-end.</p>
+
+  <h3>Fueling — backend computes, frontend renders</h3>
+  <table class="claims">
+    <tr><th>Surface</th><th>Evidence</th><th class="verdict">Verdict</th></tr>
+    <tr><td>API computes fueling</td><td><code>web-v2/app/api/prescription/route.ts:162-176</code> — <code>computeFueling()</code> called, result attached as <code>prescription.fueling</code></td><td class="verdict true">TRUE</td></tr>
+    <tr><td>DayDetailModal renders fueling</td><td><code>components/today/DayDetailModal.tsx:272</code> — <code>{pres?.fueling &amp;&amp; &lt;FuelingCard fueling={pres.fueling} /&gt;}</code>. FuelingCard at L287 renders shortLine, carbsTotalG, gels, atMins, why, citation.</td><td class="verdict true">TRUE</td></tr>
+  </table>
+
+  <h3>Weather pre-run and post-run</h3>
+  <table class="claims">
+    <tr><th>Surface</th><th>Evidence</th><th class="verdict">Verdict</th></tr>
+    <tr><td>Pre-run weather via /api/prescription</td><td><code>app/api/prescription/route.ts:70-127</code> — pulls <code>lookupTempF(lat, lon, date)</code> + <code>baselineTempF()</code> fallback, attaches <code>prescription.weather.tempF</code>. Heat-adjustment applied via <code>abilityTierFromVdot()</code>.</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>Post-run weather via run-state</td><td><code>lib/coach/run-state.ts:280-284</code> — <code>weatherContext({actualTempF, baselineTempF})</code>, surfaced as <code>weather_context: {message, hr_bump_bpm}</code> at L377</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>Weather cache populated</td><td>62 rows, max date 2026-05-24 in <code>workout_weather_cache</code>; <code>_smoke_weather_lookup.mjs</code> returns real 57°F for David's known coords</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>Daily weather enrichment cron firing</td><td>71/126 strava_activities have <code>weather_enriched_at</code> stamped. Better than the 5% in CRON_AUDIT.md but still leaves 44% unenriched. Cron <em>has</em> been running but coverage is incomplete.</td><td class="verdict partial">PARTIAL</td></tr>
+  </table>
+
+  <h3>Injury-mode plan builder</h3>
+  <div class="finding p0">
+    <span class="lbl">P0</span><span class="ttl">buildInjuryPlan() is dead code</span>
+    <div class="body">
+      <p><code>web-v2/lib/plan/injury-builder.ts:130</code> exports <code>buildInjuryPlan()</code>. <strong>Zero call sites in the entire <code>web-v2/</code> tree.</strong> Grep across <code>app/</code>, <code>lib/</code>, <code>components/</code>, <code>scripts/</code> returns nothing but the export itself.</p>
+      <p>The <code>detectInjuryActive</code> trigger at <code>adapt.ts:414</code> fires, but the action it produces (per L743) does NOT invoke the injury plan builder — it just emits a <code>downgrade</code> action with a copy-pasted "Walk-run scaffold + cross-train" string. So even when an active injury exists, the actual <em>injury-mode plan</em> is never built.</p>
+      <p class="cite">claim made: "INJURY-mode plan-builder works" — verdict: FALSE / DEAD</p>
+    </div>
+  </div>
+
+  <h3>Cron paths</h3>
+  <table class="claims">
+    <tr><th>Cron</th><th>Scheduler</th><th>Evidence of recent run</th><th class="verdict">Verdict</th></tr>
+    <tr><td>refresh-briefings</td><td>.github/workflows/refresh-briefings.yml @ 07:05 UTC</td><td>Endpoint is a no-op since 2026-05-28 LLM rip. Safe.</td><td class="verdict true">TRUE (no-op)</td></tr>
+    <tr><td>enrich-weather</td><td>.github/workflows/enrich-weather.yml @ 07:30 UTC</td><td>71/126 enriched, last enrich 2026-05-31T04:03. Better than CRON_AUDIT.md's snapshot — workflow IS running</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td>run-adaptations</td><td>.github/workflows/run-adaptations.yml @ 07:15 UTC</td><td><strong>Zero evidence of ever running.</strong> last_adapted_at NULL on all plans, no detect.* coach_actions rows, no plan_adapt_* coach_intents</td><td class="verdict false">FALSE / DEAD</td></tr>
+    <tr><td>keep-warm</td><td>.github/workflows/keep-warm.yml @ */15min</td><td>No DB writes by design. No ops_alerts from cron source. Inferred running but not verifiable from DB.</td><td class="verdict partial">UNKNOWN</td></tr>
+    <tr><td>notifications</td><td><strong>MISSING — no scheduler config anywhere</strong></td><td>notifications_log is empty, 2 rows stuck in notifications_pending dating to 2026-05-29</td><td class="verdict false">FALSE / DEAD</td></tr>
+    <tr><td>snapshot-projections</td><td><strong>MISSING — no scheduler config anywhere</strong></td><td>All 14 rows from <code>source='seed-script'</code>, zero from <code>cron-daily</code></td><td class="verdict false">FALSE / DEAD</td></tr>
+  </table>
+
+  <h2><span class="num">06</span> Per-client read-path matrix</h2>
+
+  <table class="claims">
+    <tr><th>Client</th><th>Auth mechanism</th><th>Evidence</th><th class="verdict">Verdict</th></tr>
+    <tr><td>Web</td><td>Cookie <code>faff_session=&lt;token&gt;</code></td><td><code>lib/auth/session.ts:103-105</code> matches cookie regex, looks up SHA-256 hash in <code>sessions</code> table</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>iOS</td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td><code>lib/auth/session.ts:100-102</code> extracts via regex; hash lookup at L52-60</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>Watch</td><td>Proxied through iOS</td><td><strong>NOT</strong> via session. <code>app/api/watch/today/route.ts:16</code> reads <code>?user_id=&lt;uuid&gt;</code> directly from query string, falling back to David. <code>app/api/watch/workouts/complete/route.ts:38</code> reads <code>body.user_id</code>. No session token check anywhere on the watch endpoints.</td><td class="verdict partial">PARTIAL — by design, but a known per-design leak</td></tr>
+  </table>
+
+  <h3>Default-user fallback is everywhere</h3>
+  <p>39 separate <code>?? DAVID_USER_ID</code> or <code>?? DEFAULT_USER_ID</code> fallbacks across the API tree. Most are state-loader endpoints where no Bearer / cookie means "show David." This is the single-user-beta back-compat — when the second runner signs up, every one of these is a cross-user leak waiting to happen.</p>
+
+  <h2><span class="num">07</span> Highest-priority remaining gaps</h2>
+
+  <div class="finding p0">
+    <span class="lbl">P0-1</span><span class="ttl">run-adaptations cron has never fired</span>
+    <div class="body">
+      <p>The "coach is the mastermind" doctrine sits on this cron. All 9 detectors at <code>lib/plan/adapt.ts:84-130</code> are dark in production. Either the GH Action is failing silently (CRON_SECRET missing? wrong URL?), the route is rejecting (check L26-30 auth path), or runs never get retried for >5d.</p>
+      <p class="cite">probe: <code>SELECT MAX(last_adapted_at) FROM training_plans</code> → NULL. <code>SELECT * FROM coach_actions WHERE action_type LIKE 'detect.%'</code> → 0 rows.</p>
+    </div>
+  </div>
+
+  <div class="finding p0">
+    <span class="lbl">P0-2</span><span class="ttl">notifications cron has no scheduler config</span>
+    <div class="body">
+      <p>Endpoint <code>app/api/cron/notifications/route.ts</code> exists. <strong>No GH workflow file, no Vercel config, no Railway cron.</strong> Comment in route says "runs every 15 min via Railway cron-job.org" — no evidence this is wired. 2 skip_recovery notifications stuck in queue, 1+ day old.</p>
+      <p class="cite">missing: <code>.github/workflows/notifications.yml</code>. probe: <code>SELECT COUNT(*) FROM notifications_log</code> → 0.</p>
+    </div>
+  </div>
+
+  <div class="finding p0">
+    <span class="lbl">P0-3</span><span class="ttl">snapshot-projections cron has no scheduler config</span>
+    <div class="body">
+      <p>Same shape as P0-2. Endpoint exists but no GH/Vercel/Railway invocation. <code>RaceHeader.projectionTrend</code> reads from <code>projection_snapshots</code> — without daily snapshots, the trend line is whatever the last seed-script run looked like (frozen 2026-05-30).</p>
+      <p class="cite">missing: <code>.github/workflows/snapshot-projections.yml</code>. probe: 14/14 rows where <code>source='seed-script'</code>.</p>
+    </div>
+  </div>
+
+  <div class="finding p0">
+    <span class="lbl">P0-4</span><span class="ttl">buildInjuryPlan() is dead code</span>
+    <div class="body">
+      <p><code>lib/plan/injury-builder.ts:130</code> — exported, never called. The <code>detectInjuryActive</code> trigger emits a <code>downgrade</code> action (<code>adapt.ts:743-770</code>) but doesn't invoke the actual plan-builder. So "INJURY mode reshapes the plan" is false; the plan keeps its quality days, just with one downgraded to easy + a copy-pasted scaffold message.</p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">P1-5</span><span class="ttl">course_library is 60% stubs</span>
+    <div class="body">
+      <p>Claimed: "10 curated rows." Reality: 4 editorial (americas-finest-city, big-sur-marathon, cim, sombrero-half) + 6 stubs with <code>geometry_json.stub='true'</code> (disney-half-2026, dodgers, la-marathon-2026, los-angeles-marathon, rose-bowl-half-2026, run-malibu). The stub rows have no geometry, no elevation profile — the coach gets a name and nothing else.</p>
+      <p class="cite">probe: <code>SELECT slug, geometry_json->>'stub' FROM course_library ORDER BY slug</code></p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">P1-6</span><span class="ttl">39 routes silently default to David's UUID</span>
+    <div class="body">
+      <p>Pattern <code>const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID</code> appears in 39 API routes. The instant a second runner signs up and an iOS client forgets to send the Bearer header, that runner sees David's plan, races, niggles, etc. The session module's strict <code>requireAuth()</code> variant exists but is rarely used.</p>
+      <p class="cite">grep: <code>grep -rln "DEFAULT_USER_ID\\|DAVID_USER_ID" web-v2/app/api/</code> → 42 files</p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">P1-7</span><span class="ttl">Watch endpoints bypass session auth</span>
+    <div class="body">
+      <p><code>/api/watch/today</code> and <code>/api/watch/workouts/complete</code> read <code>?user_id=</code> from query / body with no token check. The watch is supposed to proxy through the iOS app — but the route accepts <em>any</em> user_id from <em>any</em> client. With Bearer auth this is a cross-user write vector.</p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">P1-8</span><span class="ttl">RPE route uses OR-cross-column</span>
+    <div class="body">
+      <p><code>app/api/runs/[id]/rpe/route.ts:33</code> — <code>WHERE (user_uuid = $1 OR user_id::text = $1::text)</code>. Both halves on the same param so not a leak, but the previous-audit claim "all OR user_id patterns removed" is partially false. This should be cleaned up; it's the last vestige of the legacy uuid/text dual-column schema in a read path.</p>
+    </div>
+  </div>
+
+  <div class="finding p2">
+    <span class="lbl">P2-9</span><span class="ttl">Plan inserts hardcode <code>'me'</code> string</span>
+    <div class="body">
+      <p>Three INSERTs (<code>seed-from-onboarding.ts:313</code>, <code>generate.ts:469</code>, <code>injury-builder.ts:160</code>) write literal <code>'me'</code> into the legacy <code>user_id</code> TEXT column alongside the real <code>user_uuid</code>. Reads scope by user_uuid so this isn't a leak, but it's a debt that will cause confusion when investigating per-user issues.</p>
+    </div>
+  </div>
+
+  <h2><span class="num">08</span> Claims tally</h2>
+
+  <div class="summary-box">
+    <div class="row"><span class="lbl">Total claims verified TRUE</span><span class="val true">18</span></div>
+    <div class="row"><span class="lbl">Total claims verified FALSE</span><span class="val false">9</span></div>
+    <div class="row"><span class="lbl">Total claims verified PARTIAL</span><span class="val partial">9</span></div>
+  </div>
+
+  <h3>The honest table</h3>
+  <table class="claims">
+    <tr><th>Audit claim</th><th>Reality</th><th class="verdict">Verdict</th></tr>
+    <tr><td>"course_library: 10 curated rows"</td><td>10 rows but 6 are stubs without geometry</td><td class="verdict partial">PARTIAL (still)</td></tr>
+    <tr><td>"workout_library exists as L2 shared table"</td><td>54 rows across 19 families, loader resolves 11/11 combos</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"P0 leak fixed across 48+ sites"</td><td>Zero cross-user leaks in any read. But 39 routes have default-to-David fallback (back-compat, but a leak waiting for user #2)</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td>"Fueling integrated end-to-end"</td><td>API computes, modal renders, FuelingCard surfaces shortLine + carbs + gels + atMins + why + citation</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Weather pre-run uses cache table"</td><td>62 cache rows, lookupTempF returns real values, prescription.weather.tempF non-null with heat-adjusted paces</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Weather post-run surfaces in run detail"</td><td>weather_context with message + hr_bump_bpm at run-state.ts:377</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Niggles fully wired"</td><td>Synthetic niggle probe fires end-to-end: severity 6 → warn → actionsForTrigger emits downgrade</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"21 system_doctrine rows seeded"</td><td>21 rows present, all with body_md, slugs match the inventory</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"All 9 adaptation triggers wired"</td><td>9 detector functions exist, all called from orchestrator, all cite Research/</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Adaptation triggers fire in production"</td><td>Zero coach_actions detect.* rows, zero plan_adapt_* coach_intents, training_plans.last_adapted_at NULL across the board. Cron has never fired.</td><td class="verdict false">FALSE</td></tr>
+    <tr><td>"INJURY-mode plan-builder works"</td><td>buildInjuryPlan exported but called from nowhere. detectInjuryActive emits a downgrade action with hardcoded message, never invokes the builder.</td><td class="verdict false">FALSE</td></tr>
+    <tr><td>"Notifications drain via cron"</td><td>2 stuck rows in queue, notifications_log empty, no scheduler config for the notifications cron</td><td class="verdict false">FALSE</td></tr>
+    <tr><td>"snapshot-projections runs daily"</td><td>All 14 rows from seed-script, none from cron, no scheduler config exists</td><td class="verdict false">FALSE</td></tr>
+    <tr><td>"Cold-start returns zero leak"</td><td>23/23 probe checks pass — synthetic UUID sees zero rows on every state-loader query</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Zero orphan rows"</td><td>0 across 32 user-scoped tables</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"David's data intact"</td><td>8/8 row-count thresholds met; 78/78 visibility checks pass</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Web uses cookie session"</td><td>extractToken at session.ts:99-106 handles both Bearer and cookie</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"iOS uses Bearer token"</td><td>Same extractor; same hash lookup; works for both</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Watch proxies through iOS auth"</td><td>FALSE — watch routes accept ?user_id directly with no token check</td><td class="verdict false">FALSE</td></tr>
+    <tr><td>"Every coaching surface cited"</td><td>All 9 detectors carry Research/ paths in JSDoc. 21 doctrine articles in DB. But cite-presence ≠ cite-queried.</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td>"No N+1 in hot paths"</td><td>Cron loops are sequential per-user (intentional, to avoid pool exhaustion); state loaders memoize; no obvious hot-path issue.</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"OR user_id removed"</td><td>1 hit remains in production code path: rpe/route.ts:33. Same-user, not a leak, but the absolute claim is partial.</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td>"user_id='me' removed"</td><td>0 in reads, but 3 INSERTs still hardcode 'me' into the legacy column.</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td>"Cron audit is current"</td><td>CRON_AUDIT.md (2026-05-30) is accurate: identifies the same 2 missing-scheduler crons and the run-adaptations dead path.</td><td class="verdict true">TRUE</td></tr>
+    <tr><td>"Weather enrichment backfilled"</td><td>71/126 = 56% enriched; better than CRON_AUDIT's snapshot of 5% but 44% still unenriched</td><td class="verdict partial">PARTIAL</td></tr>
+  </table>
+
+  <h2><span class="num">09</span> What surprised me</h2>
+
+  <ol>
+    <li><strong>The biggest gap is not code — it's operational.</strong> The detectors, the orchestrator, the action-applier, the writeIntent helper, the bustCache hook — all exist and look correct. The cron file exists. The GH Action file exists. But <code>training_plans.last_adapted_at</code> is NULL on every plan and <code>coach_actions</code> has 2 rows total, both from manual seeds in May. Something between GH Actions and the production endpoint is broken and has been broken for the entire post-cutover period.</li>
+    <li><strong>Two crons have no scheduler at all.</strong> <code>notifications</code> and <code>snapshot-projections</code> have endpoint files, route docstrings claiming "runs every 15 min via cron-job.org," and zero evidence anyone POSTs to them. The previous audit graded these features as "shipped." They're cold.</li>
+    <li><strong>buildInjuryPlan is dead.</strong> The injury builder was a deliberate piece of work — 200+ lines, walk-run scaffolding, cross-training rotation, taper logic. It compiles, type-checks, exports cleanly. Nothing calls it. The injury trigger fires an entirely different code path (a downgrade with a copy-pasted message). This is the worst kind of "shipped" — the file is there for everyone to point at, the runtime behavior is unchanged.</li>
+    <li><strong>The watch endpoints are wide open.</strong> The watch is supposedly proxied through iOS, so the watch routes can accept <code>?user_id=</code> from the request itself. With session auth in front of every other endpoint, this is an obvious leak vector for user #2. The previous audit's per-client matrix glossed over this.</li>
+    <li><strong>Weather enrichment is much better than CRON_AUDIT claimed.</strong> 71/126 enriched vs the doc's 5% snapshot — looks like the cron has been catching up since. So at least one of the "broken" things in the previous audit has self-healed.</li>
+    <li><strong>Cold-start isolation actually works.</strong> Despite all the back-compat hazards above, the probe-verified cold-start path is genuinely clean. 0/22 leak surfaces. The pieces that were claimed to be fixed at the L1 isolation level <em>are</em> fixed. The remaining isolation risk is one rung up — the route-level default-to-David fallback when no auth is present.</li>
+  </ol>
+
+  <h2><span class="num">10</span> Recommended P0 priority order</h2>
+
+  <ol>
+    <li><strong>Fix run-adaptations cron in production.</strong> Check the GH Actions tab for the last 14 days of <code>run-adaptations</code> workflow runs. If they're red, find out why. If they're green but the route is rejecting, dump the request log. Without this, the "coach is mastermind" doctrine is a slogan.</li>
+    <li><strong>Add GH workflow for notifications.</strong> Pattern after <code>refresh-briefings.yml</code>. Schedule every 15 min. Then drain the 2 stuck rows manually.</li>
+    <li><strong>Add GH workflow for snapshot-projections.</strong> Daily 07:30 UTC. Then re-validate the RaceHeader projectionTrend with real cron-sourced rows.</li>
+    <li><strong>Wire buildInjuryPlan into the injury trigger.</strong> When detectInjuryActive fires, the action should call buildInjuryPlan and replace plan_workouts for the affected window, not just emit a downgrade string.</li>
+    <li><strong>Add a session check to the watch routes.</strong> Even if the watch <em>uses</em> a long-lived service token, the route should validate the token and reject if it doesn't match the body's user_id.</li>
+  </ol>
+
+  <p style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--mute); font-size: 12px;">
+    Audited 2026-05-30. DB: production. Probe scripts: <code>web-v2/scripts/_audit_orphans.mjs</code>,
+    <code>_sim_cold_start_full.mjs</code>, <code>_verify_david_intact.mjs</code>,
+    <code>_verify_uuid_unification.mjs</code>, <code>_verify_niggle_trigger.mjs</code>,
+    <code>_verify_workout_library.mjs</code>, <code>_smoke_weather_lookup.mjs</code>.
+    All grades reflect verification at this point in time — they don't predict future drift.
+  </p>
+
+</div>
+</body>
+</html>
