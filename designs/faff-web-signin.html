@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Sign In · isolated from Faff Web App.html</title>
+<!--
+  ============================================================
+  Faff sign-in screen · extracted from designs/Faff Web App.html
+  Source: claude.ai/design handoff bundle (2026-05-30)
+  This is the CANONICAL spec the web agent should implement.
+
+  Replaces: the older designs/login-v4.html (email-only) and the
+  iPhone-mockup designs/runcore-signin.html.
+
+  Three core auth buttons:
+    1. Continue with Apple   (uses POST /api/auth/apple — already exists)
+    2. Continue with Google  (NEEDS new POST /api/auth/google route)
+    3. Sign in with email    (NEEDS new /login form OR new /api/auth/email)
+
+  In-app behaviour from the original gate flow:
+  - All three buttons advance the gate to the next step ("role").
+    The web implementation should instead: mint a session via the
+    real auth route, set the faff_session cookie, then redirect to:
+      · /onboarding if users.onboarding_complete = false
+      · /today      if users.onboarding_complete = true
+
+  Visual rules locked in faff-web/CLAUDE.md (project-level):
+  - NO em dashes (use periods, commas, middot ·). En dashes only for
+    numeric ranges (e.g. May 19–25).
+  - Anton = wordmark only (FAFF·RUN). Skewed -9°, gradient sweep.
+  - Oswald = display + ALL numerics. Condensed, uppercase-leaning.
+  - Inter = body / labels / buttons.
+  - Dark-first. Glass panel over teal effort mesh.
+  ============================================================
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Design tokens (subset of colors_and_type.css — only what the
+   sign-in screen uses). Full token file:
+     faff-web-design-bundle/faff-web/project/colors_and_type.css
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --font-brand:'Anton', sans-serif;
+  --font-display:'Oswald', sans-serif;
+  --font-body:'Inter', sans-serif;
+
+  --bg:#0A0C10; --card:#11141A; --line:rgba(255,255,255,.08);
+  --txt:#F6F7F8; --mute:#8A90A0; --dim:#4B505E;
+  --glass-strong:rgba(17,20,26,.92);
+
+  /* signin uses the teal effort mesh (welcoming, cool entry-point) */
+  --c1:#7FE6D6; --c2:#3FB6B0; --c3:#27B4E0; --c4:#1F8F76; --c5:#11605E; --mbase:#06302E;
+}
+
+/* Mockup-only outer chrome: the canvas the design renders inside
+   (faff-web/project/Faff Web App.html line 273-275). The PRODUCTION
+   implementation does NOT need .win — the gate fills the viewport. */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{
+  font-family:var(--font-body);background:#cdc8be;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  padding:26px 18px 40px;color:#211d18;
+}
+.win{
+  width:100%;max-width:1180px;height:748px;position:relative;overflow:hidden;
+  border-radius:18px;background:var(--mbase);
+  box-shadow:0 30px 70px -24px rgba(20,12,8,.7),0 0 0 1px rgba(0,0,0,.4);
+  display:flex;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Effort mesh background (production: this is the full-viewport
+   chrome behind the gate. Same blob system used everywhere else
+   in the app — only the c1..c5 palette changes per screen.)
+   ───────────────────────────────────────────────────────────── */
+.mesh{position:absolute;inset:0;z-index:0;background:var(--mbase);transition:background .7s ease;}
+.blobs{position:absolute;inset:-12%;filter:blur(46px);animation:breathe 17s ease-in-out infinite;}
+@keyframes breathe{
+  0%,100%{filter:blur(46px) saturate(1) brightness(1) hue-rotate(0deg)}
+  50%{filter:blur(52px) saturate(1.16) brightness(1.07) hue-rotate(8deg)}
+}
+.blob{position:absolute;border-radius:50%;opacity:.9;transition:background .7s ease;}
+.b1{left:-12%;top:-14%;width:74%;height:74%;background:var(--c1);animation:d1 22s ease-in-out infinite alternate;}
+.b2{left:34%;top:-10%;width:70%;height:72%;background:var(--c2);animation:d2 26s ease-in-out infinite alternate;}
+.b3{left:4%;top:18%;width:96%;height:88%;background:var(--c5);animation:d3 30s ease-in-out infinite alternate;}
+.b4{left:-16%;top:42%;width:78%;height:78%;background:var(--c4);animation:d4 24s ease-in-out infinite alternate;}
+.b5{left:30%;top:40%;width:80%;height:80%;background:var(--c3);animation:d5 28s ease-in-out infinite alternate;}
+@keyframes d1{from{transform:translate(0,0) scale(1)}to{transform:translate(7%,6%) scale(1.13)}}
+@keyframes d2{from{transform:translate(0,0) scale(1.04)}to{transform:translate(-8%,9%) scale(.95)}}
+@keyframes d3{from{transform:translate(0,0) scale(1)}to{transform:translate(6%,-7%) scale(1.12)}}
+@keyframes d4{from{transform:translate(0,0) scale(1.05)}to{transform:translate(9%,-6%) scale(.95)}}
+@keyframes d5{from{transform:translate(0,0) scale(.97)}to{transform:translate(-8%,-8%) scale(1.12)}}
+.grain{
+  position:absolute;inset:0;z-index:1;opacity:.045;mix-blend-mode:overlay;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.fade{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg,rgba(0,0,0,.36) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,0) 56%,rgba(0,0,0,.46) 100%);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Gate · the pre-app two-column layout
+   ───────────────────────────────────────────────────────────── */
+.gate{position:absolute;inset:0;z-index:60;display:flex;color:var(--txt);}
+.gate-rail{position:relative;z-index:2;width:44%;flex:0 0 auto;display:flex;flex-direction:column;padding:52px 12px 46px 56px;}
+.gate-panelwrap{position:relative;z-index:2;flex:1;display:flex;align-items:center;justify-content:center;padding:44px 56px 44px 28px;}
+.gate-panel{
+  width:100%;max-width:468px;background:var(--glass-strong);border:1px solid var(--line);border-radius:22px;
+  padding:32px 30px;backdrop-filter:blur(16px);box-shadow:0 34px 80px -34px rgba(0,0,0,.66);
+}
+
+/* Brand wordmark · Anton only · gradient sweep · skewed -9° */
+.gate-brand{display:flex;align-items:center;gap:11px;}
+.gate-mark{
+  font-family:var(--font-brand);font-size:30px;line-height:1;letter-spacing:-1px;text-transform:uppercase;
+  white-space:nowrap;transform:skewX(-9deg);
+  background:linear-gradient(95deg,#F43F5E 0%,#FF5722 17%,#F5C518 35%,#14C08C 55%,#4F8FF7 75%,#F43F5E 100%);
+  background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:faffSweep 6s linear infinite;
+}
+.gate-mark .bdot{
+  display:inline-block;width:.16em;height:.16em;background:#F5C518;border-radius:50%;
+  vertical-align:baseline;margin:0 .03em;-webkit-text-fill-color:#F5C518;
+}
+@keyframes faffSweep{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+
+/* Left rail — eyebrow + display headline + sub + effort-temperature bar */
+.gate-railbody{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:460px;}
+.gate-eyebrow{font-size:12px;font-weight:700;letter-spacing:3px;opacity:.72;}
+.gate-h{
+  font-family:var(--font-display);font-weight:600;text-transform:uppercase;line-height:.9;letter-spacing:-.5px;
+  font-size:74px;margin-top:14px;text-shadow:0 3px 28px rgba(0,0,0,.28);
+}
+.gate-h .accent{
+  background:linear-gradient(120deg,#FFE7C2,#FF8847);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.gate-sub{font-size:17px;font-weight:500;line-height:1.5;opacity:.86;margin-top:18px;max-width:420px;}
+.gate-tempbar{
+  height:10px;border-radius:6px;margin-top:26px;max-width:420px;
+  background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#FF8847,#FC4D64);
+  box-shadow:0 6px 22px -8px rgba(0,0,0,.4);
+}
+.gate-railfoot{font-size:12px;font-weight:600;opacity:.66;line-height:1.6;}
+.gate-railfoot u{cursor:pointer;text-underline-offset:2px;}
+
+/* Right panel header */
+.gate-phead{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;min-height:30px;}
+.gate-plabel{font-size:11px;font-weight:700;letter-spacing:2px;opacity:.5;margin-left:auto;}
+
+/* Auth buttons */
+.auth{display:flex;flex-direction:column;gap:11px;}
+.gbtn{
+  display:flex;align-items:center;justify-content:center;gap:11px;border-radius:14px;padding:15px 0;
+  font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;border:none;
+  transition:transform .12s,background .15s;
+}
+.gbtn:active{transform:scale(.985);}
+.gbtn svg{width:18px;height:18px;}
+.gbtn.apple{background:#fff;color:#0b0b0b;}
+.gbtn.google{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);color:#fff;}
+.gbtn.google:hover{background:rgba(255,255,255,.16);}
+.gbtn.email{background:none;color:#fff;opacity:.66;font-weight:600;}
+.gbtn.email:hover{opacity:.9;}
+.auth-or{
+  display:flex;align-items:center;gap:14px;margin:16px 0;
+  color:var(--mute);font-size:11px;font-weight:700;letter-spacing:1.5px;
+}
+.auth-or::before,.auth-or::after{content:"";flex:1;height:1px;background:var(--line);}
+.gfine{font-size:11px;font-weight:500;opacity:.5;line-height:1.6;text-align:center;margin-top:18px;}
+.gfine u{cursor:pointer;}
+
+/* Caption below the mockup (mockup-only, NOT part of production) */
+.cap{
+  font-family:'JetBrains Mono', ui-monospace, monospace;font-size:10px;color:#5c574e;
+  text-align:center;max-width:1180px;line-height:1.6;margin-top:4px;
+}
+.cap b{color:#211d18;}
+</style>
+</head>
+<body>
+
+<!-- Mockup canvas. PRODUCTION: drop the .win wrapper; the .gate fills the viewport. -->
+<div class="win">
+  <!-- Effort mesh background — teal palette for sign-in (cool · welcoming entry) -->
+  <div class="mesh" id="gateMesh">
+    <div class="blobs">
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="blob b3"></div>
+      <div class="blob b4"></div>
+      <div class="blob b5"></div>
+    </div>
+  </div>
+  <div class="grain"></div>
+  <div class="fade"></div>
+
+  <div class="gate">
+    <!-- LEFT RAIL · wordmark + eyebrow + display headline + sub + temperature bar -->
+    <div class="gate-rail">
+      <div class="gate-brand">
+        <div class="gate-mark">Faff<span class="bdot"></span>Run</div>
+      </div>
+      <div class="gate-railbody">
+        <div class="gate-eyebrow">RUN WITH INTENT</div>
+        <div class="gate-h">Your running,<br><span class="accent">coached.</span></div>
+        <div class="gate-sub">
+          A plan that adapts every day, built from your own training. Let&rsquo;s find your starting line.
+        </div>
+        <div class="gate-tempbar"></div>
+      </div>
+      <div class="gate-railfoot">Faff for web &middot; <u>What&rsquo;s new</u> &middot; <u>Help</u></div>
+    </div>
+
+    <!-- RIGHT PANEL · glass card · three auth buttons -->
+    <div class="gate-panelwrap">
+      <div class="gate-panel">
+        <div class="gate-phead">
+          <div class="gate-plabel">SIGN IN</div>
+        </div>
+
+        <div class="auth">
+          <button class="gbtn apple" id="btnApple">
+            <svg viewBox="0 0 24 24" fill="#0b0b0b">
+              <path d="M16.4 12.8c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.7.8-3.3.8-.7 0-1.7-.8-2.8-.8-1.4 0-2.8.8-3.5 2.1-1.5 2.6-.4 6.5 1.1 8.6.7 1 1.5 2.2 2.6 2.1 1-.04 1.4-.7 2.7-.7 1.2 0 1.6.7 2.7.66 1.1-.02 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.3-.02-.01-2.1-.8-2.1-3.2zM14.2 6.3c.6-.7 1-1.7.9-2.7-.85.04-1.9.57-2.5 1.27-.55.62-1 1.6-.9 2.6.95.07 1.9-.48 2.5-1.17z"/>
+            </svg>
+            Continue with Apple
+          </button>
+          <button class="gbtn google" id="btnGoogle">
+            <svg viewBox="0 0 24 24">
+              <path fill="#fff" d="M21.8 12.2c0-.7-.06-1.2-.18-1.8H12v3.3h5.6c-.1.9-.7 2.3-2 3.2l-.02.12 2.9 2.2.2.02c1.85-1.7 2.9-4.2 2.9-7.1z"/>
+              <path fill="#fff" d="M12 22c2.6 0 4.8-.86 6.4-2.34l-3.05-2.36c-.8.56-1.9.96-3.35.96-2.56 0-4.73-1.7-5.5-4.04l-.11.01-3 2.3-.04.1C5 19.9 8.24 22 12 22z" opacity=".8"/>
+              <path fill="#fff" d="M6.5 14.2c-.2-.6-.32-1.2-.32-1.9s.12-1.3.3-1.9l-.01-.13-3.04-2.36-.1.05A10 10 0 002 12.3c0 1.6.39 3.1 1.07 4.4l3.43-2.5z" opacity=".6"/>
+              <path fill="#fff" d="M12 6.4c1.8 0 3 .78 3.7 1.43l2.7-2.64C16.8 3.7 14.6 2.8 12 2.8 8.24 2.8 5 4.9 3.43 7.9l3.42 2.5C7.27 8.1 9.44 6.4 12 6.4z" opacity=".9"/>
+            </svg>
+            Continue with Google
+          </button>
+        </div>
+
+        <div class="auth-or">OR</div>
+
+        <button class="gbtn email" id="btnEmail">Sign in with email</button>
+
+        <div class="gfine">
+          By continuing you agree to Faff&rsquo;s <u>Terms</u> &amp; <u>Privacy Policy</u>.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="cap">
+  <b>Faff · Sign in.</b>
+  Cool teal effort mesh (it heats up as you commit through onboarding).
+  Apple / Google / email, then straight into the role pick and the import &amp; goal flow.
+  Source: <code>faff-web-design-bundle/faff-web/project/Faff Web App.html</code> lines 1694–1752, 13–79.
+</p>
+
+<script>
+/* PRODUCTION wiring TODO (web agent):
+   - btnApple  → POST /api/auth/apple    (already exists · cookies the session, returns to /today)
+   - btnGoogle → POST /api/auth/google   (NEEDS NEW ROUTE · OAuth flow, mints session same shape)
+   - btnEmail  → navigate to /login form OR inline expand the email/password panel.
+     Email-password backing route: NEEDS NEW POST /api/auth/email that accepts
+       { email, password }, looks up users by email, bcrypt-compares password_hash,
+       mints sessions row, sets faff_session cookie (mirror /api/auth/apple line 159).
+   On success: redirect by users.onboarding_complete (true → /today, false → /onboarding).
+*/
+(function(){
+  document.getElementById('btnApple').onclick  = function(){ console.log('[mockup] Apple → POST /api/auth/apple'); };
+  document.getElementById('btnGoogle').onclick = function(){ console.log('[mockup] Google → POST /api/auth/google (NEW)'); };
+  document.getElementById('btnEmail').onclick  = function(){ console.log('[mockup] Email → /login'); };
+})();
+</script>
+
+</body>
+</html>

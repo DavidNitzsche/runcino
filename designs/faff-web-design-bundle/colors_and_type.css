@@ -1,0 +1,112 @@
+/* ============================================================
+   FAFF · DESIGN SYSTEM — colors_and_type.css
+   Single source of truth for color + type tokens.
+   Color values are the CANONICAL export from the Faff web build
+   (see color-system.md). Match on iOS exactly.
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root{
+  /* ---------------------------------------------------------
+     TYPE — three roles
+     Anton  -> brand wordmark only (FAFF·RUN), skewed, uppercase
+     Oswald -> display headlines + ALL numerics (condensed, 500/600)
+     Inter  -> body, labels, eyebrows, captions, buttons (400–800)
+     --------------------------------------------------------- */
+  --font-brand:   'Anton', sans-serif;
+  --font-display: 'Oswald', sans-serif;
+  --font-body:    'Inter', sans-serif;
+
+  --fs-hero:58px; --fs-h1:38px; --fs-h2:27px; --fs-stat:30px;
+  --fs-title:17px; --fs-body:15px; --fs-label:11px; --fs-cap:10px;
+  --lh-tight:.9; --ls-display:-1px; --ls-label:2px;
+
+  /* ---------------- NEUTRALS ---------------- */
+  --bg:#0A0C10; --card:#11141A; --line:rgba(255,255,255,.08);
+  --txt:#F6F7F8; --mute:#8A90A0; --dim:#4B505E;
+  --glass:rgba(255,255,255,.06); --glass-line:rgba(255,255,255,.12); --glass-strong:rgba(17,20,26,.92);
+
+  /* ---------------- SEMANTIC ACCENTS ---------------- */
+  --green:#3EBD41;  /* success · on-plan · READY */
+  --goal:#F3AD38;   /* goal markers · TODAY badge */
+  --over:#FC4D64;   /* over budget · warning */
+  --dist:#27B4E0;   /* distance · info */
+  --rest:#008FEC;   /* rest-day signal (legacy alias) */
+  --race:#FF8847;   /* race day · ember accent */
+
+  /* ---------------- EFFORT DOTS + LABELS  ★ core ★ ----------------
+     5 active efforts (cool->hot) + rest. These tint chips, week dots, splits. */
+  --eff-recovery:#27B4E0;  /* VERY EASY */
+  --eff-easy:#48B3B5;      /* EASY */
+  --eff-long:#F3AD38;      /* MODERATE */
+  --eff-tempo:#FF8847;     /* HARD */
+  --eff-intervals:#FC4D64; /* MAX */
+  --eff-rest:#8A90A0;      /* OFF */
+
+  /* ---------------- EFFORT MESHES (5 blob colors + base) ----------------
+     The Today background is per-day, driven by the workout's effort key,
+     re-theming over --dur-mesh. */
+  /* recovery + easy share the teal mesh */
+  --mesh-recovery:#7FE6D6,#3FB6B0,#27B4E0,#1F8F76,#11605E,#06302E;
+  --mesh-easy:#7FE6D6,#3FB6B0,#27B4E0,#1F8F76,#11605E,#06302E;
+  --mesh-long:#FFE0A0,#F3AD38,#E89B3A,#E07A2A,#C47812,#3E2A0A;
+  --mesh-tempo:#FFC98A,#FF8847,#F2673A,#E85D26,#C23A1C,#4A1208;
+  --mesh-intervals:#FFD27A,#FF7A45,#FC4D64,#D6263C,#9E1733,#3A0E12;
+  --mesh-rest:#D6BE98,#B2916A,#8A6A48,#5E4630,#45331F,#1C140D;
+
+  /* ---------------- VIEW MESHES (per top-level screen) ---------------- */
+  --mesh-train:#FFE0A0,#F3AD38,#E89B3A,#E07A2A,#C47812,#3E2A0A;     /* amber / build */
+  --mesh-activity:#D6BE98,#B2916A,#8A6A48,#5E4630,#45331F,#1C140D;  /* warm tan */
+  --mesh-health:#7FE6D6,#3FB6B0,#27B4E0,#1F8F76,#11605E,#06302E;    /* teal / calm */
+  --mesh-targets:#FFD27A,#FF7A45,#FC4D64,#D6263C,#9E1733,#3A0E12;   /* race red */
+  --mesh-profile:#6B6358,#4E4840,#3A352E,#2A2723,#1E1C19,#121110;   /* gray neutral */
+  --mesh-spectator:#7FE6D6,#3FB6B0,#27B4E0,#1F8F76,#11605E,#06302E; /* teal */
+  --mesh-race:#FFD27A,#FF7A45,#FC4D64,#D6263C,#9E1733,#3A0E12;      /* race red */
+
+  /* ---------------- TRAINING PHASE MESHES (Train scrubber cool->hot) ---------------- */
+  /* BASE = health · BUILD = train */
+  --mesh-peak:#FFA566,#FF5A52,#EC2F54,#C01D48,#A8163F,#4E0A22;
+  --mesh-taper:#8EF0B0,#34C194,#1F8A68,#128A64,#137259,#06382E;
+
+  /* ---------------- HR ZONES (Z1–Z5) ----------------
+     -a = stacked TIME IN ZONES bars · -b = splits / pacing bars */
+  --z1a:#54ddd0; --z2a:#8ef0b0; --z3a:#ffe0a0; --z4a:#ff9560; --z5a:#ff5a52;
+  --z1b:#48B3B5; --z2b:#3EBD41; --z3b:#F3AD38; --z4b:#FF8847; --z5b:#FC4D64;
+
+  /* ---------------- SHOE ROLE COLORS ---------------- */
+  --shoe-race:#FC4D64; --shoe-tempo:#FF8847; --shoe-long:#F3AD38; --shoe-easy:#48B3B5; --shoe-recovery:#27B4E0;
+
+  /* ---------------- AMBER + MINT ACCENTS ---------------- */
+  --amber-bright:#FFCE8A;  /* eyebrow · COACH tag · callouts */
+  --amber-pale:#FFE7C2;    /* gradient highlight end */
+  --amber-gold:#F5C518;    /* PR / gold pill · wordmark dot */
+  --mint-readiness:#86efa0;/* good-state text */
+  --mint-glow:#7be8a0;     /* gap-chip glow · paths */
+
+  /* ---------------- BRAND ---------------- */
+  --brand-1:#9013FE; --brand-2:#008FEC; --brand-yellow:#F5C518;
+  --brand-sweep:linear-gradient(95deg,#F43F5E 0%,#FF5722 17%,#F5C518 35%,#14C08C 55%,#4F8FF7 75%,#F43F5E 100%);
+
+  /* ---------------- TWEAK ACCENTS (recolor --goal + --race) ---------------- */
+  --accent-ember-goal:#F3AD38; --accent-ember-race:#FF8847;  /* default */
+  --accent-gold-goal:#F5C518;  --accent-gold-race:#F5A518;
+  --accent-violet-goal:#A78BFA;--accent-violet-race:#B794F4;
+  --accent-cool-goal:#27B4E0;  --accent-cool-race:#3AA0E0;
+
+  /* ---------------- STATUS TINTS ---------------- */
+  --status-good-border:rgba(62,189,65,.4);  --status-good-text:#86efa0;  /* NAILED IT / SOLID */
+  --status-pr-border:rgba(245,197,24,.5);    --status-pr-text:#F5C518;     /* PR / LONGEST */
+
+  /* ---------------- SHAPE / ELEVATION / MOTION ---------------- */
+  --r-chip:14px; --r-card:18px; --r-tile:20px; --r-sheet:30px; --r-pill:30px;
+  --blur-glass:blur(16px); --blur-mesh:blur(40px);
+  --shadow-card:0 12px 30px -18px rgba(0,0,0,.42);
+  --shadow-float:0 22px 56px -22px rgba(0,0,0,.55);
+  --shadow-sheet:0 -22px 56px rgba(0,0,0,.5);
+  --ease-spring:cubic-bezier(.32,.72,0,1); --ease-smooth:cubic-bezier(.4,0,.2,1);
+  --dur-mesh:.7s; --dur-sheet:.42s; --dur-tap:.12s;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:22px; --sp-6:28px; --sp-7:40px;
+
+  /* semantic shorthands */
+  --num-font:var(--font-display);  /* numerics are Oswald */
+}

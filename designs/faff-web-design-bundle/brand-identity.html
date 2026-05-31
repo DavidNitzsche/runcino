@@ -1,0 +1,153 @@
+<!-- @dsCard group="Brand" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff · Brand Identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:#0A0C10;color:#F6F7F8;width:1200px;-webkit-font-smoothing:antialiased}
+  .os{font-family:'Oswald',sans-serif}
+  @keyframes sweep{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+  @keyframes d1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(10%,8%) scale(1.14)}}
+  @keyframes d2{0%,100%{transform:translate(0,0) scale(1.04)}50%{transform:translate(-9%,12%) scale(.94)}}
+  @keyframes d3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(8%,-8%) scale(1.12)}}
+
+  /* header */
+  .hdr{position:relative;height:340px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:54px 60px}
+  .mesh{position:absolute;inset:0;background:#4A1208;z-index:0}
+  .blob{position:absolute;border-radius:50%;filter:blur(44px)}
+  .b1{width:60%;height:80%;left:-10%;top:-30%;background:radial-gradient(circle,#FFC98A,transparent 64%);animation:d1 20s ease-in-out infinite}
+  .b2{width:60%;height:80%;right:-10%;top:-20%;background:radial-gradient(circle,#FF8847,transparent 64%);animation:d2 24s ease-in-out infinite}
+  .b3{width:100%;height:90%;left:6%;top:30%;background:radial-gradient(circle,#C23A1C,transparent 70%);animation:d3 28s ease-in-out infinite}
+  .grain{position:absolute;inset:0;opacity:.05;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");z-index:1}
+  .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,4,4,.3),transparent 40%,rgba(10,4,4,.55));z-index:1}
+  .hdr .eyebrow{position:relative;z-index:2;font-size:13px;font-weight:800;letter-spacing:4px;color:rgba(255,255,255,.82)}
+  .logo{position:relative;z-index:2;font-family:'Anton';transform:skewX(-9deg);font-size:118px;line-height:.9;text-transform:uppercase;letter-spacing:-2px;margin-top:8px;
+    background:linear-gradient(95deg,#F43F5E,#FF5722 17%,#F5C518 35%,#14C08C 55%,#4F8FF7 75%,#F43F5E);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sweep 6s linear infinite}
+  .bdot{display:inline-block;width:.16em;height:.16em;background:#F5C518;border-radius:50%;vertical-align:baseline;margin:0 .05em}
+  .hdr .tag{position:relative;z-index:2;font-size:18px;font-weight:600;color:rgba(255,255,255,.9);margin-top:14px;max-width:620px;line-height:1.4}
+
+  /* sections */
+  section{padding:46px 60px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .sl{font-size:11px;font-weight:800;letter-spacing:3px;color:#FF8847;margin-bottom:24px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:48px}
+  .k{font-size:9.5px;font-weight:800;letter-spacing:1.4px;color:#8A90A0;text-transform:uppercase;margin-top:9px}
+  .v{font-family:'Oswald';font-size:11px;color:#5B6172;margin-top:2px;letter-spacing:.4px}
+  .swrow{display:flex;gap:12px;flex-wrap:wrap}
+  .sw{width:92px}
+  .sw .chip{height:62px;border-radius:13px;border:1px solid rgba(255,255,255,.1)}
+
+  /* type specimens */
+  .specimen{padding:22px 0;border-top:1px solid rgba(255,255,255,.07)}
+  .specimen:first-of-type{border-top:0}
+  .role{font-size:10px;font-weight:800;letter-spacing:2px;color:#8A90A0;margin-bottom:10px}
+  .effbar{height:34px;border-radius:9px;background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#FF8847,#FC4D64);display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:10px;font-weight:800;letter-spacing:1.5px;color:rgba(0,0,0,.62)}
+  .efflabels{display:flex;justify-content:space-between;margin-top:9px}
+  .efflabels span{font-size:9px;font-weight:800;letter-spacing:1px;color:#8A90A0;text-transform:uppercase;flex:1;text-align:center}
+  .voice li{font-size:15px;font-weight:500;line-height:1.45;color:#D8DCE4;margin-bottom:12px;list-style:none;padding-left:18px;position:relative}
+  .voice li::before{content:'';position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:#FF8847}
+  .voice b{color:#fff;font-weight:700}
+  .quote{font-family:'Oswald';font-size:22px;font-weight:500;color:#fff;line-height:1.25;margin-top:6px}
+  .foot{padding:30px 60px;font-family:'Oswald';font-size:11px;letter-spacing:1px;color:#4B505E;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <div class="mesh"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+    <div class="grain"></div><div class="scrim"></div>
+    <div class="eyebrow">BRAND IDENTITY</div>
+    <div class="logo">Faff<span class="bdot"></span>Run</div>
+    <div class="tag">A coach in your pocket. Builds a plan around what you are chasing, honest about where you stand today, and warms from recovery to race.</div>
+  </div>
+
+  <section>
+    <div class="sl">LOGO</div>
+    <div class="grid2">
+      <div>
+        <div style="font-family:'Anton';transform:skewX(-9deg);font-size:64px;text-transform:uppercase;letter-spacing:-1px;background:linear-gradient(95deg,#F43F5E,#FF5722 17%,#F5C518 35%,#14C08C 55%,#4F8FF7 75%,#F43F5E);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sweep 6s linear infinite">Faff<span class="bdot"></span>Run</div>
+        <div class="k">Primary · animated rainbow sweep on dark</div>
+      </div>
+      <div>
+        <div style="font-family:'Anton';transform:skewX(-9deg);font-size:64px;text-transform:uppercase;letter-spacing:-1px;color:#F6F7F8">Faff<span class="bdot"></span>Run</div>
+        <div class="k">Mono · white with yellow dot (small sizes / one color)</div>
+        <div class="v" style="margin-top:14px;line-height:1.7">Anton · uppercase · skew −9° · dot #F5C518<br>Never re-letter, re-color the sweep, or unskew.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sl">COLOR · NEUTRALS &amp; BRAND</div>
+    <div class="swrow">
+      <div class="sw"><div class="chip" style="background:#0A0C10"></div><div class="k">bg</div><div class="v">#0A0C10</div></div>
+      <div class="sw"><div class="chip" style="background:#11141A"></div><div class="k">card</div><div class="v">#11141A</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(255,255,255,.08)"></div><div class="k">line</div><div class="v">8% white</div></div>
+      <div class="sw"><div class="chip" style="background:#F6F7F8"></div><div class="k">text</div><div class="v">#F6F7F8</div></div>
+      <div class="sw"><div class="chip" style="background:#8A90A0"></div><div class="k">mute</div><div class="v">#8A90A0</div></div>
+      <div class="sw"><div class="chip" style="background:#4B505E"></div><div class="k">dim</div><div class="v">#4B505E</div></div>
+      <div class="sw"><div class="chip" style="background:#9013FE"></div><div class="k">brand 1</div><div class="v">#9013FE</div></div>
+      <div class="sw"><div class="chip" style="background:#008FEC"></div><div class="k">brand 2</div><div class="v">#008FEC</div></div>
+      <div class="sw"><div class="chip" style="background:#F5C518"></div><div class="k">yellow</div><div class="v">#F5C518</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sl">COLOR · EFFORT TEMPERATURE ★</div>
+    <div class="effbar"><span>COOL · RECOVERY</span><span>HOT · RACE</span></div>
+    <div class="efflabels"><span>recovery</span><span>easy</span><span>long</span><span>tempo</span><span>intervals</span><span>rest</span></div>
+    <div class="swrow" style="margin-top:20px">
+      <div class="sw"><div class="chip" style="background:#27B4E0"></div><div class="v">#27B4E0</div></div>
+      <div class="sw"><div class="chip" style="background:#48B3B5"></div><div class="v">#48B3B5</div></div>
+      <div class="sw"><div class="chip" style="background:#F3AD38"></div><div class="v">#F3AD38</div></div>
+      <div class="sw"><div class="chip" style="background:#FF8847"></div><div class="v">#FF8847</div></div>
+      <div class="sw"><div class="chip" style="background:#FC4D64"></div><div class="v">#FC4D64</div></div>
+      <div class="sw"><div class="chip" style="background:#8A90A0"></div><div class="v">#8A90A0</div></div>
+    </div>
+    <div class="v" style="margin-top:18px;line-height:1.7;font-family:Inter;font-size:13px;color:#8A90A0">Color always means effort. A run, a day, a shoe, a zone is tinted by its place on this scale. It also drives the blurred background mesh, which re-themes over ~0.7s as the temperature changes.</div>
+  </section>
+
+  <section>
+    <div class="sl">TYPOGRAPHY</div>
+    <div class="specimen">
+      <div class="role">ANTON · WORDMARK</div>
+      <div style="font-family:'Anton';transform:skewX(-9deg);font-size:40px;text-transform:uppercase;color:#F6F7F8">Faff<span class="bdot"></span>Run</div>
+    </div>
+    <div class="specimen">
+      <div class="role">OSWALD · DISPLAY + NUMERICS</div>
+      <div class="os" style="font-size:54px;font-weight:600;text-transform:uppercase;line-height:.9">Tempo Run</div>
+      <div class="os" style="font-size:30px;font-weight:600;margin-top:8px">3:00:00 · 6:38 /mi · 191 days out</div>
+    </div>
+    <div class="specimen">
+      <div class="role">INTER · BODY + LABELS</div>
+      <div style="font-size:17px;font-weight:600;line-height:1.5;max-width:760px">A plan that adapts every day, built from your own training.</div>
+      <div style="font-size:12px;font-weight:800;letter-spacing:2px;color:#8A90A0;margin-top:10px">GOAL TIME · READINESS · DAYS OUT</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="grid2">
+      <div>
+        <div class="sl">VOICE</div>
+        <ul class="voice">
+          <li>A sharp, encouraging <b>coach</b>. Confident and plain, never hype, never cute.</li>
+          <li>Always second person. <b>"What are you chasing?"</b></li>
+          <li>Tell the truth, then point at the next move. <b>Honest, not harsh.</b></li>
+          <li>Numbers are the hero. Units stay small and dim.</li>
+          <li>No emoji. Separators are the middot ·, never em dashes.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="sl">IN ITS WORDS</div>
+        <div class="quote">"Your running, coached."</div>
+        <div class="quote" style="margin-top:16px;color:#FFCE8A">"You're 11 min to find. Now let's go close it."</div>
+        <div class="quote" style="margin-top:16px">"A rest day reads as earned and intentional."</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot"><span>FAFF · DESIGN SYSTEM</span><span>DARK-FIRST · EFFORT MESH · ANTON / OSWALD / INTER</span></div>
+</body>
+</html>
