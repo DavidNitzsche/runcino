@@ -820,6 +820,123 @@
   <td><code>Models/Runs.swift:RunDetail.suffer_score / kudos</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>Calories never stored or surfaced</strong></td>
+  <td>Strava's activity payload carries a <code>calories</code> field;
+      HealthKit ingest accepts <code>active_energy</code> in
+      ALLOWED_TYPES. Neither path persists kcal anywhere the run
+      detail can read. The TodayView done hero has a CALORIES tile
+      that falls back to "·" forever because nothing populates it.
+      Discovered 2026-05-31 after David flagged a long-run hero with
+      no calorie value.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>backend gap</strong> · two
+      writers + one reader.
+      (1) Strava sync writes <code>data.calories</code> from the
+      activity payload when present.
+      (2) run-state.ts reads <code>active_energy</code> samples for
+      the run's date window when no Strava value, sums them.
+      (3) Expose as <code>calories_kcal</code> on the RunDetail
+      response. TodayView already has a CALORIES tile · just needs
+      the data flowing.</td>
+  <td>Strava API · activity.calories ·
+      <code>app/api/ingest/health · 'active_energy'</code> · no current writer</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Temperature is a single start-hour point, not a range</strong></td>
+  <td>cron/enrich-weather fetches one Open-Meteo sample at the run's
+      start hour and stores it as <code>data.weather.tempF</code>.
+      A long run that starts at 65°F and finishes at 77°F renders as
+      a static "65°F" tile · the runner has no way to see how
+      conditions evolved during the workout. The hotter-than-usual
+      chip uses this point value to compute its delta, so a run that
+      heated up mid-session can read "normal" even when the back half
+      was brutal.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>backend gap</strong> · pull
+      the hourly forecast for the run's full duration (start_hour
+      through ceil(start_hour + duration_hr)) and store min / max /
+      avg temp in <code>data.weather.tempRangeF</code>. Frontend
+      renders "65°F → 77°F" or "65-77°F avg 71" instead of a single
+      number. Weather-context chip recomputes against the avg or
+      max, not the start point.</td>
+  <td><code>lib/weather/openmeteo.ts:enrichRecent</code> ·
+      <code>data.weather.tempF</code> single point</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Elevation gain sanity check at ingest time</strong></td>
+  <td>Barometric watches occasionally report multi-thousand-foot gain
+      on flat suburban runs when sensor pressure drifts (humidity,
+      front passage, indoor-to-outdoor transition). The
+      <code>elev_gain_ft</code> value gets stored verbatim from
+      Strava and rendered without validation. David's 12.1mi long run
+      reported 4684 ft (389 ft/mi · mountain territory). 2026-05-31
+      WEB render-time fix flags &gt;200 ft/mi as APPROX in the tile;
+      the underlying number stays wrong in the DB.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>backend gap</strong> · during
+      ingest, validate <code>elev_gain_ft</code> against
+      <code>distance_mi</code>. When the ratio exceeds a doctrine
+      threshold (250 ft/mi as the realistic urban cap) AND a GPS
+      polyline is present, recompute the gain from the per-mile
+      elev_change_ft splits (less prone to barometric drift) and use
+      the lower number. Stamp <code>data.elevGainSource =
+      'recomputed'</code> for audit. The runner sees a credible
+      number instead of "(approx)".</td>
+  <td><code>lib/runs/merge.ts · ingest path</code> ·
+      <code>strava_activities.data.elevGainFt</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Per-split work-vs-easy phase tagging</strong></td>
+  <td>The plan called for "8 easy + 4 toward marathon pace." The
+      backend knows: <code>plan_workouts.workout_spec</code> carries
+      the structured warmup/work/cooldown shape, and
+      <code>computeWorkAverages</code> returns aggregate
+      <code>pace_work</code> and <code>hr_avg_work</code>. But the
+      per-split renderer in TodayView treats every mile as flat and
+      doesn't tag which were in the work block. David's MP-finish
+      split (sub-7 pace mile 9-12) reads the same as the easy miles
+      visually.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong> ·
+      run-state.ts already has the work/recovery boundaries from
+      <code>phase_breakdown</code> (for watch runs) or from
+      <code>computeWorkAverages</code>'s split selection. Return a
+      per-split <code>phase: 'warmup' | 'work' | 'recovery' |
+      'cooldown'</code> tag on the splits array; the splits renderer
+      colors the bar accordingly. iOS pass 3's
+      "Per-phase planned-vs-actual breakdown" row covers the bigger
+      version of this; this is the lightweight inline cue.</td>
+  <td><code>lib/coach/run-state.ts:computeWorkAverages</code> ·
+      <code>plan_workouts.workout_spec</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>"How it went" heat-aware verdict</strong></td>
+  <td>The done-hero card surfaces a HOW IT WENT badge. Pre-2026-05-31
+      it was hard-coded to "ON PLAN" regardless. WEB fix today makes
+      it conditional on distance ±10% AND weather_context heat bump
+      &lt;5 bpm (else HOT DAY / OFF PLAN). What's still missing on the
+      backend: an actual HR-vs-effort comparison. A long run with avg
+      HR 8 bpm above the prior 4 long runs at the same pace = real
+      cardiac drift, possibly heat-driven, possibly accumulated
+      fatigue. We have the data (recent HR series, prior long runs,
+      heat baseline) but no aggregate "was today's HR-on-pace
+      consistent with your baseline" computation.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>backend gap</strong> · add a
+      helper in run-state.ts that compares today's avg HR at a given
+      pace bucket against the runner's last 4 same-effort runs.
+      Return an <code>hr_on_pace_delta_bpm</code> field. Frontend
+      folds it into the verdict copy: "Held the long-run line. HR up
+      9 bpm vs typical · the heat earned that one." Cite Research/03
+      cardiac drift section.</td>
+  <td><code>lib/coach/run-state.ts</code> · no current helper</td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->

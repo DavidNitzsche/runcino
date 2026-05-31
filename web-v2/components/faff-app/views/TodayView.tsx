@@ -201,6 +201,9 @@ type RunSummary = {
   route_polyline?: string | null;
   distance_mi?: number;
   hrZonePcts?: { z1: number; z2: number; z3: number; z4: number; z5: number } | null;
+  /** "Hotter than usual" context computed by run-state.ts vs the runner's
+   *  14-day baseline at this lat/lon. Set when the delta is ≥8°F. */
+  weather_context?: { message: string; hr_bump_bpm: number } | null;
 };
 
 /** Lazy-fetch /api/runs/[id] for a past day. Shared by the TodayView hero
@@ -617,7 +620,34 @@ function CompletedHeroV2({
   const zoneColors = ['#54ddd0', '#8ef0b0', '#ffe0a0', '#ff9560', '#ff5a52'];
   const peakHr = runData?.hr_max ?? result?.peak ?? null;
 
-  const splits = (runData?.splits ?? []).slice(0, 8);
+  // Render every split the run carries (was capped at 8 · landed
+  // 2026-05-31 after David flagged a 12.1mi long run rendering only
+  // splits 1-8). The CSS in .splits handles long lists with its own
+  // scroll/overflow.
+  const splits = runData?.splits ?? [];
+
+  // Elevation sanity check. Strava + barometric watches occasionally
+  // report multi-thousand-foot gain on flat suburban runs when the
+  // sensor drifts during a humidity / pressure swing. Flag values that
+  // exceed 200 ft/mi (mountain-running territory) as approximate so
+  // the runner knows the number is suspicious rather than treating it
+  // as a personal best vert day.
+  const distMi = runData?.distance_mi ?? (Number(d.dist) || 0);
+  const elevPerMi = (resolvedGainFt != null && distMi > 0) ? resolvedGainFt / distMi : 0;
+  const elevSuspicious = elevPerMi > 200;
+
+  // "ON PLAN" verdict gates: distance landed within ±10% AND no heat
+  // penalty (weather_context absent or hr_bump &lt; 5). When a heat
+  // bump is real we swap the chip to "HOT DAY" so the runner sees the
+  // coach acknowledged the conditions instead of a hollow ON PLAN.
+  const plannedMi = Number(d.dist) || 0;
+  const actualMi  = runData?.distance_mi ?? plannedMi;
+  const onDistance = plannedMi > 0 && actualMi >= plannedMi * 0.9 && actualMi <= plannedMi * 1.1;
+  const heatBump = runData?.weather_context?.hr_bump_bpm ?? 0;
+  const verdictBadge: 'on-plan' | 'hot-day' | 'off-plan' =
+    onDistance && heatBump < 5 ? 'on-plan'
+    : onDistance && heatBump >= 5 ? 'hot-day'
+    : 'off-plan';
 
   return (
     <div className="hero-v2">
@@ -668,8 +698,10 @@ function CompletedHeroV2({
                 <ShoePicker shoes={shoes} initial={resolvedShoeNm?.trim() || seedShoe} persist={persistShoe} />
               </div>
               <div>
-                <div className="kcl">ELEV GAIN</div>
-                <div className="kcv">{resolvedGainFt != null && resolvedGainFt > 0 ? `${resolvedGainFt} ft` : '·'}</div>
+                <div className="kcl">ELEV GAIN{elevSuspicious ? ' · APPROX' : ''}</div>
+                <div className="kcv" style={elevSuspicious ? { color: 'rgba(246,247,248,0.62)' } : undefined}>
+                  {resolvedGainFt != null && resolvedGainFt > 0 ? `${resolvedGainFt} ft` : '·'}
+                </div>
               </div>
               <div>
                 <div className="kcl">{runData?.power_avg_w != null ? 'AVG POWER' : 'CALORIES'}</div>
@@ -700,13 +732,38 @@ function CompletedHeroV2({
       <aside className="wcard">
         <div className="wcl">
           HOW IT WENT
-          <span className="ok">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-            ON PLAN
-          </span>
+          {verdictBadge === 'on-plan' && (
+            <span className="ok">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              ON PLAN
+            </span>
+          )}
+          {verdictBadge === 'hot-day' && (
+            <span className="ok" style={{ color: '#FF8847' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v6m0 0c-2 2-3.5 4.2-3.5 7a3.5 3.5 0 1 0 7 0c0-2.8-1.5-5-3.5-7z"/></svg>
+              HOT DAY
+            </span>
+          )}
+          {verdictBadge === 'off-plan' && (
+            <span className="ok" style={{ color: '#F3AD38' }}>
+              OFF PLAN
+            </span>
+          )}
         </div>
         <div className="verdict">{verdict}</div>
         <div className="recap">{recap}</div>
+        {runData?.weather_context ? (
+          <div style={{
+            marginTop: 10, padding: '8px 10px', borderRadius: 8,
+            background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
+            fontSize: 12, lineHeight: 1.45, color: '#FFE7C2',
+          }}>
+            {runData.weather_context.message}
+            {runData.weather_context.hr_bump_bpm > 0 ? (
+              <> · HR +{runData.weather_context.hr_bump_bpm} bpm expected</>
+            ) : null}
+          </div>
+        ) : null}
         <div className="divider" />
         <div className="reshead">
           <span>MILE SPLITS</span>
