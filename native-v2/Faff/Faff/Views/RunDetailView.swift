@@ -433,15 +433,29 @@ struct RunDetailView: View {
         return splits.map { s in
             let secs = paceToSeconds(s.pace) ?? 400
             let color = colorForSplit(secs: secs)
+            // Sub-label · HR plus optional elev delta. The +N ft / -N ft
+            // tick explains why a slow split was slow without needing the
+            // full elevation profile. Decoded already on every RunSplit ·
+            // was unrendered.
+            let parts: [String] = [
+                s.hr.map { "\($0) bpm" } ?? "",
+                elevDeltaLabel(s.elev_change_ft),
+            ].filter { !$0.isEmpty }
             return MileBar(
                 id: s.mile,
                 value: Double(800 - secs),  // invert so faster = taller
                 label: s.pace ?? "-",
-                subLabel: s.hr.map { "\($0) bpm" },
+                subLabel: parts.isEmpty ? nil : parts.joined(separator: " · "),
                 color: color,
                 isHighlight: secs < 410
             )
         }
+    }
+
+    /// "+24 ft" / "-15 ft" / "" · empty when null or trivially flat (< 3 ft).
+    private func elevDeltaLabel(_ ft: Int?) -> String {
+        guard let ft, abs(ft) >= 3 else { return "" }
+        return ft > 0 ? "+\(ft) ft" : "\(ft) ft"
     }
 
     /// Right-side header for the splits section · "FASTEST 6:33 · MI 4"
