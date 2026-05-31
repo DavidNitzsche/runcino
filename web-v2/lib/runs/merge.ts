@@ -22,6 +22,7 @@
  * richer source arrives later), we rewire mergedIntoId pointers.
  */
 import { pool } from '@/lib/db/pool';
+import { SOURCE_TIER, enhanceCanonicalFromAbsorbed } from '@/lib/runs/canonical';
 
 type Row = {
   id: string;
@@ -29,17 +30,13 @@ type Row = {
   data: any;
 };
 
-const SOURCE_RANK: Record<string, number> = {
-  strava: 4,
-  watch: 3,
-  manual: 2,
-  apple_health: 1,
-  apple_watch: 3,  // alias used by /api/ingest/workout
-};
-
+// Doctrine (2026-05-31): canonical-run model ladder. Faff first, then
+// HealthKit, then Strava. SOURCE_TIER is the single source of truth ·
+// see lib/runs/canonical.ts. The old SOURCE_RANK that put Strava on
+// top was wrong; this aligns the writer with the enhancement layer.
 function rankFor(row: Row): number {
-  const src = row.data?.source ?? 'unknown';
-  return SOURCE_RANK[src] ?? 0;
+  const src = row.data?.source ?? '';
+  return SOURCE_TIER[src] ?? 0;
 }
 
 function startMs(row: Row): number {
@@ -175,14 +172,38 @@ export async function autoMergeForDate(
 
     for (const loser of losers) {
       const current = loser.data?.mergedIntoId;
-      if (String(current) === canonicalId) continue;  // already merged correctly
-      await pool.query(
-        `UPDATE strava_activities
-            SET data = jsonb_set(data, '{mergedIntoId}', to_jsonb($1::BIGINT))
-          WHERE id = $2::BIGINT`,
-        [canonicalId, loser.id],
-      );
-      changed++;
+      const alreadyMerged = String(current) === canonicalId;
+      if (!alreadyMerged) {
+        await pool.query(
+          `UPDATE strava_activities
+              SET data = jsonb_set(data, '{mergedIntoId}', to_jsonb($1::BIGINT))
+            WHERE id = $2::BIGINT`,
+          [canonicalId, loser.id],
+        );
+        changed++;
+      }
+
+      // Inline absorption · pulls the loser's unique fields into the
+      // canonical row's data + provenance per the source-tier ladder.
+      // Idempotent: if this loser was already absorbed, the canonical
+      // module re-stamps absorbed_into_canonical_at and writes any
+      // newly-promoted fields, but the field-level enhance check
+      // skips no-op tier comparisons. Wrapped in try/catch so a single
+      // bad row never blocks the rest of the cluster.
+      try {
+        if (loser.user_uuid) {
+          await enhanceCanonicalFromAbsorbed({
+            canonicalId,
+            absorbedRow: {
+              id: loser.id,
+              data: loser.data ?? {},
+              user_uuid: loser.user_uuid,
+            },
+          });
+        }
+      } catch (err) {
+        console.warn('[merge] absorber failed for', loser.id, '→', canonicalId, err);
+      }
     }
   }
 
