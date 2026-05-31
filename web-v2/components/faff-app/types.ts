@@ -42,6 +42,11 @@ export type FaffSeed = {
     raceIdx: number;
     miles: number[];   // length = raceIdx (e.g. 26 weeks of mileage)
     maxMi: number;
+    /** Real plan_phases rows from training-state. Drives the TrainView's
+     *  ramp phase axis + phase-breakdown grid so a 13-week half marathon
+     *  plan shows BASE+BUILD (or whatever the plan-builder actually
+     *  authored) instead of being shoehorned into BASE/BUILD/PEAK/TAPER. */
+    phases: Array<{ label: string; startWeekIdx: number; endWeekIdx: number }>;
     /** Per-week real plan workouts so non-current weeks render the real
      *  plan instead of phase-template fluff. */
     weekDays: Array<Array<{

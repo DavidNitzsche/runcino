@@ -35,32 +35,18 @@ const PHASE_TYPE_COLOR: Record<string, string> = {
   intervals: '#FC4D64', recovery: '#27B4E0', rest: '#8A90A0',
 };
 
-/** Group consecutive week indices by phaseOf(i, raceIdx) — same boundaries
- *  the old TrainView used (base <8, build <16, peak <22, taper else). */
-function phaseGroups(raceIdx: number): Array<{ phase: PhaseKey; from: number; to: number }> {
-  const groups: Array<{ phase: PhaseKey; from: number; to: number }> = [];
-  let prev: PhaseKey | null = null;
-  let from = 0;
-  for (let i = 0; i < raceIdx; i++) {
-    const p = phaseOf(i, raceIdx);
-    if (prev == null) { prev = p; from = i; continue; }
-    if (p !== prev) {
-      groups.push({ phase: prev, from, to: i - 1 });
-      prev = p; from = i;
-    }
-  }
-  if (prev != null && from < raceIdx) groups.push({ phase: prev, from, to: raceIdx - 1 });
-  return groups;
-}
-function phaseOf(i: number, raceIdx: number): PhaseKey {
-  if (i === raceIdx) return 'race';
-  if (i < 8) return 'base';
-  if (i < 16) return 'build';
-  if (i < 22) return 'peak';
-  return 'taper';
+/** Resolve the PHASE constant key from a plan_phases.label string. */
+function phaseKey(label: string): PhaseKey {
+  const s = label.toLowerCase().trim();
+  if (s.startsWith('base')) return 'base';
+  if (s.startsWith('build')) return 'build';
+  if (s.startsWith('peak')) return 'peak';
+  if (s.startsWith('taper')) return 'taper';
+  if (s.startsWith('race')) return 'race';
+  return 'base';
 }
 function phaseColor(p: PhaseKey): string {
-  // Use brand effort palette: base ≈ teal, build ≈ amber, peak ≈ orange, taper ≈ green.
+  // Brand effort palette: base ≈ teal, build ≈ amber, peak ≈ orange, taper ≈ green.
   if (p === 'base')  return '#3FB6B0';
   if (p === 'build') return '#E0A23A';
   if (p === 'peak')  return '#FF7A45';
@@ -68,15 +54,59 @@ function phaseColor(p: PhaseKey): string {
   return '#FFCE8A'; // race
 }
 
-/** Per-phase metadata for the breakdown grid. Counts weeks from the actual
- *  plan rather than hardcoding the 1-6, 7-10, etc. labels. */
-function buildPhaseMeta(raceIdx: number): PhaseMeta[] {
-  const groups = phaseGroups(raceIdx).filter((g) => g.phase !== 'race');
-  return groups.map((g) => {
+/** Group weeks by the REAL plan_phases data from training-state. Falls
+ *  back to a heuristic split when no phases are authored (e.g. legacy
+ *  plans where plan_phases is empty). */
+function phaseGroups(
+  raceIdx: number,
+  phases: Array<{ label: string; startWeekIdx: number; endWeekIdx: number }>,
+): Array<{ phase: PhaseKey; label: string; from: number; to: number }> {
+  if (phases && phases.length > 0) {
+    return phases
+      .filter((p) => p.startWeekIdx < raceIdx)
+      .map((p) => ({
+        phase: phaseKey(p.label),
+        label: p.label,
+        from: Math.max(0, p.startWeekIdx),
+        to: Math.min(raceIdx - 1, p.endWeekIdx),
+      }));
+  }
+  // Fallback: scale base/build/peak/taper proportionally to plan length.
+  const N = raceIdx;
+  const split = (frac: number) => Math.max(1, Math.round(N * frac));
+  const base = split(0.45);
+  const build = split(0.30);
+  const peak = split(0.15);
+  const groups: Array<{ phase: PhaseKey; label: string; from: number; to: number }> = [];
+  let cur = 0;
+  if (base > 0)  { groups.push({ phase: 'base',  label: 'Base',  from: cur, to: Math.min(N - 1, cur + base - 1) });  cur += base; }
+  if (build > 0 && cur < N) { groups.push({ phase: 'build', label: 'Build', from: cur, to: Math.min(N - 1, cur + build - 1) }); cur += build; }
+  if (peak > 0 && cur < N)  { groups.push({ phase: 'peak',  label: 'Peak',  from: cur, to: Math.min(N - 1, cur + peak - 1) });  cur += peak; }
+  if (cur < N) groups.push({ phase: 'taper', label: 'Taper', from: cur, to: N - 1 });
+  return groups;
+}
+/** Which group does week i belong to. */
+function phaseOfWeek(
+  i: number,
+  raceIdx: number,
+  phases: Array<{ label: string; startWeekIdx: number; endWeekIdx: number }>,
+): PhaseKey {
+  if (i === raceIdx) return 'race';
+  const groups = phaseGroups(raceIdx, phases);
+  const g = groups.find((x) => i >= x.from && i <= x.to);
+  return g?.phase ?? 'base';
+}
+
+/** Per-phase metadata for the breakdown grid. Uses real plan_phases. */
+function buildPhaseMeta(
+  raceIdx: number,
+  phases: Array<{ label: string; startWeekIdx: number; endWeekIdx: number }>,
+): PhaseMeta[] {
+  return phaseGroups(raceIdx, phases).map((g) => {
     const p = PHASE[g.phase];
     return {
       k: g.phase,
-      name: p?.name ?? g.phase,
+      name: p?.name ?? g.label,
       color: phaseColor(g.phase),
       desc: p?.focus ?? '',
       weeksLabel: g.from === g.to ? `Wk ${g.from + 1}` : `Wk ${g.from + 1}–${g.to + 1}`,
@@ -92,22 +122,24 @@ export function TrainView({
   onOpenDetail: (dayIdx: number) => void;
   onMeshChange: (mesh: Mesh | null) => void;
 }) {
-  const { nowIdx, raceIdx, miles, maxMi } = seed.season;
+  const { nowIdx, raceIdx, miles, maxMi, phases: realPhases } = seed.season;
   const [focusIdx, setFocusIdx] = useState(nowIdx);
   const [planOpen, setPlanOpen] = useState(false);
   const [planTab, setPlanTab] = useState<'month' | 'weeks'>('month');
 
   const isRace = focusIdx === raceIdx;
-  const curPhase = phaseOf(focusIdx, raceIdx);
+  const curPhase = phaseOfWeek(focusIdx, raceIdx, realPhases);
   const curPhaseMeta = PHASE[curPhase];
   const goal = seed.goalRace;
   const daysOut = (raceIdx - focusIdx) * 7;
 
-  // Per-phase metadata + volume range (compute from miles in that span)
+  // Per-phase metadata + volume range (compute from miles in that span).
+  // Uses REAL plan_phases when present; falls back to a proportional split
+  // for legacy plans that didn't author the phases table.
   const phases = useMemo(() => {
-    const meta = buildPhaseMeta(raceIdx);
+    const meta = buildPhaseMeta(raceIdx, realPhases);
     return meta.map((m) => {
-      const grp = phaseGroups(raceIdx).find((g) => g.phase === m.k);
+      const grp = phaseGroups(raceIdx, realPhases).find((g) => g.phase === m.k);
       if (!grp) return m;
       const slice = miles.slice(grp.from, grp.to + 1).filter((mi) => mi > 0);
       const lo = slice.length ? Math.min(...slice) : 0;
@@ -115,7 +147,7 @@ export function TrainView({
       const vol = slice.length ? (lo === hi ? `${lo} mi` : `${lo}–${hi} mi`) : '—';
       return { ...m, vol };
     });
-  }, [raceIdx, miles]);
+  }, [raceIdx, miles, realPhases]);
 
   // Keep mesh in sync with focused week (lets the Shell mesh follow scrubbing)
   useEffect(() => {
@@ -165,15 +197,15 @@ export function TrainView({
     return out.slice(0, 9);
   }, [seed.season.weekDays, nowIdx, raceIdx, goal]);
 
-  // Phase-ramp metadata aligned with the actual plan (for the bottom axis)
+  // Phase-ramp metadata aligned with the REAL plan_phases (for the bottom axis)
   const phaseAxis = useMemo(() => {
-    const out: Array<{ key: PhaseKey; flex: number; color: string }> = [];
-    phaseGroups(raceIdx).forEach((g) => {
-      out.push({ key: g.phase, flex: g.to - g.from + 1, color: phaseColor(g.phase) });
+    const out: Array<{ key: PhaseKey; flex: number; color: string; label: string }> = [];
+    phaseGroups(raceIdx, realPhases).forEach((g) => {
+      out.push({ key: g.phase, flex: g.to - g.from + 1, color: phaseColor(g.phase), label: g.label });
     });
-    out.push({ key: 'race', flex: 1, color: '#FFCE8A' });
+    out.push({ key: 'race', flex: 1, color: '#FFCE8A', label: 'Race' });
     return out;
-  }, [raceIdx]);
+  }, [raceIdx, realPhases]);
 
   function openPlan(tab: 'month' | 'weeks' = 'month') {
     setPlanTab(tab);
@@ -225,7 +257,7 @@ export function TrainView({
         <div className="ramp">
           {miles.map((mi, i) => {
             const h = mi > 0 ? Math.round((mi / Math.max(maxMi, 1)) * 100) : 6;
-            const ph = phaseOf(i, raceIdx);
+            const ph = phaseOfWeek(i, raceIdx, realPhases);
             const isCur = i === focusIdx;
             const isPast = i < nowIdx;
             return (
@@ -258,7 +290,7 @@ export function TrainView({
         <div className="ramp-phases">
           {phaseAxis.map((p, i) => (
             <div key={i} className="pp" style={{ flex: p.flex, color: p.color }}>
-              {(p.key === 'race' ? 'RACE' : (PHASE[p.key]?.name ?? p.key)).toUpperCase()}
+              {p.label.toUpperCase()}
             </div>
           ))}
         </div>
@@ -517,15 +549,15 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
 }
 
 function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: number; onPick: (i: number) => void }) {
-  const { miles, maxMi, raceIdx } = seed.season;
-  const groups = phaseGroups(raceIdx);
+  const { miles, maxMi, raceIdx, phases } = seed.season;
+  const groups = phaseGroups(raceIdx, phases);
   const goal = seed.goalRace;
   return (
     <div className="weeklist">
       {groups.map((g) => (
-        <div key={g.phase}>
+        <div key={`${g.label}-${g.from}`}>
           <div className="phlabel" style={{ color: phaseColor(g.phase) }}>
-            {(PHASE[g.phase]?.name ?? g.phase).toUpperCase()}
+            {g.label.toUpperCase()}
             <span className="pl-line" style={{ background: `${phaseColor(g.phase)}33` }} />
           </div>
           {Array.from({ length: g.to - g.from + 1 }, (_, k) => {

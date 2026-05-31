@@ -423,7 +423,7 @@ function adaptVolumeBars(log: LogT | null, training: Training | null): { bars: V
 }
 
 function adaptSeason(training: Training | null) {
-  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, weekDays: [] };
+  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [] };
   const miles = training.weeks.map(w => Math.round(w.plannedMi || 0));
   const nowIdx = Math.max(0, Math.min(miles.length - 1, training.currentWeekIdx ?? 0));
   const raceIdx = miles.length - 1;
@@ -450,7 +450,15 @@ function adaptSeason(training: Training | null) {
       activityId: d.activityId,
     };
   }));
-  return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, weekDays };
+  // Real plan_phases rows so TrainView can render the actual phase shape
+  // (e.g. 13-week HM plan = BASE + BUILD only) instead of being forced
+  // into the 4-phase BASE/BUILD/PEAK/TAPER hardcode meant for marathons.
+  const phases = (training.phases ?? []).map((p) => ({
+    label: p.label,
+    startWeekIdx: p.startWeekIdx,
+    endWeekIdx: p.endWeekIdx,
+  }));
+  return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, phases, weekDays };
 }
 
 function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
