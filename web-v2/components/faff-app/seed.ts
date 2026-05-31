@@ -304,7 +304,12 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: Planne
       dist,
       pace: paceStr,
       est,
-      done: d.isPast && d.doneMi > 0,
+      // 2026-05-31: was `d.isPast && d.doneMi > 0`. That blocked today's
+      // completed run from flipping to DONE until tomorrow · the watch
+      // synced David's 12 mi long but Today still rendered PLANNED /
+      // UPCOMING with a SKIP button. doneMi reflects every completed
+      // run including today's, so the past-only guard was the bug.
+      done: d.doneMi > 0,
       today: d.isToday,
       activityId: d.activityId,
       hrCap,
@@ -315,7 +320,7 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: Planne
 
   const results: Record<number, CompletedRun | undefined> = {};
   glance.weekDays.forEach((d, i) => {
-    if (!d.isPast || d.doneMi <= 0) return;
+    if (d.doneMi <= 0) return;
     results[i] = {
       win: d.doneMi >= d.plannedMi * 0.95 ? 'Honest & on plan' : 'Done',
       winx: `${d.doneMi.toFixed(1)} of ${d.plannedMi.toFixed(1)} mi`,
