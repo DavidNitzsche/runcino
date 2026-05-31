@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faff — Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{font-family:'Inter',sans-serif;background:#cdc8be;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;padding:28px 16px 46px;color:#211d18;}
+  .mono{font-family:'Oswald',sans-serif;}
+  .phone{width:100%;max-width:392px;height:792px;position:relative;overflow:hidden;border-radius:44px;background:#072a28;box-shadow:0 34px 70px -22px rgba(30,20,15,.55),0 0 0 9px #15120e,0 0 0 10px #2a2620;}
+  .mesh{position:absolute;inset:0;z-index:0;background:#072a28;}
+  .blob{position:absolute;border-radius:50%;filter:blur(40px);}
+  .b1{width:90%;height:60%;left:-14%;top:-16%;background:radial-gradient(circle,#7fe6d6 0%,transparent 62%);animation:f1 22s ease-in-out infinite;opacity:.7;}
+  .b2{width:82%;height:56%;right:-16%;top:-6%;background:radial-gradient(circle,#3fb6b0 0%,transparent 64%);animation:f2 26s ease-in-out infinite;}
+  .b3{width:104%;height:70%;left:0%;top:30%;background:radial-gradient(circle,#11605e 0%,transparent 70%);animation:f3 30s ease-in-out infinite;}
+  .b4{width:88%;height:60%;left:-12%;bottom:-14%;background:radial-gradient(circle,#1f8a76 0%,transparent 66%);animation:f4 24s ease-in-out infinite;}
+  @keyframes f1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(9%,7%) scale(1.12)}}
+  @keyframes f2{0%,100%{transform:translate(0,0) scale(1.04)}50%{transform:translate(-7%,9%) scale(.94)}}
+  @keyframes f3{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(6%,-7%) scale(1.1)}}
+  @keyframes f4{0%,100%{transform:translate(0,0) scale(1.05)}50%{transform:translate(9%,-6%) scale(.94)}}
+  .grain{position:absolute;inset:0;z-index:1;opacity:.05;mix-blend-mode:overlay;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .scrim{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(4,20,18,.3) 0%,transparent 30%,rgba(3,16,14,.66) 100%);}
+  .status{position:absolute;top:0;left:0;right:0;z-index:6;display:flex;justify-content:space-between;padding:16px 26px 0;color:#fff;font-size:13px;font-weight:700;pointer-events:none;}
+  .ui{position:absolute;inset:0;z-index:3;color:#fff;display:flex;flex-direction:column;padding:56px 30px 34px;}
+  .mark{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:900;letter-spacing:3px;;font-family:'Oswald',sans-serif}
+  .mark .dot{width:11px;height:11px;border-radius:50%;background:#62e08a;box-shadow:0 0 14px rgba(98,224,138,.8);}
+  .hero{flex:1;display:flex;flex-direction:column;justify-content:center;}
+  .big{font-size:50px;font-weight:900;letter-spacing:-2.5px;line-height:.92;text-shadow:0 2px 26px rgba(0,0,0,.3);;font-family:'Oswald',sans-serif}
+  .sub{font-size:16px;font-weight:600;opacity:.78;margin-top:18px;line-height:1.5;max-width:300px;}
+  .auth{display:flex;flex-direction:column;gap:11px;}
+  .btn{display:flex;align-items:center;justify-content:center;gap:11px;border-radius:16px;padding:16px 0;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;border:none;}
+  .btn svg{width:18px;height:18px;}
+  .btn.apple{background:#fff;color:#0b0b0b;}
+  .btn.google{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.26);color:#fff;backdrop-filter:blur(10px);}
+  .btn.email{background:none;color:#fff;opacity:.7;font-weight:700;}
+  .fine{text-align:center;font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;opacity:.5;margin-top:18px;line-height:1.6;}
+  .fine u{cursor:pointer;}
+  .cap{font-family:'Oswald',sans-serif;font-size:10px;color:#5c574e;text-align:center;max-width:392px;line-height:1.6;}
+  .cap b{color:#211d18;}
+</style><style id="rc-norm">
+  .wordmark{font-family:'Anton',sans-serif !important;}
+  html,body{background:transparent !important;width:100%;height:100%;}
+  body{margin:0 !important;padding:0 !important;gap:0 !important;display:block !important;min-height:0 !important;}
+  .cap{display:none !important;}
+  .status{display:none !important;}
+  .phone{margin:0 !important;max-width:none !important;width:100% !important;height:100% !important;border-radius:0 !important;box-shadow:none !important;}
+</style>
+<style id="rc-brand">
+@keyframes faffSweep{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+.brandmark{font-family:'Anton',sans-serif !important;font-size:22px;line-height:1;letter-spacing:-1px;text-transform:uppercase;white-space:nowrap;display:inline-block;transform:skewX(-9deg);background:linear-gradient(95deg,#F43F5E 0%,#FF5722 17%,#F5C518 35%,#48B3B5 55%,#4F8FF7 75%,#F43F5E 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:faffSweep 6s linear infinite;}
+.brandmark .bdot{display:inline-block;width:.16em;height:.16em;background:#F5C518;border-radius:50%;vertical-align:baseline;margin:0 .03em;-webkit-text-fill-color:#F5C518 !important;}
+.wordmark{transform:skewX(-9deg);letter-spacing:-1px !important;background:linear-gradient(95deg,#F43F5E 0%,#FF5722 17%,#F5C518 35%,#48B3B5 55%,#4F8FF7 75%,#F43F5E 100%) !important;background-size:200% 100% !important;-webkit-background-clip:text !important;background-clip:text !important;color:transparent !important;-webkit-text-fill-color:transparent !important;animation:faffSweep 6s linear infinite;}
+.wordmark .bdot{display:inline-block;width:.16em;height:.16em;background:#F5C518;border-radius:50%;vertical-align:baseline;margin:0 .03em;-webkit-text-fill-color:#F5C518 !important;}
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="mesh"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div></div>
+    <div class="grain"></div><div class="scrim"></div>
+    <div class="status"><span>9:41</span><span class="mono">5G &#9646;&#9646;&#9646; 84%</span></div>
+    <div class="ui">
+      <div class="mark"><span class="brandmark">Faff<span class="bdot"></span>Run</span></div>
+      <div class="hero">
+        <div class="big">Your<br>running,<br>coached.</div>
+        <div class="sub">A plan that adapts every day, built from your own training. Let&rsquo;s find your starting line.</div>
+      </div>
+      <div class="auth">
+        <button class="btn apple"><svg viewBox="0 0 24 24" fill="#0b0b0b"><path d="M16.4 12.8c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.7.8-3.3.8-.7 0-1.7-.8-2.8-.8-1.4 0-2.8.8-3.5 2.1-1.5 2.6-.4 6.5 1.1 8.6.7 1 1.5 2.2 2.6 2.1 1-.04 1.4-.7 2.7-.7 1.2 0 1.6.7 2.7.66 1.1-.02 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.3-.02-.01-2.1-.8-2.1-3.2zM14.2 6.3c.6-.7 1-1.7.9-2.7-.85.04-1.9.57-2.5 1.27-.55.62-1 1.6-.9 2.6.95.07 1.9-.48 2.5-1.17z"/></svg>Continue with Apple</button>
+        <button class="btn google"><svg viewBox="0 0 24 24"><path fill="#fff" d="M21.8 12.2c0-.7-.06-1.2-.18-1.8H12v3.3h5.6c-.1.9-.7 2.3-2 3.2l-.02.12 2.9 2.2.2.02c1.85-1.7 2.9-4.2 2.9-7.1z"/><path fill="#fff" d="M12 22c2.6 0 4.8-.86 6.4-2.34l-3.05-2.36c-.8.56-1.9.96-3.35.96-2.56 0-4.73-1.7-5.5-4.04l-.11.01-3 2.3-.04.1C5 19.9 8.24 22 12 22z" opacity=".8"/><path fill="#fff" d="M6.5 14.2c-.2-.6-.32-1.2-.32-1.9s.12-1.3.3-1.9l-.01-.13-3.04-2.36-.1.05A10 10 0 002 12.3c0 1.6.39 3.1 1.07 4.4l3.43-2.5z" opacity=".6"/><path fill="#fff" d="M12 6.4c1.8 0 3 .78 3.7 1.43l2.7-2.64C16.8 3.7 14.6 2.8 12 2.8 8.24 2.8 5 4.9 3.43 7.9l3.42 2.5C7.27 8.1 9.44 6.4 12 6.4z" opacity=".9"/></svg>Continue with Google</button>
+        <button class="btn email">Sign in with email</button>
+      </div>
+      <div class="fine">By continuing you agree to Faff&rsquo;s <u>Terms</u> &amp; <u>Privacy Policy</u>.</div>
+    </div>
+  </div>
+  <p class="cap"><b>Faff &mdash; Sign in.</b> Cool teal welcome (it heats up as you commit through onboarding). Apple / Google / email, then straight into the import &amp; goal flow.</p>
+</body></html>
