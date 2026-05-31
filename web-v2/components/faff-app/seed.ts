@@ -1073,6 +1073,7 @@ function emptySeed(): FaffSeed {
       { id: 'watch',      nm: 'Apple Watch',  sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#3aa0e0,#0a66a8)', gl: '⌚', on: false },
       { id: 'finalsurge', nm: 'FinalSurge',   sub: 'Coming soon',        bg: 'linear-gradient(135deg,#5b8def,#2a5fd0)', gl: 'FS', on: false },
     ],
+    pendingProposals: [],
   };
 }
 
@@ -1127,6 +1128,16 @@ export async function buildSeed(): Promise<FaffSeed> {
   const shoeRecByType = await buildShoeRecByType(profile);
   const connections = adaptConnections(profile);
   const form = adaptForm(training, glance);
+  // 2026-05-31: pending coach_proposals (illness / injury). Dead-code rescue
+  // from 2026-05-30 audit — adapt.ts writes these rows; until now the web
+  // had no loader. Today view renders accept/decline cards above the
+  // workout hero.
+  const pendingProposals = await (async () => {
+    try {
+      const { loadPendingProposals } = await import('@/lib/coach/proposals-state');
+      return await loadPendingProposals(userId);
+    } catch { return []; }
+  })();
 
   const fullName = profile?.identity.full_name ?? glance?.greetingName ?? null;
   const user = {
@@ -1165,5 +1176,6 @@ export async function buildSeed(): Promise<FaffSeed> {
     todayShoeId,
     shoeRecByType,
     connections,
+    pendingProposals,
   };
 }

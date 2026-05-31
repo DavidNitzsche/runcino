@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
 import { elevPathFromSplits, decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
+import { CoachProposalCard } from '../cards/CoachProposalCard';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace,
@@ -75,6 +76,14 @@ export function TodayView({
           </div>
         </div>
       </div>
+
+      {seed.pendingProposals.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
+          {seed.pendingProposals.map((p) => (
+            <CoachProposalCard key={p.id} proposal={p} />
+          ))}
+        </div>
+      ) : null}
 
       <div className="weeklab">THIS WEEK</div>
       <div className="week">

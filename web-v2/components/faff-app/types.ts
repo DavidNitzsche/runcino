@@ -110,6 +110,18 @@ export type FaffSeed = {
   // static placeholder.
   shoeRecByType: Record<string, string>;
   connections: ConnectionRow[];
+
+  // 2026-05-31: pending coach_proposals (injury_adjust / illness_adjust)
+  // rendered as accept/decline cards on Today. Empty when no proposals
+  // are pending. POST targets are /api/coach/proposal/[id]/{accept,decline}.
+  pendingProposals: Array<{
+    id: number;
+    proposal_type: string;
+    reason: string;
+    suggested: string;
+    evidence: Record<string, unknown>;
+    created_at: string;
+  }>;
 };
 
 export type GoalRace = {
