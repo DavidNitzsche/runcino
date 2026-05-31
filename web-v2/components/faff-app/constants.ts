@@ -85,6 +85,9 @@ export type PlannedDay = {
   /** Planned HR cap (bpm) from workout_spec.hr_cap_bpm. Surfaced on the
    *  PlannedHeroV2 TARGETS row. null when no spec or no HR-band data. */
   hrCap?: number | null;
+  /** Runner explicitly skipped this day (day_actions.action='skip'). When
+   *  true: week-strip card grayscales, hero swaps to SKIPPED state. */
+  skipped?: boolean;
 };
 
 export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: string[] }> = {

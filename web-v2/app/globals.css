@@ -270,6 +270,13 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .day .dmeta{display:flex;align-items:center;gap:7px;margin-top:7px;}
 .day .ddot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
 .day .ddist{font-size:11px;font-weight:500;opacity:.95;}
+/* Skipped day in the week strip — drains the card to grayscale and
+   surfaces a small SKIPPED tag in the top-right where the DONE check
+   normally sits. Persists day_actions.action='skip' state from seed
+   + optimistic overrides set by PlannedHeroV2's Skip/Restore button. */
+.day.skipped{filter:grayscale(.85) brightness(.78);}
+.day.skipped .dname,.day.skipped .ddist{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.35);}
+.day .dstate .skip{font-size:8px;font-weight:700;letter-spacing:1px;color:rgba(255,255,255,.7);background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:2px 5px;}
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:26px;}
 .tile{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:22px;min-height:222px;display:flex;flex-direction:column;}
 .tile .fll{margin-bottom:0;}

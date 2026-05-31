@@ -14,9 +14,22 @@ export function TodayView({
   onOpenDrawer: () => void;
   onOpenRace: () => void;
 }) {
+  // 2026-05-31: per-day skip overrides keyed by ISO date. Initialized
+  // from seed (server-side day_actions read in loadWeekSkips), then
+  // mutated optimistically by the PlannedHeroV2 Skip/Restore button so
+  // the change reflects in the week strip AND the hero without a reload.
+  const [skipOverrides, setSkipOverrides] = useState<Record<string, boolean>>({});
+  const isSkipped = (day: typeof seed.week[number]) =>
+    (day.iso && day.iso in skipOverrides) ? skipOverrides[day.iso!] : !!day.skipped;
+  const setSkippedFor = (iso: string | undefined, next: boolean) => {
+    if (!iso) return;
+    setSkipOverrides((m) => ({ ...m, [iso]: next }));
+  };
+
   const d = seed.week[curDay] ?? seed.week[seed.todayIdx];
   const e = EFF[d.type];
   const isRest = d.type === 'rest';
+  const dSkipped = isSkipped(d);
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
   // 2026-05-30: lazy-fetch the real run summary for past days so the hero
   // stats grid + heroExtra row don't render seed.results placeholder "·"
@@ -65,34 +78,39 @@ export function TodayView({
 
       <div className="weeklab">THIS WEEK</div>
       <div className="week">
-        {seed.week.map((day, i) => (
-          <div
-            key={i}
-            className={`day${i === curDay ? ' on' : ''}`}
-            onClick={() => onPickDay(i)}
-            role="button"
-            tabIndex={0}
-          >
-            <div className="dtop">
-              <span className="dday">
-                {day.today ? <span className="dw tw">TODAY</span> : <span className="dw">{day.dw}</span>}
-                <span className="dn">{day.dn}</span>
-              </span>
-              <span className="dstate">
-                {day.done && (
-                  <svg className="ck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                )}
-              </span>
+        {seed.week.map((day, i) => {
+          const skipped = isSkipped(day);
+          return (
+            <div
+              key={i}
+              className={`day${i === curDay ? ' on' : ''}${skipped ? ' skipped' : ''}`}
+              onClick={() => onPickDay(i)}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="dtop">
+                <span className="dday">
+                  {day.today ? <span className="dw tw">TODAY</span> : <span className="dw">{day.dw}</span>}
+                  <span className="dn">{day.dn}</span>
+                </span>
+                <span className="dstate">
+                  {skipped ? (
+                    <span className="skip">SKIPPED</span>
+                  ) : day.done ? (
+                    <svg className="ck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  ) : null}
+                </span>
+              </div>
+              <div className="dname">{day.name}</div>
+              <div className="dmeta">
+                <span className="ddot" style={{ background: EFF[day.type].dot }} />
+                <span className="ddist">
+                  {day.dist === ' · ' ? 'rest' : `${day.dist} mi · ${day.pace}`}
+                </span>
+              </div>
             </div>
-            <div className="dname">{day.name}</div>
-            <div className="dmeta">
-              <span className="ddot" style={{ background: EFF[day.type].dot }} />
-              <span className="ddist">
-                {day.dist === ' · ' ? 'rest' : `${day.dist} mi · ${day.pace}`}
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
@@ -126,6 +144,8 @@ export function TodayView({
             : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
           persistShoe={curDay === seed.todayIdx}
           cadenceBaseline={seed.health.body.find(m => m.k === 'cadence')?.current ?? null}
+          skipped={dSkipped}
+          onToggleSkip={setSkippedFor}
         />
       ) : (
         <div className="hero">
@@ -326,13 +346,15 @@ function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: strin
 }
 
 function PlannedHeroV2({
-  d, shoes, seedShoe, persistShoe, cadenceBaseline,
+  d, shoes, seedShoe, persistShoe, cadenceBaseline, skipped, onToggleSkip,
 }: {
   d: FaffSeed['week'][number];
   shoes: FaffSeed['shoes'];
   seedShoe: string;
   persistShoe: boolean;
   cadenceBaseline: number | null;
+  skipped: boolean;
+  onToggleSkip: (iso: string | undefined, next: boolean) => void;
 }) {
   const segs = SEGS[d.type] ?? SEGS.easy;
   const eff  = EFF[d.type];
@@ -343,40 +365,29 @@ function PlannedHeroV2({
   const hr = hrTargetLabel(d);
   const cadenceTgt = planCadenceTarget(d.type, cadenceBaseline);
 
-  // 2026-05-31 — skip/restore for the currently-viewed planned day.
-  // GET on mount to hydrate (covers re-loads + days other than today);
-  // POST/DELETE on toggle. Optimistic — UI flips before the request lands.
-  const [skipped, setSkipped] = useState(false);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!d.iso) return;
-    let cancelled = false;
-    fetch(`/api/today/skip?date=${d.iso}`)
-      .then(r => r.ok ? r.json() : null)
-      .then((j: { skipped?: boolean } | null) => { if (!cancelled && j) setSkipped(!!j.skipped); })
-      .catch(() => { /* swallow — default = not skipped */ });
-    return () => { cancelled = true; };
-  }, [d.iso]);
-  // Drain the page-level Shell mesh to grayscale when this day is skipped.
-  // Shell.tsx renders the mesh OUTSIDE the hero-v2, so a body-level class
-  // is the simplest way to reach it without coupling Shell to PlannedHeroV2.
+  // Body-level class drains the Shell mesh to grayscale when this day is
+  // viewed in skipped state. Cleanup on unmount/day-change prevents the
+  // wash from sticking when navigating away.
   useEffect(() => {
     document.body.classList.toggle('day-skipped', skipped);
     return () => { document.body.classList.remove('day-skipped'); };
   }, [skipped]);
+
+  const [busy, setBusy] = useState(false);
   async function toggleSkip() {
     if (!d.iso || busy) return;
     const next = !skipped;
-    setSkipped(next);          // optimistic
+    onToggleSkip(d.iso, next);   // optimistic flip in parent state
     setBusy(true);
     try {
-      await fetch('/api/today/skip', {
+      const r = await fetch('/api/today/skip', {
         method: next ? 'POST' : 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: d.iso }),
       });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
     } catch {
-      setSkipped(!next);       // revert on failure
+      onToggleSkip(d.iso, !next); // revert on failure
     } finally {
       setBusy(false);
     }

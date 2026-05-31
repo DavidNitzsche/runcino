@@ -112,6 +112,31 @@ async function loadFormMetrics() {
 }
 type Form = Awaited<ReturnType<typeof loadFormMetrics>>;
 
+/** Per-day skip rows for the current Mon-Sun window. Returns a Set of
+ *  ISO dates the runner has explicitly skipped via /api/today/skip.
+ *  Drives the .skipped flag on week[i] + the .day card grayscale. */
+async function loadWeekSkips(): Promise<{ ok: true; value: Set<string> }> {
+  try {
+    const { pool } = await import('@/lib/db/pool');
+    // Same -7h offset as state-loader, so Monday-of-this-week matches.
+    const today = new Date(Date.now() - 7 * 3600000);
+    const dow = today.getUTCDay();
+    const shift = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(today.getTime() + shift * 86400000).toISOString().slice(0, 10);
+    const sundayDt = new Date(today.getTime() + shift * 86400000 + 6 * 86400000);
+    const sunday = sundayDt.toISOString().slice(0, 10);
+    const r = await pool.query(
+      `SELECT date_iso FROM day_actions
+        WHERE user_id = $1 AND action = 'skip'
+          AND date_iso BETWEEN $2 AND $3`,
+      [DEFAULT_USER_ID, monday, sunday]
+    ).catch(() => ({ rows: [] as Array<{ date_iso: string }> }));
+    return { ok: true, value: new Set(r.rows.map((x) => x.date_iso)) };
+  } catch {
+    return { ok: true, value: new Set<string>() };
+  }
+}
+
 /** Per-day shoe assignment from day_actions (action='shoe', note=shoe_id).
  *  Returns the shoe_id (numeric or string) for today's row if present,
  *  else null. Errors swallowed — UI falls back to recommended shoe. */
@@ -182,7 +207,7 @@ function paceFromSpec(spec: import('@/lib/faff/types').WorkoutSpec | null | unde
 
 /* ─────────────────────────  Adapters  ───────────────────────── */
 
-function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: number; results: Record<number, CompletedRun | undefined> } {
+function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: PlannedDay[]; todayIdx: number; results: Record<number, CompletedRun | undefined> } {
   if (!glance || !glance.weekDays?.length) {
     return { week: FALLBACK_WEEK, todayIdx: 1, results: {} };
   }
@@ -239,6 +264,7 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
       today: d.isToday,
       activityId: d.activityId,
       hrCap,
+      skipped: skipSet ? skipSet.has(d.date) : false,
     };
   });
   const todayIdx = Math.max(0, week.findIndex(w => w.today));
@@ -913,8 +939,8 @@ function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['
 /* ─────────────────────────  Public entry point  ───────────────────────── */
 
 export async function buildSeed(): Promise<FaffSeed> {
-  const [gRes, hRes, tRes, rRes, lRes, pRes, fRes, sRes] = await Promise.all([
-    loadGlance(), loadHealth(), loadTraining(), loadRaces(), loadLog(), loadProfile(), loadFormMetrics(), loadTodayShoe(),
+  const [gRes, hRes, tRes, rRes, lRes, pRes, fRes, sRes, skRes] = await Promise.all([
+    loadGlance(), loadHealth(), loadTraining(), loadRaces(), loadLog(), loadProfile(), loadFormMetrics(), loadTodayShoe(), loadWeekSkips(),
   ]);
   const glance   = gRes.ok ? gRes.value : null;
   const health   = hRes.ok ? hRes.value : null;
@@ -924,8 +950,9 @@ export async function buildSeed(): Promise<FaffSeed> {
   const profile  = pRes.ok ? pRes.value : null;
   const formMetrics: Form = fRes;
   const todayShoeId: number | null = sRes.value;
+  const weekSkips: Set<string> = skRes.value;
 
-  const { week, todayIdx, results } = adaptWeek(glance);
+  const { week, todayIdx, results } = adaptWeek(glance, weekSkips);
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
