@@ -246,16 +246,26 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       import('@/lib/coach/races-state'),
       import('@/lib/db/pool'),
     ]);
-    const [races, geoRow] = await Promise.all([
+    const [races, geoRow, courseLibRow] = await Promise.all([
       loadRacesState(userId),
       pool.query(
         `SELECT course_geometry, course_source, meta FROM races WHERE slug = $1 AND user_uuid = $2`,
         [slug, userId]
       ).catch(() => ({ rows: [] as Array<{ course_geometry: CourseGeom | null; course_source: string | null; meta: Record<string, unknown> | null }> })),
+      // course_library row for the same slug — has provenance fields after
+      // migration 127. When source='promoted' and contributor_count > 1,
+      // RaceView surfaces a "Crowd-sourced by N runners" indicator.
+      pool.query(
+        `SELECT source, contributor_count FROM course_library WHERE slug = $1`,
+        [slug]
+      ).catch(() => ({ rows: [] as Array<{ source: string | null; contributor_count: number | null }> })),
     ]);
     const row = geoRow.rows[0] ?? null;
     const geom = row?.course_geometry ?? null;
     const meta = row?.meta ?? {};
+    const lib = courseLibRow.rows[0] ?? null;
+    const courseSource = lib?.source ?? null;
+    const contributorCount = Number(lib?.contributor_count ?? 0) || 0;
 
     const race = [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs, ...races.past].find(r => r?.slug === slug);
     if (!race) return null;
@@ -321,6 +331,11 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
           routeEnd: r?.end ?? null,
         };
       })(),
+      // 2026-05-31: course_library provenance from migration 127.
+      // RaceView shows "Crowd-sourced by N runners" when promoted +
+      // multi-contributor.
+      courseSource,
+      contributorCount,
     };
   } catch {
     return null;

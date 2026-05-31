@@ -90,6 +90,10 @@ export type FaffSeed = {
   // targets view
   prs: PR[];
   races: RaceLite[];
+  // 2026-05-31: projection trend for the goal race's distance — daily
+  // snapshots from projection_snapshots written by the 00:30 cron. Empty
+  // array when no goal race / no snapshots recorded yet. Oldest -> newest.
+  projectionTrend: Array<{ date: string; projectionSec: number | null; vdot: number | null }>;
 
   // activity ranges
   activity: ActivityData;
@@ -118,6 +122,10 @@ export type GoalRace = {
   phaseLabel: string;  // "Build phase · wk 14 / 26"
   goalPct: number;     // 0..100 for progress bar
   location: string | null;  // e.g. "San Diego, CA"  — null if not on record
+  // 2026-05-31: numeric distance for projection-trend lookups against
+  // projection_snapshots (which keys by distance_mi). Null when the goal
+  // race row hasn't been resolved to a real distance yet.
+  distanceMi: number | null;
 };
 export type VolumeBar = { mi: number; label: string; current: boolean };
 export type PR = { k: string; v: string; date: string };

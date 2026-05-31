@@ -24,6 +24,10 @@ type RunDetail = {
   cadence_avg: number | null;
   elev_gain_ft: number | null;
   temp_f: number | null;
+  /** "Hotter than usual" context — run-state.ts computes weatherContext
+   *  vs baseline from workout_weather_cache and stamps a one-liner when
+   *  the delta is meaningful (≥8°F). null otherwise. */
+  weather_context: { message: string; hr_bump_bpm: number } | null;
   power_avg_w: number | null;
   splits: Array<{ mile: number; pace: string | null; hr: number | null; elev_change_ft: number | null }>;
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
@@ -139,6 +143,20 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 )}
                 <div className="i"><div className="k">SHOE</div><div className="v">{currentShoeName(data) || '·'}</div></div>
               </div>
+              {data.weather_context && (
+                <div style={{
+                  marginTop: 14, padding: '12px 14px',
+                  background: 'rgba(255,206,138,0.08)', border: '1px solid rgba(255,206,138,0.28)',
+                  borderRadius: 10, fontSize: 13, fontWeight: 500, lineHeight: 1.5,
+                  color: 'rgba(255,255,255,0.88)',
+                }}>
+                  <span style={{
+                    display: 'inline-block', marginRight: 8, fontSize: 9, fontWeight: 800, letterSpacing: 1,
+                    color: '#FFCE8A', border: '1px solid rgba(255,206,138,.4)', borderRadius: 4, padding: '2px 6px',
+                  }}>HEAT</span>
+                  {data.weather_context.message}
+                </div>
+              )}
             </>
           )}
         </div>

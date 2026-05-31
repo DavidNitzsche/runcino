@@ -110,3 +110,28 @@ export async function loadNearestSnapshot(
   ).catch(() => ({ rows: [] }));
   return r.rows[0] ?? null;
 }
+
+/**
+ * Trend series — last N days of snapshots for a (user, distance). Used by
+ * the TargetsView projection-trend chart. Returns oldest → newest so the
+ * caller can render left-to-right.
+ */
+export async function loadProjectionSeries(
+  userUuid: string,
+  distanceMi: number,
+  daysBack = 90,
+): Promise<Array<{ date: string; projectionSec: number | null; vdot: number | null }>> {
+  const cutoff = new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10);
+  const r = await pool.query<{ d: string; ps: number | null; v: number | null }>(
+    `SELECT snapshot_date::text AS d,
+            projection_sec AS ps,
+            vdot::float AS v
+       FROM projection_snapshots
+      WHERE user_uuid = $1
+        AND distance_mi = $2
+        AND snapshot_date >= $3::date
+      ORDER BY snapshot_date ASC`,
+    [userUuid, distanceMi, cutoff],
+  ).catch(() => ({ rows: [] }));
+  return r.rows.map((row) => ({ date: row.d, projectionSec: row.ps, vdot: row.v }));
+}

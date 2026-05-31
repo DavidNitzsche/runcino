@@ -404,6 +404,7 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
       phaseLabel,
       goalPct: Math.min(100, Math.max(0, 100 - (days / 365) * 100)),
       location: aRace.location ?? null,
+      distanceMi: aRace.distance_mi ?? null,
     };
   }
   if (glance?.nextARaceName && glance.daysToARace != null) {
@@ -413,6 +414,7 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
       goal: '·', projected: '·', onTrack: true, delta: 'on track',
       phaseLabel: glance.phaseLabel || '·', goalPct: 50,
       location: null,
+      distanceMi: null,
     };
   }
   return null;
@@ -1053,6 +1055,7 @@ function emptySeed(): FaffSeed {
     health: { readiness, body: [], form: [] },
     prs: [],
     races: [],
+    projectionTrend: [],
     activity: {
       ranges: {
         month: { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], recs: [], heat: [], heatLabels: [], facts: [] },
@@ -1103,6 +1106,18 @@ export async function buildSeed(): Promise<FaffSeed> {
   // Load plan adapts AFTER training so we have plan_id to scope the query.
   const planAdapts = await loadPlanAdapts(userId, training?.plan_id ?? null);
   const season = adaptSeason(training, planAdapts.value);
+  // 2026-05-31: projection trend series from projection_snapshots
+  // (cron-daily rows). Pull 90 days of (vdot, projection_sec) for the
+  // goal race's distance so TargetsView can render a sparkline.
+  const goalDistMi = goalRace?.distanceMi ?? null;
+  const projectionTrend = goalDistMi
+    ? await (async () => {
+        try {
+          const { loadProjectionSeries } = await import('@/lib/training/projection-snapshots');
+          return await loadProjectionSeries(userId, goalDistMi, 90);
+        } catch { return [] as Array<{ date: string; projectionSec: number | null; vdot: number | null }>; }
+      })()
+    : [];
   const healthSnapshot = adaptHealth(health, formMetrics);
   healthSnapshot.readiness = readiness;
   const prs = adaptPRs(races, log);
@@ -1144,6 +1159,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     health: healthSnapshot,
     prs,
     races: racesList,
+    projectionTrend,
     activity,
     shoes,
     todayShoeId,

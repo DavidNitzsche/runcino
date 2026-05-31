@@ -56,6 +56,11 @@ export type RaceDetailSeed = {
   routePath: string | null;
   routeStart: [number, number] | null;
   routeEnd: [number, number] | null;
+  /** course_library provenance (migration 127). When source='promoted' AND
+   *  contributorCount > 1 the course was crowd-sourced from N runners'
+   *  uploads — surface that on the route panel as social proof. */
+  courseSource: string | null;
+  contributorCount: number;
 };
 
 const FALLBACK: RaceDetailSeed = {
@@ -79,6 +84,8 @@ const FALLBACK: RaceDetailSeed = {
   routePath: null,
   routeStart: null,
   routeEnd: null,
+  courseSource: null,
+  contributorCount: 0,
 };
 
 export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?: RaceDetailSeed; onBack: () => void }) {
@@ -256,7 +263,19 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-ss"><div className="k">GOAL PACE</div><div className="v">{goalPace}<small>/mi</small></div></div>
       </div>
 
-      <div className="rp-sec">THE COURSE<span className="rp-secr">{r.netElevFt < -100 ? 'Net downhill' : r.netElevFt > 100 ? 'Net uphill' : 'Net flat'}</span></div>
+      <div className="rp-sec">
+        THE COURSE
+        <span className="rp-secr">
+          {r.netElevFt < -100 ? 'Net downhill' : r.netElevFt > 100 ? 'Net uphill' : 'Net flat'}
+          {r.courseSource === 'promoted' && r.contributorCount > 1 && (
+            <span style={{
+              marginLeft: 10, fontSize: 9, fontWeight: 800, letterSpacing: 1,
+              color: '#9af0bf', border: '1px solid rgba(154,240,191,.4)',
+              borderRadius: 5, padding: '2px 6px', textTransform: 'uppercase',
+            }}>Crowd-sourced · {r.contributorCount} runners</span>
+          )}
+        </span>
+      </div>
       <div className="rp-panel">
         <div className="rp-elevhead">
           <div className="t">Route{r.course ? ` · ${r.course}` : ''}</div>
