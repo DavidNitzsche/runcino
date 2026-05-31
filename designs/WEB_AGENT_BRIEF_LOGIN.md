@@ -7,6 +7,33 @@ the existing `web-v2/` backend. **Apple is the only working path.** Render the
 Google + email buttons as the design shows (visual parity) but mark them as
 deferred · no functional handler yet.
 
+## Self-schedule a recurring coverage audit · DO THIS LAST
+
+After your login work merges and probes pass, **before you finish**, schedule
+yourself a recurring weekly coverage audit so the coverage doc stays
+self-maintaining without anyone wiring a central cron.
+
+1. Use `scheduled-tasks` MCP or `CronCreate` (whichever you have)
+2. Schedule **weekly · every Sunday 06:00 UTC**
+3. Prompt to run when fired:
+
+```
+Read docs/BACKEND_FRONTEND_COVERAGE.html (and the "How to use this doc"
+protocol at the top), then walk the backend (web-v2/app/api/* +
+web-v2/lib/* + docs/data-architecture-2026-05-30.html) and the current
+web surface (web-v2/app/* + web-v2/components/*). For every backend
+capability not represented in the web surface, append a row to the
+matching section. Use Recommendation:
+"design tweak needed" / "can add inline · <proposal>" / "safe to leave ·
+<why>". Mark Found by: WEB. Commit + push with message
+"docs(coverage): WEB scheduled audit · N new entries". Then re-schedule
+yourself for next Sunday.
+```
+
+If neither scheduled-tasks nor CronCreate is available, flag the gap to
+David in your final report so he can wire it manually. Either way · this
+is your loop, not a centralized one.
+
 ## Coverage protocol · maintained by you as you work
 
 `docs/BACKEND_FRONTEND_COVERAGE.html` is a running log of every backend

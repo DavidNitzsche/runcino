@@ -7,6 +7,36 @@ in the canonical iPhone app at `native-v2/Faff/Faff/`. Apple is the only
 working path. Render Google + email buttons at full visual fidelity per the
 design but they fire toasts only (no functional handler).
 
+## Self-schedule a recurring coverage audit · DO THIS LAST
+
+After your sign-in work merges and probes pass, **before you finish**,
+schedule yourself a recurring weekly coverage audit so the coverage doc
+stays self-maintaining without anyone wiring a central cron.
+
+1. Use `scheduled-tasks` MCP or `CronCreate` (whichever you have)
+2. Schedule **weekly · every Sunday 07:00 UTC** (an hour after the web
+   agent's, so you don't push at the same time)
+3. Prompt to run when fired:
+
+```
+Read docs/BACKEND_FRONTEND_COVERAGE.html (and the "How to use this doc"
+protocol at the top), then walk the backend (web-v2/app/api/* +
+web-v2/lib/* + docs/data-architecture-2026-05-30.html) and the current
+iOS surface (native-v2/Faff/Faff/Views/* + native-v2/Faff/Faff/API.swift
++ native-v2/Faff/Faff/Components/*). For every backend capability not
+represented in the iOS surface, append a row to the matching section.
+Use Recommendation:
+"design tweak needed" / "can add inline · <proposal>" / "safe to leave ·
+<why>". Mark Found by: IOS. If you see "Found by: WEB" entries that
+also apply to iOS, annotate "also found by IOS on <date>". Commit +
+push with "docs(coverage): IOS scheduled audit · N new entries". Then
+re-schedule yourself for next Sunday.
+```
+
+If neither scheduled-tasks nor CronCreate is available, flag the gap to
+David in your final report so he can wire it manually. Either way · this
+is your loop, not a centralized one.
+
 ## Coverage protocol · maintained by you as you work
 
 `docs/BACKEND_FRONTEND_COVERAGE.html` is a running log of every backend
