@@ -88,11 +88,15 @@ async function sectionSystemHealth() {
     [DAVID],
   )).rows;
 
-  // weather enrichment freshness
+  // weather enrichment freshness · "has_gps" matches the route-integrity definition
   const weatherFreshness = (await pool.query(
     `SELECT MAX(weather_enriched_at) AS last_enrich,
             COUNT(*) FILTER (WHERE data->>'weather' IS NOT NULL) AS enriched,
-            COUNT(*) FILTER (WHERE data ? 'startLatLng' AND jsonb_typeof(data->'startLatLng') = 'array') AS has_gps,
+            COUNT(*) FILTER (
+              WHERE (data->>'routePolyline' IS NOT NULL AND length(data->>'routePolyline') > 0)
+                 OR (data ? 'startLatLng' AND jsonb_typeof(data->'startLatLng') = 'array')
+                 OR (data ? 'startLat' AND data ? 'startLng')
+            ) AS has_gps,
             COUNT(*) AS total
        FROM strava_activities
       WHERE user_uuid = $1`,
@@ -126,7 +130,14 @@ async function sectionRunIntegrity() {
          (data->>'distanceMi')::numeric                         AS distance_mi,
          (data->>'movingTimeS')::numeric                        AS moving_s,
          data->>'avgHr'                                         AS avg_hr,
-         data ? 'startLatLng' AND jsonb_typeof(data->'startLatLng') = 'array' AS has_gps,
+         (
+           -- Garmin / device path stores the route as an encoded polyline string.
+           -- Strava-direct path stores it as data.startLatLng = [lat, lng] array.
+           -- Either is fine · this run has GPS if the runner has a route to see.
+           (data->>'routePolyline' IS NOT NULL AND length(data->>'routePolyline') > 0)
+           OR (data ? 'startLatLng' AND jsonb_typeof(data->'startLatLng') = 'array')
+           OR (data ? 'startLat' AND data ? 'startLng')
+         )                                                       AS has_gps,
          data->>'weather' IS NOT NULL                           AS has_weather,
          data ? 'splits'                                        AS has_splits,
          data ? 'hrSamples'                                     AS has_hr_samples,
@@ -348,7 +359,11 @@ async function sectionWhatsMissing() {
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'date')::date >= CURRENT_DATE - 14
-        AND data ? 'startLatLng' AND jsonb_typeof(data->'startLatLng') = 'array'
+        AND (
+          (data->>'routePolyline' IS NOT NULL AND length(data->>'routePolyline') > 0)
+          OR (data ? 'startLatLng' AND jsonb_typeof(data->'startLatLng') = 'array')
+          OR (data ? 'startLat' AND data ? 'startLng')
+        )
         AND data->>'weather' IS NULL
       ORDER BY (data->>'date')::date DESC LIMIT 10`,
     [DAVID],
