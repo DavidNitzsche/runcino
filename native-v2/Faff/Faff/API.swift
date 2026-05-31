@@ -936,6 +936,24 @@ struct ProfileIdentity: Decodable {
     let height_cm: FlexibleDouble?
     var heightCm: Double? { height_cm?.value }
     let experience_level: String?
+
+    /// Single source of truth for the page-header avatar (5 views call it).
+    /// Was duplicated across TodayView · ActivityView · TargetsView ·
+    /// TrainView · ProfileView and EVERY copy fell back to the first
+    /// letter of `city` when `full_name` was nil · David has city =
+    /// "Los Angeles" and full_name = null so every header rendered "L"
+    /// as if his name was Larry. City-first-letter is a meaningless
+    /// identity proxy · fall back to empty (gradient pill renders
+    /// clean) instead of inventing an initial. (2026-05-31)
+    var avatarInitials: String {
+        guard let n = full_name?.trimmingCharacters(in: .whitespaces), !n.isEmpty else {
+            return ""
+        }
+        let parts = n.split(separator: " ")
+        let first = parts.first.map(String.init)?.prefix(1) ?? ""
+        let last  = parts.count > 1 ? String(parts.last!).prefix(1) : ""
+        return (String(first) + String(last)).uppercased()
+    }
 }
 
 struct ProfilePhysiology: Decodable {

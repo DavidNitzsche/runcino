@@ -600,21 +600,8 @@ struct TodayView: View {
         plan?.days.first { $0.date_iso == selectedDayID }
     }
 
-    /// Derived avatar initials. Prefers profile.identity.full_name; falls
-    /// back to the first letter of city; final fallback is "FA" (Faff).
-    private var avatarInitials: String {
-        if let n = profile?.identity.full_name, !n.isEmpty {
-            let parts = n.split(separator: " ")
-            let first = parts.first.map(String.init)?.prefix(1) ?? ""
-            let last = parts.count > 1 ? String(parts.last!).prefix(1) : ""
-            let raw = String(first) + String(last)
-            if !raw.isEmpty { return raw.uppercased() }
-        }
-        if let c = profile?.identity.city, let f = c.first {
-            return String(f).uppercased()
-        }
-        return "FA"
-    }
+    /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
+    private var avatarInitials: String { profile?.identity.avatarInitials ?? "" }
 
     private var titleForToday: String {
         let f = DateFormatter()

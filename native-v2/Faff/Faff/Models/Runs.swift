@@ -9,18 +9,39 @@ import Foundation
 
 // MARK: - /api/log
 
+// 2026-05-31 audit round 2: extend the lenient-decoder doctrine to the
+// whole LogState tree. LogWeek + LogRun got it earlier this round, but
+// LogState/LogFilterAxes/LogShoeAxis/LogFilters were still auto-synthesized
+// strict Decodable. A single null `slug` inside `axes.shoes` would have
+// thrown all the way up and dropped the entire LogState — the runner would
+// see "0 SO FAR" even though the server returned 97 runs. Doctrine says
+// every server-shaped struct gets a custom init with safe defaults; this
+// finishes that sweep for /api/log.
 struct LogState: Decodable {
     let today: String
     let totalRuns: Int
     let totalMi: Double
     let weeks: [LogWeek]
-    // Filter axes (mirrors lib/coach/log-state.ts, added 2026-05-28). New
-    // fields are optional so a /log decode can't break in a deploy window
-    // where the phone is briefly ahead of the server.
     let totalRunsUnfiltered: Int?
     let totalMiUnfiltered: Double?
     let axes: LogFilterAxes?
     let filters: LogFilters?
+
+    enum CodingKeys: String, CodingKey {
+        case today, totalRuns, totalMi, weeks
+        case totalRunsUnfiltered, totalMiUnfiltered, axes, filters
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.today = try c.decodeIfPresent(String.self, forKey: .today) ?? ""
+        self.totalRuns = try c.decodeIfPresent(Int.self, forKey: .totalRuns) ?? 0
+        self.totalMi = try c.decodeIfPresent(Double.self, forKey: .totalMi) ?? 0
+        self.weeks = (try? c.decode([LogWeek].self, forKey: .weeks)) ?? []
+        self.totalRunsUnfiltered = try c.decodeIfPresent(Int.self, forKey: .totalRunsUnfiltered)
+        self.totalMiUnfiltered = try c.decodeIfPresent(Double.self, forKey: .totalMiUnfiltered)
+        self.axes = try? c.decode(LogFilterAxes.self, forKey: .axes)
+        self.filters = try? c.decode(LogFilters.self, forKey: .filters)
+    }
 }
 
 // Per-axis available values for the /log filter chip strip — render a chip
@@ -30,6 +51,15 @@ struct LogFilterAxes: Decodable {
     let types: [String]
     let phases: [String]
     let shoes: [LogShoeAxis]
+
+    enum CodingKeys: String, CodingKey { case sources, types, phases, shoes }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.sources = (try? c.decode([String].self, forKey: .sources)) ?? []
+        self.types = (try? c.decode([String].self, forKey: .types)) ?? []
+        self.phases = (try? c.decode([String].self, forKey: .phases)) ?? []
+        self.shoes = (try? c.decode([LogShoeAxis].self, forKey: .shoes)) ?? []
+    }
 }
 
 struct LogShoeAxis: Decodable, Identifiable {
@@ -37,6 +67,14 @@ struct LogShoeAxis: Decodable, Identifiable {
     let slug: String
     let name: String
     let runs: Int
+
+    enum CodingKeys: String, CodingKey { case slug, name, runs }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.slug = try c.decodeIfPresent(String.self, forKey: .slug) ?? ""
+        self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.runs = try c.decodeIfPresent(Int.self, forKey: .runs) ?? 0
+    }
 }
 
 // Active filters echoed back by the server (null = not filtering that axis).
@@ -45,6 +83,15 @@ struct LogFilters: Decodable {
     let type: String?
     let phase: String?
     let shoe: String?
+
+    enum CodingKeys: String, CodingKey { case source, type, phase, shoe }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.source = try c.decodeIfPresent(String.self, forKey: .source)
+        self.type = try c.decodeIfPresent(String.self, forKey: .type)
+        self.phase = try c.decodeIfPresent(String.self, forKey: .phase)
+        self.shoe = try c.decodeIfPresent(String.self, forKey: .shoe)
+    }
 }
 
 struct LogWeek: Decodable, Identifiable {

@@ -72,22 +72,9 @@ struct ActivityView: View {
         }
     }
 
-    /// Avatar initials from the runner's profile · was hardcoded "DK". Returns
-    /// empty string when profile hasn't loaded so the avatar shows the
-    /// gradient pill without a wrong identity overlay.
-    private var avatarInitials: String {
-        if let name = profile?.identity.full_name, !name.isEmpty {
-            let parts = name.split(separator: " ")
-            let first = parts.first.map(String.init)?.prefix(1) ?? ""
-            let last = parts.count > 1 ? String(parts.last!).prefix(1) : ""
-            let raw = String(first) + String(last)
-            if !raw.isEmpty { return raw.uppercased() }
-        }
-        if let c = profile?.identity.city, let f = c.first {
-            return String(f).uppercased()
-        }
-        return ""
-    }
+    /// Avatar initials · delegates to ProfileIdentity.avatarInitials, the
+    /// single source of truth across all 5 PageHeader-using views.
+    private var avatarInitials: String { profile?.identity.avatarInitials ?? "" }
 
     // MARK: - Toggle
 

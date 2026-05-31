@@ -143,12 +143,13 @@ struct ProfileView: View {
         }
     }
 
+    /// Avatar initials · delegates to ProfileIdentity.avatarInitials. Falls
+    /// back to "FA" (Faff) here only — the dedicated profile screen wants
+    /// something rendered even when no name is on file, whereas the page-
+    /// header avatars on Today / Activity / Targets / Train render clean.
     private var initials: String {
-        let name = profile?.identity.full_name ?? "FA"
-        let parts = name.split(separator: " ")
-        let first = parts.first.map(String.init)?.prefix(1) ?? "F"
-        let last = parts.count > 1 ? String(parts.last!).prefix(1) : "A"
-        return String(first) + String(last)
+        let derived = profile?.identity.avatarInitials ?? ""
+        return derived.isEmpty ? "FA" : derived
     }
     private var subtitleLine: String {
         var parts: [String] = []

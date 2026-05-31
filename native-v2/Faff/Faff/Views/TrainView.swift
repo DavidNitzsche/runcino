@@ -185,22 +185,8 @@ struct TrainView: View {
         }
     }
 
-    /// Avatar initials derived from the runner's profile (was hardcoded
-    /// "DK" — David's guess-initials regardless of who signed in). Falls
-    /// back to the city's first letter, then to the empty string.
-    private var avatarInitials: String {
-        if let name = profile?.identity.full_name, !name.isEmpty {
-            let parts = name.split(separator: " ")
-            let first = parts.first.map(String.init)?.prefix(1) ?? ""
-            let last = parts.count > 1 ? String(parts.last!).prefix(1) : ""
-            let raw = String(first) + String(last)
-            if !raw.isEmpty { return raw.uppercased() }
-        }
-        if let c = profile?.identity.city, let f = c.first {
-            return String(f).uppercased()
-        }
-        return ""
-    }
+    /// Avatar initials · delegates to ProfileIdentity.avatarInitials.
+    private var avatarInitials: String { profile?.identity.avatarInitials ?? "" }
 
     private var roadToText: String {
         if let race = state?.race?.name { return "ROAD TO \(race.uppercased())" }
