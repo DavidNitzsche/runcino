@@ -167,6 +167,7 @@ export async function GET(req: NextRequest) {
     carbsTotalG: fueling.carbsTotalG,
     shortLine: fueling.shortLine,
     why: fueling.why,
+    citation: fueling.citation,
   } : null;
 
   // Prescriptions are deterministic from (type, weeklyMi, lthr, goal_*).

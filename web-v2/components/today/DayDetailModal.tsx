@@ -265,12 +265,66 @@ function PlannedWorkoutBody({ day, typeColor, prefetchedPres }: { day: GlanceWee
         </div>
       )}
 
+      {/* Fueling — computed per Research/18 (gels + carb intake based on
+          duration, ramp toward race target, heat penalty). Hidden when the
+          workout is short enough that pre-run breakfast covers it
+          (fueling.needed === false → API returns null). */}
+      {pres?.fueling && <FuelingCard fueling={pres.fueling} />}
+
       {day.isToday && (
         <div style={{ fontFamily: 'var(--f-body)', fontSize: 12, color: 'var(--mute)', marginTop: 14, fontStyle: 'italic' }}>
           The run will appear here once the watch syncs it back.
         </div>
       )}
     </>
+  );
+}
+
+/** Fueling card — surfaces the per-run gel plan computed in fueling.ts.
+ *  Hidden when fueling.needed === false (covered by upstream conditional).
+ *  Color: var(--rest) blue, matching warmup/cooldown effort tier — fueling
+ *  is part of the run's logistics, not its main hard work. */
+function FuelingCard({ fueling }: { fueling: NonNullable<Prescription['fueling']> }) {
+  const [showWhy, setShowWhy] = useState(false);
+  return (
+    <div style={{
+      background: 'var(--card-2)', borderRadius: 4, padding: '14px 18px',
+      border: '1px solid var(--line-2)',
+      borderLeft: '3px solid var(--rest)',
+      marginBottom: 12,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, gap: 12 }}>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 11, fontWeight: 700, color: 'var(--rest)', letterSpacing: '1.4px', textTransform: 'uppercase' }}>
+          Fueling
+        </div>
+        <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+          {fueling.carbsTotalG} g carbs
+        </div>
+      </div>
+      <div style={{ fontFamily: 'var(--f-label)', fontSize: 17, color: 'var(--ink)', letterSpacing: '0.3px', marginBottom: 8, lineHeight: 1.3 }}>
+        {fueling.shortLine}
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowWhy((v) => !v)}
+        style={{
+          background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+          fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)',
+          letterSpacing: '0.6px', textTransform: 'uppercase', fontWeight: 600,
+        }}
+        aria-expanded={showWhy}
+      >
+        {showWhy ? '− why' : '+ why'}
+      </button>
+      {showWhy && (
+        <div style={{ marginTop: 8, fontFamily: 'var(--f-body)', fontSize: 12.5, color: 'var(--mute)', lineHeight: 1.55 }}>
+          <div>{fueling.why}</div>
+          <div style={{ marginTop: 6, fontSize: 10.5, opacity: 0.75, letterSpacing: '0.3px' }}>
+            {fueling.citation}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
