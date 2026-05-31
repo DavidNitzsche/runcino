@@ -84,7 +84,13 @@ export async function POST(req: NextRequest) {
     elevGainFt: body.elev_gain_ft ?? null,
     tempF: body.temp_f ?? null,
     splits: Array.isArray(body.splits) ? body.splits : [],
-    hrZonePcts: body.hr_zone_pcts ?? { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 },
+    // 2026-05-31: was defaulting to {z1:0,...,z5:0} — a falsey-looking value
+    // that's actually truthy, so the run-detail loader treated it as
+    // "zones present" and skipped the deriveHrZones fallback. The Faff
+    // watch app + HK ingest paths almost never ship pre-computed zone
+    // percentages (per-mile HR is enough for the loader to compute them),
+    // so we keep this null and let run-state.ts derive at read time.
+    hrZonePcts: body.hr_zone_pcts ?? null,
     routePolyline: body.route_polyline ?? null,
     ingestedAt: new Date().toISOString(),
   };
