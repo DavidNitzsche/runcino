@@ -136,6 +136,15 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         onOpenRecap={() => setOpenOverlay('weekci')}
       />
       <main className="main" ref={mainRef}>
+        {/* 2026-05-31: auth contract change — when no faff_session cookie
+            is present the SSR loaders return an emptySeed (Guest user,
+            no plan, no race). Render a single sign-in panel for every
+            view instead of letting each one render against the empty
+            shape and produce garbage (TrainView "RACE DAY WEEK 1",
+            ProfileView "Sign in renews Dec", etc.). */}
+        {isGuestSeed(seed) ? (
+          <GuestPanel view={view} />
+        ) : <>
         {view === 'today'   && (
           <TodayView
             seed={seed}
@@ -186,6 +195,7 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
           />
         )}
         {view === 'spectator'&& <SpectatorView seed={seed} onExit={() => navigate('today')} />}
+        </>}
       </main>
 
       <Drawer
@@ -248,6 +258,67 @@ function Mesh({ mesh }: { mesh: Mesh }) {
       <div className="grain" />
       <div className="fade" />
     </>
+  );
+}
+
+/** Detect the empty/guest seed shape returned by buildSeed() when there's
+ *  no faff_session cookie. emptySeed() (seed.ts) stamps user.name='Guest'
+ *  AND zeroes season.weekDays — either signal alone would do, both
+ *  together is unambiguous. */
+function isGuestSeed(seed: FaffSeed): boolean {
+  return seed.user?.name === 'Guest' && (!seed.season?.weekDays || seed.season.weekDays.length === 0);
+}
+
+/** Shown for every view when the visitor isn't signed in. Replaces the
+ *  silent "default to David" fallback that the auth contract removed
+ *  on 2026-05-30, and prevents each view from rendering against the
+ *  empty seed shape and producing surface-specific garbage. */
+function GuestPanel({ view }: { view: ViewKey }) {
+  const blurbs: Partial<Record<ViewKey, { title: string; body: string }>> = {
+    today:     { title: 'Sign in to see today',
+                 body: 'Open the Faff iPhone app and sign in. Your session is shared with the web automatically — your plan, runs, and readiness will light up here.' },
+    train:     { title: 'Sign in to see your plan',
+                 body: 'The training dashboard is per-runner. Sign in on the Faff iPhone app and your block, weeks, and key workouts populate here.' },
+    health:    { title: 'Sign in to see your health',
+                 body: 'Readiness, HRV, RHR, sleep, VO2 and form metrics stream in from the iPhone HealthKit pipeline once you sign in.' },
+    targets:   { title: 'Sign in to see your races',
+                 body: 'Goal race, projection vs goal, calendar and PRs unlock after sign-in.' },
+    activity:  { title: 'Sign in to see your log',
+                 body: 'Activity heatmap, recent runs and aggregates follow your runner-id — sign in on iPhone to see them here.' },
+    profile:   { title: 'Sign in to see your profile',
+                 body: 'Shoe garage, connections, units and preferences are per-runner. Sign in on the iPhone app to manage them.' },
+    spectator: { title: 'Sign in to spectate', body: 'Spectator mode is per-runner.' },
+    race:      { title: 'Sign in to see this race',
+                 body: 'Race detail is keyed to your account.' },
+  };
+  const copy = blurbs[view] ?? blurbs.today!;
+  return (
+    <div style={{
+      minHeight: '60vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: '40px 24px', textAlign: 'center',
+    }}>
+      <div style={{
+        fontFamily: 'Oswald,sans-serif', fontSize: 48, fontWeight: 600, letterSpacing: '-0.5px',
+        textTransform: 'uppercase', lineHeight: 1, marginBottom: 14,
+      }}>
+        {copy.title}
+      </div>
+      <div style={{
+        maxWidth: 480, fontSize: 15, fontWeight: 500, lineHeight: 1.55,
+        color: 'rgba(255,255,255,0.78)', marginBottom: 26,
+      }}>
+        {copy.body}
+      </div>
+      <div style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: '2px',
+        color: 'rgba(255,206,138,0.85)', marginBottom: 10,
+      }}>
+        WEB SIGN-IN COMING SOON
+      </div>
+      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+        Until then, sign in on the iPhone app — the session cookie is shared automatically.
+      </div>
+    </div>
   );
 }
 
