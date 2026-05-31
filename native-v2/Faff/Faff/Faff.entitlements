@@ -32,5 +32,18 @@
 	-->
 	<key>aps-environment</key>
 	<string>development</string>
+
+	<!--
+	  Sign In with Apple. Components/SignInWithAppleView.swift uses
+	  ASAuthorizationAppleIDProvider · without this entitlement the iOS
+	  framework rejects the request with ASAuthorizationError.unknown
+	  (error 1000) before reaching the network or our backend. The App
+	  ID 'run.faff.app' must also have Sign In with Apple capability
+	  enabled in Apple Developer Console (confirmed 2026-05-31).
+	-->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>
