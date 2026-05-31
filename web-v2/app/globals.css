@@ -223,6 +223,33 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .tgt .tv{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;text-align:right;}
 .hero-v2 .tgt .tv small{font-family:'Inter',sans-serif;font-size:11px;font-weight:500;opacity:.7;}
 
+/* SKIP THIS RUN / RESTORE button — pinned to bottom of wcard via mt:auto. */
+.hero-v2 .skipbtn{margin-top:auto;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.82);font-family:'Inter',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:13px;border-radius:11px;cursor:pointer;transition:background .15s,border-color .15s,color .15s;}
+.hero-v2 .skipbtn:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.32);color:#fff;}
+.hero-v2 .skipbtn:disabled{opacity:.55;cursor:default;}
+.hero-v2 .skipbtn svg{width:15px;height:15px;flex:0 0 auto;}
+
+/* SKIPPED state — applied at root .hero-v2.skipped: drains content
+   opacity, leaves the wcard interactive for the RESTORE action. */
+.hero-v2 .htitle,
+.hero-v2 .stats,
+.hero-v2 .effort-band,
+.hero-v2 .session,
+.hero-v2 .tgts-h,
+.hero-v2 .tgt{transition:opacity .4s ease;}
+.hero-v2.skipped .htitle{opacity:.55;}
+.hero-v2.skipped .stats{opacity:.5;}
+.hero-v2.skipped .effort-band{opacity:.5;}
+.hero-v2.skipped .session{opacity:.4;}
+.hero-v2.skipped .tgts-h,.hero-v2.skipped .tgt{opacity:.45;}
+.hero-v2.skipped .wcl .tag{color:rgba(255,255,255,.62);border-color:rgba(255,255,255,.24);}
+
+/* Page-level grey-wash when the current day is skipped — applied at body
+   level via Shell.tsx data attribute so the Shell's mesh + blobs (which
+   sit OUTSIDE .hero-v2) also drain to grey. */
+body.day-skipped .mesh,
+body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .55s ease;}
+
 /* week */
 .weeklab{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;margin:26px 0 12px;}
 .week{display:flex;gap:10px;}

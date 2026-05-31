@@ -342,10 +342,57 @@ function PlannedHeroV2({
   const effortLbl = planEffortLabel(d.type);
   const hr = hrTargetLabel(d);
   const cadenceTgt = planCadenceTarget(d.type, cadenceBaseline);
+
+  // 2026-05-31 — skip/restore for the currently-viewed planned day.
+  // GET on mount to hydrate (covers re-loads + days other than today);
+  // POST/DELETE on toggle. Optimistic — UI flips before the request lands.
+  const [skipped, setSkipped] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!d.iso) return;
+    let cancelled = false;
+    fetch(`/api/today/skip?date=${d.iso}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((j: { skipped?: boolean } | null) => { if (!cancelled && j) setSkipped(!!j.skipped); })
+      .catch(() => { /* swallow — default = not skipped */ });
+    return () => { cancelled = true; };
+  }, [d.iso]);
+  // Drain the page-level Shell mesh to grayscale when this day is skipped.
+  // Shell.tsx renders the mesh OUTSIDE the hero-v2, so a body-level class
+  // is the simplest way to reach it without coupling Shell to PlannedHeroV2.
+  useEffect(() => {
+    document.body.classList.toggle('day-skipped', skipped);
+    return () => { document.body.classList.remove('day-skipped'); };
+  }, [skipped]);
+  async function toggleSkip() {
+    if (!d.iso || busy) return;
+    const next = !skipped;
+    setSkipped(next);          // optimistic
+    setBusy(true);
+    try {
+      await fetch('/api/today/skip', {
+        method: next ? 'POST' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: d.iso }),
+      });
+    } catch {
+      setSkipped(!next);       // revert on failure
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const eyebrowState = skipped ? 'SKIPPED' : 'PLANNED';
+  const planTag = skipped ? 'SKIPPED' : 'UPCOMING';
+  const planV   = skipped ? 'Skipped this one.' : planVerdict(d.type);
+  const planR   = skipped
+    ? "No problem. One easy day won't set you back, and the plan keeps your weekly volume on track. Restore it if you change your mind."
+    : planRecap(d.type);
+
   return (
-    <div className="hero-v2">
+    <div className={`hero-v2${skipped ? ' skipped' : ''}`}>
       <div className="hmain">
-        <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · PLANNED'}</div>
+        <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · ' + eyebrowState}</div>
         <div className="titlerow">
           <h1 className="htitle">{d.name}</h1>
         </div>
@@ -418,10 +465,10 @@ function PlannedHeroV2({
       <aside className="wcard">
         <div className="wcl">
           THE PLAN
-          <span className="tag">UPCOMING</span>
+          <span className="tag">{planTag}</span>
         </div>
-        <div className="verdict">{planVerdict(d.type)}</div>
-        <div className="recap">{planRecap(d.type)}</div>
+        <div className="verdict">{planV}</div>
+        <div className="recap">{planR}</div>
         <div className="divider" />
         <div className="tgts-h">TARGETS</div>
         <div className="tgt">
@@ -436,6 +483,19 @@ function PlannedHeroV2({
           <span className="tk">CADENCE</span>
           <span className="tv">{cadenceTgt}</span>
         </div>
+        <button className="skipbtn" type="button" onClick={toggleSkip} disabled={busy}>
+          {skipped ? (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.36"/><path d="M3 4v5h5"/></svg>
+              <span>Restore run</span>
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+              <span>Skip this run</span>
+            </>
+          )}
+        </button>
       </aside>
     </div>
   );
