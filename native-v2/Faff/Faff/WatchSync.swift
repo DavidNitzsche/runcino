@@ -48,7 +48,14 @@ final class WatchSync: NSObject, ObservableObject {
             let raw = try await API.fetchWatchTodayRaw()
             // Build applicationContext per WATCH_CONTRACT.md
             var ctx: [String: Any] = [:]
-            // authToken — TODO wire when v2 auth lands (P6). Watch tolerates absence.
+            // Pass the iPhone's session token along · the watch needs it to
+            // POST workout completions back to /api/watch/workouts/complete
+            // (which now requires Bearer after the 2026-05-30 audit). Watch
+            // tolerates absence on first launch, but without this the watch
+            // can never land its runs.
+            if let t = TokenStore.shared.token {
+                ctx["authToken"] = t
+            }
             // workout / message — decode the response shape and route.
             let obj = try JSONSerialization.jsonObject(with: raw) as? [String: Any] ?? [:]
             if obj["workout"] != nil {
