@@ -611,6 +611,93 @@
   <td><code>app/api/runs/[id]/rpe/route.ts (GET)</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>Form metrics block (8 fields decoded, 0 rendered)</strong></td>
+  <td>RunDetail.form pulls cadence_spm, ground_contact_ms,
+      stride_length_m, vertical_oscillation_cm, vertical_ratio_pct,
+      run_power_w, respiratory_rate, spo2_pct on every run with HK +
+      Stryd-style data. The iPhone RunForm struct decodes all 8;
+      every iPhone View ignores them.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>design tweak needed</strong>. A
+      FORM section on RunDetail with the 8 metrics as a 4×2 grid,
+      colored by FormBand thresholds from /api/tips. Pair with the
+      "Form-metric tips library" cross-cutting entry · taps reveal the
+      drill from form-tips.ts.</td>
+  <td><code>Models/Runs.swift:RunForm</code> ·
+      <code>lib/training/form-tips.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Work-segment-only stats (pace_work · hr_work · cadence_work)</strong></td>
+  <td>RunDetail exposes pace_work, hr_avg_work, cadence_avg_work,
+      work_seconds · the averages over JUST the work intervals (excluding
+      warmup / recovery / cooldown). For a tempo workout these are the
+      numbers that matter most. The iPhone decoder pulls them; the View
+      renders only the whole-run averages.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A
+      "Work segments" sub-stat row on RunDetail under the main meta strip
+      · "WORK · 6:14/mi · 168 bpm · 182 spm · 24 min." Tells the runner
+      whether they hit the intended intensity, not just whether they
+      "ran 8 miles."</td>
+  <td><code>Models/Runs.swift:RunDetail.pace_work / hr_avg_work / cadence_avg_work / work_seconds</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Per-phase planned-vs-actual breakdown</strong></td>
+  <td>RunDetail.phase_breakdown is an array of PhaseBreakdown rows ·
+      one per planned phase with target_pace + actual_pace + status
+      ("on" / "fast" / "slow") + completed flag + target vs actual
+      distance + duration. Tells the runner exactly which intervals
+      hit and which were off. iPhone decoder pulls it; no View
+      renders.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>design tweak needed</strong>.
+      A list under the splits on RunDetail · one row per phase with a
+      color-coded status dot. "Interval 1 · target 6:05 · ran 6:01 ●
+      on" / "Interval 4 · target 6:05 · ran 6:22 ● slow." The richest
+      coach-vs-runner conversation in the app.</td>
+  <td><code>Models/Runs.swift:PhaseBreakdown</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>LTHR-anchored HR zone time</strong></td>
+  <td>RunDetail.hr_zones_from_lthr returns the time-in-zone breakdown
+      using Friel LTHR zones (Z1-Z5) instead of %MHR. Separate from
+      hrZonePcts which uses %MHR. The two answers can differ by 5-10
+      bpm · iPhone shows only the %MHR breakdown.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A
+      toggle pill above the time-in-zones bar · "%MHR · LTHR" lets the
+      runner switch the math without leaving the page. Honest about
+      the method per zones.ts doctrine.</td>
+  <td><code>Models/Runs.swift:HRZonesFromLTHR</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Per-mile elevation change in splits</strong></td>
+  <td>RunSplit.elev_change_ft is decoded for every mile. Adds a
+      third dimension to the splits table (pace · HR · elev) that
+      explains why mile 4 was 20s slower (climbed 80 ft) without
+      needing the full elevation profile.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A
+      tiny +/- ft column next to pace + HR in the splits table.</td>
+  <td><code>Models/Runs.swift:RunSplit.elev_change_ft</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Strava engagement (suffer_score · kudos)</strong></td>
+  <td>RunDetail.suffer_score + RunDetail.kudos pass through from
+      Strava's payload. iPhone decodes them; no View renders.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>safe to leave</strong> ·
+      Strava-native UI surface metrics that don't add coaching signal.
+      Worth revisiting only if Faff wants to render a social layer.</td>
+  <td><code>Models/Runs.swift:RunDetail.suffer_score / kudos</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -744,6 +831,24 @@
       rendered on web's persistent race-bib header per the comment in
       race-header.ts.</td>
   <td><code>lib/coach/race-header.ts:RaceHeaderStatus</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Past-race result fields (finishTime, pb, matchedRun)</strong></td>
+  <td>RaceDetail.finishTime (string like "1:34:22"), pb (boolean PR
+      flag), and matchedRun (the Strava activity linked to this race
+      · activity_id, pace, avg_hr, cadence, elev_gain_ft) all decode
+      on the iPhone. The hero shows only the upcoming-race shape ·
+      past races render the same layout with no result chip + no
+      "view the run" deep link.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>design tweak needed</strong>.
+      For past races: replace the goal hero with a "FINISHED · 1:34:22"
+      block (gold styling when pb=true) + a "View the run →" tile
+      linking to RunDetailView(runId: matchedRun.activity_id) so the
+      runner can drill into splits/HR/cadence without leaving the race
+      page.</td>
+  <td><code>Models/Races.swift:RaceDetail.finishTime / pb / matchedRun</code></td>
   <td class="client-ios">IOS</td>
 </tr>
 <tr>
@@ -1032,6 +1137,38 @@
       a row "Daily briefing · 07:00" with a time picker under the
       Notifications panel.</td>
   <td><code>lib/coach/settings.ts:UserSettings.briefing_time</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Connection last-sync timestamps</strong></td>
+  <td>ProfileConnections returns lastSync per source (Strava, Apple
+      Health, Apple Watch). Backend exposes each as ISO string + a
+      human-readable "note" field. iPhone Profile shows only the
+      connected boolean dot · the runner can't tell if their Strava
+      hasn't synced in 6 days.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A
+      grey timestamp under each connection row · "Strava · Connected ·
+      synced 2h ago" / "Apple Watch · Connected · synced 5min ago."
+      Flag amber when lastSync &gt; 24h for active connections.</td>
+  <td><code>ProfileConnectionState.lastSync</code> · /api/profile/state</td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Strava auto-push + phone-HR-alert toggles</strong></td>
+  <td>ProfileFields decodes strava_auto_push + phone_hr_alerts on the
+      iPhone. profile.strava_auto_push controls whether completed
+      watch runs auto-push to Strava (vs requiring the manual push
+      action on RunDetail). profile.phone_hr_alerts controls the P35
+      live alert feature. iPhone settings view doesn't render either
+      toggle. <strong>Also found by WEB on 2026-05-31</strong> for the
+      phone_hr_alerts toggle.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. Two
+      toggle rows in Settings · "Auto-push runs to Strava" + "Phone
+      HR alerts." Both wire through PATCH /api/settings which the
+      iPhone already calls.</td>
+  <td><code>ProfileFields.strava_auto_push / phone_hr_alerts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
 <tr>
