@@ -57,19 +57,17 @@ export async function POST(req: NextRequest) {
   const t2 = Date.now();
   let activeUserIds: string[] = [];
   try {
+    // P0 cross-user leak follow-up (2026-05-30): the legacy
+    // `(user_uuid IS NULL OR user_id='me')` fallback that auto-added
+    // David's UUID is gone. His plan was backfilled to UUID long ago
+    // and is in the DISTINCT list below. If we ever need to seed an
+    // orphan owner here again, do it by explicit env var, not by a
+    // global query that matches any unowned row.
     const r = await pool.query(
       `SELECT DISTINCT user_uuid FROM training_plans
         WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`
     );
     activeUserIds = r.rows.map((row: any) => row.user_uuid as string);
-    const meRow = await pool.query(
-      `SELECT 1 FROM training_plans
-        WHERE archived_iso IS NULL AND (user_uuid IS NULL OR user_id = 'me') LIMIT 1`
-    );
-    if (meRow.rowCount && meRow.rowCount > 0) {
-      const DAVID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
-      if (!activeUserIds.includes(DAVID)) activeUserIds.push(DAVID);
-    }
     timings.list_users_ms = Date.now() - t2;
   } catch (e: any) {
     return NextResponse.json({ ok: false, step: 'list_users', error: e?.message ?? String(e) }, { status: 500 });
