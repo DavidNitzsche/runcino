@@ -1093,23 +1093,28 @@
   <td class="client-ios">IOS</td>
 </tr>
 <tr>
-  <td><strong>Run deduplication (mergedIntoId)</strong></td>
-  <td><code>lib/runs/merge.ts</code> auto-detects duplicate rows when
-      the same run lands via multiple sources (Strava + watch +
-      manual + apple_health) and stamps the losers with
-      <code>data.mergedIntoId = canonical.id</code>. The source ranking
-      strava &gt; watch &gt; manual &gt; apple_health picks the canonical.
-      Aggregations filter merged rows so weekly volume isn't tripled.
-      No surface tells the runner "we combined 3 sources into this
-      canonical run" so duplicate-prone setups stay opaque.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Safe to leave</strong> for user-facing UI · the dedup is
-      a correctness feature, not a story. If a duplicate slips the
-      writer (e.g. ingest order races) the run page would show a stray
-      sibling on the same day; promote a "merged from 2 sources" pill
-      then.</td>
-  <td><code>lib/runs/merge.ts:SOURCE_RANK</code> ·
-      <code>strava_activities.data.mergedIntoId</code></td>
+  <td><strong>Canonical run model (Faff &gt; HK &gt; Strava)</strong></td>
+  <td><code>lib/runs/canonical.ts</code> + <code>lib/runs/merge.ts</code>:
+      ONE canonical strava_activities row per actual run. Multiple
+      providers ENHANCE the canonical instead of duplicating · each
+      field is attributed to its source via <code>provenance jsonb</code>.
+      Source-tier ladder (5=watch, 4=manual, 3=apple_watch, 2=apple_health,
+      1=strava). Higher tier wins on conflict; gaps always filled.
+      Dedup-loser rows get <code>absorbed_into_canonical_at</code>
+      stamped and their unique fields pulled into the canonical. Daily
+      <code>/api/cron/strava-sync</code> catches gaps Strava webhooks
+      missed (last 30d). 97 canonical rows, 30 absorbed losers, 100%
+      coverage on name/start/dist/dur/GPS/splits/HR. No duplicate pairs.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · commit 875334ff · WEB.</strong> Migration
+      128 added provenance + absorbed_into_canonical_at. Backfill pulled
+      241 fields from 28 dedup-losers. Strava cron at 08:15 UTC daily.
+      Invariants verified via <code>scripts/_verify_canonical_runs.mjs</code>.
+      Doctrine in canonical.ts SOURCE_TIER. Next pass: shoe gear-matching
+      improvement (currently 11% attribution).</td>
+  <td><code>lib/runs/canonical.ts:SOURCE_TIER</code> ·
+      <code>lib/strava/pullSync.ts</code> ·
+      <code>db/migrations/128_run_provenance.sql</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
