@@ -97,6 +97,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .twr .tc{margin-left:12px;display:flex;align-items:center;min-width:14px;}
 .twr .tc .ck{width:15px;height:15px;}
 .twr .tdy{font-size:8px;font-weight:700;letter-spacing:1px;color:#0A0C10;background:var(--goal);border-radius:4px;padding:2px 5px;}
+/* Skipped row in TrainView's week list — same grayscale + line-through
+   treatment as the /today week strip's .day.skipped. */
+.twr.skipped{opacity:.55;}
+.twr.skipped .tn,.twr.skipped .tm{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.35);}
+.twr.skipped .tdot{filter:grayscale(.9) brightness(.85);}
 .ph{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:480px;}
 .phl{font-family:'Oswald',sans-serif;font-size:40px;font-weight:600;text-transform:uppercase;}
 .phs{font-size:13px;font-weight:500;opacity:.8;margin-top:10px;max-width:340px;line-height:1.5;}

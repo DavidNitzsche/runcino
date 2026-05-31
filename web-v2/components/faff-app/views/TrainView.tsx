@@ -165,13 +165,15 @@ export function TrainView({
                 const col = (SEASON_TYPE_COLOR[d.type as keyof typeof SEASON_TYPE_COLOR] ?? '#8A90A0');
                 const meta = d.dist === ' · ' ? 'full recovery' : `${parseFloat(d.dist)} mi · ${d.pace}`;
                 return (
-                  <div className="twr" key={wi} style={{ cursor: 'pointer' }} onClick={() => onOpenDetail(wi)} role="button" tabIndex={0}>
+                  <div className={`twr${d.skipped ? ' skipped' : ''}`} key={wi} style={{ cursor: 'pointer' }} onClick={() => onOpenDetail(wi)} role="button" tabIndex={0}>
                     <span className="td">{d.dw}</span>
                     <span className="tdot" style={{ background: col }} />
                     <span className="tn">{d.name}</span>
                     <span className="tm">{meta}</span>
                     <span className="tc">
-                      {d.done ? (
+                      {d.skipped ? (
+                        <span className="tdy" style={{ background: 'rgba(255,255,255,.10)', color: 'rgba(255,255,255,.7)' }}>SKIPPED</span>
+                      ) : d.done ? (
                         <svg className="ck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                       ) : d.today ? (<span className="tdy">TODAY</span>) : null}
                     </span>
