@@ -125,6 +125,9 @@ export async function GET(
     splits: Array.isArray(data.splits) ? data.splits as any[] : undefined,
     weather: data.weather ? {
       tempF: typeof data.weather.temp_f === 'number' ? data.weather.temp_f : (typeof data.tempF === 'number' ? data.tempF : null),
+      tempF_start: typeof data.weather.temp_f_start === 'number' ? data.weather.temp_f_start : null,
+      tempF_end: typeof data.weather.temp_f_end === 'number' ? data.weather.temp_f_end : null,
+      tempF_peak: typeof data.weather.temp_f_peak === 'number' ? data.weather.temp_f_peak : null,
       humidityPct: typeof data.weather.humidity_pct === 'number' ? data.weather.humidity_pct : null,
       windMph: typeof data.weather.wind_mph === 'number' ? data.weather.wind_mph : null,
       conditions: typeof data.weather.conditions === 'string' ? data.weather.conditions : null,

@@ -31,7 +31,17 @@ export const CITATION_WEATHER = {
 };
 
 export interface WeatherInput {
+  /**
+   * Headline temperature (°F). For span-enriched runs callers should
+   * pass `tempF_peak` here · the recap is about conditions the runner
+   * actually fought through, not start-line conditions.
+   */
   tempF: number | null;
+  /** Optional thermal arc · when present the engine quotes the climb. */
+  tempF_start?: number | null;
+  tempF_end?: number | null;
+  /** Hottest hour the run touched · the recap's preferred reading. */
+  tempF_peak?: number | null;
   dewpointF?: number | null;
   windMph?: number | null;
   humidityPct?: number | null;
@@ -128,7 +138,11 @@ function bandFor(slowdownPct: number): HeatBand {
 }
 
 export function judgeWeather(input: WeatherInput): WeatherJudgment {
-  const t = input.tempF;
+  // Prefer the PEAK temperature the run actually fought through. The
+  // legacy `tempF` field is the start-line snapshot · adequate for short
+  // runs, misleading on anything over 60 minutes in a warming forecast.
+  const t = input.tempF_peak ?? input.tempF;
+  const tStart = input.tempF_start ?? input.tempF;
   if (t == null) {
     return {
       slowdownPct: 0,
@@ -159,15 +173,24 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   // the effective temperature into a higher band than the raw reading.
   const shouldFlagInRecap = slowdownPct >= 2 || (td != null && td >= 65);
 
+  // When we know the run's thermal arc, lead with the climb · "65°F → 75°F"
+  // tells the story far better than the peak alone. Skip the arrow when
+  // the climb was <3°F (within bucket noise) or we only have one reading.
+  const climbedMaterially = tStart != null && input.tempF_end != null
+    && Math.abs((input.tempF_end as number) - tStart) >= 3;
+  const tempPhrase = climbedMaterially
+    ? `${Math.round(tStart as number)}°F → ${Math.round(input.tempF_end as number)}°F (peak ${Math.round(t)}°F)`
+    : `${Math.round(t)}°F`;
+
   let summary: string;
   if (heatBand === 'extreme') {
-    summary = `${Math.round(t)}°F · extreme heat stress${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
+    summary = `${tempPhrase} · extreme heat stress${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
   } else if (heatBand === 'hot') {
-    summary = `${Math.round(t)}°F · hot, evaporative cooling impaired${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
+    summary = `${tempPhrase} · hot, evaporative cooling impaired${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
   } else if (heatBand === 'warm') {
-    summary = `${Math.round(t)}°F · warmer than optimum${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
+    summary = `${tempPhrase} · warmer than optimum${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
   } else {
-    summary = `${Math.round(t)}°F · within optimal range`;
+    summary = `${tempPhrase} · within optimal range`;
   }
 
   // Forward-looking coach tip. Doctrine: heat tips kick in at the warm
