@@ -209,7 +209,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2-done{align-items:stretch;}
 .hero-v2-done .hmain{flex:0 0 320px;display:flex;flex-direction:column;}
 .hero-v2-done .leftstack{flex:initial;width:auto;display:flex;flex-direction:column;}
-.hero-v2-done .mapcol{flex:1;align-self:stretch;min-width:0;}
+/* 2026-05-31: cap the route map at 760px so it doesn't bloat past
+   sane size on ultrawide monitors · the route shape rarely needs more
+   than ~720 px to read clearly. Map centers in whatever space the
+   .mapcol gets after the wcard claims its 344px. */
+.hero-v2-done .mapcol{flex:1 1 0;align-self:stretch;min-width:0;max-width:760px;}
 .hero-v2 .routemap{position:relative;flex:1;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:radial-gradient(120% 90% at 30% 0%, rgba(143,240,176,.10), transparent 60%),repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 34px),repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 1px, transparent 1px 34px),rgba(4,14,10,.42);display:flex;align-items:stretch;justify-content:stretch;min-height:280px;}
 .hero-v2 .routemap > svg{width:100%;height:100%;display:block;}
 .hero-v2 .routemap .ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:.5;text-align:center;width:100%;}

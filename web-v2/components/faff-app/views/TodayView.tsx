@@ -834,6 +834,68 @@ function CompletedHeroV2({
                 <div className="kcv">{runData?.power_avg_w != null ? `${runData.power_avg_w} W` : (result?.cal && result.cal > 0 ? `${result.cal} kcal` : '·')}</div>
               </div>
             </div>
+
+            {/* CONDITIONS + COACH TIP + CITATIONS · moved from inside
+                .wcard 2026-05-31 (David: distribution is more even
+                with conditions/coach under the tiles · the wcard was
+                taller than the leftstack and that was driving the
+                route map height absurdly tall). Now they live in the
+                left column under the elev/calories grid, the wcard
+                holds just the verdict + recap + mile splits, and the
+                three columns finish at roughly the same vertical
+                line. */}
+            {recapPayload?.conditions_note ? (
+              <div style={{
+                marginTop: 18, padding: '10px 12px', borderRadius: 8,
+                background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
+                fontSize: 12, lineHeight: 1.5, color: '#FFE7C2',
+              }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
+                  textTransform: 'uppercase', color: '#FF8847', marginBottom: 4,
+                }}>
+                  CONDITIONS
+                </div>
+                {recapPayload.conditions_note}
+              </div>
+            ) : runData?.weather_context ? (
+              <div style={{
+                marginTop: 18, padding: '8px 10px', borderRadius: 8,
+                background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
+                fontSize: 12, lineHeight: 1.45, color: '#FFE7C2',
+              }}>
+                {runData.weather_context.message}
+                {runData.weather_context.hr_bump_bpm > 0 ? (
+                  <> · HR +{runData.weather_context.hr_bump_bpm} bpm expected</>
+                ) : null}
+              </div>
+            ) : null}
+
+            {recapPayload?.coach_tip ? (
+              <div style={{
+                marginTop: 8, padding: '10px 12px', borderRadius: 8,
+                background: 'rgba(85, 221, 208, 0.10)', border: '1px solid rgba(85, 221, 208, 0.32)',
+                fontSize: 12, lineHeight: 1.5, color: '#cfeeec',
+              }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
+                  textTransform: 'uppercase', color: '#54ddd0', marginBottom: 4,
+                }}>
+                  COACH TIP
+                </div>
+                {recapPayload.coach_tip}
+              </div>
+            ) : null}
+
+            {recapPayload?.citations?.length ? (
+              <div style={{
+                marginTop: 10, fontSize: 10, fontWeight: 700,
+                letterSpacing: '0.8px', textTransform: 'uppercase',
+                color: 'var(--mute)', lineHeight: 1.5,
+              }}>
+                WHY · {recapPayload.citations.map(c => c.label).join(' · ')}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -929,70 +991,10 @@ function CompletedHeroV2({
         <div className="verdict">{verdict}</div>
         <div className="recap">{recap}</div>
 
-        {/* CONDITIONS · only renders when the engine flagged heat / weather
-            as material. Honors the doctrine ("69°F → 78°F · extreme heat
-            stress · Maughan/Ely model expects ~20.7% slowdown") so we
-            don't penalize the runner for thermoregulation. */}
-        {recapPayload?.conditions_note ? (
-          <div style={{
-            marginTop: 10, padding: '10px 12px', borderRadius: 8,
-            background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
-            fontSize: 12, lineHeight: 1.5, color: '#FFE7C2',
-          }}>
-            <div style={{
-              fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
-              textTransform: 'uppercase', color: '#FF8847', marginBottom: 4,
-            }}>
-              CONDITIONS
-            </div>
-            {recapPayload.conditions_note}
-          </div>
-        ) : runData?.weather_context ? (
-          // Legacy weather_context fallback · pre-engine surface, kept so
-          // already-enriched older runs still render their hot-day note.
-          <div style={{
-            marginTop: 10, padding: '8px 10px', borderRadius: 8,
-            background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
-            fontSize: 12, lineHeight: 1.45, color: '#FFE7C2',
-          }}>
-            {runData.weather_context.message}
-            {runData.weather_context.hr_bump_bpm > 0 ? (
-              <> · HR +{runData.weather_context.hr_bump_bpm} bpm expected</>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* COACH TIP · forward-looking advice ("start earlier next time",
-            "reschedule quality out of this window"). Visually distinct
-            from CONDITIONS so the runner sees it as an action, not just
-            context. */}
-        {recapPayload?.coach_tip ? (
-          <div style={{
-            marginTop: 8, padding: '10px 12px', borderRadius: 8,
-            background: 'rgba(85, 221, 208, 0.10)', border: '1px solid rgba(85, 221, 208, 0.32)',
-            fontSize: 12, lineHeight: 1.5, color: '#cfeeec',
-          }}>
-            <div style={{
-              fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
-              textTransform: 'uppercase', color: '#54ddd0', marginBottom: 4,
-            }}>
-              COACH TIP
-            </div>
-            {recapPayload.coach_tip}
-          </div>
-        ) : null}
-
-        {/* CITATIONS · "WHY" trail at the bottom of the card. Stable slugs
-            in case the design wants to deep-link to the in-app reader. */}
-        {recapPayload?.citations?.length ? (
-          <div style={{
-            marginTop: 10, fontSize: 10, fontWeight: 700,
-            letterSpacing: '0.8px', textTransform: 'uppercase',
-            color: 'var(--mute)', lineHeight: 1.5,
-          }}>
-            WHY · {recapPayload.citations.map(c => c.label).join(' · ')}
-          </div>
-        ) : null}
+        {/* CONDITIONS + COACH TIP + CITATIONS moved into the leftstack
+            (2026-05-31 redistribution) so the wcard stays trim and the
+            three columns balance vertically. The right card now holds
+            just the verdict / recap / mile splits. */}
 
         <div className="divider" />
         <div className="reshead">
