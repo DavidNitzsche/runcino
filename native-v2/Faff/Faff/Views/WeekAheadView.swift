@@ -199,11 +199,13 @@ struct WeekAheadView: View {
     /// week_end_iso so the chip matches what the user actually has on
     /// their calendar instead of a frozen "May 26 – Jun 1" label.
     private var dateRangeLabel: String {
-        guard let pw = planWeek else { return "" }
+        guard let pw = planWeek,
+              let startISO = pw.week_start_iso,
+              let endISO = pw.week_end_iso else { return "" }
         let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"
         let outF = DateFormatter(); outF.dateFormat = "MMM d"
-        guard let start = inF.date(from: pw.week_start_iso),
-              let end = inF.date(from: pw.week_end_iso) else { return "" }
+        guard let start = inF.date(from: startISO),
+              let end = inF.date(from: endISO) else { return "" }
         return "\(outF.string(from: start)) – \(outF.string(from: end))"
     }
 

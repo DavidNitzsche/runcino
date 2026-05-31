@@ -1,11 +1,6 @@
 //
 //  NudgeSheet.swift
-//  Morning check · score ring + per-driver bars + coach voice. Used to
-//  hardcode the WHY rows (HRV 48·−20, RHR 53·+5, SLEEP 5:40 short, LOAD
-//  balanced) AND a fake planned-vs-proposed swap card · rendered the same
-//  placeholder regardless of the runner's data. Now the WHYs come from
-//  /api/readiness inputs and the coach text from the top driver's meaning.
-//  The swap proposal section is gone until a real coach-proposal API ships.
+//  Coach nudge · readiness dropped overnight, swap hard for easy.
 //
 
 import SwiftUI
@@ -38,23 +33,26 @@ struct NudgeSheet: View {
                         .padding(.top, 22)
                         .padding(.horizontal, 24)
 
-                    if !drivers.isEmpty {
-                        sectionLabel("WHY")
-                            .padding(.top, 26)
-                            .padding(.horizontal, 24)
-                        whyRows
-                            .padding(.top, 14)
-                            .padding(.horizontal, 24)
-                    }
+                    sectionLabel("WHY")
+                        .padding(.top, 26)
+                        .padding(.horizontal, 24)
+                    whyRows
+                        .padding(.top, 14)
+                        .padding(.horizontal, 24)
 
-                    if let coachText {
-                        sectionLabel("FAFF SAYS")
-                            .padding(.top, 26)
-                            .padding(.horizontal, 24)
-                        coachCard(text: coachText)
-                            .padding(.top, 14)
-                            .padding(.horizontal, 24)
-                    }
+                    sectionLabel("FAFF SAYS")
+                        .padding(.top, 26)
+                        .padding(.horizontal, 24)
+                    coachCard
+                        .padding(.top, 14)
+                        .padding(.horizontal, 24)
+
+                    // THE CHANGE section is hidden until we have a real
+                    // coach proposal to surface. The proposals-state.ts
+                    // backend writes coach_proposals rows on real triggers
+                    // (illness / injury) · until the iPhone fetches them
+                    // we render the readiness verdict + a single Got it CTA
+                    // instead of a fake "planned → proposed" swap.
 
                     actions
                         .padding(.top, 26)
@@ -144,44 +142,37 @@ struct NudgeSheet: View {
         }
     }
 
-    /// Real readiness drivers from /api/readiness. Previously a hardcoded
-    /// `[WhyRow]` array (HRV 48·−20 etc.) that rendered every morning whether
-    /// the runner's data supported it or not. Now empty == hide the section.
-    private var drivers: [ReadinessInput] { readiness?.inputs ?? [] }
-
-    /// Pull the WHY text from `meaning` on the highest-weight driver (most
-    /// impactful · positive or negative). If we have no inputs we fall back
-    /// to the band label so the section either says something real or hides.
-    private var coachText: String? {
-        if let top = drivers.max(by: { abs($0.weight ?? 0) < abs($1.weight ?? 0) }),
-           let m = top.meaning, !m.isEmpty {
-            return m
-        }
-        return nil
-    }
-
+    /// Driven by /api/readiness inputs[] when available. The whys array is
+    /// derived live · no hardcoded placeholders. When readiness isn't loaded
+    /// yet (cold start), the section renders an empty state placeholder.
     private var whyRows: some View {
-        VStack(spacing: 13) {
-            ForEach(drivers.prefix(5), id: \.self) { input in
-                whyRow(input)
+        let rows = readiness?.inputs ?? []
+        return Group {
+            if rows.isEmpty {
+                Text("Pulling your readiness signal.")
+                    .font(.body(13, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(spacing: 13) {
+                    ForEach(rows) { r in
+                        whyRow(r)
+                    }
+                }
             }
         }
     }
 
-    /// One driver row — server gives us label + observedV + weight.
-    /// Bar lobe scales off |weight| (server weights are roughly ±5..±20),
-    /// side is right when weight is positive ("good"), bar color follows.
-    private func whyRow(_ input: ReadinessInput) -> some View {
-        let weight = input.weight ?? 0
-        let bad = weight < 0
-        let lobe = min(0.5, Double(abs(weight)) / 30.0)
-        // server already prefixes "SLEEP · 28%" — strip the percent suffix
-        // for the row chip so it reads cleanly.
-        let key = input.label.split(separator: "·").first
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            ?? input.key.uppercased()
-        return HStack(spacing: 12) {
-            Text(key)
+    /// One readiness-input row · key on the left, divergence bar in the middle,
+    /// numeric observed value on the right. Bar is signed: negative weight
+    /// lobes LEFT and tints amber; positive weight lobes RIGHT and tints mint.
+    /// Bar magnitude maxes out at |weight|=25 (saturates beyond).
+    @ViewBuilder
+    private func whyRow(_ r: ReadinessInput) -> some View {
+        let bad = r.weight < 0
+        let magnitude = min(1.0, Double(abs(r.weight)) / 25.0)
+        HStack(spacing: 12) {
+            Text(r.key.uppercased())
                 .font(.display(11, weight: .bold))
                 .foregroundStyle(Theme.txt.opacity(0.7))
                 .frame(width: 52, alignment: .leading)
@@ -190,29 +181,29 @@ struct NudgeSheet: View {
                 let half = w / 2
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.1)).frame(height: 8)
+                    // Center divider tick.
                     Rectangle()
                         .fill(Color.white.opacity(0.3))
                         .frame(width: 1, height: 10)
                         .position(x: half, y: 4)
+                    // Signed bar lobe · pushes left or right from center.
                     Capsule()
                         .fill(bad ? Color(hex: 0xFFB24D) : Color(hex: 0x62E08A))
-                        .frame(width: w * lobe, height: 8)
-                        .offset(x: bad ? (half - w * lobe) : half)
+                        .frame(width: w * 0.5 * CGFloat(magnitude), height: 8)
+                        .offset(x: bad ? (half - w * 0.5 * CGFloat(magnitude)) : half)
                 }
             }
             .frame(height: 8)
-            Text(input.observedV ?? input.observedSub ?? "")
+            Text(r.observedV ?? "—")
                 .font(.display(11, weight: .bold))
                 .foregroundStyle(bad ? Color(hex: 0xFFCE8A) : Theme.txt)
-                .frame(width: 92, alignment: .trailing)
+                .frame(width: 80, alignment: .trailing)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 
-    /// Coach card with real text from the top driver's `meaning`. No more
-    /// hardcoded "Your body isn't ready for today's intervals" copy that
-    /// rendered whether the readiness data supported it or not.
-    private func coachCard(text: String) -> some View {
+    private var coachCard: some View {
         HStack(alignment: .top, spacing: 11) {
             Text("COACH")
                 .font(.label(9)).tracking(1)
@@ -221,7 +212,7 @@ struct NudgeSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(Color(hex: 0x9AF0BF).opacity(0.4), lineWidth: 1))
                 .padding(.top, 2)
-            Text(text)
+            Text(coachMessage)
                 .font(.body(16, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.94))
                 .lineSpacing(4)
@@ -229,32 +220,40 @@ struct NudgeSheet: View {
         }
     }
 
-    /// Acknowledge / dismiss actions. Previously framed as "Accept the
-    /// change" / "Keep today's intervals" because the sheet showed a
-    /// hardcoded swap proposal. There's no swap-proposal API yet, so the
-    /// buttons now read what they actually do: ack the nudge, or stay.
-    private var actions: some View {
-        VStack(spacing: 11) {
-            Button(action: onAccept) {
-                Text("Got it")
-                    .font(.body(16, weight: .extraBold))
-                    .foregroundStyle(Color(hex: 0x06302A))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 17)
-                    .background(Color(hex: 0x9AF0BF),
-                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .shadow(color: Color(hex: 0x62E08A).opacity(0.5), radius: 30, y: 12)
-            }
-            .buttonStyle(.plain)
-
-            Button(action: onKeep) {
-                Text("Dismiss")
-                    .font(.body(13, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.62))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.plain)
+    /// Pull the meaning from the worst (most-negative-weight) input the
+    /// readiness endpoint surfaced. Falls back to a generic line keyed off
+    /// the score band when we don't have inputs yet. Always honest · no
+    /// fabricated "intervals" copy when the runner isn't doing intervals.
+    private var coachMessage: String {
+        if let worst = (readiness?.inputs ?? []).min(by: { $0.weight < $1.weight }),
+           worst.weight < 0 {
+            return worst.meaning
         }
+        switch (readiness?.score ?? 0) {
+        case 80...: return "Your body is primed. Run the plan."
+        case 65..<80: return "Solid recovery. Hold the targets and trust the plan."
+        case 50..<65: return "Borderline. Ease off and listen as you go."
+        case 1..<50: return "Pull back today. Easy miles or a rest day · the work compounds when you recover."
+        default: return "Awaiting your first health sample. Connect your watch to see your readiness."
+        }
+    }
+
+    private var actions: some View {
+        // Single-action sheet for the Morning Check today. The accept /
+        // decline pair only makes sense when there's a real coach_proposal
+        // to choose between · for v1 we show a Got it dismiss. The proposal
+        // surface comes back when the iPhone gains the list endpoint
+        // (tracked in BACKEND_FRONTEND_COVERAGE.html under Coach Moments).
+        Button(action: onKeep) {
+            Text("Got it")
+                .font(.body(16, weight: .extraBold))
+                .foregroundStyle(Color(hex: 0x06302A))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 17)
+                .background(Color(hex: 0x9AF0BF),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: Color(hex: 0x62E08A).opacity(0.5), radius: 30, y: 12)
+        }
+        .buttonStyle(.plain)
     }
 }

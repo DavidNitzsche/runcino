@@ -199,7 +199,7 @@ struct RaceDayView: View {
         guard let d = detail?.race.days else { return nil }
         if d == 0 { return "RACE DAY" }
         if d < 0 { return nil }
-        if let prox = detail?.proximity?.uppercased(), prox == "RACE-WEEK" { return "RACE WEEK · \(d) DAYS" }
+        if let prox = detail?.proximity.uppercased(), prox == "RACE-WEEK" { return "RACE WEEK · \(d) DAYS" }
         return "\(d) DAYS OUT"
     }
 

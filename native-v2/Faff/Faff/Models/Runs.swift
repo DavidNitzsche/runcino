@@ -54,7 +54,12 @@ struct LogWeek: Decodable, Identifiable {
     let totalMi: Double
     let totalDuration: String?
     let runs: [LogRun]
-    let isCurrent: Bool
+    /// Server doesn't emit this on /api/log (as of 2026-05-31). Was required
+    /// here, so the entire LogState decode silently failed inside fetchLog's
+    /// `try?` and the Activity tab rendered as 0 runs. Defaulted to false ·
+    /// the UI doesn't render "current week" any differently from the others
+    /// anyway, so the missing flag is cosmetic.
+    let isCurrent: Bool?
 }
 
 struct LogRun: Decodable, Identifiable {

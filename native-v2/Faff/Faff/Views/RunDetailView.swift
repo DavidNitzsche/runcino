@@ -37,7 +37,7 @@ struct RunDetailView: View {
                     if !splitBars.isEmpty {
                         section(title: "MILE SPLITS", right: fastestSplitLabel) {
                             VStack(alignment: .leading, spacing: 8) {
-                                MileBars(bars: splitBars, target: splitTargetSecs, readout: $splitReadout)
+                                MileBars(bars: splitBars, target: Double(splitTargetSecs), readout: $splitReadout)
                                     .frame(height: 150)
                                 Text(splitReadout ?? "Tap a mile to read its pace · HR · effort")
                                     .font(.display(11, weight: .bold))

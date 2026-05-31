@@ -11,13 +11,8 @@ struct HealthView: View {
 
     enum Lens: String, CaseIterable { case body, form }
 
-    // Hydrate from AppCache · cached on every reload so the runner sees
-    // their last health snapshot immediately on tab switch instead of an
-    // empty hero ring + empty trend chart while the network call resolves.
-    @State private var state: HealthState? =
-        AppCache.read(.healthState, as: HealthState.self)
-    @State private var readiness: ReadinessSnapshot? =
-        AppCache.read(.readiness, as: ReadinessSnapshot.self)
+    @State private var state: HealthState?
+    @State private var readiness: ReadinessSnapshot?
     @State private var healthFacts: CoachFactsBlock?
     @State private var lens: Lens = .body
     @State private var metric: String = "hrv"
@@ -108,12 +103,9 @@ struct HealthView: View {
         async let f = (try? await API.fetchCoachFacts(surface: "health"))
         let (st, rd, fc) = await (s, r, f)
         await MainActor.run {
-            // Preserve cached state on transient failures · the readiness
-            // ring + WHAT'S MOVING + chips strip should stay populated
-            // through a brief network blip rather than blanking out.
-            if let st { self.state = st }
-            if let rd { self.readiness = rd }
-            if let fc { self.healthFacts = fc }
+            self.state = st
+            self.readiness = rd
+            self.healthFacts = fc
         }
     }
 
@@ -339,35 +331,23 @@ struct HealthView: View {
             if let read = scrubReadout {
                 SpecLabel(text: read, size: 11, tracking: 1, color: Color(hex: 0x9AF0BF))
             }
-            if series.isEmpty {
-                Text("No \(metricShort(metric).lowercased()) data yet · keep your watch + Apple Health connected and trends fill in over the first 14 days.")
-                    .font(.body(13, weight: .semibold))
-                    .foregroundStyle(Theme.txt.opacity(0.55))
-                    .lineSpacing(3)
-                    .padding(.top, 18).padding(.bottom, 18)
-            } else {
-                ScrubbableTrace(points: series, labels: [], color: Color(hex: 0x62E08A), fill: true, target: nil, band: nil, readout: $scrubReadout)
-                    .frame(height: 180)
-                    .padding(.top, 6)
-                HStack {
-                    let labels = xAxisLabels(for: metric)
-                    Text(labels.0).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
-                    Spacer()
-                    Text(labels.1).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
-                    Spacer()
-                    Text(labels.2).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
-                }
-                .padding(.top, 4)
+            ScrubbableTrace(points: series, labels: [], color: Color(hex: 0x62E08A), fill: true, target: nil, band: nil, readout: $scrubReadout)
+                .frame(height: 180)
+                .padding(.top, 6)
+            HStack {
+                let labels = xAxisLabels(for: metric)
+                Text(labels.0).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                Spacer()
+                Text(labels.1).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                Spacer()
+                Text(labels.2).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
             }
+            .padding(.top, 4)
         }
     }
 
-    /// Series for the selected metric · empty when no state has loaded
-    /// instead of a 30-zero array that drew a flatline-at-zero chart
-    /// regardless of the metric. The focusChart now renders an "no data
-    /// yet" copy when the series is empty.
     private func seriesFor(_ k: String) -> [Double] {
-        guard let s = state else { return [] }
+        guard let s = state else { return Array(repeating: 0, count: 30) }
         switch k {
         case "rhr":    return s.rhrSeries.map { Double($0.bpm) }
         case "hrv":    return s.hrvSeries.map { Double($0.ms) }
@@ -447,20 +427,21 @@ struct ReadinessBreakdownSheet: View {
 
                     SpecLabel(text: "WHAT'S DRIVING IT", size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
 
-                    ForEach((snapshot?.inputs ?? []), id: \.self) { i in
+                    ForEach((snapshot?.inputs ?? []), id: \.key) { i in
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(i.label)
                                     .font(.body(14, weight: .extraBold))
                                     .foregroundStyle(Theme.txt)
-                                if let why = i.meaning ?? i.observedSub {
-                                    Text(why).font(.display(10, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.62))
-                                }
+                                Text(i.meaning)
+                                    .font(.display(10, weight: .semibold))
+                                    .foregroundStyle(Theme.txt.opacity(0.62))
+                                    .lineLimit(2)
                             }
                             Spacer()
                             Text(i.observedV ?? "")
                                 .font(.display(15, weight: .semibold))
-                                .foregroundStyle((i.weight ?? 0) >= 0 ? Color(hex: 0x7BE8A0) : Color(hex: 0xFFB24D))
+                                .foregroundStyle(i.weight >= 0 ? Color(hex: 0x7BE8A0) : Color(hex: 0xFFB24D))
                         }
                         .padding(.vertical, 8)
                     }
@@ -471,3 +452,9 @@ struct ReadinessBreakdownSheet: View {
         }
     }
 }
+
+// ReadinessSnapshot.inputs is now a real wire-decoded field of type
+// [ReadinessInput]? (see API.swift). The previous adapter extension was a
+// placeholder that always returned an empty array · removed 2026-05-31
+// once the actual /api/readiness payload's inputs[] block landed on the
+// iPhone.
