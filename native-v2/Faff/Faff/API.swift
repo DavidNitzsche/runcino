@@ -909,15 +909,30 @@ struct ProfileFields: Decodable {
 // Nitzsche / MALE · 40 · LOS ANGELES" + "181 bpm" string literals
 // that lived in ProfileView.swift.
 
+// Lenient decoder (doctrine 2026-05-31 round 2). Same risk pattern as
+// LogState: a sub-field null in any required slice (identity / physiology /
+// connections) used to throw and drop the entire ProfileState · all 5
+// page-header avatars + the profile screen + the targets/train tiles
+// would have gone blank. Each slice now decodes via `try? ... ?? empty`
+// so a partial response degrades gracefully.
 struct ProfileState: Decodable {
     let identity: ProfileIdentity
     let physiology: ProfilePhysiology
     let connections: ProfileConnections
-    // v3 chrome cutover (2026-05-28) — Phase 25b adds the shoes + zones +
-    // nextARace slices the web /profile renders. All optional so older
-    // server responses still decode. Empty fall-back is "—" in the UI.
     let shoes: [ProfileShoe]?
     let nextARace: ProfileNextRace?
+
+    enum CodingKeys: String, CodingKey {
+        case identity, physiology, connections, shoes, nextARace
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.identity = (try? c.decode(ProfileIdentity.self, forKey: .identity)) ?? .empty
+        self.physiology = (try? c.decode(ProfilePhysiology.self, forKey: .physiology)) ?? .empty
+        self.connections = (try? c.decode(ProfileConnections.self, forKey: .connections)) ?? .empty
+        self.shoes = try? c.decode([ProfileShoe].self, forKey: .shoes)
+        self.nextARace = try? c.decode(ProfileNextRace.self, forKey: .nextARace)
+    }
 }
 
 struct ProfileIdentity: Decodable {
@@ -936,6 +951,34 @@ struct ProfileIdentity: Decodable {
     let height_cm: FlexibleDouble?
     var heightCm: Double? { height_cm?.value }
     let experience_level: String?
+
+    /// Empty fallback used by ProfileState when the wire emits a malformed
+    /// identity block (rare · pre-onboarding rows or migration windows).
+    static let empty = ProfileIdentity(
+        full_name: nil, sex: nil, birthday: nil, age: nil, city: nil,
+        height_cm: nil, experience_level: nil
+    )
+
+    init(full_name: String?, sex: String?, birthday: String?, age: Int?,
+         city: String?, height_cm: FlexibleDouble?, experience_level: String?) {
+        self.full_name = full_name; self.sex = sex; self.birthday = birthday
+        self.age = age; self.city = city
+        self.height_cm = height_cm; self.experience_level = experience_level
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case full_name, sex, birthday, age, city, height_cm, experience_level
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.full_name = try c.decodeIfPresent(String.self, forKey: .full_name)
+        self.sex = try c.decodeIfPresent(String.self, forKey: .sex)
+        self.birthday = try c.decodeIfPresent(String.self, forKey: .birthday)
+        self.age = try c.decodeIfPresent(Int.self, forKey: .age)
+        self.city = try c.decodeIfPresent(String.self, forKey: .city)
+        self.height_cm = try c.decodeIfPresent(FlexibleDouble.self, forKey: .height_cm)
+        self.experience_level = try c.decodeIfPresent(String.self, forKey: .experience_level)
+    }
 
     /// Single source of truth for the page-header avatar (5 views call it).
     /// Was duplicated across TodayView · ActivityView · TargetsView ·
@@ -978,12 +1021,42 @@ struct ProfilePhysiology: Decodable {
     // same 5-row Z1-Z5 anchor table the web /profile shows.
     let lthr_method: String?
     let zones: ProfileZoneTable?
+
+    /// Empty fallback used by ProfileState when the wire emits a malformed
+    /// physiology block. Every field is already optional · the explicit
+    /// init keeps the parent ProfileState init mirror-symmetric with
+    /// identity/connections.
+    static let empty = ProfilePhysiology(
+        max_hr: nil, max_hr_source: nil, rhr: nil,
+        _vo2: nil, _weight_lb: nil, _vdot: nil,
+        lthr: nil, lthr_method: nil, zones: nil
+    )
+    private init(max_hr: Int?, max_hr_source: String?, rhr: Int?,
+                 _vo2: FlexibleDouble?, _weight_lb: FlexibleDouble?, _vdot: FlexibleDouble?,
+                 lthr: Int?, lthr_method: String?, zones: ProfileZoneTable?) {
+        self.max_hr = max_hr; self.max_hr_source = max_hr_source; self.rhr = rhr
+        self._vo2 = _vo2; self._weight_lb = _weight_lb; self._vdot = _vdot
+        self.lthr = lthr; self.lthr_method = lthr_method; self.zones = zones
+    }
+
     enum CodingKeys: String, CodingKey {
         case max_hr, max_hr_source, rhr
         case _vo2 = "vo2"
         case _weight_lb = "weight_lb"
         case _vdot = "vdot"
         case lthr, lthr_method, zones
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.max_hr = try c.decodeIfPresent(Int.self, forKey: .max_hr)
+        self.max_hr_source = try c.decodeIfPresent(String.self, forKey: .max_hr_source)
+        self.rhr = try c.decodeIfPresent(Int.self, forKey: .rhr)
+        self._vo2 = try c.decodeIfPresent(FlexibleDouble.self, forKey: ._vo2)
+        self._weight_lb = try c.decodeIfPresent(FlexibleDouble.self, forKey: ._weight_lb)
+        self._vdot = try c.decodeIfPresent(FlexibleDouble.self, forKey: ._vdot)
+        self.lthr = try c.decodeIfPresent(Int.self, forKey: .lthr)
+        self.lthr_method = try c.decodeIfPresent(String.self, forKey: .lthr_method)
+        self.zones = try? c.decode(ProfileZoneTable.self, forKey: .zones)
     }
 }
 
@@ -995,11 +1068,31 @@ struct ProfileZoneTable: Decodable {
     let zones: [ProfileHRZone]
     let citation: String?
     let note: String?
+
+    enum CodingKeys: String, CodingKey { case method, anchor, zones, citation, note }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.method = try c.decodeIfPresent(String.self, forKey: .method) ?? ""
+        self.anchor = (try? c.decode(ProfileZoneAnchor.self, forKey: .anchor))
+            ?? ProfileZoneAnchor(label: "", bpm: 0)
+        self.zones = (try? c.decode([ProfileHRZone].self, forKey: .zones)) ?? []
+        self.citation = try c.decodeIfPresent(String.self, forKey: .citation)
+        self.note = try c.decodeIfPresent(String.self, forKey: .note)
+    }
 }
 
 struct ProfileZoneAnchor: Decodable {
     let label: String               // "LTHR" / "MaxHR"
     let bpm: Int
+
+    init(label: String, bpm: Int) { self.label = label; self.bpm = bpm }
+
+    enum CodingKeys: String, CodingKey { case label, bpm }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.bpm = try c.decodeIfPresent(Int.self, forKey: .bpm) ?? 0
+    }
 }
 
 struct ProfileHRZone: Decodable, Identifiable {
@@ -1010,6 +1103,17 @@ struct ProfileHRZone: Decodable, Identifiable {
     let upper: Int                  // bpm
     let purpose: String             // 1-line description
     var id: Int { idx }
+
+    enum CodingKeys: String, CodingKey { case idx, label, shortLabel, lower, upper, purpose }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.idx = try c.decodeIfPresent(Int.self, forKey: .idx) ?? 0
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.shortLabel = try c.decodeIfPresent(String.self, forKey: .shortLabel) ?? ""
+        self.lower = try c.decodeIfPresent(Int.self, forKey: .lower) ?? 0
+        self.upper = try c.decodeIfPresent(Int.self, forKey: .upper) ?? 0
+        self.purpose = try c.decodeIfPresent(String.self, forKey: .purpose) ?? ""
+    }
 }
 
 /// One row in PROFILE's SHOE ROTATION section. Mirrors the per-shoe
@@ -1027,6 +1131,23 @@ struct ProfileShoe: Decodable, Identifiable {
     let pctUsed: Double?
     let preferred: Bool?
     let retired: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, brand, model, color, mileage, cap, pctUsed, preferred, retired
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.name = try c.decodeIfPresent(String.self, forKey: .name)
+        self.brand = try c.decodeIfPresent(String.self, forKey: .brand)
+        self.model = try c.decodeIfPresent(String.self, forKey: .model)
+        self.color = try c.decodeIfPresent(String.self, forKey: .color)
+        self.mileage = try c.decodeIfPresent(Double.self, forKey: .mileage)
+        self.cap = try c.decodeIfPresent(Double.self, forKey: .cap)
+        self.pctUsed = try c.decodeIfPresent(Double.self, forKey: .pctUsed)
+        self.preferred = try c.decodeIfPresent(Bool.self, forKey: .preferred)
+        self.retired = try c.decodeIfPresent(Bool.self, forKey: .retired)
+    }
 }
 
 /// `nextARace` slice from /api/profile/state — the upcoming A-race
@@ -1038,18 +1159,61 @@ struct ProfileNextRace: Decodable {
     let date: String
     let goal: String?
     let days_to_race: Int
+
+    enum CodingKeys: String, CodingKey { case slug, name, date, goal, days_to_race }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.slug = try c.decodeIfPresent(String.self, forKey: .slug) ?? ""
+        self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.goal = try c.decodeIfPresent(String.self, forKey: .goal)
+        self.days_to_race = try c.decodeIfPresent(Int.self, forKey: .days_to_race) ?? 0
+    }
 }
 
 struct ProfileConnections: Decodable {
     let strava: ProfileConnectionState
     let appleHealth: ProfileConnectionState
     let appleWatch: ProfileConnectionState
+
+    static let empty = ProfileConnections(
+        strava: .empty, appleHealth: .empty, appleWatch: .empty
+    )
+    init(strava: ProfileConnectionState,
+         appleHealth: ProfileConnectionState,
+         appleWatch: ProfileConnectionState) {
+        self.strava = strava; self.appleHealth = appleHealth; self.appleWatch = appleWatch
+    }
+
+    enum CodingKeys: String, CodingKey { case strava, appleHealth, appleWatch }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.strava = (try? c.decode(ProfileConnectionState.self, forKey: .strava)) ?? .empty
+        self.appleHealth = (try? c.decode(ProfileConnectionState.self, forKey: .appleHealth)) ?? .empty
+        self.appleWatch = (try? c.decode(ProfileConnectionState.self, forKey: .appleWatch)) ?? .empty
+    }
 }
 
 struct ProfileConnectionState: Decodable {
     let connected: Bool
     let lastSync: String?
     let note: String
+
+    /// Empty fallback · used when parent ProfileConnections decode skips a
+    /// per-source row · the connection-row UI reads `connected` (false)
+    /// + empty `note` and renders the "not connected" CTA cleanly.
+    static let empty = ProfileConnectionState(connected: false, lastSync: nil, note: "")
+    init(connected: Bool, lastSync: String?, note: String) {
+        self.connected = connected; self.lastSync = lastSync; self.note = note
+    }
+
+    enum CodingKeys: String, CodingKey { case connected, lastSync, note }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.connected = try c.decodeIfPresent(Bool.self, forKey: .connected) ?? false
+        self.lastSync = try c.decodeIfPresent(String.self, forKey: .lastSync)
+        self.note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
 }
 
 // MARK: - TrainingState (iPhone /training)
