@@ -1,0 +1,43 @@
+# Daily Strava pull-sync.
+#
+# Why: Strava webhooks land most runs in near-realtime, but a webhook
+# can drop (intermittent rate-limit, deauth-then-reauth, app-disabled
+# window). A daily pull catches any gaps from the last 30 days. The
+# canonical-run model (lib/runs/canonical.ts) decides per-field whether
+# to enhance the existing canonical or insert a new row.
+#
+# Schedule: 08:15 UTC = 01:15 PT (after enrich-weather at 07:30 UTC so
+# newly-inserted Strava rows get weather-tagged on the next pass).
+
+name: Strava sync
+
+on:
+  schedule:
+    - cron: '15 8 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Hit /api/cron/strava-sync
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            https://www.faff.run/api/cron/strava-sync)
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+          echo "Status: $status"
+          echo "Body: $body"
+          if [ "$status" != "200" ]; then
+            echo "::error::Strava sync failed with HTTP $status"
+            exit 1
+          fi

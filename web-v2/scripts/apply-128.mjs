@@ -1,0 +1,10 @@
+import pg from 'pg';
+import fs from 'fs';
+const env = fs.readFileSync('.env.local','utf8').split('\n').reduce((a,l)=>{const m=l.match(/^([A-Z_]+)=(.*)$/);if(m)a[m[1]]=m[2].replace(/^["']|["']$/g,'');return a;},{});
+const pool = new pg.Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const sql = fs.readFileSync('db/migrations/128_run_provenance.sql','utf8');
+console.log('Applying migration 128 (run provenance)…');
+await pool.query(sql);
+const c = await pool.query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE provenance != '{}'::jsonb) AS with_provenance FROM strava_activities");
+console.log(`OK · ${c.rows[0].with_provenance}/${c.rows[0].total} rows have provenance backfilled`);
+await pool.end();
