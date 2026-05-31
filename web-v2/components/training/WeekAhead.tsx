@@ -150,9 +150,13 @@ function DayCell({
 }
 
 function targetFor(type: string, _mi: number, label: string | null): Target {
+  // Fallback only — only used when /api/prescription hasn't loaded yet.
+  // Don't put doctrine-y bits like "fuel @45'" in here; fueling lives
+  // in the DayDetailModal's FuelingCard, computed from Research/18 per
+  // the runner's product preferences (gels brand, target g/hr, heat).
   switch (type) {
     case 'easy':       return { pace: '9:00 /mi', secondary: 'HR < 140' };
-    case 'long':       return { pace: '8:50 /mi', secondary: 'HR < 145 · fuel @45\'' };
+    case 'long':       return { pace: '8:50 /mi', secondary: 'HR < 145' };
     case 'threshold':  return { pace: '6:48 /mi', secondary: label ?? 'T pace' };
     case 'tempo':      return { pace: '6:35 /mi', secondary: label ?? 'tempo' };
     case 'intervals':  return { pace: '3:45 /K',   secondary: label ?? 'intervals' };

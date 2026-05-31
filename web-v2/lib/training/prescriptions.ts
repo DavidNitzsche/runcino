@@ -70,6 +70,7 @@ export interface Prescription {
     carbsTotalG: number;
     shortLine: string;
     why: string;
+    citation: string;       // Research/18 §1 + §13 — surfaced in the "why" affordance
   } | null;
   /**
    * Heat-adjustment context (Q-04 / Research/06). When `tempF` is
