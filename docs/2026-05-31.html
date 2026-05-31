@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPhone Hardening Session · 2026-05-31 · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card2: #1a1d24;
+    --green: #3EBD41; --goal: #F3AD38; --over: #FC4D64;
+    --dist: #27B4E0; --learn: #B084FF; --race: #FF7028;
+    --health: #FF7028; --strava: #FC4D64; --watch: #3EBD41;
+    --manual: #B084FF; --coach: #F3AD38;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 60px; letter-spacing: -0.5px; margin: 0; line-height: 0.92; text-transform: uppercase; }
+  .sub { color: var(--mute); margin-top: 10px; font-size: 14px; max-width: 720px; line-height: 1.5; }
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 32px; letter-spacing: 0.3px; margin: 56px 0 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; text-transform: uppercase; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 28px 0 10px; }
+  h4 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 22px; margin: 18px 0 6px; letter-spacing: 0.3px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; } ol { padding-left: 22px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; color: #e6e8ec; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.55; margin: 8px 0 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .card h4 { margin-top: 0; }
+  .tag { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 3px 8px; border-radius: 4px; letter-spacing: 0.5px; }
+  .tag-ship { background: rgba(62,189,65,0.18); color: var(--green); }
+  .tag-fix { background: rgba(252,77,100,0.18); color: var(--over); }
+  .tag-feat { background: rgba(39,180,224,0.18); color: var(--dist); }
+  .tag-pending { background: rgba(243,173,56,0.18); color: var(--goal); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .meta { color: var(--mute); font-size: 13px; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; color: var(--mute); font-family: 'Inter', sans-serif; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  td code { font-size: 12px; }
+  .ok { color: var(--green); font-weight: 600; }
+  .warn { color: var(--goal); font-weight: 600; }
+  .err { color: var(--over); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="row">
+  <span class="tag tag-ship">SHIPPED · BUILDS 127 + 128</span>
+  <span class="meta">2026-05-31 · iPhone autonomous session</span>
+</div>
+
+<h1>iPhone hardening · lenient decoders, avatar fix, LoadState rollout</h1>
+<p class="sub">
+  Started with David's TestFlight 126 install showing
+  <strong>"Strava reauth" banner + "L" avatar + "LOAD EARLIER RUNS · 0 SO FAR."</strong>
+  Ended with two TestFlight builds (127 + 128) that bulletproof every
+  hot-path decoder in the iPhone, replace the buggy avatar fallback chain
+  with a single source of truth, and surface fetch failures explicitly
+  instead of silently rendering empty UI. Every commit pushed straight
+  to <code>main</code>, every build pushed straight to TestFlight.
+</p>
+
+<h2>What the runner sees</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h4>Before (build 126)</h4>
+    <ul>
+      <li><strong>Activity tab:</strong> "LOAD EARLIER RUNS · 0 SO FAR" — empty, no
+        indication anything was wrong. Caused by a strict decoder dropping the
+        whole <code>LogState</code> if any nested field was unexpected.</li>
+      <li><strong>Every page header avatar:</strong> "L" — because David has
+        <code>full_name = null</code> and <code>city = "Los Angeles"</code>, and
+        the fallback chain used the first letter of city.</li>
+      <li><strong>Any fetch failure:</strong> silent. Tab either shows cached data
+        or renders the empty state — no banner, no retry.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>After (build 128)</h4>
+    <ul>
+      <li><strong>Activity:</strong> renders the 97 runs even if the server
+        emits a malformed shoe in <code>axes.shoes</code> · the lenient sweep
+        defaults every required field at every depth.</li>
+      <li><strong>Avatar:</strong> clean gradient pill when no name is on file ·
+        no more "Larry" misidentification from city's first letter.</li>
+      <li><strong>Fetch failure with no cache:</strong> red FailedLoadBanner pill at
+        the top of the affected tab · "COULDN'T LOAD · &lt;one-line reason&gt;"
+        with a tappable <strong>RETRY</strong> chip.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>The actual bug · why the Activity tab was empty</h2>
+
+<p>
+  The Activity tab's empty state on build 126 was the same bug class as
+  the <code>LogWeek.isCurrent</code> fix that shipped in build 121, just
+  one level deeper in the decoder tree. Build 121 made the leaf
+  <code>LogWeek</code> + <code>LogRun</code> structs lenient, but
+  <code>LogState</code> itself + the four <code>LogFilterAxes</code>
+  siblings (added 2026-05-28 for the filter chips) were still on
+  auto-synthesized strict <code>Decodable</code>. A single null
+  <code>slug</code> inside <code>axes.shoes[]</code> would propagate all the
+  way up: <code>LogShoeAxis</code> → throws → <code>[LogShoeAxis]</code> →
+  throws → <code>LogFilterAxes</code> → throws → <code>LogState</code> →
+  throws → <code>fetchLog</code>'s <code>try?</code> swallows → returns
+  <code>nil</code> → Activity tab reads zero runs.
+</p>
+
+<pre>// Before · auto-synthesized strict Decodable
+struct LogState: Decodable {
+  let today: String          // missing → throws
+  let totalRuns: Int         // missing → throws
+  let weeks: [LogWeek]       // single bad week row → throws all the way up
+  let axes: LogFilterAxes?   // present-but-malformed → decodeIfPresent re-throws
+  ...
+}
+
+// After · custom init with try?-per-field
+init(from decoder: Decoder) throws {
+  let c = try decoder.container(keyedBy: CodingKeys.self)
+  self.today = try c.decodeIfPresent(String.self, forKey: .today) ?? ""
+  self.totalRuns = try c.decodeIfPresent(Int.self, forKey: .totalRuns) ?? 0
+  self.weeks = (try? c.decode([LogWeek].self, forKey: .weeks)) ?? []
+  self.axes = try? c.decode(LogFilterAxes.self, forKey: .axes)  // catches the re-throw
+  ...
+}</pre>
+
+<p>
+  Build 127 extended the lenient doctrine to the
+  <code>LogState</code>/<code>LogFilterAxes</code>/<code>LogShoeAxis</code>/<code>LogFilters</code>
+  parent + sibling structs, plus the <code>Briefing</code>,
+  <code>Races</code>, <code>Tips</code>, and <code>CoachPayloads</code>
+  shapes the brief flagged. Build 128 finished the sweep across
+  <code>ProfileState</code> (10 nested structs), <code>TrainingState</code>
+  (5 structs), and <code>HealthState</code> (11 structs) — every server-
+  shaped Decodable on the iPhone now has a lenient custom init.
+</p>
+
+<h2>Lenient decoder coverage matrix</h2>
+
+<table>
+  <thead>
+    <tr><th>Surface</th><th>Top-level struct</th><th>Build that hardened it</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Activity · feed</td><td><code>LogState</code></td><td>127</td><td>Bug fix · was the runner-visible empty-feed</td></tr>
+    <tr><td>Activity · feed</td><td><code>LogWeek</code> · <code>LogRun</code></td><td>121 (round 1) · 127 (round 2)</td><td>Leaf rows + parent sweep</td></tr>
+    <tr><td>Today · header + tiles</td><td><code>Briefing</code> · <code>PosterBreakdownRow</code></td><td>127</td><td>Workout breakdown + voice array</td></tr>
+    <tr><td>Today · WHY THIS RUN</td><td><code>RunPurpose</code> · <code>RunRecap</code></td><td>127</td><td>Coach engine payloads</td></tr>
+    <tr><td>Train · 26-week arc</td><td><code>TrainingState</code> + 5 nested</td><td>128</td><td>Bars / phase headline / next-quality</td></tr>
+    <tr><td>Health · sparklines</td><td><code>HealthState</code> + 11 nested</td><td>128</td><td>30-day series + summary blocks</td></tr>
+    <tr><td>Profile · ALL tabs</td><td><code>ProfileState</code> + 10 nested</td><td>128</td><td>5 page-header avatars + identity strip</td></tr>
+    <tr><td>Run detail</td><td><code>RunDetail</code> + nested</td><td>127</td><td>HRZonePcts / RunSplit / RunForm defended at parent</td></tr>
+    <tr><td>Races · day pages</td><td><code>RaceDetail</code> + 3 nested</td><td>127</td><td>Empty-fallback for null race object</td></tr>
+    <tr><td>Learn · article reader</td><td><code>LearnArticle</code> · <code>LearnCitation</code></td><td>127</td><td>Citations array + body_md default</td></tr>
+    <tr><td>Readiness · NudgeSheet</td><td><code>ReadinessInput</code></td><td>127</td><td>Per-row leniency completes 2026-05-30 fix</td></tr>
+  </tbody>
+</table>
+
+<h2>Avatar fallback · single source of truth</h2>
+
+<p>
+  Five views had their own copy-pasted <code>avatarInitials</code>
+  computed property — <code>TodayView</code> · <code>ActivityView</code> ·
+  <code>TargetsView</code> · <code>TrainView</code> ·
+  <code>ProfileView</code>. Each version had the same final fallback:
+  <em>"first letter of city if full_name is nil"</em>. David has
+  <code>city = "Los Angeles"</code> → every header rendered "L" as if his
+  name was Larry.
+</p>
+
+<p>
+  Promoted a single <code>avatarInitials</code> computed onto
+  <code>ProfileIdentity</code>, dropped the city fallback (city is not
+  identity), and collapsed all five view copies to delegate. The page-header
+  avatar now renders clean when no name is on file; the dedicated profile
+  screen keeps a "FA" (Faff) fallback because the big gradient circle on
+  that screen needs something rendered.
+</p>
+
+<h2>LoadState enum · stop swallowing failures</h2>
+
+<p>
+  High-priority #2 from the brief. The fetch lifecycle pattern across the
+  4 main tabs was <code>try? await API.fetchX()</code> — silently
+  swallowing every failure. Users had no way to distinguish "loading" /
+  "loaded · empty" / "failed offline" — they all rendered the same
+  empty UI.
+</p>
+
+<pre>// new Components/LoadState.swift
+enum LoadState: Equatable {
+  case idle           // never fetched, no cache
+  case loading        // first fetch in flight, no cached data
+  case loaded         // succeeded at least once
+  case failed(String) // last fetch errored
+}
+
+// FailedLoadBanner · red pill, only shown when state == .failed AND no cache</pre>
+
+<p>
+  Adopted in <code>TodayView</code>, <code>HealthView</code>,
+  <code>ActivityView</code>, <code>RunDetailView</code>. Each view's
+  primary fetch (PlanWeek / HealthState / LogState / RunDetail) is now an
+  explicit <code>do-try-catch</code> that drives the lifecycle; secondary
+  fetches stay <code>try?</code>-swallowed (they degrade gracefully via
+  existing UI). The banner only appears when the failure-with-no-cache
+  case applies, so a transient blip on a cached tab stays silent and
+  doesn't pop an alert over real data.
+</p>
+
+<h2>Commits shipped</h2>
+
+<table>
+  <thead><tr><th>SHA</th><th>Subject</th><th>Build</th></tr></thead>
+  <tbody>
+    <tr><td><code>2118a3f6</code></td><td>feat(ios): wire /api/today/purpose + extend lenient decoder doctrine</td><td>127</td></tr>
+    <tr><td><code>d68be4bb</code></td><td>fix(ios): bulletproof LogState decoder + collapse avatar fallback chain</td><td>127</td></tr>
+    <tr><td><code>2bd76c28</code></td><td>fix(ios): lenient decoders across the whole ProfileState tree</td><td>128</td></tr>
+    <tr><td><code>655824f3</code></td><td>fix(ios): lenient decoders for TrainingState + HealthState · bump asc.build</td><td>128</td></tr>
+    <tr><td><code>3ddb5a65</code></td><td>feat(ios): LoadState enum + FailedLoadBanner across 4 main tabs</td><td>128</td></tr>
+    <tr><td><code>4f596abb</code></td><td>fix(today): strip dead citation chips · RunPurpose lost the field</td><td>128</td></tr>
+  </tbody>
+</table>
+
+<h2>Strava banner is correct</h2>
+
+<p>
+  The "Strava needs reauth" banner David saw is the system working as
+  intended: <code>/api/strava/status</code> legitimately returned
+  <code>state: "needs_reauth"</code> because his most recent Strava push
+  failed with 401 — his access token was granted without the
+  <code>activity:write</code> scope. Tapping <strong>RECONNECT</strong>
+  re-runs OAuth with the proper scopes. The 6-hour access-token rotation
+  in <code>connector_tokens.expires_at</code> is normal Strava OAuth
+  behavior · the refresh token keeps the connection alive indefinitely.
+</p>
+
+<h2>Open follow-ups (not blocking)</h2>
+
+<ul>
+  <li><span class="tag tag-pending">PENDING</span> · Adaptation pill on Today
+    when <code>coach_intents</code> has recent action (task #68).</li>
+  <li><span class="tag tag-pending">PENDING</span> · NudgeSheet mock-data
+    verification on every install path (medium #1 second part).</li>
+  <li><span class="tag tag-pending">PENDING</span> · Watch SummaryView
+    recap-verdict integration (medium nice-to-have).</li>
+  <li><span class="tag tag-pending">PENDING</span> · Magic-number sweep ·
+    anywhere a hardcoded value like "276 mi" appears that isn't computed
+    from data.</li>
+</ul>
+
+<p class="meta">
+  Branch · <code>main</code> · all work pushed.<br>
+  TestFlight · build 127 distributed to Internal Testers · build 128
+  uploaded + waiting on App Store Connect processing.<br>
+  Next session · install build 128, verify the Activity feed renders +
+  the avatar is clean + the FailedLoadBanner fires when wifi is off.
+</p>
+
+</div>
+</body>
+</html>
