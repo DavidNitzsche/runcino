@@ -13,7 +13,12 @@ struct ActivityView: View {
     enum Mode { case stats, feed }
 
     @State private var mode: Mode = .feed
-    @State private var log: LogState?
+    // Hydrate from AppCache synchronously so the runner sees their last
+    // pulled log immediately on tab switch · network reload then refreshes
+    // in the background. Was always-nil-until-fetched, which meant a
+    // single 401 / network blip wiped the entire feed visually.
+    @State private var log: LogState? =
+        AppCache.read(.logState, as: LogState.self)
     @State private var range: Range = .year
     @State private var heatmapTip: String?
     @State private var fetchLimit: Int = 200    // pull lots; server caps at total
@@ -53,7 +58,11 @@ struct ActivityView: View {
         async let p = (try? await API.fetchProfileState())
         let (logState, pf) = await (l, p)
         await MainActor.run {
-            self.log = logState
+            // Only overwrite cached state if the network call succeeded ·
+            // a transient 401 / 5xx shouldn't wipe the runner's existing
+            // feed visually. (fetchLog itself writes to AppCache on
+            // success so the next launch hydrates from disk.)
+            if let logState { self.log = logState }
             if let pf { self.profile = pf }
         }
     }

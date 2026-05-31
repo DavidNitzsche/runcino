@@ -9,8 +9,10 @@ import SwiftUI
 struct TargetsView: View {
     let onProfile: () -> Void
 
-    @State private var races: RaceListResponse?
-    @State private var profile: ProfileState?
+    @State private var races: RaceListResponse? =
+        AppCache.read(.raceList, as: RaceListResponse.self)
+    @State private var profile: ProfileState? =
+        AppCache.read(.profileState, as: ProfileState.self)
     @State private var raceFacts: CoachFactsBlock?
     @State private var standingGoals: [StandingGoal] = []
 
@@ -72,10 +74,11 @@ struct TargetsView: View {
         async let f = (try? await API.fetchCoachFacts(surface: "races"))
         let (rs, pr, fc) = await (r, p, f)
         await MainActor.run {
-            self.races = rs
-            self.profile = pr
-            self.raceFacts = fc
-            self.standingGoals = (rs?.races ?? [])
+            // Preserve cached state on transient failures.
+            if let rs { self.races = rs }
+            if let pr { self.profile = pr }
+            if let fc { self.raceFacts = fc }
+            self.standingGoals = (self.races?.races ?? [])
                 .filter { $0.priority == "A" || $0.priority == "B" }
                 .prefix(3)
                 .map { race in

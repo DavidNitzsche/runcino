@@ -11,8 +11,13 @@ struct HealthView: View {
 
     enum Lens: String, CaseIterable { case body, form }
 
-    @State private var state: HealthState?
-    @State private var readiness: ReadinessSnapshot?
+    // Hydrate from AppCache · cached on every reload so the runner sees
+    // their last health snapshot immediately on tab switch instead of an
+    // empty hero ring + empty trend chart while the network call resolves.
+    @State private var state: HealthState? =
+        AppCache.read(.healthState, as: HealthState.self)
+    @State private var readiness: ReadinessSnapshot? =
+        AppCache.read(.readiness, as: ReadinessSnapshot.self)
     @State private var healthFacts: CoachFactsBlock?
     @State private var lens: Lens = .body
     @State private var metric: String = "hrv"
@@ -103,9 +108,12 @@ struct HealthView: View {
         async let f = (try? await API.fetchCoachFacts(surface: "health"))
         let (st, rd, fc) = await (s, r, f)
         await MainActor.run {
-            self.state = st
-            self.readiness = rd
-            self.healthFacts = fc
+            // Preserve cached state on transient failures · the readiness
+            // ring + WHAT'S MOVING + chips strip should stay populated
+            // through a brief network blip rather than blanking out.
+            if let st { self.state = st }
+            if let rd { self.readiness = rd }
+            if let fc { self.healthFacts = fc }
         }
     }
 

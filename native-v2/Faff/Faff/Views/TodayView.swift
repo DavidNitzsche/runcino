@@ -15,11 +15,22 @@ import SwiftUI
 struct TodayView: View {
     let onProfile: () -> Void
 
-    @State private var plan: PlanWeek?
-    @State private var workout: WatchWorkout?
-    @State private var readiness: ReadinessSnapshot?
-    @State private var briefing: Briefing?
-    @State private var profile: ProfileState?
+    // Hydrate from AppCache on first render so the runner sees their
+    // last-known plan + workout + readiness instantly. The .task reload
+    // refreshes in the background. Previously all started nil and the
+    // hero / week strip / drag sheet showed "—" / empty / fallback type
+    // labels until the network round-trip resolved · which is why a
+    // brief auth blip felt like the whole tab had no data.
+    @State private var plan: PlanWeek? =
+        AppCache.read(.planWeek, as: PlanWeek.self)
+    @State private var workout: WatchWorkout? =
+        AppCache.read(.todayWorkout, as: TodayWorkoutWrapper.self)?.workout
+    @State private var readiness: ReadinessSnapshot? =
+        AppCache.read(.readiness, as: ReadinessSnapshot.self)
+    @State private var briefing: Briefing? =
+        AppCache.read(.todayBriefing, as: Briefing.self)
+    @State private var profile: ProfileState? =
+        AppCache.read(.profileState, as: ProfileState.self)
     @State private var selectedDayID: String = ""
     @State private var sheetProgress: Double = 1     // 1 = collapsed
     @State private var skipped: Bool = false
@@ -674,14 +685,19 @@ struct TodayView: View {
         let weeklyMi = Int(planWeek?.days.reduce(0.0) { $0 + $1.distance_mi } ?? 30)
         let wx = try? await API.fetchPrescriptionWeather(type: todayType, weeklyMi: weeklyMi)
         await MainActor.run {
-            self.plan = planWeek
-            self.workout = watch
-            self.readiness = ready
-            self.briefing = brief
+            // Only overwrite cached state if the network call returned
+            // something · a transient 401 / 5xx shouldn't wipe the
+            // hero / week strip / drag sheet visually. `skipped` is a
+            // boolean that's safe to overwrite (defaults to false).
+            if let planWeek { self.plan = planWeek }
+            if let watch { self.workout = watch }
+            if let ready { self.readiness = ready }
+            if let brief { self.briefing = brief }
+            if let prof { self.profile = prof }
+            if let wx { self.weather = wx }
             self.skipped = skip
-            self.profile = prof
-            self.weather = wx
-            if let today = planWeek?.today_iso, selectedDayID.isEmpty { selectedDayID = today }
+            let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
+            if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }
         }
     }
 }

@@ -12,7 +12,8 @@ import SwiftUI
 struct TrainView: View {
     let onProfile: () -> Void
 
-    @State private var state: TrainingState?
+    @State private var state: TrainingState? =
+        AppCache.read(.trainingState, as: TrainingState.self)
     @State private var planFacts: CoachFactsBlock?
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
@@ -59,8 +60,10 @@ struct TrainView: View {
         async let p = (try? await API.fetchProfileState())
         let (st, fc, pf) = await (s, f, p)
         await MainActor.run {
-            self.state = st
-            self.planFacts = fc
+            // Don't wipe cached state on a transient failure · the
+            // 26-week arc + bars + phase headlines should stay on screen.
+            if let st { self.state = st }
+            if let fc { self.planFacts = fc }
             if let pf { self.profile = pf }
         }
     }

@@ -35,13 +35,31 @@ struct WeekStrip: View {
                             .font(.display(15, weight: .semibold))
                             .tracking(-0.3)
                             .foregroundStyle(Theme.txt.opacity(isSelected || d.isToday ? 1 : 0.8))
+                        // The day's effort dot · or a filled checkmark badge
+                        // when the runner has a logged completion. Was
+                        // rendering the effort dot only · so even after
+                        // running Monday's easy + Tuesday's threshold +
+                        // Wednesday's easy + Friday's easy + today's long,
+                        // every day in the strip looked identical to the
+                        // unstarted rest of the week. The `isDone` signal
+                        // existed on WeekStripDay but the view threw it
+                        // away. Plumbed from PlanDay.completedRunId.
                         if d.effort == .rest {
                             Capsule()
                                 .fill(Color.white.opacity(0.5))
                                 .frame(width: 9, height: 2)
+                        } else if d.isDone {
+                            ZStack {
+                                Circle()
+                                    .fill(d.effort.dot)
+                                    .frame(width: 13, height: 13)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 7.5, weight: .black))
+                                    .foregroundStyle(Color.black.opacity(0.78))
+                            }
                         } else {
                             Circle()
-                                .fill(d.effort.dot)
+                                .fill(d.effort.dot.opacity(d.isToday ? 1 : 0.55))
                                 .frame(width: 6, height: 6)
                         }
                     }
