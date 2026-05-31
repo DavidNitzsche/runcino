@@ -110,9 +110,12 @@ function DayCell({
       onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
     >
-      {/* Swap button — future workouts only, opens edit modal. stopPropagation
-          so clicking the swap chip doesn't ALSO open the detail modal. */}
-      {!isPast && planId && (
+      {/* Swap button — only on days you can still change: not past, not
+          already completed (swapping a done run is nonsense — it landed
+          already). 2026-05-31 fix: was just `!isPast`, which left the
+          button sitting on today's completed run. stopPropagation so the
+          chip click doesn't ALSO open the detail modal. */}
+      {!isPast && !ran && planId && (
         <div onClick={(e) => e.stopPropagation()}>
           <WorkoutSwapButton
             planId={planId}

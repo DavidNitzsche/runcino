@@ -524,10 +524,16 @@ function RestBody() {
 }
 
 function UnplannedBody({ day }: { day: GlanceWeekDay }) {
+  // 2026-05-31: today used to fall into the "future" branch ("when a plan
+  // is generated, the workout for this day will appear here") even though
+  // the runner can manual-log a run today. Now today + past both prompt
+  // the manual-log path; only days strictly in the future show the
+  // "waiting for plan" copy.
+  const canLogNow = day.isPast || day.isToday;
   return (
     <div style={{ padding: '8px 0 4px' }}>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 14, color: 'var(--mute)', lineHeight: 1.55 }}>
-        No plan for this day yet. {day.isPast ? "If you ran, log it manually from /today." : "When a plan is generated, the workout for this day will appear here."}
+        No plan for this day yet. {canLogNow ? "If you ran, log it manually from /today." : "When a plan is generated, the workout for this day will appear here."}
       </p>
     </div>
   );
