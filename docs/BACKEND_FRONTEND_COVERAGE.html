@@ -341,6 +341,27 @@
       <code>lib/coach/training-state.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>9 adaptation trigger types (per-trigger transparency)</strong></td>
+  <td>The daily adaptation cron runs nine distinct detectors:
+      missed_key_workout, rhr_spike, sleep_crater, niggle_reported,
+      sick_episode_active, injury_active, goal_changed, pr_bank,
+      volume_overshoot. Each writes a different shape into coach_intents
+      (or coach_proposals for the propose-only sick/injury paths). The
+      existing "Plan mutation history" + "Adaptation events on Today"
+      rows surface that A change happened; this is the next layer down:
+      enumerate WHICH detector fired and what threshold tripped.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a "Plan adjustments this week" expandable
+      block on /plan showing each fired trigger as one line: "Tuesday
+      tempo dropped to easy · sleep dipped 1.7h below baseline." Pulls
+      from coach_intents with reason LIKE 'plan_adapt_*'. Builds trust
+      that the coach is actually reading signals, not random.
+      <strong>Design tweak needed</strong> for the disclosure layout.</td>
+  <td><code>lib/plan/adapt.ts:detectMissedKeyWorkout…detectVolumeOvershoot</code> ·
+      <code>coach_intents</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -538,6 +559,63 @@
   <td><code>app/api/forecast/[date]/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>Race-day logistics fields</strong></td>
+  <td><code>races.meta</code> stores bib, wave, startTime, registered
+      booleans, and a goal_safe (B-target) finish time alongside the
+      A-goal. The PATCH route accepts these; RaceCrudUI writes them.
+      Web RaceView surfaces the A-goal time + countdown but doesn't
+      render bib / wave / start time / registered status, and doesn't
+      show the B-target as a fallback line under the A-goal projection.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: race-week logistics tile (bib · wave ·
+      start time) prominent in race-week mode. B-target shown next to
+      A-target on the projection gauge ("A: 1:30 · B: 1:33"). All data
+      already on the race row. <strong>Design tweak needed</strong>
+      for the tile layout + the B-target overlay on the gauge.</td>
+  <td><code>app/api/race/route.ts:124</code> ·
+      <code>races.meta</code> (bib, wave, startTime, registered, goalSafeDisplay)</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Race countdown push schedule (T-30 / T-14 / T-7 / T-3)</strong></td>
+  <td>The notification cron schedules race-countdown pushes at 30, 14,
+      7, and 3 days out for any A-race. Each carries a
+      mode-appropriate template (T-30 "build phase wrapping up" · T-14
+      "sharpening starts" · T-7 "race week" · T-3 "last quality day").
+      Pushes work; race detail has no countdown ladder showing the
+      runner "you're 14 days out · here's what's next." Only the raw
+      days-out integer renders.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: vertical countdown ladder on race detail
+      in race-week mode (T-7 through T-0) where today's marker glows.
+      Mirrors the notification cadence as an always-visible timeline.
+      <strong>Design tweak needed</strong> for layout.</td>
+  <td><code>app/api/cron/notifications/route.ts</code> ·
+      <code>lib/notifications/templates.ts:renderRaceCountdown</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Race retro auto-calibrates VDOT and LTHR</strong></td>
+  <td>When the runner logs finishTime + avgHrBpm on a race PATCH, the
+      backend silently re-runs <code>vdotFromRace()</code> and
+      <code>calibrateLthr()</code>. VDOT lands in coach_intents
+      (reason='vdot_auto_recalc'); LTHR updates profile.lthr directly
+      with method + lthr_set_at provenance. The runner sees no
+      acknowledgement that "logging your half-marathon updated your
+      fitness baseline." Pure silent state change.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: post-save toast on race retro form:
+      "VDOT updated 49 → 51 from this race · paces will adjust." With
+      a small pill on the race detail card "VDOT bumped" the next time
+      the page loads. <strong>Can add inline</strong> · both writes
+      are already structured (coach_intents reason filter +
+      profile.lthr_set_at timestamp).</td>
+  <td><code>app/api/race/route.ts:135-170</code> ·
+      <code>lib/training/vdot.ts:vdotFromRace</code> ·
+      <code>lib/training/lthr.ts:calibrateLthr</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -690,6 +768,57 @@
   <td><code>app/api/profile/notifications/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>HRmax + LTHR provenance</strong></td>
+  <td>Profile stores both <code>hrmax_observed</code> (a real
+      watch-recorded peak) and the formula-derived MaxHR computed by
+      the coach. LTHR has <code>lthr_method</code> (race_half /
+      race_full / manual) and <code>lthr_set_at</code> timestamp so the
+      runner can see WHEN and HOW their threshold was last updated.
+      Profile renders the final number but no provenance · runners
+      don't know if the 162 they see came from a 6-month-old race or
+      yesterday's half.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: provenance line under each physiology
+      number on Profile: "LTHR 162 · from Big Sur Half · May 4." Toast
+      or tap-to-edit override. <strong>Can add inline</strong> · the
+      timestamps + method strings are already on profile.</td>
+  <td><code>profile.lthr_method</code>, <code>profile.lthr_set_at</code>,
+      <code>profile.hrmax_observed</code> · migration 106</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Doctrine learning progress (known_terms)</strong></td>
+  <td><code>profile.known_terms text[]</code> accumulates the technical
+      terms the runner has already seen explainers for (e.g. "VDOT",
+      "ACWR", "VO2max"). The briefing reciter checks this array and
+      suppresses repeat fun-fact cards. No UI surfaces what the runner
+      has learned, and no way to reset to re-see explainers.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Safe to leave</strong> for v1 · suppression is an
+      implementation detail the runner doesn't need to see. Promote to
+      a Profile → Doctrine progress chip later if there's product value
+      in "you've learned 14 of 45 concepts."</td>
+  <td><code>profile.known_terms</code> ·
+      <code>lib/coach/fact-reciter.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Onboarding re-entry / connections-skipped state</strong></td>
+  <td>Profile carries <code>onboarding_completed_at</code> +
+      <code>connections_skipped</code> so the app knows whether the
+      runner walked the full flow vs bailed at the connect step. A
+      bailed runner currently has no in-app prompt to come back and
+      connect Strava / Apple Health later · the affordance died after
+      the skip.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: when connections_skipped=true AND
+      profile has no connected source, surface a one-time "Connect a
+      source for richer data" card on /me. Dismissable so it doesn't
+      nag forever. <strong>Can add inline</strong>.</td>
+  <td><code>profile.connections_skipped</code> · migration 115</td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -770,6 +899,49 @@
       can do this later" copy for everything optional.</td>
   <td><code>docs/ONBOARDING_AUDIT.md</code> ·
       <code>learn_articles slug='doctrine-input-tiers'</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>No-race goal path (Step 1b)</strong></td>
+  <td>When a runner picks "No specific race" during onboarding, the
+      state machine routes them to a richer intake at
+      <code>step=goal-details</code> · TT distance, weekly mileage
+      target, weekly frequency, historical avg mileage, longest recent
+      run, years running. These map to profile fields
+      tt_goal_distance, tt_goal_time, weekly_mileage_target,
+      weekly_frequency, history_avg_weekly_mi, history_longest_recent_mi,
+      history_years_running. Page state machine + schema both exist.
+      Web design coverage of this branch needs end-to-end confirmation ·
+      the race-anchored path is the polished default.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><strong>Design tweak needed</strong>. Confirm the no-race
+      onboarding screens collect all 7 fields with clear "you can edit
+      this later" copy. A beginner without a goal race could otherwise
+      land in a half-onboarded state where the plan generator has no
+      anchor.</td>
+  <td><code>lib/onboarding/state.ts:OnboardingState</code> ·
+      migration 118 (profile.tt_* + history_*)</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>T2 physiology signals step (LTHR / HRmax / weight / height)</strong></td>
+  <td>Per the 6-tier input model (T2 = physiology, recommended), the
+      coach engine reads runner-supplied LTHR / HRmax / weight / height
+      for pace + zone + fueling math. The onboarding state has a
+      <code>signals</code> step in the URL grammar but the canonical
+      flow is race → confirm → done · no dedicated signals collection
+      surface lives between. Runner physiology gets backfilled from
+      Apple Health if connected, otherwise stays at defaults that
+      underfit the coach output.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: an optional Step 1c "Add physiology
+      details" screen post-goal with 4 fields (LTHR, HRmax, weight,
+      height) and a "skip" CTA. Surfaces only when not auto-populated
+      from a connected source. <strong>Design tweak needed</strong>
+      for the screen.</td>
+  <td><code>lib/onboarding/state.ts:OnboardingState.step</code> ·
+      <code>profile.lthr</code>, <code>profile.height_cm</code>,
+      <code>profile.hrmax_observed</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
@@ -947,6 +1119,78 @@
       badge.</td>
   <td><code>lib/coach/proposals-state.ts</code></td>
   <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>coach_intents activity log</strong></td>
+  <td>The <code>coach_intents</code> table is the closed-loop audit log
+      of every meaningful state change the coach made or noticed. At
+      least 8 distinct reasons are written: swap_accepted, swap_declined,
+      proposal_declined, vdot_auto_recalc, lthr_auto_calibrated,
+      watch_completion, illness_acknowledged, injury_plan_built. Plus
+      the plan_adapt_* family from the adaptation cron. No surface
+      lets the runner see "what the coach has done for me lately"
+      across these signals · they live as silent receipts.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a "Coach activity" history accessible
+      from Profile, listing the last 30 days of coach_intents rows
+      grouped by reason. Each line in plain English: "May 14 · LTHR
+      updated from Big Sur Half · 162 bpm." Trust + receipts in one
+      view. <strong>Design tweak needed</strong> for the layout.</td>
+  <td><code>coach_intents</code> table · multiple writers</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Strava webhook subscription admin</strong></td>
+  <td>POST <code>/api/admin/strava-webhook { action: 'subscribe' }</code>
+      registers our callback with Strava; GET returns current
+      subscription state + event counts. Required for activity
+      ingestion to work via push instead of polling. Without an active
+      subscription the runner's Strava-only runs land late or not at
+      all. The subscription needs manual invocation once per deploy +
+      after any callback URL change.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Safe to leave</strong>. Admin operator surface; the wrong
+      audience is "every runner." If the subscription falls over, the
+      symptom (no Strava runs) surfaces via the existing reconnect
+      banner row above. Keep this on the operations runbook, not the
+      user-facing UI.</td>
+  <td><code>app/api/admin/strava-webhook/route.ts</code> ·
+      <code>app/api/strava/webhook/route.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Per-user phone HR alerts toggle</strong></td>
+  <td><code>profile.phone_hr_alerts</code> is a per-user boolean for
+      the P35 live-HR-alert feature (phone pings when watch detects HR
+      drift beyond zone during a run). Backend column exists, no toggle
+      UI on Profile. Sister flag <code>strava_auto_push</code> (already
+      surfaced via StravaConnectionCard) gives the pattern.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Can add inline · Profile → Settings toggle row</strong>
+      using the existing toggle component. One line of UI, one PATCH
+      target on <code>/api/settings</code>. Whether the watch actually
+      delivers the alert is a separate iOS workstream.</td>
+  <td><code>profile.phone_hr_alerts</code> ·
+      <code>profile.strava_auto_push</code> (migration 110)</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Cron heartbeat surface</strong></td>
+  <td>Seven cron routes run on schedule: keep-warm, enrich-weather,
+      notifications, refresh-briefings (legacy no-op), run-adaptations,
+      snapshot-projections, promote-courses. Each writes timestamps
+      somewhere (last_adapted_at, snapshot_date, weather_enriched_at,
+      etc.) but no operator surface shows "all 7 crons fired in the
+      last 24h, here's when each last ran." A silent cron failure
+      degrades the product for days before anyone notices.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Safe to leave</strong> as user-facing UI; admin-only by
+      design. Recommended: a /api/health/cron read-only endpoint +
+      shadow dashboard that an external monitor (or operator's browser
+      bookmark) can poll. Not blocking any user surface.</td>
+  <td><code>app/api/cron/*</code> · <code>training_plans.last_adapted_at</code>,
+      <code>projection_snapshots.snapshot_date</code></td>
+  <td class="client-web">WEB</td>
 </tr>
 </table>
 
