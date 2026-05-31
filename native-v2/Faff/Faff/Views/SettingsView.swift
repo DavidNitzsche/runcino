@@ -220,7 +220,10 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You'll need to sign in again with Apple to see your data.")
+            // Apple sign-in is the canonical path but email is the live
+            // fallback while the Apple Services-ID return URL is sorted.
+            // Don't promise Apple-only when both work.
+            Text("You'll need to sign in again to see your data.")
         }
     }
 

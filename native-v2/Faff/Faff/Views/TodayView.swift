@@ -367,6 +367,24 @@ struct TodayView: View {
                     .font(.body(14.5, weight: .medium))
                     .foregroundStyle(Color(hex: 0x3C362F))
                     .lineSpacing(4)
+                // briefing.voice · the rest of the coach's read on the day
+                // (BODY · PULL BACK 40 / 100, WEEK · 27.4 of 43.8 mi, etc.).
+                // Was decoded but never rendered. Up to 4 lines · the
+                // briefing endpoint already caps cardinality on ?client=ios.
+                if let v = briefing?.voice, !v.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(v.prefix(4), id: \.self) { line in
+                            HStack(alignment: .top, spacing: 8) {
+                                Circle().fill(selectedEffort.dot).frame(width: 5, height: 5).padding(.top, 7)
+                                Text(line)
+                                    .font(.body(12.5, weight: .semibold))
+                                    .foregroundStyle(Color(hex: 0x5C574E))
+                                    .lineSpacing(2)
+                            }
+                        }
+                    }
+                    .padding(.top, 6)
+                }
             }
             .padding(.horizontal, 24).padding(.vertical, 18)
         }
