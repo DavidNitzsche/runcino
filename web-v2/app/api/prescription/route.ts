@@ -80,18 +80,27 @@ export async function GET(req: NextRequest) {
     // for "where they usually run". Slim lookup; never blocks the
     // prescription if it fails.
     try {
-      const r = await pool.query<{ start_lat: string | null; start_lng: string | null }>(
-        `SELECT (data->>'startLat')::text AS start_lat, (data->>'startLng')::text AS start_lng
+      // Coords live in `startLatLng` (Strava-native array) OR in flat
+      // scalar pairs from older sync paths — read both shapes so this
+      // works for every ingest path that's ever populated the table.
+      const r = await pool.query<{
+        start_lat: string | null; start_lng: string | null;
+        sll_lat: string | null;   sll_lng: string | null;
+      }>(
+        `SELECT (data->>'startLat')::text AS start_lat,
+                (data->>'startLng')::text AS start_lng,
+                (data->'startLatLng'->>0)::text AS sll_lat,
+                (data->'startLatLng'->>1)::text AS sll_lng
            FROM strava_activities
           WHERE user_uuid = $1
             AND NOT (data ? 'mergedIntoId')
-            AND data->>'startLat' IS NOT NULL
+            AND (data ? 'startLat' OR data ? 'startLatLng')
           ORDER BY (data->>'date') DESC LIMIT 1`,
         [userId]
       );
       const row = r.rows[0];
-      const lat = Number(row?.start_lat);
-      const lon = Number(row?.start_lng);
+      const lat = Number(row?.start_lat ?? row?.sll_lat);
+      const lon = Number(row?.start_lng ?? row?.sll_lng);
       if (isFinite(lat) && isFinite(lon)) {
         const dateParam = sp.get('date');
         if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
