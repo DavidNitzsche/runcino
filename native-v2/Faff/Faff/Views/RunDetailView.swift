@@ -11,6 +11,10 @@ struct RunDetailView: View {
     let runId: String
 
     @State private var run: RunDetail?
+    // Coach engine output · "what this run did" with heat-aware framing.
+    // Fetched in parallel with the run detail · failures are silent so
+    // the rest of the screen renders even if the engine 404s.
+    @State private var recap: RunRecap?
     @State private var splitReadout: String?
     @State private var traceReadout: String?
     @State private var currentMetric: TraceMetric = .pace
@@ -33,6 +37,49 @@ struct RunDetailView: View {
                     hero
                         .padding(.horizontal, 24)
                         .padding(.top, 18)
+
+                    // HOW IT WENT · coach engine's "what this run did"
+                    // payload. Verdict + facts + heat-aware conditions
+                    // note + forward-looking coach tip. Rendered above
+                    // mile splits because it's the headline · the
+                    // splits are the supporting detail.
+                    if let rc = recap, !rc.verdict.isEmpty {
+                        section(title: "HOW IT WENT", right: nil) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(rc.verdict)
+                                    .font(.display(22, weight: .bold))
+                                    .foregroundStyle(Theme.txt)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                ForEach(Array(rc.facts.enumerated()), id: \.offset) { _, f in
+                                    Text(f)
+                                        .font(.body(13.5))
+                                        .foregroundStyle(Theme.txt.opacity(0.86))
+                                        .lineSpacing(2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                if let cn = rc.conditions_note {
+                                    coachCallout(label: "CONDITIONS", body: cn,
+                                                 bg: Color(red: 1, green: 0.533, blue: 0.278).opacity(0.12),
+                                                 stroke: Color(red: 1, green: 0.533, blue: 0.278).opacity(0.32),
+                                                 chip: Color(red: 1, green: 0.533, blue: 0.278))
+                                }
+                                if let tip = rc.coach_tip {
+                                    coachCallout(label: "COACH TIP", body: tip,
+                                                 bg: Color(red: 0.333, green: 0.867, blue: 0.816).opacity(0.10),
+                                                 stroke: Color(red: 0.333, green: 0.867, blue: 0.816).opacity(0.32),
+                                                 chip: Color(red: 0.333, green: 0.867, blue: 0.816))
+                                }
+                                if !rc.citations.isEmpty {
+                                    Text("WHY · " + rc.citations.map(\.label).joined(separator: " · "))
+                                        .font(.display(10, weight: .bold))
+                                        .foregroundStyle(Theme.txt.opacity(0.55))
+                                        .lineSpacing(2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                        .padding(.top, 22)
+                    }
 
                     if !splitBars.isEmpty {
                         section(title: "MILE SPLITS", right: fastestSplitLabel) {
@@ -333,12 +380,15 @@ struct RunDetailView: View {
     }
 
     private var detailsTile: some View {
+        // 2026-05-31 audit: hardcoded "+8 → 276 mi" shoe-progression and
+        // "clear" weather conditions removed. Show whatever's actually
+        // known. shoeShort and weatherTemp degrade gracefully to "—".
         GlassTile(padding: 6) {
             VStack(spacing: 0) {
-                detailRow("Shoes", "\(shoeShort) · +8 → 276 mi", chev: true)
+                detailRow("Shoes", shoeShort, chev: true)
                 detailRow("Avg / Max HR", "\(hrAvg) / \(hrMax) bpm", chev: false)
                 detailRow("Avg cadence", "\(cadAvg) spm", chev: false)
-                detailRow("Weather", "\(weatherTemp)°F · clear", chev: false, good: true)
+                detailRow("Weather", weatherTemp != "—" ? "\(weatherTemp)°F" : "—", chev: false, good: weatherTemp != "—")
             }
         }
     }
@@ -610,9 +660,39 @@ struct RunDetailView: View {
     }
 
     private func load() async {
-        if let r = try? await API.fetchRunDetail(id: runId) {
+        // Fire run detail + recap fetches in parallel. Each updates state
+        // independently · the recap section renders the moment its
+        // payload lands, regardless of the run detail's progress.
+        async let runTask = API.fetchRunDetail(id: runId)
+        async let recapTask = API.fetchRunRecap(runId: runId)
+        if let r = try? await runTask {
             await MainActor.run { run = r }
         }
+        if let rc = try? await recapTask {
+            await MainActor.run { recap = rc }
+        }
+    }
+
+    /// Heat / coach-tip callout row. Used by HOW IT WENT to surface the
+    /// engine's conditions_note + coach_tip with the right visual weight.
+    @ViewBuilder
+    private func coachCallout(label: String, body: String, bg: Color, stroke: Color, chip: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.display(10, weight: .black))
+                .foregroundStyle(chip)
+                .kerning(1.2)
+            Text(body)
+                .font(.body(12.5))
+                .foregroundStyle(Theme.txt.opacity(0.92))
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(bg))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(stroke, lineWidth: 1))
     }
 
     // MARK: - PLAN VS ACTUAL · per-phase breakdown

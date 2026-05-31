@@ -181,6 +181,15 @@ struct RootContainer: View {
             // it had until the user re-auths and the cache repopulates.
             TokenStore.shared.clear()
             UserDefaults.standard.removeObject(forKey: "faff.onboarded")
+            // 2026-05-31 audit: also nuke the local surface cache. Without
+            // this, when User A's session expires and User B signs in on
+            // the same device, decideInitialStep() sees the prior cached
+            // todayWorkout / planWeek / logState bytes and treats it as a
+            // "returning user" · bypasses sign-in entirely AND first paint
+            // shows User A's runs before the network refresh lands. Even
+            // for a single user, stale cache from an expired session can
+            // mislead the runner. Wipe it.
+            AppCache.clearAll()
             withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
         }
     }

@@ -286,6 +286,32 @@ enum API {
         return try? JSONDecoder().decode(ShoesResponse.self, from: data)
     }
 
+    // MARK: - Coach purpose + recap (2026-05-31)
+    //
+    // Backend doctrine: lib/coach/run-purpose.ts + lib/coach/run-recap.ts.
+    // Both endpoints return the same shape · verdict + facts + citations,
+    // plus conditions_note + coach_tip on the recap side. The deterministic
+    // engine reads workout type + phase + execution + weather and produces
+    // research-cited copy that the iPhone renders directly · no per-run
+    // hand-crafted strings, the coach derives it.
+    static func fetchTodayPurpose(date: String? = nil) async throws -> RunPurpose? {
+        var comps = URLComponents(url: baseURL.appendingPathComponent("api/today/purpose"), resolvingAgainstBaseURL: false)!
+        if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(RunPurpose.self, from: data)
+    }
+
+    static func fetchRunRecap(runId: String) async throws -> RunRecap? {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/runs/\(runId)/recap"))
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(RunRecap.self, from: data)
+    }
+
     static func assignShoeToRun(runId: String, shoeId: Int?) async throws {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/runs/\(runId)"))
         req.httpMethod = "PATCH"
