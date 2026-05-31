@@ -413,16 +413,23 @@ enum API {
         return true
     }
 
-    /// GET /api/coach/facts?surface=<…> → deterministic coach facts for any
-    /// of the supported surfaces (today / plan / races / race_detail /
-    /// health / me). Returns nil on any decode or HTTP error so callers can
-    /// gracefully hide the section rather than show a fake fact.
-    static func fetchCoachFacts(surface: String) async throws -> CoachFactsBlock? {
+    /// GET /api/coach/facts?surface=<…>[&race=<slug>] → deterministic coach
+    /// facts for any of the supported surfaces (today / plan / races /
+    /// race_detail / health / me). race_detail requires a slug · pass it
+    /// via the `raceSlug` argument so RaceDayView can pull facts scoped
+    /// to that specific race. Returns nil on any decode or HTTP error so
+    /// callers can gracefully hide the section rather than show a fake
+    /// fact.
+    static func fetchCoachFacts(surface: String, raceSlug: String? = nil) async throws -> CoachFactsBlock? {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("api/coach/facts"),
             resolvingAgainstBaseURL: false
         )!
-        comps.queryItems = [URLQueryItem(name: "surface", value: surface)]
+        var items = [URLQueryItem(name: "surface", value: surface)]
+        if let slug = raceSlug, !slug.isEmpty {
+            items.append(URLQueryItem(name: "race", value: slug))
+        }
+        comps.queryItems = items
         let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
         guard (200..<300).contains(http.statusCode) else { return nil }
         let envelope = try? JSONDecoder().decode(CoachFactsEnvelope.self, from: data)
@@ -504,13 +511,13 @@ enum API {
         return decoded
     }
 
-    /// GET /api/prescription — pulls back JUST the weather_baseline block
-    /// for surfacing "HOTTER THAN USUAL" tags. The full prescription shape
-    /// (paces, hrTargets, fueling) is not decoded here — WatchWorkout
-    /// already carries the structured workout, and we only need the heat
-    /// context for the tag. Pass `type` and `weeklyMi` to match the
-    /// /api/prescription contract.
-    static func fetchPrescriptionWeather(type: String, weeklyMi: Int, date: String? = nil) async throws -> WeatherBaseline? {
+    /// GET /api/prescription — full prescription (paces, hrTargets, steps,
+    /// fueling, zones, weather, headline, why, citation). Returns nil on
+    /// non-2xx or decode error. PlannedView + RaceDayView now read the
+    /// steps + fueling + zones from here instead of faking them; the
+    /// `fetchPrescriptionWeather` variant below is kept for places that
+    /// only need the weather tag (TodayView eyebrow).
+    static func fetchPrescription(type: String, weeklyMi: Int, date: String? = nil) async throws -> Prescription? {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("api/prescription"),
             resolvingAgainstBaseURL: false
@@ -523,8 +530,16 @@ enum API {
         comps.queryItems = items
         let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
         guard (200..<300).contains(http.statusCode) else { return nil }
-        let envelope = try? JSONDecoder().decode(PrescriptionWeatherEnvelope.self, from: data)
-        return envelope?.weather_baseline
+        return try? JSONDecoder().decode(Prescription.self, from: data)
+    }
+
+    /// GET /api/prescription — pulls back JUST the weather_baseline block
+    /// for surfacing "HOTTER THAN USUAL" tags. Kept as a thin wrapper around
+    /// `fetchPrescription` so existing TodayView callsites don't need to
+    /// pull the whole payload when they only care about the heat delta.
+    static func fetchPrescriptionWeather(type: String, weeklyMi: Int, date: String? = nil) async throws -> WeatherBaseline? {
+        let p = try await fetchPrescription(type: type, weeklyMi: weeklyMi, date: date)
+        return p?.weather_baseline
     }
 
     /// GET /api/learn/[slug] — full doctrine article body the modal reads.
@@ -1029,6 +1044,71 @@ struct WeatherBaseline: Decodable {
     let tempF: Double?
     let baselineTempF: Double?
     let deltaF: Int?
+}
+
+// MARK: - Full prescription model (the rest of /api/prescription)
+//
+// /api/prescription returns the full workout breakdown — headline / why /
+// citation, the per-step session list, the HR zone table the runner should
+// hold, and the fueling plan. The iPhone used to discard everything except
+// weather_baseline; RaceDayView + PlannedView faked the plan segments and
+// fueling line. Now the same payload feeds both surfaces with real data.
+
+struct Prescription: Decodable {
+    let type: String?
+    let total_mi: Double?
+    let headline: String?
+    let why: String?
+    let citation: String?
+    let zones: PrescriptionZoneTable?
+    let steps: [PrescriptionStep]?
+    let fueling: PrescriptionFueling?
+    let weather_baseline: WeatherBaseline?
+}
+
+struct PrescriptionStep: Decodable, Identifiable, Hashable {
+    var id: String { label + (pace_target ?? "") + String(distance_mi ?? 0) }
+    let label: String
+    let distance_mi: Double?
+    let duration_min: Double?
+    let pace_target: String?
+    let hr_target: String?
+    let note: String?
+}
+
+struct PrescriptionZoneTable: Decodable {
+    let method: String?
+    let anchor: PrescriptionZoneAnchor?
+    let citation: String?
+    let zones: [PrescriptionZone]
+}
+
+struct PrescriptionZoneAnchor: Decodable {
+    let label: String?
+    let bpm: Int?
+}
+
+struct PrescriptionZone: Decodable, Identifiable, Hashable {
+    var id: Int { idx }
+    let idx: Int
+    let label: String
+    let shortLabel: String?
+    let lower: Int
+    let upper: Int
+    let purpose: String?
+}
+
+struct PrescriptionFueling: Decodable {
+    let needed: Bool
+    let gels: Int?
+    let atMins: [Int]?
+    let gPerHr: Int?
+    let carbsTotalG: Int?
+    let isRehearsal: Bool?
+    let heatAdjusted: Bool?
+    let shortLine: String?
+    let why: String?
+    let citation: String?
 }
 
 // LearnArticle model lives in Models/Tips.swift — was the original P40

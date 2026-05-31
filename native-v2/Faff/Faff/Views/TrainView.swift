@@ -14,6 +14,8 @@ struct TrainView: View {
 
     @State private var state: TrainingState?
     @State private var planFacts: CoachFactsBlock?
+    @State private var profile: ProfileState? =
+        AppCache.read(.profileState, as: ProfileState.self)
     @State private var focusedIndex: Int = 0
 
     /// Linear interpolation across phases for the mesh.
@@ -54,8 +56,13 @@ struct TrainView: View {
     private func reload() async {
         async let s = (try? await API.fetchTrainingState())
         async let f = (try? await API.fetchCoachFacts(surface: "plan"))
-        let (st, fc) = await (s, f)
-        await MainActor.run { self.state = st; self.planFacts = fc }
+        async let p = (try? await API.fetchProfileState())
+        let (st, fc, pf) = await (s, f, p)
+        await MainActor.run {
+            self.state = st
+            self.planFacts = fc
+            if let pf { self.profile = pf }
+        }
     }
 
     private var refreshButton: some View {
@@ -164,7 +171,7 @@ struct TrainView: View {
                 .foregroundStyle(Theme.txt.opacity(0.82))
             refreshButton
             Button { onProfile() } label: {
-                Text("DK")
+                Text(avatarInitials)
                     .font(.display(11, weight: .bold))
                     .foregroundStyle(Theme.txt)
                     .frame(width: 28, height: 28)
@@ -173,6 +180,23 @@ struct TrainView: View {
             .buttonStyle(.plain)
             .padding(.leading, 8)
         }
+    }
+
+    /// Avatar initials derived from the runner's profile (was hardcoded
+    /// "DK" — David's guess-initials regardless of who signed in). Falls
+    /// back to the city's first letter, then to the empty string.
+    private var avatarInitials: String {
+        if let name = profile?.identity.full_name, !name.isEmpty {
+            let parts = name.split(separator: " ")
+            let first = parts.first.map(String.init)?.prefix(1) ?? ""
+            let last = parts.count > 1 ? String(parts.last!).prefix(1) : ""
+            let raw = String(first) + String(last)
+            if !raw.isEmpty { return raw.uppercased() }
+        }
+        if let c = profile?.identity.city, let f = c.first {
+            return String(f).uppercased()
+        }
+        return ""
     }
 
     private var roadToText: String {

@@ -278,7 +278,11 @@ struct TodayView: View {
                         }
                     }
                 }
-            } else {
+            } else if !segments.isEmpty {
+                // Only render THE SESSION when the workout has real phase
+                // data · the segments fallback used to fabricate a Warm
+                // up / Threshold / Cool down breakdown derived purely
+                // from the effort type so easy days got fake structure.
                 pBlock(title: "THE SESSION") {
                     VStack(alignment: .leading, spacing: 14) {
                         ForEach(segments, id: \.0) { (label, desc) in
@@ -564,33 +568,42 @@ struct TodayView: View {
         return base
     }
 
+    /// Phase breakdown rendered in the drag-sheet. Empty when no real
+    /// phases on the workout · TodayView's drag sheet gates the section on
+    /// `segments.isEmpty` so this drops out cleanly. Was a type-derived
+    /// hardcoded fallback ("Warm up · 2 mi @ easy", "Threshold · 4 mi @
+    /// target", etc.) that showed every easy/tempo/long day regardless of
+    /// the runner's actual plan.
     private var segments: [(String, String)] {
-        if let phases = displayWorkout?.phases, !phases.isEmpty {
-            return phases.map { p in
-                let pace = p.targetPaceSPerMi.map { "@ \(formatPace(secondsPerMi: $0))" } ?? ""
-                return (p.label, pace)
-            }
-        }
-        // Type-derived fallback
-        switch selectedEffort {
-        case .recovery:  return [("Steady miles","Nasal-breathing easy")]
-        case .easy:      return [("Easy aerobic","Hold Zone 2")]
-        case .long:      return [("Aerobic miles","Build into marathon-pace finish")]
-        case .tempo:     return [("Warm up","2 mi @ easy"),
-                                 ("Threshold","4 mi @ target"),
-                                 ("Cool down","2 mi @ easy")]
-        case .intervals: return [("Warm up","2 mi + drills"),
-                                 ("Intervals","Even-effort reps"),
-                                 ("Cool down","1.5 mi easy")]
-        case .rest:      return [("Optional","20-30 min easy walk or mobility"),
-                                 ("Focus","Sleep, hydration, soft-tissue")]
-        case .race:      return [("Race","Execute the plan")]
+        guard let phases = displayWorkout?.phases, !phases.isEmpty else { return [] }
+        return phases.map { p in
+            let pace = p.targetPaceSPerMi.map { "@ \(formatPace(secondsPerMi: $0))" } ?? ""
+            return (p.label, pace)
         }
     }
 
+    /// Real conditions block · weather temperature from the prescription
+    /// weather baseline, shoe assignment from the planned workout (when
+    /// the runner pinned one), fuel summary from prescription fueling.
+    /// All optional · the drag-sheet renders "—" when missing rather than
+    /// the prior hardcoded "Water" fuel default.
     private struct Conditions { let weather: String; let shoe: String; let fuel: String }
     private var conditions: Conditions {
-        Conditions(weather: "—", shoe: "—", fuel: "Water")
+        let weather: String = {
+            if let t = self.weather?.tempF { return "\(Int(t.rounded()))°F" }
+            return "—"
+        }()
+        // WatchWorkout doesn't carry a shoe field today. When it does, wire
+        // it here. Returning "—" until then is more honest than "Apple
+        // Watch" or any other guess.
+        let shoe = "—"
+        let fuel: String = {
+            guard let f = displayWorkout?.fueling, f.needed else { return "—" }
+            if !f.shortLine.isEmpty { return f.shortLine }
+            if f.gels > 0 { return "\(f.gels) gels · \(f.gPerHr) g/hr" }
+            return "—"
+        }()
+        return Conditions(weather: weather, shoe: shoe, fuel: fuel)
     }
 
     private var coachNote: String {

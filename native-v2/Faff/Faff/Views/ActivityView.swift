@@ -18,6 +18,8 @@ struct ActivityView: View {
     @State private var heatmapTip: String?
     @State private var fetchLimit: Int = 200    // pull lots; server caps at total
     @State private var loadingMore: Bool = false
+    @State private var profile: ProfileState? =
+        AppCache.read(.profileState, as: ProfileState.self)
 
     enum Range: String, CaseIterable { case month, year, all
         var label: String { rawValue.uppercased() == "ALL" ? "ALL TIME" : rawValue.uppercased() }
@@ -29,7 +31,7 @@ struct ActivityView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    PageHeader(title: "ACTIVITY", avatarInitials: "DK", onAvatarTap: onProfile)
+                    PageHeader(title: "ACTIVITY", avatarInitials: avatarInitials, onAvatarTap: onProfile)
                         .padding(.horizontal, 22).padding(.top, 12)
                     toggle
                         .padding(.horizontal, 22).padding(.top, 16)
@@ -47,8 +49,30 @@ struct ActivityView: View {
     }
 
     private func reload() async {
-        let l = try? await API.fetchLog(limit: fetchLimit)
-        await MainActor.run { self.log = l }
+        async let l = (try? await API.fetchLog(limit: fetchLimit))
+        async let p = (try? await API.fetchProfileState())
+        let (logState, pf) = await (l, p)
+        await MainActor.run {
+            self.log = logState
+            if let pf { self.profile = pf }
+        }
+    }
+
+    /// Avatar initials from the runner's profile · was hardcoded "DK". Returns
+    /// empty string when profile hasn't loaded so the avatar shows the
+    /// gradient pill without a wrong identity overlay.
+    private var avatarInitials: String {
+        if let name = profile?.identity.full_name, !name.isEmpty {
+            let parts = name.split(separator: " ")
+            let first = parts.first.map(String.init)?.prefix(1) ?? ""
+            let last = parts.count > 1 ? String(parts.last!).prefix(1) : ""
+            let raw = String(first) + String(last)
+            if !raw.isEmpty { return raw.uppercased() }
+        }
+        if let c = profile?.identity.city, let f = c.first {
+            return String(f).uppercased()
+        }
+        return ""
     }
 
     // MARK: - Toggle

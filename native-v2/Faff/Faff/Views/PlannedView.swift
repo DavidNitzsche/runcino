@@ -139,8 +139,16 @@ struct PlannedView: View {
         .padding(.horizontal, 22)
     }
 
+    /// Heat-adjusted card · the body text comes from the workout's
+    /// fueling.why (server-side, doctrine-cited) so the runner doesn't
+    /// see the same canned "Targets eased…" line every hot day. Hidden by
+    /// the surrounding gate when fueling.heatAdjusted=false.
     private var heatCard: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        let body: String = {
+            if let why = workout?.fueling?.why, !why.isEmpty { return why }
+            return "Targets eased for today's conditions. Run by effort and hydrate before you start."
+        }()
+        return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 9) {
                 Image(systemName: "sun.max.fill")
                     .font(.system(size: 16, weight: .bold))
@@ -150,7 +158,7 @@ struct PlannedView: View {
                     .foregroundStyle(Theme.txt)
                 Spacer()
             }
-            Text("Targets eased for today's conditions. Run threshold by effort, expect HR a few bpm above the usual range. Hydrate before you start.")
+            Text(body)
                 .font(.body(13, weight: .medium))
                 .foregroundStyle(Theme.txt.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
@@ -266,21 +274,50 @@ struct PlannedView: View {
     }
 
     private var workoutTitle: String {
-        workout?.name ?? "Tempo Run"
+        workout?.name ?? "Workout"
     }
 
+    /// Eyebrow text · "MON, MAY 26 · TODAY · LONG". Falls back to the
+    /// effort title alone when no date is provided · used to render a
+    /// hardcoded "WED, MAY 28 · TODAY" regardless of the actual day.
     private var eyebrowText: String {
-        "WED, MAY 28 · TODAY · \(effort.title.uppercased())"
+        let dayLabel = formattedDayLabel
+        let effortLabel = effort.title.uppercased()
+        if !dayLabel.isEmpty {
+            return "\(dayLabel) · \(effortLabel)"
+        }
+        return effortLabel
+    }
+
+    /// Resolve "MON, MAY 26 · TODAY" (or just "MON, MAY 26") from the
+    /// view's date argument. Empty string when no date — drops out of the
+    /// eyebrow rather than showing yesterday's day-of-week.
+    private var formattedDayLabel: String {
+        let parts = (date ?? todayISO).split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let d = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else {
+            return ""
+        }
+        let f = DateFormatter(); f.dateFormat = "EEE, MMM d"
+        let label = f.string(from: d).uppercased()
+        let isToday = (date ?? todayISO) == todayISO
+        return isToday ? "\(label) · TODAY" : label
+    }
+
+    private var todayISO: String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone.current
+        return f.string(from: Date())
     }
 
     private var distanceValue: String {
         if let d = workout?.distanceMi { return String(format: "%.1f", d) }
-        return "8.0"
+        return "—"
     }
 
     private var estTimeValue: String {
         if let m = workout?.totalEstimatedMinutes { return "~\(m)" }
-        return "~54"
+        return "—"
     }
 
     private var paceValue: String {
@@ -289,11 +326,18 @@ struct PlannedView: View {
            let p = work.targetPaceSPerMi {
             return PaceFormat.mmss(p)
         }
-        return "6:38"
+        return "—"
     }
 
+    /// Pill chip under the hero · was hardcoded "PLANNED · WEEK 14 BUILD".
+    /// Now reads the workout's paceLabel (the type code · T/I/E/R/L) so it
+    /// matches the actual session.
     private var pillText: String {
-        "PLANNED · WEEK 14 BUILD"
+        let lbl = workout?.paceLabel ?? ""
+        if !lbl.isEmpty {
+            return "PLANNED · \(lbl.uppercased())"
+        }
+        return "PLANNED"
     }
 
     /// Coach copy for this workout. Sourced from the watch workout's
@@ -304,31 +348,29 @@ struct PlannedView: View {
         return nil
     }
 
+    /// Bars across the top of "THE SHAPE". Empty when no real phase data ·
+    /// the surrounding `if !(workout?.phases.isEmpty ?? true)` gate hides
+    /// this section in that case, so the old WU/THRESHOLD/CD mock fallback
+    /// is gone.
     private var shapeSegments: [ShapeSeg] {
-        if let phases = workout?.phases, !phases.isEmpty {
-            return phases.enumerated().map { (i, p) in
-                let frac: Double = {
-                    switch p.type {
-                    case .work: return 1.0
-                    case .warmup, .cooldown: return 0.46
-                    case .recovery: return 0.5
-                    }
-                }()
-                return ShapeSeg(
-                    id: i,
-                    tag: shortTag(p),
-                    heightFrac: frac,
-                    color: colorFor(p.type),
-                    subLabel: subLabelFor(p),
-                    flex: Double(max(1, p.durationSec / 120))
-                )
-            }
+        guard let phases = workout?.phases, !phases.isEmpty else { return [] }
+        return phases.enumerated().map { (i, p) in
+            let frac: Double = {
+                switch p.type {
+                case .work: return 1.0
+                case .warmup, .cooldown: return 0.46
+                case .recovery: return 0.5
+                }
+            }()
+            return ShapeSeg(
+                id: i,
+                tag: shortTag(p),
+                heightFrac: frac,
+                color: colorFor(p.type),
+                subLabel: subLabelFor(p),
+                flex: Double(max(1, p.durationSec / 120))
+            )
         }
-        return [
-            ShapeSeg(id: 0, tag: "WU", heightFrac: 0.46, color: Color(hex: 0x34C194), subLabel: "2 mi easy", flex: 2),
-            ShapeSeg(id: 1, tag: "THRESHOLD", heightFrac: 1.0, color: Color(hex: 0xEF6038), subLabel: "4 mi @ threshold", flex: 4),
-            ShapeSeg(id: 2, tag: "CD", heightFrac: 0.42, color: Color(hex: 0x22B8C4), subLabel: "2 mi easy", flex: 2)
-        ]
     }
 
     private func shortTag(_ p: WatchPhase) -> String {
@@ -354,22 +396,20 @@ struct PlannedView: View {
         }
     }
 
+    /// Row list under "THE SESSION". Empty when no real phase data ·
+    /// surrounding gate hides the section. The hardcoded fallback that
+    /// described David's CIM threshold workout regardless of his actual
+    /// plan is gone.
     private var sessionRows: [SessionRow] {
-        if let phases = workout?.phases, !phases.isEmpty {
-            return phases.enumerated().map { (i, p) in
-                let title = "\(p.label) · \(subLabelFor(p))"
-                let detail: String = {
-                    if let tp = p.targetPaceSPerMi { return "@ \(PaceFormat.mmss(tp))/mi · target pace" }
-                    return "fully easy · let HR settle"
-                }()
-                return SessionRow(id: i, title: title, subtitle: detail, color: colorFor(p.type))
-            }
+        guard let phases = workout?.phases, !phases.isEmpty else { return [] }
+        return phases.enumerated().map { (i, p) in
+            let title = "\(p.label) · \(subLabelFor(p))"
+            let detail: String = {
+                if let tp = p.targetPaceSPerMi { return "@ \(PaceFormat.mmss(tp))/mi · target pace" }
+                return "fully easy · let HR settle"
+            }()
+            return SessionRow(id: i, title: title, subtitle: detail, color: colorFor(p.type))
         }
-        return [
-            SessionRow(id: 0, title: "Warm up · 2 mi", subtitle: "@ 8:30/mi · build into it, drills + 2 strides before the block", color: Color(hex: 0x34C194)),
-            SessionRow(id: 1, title: "Threshold · 4 mi", subtitle: "@ 6:38/mi · eased to ~6:46 today (heat) · comfortably hard, HR Z4", color: Color(hex: 0xEF6038)),
-            SessionRow(id: 2, title: "Cool down · 2 mi", subtitle: "@ 8:45/mi · fully easy, let HR fall", color: Color(hex: 0x22B8C4))
-        ]
     }
 
     private func load() async {

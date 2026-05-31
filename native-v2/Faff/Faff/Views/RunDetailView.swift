@@ -34,17 +34,19 @@ struct RunDetailView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 18)
 
-                    section(title: "MILE SPLITS", right: "FASTEST 6:33 · MI 4") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            MileBars(bars: splitBars, target: 398, readout: $splitReadout)
-                                .frame(height: 150)
-                            Text(splitReadout ?? "Tap a mile · tempo block held 6:35 avg through miles 3–7")
-                                .font(.display(11, weight: .bold))
-                                .foregroundStyle(Theme.txt.opacity(0.72))
-                                .padding(.top, 4)
+                    if !splitBars.isEmpty {
+                        section(title: "MILE SPLITS", right: fastestSplitLabel) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                MileBars(bars: splitBars, target: splitTargetSecs, readout: $splitReadout)
+                                    .frame(height: 150)
+                                Text(splitReadout ?? "Tap a mile to read its pace · HR · effort")
+                                    .font(.display(11, weight: .bold))
+                                    .foregroundStyle(Theme.txt.opacity(0.72))
+                                    .padding(.top, 4)
+                            }
                         }
+                        .padding(.top, 26)
                     }
-                    .padding(.top, 26)
 
                     section(title: "TRACE", right: traceAvgLabel) {
                         VStack(alignment: .leading, spacing: 12) {
@@ -70,10 +72,18 @@ struct RunDetailView: View {
                     }
                     .padding(.top, 26)
 
-                    section(title: "ROUTE", right: routeStatLabel) {
-                        routePanel
+                    // ROUTE section · only render when the run actually has
+                    // a captured route (apple_watch / strava with GPS). The
+                    // previous routePanel drew a hardcoded swooping
+                    // polyline + "START / FINISH" marker for every run,
+                    // including treadmill and indoor sessions that have
+                    // no route data.
+                    if run?.has_route == true {
+                        section(title: "ROUTE", right: routeStatLabel) {
+                            routePanel
+                        }
+                        .padding(.top, 26)
                     }
-                    .padding(.top, 26)
 
                     if let zones = zonePcts {
                         section(title: "TIME IN ZONE", right: timeInZoneLabel) {
@@ -191,11 +201,14 @@ struct RunDetailView: View {
             }
             .padding(.top, 20)
 
+            // "COMPLETED · FELT STRONG" claimed a strong RPE on every run
+            // regardless of whether the runner logged one. Drop "FELT
+            // STRONG" until the model exposes post_run_rpe.
             HStack(spacing: 6) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Color(hex: 0x9AF0BF))
-                Text("COMPLETED · FELT STRONG")
+                Text("COMPLETED")
                     .font(.label(10)).tracking(1)
                     .foregroundStyle(Color(hex: 0x9AF0BF))
             }
@@ -349,63 +362,77 @@ struct RunDetailView: View {
     }
     private var workoutName: String { run?.name ?? "Run" }
 
+    /// Hero stats · "—" instead of pretending the runner ran 8.0 mi at
+    /// 6:47 with 158/172 HR when no run data has loaded. The view-level
+    /// gate (showing "loading…" until `run` resolves) is the proper UX
+    /// for this case · for now the cells just read "—".
     private var distanceValue: String {
         if let d = run?.distance_mi { return String(format: "%.1f", d) }
-        return "8.0"
+        return "—"
     }
-    private var timeValue: String { run?.time_moving ?? "54:16" }
-    private var paceValue: String { run?.pace ?? "6:47" }
-    private var hrAvg: String { run?.hr_avg.map(String.init) ?? "158" }
-    private var hrMax: String { run?.hr_max.map(String.init) ?? "172" }
-    private var cadAvg: String { run?.cadence_avg.map(String.init) ?? "167" }
-    private var weatherTemp: String { run?.temp_f.map { String(Int($0)) } ?? "54" }
+    private var timeValue: String { run?.time_moving ?? "—" }
+    private var paceValue: String { run?.pace ?? "—" }
+    private var hrAvg: String { run?.hr_avg.map(String.init) ?? "—" }
+    private var hrMax: String { run?.hr_max.map(String.init) ?? "—" }
+    private var cadAvg: String { run?.cadence_avg.map(String.init) ?? "—" }
+    private var weatherTemp: String { run?.temp_f.map { String(Int($0)) } ?? "—" }
     private var shoeShort: String {
         if let n = run?.shoes?.first?.displayName {
             return n.replacingOccurrences(of: "ASICS ", with: "").replacingOccurrences(of: "Nike ", with: "")
         }
-        return "Zoom Fly 6"
+        return "—"
     }
 
+    /// Real mile splits from the run · empty when none. Was falling back
+    /// to an 8-mile fabricated tempo block (7:18, 6:58, 6:36, 6:33, 6:35,
+    /// 6:34, 6:37, 7:05) any time the actual run had no splits or hadn't
+    /// loaded yet · gave every run that fake CIM-rehearsal look.
     private var splitBars: [MileBar] {
-        if let splits = run?.splits, !splits.isEmpty {
-            return splits.map { s in
-                let secs = paceToSeconds(s.pace) ?? 400
-                let color = colorForSplit(secs: secs)
-                return MileBar(
-                    id: s.mile,
-                    value: Double(800 - secs),  // invert so faster = taller
-                    label: s.pace ?? "-",
-                    subLabel: s.hr.map { "\($0) bpm" },
-                    color: color,
-                    isHighlight: secs < 410
-                )
-            }
-        }
-        return defaultSplits
-    }
-
-    private var defaultSplits: [MileBar] {
-        let raw: [(Int, Int, Int, Color, Bool)] = [
-            (1, 438, 146, Color(hex: 0xFFB45A), false),
-            (2, 418, 147, Color(hex: 0xF97B3F), false),
-            (3, 396, 160, Color(hex: 0xDB3620), true),
-            (4, 393, 161, Color(hex: 0xD62D1C), true),
-            (5, 395, 162, Color(hex: 0xD9331E), true),
-            (6, 394, 163, Color(hex: 0xD7301D), true),
-            (7, 397, 164, Color(hex: 0xDC3921), true),
-            (8, 425, 153, Color(hex: 0xFF9148), false)
-        ]
-        return raw.map { (mi, secs, hr, col, hi) in
-            MileBar(
-                id: mi,
-                value: Double(800 - secs),
-                label: PaceFormat.mmss(secs),
-                subLabel: "\(hr) bpm",
-                color: col,
-                isHighlight: hi
+        guard let splits = run?.splits, !splits.isEmpty else { return [] }
+        return splits.map { s in
+            let secs = paceToSeconds(s.pace) ?? 400
+            let color = colorForSplit(secs: secs)
+            return MileBar(
+                id: s.mile,
+                value: Double(800 - secs),  // invert so faster = taller
+                label: s.pace ?? "-",
+                subLabel: s.hr.map { "\($0) bpm" },
+                color: color,
+                isHighlight: secs < 410
             )
         }
     }
+
+    /// Right-side header for the splits section · "FASTEST 6:33 · MI 4"
+    /// derived from the actual splits instead of being hardcoded. Hidden
+    /// when no splits load.
+    private var fastestSplitLabel: String? {
+        guard let splits = run?.splits, !splits.isEmpty else { return nil }
+        let timed = splits.compactMap { s -> (Int, Int, String)? in
+            guard let p = paceToSeconds(s.pace) else { return nil }
+            return (s.mile, p, s.pace ?? "")
+        }
+        guard let fastest = timed.min(by: { $0.1 < $1.1 }) else { return nil }
+        return "FASTEST \(fastest.2) · MI \(fastest.0)"
+    }
+
+    /// Target line on the splits chart · the planned work-block pace from
+    /// the matched planned spec, or the run's average pace when no plan
+    /// match exists. Was hardcoded to 398s (6:38/mi) so the target line
+    /// landed in the same spot for every run.
+    private var splitTargetSecs: Int {
+        if let pace = run?.pace_work_s_per_mi { return pace }
+        if let pace = run?.pace_s_per_mi { return pace }
+        if let splits = run?.splits, !splits.isEmpty {
+            let secs = splits.compactMap { paceToSeconds($0.pace) }
+            if !secs.isEmpty { return secs.reduce(0, +) / secs.count }
+        }
+        return 420
+    }
+
+    // `defaultSplits` removed · was an 8-mile fabricated tempo block that
+    // rendered whenever the actual run had no splits. Now the splits
+    // section hides entirely when `splitBars.isEmpty`.
 
     private func colorForSplit(secs: Int) -> Color {
         switch secs {

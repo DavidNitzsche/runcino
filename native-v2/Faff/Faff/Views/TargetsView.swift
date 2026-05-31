@@ -20,7 +20,7 @@ struct TargetsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    PageHeader(title: "TARGETS", avatarInitials: "DK", onAvatarTap: onProfile)
+                    PageHeader(title: "TARGETS", avatarInitials: avatarInitials, onAvatarTap: onProfile)
                         .padding(.horizontal, 22).padding(.top, 12)
 
                     heroBlock
@@ -49,6 +49,21 @@ struct TargetsView: View {
         }
         .task { await reload() }
         .refreshable { await reload() }
+    }
+
+    /// Avatar initials from the runner's profile · was hardcoded "DK".
+    private var avatarInitials: String {
+        if let name = profile?.identity.full_name, !name.isEmpty {
+            let parts = name.split(separator: " ")
+            let first = parts.first.map(String.init)?.prefix(1) ?? ""
+            let last = parts.count > 1 ? String(parts.last!).prefix(1) : ""
+            let raw = String(first) + String(last)
+            if !raw.isEmpty { return raw.uppercased() }
+        }
+        if let c = profile?.identity.city, let f = c.first {
+            return String(f).uppercased()
+        }
+        return ""
     }
 
     private func reload() async {

@@ -28,42 +28,41 @@ struct RaceDayView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 18)
 
-                    section(title: "THE COURSE", right: courseStat) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            SpecLabel(text: "ROUTE", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
-                            mapPlaceholder
-                                .frame(height: 118)
-                            if let prov = courseProvenanceLabel {
-                                Text(prov)
-                                    .font(.display(10, weight: .bold))
-                                    .tracking(0.5)
-                                    .foregroundStyle(Theme.txt.opacity(0.55))
-                                    .padding(.top, 2)
+                    // THE COURSE — only render when we actually have course
+                    // geometry from /api/race/[slug]. The old "mapPlaceholder"
+                    // + "elevationPlaceholder" + "366 ft / 26 ft / THE ROLLERS"
+                    // was a hardcoded mock that rendered for every race. The
+                    // fueling line ("4 gels · PF 30 at miles 5 · 10 · 15 · 20")
+                    // was the same · gone until per-race fueling ships.
+                    if let geo = detail?.course_geometry,
+                       let pts = geo.trackPoints, pts.count > 5 {
+                        section(title: "THE COURSE", right: courseStat) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                SpecLabel(text: "ROUTE", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
+                                courseRoute(points: pts)
+                                    .frame(height: 118)
+                                if let prov = courseProvenanceLabel {
+                                    Text(prov)
+                                        .font(.display(10, weight: .bold))
+                                        .tracking(0.5)
+                                        .foregroundStyle(Theme.txt.opacity(0.55))
+                                        .padding(.top, 2)
+                                }
+                                if let elev = geo.elevation_gain_ft, elev > 0 {
+                                    SpecLabel(text: "ELEVATION GAIN · \(Int(elev)) FT", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
+                                        .padding(.top, 4)
+                                }
                             }
-                            SpecLabel(text: "ELEVATION", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
-                                .padding(.top, 4)
-                            elevationPlaceholder
-                                .frame(height: 150)
-                            fuelLine
-                                .padding(.top, 6)
                         }
+                        .padding(.top, 26)
                     }
-                    .padding(.top, 26)
 
-                    section(title: "THE PLAN", right: "EVEN EFFORT") {
-                        planSegments
-                        Text("Set from your sub-3 goal and the CIM profile. Faff re-tunes if conditions change.")
-                            .font(.display(10, weight: .semibold))
-                            .foregroundStyle(Theme.txt.opacity(0.5))
-                            .lineSpacing(2)
-                            .padding(.top, 8)
-                    }
-                    .padding(.top, 26)
-
-                    section(title: "RACE MORNING", right: nil) {
-                        morningTile
-                    }
-                    .padding(.top, 26)
+                    // THE PLAN section was 4 hardcoded "MI 1-3 Settle in 6:55"
+                    // rows + "Set from your sub-3 goal and the CIM profile"
+                    // copy · not derived from anything. RACE MORNING was
+                    // similarly hardcoded ("Gun time 7:00 AM · Wave 1",
+                    // "Weather 41°F · clear · calm"). Both gone until per-race
+                    // plan steps + race-morning data ship.
 
                     if let facts = raceFacts?.facts, !facts.isEmpty {
                         section(title: "AT A GLANCE", right: nil) {
@@ -104,20 +103,41 @@ struct RaceDayView: View {
         .task { await load() }
     }
 
+    /// Topbar label · "RACE DAY" / "RACE WEEK" / "BUILDING" derived from
+    /// race.is_past + proximity. Was always "RACE DAY" with a hardcoded
+    /// 92 readiness ring next to it · misleading on a race 11 weeks out.
     private var topRow: some View {
         HStack(alignment: .center) {
             HStack(spacing: 9) {
                 LivePulseDot(color: Color(hex: 0xFFD27A), size: 8)
                     .frame(width: 12, height: 12)
-                Text("RACE DAY")
+                Text(topRowLabel)
                     .font(.label(13)).tracking(2.5)
                     .foregroundStyle(Theme.txt)
             }
             Spacer()
-            ReadinessRing(score: 92, size: 46, color: Color(hex: 0x62E08A), subLabel: "PEAK")
         }
     }
 
+    private var topRowLabel: String {
+        if detail?.race.is_past == true { return "POST-RACE" }
+        switch (detail?.proximity ?? "").uppercased() {
+        case "RACE-WEEK":  return "RACE WEEK"
+        case "SHARPENING": return "SHARPENING"
+        case "BUILDING":   return "BUILD PHASE"
+        case "POST-RACE":  return "POST-RACE"
+        default:           return "RACE"
+        }
+    }
+
+    /// Hero is now grounded in real fields: race short-code + name + date
+    /// eyebrow + goal time + derived goal pace + days-to-race chip. The
+    /// "PROJECTED 2:58:40 · 50s UNDER GOAL" block + the GapBeam + the
+    /// "SEASON START 3:11" line + the "You closed the gap…" coach line
+    /// were all hardcoded mock copy that rendered for every race · they
+    /// claimed David was projected sub-3 on AFC (a half) and on every
+    /// race regardless of plan state. All removed until a real projection
+    /// endpoint ships and emits per-race projected times.
     private var hero: some View {
         VStack(alignment: .leading, spacing: 0) {
             SpecLabel(text: heroEyebrow, size: 11, tracking: 2.5, color: Theme.txt.opacity(0.66))
@@ -134,237 +154,109 @@ struct RaceDayView: View {
             }
             .padding(.top, 8)
 
-            VStack(alignment: .leading, spacing: 9) {
-                Text(goalTime)
-                    .font(.display(58, weight: .bold))
-                    .tracking(-2.5)
-                    .foregroundStyle(Theme.txt)
-                    .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
-                Text("GOAL TIME  ·  \(goalPace) /mi")
-                    .font(.display(13, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.78))
+            if goalTime != "—" {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(goalTime)
+                        .font(.display(58, weight: .bold))
+                        .tracking(-2.5)
+                        .foregroundStyle(Theme.txt)
+                        .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
+                    if goalPace != "—" {
+                        Text("GOAL TIME  ·  \(goalPace) /mi")
+                            .font(.display(13, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.78))
+                    } else {
+                        Text("GOAL TIME")
+                            .font(.display(13, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.78))
+                    }
+                }
+                .padding(.top, 20)
             }
-            .padding(.top, 20)
 
-            HStack {
-                Text("PROJECTED 2:58:40")
-                    .font(.display(11, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.85))
-                Spacer()
-                Text("50s UNDER GOAL")
-                    .font(.display(11, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x9AF0BF))
+            if let chip = daysChip {
+                HStack {
+                    Text(chip)
+                        .font(.display(11, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.85))
+                    Spacer()
+                    if let pr = pbChip {
+                        Text(pr)
+                            .font(.display(11, weight: .bold))
+                            .foregroundStyle(Color(hex: 0x9AF0BF))
+                    }
+                }
+                .padding(.top, 22)
             }
-            .padding(.top, 22)
-
-            GapBeam(
-                progress: 1.0,
-                height: 14,
-                fillStops: [Color(hex: 0xFFD27A).opacity(0.5), Color(hex: 0x9AF0BF)],
-                gapColor: Color(hex: 0xFFB24D),
-                showKnob: false
-            )
-            .padding(.top, 12)
-
-            HStack {
-                Text("SEASON START 3:11")
-                    .font(.display(10, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.5))
-                Spacer()
-                Text("GOAL 2:59:30 ✓")
-                    .font(.display(10, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x9AF0BF))
-            }
-            .padding(.top, 12)
-
-            Text("You closed the gap. You're peaked and projected under goal · everything from here is execution.")
-                .font(.body(14, weight: .semibold))
-                .foregroundStyle(Theme.txt.opacity(0.9))
-                .lineSpacing(2)
-                .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var mapPlaceholder: some View {
-        ZStack(alignment: .center) {
-            RadialGradient(colors: [Color.black.opacity(0.4), Color.black.opacity(0)], center: .center, startRadius: 0, endRadius: 240)
+    /// "77 DAYS OUT" / "RACE WEEK" / etc. — derives from race.days +
+    /// proximity. Returns nil for past races (the hero then leans on
+    /// matchedRun via the post-race surfaces).
+    private var daysChip: String? {
+        guard let d = detail?.race.days else { return nil }
+        if d == 0 { return "RACE DAY" }
+        if d < 0 { return nil }
+        if let prox = detail?.proximity?.uppercased(), prox == "RACE-WEEK" { return "RACE WEEK · \(d) DAYS" }
+        return "\(d) DAYS OUT"
+    }
+
+    /// Existing-PR chip when the user has logged a personal best for this
+    /// race. Hidden when the field is null (most races) or false.
+    private var pbChip: String? {
+        if let pb = detail?.race.pb, pb { return "PERSONAL BEST" }
+        return nil
+    }
+
+    /// Real GPX route from /api/race/[slug].course_geometry.trackPoints.
+    /// Projects lat/lon onto a 2D viewport using min/max of the bbox so
+    /// it fits the visible frame regardless of which race we're looking
+    /// at. Replaces the hardcoded `mapPlaceholder` that drew an abstract
+    /// CIM-shaped curve for every race.
+    private func courseRoute(points pts: [CourseTrackPoint]) -> some View {
+        let lats = pts.compactMap { $0.lat }
+        let lons = pts.compactMap { $0.lon }
+        let minLat = lats.min() ?? 0
+        let maxLat = lats.max() ?? 1
+        let minLon = lons.min() ?? 0
+        let maxLon = lons.max() ?? 1
+        let latSpan = max(0.0001, maxLat - minLat)
+        let lonSpan = max(0.0001, maxLon - minLon)
+        return GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
             Path { p in
-                p.move(to: .init(x: 34, y: 36))
-                p.addCurve(to: .init(x: 116, y: 76), control1: .init(x: 78, y: 48), control2: .init(x: 70, y: 70))
-                p.addCurve(to: .init(x: 198, y: 66), control1: .init(x: 160, y: 82), control2: .init(x: 152, y: 56))
-                p.addCurve(to: .init(x: 280, y: 100), control1: .init(x: 244, y: 76), control2: .init(x: 234, y: 96))
-                p.addCurve(to: .init(x: 322, y: 110), control1: .init(x: 306, y: 102), control2: .init(x: 310, y: 108))
+                var started = false
+                for pt in pts {
+                    guard let lat = pt.lat, let lon = pt.lon else { continue }
+                    let x = CGFloat((lon - minLon) / lonSpan) * w
+                    let y = h - CGFloat((lat - minLat) / latSpan) * h
+                    if started { p.addLine(to: CGPoint(x: x, y: y)) }
+                    else { p.move(to: CGPoint(x: x, y: y)); started = true }
+                }
             }
             .stroke(
-                LinearGradient(colors: [Color(hex: 0xFFE0A0), Color(hex: 0xFF5A52)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                LinearGradient(colors: [Color(hex: 0xFFE0A0), Color(hex: 0xFF5A52)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
             )
-
-            // Start & finish dots
-            HStack {
-                VStack(alignment: .leading) {
-                    Circle()
-                        .stroke(Color(hex: 0xFFD27A).opacity(0.5), lineWidth: 1.4)
-                        .frame(width: 18, height: 18)
-                        .background(Circle().fill(Color(hex: 0xFFD27A)).frame(width: 9, height: 9))
-                    Text("START · Folsom")
-                        .font(.display(8.5, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xFFD27A))
-                }
-                Spacer()
-            }
-            .padding(20)
-
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    VStack(alignment: .trailing) {
-                        Text("FINISH · Sacramento")
-                            .font(.display(8.5, weight: .bold))
-                            .foregroundStyle(Theme.txt)
-                        Circle().fill(Color.white).frame(width: 10, height: 10)
-                    }
-                }
-            }
-            .padding(20)
+            .background(Color.black.opacity(0.18))
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var elevationPlaceholder: some View {
-        ZStack {
-            // Filled elevation profile
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                Path { p in
-                    p.move(to: .init(x: 0, y: h * 0.30))
-                    let pts: [CGPoint] = [
-                        .init(x: w * 0.08, y: h * 0.34),
-                        .init(x: w * 0.16, y: h * 0.30),
-                        .init(x: w * 0.24, y: h * 0.36),
-                        .init(x: w * 0.32, y: h * 0.42),
-                        .init(x: w * 0.42, y: h * 0.46),
-                        .init(x: w * 0.52, y: h * 0.50),
-                        .init(x: w * 0.62, y: h * 0.55),
-                        .init(x: w * 0.72, y: h * 0.62),
-                        .init(x: w * 0.82, y: h * 0.70),
-                        .init(x: w * 0.92, y: h * 0.78),
-                        .init(x: w,        y: h * 0.84)
-                    ]
-                    for pt in pts { p.addLine(to: pt) }
-                    p.addLine(to: .init(x: w, y: h))
-                    p.addLine(to: .init(x: 0, y: h))
-                    p.closeSubpath()
-                }
-                .fill(LinearGradient(colors: [Color(hex: 0xFF8A4D).opacity(0.42), Color(hex: 0xFF8A4D).opacity(0)], startPoint: .top, endPoint: .bottom))
-
-                Path { p in
-                    p.move(to: .init(x: 0, y: h * 0.30))
-                    let pts: [CGPoint] = [
-                        .init(x: w * 0.08, y: h * 0.34),
-                        .init(x: w * 0.24, y: h * 0.36),
-                        .init(x: w * 0.42, y: h * 0.46),
-                        .init(x: w * 0.62, y: h * 0.55),
-                        .init(x: w * 0.82, y: h * 0.70),
-                        .init(x: w,        y: h * 0.84)
-                    ]
-                    for pt in pts { p.addLine(to: pt) }
-                }
-                .stroke(
-                    LinearGradient(colors: [Color(hex: 0xFFD27A), Color(hex: 0xFF9442), Color(hex: 0xFF6A3C), Color(hex: 0xE2293F)], startPoint: .leading, endPoint: .trailing),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-
-                Text("THE ROLLERS")
-                    .font(.display(8.5, weight: .bold))
-                    .tracking(1)
-                    .foregroundStyle(Theme.txt.opacity(0.5))
-                    .position(x: w * 0.16, y: h * 0.20)
-
-                Text("366 ft")
-                    .font(.display(9, weight: .bold))
-                    .foregroundStyle(Color(hex: 0xFFD27A))
-                    .position(x: 26, y: h * 0.18)
-                Text("26 ft")
-                    .font(.display(9, weight: .bold))
-                    .foregroundStyle(Theme.txt)
-                    .position(x: w - 22, y: h * 0.92)
-            }
-        }
-    }
-
-    private var fuelLine: some View {
-        (
-            Text("4 gels").bold().foregroundColor(Color(hex: 0xFFD49A)) +
-            Text(" · PF 30 at miles 5 · 10 · 15 · 20 (caffeine) · PF 60 in flask, ~70g carb/hr")
-        )
-        .font(.display(10.5, weight: .bold))
-        .tracking(0.2)
-        .foregroundStyle(Theme.txt.opacity(0.66))
-        .lineSpacing(2)
-    }
-
-    private var planSegments: some View {
-        VStack(spacing: 0) {
-            planSegRow(dot: Color(hex: 0xFFD27A), mi: "MI 1–3",   name: "Settle in",         sub: "controlled start · let them go",       pace: "6:55")
-            planSegRow(dot: Color(hex: 0xFF9442), mi: "MI 3–10",  name: "The rollers",       sub: "even effort · don't fight the hills",  pace: "6:52")
-            planSegRow(dot: Color(hex: 0xFF6A3C), mi: "MI 10–20", name: "Find your rhythm",  sub: "net downhill · lock into goal",        pace: "6:49")
-            planSegRow(dot: Color(hex: 0xE2293F), mi: "MI 20–26.2", name: "Empty the tank", sub: "downhill finish · negative split",    pace: "6:43")
-        }
-    }
-
-    private func planSegRow(dot: Color, mi: String, name: String, sub: String, pace: String) -> some View {
-        HStack(alignment: .top, spacing: 13) {
-            Circle().fill(dot).frame(width: 9, height: 9).padding(.top, 6)
-            Text(mi)
-                .font(.display(11, weight: .bold))
-                .frame(width: 82, alignment: .leading)
-                .foregroundStyle(Theme.txt.opacity(0.82))
-                .padding(.top, 4)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.body(15, weight: .extraBold))
-                    .tracking(-0.2)
-                    .foregroundStyle(Theme.txt)
-                Text(sub)
-                    .font(.body(11.5, weight: .medium))
-                    .foregroundStyle(Theme.txt.opacity(0.6))
-            }
-            Spacer()
-            Text(pace)
-                .font(.display(18, weight: .bold))
-                .tracking(-0.5)
-                .foregroundStyle(Color(hex: 0xFFD27A))
-                .padding(.top, 2)
-        }
-        .padding(.vertical, 11)
-    }
-
-    private var morningTile: some View {
-        GlassTile(padding: 6) {
-            VStack(spacing: 0) {
-                row("Gun time", "7:00 AM · Wave 1")
-                row("Weather", "41°F · clear · calm", good: true)
-                row("Gear check", "closes 6:40 AM")
-                row("Shoes", "SC Trainer v3")
-            }
-        }
-    }
-
-    private func row(_ k: String, _ v: String, good: Bool = false) -> some View {
-        HStack {
-            Text(k).font(.body(13, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.66))
-            Spacer()
-            Text(v)
-                .font(.display(13, weight: .bold))
-                .foregroundStyle(good ? Color(hex: 0x9AF0BF) : Theme.txt)
-        }
-        .padding(.vertical, 11)
-        .padding(.horizontal, 10)
-    }
+    // Note: removed `mapPlaceholder`, `elevationPlaceholder`, `fuelLine`,
+    // `planSegments`/`planSegRow`, `morningTile`/`row` · these were drawing
+    // hardcoded CIM-shaped route curves, fake "366 ft / 26 ft / THE ROLLERS"
+    // elevation labels, "4 gels · PF 30 at miles 5 · 10 · 15 · 20" fueling
+    // copy, the 4-row "MI 1-3 Settle in 6:55" plan strip, and the "Gun
+    // time 7:00 AM · Wave 1 / Weather 41°F · clear · calm" morning tile
+    // regardless of the actual race. The course section now renders real
+    // GPX from /api/race/[slug].course_geometry via courseRoute(); the rest
+    // of the sections stay hidden until backend endpoints emit per-race
+    // plan steps / fueling / morning data.
 
     private func section<C: View>(title: String, right: String?, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -448,7 +340,10 @@ struct RaceDayView: View {
 
     private func load() async {
         async let r = (try? await API.fetchRaceDetail(slug: raceSlug))
-        async let f = (try? await API.fetchCoachFacts(surface: "race_detail"))
+        // Pass the slug so the race_detail surface scopes facts to this
+        // race · without it the endpoint 400'd and the AT A GLANCE block
+        // never rendered.
+        async let f = (try? await API.fetchCoachFacts(surface: "race_detail", raceSlug: raceSlug))
         let (rd, fc) = await (r, f)
         await MainActor.run { self.detail = rd; self.raceFacts = fc }
     }

@@ -32,15 +32,16 @@ struct WatchMirrorView: View {
                             .padding(.horizontal, 24)
                     }
                 } else {
-                    hero
-                        .padding(.top, 16)
-                        .padding(.horizontal, 24)
-                    threeStatRow
-                        .padding(.top, 18)
-                        .padding(.horizontal, 24)
-                    courseSection
-                        .padding(.top, 18)
-                        .padding(.horizontal, 24)
+                    // STANDING BY state · no workout loaded. The previous
+                    // fallback rendered a fake live pace of 6:48 + "ON FOR
+                    // 2:58 · 90s under" + a fake 1:50:12 / 16.2 mi / 163 BPM
+                    // strip + a fake "NEXT · MILE 18 Long climb" cue card.
+                    // Looked like a real in-progress run despite nothing
+                    // actually being live. Replaced with an honest empty
+                    // state.
+                    standbyEmpty
+                        .padding(.top, 60)
+                        .padding(.horizontal, 32)
                 }
 
                 Spacer(minLength: 0)
@@ -145,6 +146,26 @@ struct WatchMirrorView: View {
         case .recovery: return Color(hex: 0x27B4E0)
         case .cooldown: return Color(hex: 0x14C08C)
         default:        return Theme.mute
+        }
+    }
+
+    /// Empty / standby state when no workout is loaded · was a hardcoded
+    /// CURRENT PACE 6:48 + ON FOR 2:58 + 1:50:12 / 16.2 mi / 163 BPM strip
+    /// + NEXT MILE 18 cue card that looked like a real in-progress run.
+    private var standbyEmpty: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "applewatch.radiowaves.left.and.right")
+                .font(.system(size: 36, weight: .regular))
+                .foregroundStyle(Theme.txt.opacity(0.7))
+            Text("Standing by")
+                .font(.display(20, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Theme.txt)
+            Text("Start the workout on your Apple Watch and this screen will mirror it · pace, heart rate, splits, the upcoming cue.")
+                .font(.body(14, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.txt.opacity(0.7))
+                .lineSpacing(3)
         }
     }
 
