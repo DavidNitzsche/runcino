@@ -766,7 +766,13 @@ function CompletedHeroV2({
     : 'off-plan';
 
   return (
-    <div className="hero-v2">
+    // 2026-05-31: hero-v2-done modifier triggers a three-column layout
+    // where .mapcol breaks out of .hmain and becomes a top-level sibling.
+    // This top-aligns the route card with the htag eyebrow AND the wcard,
+    // so the route starts at the same vertical line as TODAY · LONG · DONE
+    // and HOW IT WENT. The default .hero-v2 (used by PlannedHeroV2) keeps
+    // the two-column layout where .mapcol sits inside .hbody.
+    <div className="hero-v2 hero-v2-done">
       <div className="hmain">
         <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · DONE'}</div>
         <div className="titlerow">
@@ -776,8 +782,7 @@ function CompletedHeroV2({
           </span>
         </div>
 
-        <div className="hbody">
-          <div className="leftstack">
+        <div className="leftstack">
             <div className="stats">
               <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
               <div><div className="v">{resolvedTime ?? '·'}</div><div className="k">TIME{runLoading && !runData ? ' …' : ''}</div></div>
@@ -830,6 +835,7 @@ function CompletedHeroV2({
               </div>
             </div>
           </div>
+        </div>
 
           <div className="mapcol">
             <div className="routemap routemap-rich">
@@ -898,8 +904,6 @@ function CompletedHeroV2({
               )}
             </div>
           </div>
-        </div>
-      </div>
 
       <aside className="wcard">
         <div className="wcl">
