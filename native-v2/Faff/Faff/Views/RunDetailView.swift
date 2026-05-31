@@ -679,7 +679,7 @@ struct RunDetailView: View {
     private func coachCallout(label: String, body: String, bg: Color, stroke: Color, chip: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.display(10, weight: .black))
+                .font(.display(10, weight: .bold))
                 .foregroundStyle(chip)
                 .kerning(1.2)
             Text(body)
@@ -840,6 +840,14 @@ struct RunDetailView: View {
     }
 }
 
+// TraceMetric · just the label + color, no fake data.
+//
+// The 33-element `var points` / `var labels` arrays (CIM-rehearsal demo
+// curve) used to live here. Even though every render path called
+// tracePointsFor() (real splits), the demo arrays were one careless
+// refactor away from leaking into the UI. Per doctrine 2026-05-31
+// (no placeholder fallbacks · the runner is paying attention), the
+// fake data is gone.
 private enum TraceMetric: String, CaseIterable {
     case pace, hr, elev, cad
 
@@ -858,35 +866,6 @@ private enum TraceMetric: String, CaseIterable {
         case .hr:   return Color(hex: 0xFF5A6E)
         case .elev: return Color(hex: 0xFFCE8A)
         case .cad:  return Color(hex: 0x9AF0BF)
-        }
-    }
-
-    var points: [Double] {
-        switch self {
-        case .pace: return [436.6, 435.2, 439.2, 429.0, 427.0, 420.1, 412.0, 409.9, 400.5, 398.1, 389.6, 389.7, 392.4, 395.6, 390.0, 390.8, 394.0, 396.6, 393.6, 392.2, 396.8, 389.4, 395.9, 391.3, 390.2, 389.9, 391.5, 395.5, 390.4, 401.7, 410.1, 416.0, 425.4]
-        case .hr:   return [118.3, 124.9, 132.2, 140.7, 146.4, 151.4, 153.1, 153.2, 153.3, 155.9, 156.2, 155.0, 157.0, 157.4, 159.5, 159.5, 158.4, 161.9, 159.1, 160.9, 162.9, 161.1, 163.1, 162.0, 165.2, 166.2, 166.1, 167.9, 169.3, 166.8, 162.4, 158.3, 153.8]
-        case .elev: return [182.0, 202.6, 214.1, 220.7, 213.8, 209.0, 199.6, 196.6, 196.3, 198.0, 203.9, 206.4, 195.9, 184.6, 165.0, 148.6, 139.1, 144.2, 150.3, 166.4, 182.6, 196.1, 195.2, 195.7, 193.1, 195.0, 200.4, 212.4, 223.2, 235.7, 239.6, 237.1, 223.2]
-        case .cad:  return [159.0, 159.9, 160.9, 161.7, 163.3, 166.3, 165.5, 165.0, 166.4, 166.4, 167.2, 168.6, 168.0, 167.7, 168.2, 168.6, 166.9, 169.6, 169.5, 170.0, 169.9, 168.9, 169.1, 168.5, 170.2, 168.7, 168.9, 169.6, 167.0, 165.5, 162.7, 160.5, 159.0]
-        }
-    }
-
-    var labels: [String] {
-        let count = points.count
-        return (0..<count).map { i in
-            let mi = Double(i) / Double(max(1, count - 1)) * 8.0
-            return "mi \(String(format: "%.1f", mi)) · \(formatted(i))"
-        }
-    }
-
-    private func formatted(_ i: Int) -> String {
-        let v = points[i]
-        switch self {
-        case .pace:
-            let s = Int(v.rounded())
-            return "\(s / 60):\(String(format: "%02d", s % 60)) /mi"
-        case .hr:   return "\(Int(v.rounded())) bpm"
-        case .elev: return "\(Int(v.rounded())) ft"
-        case .cad:  return "\(Int(v.rounded())) spm"
         }
     }
 }

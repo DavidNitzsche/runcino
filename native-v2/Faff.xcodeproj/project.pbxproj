@@ -52,6 +52,7 @@
 		7380AA0621D427003EE43F2E /* WithinReachSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444251779F1CDC004513FAD8 /* WithinReachSheet.swift */; };
 		7A0F250BA4DA7F45225E8030 /* Races.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174FE8C6F00184359AC974B6 /* Races.swift */; };
 		7D6EEA014498E248E262CC14 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBDD89E184A2A60C766D18F /* OnboardingView.swift */; };
+		8207DC567E0A8DE57DBFB58B /* CoachPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */; };
 		82E76F98D8A2E62E46456CDB /* Faces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7666ED48810586C430FE7E27 /* Faces.swift */; };
 		83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600BF38DD79CB8A08592B03 /* Theme.swift */; };
 		86A22E83FA6253F8776972F9 /* PageHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E2C05E3027A3C1CB45AEDD /* PageHeader.swift */; };
@@ -94,7 +95,6 @@
 		DDEC03C890DF05DF53ECDF7F /* TrainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175401B3AE5EFD5368347E58 /* TrainView.swift */; };
 		E05B05674D1FD82CFD0AC965 /* RunDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E341D1073CB161F54628F683 /* RunDetailView.swift */; };
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
-		C6AEDE19C20A43F585477EC1 /* CoachPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = F944560C8B7348D3AF7304B2 /* CoachPayloads.swift */; };
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
 		EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */; };
@@ -211,7 +211,6 @@
 		9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaReconnectBanner.swift; sourceTree = "<group>"; };
 		9DBDD89E184A2A60C766D18F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9DDE304E9C6471D398E2D102 /* Briefing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Briefing.swift; sourceTree = "<group>"; };
-		F944560C8B7348D3AF7304B2 /* CoachPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachPayloads.swift; sourceTree = "<group>"; };
 		9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
 		A946A92F47DD42163C1A409F /* RaceName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceName.swift; sourceTree = "<group>"; };
@@ -231,6 +230,7 @@
 		C1D23DD51213DA16F555FCAA /* ResponsiveFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponsiveFace.swift; sourceTree = "<group>"; };
 		C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchMirrorView.swift; sourceTree = "<group>"; };
 		C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInWithAppleView.swift; sourceTree = "<group>"; };
+		C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachPayloads.swift; sourceTree = "<group>"; };
 		C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeSheet.swift; sourceTree = "<group>"; };
 		CD71B88D7D0751ABFACD1479 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStrip.swift; sourceTree = "<group>"; };
@@ -263,7 +263,7 @@
 			children = (
 				9DDE304E9C6471D398E2D102 /* Briefing.swift */,
 				45138C09A08463A9958BCD3F /* CoachFacts.swift */,
-				F944560C8B7348D3AF7304B2 /* CoachPayloads.swift */,
+				C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */,
 				ADEF9EEB865458FD9FBA9054 /* FaffPayloads.swift */,
 				174FE8C6F00184359AC974B6 /* Races.swift */,
 				761D6D9F643EAA00C64D9BBC /* Runs.swift */,
@@ -624,10 +624,10 @@
 				AA3F43C1079621406B520A96 /* ActivityView.swift in Sources */,
 				36B9DFECC527B9516F2E9D87 /* AppCache.swift in Sources */,
 				22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */,
-				C6AEDE19C20A43F585477EC1 /* CoachPayloads.swift in Sources */,
 				E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */,
 				5966D86B3E01B512FB053BD2 /* CoachFacts.swift in Sources */,
 				4167E13357AE78F92DB3AB54 /* CoachNote.swift in Sources */,
+				8207DC567E0A8DE57DBFB58B /* CoachPayloads.swift in Sources */,
 				14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */,
 				317B8EDA830CCC1FE06624A4 /* CompletedView.swift in Sources */,
 				A4BFA53D2EB8255A25E154AD /* DragSheet.swift in Sources */,

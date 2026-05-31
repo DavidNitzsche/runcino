@@ -39,6 +39,11 @@ struct TodayView: View {
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
     @State private var weather: WeatherBaseline?   // forecast vs 14-day baseline · drives the HOTTER THAN USUAL tag
     @State private var stravaStatus: API.StravaStatusResponse?  // drives the reconnect banner
+    /// "WHY THIS RUN" coach payload · /api/today/purpose. Replaces the
+    /// legacy briefing?.lead placeholder ("Stay in the temperature for
+    /// the day..."). The whole Faff Coach block hides when this is nil ·
+    /// no hardcoded fallback. The empty state IS the honest signal.
+    @State private var purpose: RunPurpose?
 
     var body: some View {
         let mesh = selectedEffort.mesh
@@ -375,34 +380,59 @@ struct TodayView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Faff Coach")
-                    .font(.label(10)).tracking(1.5).textCase(.uppercase)
-                    .foregroundStyle(selectedEffort.dot)
-                Text(coachNote)
-                    .font(.body(14.5, weight: .medium))
-                    .foregroundStyle(Color(hex: 0x3C362F))
-                    .lineSpacing(4)
-                // briefing.voice · the rest of the coach's read on the day
-                // (BODY · PULL BACK 40 / 100, WEEK · 27.4 of 43.8 mi, etc.).
-                // Was decoded but never rendered. Up to 4 lines · the
-                // briefing endpoint already caps cardinality on ?client=ios.
-                if let v = briefing?.voice, !v.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(v.prefix(4), id: \.self) { line in
-                            HStack(alignment: .top, spacing: 8) {
-                                Circle().fill(selectedEffort.dot).frame(width: 5, height: 5).padding(.top, 7)
-                                Text(line)
-                                    .font(.body(12.5, weight: .semibold))
-                                    .foregroundStyle(Color(hex: 0x5C574E))
-                                    .lineSpacing(2)
+            // Faff Coach · driven by /api/today/purpose ("WHY THIS RUN").
+            // The whole block hides when purpose is nil OR has an empty
+            // verdict. Empty IS the signal · per doctrine, never insert
+            // a hardcoded fallback that could be mistaken for real data.
+            if let pp = purpose, !pp.verdict.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Faff Coach")
+                        .font(.label(10)).tracking(1.5).textCase(.uppercase)
+                        .foregroundStyle(selectedEffort.dot)
+                    // Verdict · sentence-treatment per design contract
+                    // (the verdict is the headline, not a tag).
+                    Text(pp.verdict)
+                        .font(.body(17, weight: .extraBold))
+                        .tracking(-0.3)
+                        .foregroundStyle(Color(hex: 0x1B1814))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !pp.facts.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(pp.facts.prefix(3), id: \.self) { fact in
+                                Text(fact)
+                                    .font(.body(13.5, weight: .medium))
+                                    .foregroundStyle(Color(hex: 0x3C362F))
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
+                        .padding(.top, 2)
                     }
-                    .padding(.top, 6)
+                    if !pp.citations.isEmpty {
+                        // Citation chips deep-link into LearnArticleSheet
+                        // via the existing FaffRoute.learn(slug:) destination.
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(pp.citations) { c in
+                                    NavigationLink(value: FaffRoute.learn(slug: c.slug)) {
+                                        Text(c.label.uppercased())
+                                            .font(.label(9)).tracking(1.2)
+                                            .foregroundStyle(Color(hex: 0x5C574E))
+                                            .padding(.horizontal, 8).padding(.vertical, 5)
+                                            .background(Color(hex: 0xEEE7DA),
+                                                        in: RoundedRectangle(cornerRadius: 6))
+                                            .overlay(RoundedRectangle(cornerRadius: 6)
+                                                .stroke(Color(hex: 0xC8C0AE), lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
                 }
+                .padding(.horizontal, 24).padding(.vertical, 18)
             }
-            .padding(.horizontal, 24).padding(.vertical, 18)
         }
     }
 
@@ -640,9 +670,11 @@ struct TodayView: View {
         return Conditions(weather: weather, shoe: shoe, fuel: fuel)
     }
 
-    private var coachNote: String {
-        briefing?.lead ?? "Stay in the temperature for the day. The plan is built to adapt to where you are."
-    }
+    // coachNote · removed 2026-05-31. Was rendering a hardcoded
+    // "Stay in the temperature..." string whenever briefing?.lead was
+    // null, which was always for several user shapes. Faff Coach block
+    // now reads /api/today/purpose (verdict + facts + citations) and
+    // hides entirely when the payload is nil. No placeholder fallback.
 
     private func makeStripDays(from week: PlanWeek) -> [WeekStripDay] {
         week.days.prefix(7).map { d in
@@ -680,9 +712,11 @@ struct TodayView: View {
         async let s = (try? await API.fetchTodaySkipped()) ?? false
         async let pr = (try? await API.fetchProfileState())
         async let ss = (try? await API.fetchStravaStatus())
+        async let pp = (try? await API.fetchTodayPurpose())
 
         let (planWeek, watch, ready, brief, skip, prof) = await (p, w, r, b, s, pr)
         let stravaStat = await ss
+        let pur = await pp
         // Weather baseline runs second-pass — it needs the workout type
         // and weekly mileage from the plan/workout. Fire-and-forget; the
         // HOTTER THAN USUAL tag silently hides if the lookup fails.
@@ -704,6 +738,11 @@ struct TodayView: View {
             if let prof { self.profile = prof }
             if let wx { self.weather = wx }
             if let stravaStat { self.stravaStatus = stravaStat }
+            // Purpose · only overwrite when the fetch actually returned a
+            // payload; nil from a transient 5xx shouldn't blank a previously
+            // loaded coach card. Doctrine: empty-state from a successful nil
+            // is honest; empty-after-a-fail looks identical and isn't.
+            if let pur, !pur.verdict.isEmpty { self.purpose = pur }
             self.skipped = skip
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }

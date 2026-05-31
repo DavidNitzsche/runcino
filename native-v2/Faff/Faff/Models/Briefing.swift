@@ -5,30 +5,64 @@
 
 import Foundation
 
+// Lenient decode (doctrine 2026-05-31). Server always emits surface +
+// mode, but per the doctrine "make them optional with defaults anyway"
+// so a future schema shift doesn't kill the whole briefing. voice and
+// topics array decodes default to []. workout_breakdown stays optional
+// (intentional · server omits it on non-today surfaces).
 struct Briefing: Codable {
     let surface: String
     let mode: String
     let lead: String?
     let voice: [String]
     let topics: [Topic]
-    /// #163 · prescribed-session detail rows for the TODAY surface
-    /// (PACE / HR CAP / DURATION / FUEL). Mirrors `PosterBreakdownRow[]`
-    /// in web-v2/lib/faff/types.ts; emitted by /api/briefing?surface=today
-    /// — computed server-side by the SAME buildWorkoutBreakdown() the web
-    /// /today renders. Absent/null on every other surface and on
-    /// rest / done / missed / new-user states, so it's optional (a missing
-    /// or null key decodes to nil; it can never break the briefing decode).
     let workout_breakdown: [PosterBreakdownRow]?
+
+    enum CodingKeys: String, CodingKey {
+        case surface, mode, lead, voice, topics, workout_breakdown
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.surface = try c.decodeIfPresent(String.self, forKey: .surface) ?? ""
+        self.mode = try c.decodeIfPresent(String.self, forKey: .mode) ?? ""
+        self.lead = try c.decodeIfPresent(String.self, forKey: .lead)
+        self.voice = (try? c.decode([String].self, forKey: .voice)) ?? []
+        self.topics = (try? c.decode([Topic].self, forKey: .topics)) ?? []
+        self.workout_breakdown = (try? c.decode([PosterBreakdownRow].self, forKey: .workout_breakdown))
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(surface, forKey: .surface)
+        try c.encode(mode, forKey: .mode)
+        try c.encodeIfPresent(lead, forKey: .lead)
+        try c.encode(voice, forKey: .voice)
+        try c.encode(topics, forKey: .topics)
+        try c.encodeIfPresent(workout_breakdown, forKey: .workout_breakdown)
+    }
 }
 
 /// One prescription row · mirrors `PosterBreakdownRow` in
 /// web-v2/lib/faff/types.ts: `{ label; body; tail: string | null }`.
-/// label + body are always emitted (non-null strings); tail may be null.
+/// Lenient decoder · doctrine 2026-05-31.
 struct PosterBreakdownRow: Codable, Identifiable {
     var id: String { label }
     let label: String
     let body: String
     let tail: String?
+
+    enum CodingKeys: String, CodingKey { case label, body, tail }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+        self.tail = try c.decodeIfPresent(String.self, forKey: .tail)
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(label, forKey: .label)
+        try c.encode(body, forKey: .body)
+        try c.encodeIfPresent(tail, forKey: .tail)
+    }
 }
 
 /// Topic kind discriminator. Mirrors web-v2/lib/topics/*.

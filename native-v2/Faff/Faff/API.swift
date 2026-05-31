@@ -745,6 +745,23 @@ struct PlanWeek: Decodable {
     let today_iso: String
     let days: [PlanDay]
     let message: String?
+
+    // Lenient decode · per doctrine 2026-05-31. Server has shipped
+    // partial PlanWeek payloads during plan-regen windows · today_iso
+    // briefly null, days array missing. Strict decode would nuke the
+    // whole Today week strip; defensive defaults keep it rendering.
+    enum CodingKeys: String, CodingKey {
+        case plan_id, week_start_iso, week_end_iso, today_iso, days, message
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.plan_id = try c.decodeIfPresent(String.self, forKey: .plan_id)
+        self.week_start_iso = try c.decodeIfPresent(String.self, forKey: .week_start_iso)
+        self.week_end_iso = try c.decodeIfPresent(String.self, forKey: .week_end_iso)
+        self.today_iso = try c.decodeIfPresent(String.self, forKey: .today_iso) ?? ""
+        self.days = (try? c.decode([PlanDay].self, forKey: .days)) ?? []
+        self.message = try c.decodeIfPresent(String.self, forKey: .message)
+    }
 }
 
 struct PlanDay: Decodable, Identifiable {
@@ -756,17 +773,32 @@ struct PlanDay: Decodable, Identifiable {
     let sub_label: String?
     let is_today: Bool
     let is_past: Bool
-    // Phase 17 (2026-05-28) — real signals from /api/plan/week. Replaces
-    // the FaffAdapter heuristic `is_past && type != "rest"` for DONE
-    // checkmarks, and unblocks the WeekStrip header's `X / N mi` rollup.
-    // Both optional — server emits null when no canonical run that day.
     let completedRunId: String?
     let done_mi: Double?
-    /// True when the runner tapped Skip Today on this date (day_actions
-    /// row written by POST /api/today/skip). Lets the WeekStrip render
-    /// SKIPPED instead of just "planned but not run." Added 2026-05-31 ·
-    /// optional so older server responses still decode.
     let skipped: Bool?
+
+    // Lenient decode · doctrine 2026-05-31. Server has emitted partial
+    // PlanDay rows (null type / distance_mi) during plan-regen windows;
+    // strict decode would drop the ENTIRE PlanWeek.days array via the
+    // throwing array decoder. View code reads non-optionals directly,
+    // so we default them safely here.
+    enum CodingKeys: String, CodingKey {
+        case date_iso, dow, type, distance_mi, sub_label, is_today, is_past
+        case completedRunId, done_mi, skipped
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date_iso = try c.decodeIfPresent(String.self, forKey: .date_iso) ?? ""
+        self.dow = try c.decodeIfPresent(Int.self, forKey: .dow) ?? 0
+        self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
+        self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi) ?? 0
+        self.sub_label = try c.decodeIfPresent(String.self, forKey: .sub_label)
+        self.is_today = try c.decodeIfPresent(Bool.self, forKey: .is_today) ?? false
+        self.is_past = try c.decodeIfPresent(Bool.self, forKey: .is_past) ?? false
+        self.completedRunId = try c.decodeIfPresent(String.self, forKey: .completedRunId)
+        self.done_mi = try c.decodeIfPresent(Double.self, forKey: .done_mi)
+        self.skipped = try c.decodeIfPresent(Bool.self, forKey: .skipped)
+    }
 }
 
 // MARK: - Readiness (P27.2)
@@ -804,6 +836,12 @@ struct ReadinessSnapshot: Decodable {
 /// row shape from lib/coach/readiness.ts. `weight` is the contribution to
 /// the score (negative = dragged it down, positive = lifted it). `meaning`
 /// is the runner-facing reason phrased as plain coach voice.
+///
+/// Lenient decode (doctrine 2026-05-31) · this is the bug class that
+/// emptied NudgeSheet's WHY rows earlier. The 2026-05-30 fix made
+/// `inputs` optional on ReadinessSnapshot; this completes the layer by
+/// making every individual row decode tolerant too. A single missing
+/// `key` or `meaning` field used to drop the entire ReadinessSnapshot.
 struct ReadinessInput: Decodable, Identifiable, Hashable {
     let key: String          // "sleep" / "hrv" / "rhr" / "load" / "rpe"
     let label: String        // "SLEEP · 28%" (already capped + weighted)
@@ -812,6 +850,19 @@ struct ReadinessInput: Decodable, Identifiable, Hashable {
     let weight: Int          // -14, +6, etc · sign indicates direction
     let meaning: String      // one-liner the runner sees on tap
     var id: String { key }
+
+    enum CodingKeys: String, CodingKey {
+        case key, label, observedV, observedSub, weight, meaning
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.key = try c.decodeIfPresent(String.self, forKey: .key) ?? ""
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.observedV = try c.decodeIfPresent(String.self, forKey: .observedV)
+        self.observedSub = try c.decodeIfPresent(String.self, forKey: .observedSub)
+        self.weight = try c.decodeIfPresent(Int.self, forKey: .weight) ?? 0
+        self.meaning = try c.decodeIfPresent(String.self, forKey: .meaning) ?? ""
+    }
 }
 
 // MARK: - P29 Settings + Profile
