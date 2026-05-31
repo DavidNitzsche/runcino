@@ -275,6 +275,38 @@
   <td><code>app/api/forecast/[date]/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>Briefing topic polymorphism (27 kinds)</strong></td>
+  <td>GET <code>/api/briefing</code> returns a <code>topics[]</code> array
+      where each row has one of 27 TopicKind values · run_recap,
+      cadence_experiment, shoe_race_fit, profile_gap, fueling_plan,
+      kit_list, race_morning_schedule, plan_arc, phase_context, etc.
+      Each carries a structured payload + coach_note. iPhone renders
+      only the workout_breakdown rows; every other topic kind passes
+      through unrendered.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><strong>Design tweak needed</strong>. Each TopicKind deserves a
+      designed shape (cadence_experiment needs a chart, kit_list needs
+      a row strip, etc.). Today the iPhone strips all of this. The
+      backend already does the work · this is pure rendering debt.</td>
+  <td><code>app/api/briefing/route.ts</code> ·
+      <code>Models/Briefing.swift:TopicKind</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>profile_gap topic on Today</strong></td>
+  <td>Briefing emits a profile_gap topic when an input is missing or
+      stale (height never set, weight 6mo old, no race goal, etc.).
+      Each gap has a structured payload with what's missing + a CTA
+      target. Both clients drop the topic today.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
+      glass card on Today (under the workout) "Tell Faff your weight
+      to tune fueling math · Update" linking to /profile or the right
+      Settings row. Hides once the gap is closed.</td>
+  <td><code>lib/topics/profile_gap.ts</code> · Briefing.topics</td>
+  <td class="client-ios">IOS</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -341,6 +373,37 @@
       <code>lib/coach/training-state.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>9 adaptation triggers · per-kind visibility</strong></td>
+  <td>lib/plan/adapt.ts defines 9 detectors that can fire during the
+      daily run-adaptations cron: missed_key_workout, rhr_spike,
+      sleep_crater, volume_overshoot, pr_bank, niggle_reported,
+      sick_episode_active, injury_active, goal_changed. Each carries
+      severity (info/warn/override) + a reason string + structured
+      evidence. coach_intents rows persist the reason.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Design tweak needed</strong>. The user has no idea WHY
+      the plan shifted. A "WHAT CHANGED" expander on Plan (collapsed
+      by default) showing the most recent N coach_intents rows with
+      reason + severity color would close this. Pairs with the
+      "Adaptation events on Today" WEB entry above · same data source.</td>
+  <td><code>lib/plan/adapt.ts</code> · <code>coach_intents.reason</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Adaptation severity color (info/warn/override)</strong></td>
+  <td>Every AdaptationTrigger has a severity that controls whether the
+      action is a soft hint (info) · noteworthy (warn) · or a hard
+      override the runner should see (override · e.g. fever-trigger
+      forces rest). The frontend gets no signal about severity today.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong> alongside
+      the visibility entry above · color the changelog row by severity
+      (mute / amber / red). Override events also deserve a dismissible
+      banner on Today instead of silently shifting the workout.</td>
+  <td><code>lib/plan/adapt.ts:AdaptationTrigger.severity</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -381,6 +444,53 @@
       LearnArticleSheet that already exists on iPhone.</td>
   <td><code>plan_workouts.workout_spec</code> ·
       <code>lib/plan/workout-library.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>HR ceiling guardrail (easy / Z2 days)</strong></td>
+  <td>WatchWorkout.hrCeilingBpm is set for easy and heat-flagged sessions ·
+      the watch's easy-face guardrail row flips red and holds when live
+      HR exceeds the ceiling. The iPhone WatchWorkout decoder pulls the
+      field but no Day Detail surface explains "Cap your HR at 152 bpm
+      today · drift means you went too hard."</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
+      hrCeilingBpm is set, show a "HR CAP · 152 bpm" pill in the meta
+      strip on Day Detail. Tap reveals "this is your easy-day ceiling ·
+      letting HR climb above it converts the recovery stimulus into a
+      tempo stimulus" with a Research/03 citation.</td>
+  <td><code>Models/Watch.swift:WatchWorkout.hrCeilingBpm</code> ·
+      <code>lib/watch/build-workout.ts:64</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Fueling rehearsal flag</strong></td>
+  <td>WatchFueling.isRehearsal is set on long-run gel sessions in the
+      final 8 weeks before an A-race · the day's fueling block is
+      labeled as practice for race nutrition. Backend computes the flag,
+      no client surfaces it.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
+      isRehearsal=true, prepend a "RACE REHEARSAL" eyebrow to the
+      FUELING block on Day Detail. Same gels / atMins, but the runner
+      knows this is the dress rehearsal for what they'll do on race day.</td>
+  <td><code>Models/Watch.swift:WatchFueling.isRehearsal</code> ·
+      <code>lib/training/fueling.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>In-run face flavor hint (hr / progression / strides)</strong></td>
+  <td>WatchWorkout.displayHint tells the watch which in-run face shape
+      to render (HR is the hero · progression by mile · strides burst
+      countdown). The hint applies on watch but the iPhone's
+      WorkoutDetailModal could mirror the chosen face so the runner
+      previews what's coming.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>safe to leave</strong> · the
+      watch is the authority on which face to draw. The iPhone preview
+      doesn't need to mirror the live face; the structured workout
+      breakdown already communicates the same information.</td>
+  <td><code>Models/Watch.swift:WatchWorkout.displayHint</code></td>
   <td class="client-ios">IOS</td>
 </tr>
 </table>
@@ -445,6 +555,36 @@
       icon left of the run name (watch glyph / heart for HK / Strava
       orange / pencil for manual). One-line change in the row renderer.</td>
   <td><code>lib/coach/log-state.ts:LogRun.source</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Enriched weather blob on past runs</strong></td>
+  <td>cron/enrich-weather walks runs missing data.weather and folds in
+      temp + dewpoint + wind + conditions from Open-Meteo. The "hotter
+      than usual" tag uses it as a delta; the absolute conditions
+      (a string like "68°F · 71% RH · light wind from SW") never render
+      on the run-detail card.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A row
+      in the run-detail meta strip: "Conditions · 68°F · 71% RH · wind
+      W 6 mph." Helps the runner contextualize why pace felt off.
+      Sourced from strava_activities.data.weather directly.</td>
+  <td><code>lib/weather/openmeteo.ts:enrichRecent</code> ·
+      <code>strava_activities.data.weather</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Show prior RPE on re-open</strong></td>
+  <td>GET <code>/api/runs/[id]/rpe</code> returns the previously-logged
+      rating + notes if any. The endpoint is bidirectional but only the
+      POST half is missing UI · the GET half could keep showing the
+      stored RPE next time the run is opened, so the runner doesn't
+      think they have to re-rate.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
+      the RPE input lands, pre-fill from the GET. The bidirectional
+      shape is already in the backend.</td>
+  <td><code>app/api/runs/[id]/rpe/route.ts (GET)</code></td>
   <td class="client-ios">IOS</td>
 </tr>
 </table>
@@ -536,6 +676,50 @@
       the placeholder copy with the real expected conditions. Beyond
       14d show a "forecast available in N days" stub.</td>
   <td><code>app/api/forecast/[date]/route.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Daniels predicted times across distances</strong></td>
+  <td>lib/training/vdot.ts can predictRaceTime(vdot, distanceMi) for
+      any distance. The runner's current VDOT predicts a time for 5K
+      / 10K / HM / M off one number. Backend computes it for the
+      projection field on the race header but never exposes the full
+      table.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
+      "WHAT YOUR VDOT SAYS" section on Race Detail listing 4 rows ·
+      5K · 10K · HM · M with the predicted time next to each. Honest
+      framing ("Daniels predicts · adjust expectations for course +
+      weather"). Same compute that powers the existing projection field.</td>
+  <td><code>lib/training/vdot.ts:predictRaceTime</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Distance-anchored gel mile markers (race)</strong></td>
+  <td>WatchWorkout.gelsMi is set on race workouts · array of mile points
+      where the runner should take each gel ([6.5, 13.1, 19.7, 25.0]
+      for a marathon). The iPhone decoder pulls the field; no race
+      detail surface renders the markers on the elevation curve.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. Tick
+      marks on the elevation chart at the gelsMi[] points + a row below
+      ("Gels at mile 6.5 · 13.1 · 19.7 · 25.0"). Distance-anchored
+      means the runner can rehearse the plan on a long run too.</td>
+  <td><code>Models/Watch.swift:WatchWorkout.gelsMi</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Race header status (on_track / watch / off)</strong></td>
+  <td>lib/coach/race-header.ts:RaceHeader exposes a deterministic
+      status field combining readiness + ACWR + proj-vs-goal. The
+      iPhone race detail header could show a status dot · green
+      on_track · amber watch · red off · with one-line reason text.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
+      dot + label on the race detail hero ("ON TRACK ●"). Already
+      rendered on web's persistent race-bib header per the comment in
+      race-header.ts.</td>
+  <td><code>lib/coach/race-header.ts:RaceHeaderStatus</code></td>
   <td class="client-ios">IOS</td>
 </tr>
 </table>
@@ -634,6 +818,38 @@
   <td><code>lib/coach/readiness.ts:computeReadiness</code></td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>HRmax + LTHR provenance line</strong></td>
+  <td>ProfileState exposes <code>max_hr_source</code> (observed /
+      lthr-derived / formula / manual) and <code>lthr_method</code>
+      (race_half / race_marathon / manual). The backend honestly tells
+      you where each number came from. iPhone ProfileView shows the
+      numbers but not the provenance · the runner doesn't know if
+      LTHR = 162 came from their actual half marathon or a guess.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
+      grey line under each value · "from your Sombrero Half · 2026-04"
+      for race-calibrated, "estimated from MHR" for formula. Reuses
+      lthr_method + max_hr_source already in the payload.</td>
+  <td><code>ProfilePhysiology.max_hr_source</code> + <code>lthr_method</code> ·
+      <code>lib/training/lthr.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Friel 7-zone vs 5-zone Z method picker</strong></td>
+  <td>lib/training/zones.ts can emit either a Friel 7-zone LTHR table
+      (5a/5b/5c surface as Z5-Z7) or a 5-zone %MHR fallback. The
+      ProfileZoneTable.method string is exposed but iPhone always
+      renders 5 zones · the additional Friel zones never appear.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
+      method='lthr-friel', render all 7 rows (Z5a · Z5b · Z5c) instead
+      of collapsing to Z5. Honest "anchored to your half-marathon HR
+      (LTHR 162)" subtitle.</td>
+  <td><code>lib/training/zones.ts</code> ·
+      <code>ProfileZoneTable.method</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -688,6 +904,51 @@
       Settings row layout. Web has the equivalent surface flagged
       under Cross-Cutting.</td>
   <td><code>app/api/profile/notifications/route.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>VDOT current value display</strong></td>
+  <td>lib/training/vdot.ts:bestRecentVdot returns the runner's current
+      VDOT from the highest race in the last 180 days. Used to compute
+      paces + projections but the bare number ("VDOT 47") never lands
+      on a profile surface. Daniels' table is one of the most
+      well-known fitness metrics in distance running · runners want
+      to see it.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. A bold
+      "VDOT 47" tile in the Profile physiology block alongside MaxHR /
+      RHR / Weight. Tap pushes a sheet explaining what VDOT is + how
+      it was derived (which race, when). Cite Daniels' Running
+      Formula.</td>
+  <td><code>lib/training/vdot.ts:bestRecentVdot</code> ·
+      <code>ProfilePhysiology.vdot</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Plan schedule preferences (quality / long / rest days)</strong></td>
+  <td>profile.user_settings stores quality_days[] + long_run_day +
+      rest_day · controls where the plan generator places intervals,
+      threshold, long, and rest. iPhone SettingsView surfaces these
+      but the runner doesn't see "this is why your long run lands
+      Saturday" linkage to plan generation.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. Add
+      a "Affects your plan layout" note under the picker so the
+      runner knows changing rest_day will redistribute the week on
+      next regen.</td>
+  <td><code>lib/coach/settings.ts</code> · <code>profile.user_settings</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Briefing-time customization</strong></td>
+  <td>user_settings.briefing_time ('HH:MM' local) controls when the
+      daily reminder fires. Backend honors it; iPhone Settings doesn't
+      expose a time picker today.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>can add inline</strong>. Add
+      a row "Daily briefing · 07:00" with a time picker under the
+      Notifications panel.</td>
+  <td><code>lib/coach/settings.ts:UserSettings.briefing_time</code></td>
   <td class="client-ios">IOS</td>
 </tr>
 </table>
@@ -946,6 +1207,81 @@
       in /api/coach/proposals · then both clients can show a count
       badge.</td>
   <td><code>lib/coach/proposals-state.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>coach_intents changelog</strong></td>
+  <td>Every coach action · proposal made, adaptation applied, niggle
+      flagged, profile field added, watch_completion ingested · writes
+      a row to coach_intents with reason + payload. The table is the
+      audit log of every coach decision. Zero clients read it.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>design tweak needed</strong>.
+      A "Coach activity" timeline in Settings (or a dedicated /coach
+      surface) showing the last 30 days of decisions · plain English
+      reasons + timestamps. Tail-end of the same data Today's
+      adaptation pill is asking for, but as a full history rather than
+      a count.</td>
+  <td><code>coach_intents</code> table</td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Notification queue inbox</strong></td>
+  <td>notifications_pending holds every scheduled + sent push
+      notification with payload, fire_at, processed_at, dedup_key. The
+      cron drains it every 15 min. A runner only sees a notification
+      if they happen to read their lock screen · missed ones leave no
+      trace inside the app.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>design tweak needed</strong>.
+      An inbox surface (bell tap on Today → list view) showing the
+      last N notifications with sent vs missed split. Lets the runner
+      review the weekly recap they swiped past. The dispatch path
+      already has the body text · just persist it.</td>
+  <td><code>notifications_pending</code> table ·
+      <code>lib/notifications/dispatch.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Race-eve + race-countdown templates</strong></td>
+  <td>lib/notifications/templates.ts renders 9 distinct notification
+      templates: renderRaceDay, renderRaceEve, renderSkipRecovery,
+      renderWeeklyCheckin, renderNiggleCheck, renderSickCheck,
+      renderStreakMilestone, renderRaceCountdown, renderStravaReconnect.
+      The text these produce only ever fires as a push · they could
+      also surface as in-app cards (e.g. Race Eve T-21h shows the
+      same message inside Today).</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: <strong>safe to leave</strong> for v1 ·
+      iPhone notification surface + the future inbox above covers the
+      same content. Worth revisiting once race-day flows mature.</td>
+  <td><code>lib/notifications/templates.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>LLM spend rollup</strong></td>
+  <td>GET <code>/api/usage?days=14</code> returns per-day briefing
+      counts + token totals + USD cost. Maintained for P43 cost
+      tracking; reads lib/coach/usage.ts.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Safe to leave</strong> · this is admin observability,
+      not a user surface. Post-2026-05-28 the LLM is gone (Cardinal
+      Rule #1), so the cost going forward is $0. The endpoint stays
+      as a check that the deprecation held.</td>
+  <td><code>app/api/usage/route.ts</code></td>
+  <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>plan_mutations history table</strong></td>
+  <td>Every adapt.applyAdaptations writes the before/after diff into
+      plan_mutations. The plan_workouts row updates in place; the
+      mutation row keeps the audit trail (when, what changed, why).
+      <strong>Also found by IOS on 2026-05-31</strong>: iOS has no
+      Plan-mutation viewer either · same gap on both clients. Already
+      flagged in the Plan section above by WEB.</td>
+  <td class="cov-none">NONE</td>
+  <td>See Plan section entry. iOS confirms.</td>
+  <td><code>plan_mutations</code> table</td>
   <td class="client-ios">IOS</td>
 </tr>
 </table>
