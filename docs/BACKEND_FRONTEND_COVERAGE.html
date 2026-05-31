@@ -307,6 +307,81 @@
   <td><code>lib/topics/profile_gap.ts</code> · Briefing.topics</td>
   <td class="client-ios">IOS</td>
 </tr>
+<tr>
+  <td><strong>ACWR sweet-spot band signal</strong></td>
+  <td>glance-state computes Acute:Chronic Workload Ratio (acute_sum/
+      chronic_sum) and the fact-reciter classifies it into 4 bands:
+      detraining (&lt;0.8), building (0.8-1.0), sweet spot (1.0-1.3),
+      elevated (&gt;1.3-1.5), spike (&gt;1.5 · injury risk per Gabbett).
+      Older app/today components (BodyChips, AtAGlanceCard) render it;
+      the live faff-app TodayView doesn't expose the band label to the
+      runner. It's the single best leading indicator of overreach yet
+      it's silent.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: small "LOAD · sweet spot" chip in the
+      readiness row on faff-app TodayView. Color per band (amber for
+      detrain/elevated, green for build/sweet_spot, red for spike).
+      <strong>Can add inline</strong> · data is in the seed already
+      via loadGlanceState.</td>
+  <td><code>lib/coach/glance-state.ts:283</code> ·
+      <code>lib/coach/fact-reciter.ts:loadBand</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>DayState 'done_ease_off' resolution</strong></td>
+  <td>After a hard quality day the resolver can pick
+      <code>done_ease_off</code> instead of <code>done_nailed</code>
+      based on RPE / HR / pace vs target. The two states drive
+      different VerbHero colors (green vs amber) and different copy
+      ("crushed it" vs "took the long way"). faff-app maps this in
+      legacy Sibling/VerbHero components but the live TodayView
+      renders a single done state regardless. Runner misses the "you
+      hit it but it cost you · take tomorrow easy" subtext.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: when the resolver returns done_ease_off,
+      route the hero to the amber color treatment and surface "ease
+      tomorrow" copy on the next planned day. <strong>Can add inline</strong> ·
+      DayState union already covers it.</td>
+  <td><code>lib/faff/types.ts:DayState</code> ·
+      <code>components/faff/VerbHero.tsx:35</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>DayState 'missed' surface (yesterday planned, no run)</strong></td>
+  <td>The Helen persona drives a state where yesterday was a planned
+      workout but no run was logged · the resolver returns
+      <code>missed</code>. faff-app TodayView doesn't currently distinguish
+      "missed" from "rest" so the runner who silently no-shows their
+      Tuesday tempo gets no surface acknowledging the gap.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: small "Yesterday's tempo · missed" chip
+      on TodayView when state=missed, with three options: log a
+      different effort, mark it skipped retroactively, or carry it
+      forward. <strong>Design tweak needed</strong>.</td>
+  <td><code>lib/faff/types.ts:DayState</code> ·
+      <code>lib/faff/personas.ts:helen</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Post-run check-in canned coach reply</strong></td>
+  <td>POST <code>/api/checkin</code> returns a <code>coach_reply</code>
+      field · a deterministic canned response keyed off
+      execution + body chips ("Solid · 7K with two surges, you held
+      the shape"). PostRunCheckinChips.tsx renders it. faff-app's
+      TodayView uses a different check-in pattern (skip button only)
+      and never surfaces the reply. The carefully-tuned canned-reply
+      matrix (post 2026-05-28 LLM rip) is invisible to the live web
+      user.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: bring the PostRunCheckinChips pattern
+      into faff-app's post-run flow. Tap execution + body chips, see
+      the coach reply inline. The pattern + the matrix are done; just
+      needs to be lifted out of the legacy /today layout.</td>
+  <td><code>app/api/checkin/route.ts</code> ·
+      <code>components/cards/PostRunCheckinChips.tsx</code> ·
+      <code>lib/coach/checkin-reply-canned.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -516,6 +591,26 @@
       breakdown already communicates the same information.</td>
   <td><code>Models/Watch.swift:WatchWorkout.displayHint</code></td>
   <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Watch wire-format preview ("what the watch will see")</strong></td>
+  <td><code>buildWatchToday(userId, date?)</code> produces a phase
+      array (warmup → work₁ → recovery₁ → ... → cooldown) with target
+      pace + tolerance + haptic transition + duration/distance per
+      phase. The watch decodes this exactly as authored. Neither web
+      nor iOS surfaces a "preview" of the same payload on day detail,
+      so a runner curious what their watch will buzz them through has
+      to start the workout to find out.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a "Watch preview" expandable block on
+      day detail rendering the phase list as a vertical timeline ·
+      one row per phase with the haptic icon + target pace + duration.
+      Single fetch to /api/watch/today?date=YYYY-MM-DD. <strong>Can add
+      inline</strong>. Builds confidence that what shows on the watch
+      matches the plan.</td>
+  <td><code>app/api/watch/today/route.ts</code> ·
+      <code>lib/watch/build-workout.ts</code></td>
+  <td class="client-web">WEB</td>
 </tr>
 </table>
 
@@ -908,6 +1003,27 @@
       <code>lib/training/lthr.ts:calibrateLthr</code></td>
   <td class="client-web">WEB</td>
 </tr>
+<tr>
+  <td><strong>Course editorial annotations (start / finish labels + notes)</strong></td>
+  <td>The <code>course_library</code> table carries
+      <code>start_label</code> ("Cabrillo Monument"),
+      <code>finish_label</code> ("Embarcadero"), and free-text
+      <code>notes</code> for editorial segment annotations (e.g. "miles
+      19-23 hit the rollers"). 4 editorial rows ship with these:
+      americas-finest-city, big-sur-marathon, cim, sombrero-half. The
+      race detail page renders course geometry + elevation gain but
+      doesn't surface any of these editorial strings.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: under THE COURSE block when source=
+      'editorial', show start / finish labels as endpoint pins on the
+      polyline and surface the notes as a "What to expect" paragraph.
+      Adds the curated knowledge that distinguishes our editorial
+      courses from generic GPX traces. <strong>Can add inline</strong>.</td>
+  <td><code>course_library.start_label</code>,
+      <code>course_library.finish_label</code>,
+      <code>course_library.notes</code> · migration 102</td>
+  <td class="client-web">WEB</td>
+</tr>
 </table>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->
@@ -948,6 +1064,26 @@
       we see real cases of duplicated runs or missing sources.</td>
   <td><code>lib/coach/log-state.ts:LogRun.source</code></td>
   <td class="client-ios">IOS</td>
+</tr>
+<tr>
+  <td><strong>Run deduplication (mergedIntoId)</strong></td>
+  <td><code>lib/runs/merge.ts</code> auto-detects duplicate rows when
+      the same run lands via multiple sources (Strava + watch +
+      manual + apple_health) and stamps the losers with
+      <code>data.mergedIntoId = canonical.id</code>. The source ranking
+      strava &gt; watch &gt; manual &gt; apple_health picks the canonical.
+      Aggregations filter merged rows so weekly volume isn't tripled.
+      No surface tells the runner "we combined 3 sources into this
+      canonical run" so duplicate-prone setups stay opaque.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Safe to leave</strong> for user-facing UI · the dedup is
+      a correctness feature, not a story. If a duplicate slips the
+      writer (e.g. ingest order races) the run page would show a stray
+      sibling on the same day; promote a "merged from 2 sources" pill
+      then.</td>
+  <td><code>lib/runs/merge.ts:SOURCE_RANK</code> ·
+      <code>strava_activities.data.mergedIntoId</code></td>
+  <td class="client-web">WEB</td>
 </tr>
 </table>
 
@@ -1671,6 +1807,66 @@
       bookmark) can poll. Not blocking any user surface.</td>
   <td><code>app/api/cron/*</code> · <code>training_plans.last_adapted_at</code>,
       <code>projection_snapshots.snapshot_date</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>runner_injuries table has no CRUD endpoint</strong></td>
+  <td>The adaptation engine reads <code>runner_injuries</code> for
+      Q-08 injury_active triggers and buildInjuryPlan consumes a row by
+      id to scaffold a return-to-run plan. But there's no
+      <code>/api/injuries</code> route for runners to log a real injury
+      directly · the only path is escalation from a niggle, which
+      isn't wired. So buildInjuryPlan is dead code unless rows arrive
+      via DB-direct admin inserts.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: <strong>backend gap, not a design tweak</strong>.
+      Either wire niggle → injury escalation when severity hits ≥7 for
+      N days, or build a POST /api/injuries route + UI to log an injury
+      directly. Until either lands, the entire INJURY mode pipeline
+      (proposal → accept → buildInjuryPlan → walk-run scaffold) can't
+      fire in production.</td>
+  <td><code>lib/plan/injury-builder.ts</code> ·
+      <code>lib/plan/adapt.ts:detectInjuryActive</code> ·
+      no <code>/api/injuries</code> route</td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Persona simulator (?persona=&lt;key&gt;)</strong></td>
+  <td><code>lib/faff/personas.ts</code> ships 8 fixtures (david / lilian
+      / tyler / sarah / marcus / helen / alex / maya) covering every
+      DayState the resolver can return. The legacy
+      <code>app/today/TodayClient.tsx</code> honors <code>?persona=&lt;key&gt;</code>
+      to render each state for design QA. The live faff-app TodayView
+      doesn't honor the param, so design verification has to fall back
+      to either the legacy route or a real account in that state.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><strong>Safe to leave</strong> as user-facing UI. Recommended as
+      a designer/operator affordance: have faff-app TodayView accept
+      the same param and adapt the seed before render. Keeps design QA
+      cheap when iterating on the 12 DayState variants.</td>
+  <td><code>lib/faff/personas.ts</code> ·
+      <code>app/today/TodayClient.tsx:62</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>'cross' and 'strength' as scheduled workout types</strong></td>
+  <td>The WorkoutType union includes 'cross' and 'strength' as
+      first-class values · the type system says the plan generator CAN
+      schedule them as days in the plan. In practice the generator
+      authors only 'easy' / 'long' / 'quality' / 'rest' / 'recovery'
+      / 'race' / 'shakeout' rows; cross-training and strength get
+      tracked via the separate /api/cross-training and /api/strength
+      tables (also unsurfaced · see LOG section). Plans don't
+      pre-schedule "Tuesday: strength" or "Friday: 45min bike."</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><strong>Design tweak needed</strong>. Either teach the plan
+      generator to author cross + strength rows (so they show up on
+      /plan and /today like a real workout), or document the rule that
+      these are runner-logged ad hoc and remove the type-union entries
+      that hint otherwise. The current half-state confuses both human
+      designers and the type checker.</td>
+  <td><code>lib/faff/types.ts:WorkoutType</code> ·
+      <code>lib/plan/generate.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
