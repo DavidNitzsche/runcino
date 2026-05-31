@@ -17,7 +17,12 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   recovery:  { mesh: ['#7FE6D6','#5AA9D6','#2F7FAE','#1F6A8A','#1A5A7A','#08222E'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
   easy:      { mesh: ['#7FE6D6','#5AA9D6','#2F7FAE','#1F6A8A','#1A5A7A','#08222E'], dot: '#14C08C', mark: 26, lbl: 'EASY' },
   long:      { mesh: ['#FFE0A0','#F3AD38','#E89B3A','#E07A2A','#C47812','#3E2A0A'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
-  tempo:     { mesh: ['#FFC98A','#FF8847','#F2673A','#E85D26','#C23A1C','#4A1208'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
+  // 2026-05-31: dialed back from the original screamy ember palette
+  // (#FFC98A/#FF8847/#F2673A...) — felt closer to race-day intensity than
+  // a sustained tempo. New palette is copper / burnt amber so tempo sits
+  // visually between long (amber) and intervals (red): controlled hard,
+  // not max. Effort dot stays at the canonical brand token (#FF8847).
+  tempo:     { mesh: ['#E8B088','#C97A4A','#A85A2E','#7A3E1C','#4A2410','#1C0A04'], dot: '#FF8847', mark: 80, lbl: 'HARD' },
   intervals: { mesh: ['#FFD27A','#FF7A45','#FC4D64','#D6263C','#9E1733','#3A0E12'], dot: '#FC4D64', mark: 94, lbl: 'MAX' },
   rest:      { mesh: ['#D6BE98','#B2916A','#8A6A48','#5E4630','#45331F','#1C140D'], dot: '#8A90A0', mark: 4,  lbl: 'OFF' },
 };
