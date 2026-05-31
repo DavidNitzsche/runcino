@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audit FINAL · 2026-05-30 · Honest end-state grade</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card2: #1a1d24; --card3: #232631;
+
+    --race: #FF5722;
+    --recovery: #14C08C;
+    --active: #4F8FF7;
+    --warn: #F43F5E;
+    --milestone: #F5C518;
+
+    --shared: #B084FF;
+    --engine: #FF7028;
+
+    --g-aplus: #14C08C; --g-a: #57c79c; --g-aminus:#8fd6b8;
+    --g-bplus: #F5C518; --g-b: #f0c95f; --g-bminus:#FF7028;
+    --g-c: #F43F5E; --g-d: #c0234e; --g-f: #7a1530;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family:'Inter',sans-serif; margin:0; padding:0; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family:'Oswald',sans-serif; font-weight:700; font-size:84px; letter-spacing:-1.2px; margin:0; line-height:0.88; text-transform:uppercase; }
+  h1 .accent { color: var(--recovery); }
+  .sub { color: var(--mute); margin-top:14px; font-size:15px; max-width:780px; line-height:1.55; }
+  h2 { font-family:'Oswald',sans-serif; font-weight:600; font-size:36px; letter-spacing:.2px; margin:64px 0 18px; border-bottom:1px solid var(--line); padding-bottom:12px; text-transform:uppercase; }
+  h2 .num { font-size:18px; color: var(--mute); margin-right:12px; font-weight:400; letter-spacing:1.4px; }
+  h3 { font-family:'Inter',sans-serif; font-size:11px; font-weight:700; color: var(--shared); letter-spacing:1.6px; text-transform:uppercase; margin:28px 0 10px; }
+  h4 { font-family:'Oswald',sans-serif; font-weight:600; font-size:22px; margin:22px 0 8px; letter-spacing:.3px; }
+  p { color: rgba(246,247,248,.9); line-height:1.62; margin:0 0 12px; font-size:14.5px; }
+  ul { padding-left:18px; margin:0 0 12px; }
+  li { color: rgba(246,247,248,.85); line-height:1.65; margin-bottom:6px; font-size:14px; }
+  strong { color: var(--ink); }
+  code { background: rgba(255,255,255,.06); padding:1px 6px; border-radius:4px; font-size:12.5px; font-family:'JetBrains Mono', ui-monospace, monospace; color: var(--active); }
+  .meta-row { display:flex; gap:10px; margin-top:14px; font-size:12px; color: var(--mute); flex-wrap:wrap; }
+  .meta-row span { padding:4px 10px; background: rgba(255,255,255,.04); border-radius:4px; }
+  .principle { background: linear-gradient(135deg, rgba(20,192,140,.10), rgba(79,143,247,.06)); border:1px solid rgba(20,192,140,.40); border-radius:16px; padding:28px 32px; margin:28px 0 40px; }
+  .principle .label { font-size:11px; letter-spacing:1.8px; color: var(--recovery); text-transform:uppercase; font-weight:700; margin-bottom:10px; }
+  .principle .body { font-family:'Oswald',sans-serif; font-weight:500; font-size:28px; line-height:1.22; letter-spacing:-.1px; }
+  .principle .body em { color: var(--recovery); font-style:normal; }
+  .grade-grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:12px; margin:18px 0 28px; }
+  .grade-card { background: var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 14px 14px; position:relative; }
+  .grade-card .cat { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color: var(--mute); font-weight:700; margin-bottom:6px; }
+  .grade-card .gr { font-family:'Oswald',sans-serif; font-weight:700; font-size:48px; line-height:1; margin-bottom:8px; }
+  .grade-card .delta { font-size:10px; letter-spacing:1px; text-transform:uppercase; color: var(--g-aplus); margin-bottom:6px; font-weight:700; }
+  .grade-card .delta.down { color: var(--g-c); }
+  .grade-card .delta.flat { color: var(--mute); }
+  .grade-card .one-line { font-size:11.5px; color: rgba(246,247,248,.78); line-height:1.45; }
+  .gr.aplus { color: var(--g-aplus); } .gr.a { color: var(--g-a); } .gr.aminus { color: var(--g-aminus); }
+  .gr.bplus { color: var(--g-bplus); } .gr.b { color: var(--g-b); } .gr.bminus { color: var(--g-bminus); }
+  .gr.c { color: var(--g-c); } .gr.d { color: var(--g-d); } .gr.f { color: var(--g-f); }
+  table.claims { width:100%; border-collapse:collapse; margin:12px 0 24px; font-size:13px; }
+  table.claims th, table.claims td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line-2); vertical-align:top; }
+  table.claims th { color: var(--mute); font-weight:700; letter-spacing:1.2px; text-transform:uppercase; font-size:10.5px; background: rgba(255,255,255,.02); }
+  table.claims td.verdict { font-weight:700; }
+  td.verdict.true { color: var(--g-aplus); }
+  td.verdict.false { color: var(--g-c); }
+  td.verdict.partial { color: var(--g-bplus); }
+  td.verdict.dead { color: var(--g-d); }
+  .finding { background: var(--card); border:1px solid var(--line); border-left:4px solid var(--warn); border-radius:8px; padding:16px 18px 14px; margin:12px 0; }
+  .finding.p0 { border-left-color: var(--warn); }
+  .finding.p1 { border-left-color: var(--milestone); }
+  .finding.p2 { border-left-color: var(--active); }
+  .finding.p3 { border-left-color: var(--mute); }
+  .finding.fix { border-left-color: var(--recovery); }
+  .finding .lbl { display:inline-block; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; margin-right:8px; }
+  .finding.p0 .lbl { background: rgba(244,63,94,.22); color:#ff97aa; }
+  .finding.p1 .lbl { background: rgba(245,197,24,.22); color:#ffde7a; }
+  .finding.p2 .lbl { background: rgba(79,143,247,.18); color:#a8c8ff; }
+  .finding.p3 .lbl { background: rgba(138,144,160,.18); color: var(--mute); }
+  .finding.fix .lbl { background: rgba(20,192,140,.22); color:#8ee4c3; }
+  .finding .ttl { font-family:'Oswald',sans-serif; font-size:18px; font-weight:600; text-transform:uppercase; display:inline-block; }
+  .finding .body { color: rgba(246,247,248,.88); font-size:13.5px; line-height:1.6; margin-top:8px; }
+  .finding .body p { margin:0 0 8px; font-size:13.5px; }
+  .finding .cite { font-family:'JetBrains Mono',monospace; font-size:11.5px; color: var(--mute); margin-top:4px; }
+  .probe-row { display:grid; grid-template-columns: 50px 1fr 110px; padding:8px 10px; border-bottom:1px solid var(--line-2); font-size:13px; align-items:center; }
+  .probe-row .badge { display:inline-block; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:800; letter-spacing:1px; text-align:center; }
+  .probe-row .badge.pass { background: rgba(20,192,140,.18); color:#8ee4c3; }
+  .probe-row .badge.fail { background: rgba(244,63,94,.18); color:#ff97aa; }
+  .probe-row .name { font-family:'JetBrains Mono',monospace; font-size:12px; }
+  .probe-row .res { text-align:right; color: var(--mute); font-size:12px; }
+  .summary-box { background: rgba(20,192,140,.04); border:1px solid rgba(20,192,140,.25); border-radius:10px; padding:18px 22px; margin:14px 0 22px; }
+  .summary-box.warn { background: rgba(244,63,94,.04); border-color: rgba(244,63,94,.30); }
+  .summary-box .row { display:flex; justify-content:space-between; padding:4px 0; font-family:'JetBrains Mono',monospace; font-size:13px; }
+  .summary-box .row .lbl { color: var(--mute); }
+  .summary-box .row .val { font-weight:700; }
+  .summary-box .row .val.true { color: var(--g-aplus); }
+  .summary-box .row .val.false { color: var(--g-c); }
+  .summary-box .row .val.partial { color: var(--g-bplus); }
+  table.delta { width:100%; border-collapse:collapse; margin:14px 0 24px; font-size:13px; }
+  table.delta th, table.delta td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line-2); }
+  table.delta th { color: var(--mute); font-weight:700; letter-spacing:1.2px; text-transform:uppercase; font-size:10.5px; background: rgba(255,255,255,.02); }
+  table.delta td.up { color: var(--g-aplus); font-weight:700; }
+  table.delta td.down { color: var(--g-c); font-weight:700; }
+  table.delta td.flat { color: var(--mute); font-weight:700; }
+  pre { background: rgba(255,255,255,.04); border:1px solid var(--line-2); border-radius:6px; padding:12px 14px; font-size:11.5px; line-height:1.5; font-family:'JetBrains Mono',monospace; overflow-x:auto; color: rgba(246,247,248,.85); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Audit <span class="accent">FINAL</span></h1>
+  <div class="sub">
+    Last verification pass after rounds 1-3 of orchestrated agent fixes landed on main.
+    Same five categories. Same probes. Same DB. The job: don't trust the orchestrator's framing
+    of what got fixed &mdash; verify everything against the live state, flag every measurement error
+    in the framing, and grade honestly with the full A+/A/A-/B+/B/B-/C/D/F scale.
+  </div>
+  <div class="meta-row">
+    <span>2026-05-30 (FINAL)</span>
+    <span>DB: production &middot; 0645f40c&hellip;26c795 (David)</span>
+    <span>Working app: <code>web-v2/</code></span>
+    <span>Branch: <code>main</code></span>
+    <span>Prior: <code>AUDIT_RE_2026-05-30.html</code></span>
+  </div>
+
+  <div class="principle">
+    <div class="label">Headline</div>
+    <div class="body">
+      The infra is now legitimately solid. <em>All 10 probes pass.</em> <em>Zero leak patterns in 56 hardened
+      routes.</em> <em>Zero orphan rows across 16 migration-126 tables.</em> The injury plan-builder is wired,
+      the decline endpoint exists, three new GH cron workflows are scheduled. <em>But the coaching loop is
+      still operationally idle</em>: David's <code>last_adapted_at</code> is NULL, projection snapshots are
+      still 100% <code>seed-script</code>, and 1 notification is stuck. Those signal pre-deploy state &mdash;
+      fixes landed AFTER the last cron tick.
+    </div>
+  </div>
+
+  <h2><span class="num">01</span> Grade comparison: previous &rarr; final</h2>
+
+  <table class="delta">
+    <tr><th>Category</th><th>Prior (AUDIT_RE)</th><th>Final</th><th>Direction</th><th>Why</th></tr>
+    <tr>
+      <td>Accuracy</td><td>A-</td><td>A</td>
+      <td class="up">+ up half</td>
+      <td>21 doctrine rows still queryable, HR thresholds now reach <code>CoachState</code> (<code>state-loader.ts:19</code>); detector citations intact; weather lookup proven via probe (lookupTempF=56, baselineTempF=70).</td>
+    </tr>
+    <tr>
+      <td>Efficiency</td><td>B+</td><td>B+</td>
+      <td class="flat">flat</td>
+      <td>No new query-pattern improvements. Memoized workout_library cache (<code>workout-library.ts:139-161</code>); same N+1 cron loops; no regressions.</td>
+    </tr>
+    <tr>
+      <td>Isolation</td><td>A-</td><td>A</td>
+      <td class="up">+ up half</td>
+      <td>54-route hardening pass shipped + watch <code>?user_id=</code> rejected (<code>watch/today/route.ts:22</code>); SSR loaders closed (probe 9 = 13/13 pass); 0 grep hits for old leak patterns. Apple auth sets <code>faff_session</code> cookie. Could be A+ if <code>'me'</code> literal stops being written.</td>
+    </tr>
+    <tr>
+      <td>Onboarding</td><td>B-</td><td>B+</td>
+      <td class="up">+ up two</td>
+      <td>Cold-start probe = 24/24 clean zeros + 2 shared L2 tables seeded right. Workout library a real shared table. But <code>'me'</code> literal still written into <code>training_plans.user_id</code> on 3 insert sites.</td>
+    </tr>
+    <tr>
+      <td>Coaching</td><td>C</td><td>B-</td>
+      <td class="up">+ up one</td>
+      <td>BuildInjuryPlan now wired (accept/route.ts:116). Decline endpoint added (129 lines). New crons scheduled. Fueling renders. But <strong>operationally still cold</strong>: David's <code>last_adapted_at = NULL</code>, projection_snapshots = 14/14 seed-script, 1 notification stuck pending.</td>
+    </tr>
+  </table>
+
+  <p class="sub" style="margin-top:-8px;">
+    Aggregate grade: <strong>B+</strong> (up from prior <strong>B</strong>). The infra is now where it
+    needs to be for a multi-user beta. The coaching loop needs ONE more cron tick to leave the
+    static-snapshot phase.
+  </p>
+
+  <h2><span class="num">02</span> 10-probe pass roll-call (actual output)</h2>
+
+  <div class="summary-box">
+    <div class="row"><span class="lbl">probes passed</span><span class="val true">10 / 10</span></div>
+    <div class="row"><span class="lbl">probes failed</span><span class="val">0 / 10</span></div>
+    <div class="row"><span class="lbl">run target</span><span class="val">production DB via <code>web-v2/.env.local</code></span></div>
+  </div>
+
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_sim_cold_start_full.mjs</span><span class="res">24 zero, 2 L2 seeded</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_verify_david_intact.mjs</span><span class="res">8 / 8</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_audit_orphans.mjs</span><span class="res">0 orphans</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_verify_uuid_unification.mjs</span><span class="res">78 / 78</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_verify_niggle_trigger.mjs</span><span class="res">5 / 5</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_verify_workout_library.mjs</span><span class="res">10 combos resolved</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_smoke_weather_lookup.mjs</span><span class="res">lookup=56F base=70F</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_sim_unauthenticated.mjs</span><span class="res">79 / 79</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_sim_ssr_unauthenticated.mjs</span><span class="res">13 / 13</span></div>
+  <div class="probe-row"><span class="badge pass">PASS</span><span class="name">_verify_fueling_clamp.mjs</span><span class="res">13 / 13</span></div>
+
+  <h2><span class="num">03</span> Production DB state &mdash; live snapshot</h2>
+
+  <h3>Shared L2 library</h3>
+  <table class="claims">
+    <tr><th>Table</th><th>Count</th><th>Detail</th></tr>
+    <tr><td><code>learn_articles</code></td><td>45</td><td>21 system-doctrine rows + Research-derived primers (target was &ge;41)</td></tr>
+    <tr><td><code>course_library</code></td><td>10</td><td>4 <code>source='editorial'</code> + 6 <code>source='stub'</code> (David's race slugs awaiting GPX)</td></tr>
+    <tr><td><code>workout_library</code></td><td>54 rows / 19 families</td><td>vo2max 8, long 8, threshold 7, easy 4, hills 4, race_specific 4, speed 3, fartlek 2, medium_long 2, walk_run 2, combo 2, base_building 1, cutdown 1, ladder 1, maintenance 1, marathon_specific 1, recovery 1, rest 1, shakeout 1</td></tr>
+    <tr><td><code>workout_weather_cache</code></td><td>62</td><td>10 distinct grid cells; 52 in David's primary grid (34.2N/-118.5W)</td></tr>
+  </table>
+
+  <h3>David's per-user data</h3>
+  <table class="claims">
+    <tr><th>Table</th><th>Count</th><th>Notes</th></tr>
+    <tr><td>plans (active / archived)</td><td>1 / 28</td><td>active mode=race-prep, race=<code>americas-finest-city</code>, authored 2026-05-20</td></tr>
+    <tr><td>strava_activities</td><td>126</td><td>94 stamped with <code>weather_enriched_at</code> (74.6% coverage) &mdash; up from 56% in prior audit</td></tr>
+    <tr><td>races</td><td>10</td><td>same as prior</td></tr>
+    <tr><td>shoes</td><td>7</td><td>same as prior</td></tr>
+    <tr><td>profile</td><td>1</td><td>hrmax+hrmax_observed+lthr+rhr all present (state-loader:19)</td></tr>
+    <tr><td>post_run_rpe</td><td>1</td><td>same as prior</td></tr>
+    <tr><td>niggles</td><td>2</td><td>same as prior</td></tr>
+  </table>
+
+  <h3>coach_intents by reason</h3>
+  <p class="sub">Column is <code>ts</code> (not <code>created_iso</code>). 2 reasons present.</p>
+  <table class="claims">
+    <tr><th>Reason</th><th>Count</th><th>Most recent</th></tr>
+    <tr><td><code>profile_field_added</code></td><td>2</td><td>2026-05-25 21:18 PT</td></tr>
+    <tr><td><code>watch_completion</code></td><td>2</td><td>2026-05-29 11:25 PT</td></tr>
+  </table>
+
+  <h3>coach_proposals</h3>
+  <table class="claims">
+    <tr><th>Status</th><th>Count</th><th>By proposal_type</th></tr>
+    <tr><td><code>expired</code></td><td>2</td><td><code>goal_time_change</code> &times; 2 (both auto-expired after no response within window)</td></tr>
+    <tr><td>(pending)</td><td>0</td><td>&mdash;</td></tr>
+    <tr><td>(accepted)</td><td>0</td><td>&mdash;</td></tr>
+    <tr><td>(rejected)</td><td>0</td><td>&mdash;</td></tr>
+  </table>
+
+  <h3>training_plans by mode + last_adapted_at</h3>
+  <table class="claims">
+    <tr><th>Field</th><th>Value</th></tr>
+    <tr><td>by mode</td><td>29 / 29 = <code>race-prep</code> (no <code>injury-return</code>, no <code>maintenance</code>, no <code>base-building</code>)</td></tr>
+    <tr><td>David active plan <code>last_adapted_at</code></td><td><strong>NULL</strong></td></tr>
+    <tr><td>David active plan <code>adaptation_log</code></td><td><code>[]</code> (empty array)</td></tr>
+    <tr><td>never_adapted / adapted_once</td><td>1 / 0</td></tr>
+  </table>
+
+  <h3>projection_snapshots by source</h3>
+  <table class="claims">
+    <tr><th>Source</th><th>Count</th><th>Window</th></tr>
+    <tr><td><code>seed-script</code></td><td>14</td><td>2026-05-30 13:23:27&ndash;30 PT (all within 3 sec)</td></tr>
+    <tr><td><code>cron-daily</code></td><td>0</td><td>&mdash; cron has not yet fired since being scheduled</td></tr>
+  </table>
+
+  <h3>notifications_pending</h3>
+  <table class="claims">
+    <tr><th>State</th><th>Count</th><th>Detail</th></tr>
+    <tr><td>pending (processed_at IS NULL)</td><td>2</td><td>fire_at window 2026-05-29 to 2026-05-31</td></tr>
+    <tr><td>processed</td><td>0</td><td>&mdash; cron has never written a processed row</td></tr>
+    <tr><td>stuck (overdue &gt; 1h)</td><td>1</td><td>id=1, <code>skip_recovery</code>, fire_at 2026-05-29 07:15 UTC</td></tr>
+  </table>
+
+  <h3>User population</h3>
+  <table class="claims">
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>total users</td><td>5</td></tr>
+    <tr><td>distinct user_uuid in training_plans</td><td>1 (David only)</td></tr>
+    <tr><td>distinct user_uuid in strava_activities</td><td>1 (David only)</td></tr>
+  </table>
+
+  <h2><span class="num">04</span> Code-grep verification (must each return zero hits)</h2>
+
+  <table class="claims">
+    <tr><th>Pattern</th><th>Scope</th><th>Hits</th><th>Verdict</th></tr>
+    <tr><td><code>user_id = 'me'</code> / <code>user_id='me'</code></td><td>lib + app</td><td>1 (comment-only in <code>cron/keep-warm/route.ts:61</code>)</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>OR user_uuid IS NULL</code></td><td>lib + app</td><td>0</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>DEFAULT_USER_ID</code> / <code>0645f40c</code></td><td>lib + app (excl. scripts/env)</td><td>1 active hit (<code>cron/snapshot-projections/route.ts:211</code> &mdash; deliberate seed of David into per-user list)</td><td class="verdict partial">PARTIAL</td></tr>
+    <tr><td><code>userIdFromRequest</code> w/ David fallback</td><td>app/api</td><td>0 active calls (all 4 mentions are docstring comments referencing the now-removed fallback)</td><td class="verdict true">TRUE</td></tr>
+    <tr><td><code>requireUserId</code> usage</td><td>app/api</td><td>56 routes adopt the canonical 401-on-null pattern</td><td class="verdict true">TRUE</td></tr>
+  </table>
+
+  <h2><span class="num">05</span> Feature-by-feature truth check (A through J)</h2>
+
+  <table class="claims">
+    <tr><th>#</th><th>Claim</th><th>Verdict</th><th>Evidence</th></tr>
+    <tr>
+      <td>A</td><td>9 adaptation triggers wired in adapt.ts + cron fires</td>
+      <td class="verdict true">TRUE</td>
+      <td>9 detectors at <code>lib/plan/adapt.ts:250,288,317,348,380,414,457,506,577</code>; GH workflow <code>run-adaptations.yml</code> active, last successful cron 2026-05-30 09:25 UTC. Niggle probe fires synthetically &mdash; 5/5.</td>
+    </tr>
+    <tr>
+      <td>B</td><td>Fueling renders in DayDetailModal</td>
+      <td class="verdict true">TRUE</td>
+      <td><code>components/today/DayDetailModal.tsx:272</code> renders <code>&lt;FuelingCard fueling=&hellip;/&gt;</code> when <code>pres?.fueling</code> is set; component defined at L287. Fueling clamp probe = 13/13.</td>
+    </tr>
+    <tr>
+      <td>C</td><td>Weather pre-run path complete (lat/lng &rarr; tempF &rarr; applyHeatToPace)</td>
+      <td class="verdict true">TRUE</td>
+      <td><code>app/api/prescription/route.ts:78-128</code> reads <code>data->'startLatLng'</code> array, calls <code>lookupTempF()</code> &rarr; <code>baselineTempF()</code> fallback; weather probe returned real values (56F lookup, 70F baseline).</td>
+    </tr>
+    <tr>
+      <td>D</td><td>Weather post-run renders</td>
+      <td class="verdict true">TRUE</td>
+      <td><code>lib/coach/run-state.ts:11</code> imports <code>weatherContext</code>; called at L283 with actualTempF + baseline; output rendered as <code>weather_context: {message, hr_bump_bpm}</code> at L376-377.</td>
+    </tr>
+    <tr>
+      <td>E</td><td>INJURY-mode plan-builder wired on accept</td>
+      <td class="verdict true">TRUE</td>
+      <td><code>app/api/coach/proposal/[id]/accept/route.ts:98-154</code> handles <code>proposal_type='injury_adjust'</code>: marks accepted, calls <code>buildInjuryPlan({userId,injuryId})</code>, writes <code>coach_intents reason='injury_plan_built'</code>, busts cache. Idempotent: re-call &rarr; 409. <strong>Not yet exercised in prod</strong> (training_plans by mode = 29/29 race-prep, zero injury-return).</td>
+    </tr>
+    <tr>
+      <td>F</td><td>GPX &rarr; course_library promotion (inline + cron + backfill)</td>
+      <td class="verdict true">TRUE</td>
+      <td>Inline at <code>app/api/race/gpx/route.ts:71</code> + <code>app/api/gpx/import/route.ts:81</code>; nightly cron at <code>app/api/cron/promote-courses/route.ts:65</code>. GH workflow <code>promote-courses.yml</code> active. Library state: 4 editorial + 6 stub &rarr; expected after the promotion cron runs.</td>
+    </tr>
+    <tr>
+      <td>G</td><td>Cron paths actually scheduled (GH workflows)</td>
+      <td class="verdict true">TRUE</td>
+      <td>7 active workflows: enrich-weather, keep-warm, notifications, promote-courses, refresh-briefings, run-adaptations, snapshot-projections. <code>gh workflow list</code> confirms all <code>active</code>. snapshot-projections + notifications + promote-courses landed 2026-05-30 21:50&ndash;22:13 PT &mdash; their next first-fire is on the upcoming 07:xx UTC tick.</td>
+    </tr>
+    <tr>
+      <td>H</td><td>Decline endpoint mirrors accept</td>
+      <td class="verdict true">TRUE</td>
+      <td><code>app/api/coach/proposal/[id]/decline/route.ts</code> 129 lines, mirrors accept structure: requireUserId &rarr; 401 + verify owner + idempotent 409 on second decline + writes <code>coach_intents reason='proposal_declined'</code> + busts <code>plan_swap</code> cache.</td>
+    </tr>
+    <tr>
+      <td>I</td><td>Workout library used by engine + inline fallback</td>
+      <td class="verdict true">TRUE</td>
+      <td><code>lib/plan/generate.ts:26</code> imports <code>pickWorkout</code>; <code>resolvePrescriptions()</code> at L306-310 queries workout_library; fallback to inline default if no match (verified at <code>workout-library.ts:188-194</code>). Cache TTL keeps the table hit cheap.</td>
+    </tr>
+    <tr>
+      <td>J</td><td>SSR auth closed (seed.ts has no DEFAULT_USER_ID fallback)</td>
+      <td class="verdict true">TRUE</td>
+      <td><code>components/faff-app/seed.ts:25</code> imports <code>userIdFromCookies</code>; returns empty envelope on null. Dev-only <code>DEV_USER_UUID</code> env override gated by <code>NODE_ENV !== 'production'</code> at <code>lib/auth/session.ts:214-221</code>. SSR probe = 13/13.</td>
+    </tr>
+  </table>
+
+  <h2><span class="num">06</span> Framing errors caught (the orchestrator was wrong about these)</h2>
+
+  <p class="sub">
+    The instructions warned that prior framing has been wrong &ge;4 times. This pass found additional
+    instances. Every one of these was a real measurement error, not a difference of opinion.
+  </p>
+
+  <div class="finding p1">
+    <span class="lbl">Framing Error</span>
+    <span class="ttl">&ldquo;course_library: 10 curated rows&rdquo;</span>
+    <div class="body">
+      <p>Prior framing correction was already noted (4 editorial + 6 stub). Confirmed live: <code>SELECT source, COUNT(*) FROM course_library GROUP BY source</code> returns exactly <code>editorial=4</code>, <code>stub=6</code>. The 6 stubs are slug-only placeholders awaiting GPX promotion. Calling these "10 curated rows" overstates editorial coverage by 2.5&times;.</p>
+      <p class="cite">probe: <code>_audit_final_db_state.mjs</code> &middot; cite: AUDIT_RE row already flagged this</p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">Framing Error</span>
+    <span class="ttl">&ldquo;last_adapted_at stamped on no-op runs&rdquo; &mdash; the FIX, not its effect</span>
+    <div class="body">
+      <p>The code fix is real: <code>app/api/cron/run-adaptations/route.ts:53-58</code> stamps <code>last_adapted_at = NOW()</code> on <code>applied === 0</code> runs. But framing implied the stamp <em>is now visible</em>. It isn't:</p>
+      <pre>SELECT id, last_adapted_at FROM training_plans WHERE user_uuid='0645f40c&hellip;' AND archived_iso IS NULL
+&rarr; last_adapted_at = NULL  &middot;  adaptation_log = []</pre>
+      <p>Reason: the fix commit (<code>bf84b19a</code>) landed 2026-05-30 21:44 PT. The last cron tick was 2026-05-30 09:25 UTC (= 02:25 PT, before the fix). Next scheduled fire: 07:15 UTC tomorrow. Stamp will appear then.</p>
+      <p class="cite">cron history: <code>gh run list --workflow="Run plan adaptations" --limit 5</code></p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">Framing Error</span>
+    <span class="ttl">&ldquo;'fuel @45'' hardcode removed&rdquo;</span>
+    <div class="body">
+      <p>The literal string <code>fuel @45'</code> is STILL present at <code>components/today/TodayPlannedCard.tsx:120</code>. Grep finds it. However, the component is no longer imported anywhere (verified via grep -rn "TodayPlannedCard" components/ app/ &mdash; zero hits beyond its own definition). So this is dead code, not an active surface. Framing said "removed" &mdash; reality is "abandoned, not deleted".</p>
+      <p class="cite">cite: <code>components/today/TodayPlannedCard.tsx:120</code></p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">Framing Error</span>
+    <span class="ttl">DB column-name mistakes inside the framing</span>
+    <div class="body">
+      <p>The orchestrator's task spec already corrected one of these (<code>coach_intents.ts</code> not <code>created_iso</code>). Additional column-name errors caught during DB probe authoring:</p>
+      <ul>
+        <li><code>strava_activities</code> has NO column named <code>weather</code>. The actual column is <code>weather_enriched_at</code> (timestamp). The weather blob lives in <code>data-&gt;'weather'</code> jsonb.</li>
+        <li><code>training_plans</code> has NO column named <code>created_iso</code>. It's <code>authored_iso</code>.</li>
+        <li><code>coach_proposals</code> uses <code>proposal_type</code> (not <code>kind</code>) and <code>responded_at</code> (not <code>decided_at</code>); there is no <code>reason</code> column &mdash; reason text lives in <code>payload-&gt;'reasoning'</code>.</li>
+        <li><code>notifications_pending</code> has NO column named <code>status</code>. Pending = <code>processed_at IS NULL</code>. The legacy schema also uses <code>category</code> + <code>fire_at</code> rather than <code>kind</code> + <code>scheduled_at</code>.</li>
+      </ul>
+      <p>None of these are bugs &mdash; they're naming inconsistencies the framing assumed away. Worth normalizing in a follow-up.</p>
+      <p class="cite">cite: <code>information_schema.columns</code> for each table</p>
+    </div>
+  </div>
+
+  <div class="finding p2">
+    <span class="lbl">Framing Error</span>
+    <span class="ttl">&ldquo;54 API routes hardened&rdquo; approximate &mdash; actual closer to 56-60</span>
+    <div class="body">
+      <p>Probe 8 (<code>_sim_unauthenticated.mjs</code>) audits 79 routes and passes all of them. The 79 = 73 auth + 6 cron + 6 public exemptions. Active <code>requireUserId</code> call count is 56. The script's own docstring says "39 routes that previously silently defaulted to David" &mdash; that's the regression-fix subset. None of these are bugs; just three different counts for three different denominators. Use <strong>79 / 79 pass</strong> as the canonical number.</p>
+      <p class="cite">cite: <code>grep -rln requireUserId app/api | wc -l = 56</code></p>
+    </div>
+  </div>
+
+  <h2><span class="num">07</span> Remaining gaps</h2>
+
+  <div class="finding p1">
+    <span class="lbl">P1</span>
+    <span class="ttl">Daily adaptation cron has not fired since the no-op stamp fix landed</span>
+    <div class="body">
+      <p>David's <code>last_adapted_at = NULL</code> and <code>adaptation_log = []</code>. The stamp fix landed 2026-05-30 21:44 PT, AFTER the last cron tick at 09:25 UTC. The next scheduled fire is 07:15 UTC on 2026-05-31. Until then we have no proof the operational pipeline is producing diagnostic signal.</p>
+      <p>Recommended: manually <code>gh workflow run "Run plan adaptations"</code> to validate the stamp fix in production, rather than waiting on the schedule.</p>
+      <p class="cite">cite: <code>app/api/cron/run-adaptations/route.ts:53-58</code> + cron history</p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">P1</span>
+    <span class="ttl">projection_snapshots still 100% seed-script &mdash; cron-daily never written</span>
+    <div class="body">
+      <p>All 14 rows in <code>projection_snapshots</code> have <code>source='seed-script'</code> with timestamps within 3 seconds of each other (2026-05-30 13:23:27&ndash;30 PT). Zero rows with <code>source='cron-daily'</code>. The cron workflow (<code>snapshot-projections.yml</code>) was added 2026-05-30 21:50 PT and has not yet fired its first 07:30 UTC tick.</p>
+      <p>Same recommendation: manual <code>workflow_dispatch</code> to seed first <code>cron-daily</code> row and verify projection trend line stops being silently static.</p>
+      <p class="cite">cite: AUDIT_RE row "snapshot-projections runs daily" + live DB</p>
+    </div>
+  </div>
+
+  <div class="finding p1">
+    <span class="lbl">P1</span>
+    <span class="ttl">notifications_pending: 1 stuck row, queue has never drained</span>
+    <div class="body">
+      <p>1 row pending with <code>fire_at = 2026-05-29 07:15 UTC</code>, >24h overdue. 2 total rows pending; 0 ever processed. The notifications.yml cron landed 2026-05-30 21:50 PT and has not yet fired.</p>
+      <p>Recommendation: same manual dispatch + verify <code>processed_at</code> stamps appear.</p>
+      <p class="cite">cite: <code>SELECT processed_at IS NULL stuck FROM notifications_pending WHERE fire_at &lt; NOW() - INTERVAL '1 hour'</code></p>
+    </div>
+  </div>
+
+  <div class="finding p2">
+    <span class="lbl">P2</span>
+    <span class="ttl">'me' literal still written into <code>training_plans.user_id</code> on 3 insert sites</span>
+    <div class="body">
+      <p>Sites: <code>lib/plan/generate.ts:469</code>, <code>lib/plan/seed-from-onboarding.ts:313</code>, <code>lib/plan/injury-builder.ts:160</code>. All three write the literal string <code>'me'</code> as the legacy <code>user_id</code> alongside the real <code>user_uuid</code>. Not a leak (no production read path queries by <code>user_id</code> alone &mdash; grep confirms zero hits), but user #2's plan rows will all have <code>user_id='me'</code> too, which is the worst possible value if anything downstream ever does query by it.</p>
+      <p>Recommended: drop the literal and write <code>user_uuid</code> only on inserts. Schema-wise <code>user_id</code> is still NOT NULL on this table so the write has to happen &mdash; replace <code>'me'</code> with the user's UUID-as-text.</p>
+      <p class="cite">cite: <code>grep -rn "'me'" lib/plan/</code></p>
+    </div>
+  </div>
+
+  <div class="finding p2">
+    <span class="lbl">P2</span>
+    <span class="ttl">No real niggle_reported / injury_active intents have flowed through coach_intents</span>
+    <div class="body">
+      <p>Live <code>coach_intents</code> has only <code>profile_field_added</code> &times; 2 and <code>watch_completion</code> &times; 2. No <code>niggle_reported</code>, no <code>injury_plan_built</code>, no <code>illness_acknowledged</code>, no <code>proposal_declined</code>. The detectors fire synthetically (probe 5 = 5/5) but no real-world signal has produced a propose-only adaptation that completes the closed loop. Coach voice has no proposal-acknowledgement copy to render yet.</p>
+      <p>This is mostly a "wait for real triggers" issue rather than a code bug. Watch for it once adaptation cron starts producing real triggers.</p>
+      <p class="cite">cite: <code>SELECT reason, COUNT(*) FROM coach_intents GROUP BY reason</code></p>
+    </div>
+  </div>
+
+  <div class="finding p3">
+    <span class="lbl">P3</span>
+    <span class="ttl">Dead-code <code>TodayPlannedCard.tsx</code> with hardcoded fueling string</span>
+    <div class="body">
+      <p>Component at <code>components/today/TodayPlannedCard.tsx:120</code> hardcodes <code>fuel @45'</code> in the long-run target line. Zero importers. Safe to delete entirely.</p>
+      <p class="cite">cite: grep -rn TodayPlannedCard components/ app/</p>
+    </div>
+  </div>
+
+  <h2><span class="num">08</span> Things newly fixed since AUDIT_RE</h2>
+
+  <div class="finding fix">
+    <span class="lbl">Fix landed</span>
+    <span class="ttl">BuildInjuryPlan is no longer dead code</span>
+    <div class="body">
+      <p>Prior audit grade C cited "buildInjuryPlan dead, zero call sites". Now wired at <code>app/api/coach/proposal/[id]/accept/route.ts:116</code> with idempotent handling, error rollback to pending status, and closed-loop <code>coach_intents reason='injury_plan_built'</code> write. The detector + accept-handler + plan-builder triangle is now connected end-to-end.</p>
+      <p class="cite">cite: <code>app/api/coach/proposal/[id]/accept/route.ts:98-154</code></p>
+    </div>
+  </div>
+
+  <div class="finding fix">
+    <span class="lbl">Fix landed</span>
+    <span class="ttl">Decline endpoint added &mdash; proposal flow no longer one-way</span>
+    <div class="body">
+      <p>129-line <code>POST /api/coach/proposal/[id]/decline</code> mirrors accept. Idempotent 409 on re-decline, writes <code>coach_intents reason='proposal_declined'</code> for voice-line dedupe, busts <code>plan_swap</code> cache.</p>
+      <p class="cite">cite: <code>app/api/coach/proposal/[id]/decline/route.ts:1-129</code></p>
+    </div>
+  </div>
+
+  <div class="finding fix">
+    <span class="lbl">Fix landed</span>
+    <span class="ttl">Three missing crons scheduled</span>
+    <div class="body">
+      <p>Prior audit cited "snapshot-projections runs daily" as FALSE. Now the workflow exists at <code>.github/workflows/snapshot-projections.yml</code> (07:30 UTC), plus <code>notifications.yml</code> (drain queue) and <code>promote-courses.yml</code> (L1&rarr;L2 GPX backfill). All three confirmed active via <code>gh workflow list</code>. Effects will land on next 07:xx UTC tick.</p>
+      <p class="cite">cite: <code>.github/workflows/{snapshot-projections,notifications,promote-courses}.yml</code></p>
+    </div>
+  </div>
+
+  <div class="finding fix">
+    <span class="lbl">Fix landed</span>
+    <span class="ttl">SSR cross-user leak closed</span>
+    <div class="body">
+      <p>Prior audit flagged SSR loaders defaulting to David. Now <code>components/faff-app/seed.ts:25</code> + <code>raceDetail.ts</code> use <code>userIdFromCookies()</code> and return empty envelopes on null. Probe 9 = 13/13 SSR surfaces pass.</p>
+      <p class="cite">cite: probe <code>_sim_ssr_unauthenticated.mjs</code> + <code>components/faff-app/seed.ts:25</code></p>
+    </div>
+  </div>
+
+  <div class="finding fix">
+    <span class="lbl">Fix landed</span>
+    <span class="ttl">Strava startLatLng field-name bug fixed in 4 sites</span>
+    <div class="body">
+      <p>Prior audit flagged "weather sparseness root cause". Confirmed: <code>weather_enriched_at</code> coverage is up to 94/126 = 74.6% (was 71/126 = 56% in prior audit). The lookup now reads <code>data-&gt;'startLatLng'</code> (Strava array) OR <code>data-&gt;'startLat'/'startLng'</code> flat fields. Smoke probe returns real values.</p>
+      <p class="cite">cite: <code>app/api/prescription/route.ts:84-98</code> + DB coverage delta</p>
+    </div>
+  </div>
+
+  <h2><span class="num">09</span> Final claim tally</h2>
+
+  <table class="claims">
+    <tr><th>Verdict</th><th>Count</th><th>Examples</th></tr>
+    <tr>
+      <td class="verdict true">TRUE</td><td>17</td>
+      <td>10/10 probes pass, 9 detectors, fueling renders, weather pre/post, injury accept, GPX promotion, 7 GH crons active, decline endpoint, workout_library wired, SSR auth closed, watch <code>?user_id=</code> rejected, faff_session cookie, 0 orphan rows, 0 leak grep hits, requireUserId on 56 routes, learn_articles=45, workout_library=54</td>
+    </tr>
+    <tr>
+      <td class="verdict partial">PARTIAL</td><td>4</td>
+      <td>course_library editorial vs stub split; <code>last_adapted_at</code> fix landed but not yet observable; projection_snapshots cron scheduled but not yet fired; "54 routes hardened" approximation vs 56/79/39 denominators</td>
+    </tr>
+    <tr>
+      <td class="verdict false">FALSE</td><td>2</td>
+      <td>&ldquo;'fuel @45'' hardcode removed&rdquo; (still at TodayPlannedCard.tsx:120, dead code but present); notifications queue has drained (still 1 stuck row, 0 processed)</td>
+    </tr>
+    <tr>
+      <td class="verdict dead">FRAMING ERR</td><td>5</td>
+      <td>DB column-name mismatches: <code>strava_activities.weather</code>, <code>training_plans.created_iso</code>, <code>coach_proposals.{kind,decided_at,reason}</code>, <code>notifications_pending.status</code></td>
+    </tr>
+  </table>
+
+  <h2><span class="num">10</span> Recommended one-shot to flip B+ to A</h2>
+
+  <p>Three operational pokes &mdash; all manual GH workflow_dispatch &mdash; finish the audit story without waiting on schedule:</p>
+
+  <ol>
+    <li><code>gh workflow run "Run plan adaptations"</code> &mdash; will populate <code>last_adapted_at</code> on David's active plan.</li>
+    <li><code>gh workflow run "Snapshot race projections"</code> &mdash; will write the first <code>projection_snapshots</code> row with <code>source='cron-daily'</code>.</li>
+    <li><code>gh workflow run "Drain notifications queue"</code> &mdash; will process the 2 pending rows and unblock the stuck <code>skip_recovery</code>.</li>
+  </ol>
+
+  <p>After those three, re-run probes 2 + 4 + the DB state probe. If <code>last_adapted_at</code> is non-null, <code>projection_snapshots.source</code> includes <code>cron-daily</code>, and the stuck row is gone &mdash; Coaching moves from B- to A-, and the aggregate is solidly A.</p>
+
+  <p style="margin-top: 48px; color: var(--mute); font-size: 12px; border-top: 1px solid var(--line); padding-top: 24px;">
+    Generated 2026-05-30 &middot; verified against production DB (<code>crossover.proxy.rlwy.net:20769/railway</code>) &middot; previous: <code>docs/AUDIT_RE_2026-05-30.html</code>
+  </p>
+
+</div>
+</body>
+</html>
