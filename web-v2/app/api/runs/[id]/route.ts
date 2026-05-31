@@ -30,12 +30,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   const detail = await loadRunDetail(userId, id);
   if (!detail) return NextResponse.json({ error: 'run not found' }, { status: 404 });
-  // Run history is immutable once stored — pace, splits, HR don't change.
-  // 5min browser cache + 30s SWR keeps repeat hits off the server. PATCH
-  // (shoe assignment) writes don't propagate through this GET cache, but
-  // that's fine; the modal updates optimistically.
+  // 2026-05-31: cache dropped to revalidate-only. The original 5-minute
+  // browser cache assumed run history was immutable, but shoe_id (PATCH
+  // path below) and weather enrichment (cron) both mutate the payload.
+  // The previous policy let a runner pick a shoe, reload immediately,
+  // and see the stale pre-PATCH value for up to 5 minutes · looked like
+  // the picker wasn't saving. Now: never cache hard, always ask the
+  // server. The query is cheap (single run, indexed) so the round-trip
+  // tax is invisible.
   return NextResponse.json(detail, {
-    headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=30' },
+    headers: { 'Cache-Control': 'private, no-cache, must-revalidate' },
   });
 }
 

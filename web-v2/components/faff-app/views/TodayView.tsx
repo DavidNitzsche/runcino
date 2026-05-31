@@ -695,7 +695,12 @@ function CompletedHeroV2({
               </div>
               <div>
                 <div className="kcl">SHOE</div>
-                <ShoePicker shoes={shoes} initial={resolvedShoeNm?.trim() || seedShoe} persist={persistShoe} />
+                <ShoePicker
+                  shoes={shoes}
+                  initial={resolvedShoeNm?.trim() || seedShoe}
+                  persist={persistShoe}
+                  runId={d.activityId ?? null}
+                />
               </div>
               <div>
                 <div className="kcl">ELEV GAIN{elevSuspicious ? ' · APPROX' : ''}</div>
@@ -911,8 +916,15 @@ function WorkoutCard({ d, done, result, runData, runLoading, shoes, seedShoe, pe
   );
 }
 
-function ShoePicker({ shoes, initial, persist }: { shoes: FaffSeed['shoes']; initial: string; persist: boolean }) {
+function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes']; initial: string; persist: boolean; runId?: string | null }) {
+  // 2026-05-31: `picked` must stay in sync with `initial` after a fresh SSR
+  // render. Previously the useState seed froze on the first mount value, so
+  // when the parent re-rendered with the just-persisted shoe (after
+  // router.refresh or a navigation back), the picker still showed the
+  // pre-persist initial. Sync `picked` whenever `initial` changes (e.g. on
+  // a fresh seed load) so the persisted choice survives a reload.
   const [picked, setPicked] = useState(initial);
+  useEffect(() => { setPicked(initial); }, [initial]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -962,6 +974,28 @@ function ShoePicker({ shoes, initial, persist }: { shoes: FaffSeed['shoes']; ini
   async function commit(s: FaffSeed['shoes'][number]) {
     setPicked(s.nm);
     setOpen(false);
+    // 2026-05-31: completed-run picker routes to PATCH /api/runs/[id] so the
+    // shoe persists onto strava_activities.shoe_id directly · the load
+    // path on the done hero reads `runData.shoe_id` for the displayed
+    // shoe (see resolvedShoeNm), and that field only updates when the
+    // run row itself is patched. The old code POSTed to /api/today/shoe
+    // (day_actions per-day override), which the done hero never reads
+    // back, so the selection looked persisted but reverted on reload.
+    //
+    // Planned today (no runId): keep the day_actions path · that's what
+    // seed.todayShoeId reads on first paint of a planned workout.
+    if (runId) {
+      setSaving(true);
+      try {
+        await fetch(`/api/runs/${encodeURIComponent(runId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shoe_id: Number(s.id) }),
+        });
+      } catch { /* swallow · UI stays optimistic */ }
+      finally { setSaving(false); }
+      return;
+    }
     if (!persist) return;
     setSaving(true);
     try {
@@ -970,7 +1004,7 @@ function ShoePicker({ shoes, initial, persist }: { shoes: FaffSeed['shoes']; ini
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shoe_id: String(s.id) }),
       });
-    } catch { /* swallow — UI is optimistic */ }
+    } catch { /* swallow · UI is optimistic */ }
     finally { setSaving(false); }
   }
 
