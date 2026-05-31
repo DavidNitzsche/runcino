@@ -7,6 +7,21 @@ the existing `web-v2/` backend. **Apple is the only working path.** Render the
 Google + email buttons as the design shows (visual parity) but mark them as
 deferred · no functional handler yet.
 
+## Coverage protocol · maintained by you as you work
+
+`docs/BACKEND_FRONTEND_COVERAGE.html` is a running log of every backend
+capability and whether it's surfaced in a frontend client. **You append to
+it** as you discover backend capabilities the design doesn't render. Plain
+English, sorted by app page, with a recommendation (design tweak needed
+vs. can add inline vs. safe to leave). Read the "How to use this doc"
+section at the top of that file before you start · the append format is
+locked there. Don't delete other entries · only add.
+
+This protocol exists because today's audit caught fueling computed-and-
+discarded, weather pipeline silently broken, 21 doctrine rows queryable
+with no /learn page. Without this feedback loop, every backend capability
+not in your design becomes silent dead code. Catch it as you write.
+
 ## Read these in order before writing any code
 
 1. **`designs/faff-web-signin.html`** · the canonical pixel spec, self-contained

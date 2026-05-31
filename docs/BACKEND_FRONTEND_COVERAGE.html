@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Backend → Frontend Coverage · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card2: #1a1d24;
+    --green: #14C08C; --gold: #F5C518; --over: #F43F5E;
+    --dist: #27B4E0; --learn: #B084FF; --race: #FF5722;
+    --active: #4F8FF7;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 28px 96px; }
+
+  h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 64px; letter-spacing: -0.5px; margin: 0; line-height: 0.92; text-transform: uppercase; }
+  h1 .sub { color: var(--learn); }
+  .lede { color: var(--mute); margin-top: 14px; font-size: 15px; max-width: 800px; line-height: 1.55; }
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 30px; letter-spacing: 0.3px; margin: 56px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 10px; text-transform: uppercase; }
+  h2 .surf { color: var(--active); margin-right: 14px; font-family: 'JetBrains Mono', monospace; font-size: 18px; letter-spacing: 0; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--learn); letter-spacing: 1.6px; text-transform: uppercase; margin: 28px 0 10px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  strong { color: var(--ink); }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; font-family: 'JetBrains Mono', monospace; color: var(--active); }
+
+  .protocol {
+    background: linear-gradient(135deg, rgba(176,132,255,0.10), rgba(79,143,247,0.06));
+    border: 1px solid rgba(176,132,255,0.40);
+    border-radius: 14px;
+    padding: 24px 28px;
+    margin: 24px 0 36px;
+  }
+  .protocol h3 { color: var(--learn); margin-top: 0; }
+  .protocol p, .protocol li { font-size: 14px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 24px;
+    font-size: 13.5px;
+    background: var(--card);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  th, td {
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    background: var(--card2);
+  }
+  td.cov-full   { color: var(--green); font-weight: 700; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; }
+  td.cov-partial{ color: var(--gold); font-weight: 700; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; }
+  td.cov-none   { color: var(--over); font-weight: 700; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; }
+  td.client-web  { color: var(--active); font-size: 10.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; white-space: nowrap; }
+  td.client-ios  { color: var(--learn); font-size: 10.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; white-space: nowrap; }
+  td.client-both { color: var(--green); font-size: 10.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; white-space: nowrap; }
+
+  td .src { display: block; font-size: 11px; color: var(--mute); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+  .toc { background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; margin: 24px 0 18px; }
+  .toc h3 { color: var(--learn); margin: 0 0 8px; }
+  .toc ol { padding-left: 22px; margin: 0; columns: 2; column-gap: 24px; }
+  .toc li { margin: 5px 0; font-size: 13.5px; break-inside: avoid; }
+  .toc a { color: rgba(246,247,248,0.92); text-decoration: none; }
+  .toc a:hover { color: var(--learn); text-decoration: underline; }
+  a { color: var(--learn); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .stamp { display: inline-block; padding: 3px 9px; border-radius: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
+  .stamp.added { background: rgba(20,192,140,0.18); color: #8ee4c3; }
+  .stamp.flagged { background: rgba(245,197,24,0.18); color: #ffde7a; }
+
+  hr { border: 0; border-top: 1px solid var(--line); margin: 36px 0; }
+
+  .empty {
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    padding: 18px 22px;
+    color: var(--mute);
+    font-size: 13.5px;
+    font-style: italic;
+    margin: 14px 0 24px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Coverage.<br><span class="sub">Backend → Frontend.</span></h1>
+<p class="lede">
+  Running log of <strong>every backend capability</strong> the system has, and
+  whether it's actually surfaced in a frontend client. Maintained by the web
+  agent and the iPhone agent as they discover things while building.
+  Sorted by app surface so David can scan by page and see what's missing or
+  partial. Plain English only.
+</p>
+
+<div class="protocol">
+<h3>How to use this doc · for the agents</h3>
+<p>
+  <strong>You are building UI from a design.</strong> The design captures what
+  the user is supposed to see. The backend captures what the system can do.
+  When you encounter a backend capability — an API field, a table column, a
+  cron output, a doctrine row, a coach trigger, a piece of computed state —
+  that isn't represented anywhere in the design you're implementing, append a
+  row to the matching surface section below.
+</p>
+<p><strong>The append format · one row per gap:</strong></p>
+<ul>
+  <li><strong>Capability</strong>: the thing the backend can do, named simply</li>
+  <li><strong>What it does (plain English)</strong>: one or two sentences a non-technical reader understands</li>
+  <li><strong>Current coverage</strong>: NONE · PARTIAL · FULL</li>
+  <li><strong>Recommendation</strong>: one of —
+    <em>"design tweak needed"</em> (requires David to decide what the surface should look like) ·
+    <em>"can add inline · &lt;your proposal&gt;"</em> (you have a clean idea that fits the existing design language) ·
+    <em>"safe to leave"</em> (legitimately doesn't need a UI · explain why)
+  </li>
+  <li><strong>Source</strong>: the file:line or API route where you found it</li>
+  <li><strong>Found by</strong>: WEB or IOS</li>
+</ul>
+<p>
+  Don't delete or modify other agents' entries. Only add. If the same thing
+  is found twice, mention you saw it too with a note like "also found by IOS
+  on 2026-05-31".
+</p>
+<p>
+  Do this <strong>as part of your normal work flow</strong>, not at the end.
+  Discovery is highest-fidelity when you're elbow-deep in the code, not after
+  you've already cargo-culted past it.
+</p>
+</div>
+
+<div class="toc">
+<h3>Surfaces · jump to</h3>
+<ol>
+  <li><a href="#today">Today (the home page · iOS tab 1 · web /today)</a></li>
+  <li><a href="#plan">Plan (iOS Train tab · web /training or /plan)</a></li>
+  <li><a href="#day-detail">Day detail · planned workout drawer</a></li>
+  <li><a href="#run-detail">Run detail · completed workout</a></li>
+  <li><a href="#races">Races (iOS Targets tab · web /races)</a></li>
+  <li><a href="#race-detail">Race detail · single race page</a></li>
+  <li><a href="#log">Log / Activity (iOS Activity tab · web /log)</a></li>
+  <li><a href="#health">Health (iOS Health tab · web /health)</a></li>
+  <li><a href="#profile">Profile · settings · shoes</a></li>
+  <li><a href="#learn">Learn · doctrine + research reader</a></li>
+  <li><a href="#onboarding">Onboarding · post-signin flow</a></li>
+  <li><a href="#coach-moments">Coach moments · nudges, proposals, alerts</a></li>
+  <li><a href="#cross-cutting">Cross-cutting · capabilities without a clear home</a></li>
+</ol>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="today"><span class="surf">/today</span>Today</h2>
+<p>
+  The home page. Shows what to do today, your readiness, the next workout,
+  the active plan context, and the coach's voice for the day. Web + iOS.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Fueling per workout</strong></td>
+  <td>Backend computes a gel schedule for any workout &gt; 60 min, with timing
+      (e.g. "2 Maurten 100s at 30 + 60 min") and total carbs target.
+      Adjusts for heat penalty and ramps toward race fueling 56d out.
+      Cites Research/18 + Costa.</td>
+  <td class="cov-full">FULL</td>
+  <td>Already renders in DayDetailModal via FuelingCard (landed 2026-05-30).
+      WeekAhead fallback no longer hardcodes "fuel @45'".</td>
+  <td><code>app/api/prescription/route.ts</code> ·
+      <code>lib/training/fueling.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Weather pre-run pace adjustment</strong></td>
+  <td>If a heat day is coming, the backend computes a per-step pace adjustment
+      using the Maughan slowdown table (heat × distance × ability tier).
+      Returns adjusted paces in the prescription.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td>Backend works (post-2026-05-30 fix). Surface only shown indirectly via
+      adjusted paces. <strong>Design tweak needed</strong> to make the user see
+      "paces adjusted +12s/mi for 78°F heat" instead of silently adjusting.</td>
+  <td><code>app/api/prescription/route.ts</code> ·
+      <code>lib/weather/heat-adjustment.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Adaptation events on Today</strong></td>
+  <td>Daily cron runs 9 adaptation triggers (RHR spike, sleep crater, niggle,
+      volume overshoot, etc.). When one fires, it writes a coach_intents row
+      explaining what changed and why.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Design tweak needed</strong>. Today should surface "the coach
+      adjusted your plan because X" when last_adapted_at &lt; 24h and a
+      coach_intents row with reason LIKE 'plan_adapt_*' exists. Currently
+      the user has no visibility into adaptations.</td>
+  <td><code>lib/plan/adapt.ts</code> · <code>coach_intents</code> table</td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="plan"><span class="surf">/plan · /training</span>Plan / Train</h2>
+<p>
+  The weekly view of the active training plan. Shows phase, week index,
+  upcoming workouts, mileage curve. Web + iOS.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Plan mutation history</strong></td>
+  <td>Every time the coach adapts the plan (cron-driven), a row is written
+      to plan_mutations recording the before/after diff. The plan_workouts
+      row gets updated in place but the history persists.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Design tweak needed</strong>. Worth a "your plan has been
+      adjusted N times" pill on the Plan page, expandable to see what
+      changed and when.</td>
+  <td><code>plan_mutations</code> table · <code>lib/plan/adapt.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Workout library doctrine</strong></td>
+  <td>54 workout templates across 19 families (recovery, easy, threshold,
+      vo2max, hills, fartlek, etc.), each cited to Research/04 or Research/22.
+      Used by the plan generator at build time.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: the runner doesn't need to browse 54 templates
+      themselves. The capability surfaces indirectly via the generated plan.
+      <strong>Safe to leave</strong> unless a future "show me other workouts
+      I could do this week" surface gets designed.</td>
+  <td><code>workout_library</code> table · <code>lib/plan/workout-library.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="day-detail"><span class="surf">/plan/[date]</span>Day Detail</h2>
+<p>
+  The drawer that opens when you tap a workout. Shows steps, paces, fueling,
+  weather, the "why," and the citation. Web + iOS.
+</p>
+
+<div class="empty">No agent entries yet · this is where to log capabilities the design doesn't render.</div>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="run-detail"><span class="surf">/runs/[id]</span>Run Detail · Completed Workout</h2>
+<p>
+  The post-run review. Splits, HR zones, route, coach context (e.g. "hotter
+  than usual"), RPE input, agreement-with-plan check. Web + iOS.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Weather context</strong></td>
+  <td>If the day was &gt;= 8°F hotter than the 14-day baseline at the runner's
+      home grid, the backend surfaces "Temp 78°F vs your typical 60°F · HR
+      ~8 bpm elevated is expected."</td>
+  <td class="cov-full">FULL</td>
+  <td>Renders in run-state.ts already. Check the design renders it.</td>
+  <td><code>lib/coach/run-state.ts:271</code> ·
+      <code>lib/weather/heat-adjustment.ts:weatherContext</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>RPE + post-run notes</strong></td>
+  <td>Runner can rate effort (Borg CR10 1-10) and add notes. Backend writes
+      to post_run_rpe table for use in future adaptation decisions.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td>API exists (/api/runs/[id]/rpe). UI input surface unknown. Check
+      design then either render the input or flag for a design tweak.</td>
+  <td><code>app/api/runs/[id]/rpe/route.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="races"><span class="surf">/races · iOS Targets</span>Races</h2>
+<p>
+  List of upcoming + past races. Priority ranking (A/B/C), goal time, days
+  out, projection. Web + iOS.
+</p>
+
+<div class="empty">No agent entries yet.</div>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="race-detail"><span class="surf">/races/[slug]</span>Race Detail</h2>
+<p>
+  Single race page. Course, projected time, the "gap" to goal, race-week
+  context, weather forecast, kit. Web + iOS.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Crowd-sourced course indicator</strong></td>
+  <td>When a runner uploads GPX for a race, the backend promotes the course
+      geometry into the shared course_library (anonymized). Other runners
+      doing the same race see the now-real course on their detail page.
+      course_library.source = 'editorial' / 'crowd-sourced' / 'stub' +
+      contributor_count int.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: on race detail show "crowd-sourced by N
+      runners" when source='crowd-sourced', "curated by Faff" when
+      source='editorial', "course preview unavailable · upload GPX to
+      contribute" when source='stub'. Subtle credit text under the map.
+      <strong>Can add inline</strong>.</td>
+  <td><code>course_library.source</code> + <code>contributor_count</code> ·
+      <code>lib/courses/promote-from-race.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Projection trend</strong></td>
+  <td>Daily snapshot of the runner's projected finish for their A race,
+      written by /api/cron/snapshot-projections. Used to show trend over
+      time (improving / stalling / regressing).</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Design tweak needed</strong>. Worth a small sparkline on the
+      race header showing the last 4 weeks of projected times. The data is
+      there (projection_snapshots table, source='cron-daily' after first
+      cron tick).</td>
+  <td><code>projection_snapshots</code> table ·
+      <code>lib/training/projection-snapshots.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="log"><span class="surf">/log · iOS Activity</span>Log / Activity</h2>
+<p>
+  Past runs, lifetime history, consistency heatmap. Web + iOS.
+</p>
+
+<div class="empty">No agent entries yet.</div>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="health"><span class="surf">/health · iOS Health</span>Health</h2>
+<p>
+  Sleep, HRV, RHR, body battery, readiness. Web + iOS.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Manual health entry</strong></td>
+  <td>Web-only users (no Apple Health, no Garmin) can manually enter sleep,
+      HRV, weight, RHR via POST /api/health/manual with research-grounded
+      validation ranges. Backend stamps user_id (text) + writes to
+      health_samples.</td>
+  <td class="cov-none">NONE</td>
+  <td><strong>Design tweak needed</strong>. A "log it manually" entry point
+      for web-only users. iOS users get it via HealthKit so this is
+      web-specific. Small "+ add measurement" pill at the top of Health.</td>
+  <td><code>app/api/health/manual/route.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="profile"><span class="surf">/profile · /me</span>Profile</h2>
+<p>
+  Settings, shoes, connections, subscription, sign out. Web + iOS.
+</p>
+
+<div class="empty">No agent entries yet.</div>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="learn"><span class="surf">/learn or /learn/[slug]</span>Learn · Doctrine Reader</h2>
+<p>
+  In-app reader for the 45 articles in learn_articles (21 SYSTEM DOCTRINE
+  + 24 research summaries). Each is a self-contained explainer with
+  citations and related-slug links. Web + iOS.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>45 doctrine articles</strong></td>
+  <td>Queryable at GET /api/learn/[slug]. Each has body_md content
+      (373-1874 chars), eyebrow category, related_slugs array, citations_json.
+      Currently no /learn page lists or links to them.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: build a /learn index page grouping articles
+      by eyebrow (SYSTEM DOCTRINE, FOUNDATIONAL INPUT LAYER, PRACTICAL
+      COACHING LOGIC, etc.). Each article = a card with title + first
+      line of body_md. Tap → /learn/[slug] reader. Articles are
+      self-contained, simple Markdown render. <strong>Design tweak needed</strong>
+      for the index layout.</td>
+  <td><code>app/api/learn/[slug]/route.ts</code> · <code>learn_articles</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="onboarding"><span class="surf">/onboarding</span>Onboarding</h2>
+<p>
+  Post-signin flow: role pick → connect sources → target → projection.
+  Web + iOS (the design shows it).
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Atomic onboarding txn</strong></td>
+  <td>Single BEGIN/COMMIT writes users (timezone/name/age/sex) + profile
+      + user_prefs in one transaction. ROLLBACK on any error · no
+      half-onboarded state possible.</td>
+  <td class="cov-full">FULL</td>
+  <td>Already correct backend. Just don't bypass it client-side. UI must
+      collect all required fields before submitting.</td>
+  <td><code>app/api/onboarding/complete/route.ts</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Required vs recommended inputs</strong></td>
+  <td>The 6-tier input model defines T1 identity (required) · T2 physiology
+      (recommended, with sensible defaults) · T3 connected sources
+      (optional) · T4 volume + history (recommended) · T5 schedule
+      (required) · T6 pro features (optional). Each missing input has a
+      documented fallback.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td>Onboarding screens collect some of these. <strong>Design tweak needed</strong>
+      to confirm we ask for everything required and surface clear "you
+      can do this later" copy for everything optional.</td>
+  <td><code>docs/ONBOARDING_AUDIT.md</code> ·
+      <code>learn_articles slug='doctrine-input-tiers'</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="coach-moments"><span class="surf">modal sheets</span>Coach Moments · Nudges, Proposals, Alerts</h2>
+<p>
+  Modal sheets that appear over the regular surfaces. nudge (readiness
+  retune), withinreach (PR close), weekly (recap), pr (PR fired). Web + iOS.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Coach proposal accept/decline</strong></td>
+  <td>When an injury or illness trigger fires, the backend writes a
+      coach_proposals row instead of auto-modifying the plan. Runner sees
+      "Your hamstring niggle suggests a 4-week walk-run scaffold · Accept
+      / Decline." Accept = buildInjuryPlan fires + archives the race-prep
+      plan. Decline = noted, plan unchanged.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: a modal that surfaces when
+      coach_proposals.status = 'pending' for the user. Two buttons:
+      Accept → POST /api/coach/proposal/[id]/accept · Decline → POST
+      /api/coach/proposal/[id]/decline. Shows the proposal's reasoning
+      (from payload) + the planned change. <strong>Design tweak needed</strong>
+      for the modal layout.</td>
+  <td><code>coach_proposals</code> table · <code>/api/coach/proposal/[id]/{accept,decline}</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<!-- ─────────────────────────────────────────────────────────────────── -->
+
+<h2 id="cross-cutting"><span class="surf">no clear home</span>Cross-cutting · Capabilities Without a Surface</h2>
+<p>
+  Things the backend does that don't naturally fit one page. Includes
+  notification settings, connection management, data exports, admin tools.
+</p>
+
+<table>
+<tr><th style="width:18%">Capability</th><th>What it does</th><th style="width:11%">Coverage</th><th style="width:24%">Recommendation</th><th style="width:14%">Source</th><th style="width:7%">Found by</th></tr>
+<tr>
+  <td><strong>Notification taxonomy</strong></td>
+  <td>7 notification categories defined in doctrine: readiness_alert,
+      workout_reminder, race_week_brief, plan_change_notification,
+      weekly_recap, pr_alert, injury_proposal. Each has fire conditions +
+      delivery time rules.</td>
+  <td class="cov-none">NONE</td>
+  <td><em>Recommendation</em>: Settings → Notifications surface with 7
+      toggles, one per category. Currently runners can't disable specific
+      categories. <strong>Can add inline</strong> to a Settings → Notifications
+      page using the existing toggle component.</td>
+  <td><code>learn_articles slug='doctrine-notification-taxonomy'</code> ·
+      <code>notifications_pending.category</code></td>
+  <td class="client-web">WEB</td>
+</tr>
+<tr>
+  <td><strong>Connected sources management</strong></td>
+  <td>connector_tokens table holds Strava + Apple Health + Garmin + Coros +
+      Polar + Whoop + Oura tokens. Backend supports all 7 providers (one
+      already pre-allowlisted). Onboarding shows Apple Health + Strava +
+      Garmin + FinalSurge per the design.</td>
+  <td class="cov-partial">PARTIAL</td>
+  <td><em>Recommendation</em>: Settings → Connections should let the runner
+      manage all currently-connected sources, see last sync time, and
+      disconnect. Currently the design shows them only at onboarding.
+      <strong>Design tweak needed</strong> for the management surface.</td>
+  <td><code>connector_tokens</code> table</td>
+  <td class="client-web">WEB</td>
+</tr>
+</table>
+
+<hr>
+
+<p style="color: var(--mute); font-size: 12.5px; text-align: center;">
+  <strong style="color: var(--ink);">Backend → Frontend Coverage</strong><br>
+  Initialized 2026-05-31. Append protocol locked in the header section.<br>
+  Both agents append entries as they discover gaps. Don't delete · only add.
+</p>
+
+</div>
+</body>
+</html>
