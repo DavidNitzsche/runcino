@@ -11,14 +11,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { generatePlan } from '@/lib/plan/generate';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.name || !body?.date) {
     return NextResponse.json({ error: 'name + date required' }, { status: 400 });
@@ -37,7 +39,6 @@ export async function POST(req: NextRequest) {
     location: body.location ?? null,
   };
 
-  const userId = body.user_id ?? DAVID_USER_ID;
   try {
     await pool.query(
       `INSERT INTO races (slug, user_uuid, meta)
@@ -93,11 +94,18 @@ function distanceMiFromLabel(label: string | undefined): number | null {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
 
   try {
-    const existing = (await pool.query(`SELECT meta FROM races WHERE slug = $1`, [body.slug])).rows[0];
+    // Scope existence + ownership: a runner can only PATCH a race they own.
+    const existing = (await pool.query(
+      `SELECT meta FROM races WHERE slug = $1 AND user_uuid = $2`,
+      [body.slug, userId],
+    )).rows[0];
     if (!existing) return NextResponse.json({ error: 'race not found' }, { status: 404 });
     const meta = { ...existing.meta };
     // Editable plain fields. goal_safe + bib + wave + startTime + registered
@@ -116,11 +124,13 @@ export async function PATCH(req: NextRequest) {
     for (const k of ['finishTime', 'pb', 'retroFelt', 'retroExecution', 'retroNotes', 'avgHrBpm']) {
       if (body[k] !== undefined) meta[k] = body[k];
     }
-    await pool.query(`UPDATE races SET meta = $1 WHERE slug = $2`, [meta, body.slug]);
+    await pool.query(
+      `UPDATE races SET meta = $1 WHERE slug = $2 AND user_uuid = $3`,
+      [meta, body.slug, userId],
+    );
 
     // P33 — auto-calibrate LTHR + VDOT from race retro when both finish
     // time and avg HR are set. Best-effort: failures don't block save.
-    const userId = body.user_id ?? DAVID_USER_ID;
     if (meta.finishTime && meta.avgHrBpm && distanceMiFromLabel(meta.distanceLabel) != null) {
       try {
         const distanceMi = distanceMiFromLabel(meta.distanceLabel)!;
@@ -161,7 +171,7 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    await bustBriefingCacheForEvent(DAVID_USER_ID, 'race_crud');
+    await bustBriefingCacheForEvent(userId, 'race_crud');
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -169,11 +179,18 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
   try {
-    await pool.query(`DELETE FROM races WHERE slug = $1`, [body.slug]);
-    await bustBriefingCacheForEvent(DAVID_USER_ID, 'race_crud');
+    // Scope to the caller's races so a runner can't DELETE someone else's race by slug.
+    await pool.query(
+      `DELETE FROM races WHERE slug = $1 AND user_uuid = $2`,
+      [body.slug, userId],
+    );
+    await bustBriefingCacheForEvent(userId, 'race_crud');
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

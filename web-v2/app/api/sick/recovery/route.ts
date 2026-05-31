@@ -20,8 +20,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 type SickTrend = 'better' | 'same' | 'worse' | 'recovered';
 
@@ -40,6 +39,9 @@ async function readJson(req: NextRequest): Promise<Partial<RecoveryBody>> {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await readJson(req);
   const valid: SickTrend[] = ['better', 'same', 'worse', 'recovered'];
   if (!body.today || !valid.includes(body.today)) {
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
         WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC
         LIMIT 1`,
-      [DAVID_USER_ID],
+      [userId],
     )).rows[0];
 
     if (!active) {

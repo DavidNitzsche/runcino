@@ -9,12 +9,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { parseGPX } from '@/lib/race/gpx-parser';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let form: FormData;
   try { form = await req.formData(); }
   catch { return NextResponse.json({ error: 'Expected multipart/form-data' }, { status: 400 }); }
@@ -43,20 +45,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Scope by user_uuid so a slug guess can't overwrite another runner's race GPX.
     const updated = await pool.query(
       `UPDATE races
           SET course_geometry = $1,
               course_source = 'upload'
-        WHERE slug = $2
+        WHERE slug = $2 AND user_uuid = $3
       RETURNING slug`,
-      [geometry, slug]
+      [geometry, slug, userId]
     );
     if (updated.rowCount === 0) {
       return NextResponse.json({ error: 'race not found' }, { status: 404 });
     }
     // Race-detail and races-page coaches frame the season; a fresh course
     // changes the elevation/grade context. Bust + warm.
-    await bustBriefingCacheForEvent(DAVID_USER_ID, 'race_crud');
+    await bustBriefingCacheForEvent(userId, 'race_crud');
     return NextResponse.json({
       ok: true,
       slug,

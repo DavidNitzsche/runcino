@@ -75,7 +75,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import {
   HIST_AVG_MIDPOINTS,
   HIST_LONG_MIDPOINTS,
@@ -99,11 +99,12 @@ const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: Record<string, any>;
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
-
-  const userId = await userIdFromRequest(req);
 
   // ── Validate inputs ──────────────────────────────────────────────
   const distance = typeof body.distance === 'string' && VALID_DISTANCES.has(body.distance)

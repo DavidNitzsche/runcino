@@ -31,8 +31,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 type Category =
   | 'race_day'
@@ -57,6 +56,9 @@ interface AckBody {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: AckBody;
   try {
     body = await req.json();
@@ -66,7 +68,6 @@ export async function POST(req: NextRequest) {
   if (!body.category || !body.action) {
     return NextResponse.json({ error: 'category + action required' }, { status: 400 });
   }
-  const userId = body.user_id ?? DAVID_USER_ID;
   const action = body.action.toLowerCase();
 
   // 1. Stamp the ack on the log row (if we can find it).

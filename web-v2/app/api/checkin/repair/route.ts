@@ -22,8 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 // Keep this in sync with /api/checkin/route.ts ratingFromPostRun.
 function recomputeRating(execution?: string, body?: string): string | null {
@@ -65,8 +64,10 @@ function diffRow(row: any) {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const url = new URL(req.url);
-  const userId = url.searchParams.get('user_id') ?? DAVID_USER_ID;
   const days = Number(url.searchParams.get('days') ?? '30');
   const rows = await fetchPostRunCheckins(userId, days);
   const diffs = rows.map(diffRow);
@@ -82,8 +83,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => ({}));
-  const userId = body.user_id ?? DAVID_USER_ID;
   const days = Number(body.days ?? 30);
   const mode = (body.mode === 'delete' ? 'delete' : 'update') as 'update' | 'delete';
 

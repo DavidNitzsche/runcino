@@ -21,8 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 function todayPT(): string {
   // Match state-loader / tools.ts — PDT-shifted ISO date.
@@ -30,6 +29,9 @@ function todayPT(): string {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.action || !body?.proposal) {
     return NextResponse.json({ error: 'action + proposal required' }, { status: 400 });
@@ -43,7 +45,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'proposal missing required fields' }, { status: 400 });
   }
 
-  const userId = body.user_id ?? DAVID_USER_ID;
   const today = todayPT();
 
   if (body.action === 'decline') {

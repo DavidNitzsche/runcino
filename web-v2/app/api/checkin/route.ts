@@ -21,8 +21,7 @@ import {
   defaultReply,
   niggleAckReply,
 } from '@/lib/coach/checkin-reply-canned';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 const VALID_RATINGS = ['solid', 'tired', 'wrecked'] as const;
 type Rating = typeof VALID_RATINGS[number];
 
@@ -66,6 +65,9 @@ function ratingFromPostRun(execution?: string, body?: string): Rating | null {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: CheckinBody;
   try {
     body = await req.json();
@@ -94,7 +96,6 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  const userId = body.user_id ?? DAVID_USER_ID;
   const surface = body.surface ?? 'today';
 
   // P34 — build the optional 'extras' jsonb from any expanded fields.

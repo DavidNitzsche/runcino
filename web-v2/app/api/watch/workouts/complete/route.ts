@@ -23,10 +23,16 @@ import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 export async function POST(req: NextRequest) {
+  // 2026-05-30 user-isolation fix: identity comes from the Bearer token,
+  // not from body.user_id. Accepting body.user_id meant any caller could
+  // write watch completions into any runner's training history.
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+
   let body: any;
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
@@ -34,8 +40,6 @@ export async function POST(req: NextRequest) {
   if (!body || typeof body !== 'object' || !body.workoutId) {
     return NextResponse.json({ error: 'workoutId required' }, { status: 400 });
   }
-
-  const userId = body.user_id ?? DAVID_USER_ID;
 
   // ── 1. Full per-phase blob into coach_intents ──
   // The coach reads this via getWorkoutCompletion. Idempotent on

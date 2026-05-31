@@ -3,7 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 type Params = { params: Promise<{ id: string }> };
@@ -13,8 +13,10 @@ const ALLOWED_PATCH = new Set([
 ]);
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const { id } = await params;
-  const userId = await userIdFromRequest(req);
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 });
 
   let body: Record<string, unknown>;
@@ -51,8 +53,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const { id } = await params;
-  const userId = await userIdFromRequest(req);
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 });
 
   const r = await pool.query(

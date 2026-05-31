@@ -11,13 +11,15 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { fetchStravaRouteGpx } from '@/lib/gpx/finder';
 import { parseGPX } from '@/lib/race/gpx-parser';
 import { bustBriefingCache } from '@/lib/coach/cache';
 
 export async function POST(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body || !body.raceSlug || !body.source || !body.sourceId) {
     return NextResponse.json({ error: 'raceSlug + source + sourceId required' }, { status: 400 });

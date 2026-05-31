@@ -15,17 +15,18 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 interface RegisterBody {
   device_token?: string;
   platform?: 'ios' | 'web';
   app_version?: string;
-  user_id?: string;
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: RegisterBody;
   try {
     body = await req.json();
@@ -40,7 +41,6 @@ export async function POST(req: NextRequest) {
   if (platform !== 'ios' && platform !== 'web') {
     return NextResponse.json({ error: `platform must be 'ios' or 'web'` }, { status: 400 });
   }
-  const userId = body.user_id ?? DAVID_USER_ID;
 
   try {
     // Upsert by device_token. If a different user registered this token

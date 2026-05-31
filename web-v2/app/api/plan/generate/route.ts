@@ -10,17 +10,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generatePlan } from '@/lib/plan/generate';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   const raceSlug: string | undefined = body?.raceSlug;
   if (!raceSlug) {
     return NextResponse.json({ error: 'raceSlug required' }, { status: 400 });
   }
 
-  const userId = body?.user_id ?? DAVID_USER_ID;
   try {
     const result = await generatePlan({ userId, raceSlug });
     if (!result.ok) {

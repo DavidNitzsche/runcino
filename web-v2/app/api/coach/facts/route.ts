@@ -26,6 +26,7 @@ import {
   reciteMe,
   type CoachFactBlock,
 } from '@/lib/coach/fact-reciter';
+import { requireUserId } from '@/lib/auth/session';
 
 // Pure DB reads only — no LLM call. Bounded by the slowest state loader,
 // typically <300 ms. Keep the maxDuration tight so a stuck pool query
@@ -39,8 +40,6 @@ import {
 export const maxDuration = 15;
 
 const SERVER_BUILD_TIMEOUT_MS = 4500;
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 // Same surface set the legacy /api/briefing accepted, plus a couple of
 // friendly aliases ('plan'/'race-detail'/'me') so the new contract reads
@@ -58,10 +57,12 @@ const SURFACE_MAP: Record<string, 'today' | 'plan' | 'races' | 'race_detail' | '
 };
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const params = req.nextUrl.searchParams;
   const raw = (params.get('surface') ?? 'today').toLowerCase();
   const surface = SURFACE_MAP[raw];
-  const userId = params.get('user_id') ?? DAVID_USER_ID;
   const raceSlug = params.get('race') ?? undefined;
 
   if (!surface) {
@@ -84,11 +85,13 @@ export async function GET(req: NextRequest) {
 // Allow POST too — easier to drive from forms / serverless clients with
 // JSON bodies. Same shape, same response.
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: any;
   try { body = await req.json(); } catch { body = {}; }
   const raw = String(body?.surface ?? 'today').toLowerCase();
   const surface = SURFACE_MAP[raw];
-  const userId = body?.user_id ?? DAVID_USER_ID;
   const raceSlug = body?.race ?? undefined;
 
   if (!surface) {

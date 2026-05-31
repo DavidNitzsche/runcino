@@ -18,15 +18,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { loadRunDetail } from '@/lib/coach/run-state';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { requireUserId } from '@/lib/auth/session';
 
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
-
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const { id } = await params;
   if (!id || id === 'null' || id === 'undefined') {
     return NextResponse.json({ error: 'no activity id' }, { status: 404 });
   }
-  const detail = await loadRunDetail(DAVID_USER_ID, id);
+  const detail = await loadRunDetail(userId, id);
   if (!detail) return NextResponse.json({ error: 'run not found' }, { status: 404 });
   // Run history is immutable once stored — pace, splits, HR don't change.
   // 5min browser cache + 30s SWR keeps repeat hits off the server. PATCH
@@ -38,12 +40,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const { id } = await params;
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'invalid body' }, { status: 400 });
   }
-  const userId = body.user_id ?? DAVID_USER_ID;
 
   // shoe_id: number | null (P32)
   if ('shoe_id' in body) {

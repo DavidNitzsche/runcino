@@ -14,11 +14,13 @@
  * Caller: web /races/[slug] "Find course" flow + iPhone race-detail sheet.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { findGpxCandidates } from '@/lib/gpx/finder';
 
 export async function GET(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const q = req.nextUrl.searchParams.get('q')?.trim();
   if (!q) {
     return NextResponse.json({ error: 'q (race name) required' }, { status: 400 });

@@ -23,7 +23,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { pool } from '@/lib/db/pool';
 import {
   subscribeWebhook,
@@ -35,9 +35,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
-  // Auth check — preserves the single-user beta fallback while keeping
-  // the door open for stricter checks later.
-  await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
 
   const sub = await getActiveSubscription();
   if (!sub) {
@@ -74,7 +73,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
 
   const body = await req.json().catch(() => null);
   const action = body?.action;

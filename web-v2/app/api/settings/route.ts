@@ -4,8 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { loadSettings, patchSettings } from '@/lib/coach/settings';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 const ALLOWED = new Set([
   'units_distance', 'units_temp', 'units_pace',
@@ -14,7 +13,9 @@ const ALLOWED = new Set([
 ]);
 
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   try {
     const s = await loadSettings(userId);
     return NextResponse.json(s);
@@ -24,11 +25,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'invalid body' }, { status: 400 });
   }
-  const userId = body.user_id ?? DAVID_USER_ID;
   const patch: any = {};
   for (const k of Object.keys(body)) {
     if (k === 'user_id') continue;

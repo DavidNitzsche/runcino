@@ -14,13 +14,14 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { loadTrainingState } from '@/lib/coach/training-state';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   try {
     const state = await loadTrainingState(userId);
     return NextResponse.json(state);

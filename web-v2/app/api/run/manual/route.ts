@@ -10,17 +10,17 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { randomBytes, createHash } from 'crypto';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'invalid JSON' }, { status: 400 });
   if (!body.date || !body.distance_mi) {
     return NextResponse.json({ error: 'date + distance_mi required' }, { status: 400 });
   }
-
-  const userId = body.user_id ?? DAVID_USER_ID;
   const clientId = `manual_${body.date}_${randomBytes(4).toString('hex')}`;
   const slug = `wko_${clientId}`;
   const durationSec = body.duration_min ? Math.round(Number(body.duration_min) * 60) : null;

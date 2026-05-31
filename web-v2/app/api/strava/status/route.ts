@@ -11,13 +11,15 @@
  * See lib/strava/connection-status.ts for the detection rules.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const status = await loadStravaConnectionStatus(userId);
   return NextResponse.json(status);
 }

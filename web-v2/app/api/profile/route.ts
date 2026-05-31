@@ -9,12 +9,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { requireUserId } from '@/lib/auth/session';
 // 2026-05-28 LLM rip (Cardinal Rule #1, PROJECT.md):
 // generateBriefing deleted. The fact-reciter is deterministic +
 // cheap, so there's no warm-fan-out to kick off — the next surface
 // read just builds facts from current DB state.
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 const ALLOWED = new Set([
   'height_cm', 'sex', 'age', 'city', 'full_name',
@@ -46,7 +45,9 @@ function decorateUpdates(updates: Record<string, any>): Record<string, any> {
  * timestamps so onboarding/UI can render a real "connected" state.
  */
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   try {
     const r = await pool.query(
       `SELECT full_name, sex, sex AS gender, age, city, height_cm,
@@ -71,11 +72,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: Record<string, any>;
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const userId = body.user_id ?? DAVID_USER_ID;
   const updates: Record<string, any> = {};
   for (const k of Object.keys(body)) {
     if (k === 'user_id') continue;

@@ -26,8 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 function distanceMiFromLabel(label: string | null | undefined): number | null {
   if (!label) return null;
@@ -208,7 +207,9 @@ function buildSpec(
 }
 
 export async function POST(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const dry = req.nextUrl.searchParams.get('dry') === '1';
   // force=1 also rewrites EXISTING workout_spec rows that are missing the
   // `kind` discriminator. The first backfill pass shipped specs without
