@@ -25,6 +25,7 @@ struct ActivityView: View {
     @State private var loadingMore: Bool = false
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
+    @State private var stravaStatus: API.StravaStatusResponse?
 
     enum Range: String, CaseIterable { case month, year, all
         var label: String { rawValue.uppercased() == "ALL" ? "ALL TIME" : rawValue.uppercased() }
@@ -38,6 +39,8 @@ struct ActivityView: View {
                 VStack(spacing: 0) {
                     PageHeader(title: "ACTIVITY", avatarInitials: avatarInitials, onAvatarTap: onProfile)
                         .padding(.horizontal, 22).padding(.top, 12)
+                    StravaReconnectBanner(status: stravaStatus)
+                        .padding(.horizontal, 22).padding(.top, 10)
                     toggle
                         .padding(.horizontal, 22).padding(.top, 16)
                     if mode == .stats {
@@ -56,7 +59,8 @@ struct ActivityView: View {
     private func reload() async {
         async let l = (try? await API.fetchLog(limit: fetchLimit))
         async let p = (try? await API.fetchProfileState())
-        let (logState, pf) = await (l, p)
+        async let ss = (try? await API.fetchStravaStatus())
+        let (logState, pf, sst) = await (l, p, ss)
         await MainActor.run {
             // Only overwrite cached state if the network call succeeded ·
             // a transient 401 / 5xx shouldn't wipe the runner's existing
@@ -64,6 +68,7 @@ struct ActivityView: View {
             // success so the next launch hydrates from disk.)
             if let logState { self.log = logState }
             if let pf { self.profile = pf }
+            if let sst { self.stravaStatus = sst }
         }
     }
 

@@ -38,6 +38,7 @@ struct TodayView: View {
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
     @State private var weather: WeatherBaseline?   // forecast vs 14-day baseline · drives the HOTTER THAN USUAL tag
+    @State private var stravaStatus: API.StravaStatusResponse?  // drives the reconnect banner
 
     var body: some View {
         let mesh = selectedEffort.mesh
@@ -108,6 +109,10 @@ struct TodayView: View {
                         .padding(.horizontal, 22)
                         .padding(.top, 12)
                 }
+
+                StravaReconnectBanner(status: stravaStatus)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 10)
 
                 heroBlock
                     .padding(.horizontal, 26)
@@ -674,8 +679,10 @@ struct TodayView: View {
         async let b = (try? await API.briefing(surface: "today", mode: nil))
         async let s = (try? await API.fetchTodaySkipped()) ?? false
         async let pr = (try? await API.fetchProfileState())
+        async let ss = (try? await API.fetchStravaStatus())
 
         let (planWeek, watch, ready, brief, skip, prof) = await (p, w, r, b, s, pr)
+        let stravaStat = await ss
         // Weather baseline runs second-pass — it needs the workout type
         // and weekly mileage from the plan/workout. Fire-and-forget; the
         // HOTTER THAN USUAL tag silently hides if the lookup fails.
@@ -696,6 +703,7 @@ struct TodayView: View {
             if let brief { self.briefing = brief }
             if let prof { self.profile = prof }
             if let wx { self.weather = wx }
+            if let stravaStat { self.stravaStatus = stravaStat }
             self.skipped = skip
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }

@@ -86,6 +86,7 @@
 		CBF05C82C08D2CAD384C3008 /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A82679266351BEBAFB330F1 /* ActiveWorkoutView.swift */; };
 		CDF6A305760D7B40D0E0BC36 /* PRSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 944DFB34C4D7EF128D8D0F0E /* PRSheet.swift */; };
 		CF1C1E572DC1A191D8D58977 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2DDEC15725161C4032FEC9 /* SignInView.swift */; };
+		D1097CBDA1F05F55910B5163 /* StravaReconnectBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */; };
 		D2D6BC52AB864AD678DF3709 /* Primitives.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0F934EAB1B1CC2AD163825 /* Primitives.swift */; };
 		D4E3F4875BAFEC6F6D5FDCC7 /* HRAlerter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EABD5D3321534861E82F02 /* HRAlerter.swift */; };
 		D92EA33FB4285F4A8AB859C9 /* NotificationsAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */; };
@@ -206,6 +207,7 @@
 		91FC1DB4EC397EFC1B67BFE9 /* WatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTheme.swift; sourceTree = "<group>"; };
 		944DFB34C4D7EF128D8D0F0E /* PRSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PRSheet.swift; sourceTree = "<group>"; };
 		9883A181E1656DBDC8F3FAFC /* Tips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tips.swift; sourceTree = "<group>"; };
+		9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaReconnectBanner.swift; sourceTree = "<group>"; };
 		9DBDD89E184A2A60C766D18F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9DDE304E9C6471D398E2D102 /* Briefing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Briefing.swift; sourceTree = "<group>"; };
 		9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -292,6 +294,7 @@
 				ADD08DB3E4484B1FC6C0C0F8 /* ShoeView.swift */,
 				C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */,
 				8638CFAB477DCF206DEFD0EA /* StickyCTABar.swift */,
+				9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */,
 				D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */,
 				BD91B5D2A39BE920DD3C4358 /* ZoneBar.swift */,
 			);
@@ -663,6 +666,7 @@
 				EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */,
 				97F6314BE17C17CC34AF015A /* SpectatorView.swift in Sources */,
 				ED8A185C9C02773FFC2E41D6 /* StickyCTABar.swift in Sources */,
+				D1097CBDA1F05F55910B5163 /* StravaReconnectBanner.swift in Sources */,
 				5E96515E4E3AEB50C7224C2F /* TargetsView.swift in Sources */,
 				83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */,
 				49DD1311332CCD7EC88681EC /* Tips.swift in Sources */,

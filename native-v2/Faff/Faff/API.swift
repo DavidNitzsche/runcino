@@ -211,6 +211,24 @@ enum API {
 
     /// Get the URL to open in Safari for Strava OAuth. The callback lands
     /// on /api/auth/strava?action=callback which writes the tokens.
+    // MARK: - Strava connection status
+
+    struct StravaStatusResponse: Decodable {
+        let state: String          // "connected" | "needs_reauth" | "disconnected"
+        let last_push_at: String?
+        let reason: String?        // populated when state != "connected"
+    }
+
+    /// GET /api/strava/status · drives the iPhone reconnect banner.
+    /// Returns nil when the call fails so callers can hide the banner
+    /// rather than nag with a false alarm.
+    static func fetchStravaStatus() async throws -> StravaStatusResponse? {
+        let url = baseURL.appendingPathComponent("api/strava/status")
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(StravaStatusResponse.self, from: data)
+    }
+
     static func fetchStravaConnectURL() async throws -> URL? {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("api/auth/strava"),

@@ -48,6 +48,22 @@ struct RunDetailView: View {
                         .padding(.top, 26)
                     }
 
+                    // PLAN VS ACTUAL · per-phase breakdown. Backend's
+                    // RunDetail.phase_breakdown is a list of PhaseBreakdown
+                    // rows with target pace / actual pace / status. For a
+                    // long run with a marathon-pace finish, this is the
+                    // most valuable single chart on the page.
+                    if let phases = run?.phase_breakdown, !phases.isEmpty {
+                        section(title: "PLAN VS ACTUAL", right: nil) {
+                            VStack(spacing: 10) {
+                                ForEach(phases) { ph in
+                                    phaseRow(ph)
+                                }
+                            }
+                        }
+                        .padding(.top, 26)
+                    }
+
                     section(title: "TRACE", right: traceAvgLabel) {
                         VStack(alignment: .leading, spacing: 12) {
                             chipsRow
@@ -88,6 +104,31 @@ struct RunDetailView: View {
                     if let zones = zonePcts {
                         section(title: "TIME IN ZONE", right: timeInZoneLabel) {
                             ZoneBar(zones: zones, height: 14, legend: true)
+                        }
+                        .padding(.top, 26)
+                    }
+
+                    // WORK SEGMENTS · stats over just the work intervals
+                    // (excluding warmup / recovery / cooldown). For a
+                    // tempo / threshold session these are the numbers that
+                    // matter, not the whole-run averages. Backend supplies
+                    // pace_work / hr_avg_work / cadence_avg_work / work_seconds;
+                    // hidden when none populated (recovery / easy runs).
+                    if hasWorkSegmentData {
+                        section(title: "WORK SEGMENTS", right: workSecondsLabel) {
+                            workSegmentTile
+                        }
+                        .padding(.top, 26)
+                    }
+
+                    // FORM · cadence_spm + ground_contact_ms + stride_length_m
+                    // + vertical_oscillation_cm + vertical_ratio_pct +
+                    // run_power_w + respiratory_rate + spo2_pct. iPhone
+                    // decodes all 8; this section renders whichever the
+                    // watch / HK actually wrote (often partial).
+                    if hasFormData {
+                        section(title: "FORM", right: nil) {
+                            formGrid
                         }
                         .padding(.top, 26)
                     }
@@ -558,6 +599,150 @@ struct RunDetailView: View {
         if let r = try? await API.fetchRunDetail(id: runId) {
             await MainActor.run { run = r }
         }
+    }
+
+    // MARK: - PLAN VS ACTUAL · per-phase breakdown
+
+    /// One row per planned phase · target pace / actual pace / status dot.
+    /// Status color reads green=on, amber=slow, blue=fast, grey=skipped.
+    @ViewBuilder
+    private func phaseRow(_ ph: PhaseBreakdown) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Circle().fill(phaseStatusColor(ph)).frame(width: 9, height: 9)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(ph.label.uppercased())
+                    .font(.label(11)).tracking(1.2)
+                    .foregroundStyle(Theme.txt.opacity(0.85))
+                Text(phaseSubLabel(ph))
+                    .font(.display(11, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.62))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(ph.actual_pace ?? "—")
+                    .font(.display(15, weight: .bold))
+                    .tracking(-0.3)
+                    .foregroundStyle(Theme.txt)
+                Text("/MI")
+                    .font(.label(8)).tracking(1)
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+            }
+        }
+        .padding(.vertical, 12).padding(.horizontal, 14)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func phaseStatusColor(_ ph: PhaseBreakdown) -> Color {
+        switch (ph.status ?? "").lowercased() {
+        case "on":   return Color(hex: 0x9AF0BF)
+        case "slow": return Color(hex: 0xFFB24D)
+        case "fast": return Color(hex: 0x86E0FF)
+        default:     return Color.white.opacity(0.4)
+        }
+    }
+
+    private func phaseSubLabel(_ ph: PhaseBreakdown) -> String {
+        var parts: [String] = []
+        if let tp = ph.target_pace { parts.append("target \(tp)/mi") }
+        if let mi = ph.actual_distance_mi { parts.append("\(String(format: "%.1f", mi)) mi") }
+        if let bpm = ph.avg_hr { parts.append("\(bpm) bpm") }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: - WORK SEGMENTS
+
+    private var hasWorkSegmentData: Bool {
+        run?.pace_work != nil || run?.hr_avg_work != nil ||
+            run?.cadence_avg_work != nil || (run?.work_seconds ?? 0) > 0
+    }
+
+    private var workSecondsLabel: String? {
+        guard let s = run?.work_seconds, s > 0 else { return nil }
+        let m = s / 60, sec = s % 60
+        return "\(m):\(String(format: "%02d", sec))"
+    }
+
+    private var workSegmentTile: some View {
+        HStack(spacing: 22) {
+            workStat(value: run?.pace_work ?? "—", key: "PACE")
+            workStat(value: run?.hr_avg_work.map(String.init) ?? "—", key: "HR")
+            workStat(value: run?.cadence_avg_work.map(String.init) ?? "—", key: "CAD")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 14).padding(.horizontal, 14)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func workStat(value: String, key: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.display(20, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Theme.txt)
+            SpecLabel(text: key, size: 9, tracking: 1.2, color: Theme.txt.opacity(0.55))
+        }
+    }
+
+    // MARK: - FORM metrics
+
+    private var hasFormData: Bool {
+        guard let f = run?.form else { return false }
+        return f.cadence_spm != nil || f.ground_contact_ms != nil ||
+               f.stride_length_m != nil || f.vertical_oscillation_cm != nil ||
+               f.vertical_ratio_pct != nil || f.run_power_w != nil ||
+               f.respiratory_rate != nil || f.spo2_pct != nil
+    }
+
+    private var formGrid: some View {
+        let f = run?.form
+        return LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+            spacing: 8
+        ) {
+            formCell(value: fmt(f?.cadence_spm, "%.0f"),         unit: "spm", key: "CADENCE")
+            formCell(value: fmt(f?.ground_contact_ms, "%.0f"),   unit: "ms",  key: "GCT")
+            formCell(value: fmt(f?.stride_length_m, "%.2f"),     unit: "m",   key: "STRIDE")
+            formCell(value: fmt(f?.vertical_oscillation_cm, "%.1f"), unit: "cm", key: "VERT OSC")
+            formCell(value: fmt(f?.vertical_ratio_pct, "%.1f"),  unit: "%",   key: "VERT RATIO")
+            formCell(value: fmt(f?.run_power_w, "%.0f"),         unit: "w",   key: "POWER")
+            formCell(value: fmt(f?.respiratory_rate, "%.0f"),    unit: "/min", key: "RESP")
+            formCell(value: fmt(f?.spo2_pct, "%.0f"),            unit: "%",   key: "SPO2")
+        }
+    }
+
+    private func fmt(_ d: Double?, _ pat: String) -> String? {
+        guard let d else { return nil }
+        return String(format: pat, d)
+    }
+
+    private func formCell(value: String?, unit: String, key: String) -> some View {
+        HStack(alignment: .lastTextBaseline, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .lastTextBaseline, spacing: 3) {
+                    Text(value ?? "—")
+                        .font(.display(17, weight: .bold))
+                        .tracking(-0.4)
+                        .foregroundStyle(value == nil ? Theme.txt.opacity(0.45) : Theme.txt)
+                    if value != nil {
+                        Text(unit)
+                            .font(.display(10, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.55))
+                    }
+                }
+                SpecLabel(text: key, size: 9, tracking: 1.2, color: Theme.txt.opacity(0.55))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10).padding(.horizontal, 12)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Color.white.opacity(0.10), lineWidth: 1))
     }
 }
 
