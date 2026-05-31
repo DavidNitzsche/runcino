@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
-import { elevPathFromSplits } from '@/lib/route/polyline';
+import { elevPathFromSplits, decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace,
@@ -95,105 +95,76 @@ export function TodayView({
         ))}
       </div>
 
-      <div className="hero">
-        <div className="hmain">
-          <div className="htag">
-            {(d.today ? 'TODAY · ' : `${d.dw} · `) + d.type.toUpperCase() + (d.done ? ' · DONE' : '')}
-          </div>
-          <div className="htitle">{d.name}</div>
-          {result && (
-            <div className="hwin">
-              <span className="c">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#06210a" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-              </span>
-              {result.win}<small>{result.winx}</small>
-            </div>
-          )}
-          <div className="stats">
-            {isRest ? (
-              <>
-                <div><div className="v">{formatSleep(seed.health.body.find(m => m.k === 'sleep')?.current)}</div><div className="k">SLEEP</div></div>
-                <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}<small> bpm</small></div><div className="k">RESTING HR</div></div>
-                <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}<small> ms</small></div><div className="k">HRV</div></div>
-              </>
-            ) : d.done && result ? (
-              <>
-                <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
-                <div><div className="v">{resolvedTime ?? '·'}</div><div className="k">TIME{runLoading && !runData ? ' …' : ''}</div></div>
-                <div><div className="v">{resolvedPace ?? '·'}<small>/mi</small></div><div className="k">AVG PACE</div></div>
-              </>
-            ) : (
-              <>
-                <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
-                <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
-                <div><div className="v">{d.est}<small></small></div><div className="k">EST TIME</div></div>
-              </>
-            )}
-          </div>
-          {!isRest && !d.done && (
-            <div className="effort">
-              <div className="etrack">
-                <div className="emark" style={{ left: `${e.mark}%` }}>
-                  <span className="elbl">{e.lbl}</span><span className="ecaret" />
-                </div>
-              </div>
-              <div className="ezones"><span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span></div>
-            </div>
-          )}
-          {!isRest && d.done && result && (
-            <div className="effort done">
-              <div className="ehr">
-                <span>TIME IN ZONES</span>
-                <span>avg ♥ <b>{resolvedHr || '·'}</b> · peak <b>{runData?.hr_max || result.peak || '·'}</b></span>
-              </div>
-              <div className="bk-zbar">
-                {result.zones.map((p, zi) => p > 0 ? (
-                  <i key={zi} style={{ width: `${p}%`, background: ['#54ddd0','#8ef0b0','#ffe0a0','#ff9560','#ff5a52'][zi] }} />
-                ) : null)}
-              </div>
-              <div className="bk-zleg">
-                {result.zones.map((p, zi) => (
-                  <div key={zi} style={p === 0 ? { opacity: 0.35 } : undefined}>
-                    <span className="zs" style={{ background: ['#54ddd0','#8ef0b0','#ffe0a0','#ff9560','#ff5a52'][zi] }} />
-                    Z{zi+1} <b>{p}%</b>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {d.done && result && (
-            <div className="heroExtra on">
-              <div className="hx-cond">
-                <div><div className="kcl">WEATHER</div><div className="kcv">{resolvedTempF != null ? `${Math.round(resolvedTempF)}°F` : (result.weather?.trim() || '·')}</div></div>
-                <div><div className="kcl">SHOE</div><div className="kcv">{resolvedShoeNm?.trim() || '·'}</div></div>
-                <div><div className="kcl">ELEV GAIN</div><div className="kcv">{resolvedGainFt != null && resolvedGainFt > 0 ? `${resolvedGainFt} ft` : '·'}</div></div>
-                {runData?.power_avg_w != null
-                  ? <div><div className="kcl">AVG POWER</div><div className="kcv">{runData.power_avg_w} W</div></div>
-                  : <div><div className="kcl">CALORIES</div><div className="kcv">{result.cal > 0 ? `${result.cal} kcal` : '·'}</div></div>}
-              </div>
-              {result.recap && <div className="hx-recap"><span className="ct">RECAP</span>{result.recap}</div>}
-            </div>
-          )}
-        </div>
-        <WorkoutCard
+      {/* 2026-05-31: post-run detail (v2) takes over the hero on done days.
+          Layout per "Post-Run Detail (Easy)" handoff: leftstack (stats + zones
+          + conditions incl. shoe picker) → GPS route map → wcard (HOW IT WENT
+          verdict + recap + splits). Planned + rest days keep the existing
+          hero layout below until the upcoming-run design lands. */}
+      {d.done && !isRest ? (
+        <CompletedHeroV2
           d={d}
-          done={!!d.done}
           result={result}
           runData={runData}
           runLoading={runLoading}
+          resolvedTime={resolvedTime}
+          resolvedPace={resolvedPace}
+          resolvedHr={resolvedHr}
+          resolvedTempF={resolvedTempF}
+          resolvedGainFt={resolvedGainFt ?? undefined}
+          resolvedShoeNm={resolvedShoeNm ?? undefined}
           shoes={seed.shoes}
-          // 2026-05-30: shoe pick fallback chain:
-          //   1. Persisted day_actions pick (seed.todayShoeId) — runner choice.
-          //   2. Coach recommendation per effort type (seed.shoeRecByType) —
-          //      computed via recommendShoe(shoes, runType) from the runner's
-          //      actual garage. NOT Strava.
-          //   3. KIT static default — only when garage is empty.
           seedShoe={(seed.todayShoeId != null
             ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
             : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
           persistShoe={curDay === seed.todayIdx}
         />
-      </div>
+      ) : (
+        <div className="hero">
+          <div className="hmain">
+            <div className="htag">
+              {(d.today ? 'TODAY · ' : `${d.dw} · `) + d.type.toUpperCase()}
+            </div>
+            <div className="htitle">{d.name}</div>
+            <div className="stats">
+              {isRest ? (
+                <>
+                  <div><div className="v">{formatSleep(seed.health.body.find(m => m.k === 'sleep')?.current)}</div><div className="k">SLEEP</div></div>
+                  <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}<small> bpm</small></div><div className="k">RESTING HR</div></div>
+                  <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}<small> ms</small></div><div className="k">HRV</div></div>
+                </>
+              ) : (
+                <>
+                  <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
+                  <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
+                  <div><div className="v">{d.est}<small></small></div><div className="k">EST TIME</div></div>
+                </>
+              )}
+            </div>
+            {!isRest && (
+              <div className="effort">
+                <div className="etrack">
+                  <div className="emark" style={{ left: `${e.mark}%` }}>
+                    <span className="elbl">{e.lbl}</span><span className="ecaret" />
+                  </div>
+                </div>
+                <div className="ezones"><span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span></div>
+              </div>
+            )}
+          </div>
+          <WorkoutCard
+            d={d}
+            done={!!d.done}
+            result={result}
+            runData={runData}
+            runLoading={runLoading}
+            shoes={seed.shoes}
+            seedShoe={(seed.todayShoeId != null
+              ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
+              : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+            persistShoe={curDay === seed.todayIdx}
+          />
+        </div>
+      )}
 
       <Tiles seed={seed} onOpenRace={onOpenRace} />
     </>
@@ -210,6 +181,8 @@ type RunSummary = {
   shoes?: Array<{ id: number; brand: string; model: string }>;
   splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null }>;
   route_polyline?: string | null;
+  distance_mi?: number;
+  hrZonePcts?: { z1: number; z2: number; z3: number; z4: number; z5: number } | null;
 };
 
 /** Lazy-fetch /api/runs/[id] for a past day. Shared by the TodayView hero
@@ -302,6 +275,215 @@ function paceToSec(p: string): number {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   return 0;
+}
+
+/* ───────────────  CompletedHeroV2 (Post-Run Detail · Easy)  ───────────────
+ * Implements the approved 2026-05-31 design (project Post-Run Detail (Easy).html).
+ * Layout:  [hmain (htag + title + check + hbody[leftstack + mapcol])]  [wcard]
+ *  - hmain.titlerow:  "EASY"  +  green check (no "On plan" text)
+ *  - hmain.leftstack: stats / time-in-zones / conditions grid w/ shoe picker
+ *  - hmain.mapcol:    real GPS polyline (or "ROUTE FROM GPS" placeholder)
+ *  - wcard:           "HOW IT WENT · ON PLAN" verdict + recap + mile splits
+ *
+ * Effort theme tokens are inherited from the surrounding mesh (Shell already
+ * sets the effort-driven mesh on completed days), so the hero picks up the
+ * green/teal "easy" feel without per-component overrides.
+ */
+function deriveVerdict(d: FaffSeed['week'][number], runData: RunSummary | null): string {
+  const planned = Number(d.dist) || 0;
+  const actual  = runData?.distance_mi ?? planned;
+  if (planned && actual >= planned * 0.95 && actual <= planned * 1.1) {
+    if (d.type === 'easy')      return 'Textbook easy day.';
+    if (d.type === 'long')      return 'Held the long-run line.';
+    if (d.type === 'tempo')     return 'Tempo locked in.';
+    if (d.type === 'intervals') return 'Reps hit clean.';
+    if (d.type === 'recovery')  return 'Recovery on target.';
+    return 'On plan.';
+  }
+  if (planned && actual < planned * 0.95) return 'Tucked in under target.';
+  if (planned && actual > planned * 1.1)  return 'Went a touch deeper than planned.';
+  return 'Run logged.';
+}
+
+function deriveRecap(d: FaffSeed['week'][number], runData: RunSummary | null): string {
+  const z = runData?.hrZonePcts;
+  if (z) {
+    const z2 = z.z2 ?? 0;
+    const z4 = (z.z4 ?? 0) + (z.z5 ?? 0);
+    if (d.type === 'easy' && z2 >= 60)
+      return 'Held Zone 2 the whole way and never let the pace creep. The quiet aerobic work the plan wants.';
+    if ((d.type === 'tempo' || d.type === 'intervals') && z4 >= 25)
+      return 'Got into the threshold band and held it. Plan called for it, you delivered.';
+    if (d.type === 'long' && z2 >= 50)
+      return 'Aerobic the whole way. The miles bank for race day.';
+  }
+  if (d.type === 'easy')      return 'Easy day in the bank. Don\'t overthink it.';
+  if (d.type === 'long')      return 'Long run done. Recover and roll into the next quality day.';
+  if (d.type === 'tempo')     return 'Tempo in the book. Threshold work compounds.';
+  if (d.type === 'intervals') return 'Reps done. The engine got a real ask.';
+  if (d.type === 'recovery')  return 'Recovery jog logged. Easy is the assignment.';
+  return 'Logged.';
+}
+
+function CompletedHeroV2({
+  d, result, runData, runLoading,
+  resolvedTime, resolvedPace, resolvedHr, resolvedTempF, resolvedGainFt, resolvedShoeNm,
+  shoes, seedShoe, persistShoe,
+}: {
+  d: FaffSeed['week'][number];
+  result?: FaffSeed['results'][number];
+  runData: RunSummary | null;
+  runLoading: boolean;
+  resolvedTime: string | undefined;
+  resolvedPace: string | undefined;
+  resolvedHr: number | undefined;
+  resolvedTempF: number | null;
+  resolvedGainFt: number | undefined;
+  resolvedShoeNm: string | undefined;
+  shoes: FaffSeed['shoes'];
+  seedShoe: string;
+  persistShoe: boolean;
+}) {
+  // Decode the run's GPS polyline once per runData change.
+  const route = (() => {
+    if (!runData?.route_polyline) return null;
+    const pts = decodePolyline(runData.route_polyline);
+    const path = polylineToSvgPath(pts, 700, 360, 18);
+    const ends = polylineEndpoints(pts, 700, 360, 18);
+    return path ? { path, ends } : null;
+  })();
+
+  const verdict = deriveVerdict(d, runData);
+  const recap   = (result?.recap?.trim()) || deriveRecap(d, runData);
+
+  // Zones from runData (preferred) → seed.results placeholder fallback.
+  const zonePcts = runData?.hrZonePcts
+    ? [runData.hrZonePcts.z1 ?? 0, runData.hrZonePcts.z2 ?? 0, runData.hrZonePcts.z3 ?? 0, runData.hrZonePcts.z4 ?? 0, runData.hrZonePcts.z5 ?? 0]
+    : (result?.zones ?? [0, 0, 0, 0, 0]);
+  const zoneColors = ['#54ddd0', '#8ef0b0', '#ffe0a0', '#ff9560', '#ff5a52'];
+  const peakHr = runData?.hr_max ?? result?.peak ?? null;
+
+  const splits = (runData?.splits ?? []).slice(0, 8);
+
+  return (
+    <div className="hero-v2">
+      <div className="hmain">
+        <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · DONE'}</div>
+        <div className="titlerow">
+          <h1 className="htitle">{d.name}</h1>
+          <span className="check" title="On plan" aria-label="On plan">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </span>
+        </div>
+
+        <div className="hbody">
+          <div className="leftstack">
+            <div className="stats">
+              <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
+              <div><div className="v">{resolvedTime ?? '·'}</div><div className="k">TIME{runLoading && !runData ? ' …' : ''}</div></div>
+              <div><div className="v">{resolvedPace ?? '·'}<small>/mi</small></div><div className="k">AVG PACE</div></div>
+            </div>
+
+            <div className="zones">
+              <div className="zhead">
+                <span>TIME IN ZONES</span>
+                <span className="zmeta">avg ♥ <b>{resolvedHr ?? '·'}</b> · pk <b>{peakHr ?? '·'}</b></span>
+              </div>
+              <div className="zbar">
+                {zonePcts.map((p, zi) => p > 0 && (
+                  <i key={zi} style={{ width: `${p}%`, background: zoneColors[zi] }} />
+                ))}
+              </div>
+              <div className="zleg">
+                {zonePcts.map((p, zi) => (
+                  <div key={zi} style={p === 0 ? { opacity: 0.4 } : undefined}>
+                    <span className="zs" style={{ background: zoneColors[zi] }} />
+                    Z{zi + 1} <b>{Math.round(p)}%</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="cond">
+              <div>
+                <div className="kcl">WEATHER</div>
+                <div className="kcv">{resolvedTempF != null ? `${Math.round(resolvedTempF)}°F` : '·'}</div>
+              </div>
+              <div>
+                <div className="kcl">SHOE</div>
+                <ShoePicker shoes={shoes} initial={resolvedShoeNm?.trim() || seedShoe} persist={persistShoe} />
+              </div>
+              <div>
+                <div className="kcl">ELEV GAIN</div>
+                <div className="kcv">{resolvedGainFt != null && resolvedGainFt > 0 ? `${resolvedGainFt} ft` : '·'}</div>
+              </div>
+              <div>
+                <div className="kcl">{runData?.power_avg_w != null ? 'AVG POWER' : 'CALORIES'}</div>
+                <div className="kcv">{runData?.power_avg_w != null ? `${runData.power_avg_w} W` : (result?.cal && result.cal > 0 ? `${result.cal} kcal` : '·')}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mapcol">
+            <div className="routemap">
+              {route ? (
+                <svg viewBox="0 0 700 360" preserveAspectRatio="xMidYMid meet">
+                  <path d={route.path} fill="none" stroke="#FF8847" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
+                  {route.ends && <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="7" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
+                  {route.ends && <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="7" fill="#FF8847" stroke="#fff" strokeWidth="2" />}
+                </svg>
+              ) : (
+                <div className="ph">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20l-5.5 2.5V6L9 3.5m0 16.5l6 2.5m-6-2.5V3.5m6 19L20.5 20V3.5L15 6m0 16.5V6m0 0L9 3.5"/></svg>
+                  <span>{runLoading ? 'LOADING ROUTE…' : 'NO GPS TRACK FOR THIS RUN'}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside className="wcard">
+        <div className="wcl">
+          HOW IT WENT
+          <span className="ok">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            ON PLAN
+          </span>
+        </div>
+        <div className="verdict">{verdict}</div>
+        <div className="recap">{recap}</div>
+        <div className="divider" />
+        <div className="reshead">
+          <span>MILE SPLITS</span>
+          {resolvedPace && <span className="rs">avg {resolvedPace}<small>/mi</small></span>}
+        </div>
+        <div className="splits">
+          {splits.length > 0 ? splits.map((s, i) => {
+            // Bar width: inverse-relative — faster splits read fuller. Falls
+            // back to a neutral 60% when pace data is missing.
+            const sec = paceToSec(s.pace ?? '');
+            const all = splits.map(x => paceToSec(x.pace ?? '')).filter(n => n > 0);
+            const lo = all.length ? Math.min(...all) : 0;
+            const hi = all.length ? Math.max(...all) : 1;
+            const span = Math.max(1, hi - lo);
+            const w = sec > 0 ? Math.round(55 + (1 - (sec - lo) / span) * 40) : 60;
+            return (
+              <div className="spr" key={i}>
+                <span className="spm">{s.mile}</span>
+                <div className="sptrk"><div className="spf" style={{ width: `${w}%` }} /></div>
+                <span className="spp">{s.pace ?? '·'}<small>/mi</small></span>
+              </div>
+            );
+          }) : (
+            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 6 }}>
+              {runLoading ? 'Loading splits…' : 'No mile splits available.'}
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
 }
 
 type DayForecast = {

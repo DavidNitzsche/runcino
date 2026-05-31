@@ -40,13 +40,17 @@ function mapType(t: string | null | undefined): EffortKey {
   return 'easy';
 }
 function humanName(eff: EffortKey, distMi: number): string {
-  if (eff === 'rest') return 'Rest Day';
-  if (eff === 'long') return 'Long Run';
-  if (eff === 'tempo') return 'Tempo Run';
-  if (eff === 'intervals') return 'Track Intervals';
-  if (eff === 'recovery') return 'Recovery Jog';
-  if (distMi >= 10) return 'Long Aerobic';
-  return 'Easy Aerobic';
+  // 2026-05-31: shortened to single-line uppercase tags per design.
+  // The hero title is sized for one-line names (EASY / LONG / TEMPO /
+  // INTERVALS / RECOVERY / REST) so anything longer wraps and breaks
+  // the layout. plan_workouts.sub_label can still override when the
+  // plan-builder authored a more specific name.
+  if (eff === 'rest') return 'Rest';
+  if (eff === 'long') return distMi >= 14 ? 'Long' : 'Long';
+  if (eff === 'tempo') return 'Tempo';
+  if (eff === 'intervals') return 'Intervals';
+  if (eff === 'recovery') return 'Recovery';
+  return 'Easy';
 }
 const EFFORT_COLOR: Record<EffortKey, string> = {
   recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38', tempo: '#FF8847', intervals: '#FC4D64', rest: '#8A90A0',
@@ -215,7 +219,11 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
       full: fullLabel,
       iso: d.date,
       type: eff,
-      name: d.plannedLabel || humanName(eff, d.plannedMi),
+      // 2026-05-31: hero title is the short one-line effort tag (EASY,
+      // LONG, INTERVALS, etc.). plan_workouts.sub_label like "Cruise
+      // Intervals" was wrapping in the title row, so we always use the
+      // short version and surface sub_label elsewhere if needed.
+      name: humanName(eff, d.plannedMi),
       dist,
       pace: paceStr,
       est,
