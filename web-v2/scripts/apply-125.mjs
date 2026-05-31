@@ -1,0 +1,10 @@
+import pg from 'pg';
+import fs from 'fs';
+const env = fs.readFileSync('.env.local','utf8').split('\n').reduce((a,l)=>{const m=l.match(/^([A-Z_]+)=(.*)$/);if(m)a[m[1]]=m[2].replace(/^["']|["']$/g,'');return a;},{});
+const pool = new pg.Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const sql = fs.readFileSync('db/migrations/125_workout_library.sql','utf8');
+console.log('Applying migration 125 (workout_library)…');
+await pool.query(sql);
+const rows = await pool.query(`SELECT COUNT(*) AS n FROM workout_library`);
+console.log(`OK · workout_library has ${rows.rows[0].n} rows`);
+await pool.end();

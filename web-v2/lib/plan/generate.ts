@@ -23,6 +23,7 @@
 import { pool } from '@/lib/db/pool';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
+import { pickWorkout, type WorkoutFamily } from './workout-library';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -266,12 +267,77 @@ interface DayPlan {
   notes: string;
 }
 
+/**
+ * Resolved prescription strings for a (distance × phase × level) combo.
+ *
+ * Sourced from workout_library (Research/04 + 22), with the previous
+ * hardcoded strings as a safety-net fallback. Building this map once per
+ * plan generation keeps layoutWeek sync.
+ */
+export interface ResolvedPrescriptions {
+  intervals: string;
+  threshold: string;
+  tempo: string;   // formula-based; library row is optional
+  citationInterval: string;
+  citationThreshold: string;
+}
+
+/** Inline last-resort prescriptions — match the historical doctrine in this
+ *  file. Library reads supersede these. */
+function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
+  return {
+    intervals:
+        cat === '5k'  ? '5×800m @ I pace · 90s jog'
+      : cat === '10k' ? '4×1km @ I pace · 2:00 jog'
+      : cat === 'hm'  ? '6×800m @ I pace · 90s jog'
+      :                 '5×1mi @ I-T transition · 2:00 jog',
+    threshold:
+        cat === '5k'  ? '3×1mi @ T pace · 60s jog'
+      : cat === '10k' ? '4×1km @ T pace · 60s jog'
+      : cat === 'hm'  ? '3×1mi @ T pace · 2:00 jog'
+      :                 '4×1mi @ T pace · 90s jog',
+    tempo:        'continuous tempo',
+    citationInterval:  'Research/04-workout-vocabulary.md §6',
+    citationThreshold: 'Research/04-workout-vocabulary.md §5',
+  };
+}
+
+/**
+ * Resolve prescription strings for one plan, preferring the workout_library
+ * table. Falls back to the inline catalog on any miss so plan generation
+ * never blocks.
+ */
+async function resolvePrescriptions(
+  cat: DistCategory,
+  phase: 'quality' | 'race_specific',
+  level: LevelKey,
+): Promise<ResolvedPrescriptions> {
+  const fallback = inlinePrescriptions(cat);
+  const lvl = level ?? undefined;
+
+  const phaseFit = phase === 'race_specific' ? 'race_specific' : 'quality';
+
+  const [intervalsT, thresholdT] = await Promise.all([
+    pickWorkout({ family: 'vo2max' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl }),
+    pickWorkout({ family: 'threshold' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl }),
+  ]);
+
+  return {
+    intervals:        intervalsT?.prescriptionText  ?? fallback.intervals,
+    threshold:        thresholdT?.prescriptionText  ?? fallback.threshold,
+    tempo:            fallback.tempo,
+    citationInterval: intervalsT?.citation          ?? fallback.citationInterval,
+    citationThreshold: thresholdT?.citation         ?? fallback.citationThreshold,
+  };
+}
+
 function layoutWeek({
-  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi,
+  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx,
 }: {
   phase: string; weekIdx: number; totalWeeks: number;
   weeklyMi: number; longRunDow: DOW; qualityDows: DOW[]; restDow: DOW;
   isRaceWeek: boolean; raceDow: DOW | null; raceDistanceMi: number;
+  rx: ResolvedPrescriptions;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -339,24 +405,16 @@ function layoutWeek({
            : cat === 'hm'   ? (weekIdx % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
            : /* m */          (weekIdx % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
       : [];
-    // Per-distance interval prescription strings. Research/22 §quality-templates.
-    const intervalsPrescription =
-        cat === '5k'  ? '5×800m @ I pace · 90s jog'
-      : cat === '10k' ? '4×1km @ I pace · 2:00 jog'
-      : cat === 'hm'  ? '6×800m @ I pace · 90s jog'
-      :                 '5×1mi @ I-T transition · 2:00 jog';
-    const thresholdPrescription =
-        cat === '5k'  ? '3×1mi @ T pace · 60s jog'
-      : cat === '10k' ? '4×1km @ T pace · 60s jog'
-      : cat === 'hm'  ? '3×1mi @ T pace · 2:00 jog'
-      :                 '4×1mi @ T pace · 90s jog';
+    // Prescription strings are resolved up-front from workout_library
+    // (Research/04 + 22) via resolvePrescriptions() — falls back to the
+    // historical inline catalog if the library has no matching row.
     qualityDows.forEach((dow, i) => {
       if (slots[dow] != null) return; // conflict — skip
       const qt = qualityTypes[i % qualityTypes.length];
       const sub =
-        qt === 'intervals'  ? intervalsPrescription
-      : qt === 'threshold'  ? thresholdPrescription
-      : qt === 'tempo'      ? `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi continuous tempo`
+        qt === 'intervals'  ? rx.intervals
+      : qt === 'threshold'  ? rx.threshold
+      : qt === 'tempo'      ? `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${rx.tempo}`
       :                       'QUALITY';
       slots[dow] = {
         dow: dow as DOW, type: qt, distanceMi: qualityMiEach, isQuality: true, isLong: false,
@@ -523,6 +581,16 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
 
   const vols = volumeCurve(recentMi, blocks, level);
 
+  // Resolve quality + race-specific prescriptions ONCE from the workout
+  // library. Per the locked decision ("best becomes rules of law"), every
+  // user reads the same library; per-runner customization is a follow-up.
+  // Falls back to the inline catalog if a library row is missing.
+  const cat = distanceCategoryOf(raceDistanceMi);
+  const [rxQuality, rxRaceSpecific] = await Promise.all([
+    resolvePrescriptions(cat, 'quality',        level),
+    resolvePrescriptions(cat, 'race_specific',  level),
+  ]);
+
   // 4. Build each week
   const weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean }> = [];
   let phaseCursor = 0;
@@ -539,6 +607,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     const raceDow: DOW | null = isRaceWeek
       ? ((new Date(raceDateISO + 'T12:00:00Z').getUTCDay()) as DOW)
       : null;
+    const rx = phaseLabel === 'RACE-SPECIFIC' ? rxRaceSpecific : rxQuality;
     const days = layoutWeek({
       phase: phaseLabel,
       weekIdx: wi,
@@ -550,6 +619,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       isRaceWeek,
       raceDow,
       raceDistanceMi,
+      rx,
     });
     // P34 — relabel the rest day with cross-training activity when opted
     // in. Rotates through enabled modes across weeks so the runner gets

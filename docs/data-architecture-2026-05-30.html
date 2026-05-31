@@ -1,0 +1,1321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How User Data Is Stored · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --ink: #f6f7f8; --mute: #8a90a0;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.04);
+    --card: #11141a; --card2: #1a1d24; --card3: #232631;
+
+    --race: #FF5722;        /* canonical */
+    --recovery: #14C08C;    /* canonical */
+    --active: #4F8FF7;      /* canonical */
+    --warn: #F43F5E;        /* canonical */
+    --milestone: #F5C518;   /* canonical */
+
+    --user-a: #4F8FF7;      /* active blue   = User A (David) */
+    --user-b: #14C08C;      /* recovery teal = User B */
+    --user-c: #F5C518;      /* milestone yel = User C */
+    --shared: #B084FF;      /* purple = SHARED doctrine/engine */
+    --engine: #FF7028;      /* warm orange = engine output */
+  }
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    margin: 0; padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 28px 96px; }
+
+  h1 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 84px;
+    letter-spacing: -1.2px;
+    margin: 0;
+    line-height: 0.88;
+    text-transform: uppercase;
+  }
+  h1 .accent { color: var(--shared); }
+  .sub {
+    color: var(--mute); margin-top: 14px; font-size: 15px;
+    max-width: 780px; line-height: 1.55;
+  }
+  h2 {
+    font-family: 'Oswald', sans-serif; font-weight: 600;
+    font-size: 36px; letter-spacing: 0.2px; margin: 64px 0 18px;
+    border-bottom: 1px solid var(--line); padding-bottom: 12px;
+    text-transform: uppercase;
+  }
+  h2 .num {
+    font-size: 18px; color: var(--mute); margin-right: 12px;
+    font-weight: 400; letter-spacing: 1.4px;
+  }
+  h3 {
+    font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700;
+    color: var(--shared); letter-spacing: 1.6px; text-transform: uppercase;
+    margin: 28px 0 10px;
+  }
+  h4 {
+    font-family: 'Oswald', sans-serif; font-weight: 600;
+    font-size: 22px; margin: 22px 0 8px; letter-spacing: 0.3px;
+  }
+  p { color: rgba(246,247,248,0.9); line-height: 1.62; margin: 0 0 12px; font-size: 14.5px; }
+  ul { padding-left: 18px; margin: 0 0 12px; }
+  ol { padding-left: 22px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.65; margin-bottom: 6px; font-size: 14px; }
+  strong { color: var(--ink); }
+  code {
+    background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;
+    font-size: 12.5px; font-family: 'JetBrains Mono', ui-monospace, monospace;
+    color: var(--active);
+  }
+
+  /* hero meta */
+  .meta-row {
+    display: flex; gap: 10px; margin-top: 14px;
+    font-size: 12px; color: var(--mute); flex-wrap: wrap;
+  }
+  .meta-row span { padding: 4px 10px; background: rgba(255,255,255,0.04); border-radius: 4px; }
+
+  /* big principle banner */
+  .principle {
+    background: linear-gradient(135deg, rgba(176,132,255,0.10), rgba(79,143,247,0.06));
+    border: 1px solid rgba(176,132,255,0.40);
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin: 28px 0 40px;
+  }
+  .principle .label {
+    font-size: 11px; letter-spacing: 1.8px; color: var(--shared);
+    text-transform: uppercase; font-weight: 700; margin-bottom: 10px;
+  }
+  .principle .body {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 500; font-size: 28px; line-height: 1.22;
+    letter-spacing: -0.1px;
+  }
+  .principle .body em { color: var(--shared); font-style: normal; }
+
+  /* ===== HERO DIAGRAM ===== */
+  .hero-diagram {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 36px 28px 32px;
+    margin: 30px 0 40px;
+  }
+  .hero-diagram .row-title {
+    font-size: 10.5px; letter-spacing: 1.8px;
+    color: var(--mute); text-transform: uppercase; font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .users-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .user-box {
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    position: relative;
+  }
+  .user-box.a { border-top: 3px solid var(--user-a); }
+  .user-box.b { border-top: 3px solid var(--user-b); }
+  .user-box.c { border-top: 3px solid var(--user-c); }
+  .user-box .badge {
+    display: inline-block; padding: 3px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 800; letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .user-box.a .badge { background: rgba(79,143,247,0.18); color: #a8c8ff; }
+  .user-box.b .badge { background: rgba(20,192,140,0.18); color: #8ee4c3; }
+  .user-box.c .badge { background: rgba(245,197,24,0.18); color: #ffde7a; }
+  .user-box .uname {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 19px;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
+  }
+  .user-box .desc { font-size: 12px; color: var(--mute); margin-bottom: 12px; }
+  .user-box .uuid {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; color: var(--mute);
+    word-break: break-all;
+    padding: 4px 6px; background: rgba(0,0,0,0.3); border-radius: 4px;
+    margin-bottom: 10px;
+  }
+  .user-box ul { padding-left: 14px; margin: 0; }
+  .user-box li { font-size: 11.5px; margin-bottom: 3px; line-height: 1.45; color: rgba(246,247,248,0.78); }
+  .user-box li strong { color: var(--ink); font-weight: 600; }
+
+  .isolation-bar {
+    margin: 22px 0 22px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 1.2px;
+  }
+  .isolation-bar .down-arrow {
+    display: block; color: var(--shared); font-size: 18px; line-height: 1; margin: 2px 0;
+  }
+  .isolation-bar .pipe {
+    display: inline-block; padding: 4px 12px;
+    background: rgba(176,132,255,0.12);
+    border: 1px solid rgba(176,132,255,0.40);
+    border-radius: 6px;
+    color: var(--shared);
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .shared-block {
+    background: rgba(176,132,255,0.06);
+    border: 1px solid rgba(176,132,255,0.35);
+    border-radius: 12px;
+    padding: 20px 22px;
+    text-align: center;
+  }
+  .shared-block .title {
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 22px; color: var(--shared);
+    text-transform: uppercase; letter-spacing: 1.4px;
+    margin-bottom: 4px;
+  }
+  .shared-block .desc {
+    font-size: 13px; color: rgba(246,247,248,0.85); margin-bottom: 10px;
+  }
+  .shared-block .components {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    text-align: left; margin-top: 14px;
+  }
+  .shared-block .component {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .shared-block .component .ct {
+    font-size: 10.5px; font-weight: 700; color: var(--shared);
+    letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 4px;
+  }
+  .shared-block .component .cd { font-size: 12px; color: rgba(246,247,248,0.85); line-height: 1.5; }
+  .shared-block .component .cd code { font-size: 10.5px; padding: 1px 4px; }
+
+  /* ===== LAYER STACK ===== */
+  .layer-stack { margin: 24px 0 28px; }
+  .layer {
+    border-radius: 12px;
+    margin: 10px 0;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: 80px 1fr 280px;
+    gap: 20px;
+    align-items: center;
+  }
+  .layer .ln {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px;
+    line-height: 1; letter-spacing: 0.5px;
+  }
+  .layer .ldesc { font-size: 13px; line-height: 1.55; }
+  .layer .ldesc .lh {
+    font-family: 'Oswald', sans-serif; font-size: 20px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;
+  }
+  .layer .lstamp {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .layer .lstamp .scope {
+    display: inline-block;
+    padding: 4px 10px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; letter-spacing: 1.4px;
+    text-transform: uppercase;
+  }
+  .layer.l1 { background: rgba(79,143,247,0.06); border-color: rgba(79,143,247,0.30); }
+  .layer.l1 .ln { color: var(--active); }
+  .layer.l1 .lstamp .scope { background: rgba(79,143,247,0.18); color: #a8c8ff; }
+  .layer.l2 { background: rgba(176,132,255,0.06); border-color: rgba(176,132,255,0.30); }
+  .layer.l2 .ln { color: var(--shared); }
+  .layer.l2 .lstamp .scope { background: rgba(176,132,255,0.18); color: #d4baff; }
+  .layer.l3 { background: rgba(255,112,40,0.06); border-color: rgba(255,112,40,0.30); }
+  .layer.l3 .ln { color: var(--engine); }
+  .layer.l3 .lstamp .scope { background: rgba(255,112,40,0.18); color: #ffc09a; }
+  .layer.l4 { background: rgba(20,192,140,0.06); border-color: rgba(20,192,140,0.30); }
+  .layer.l4 .ln { color: var(--recovery); }
+  .layer.l4 .lstamp .scope { background: rgba(20,192,140,0.18); color: #8ee4c3; }
+  .layer .lstamp .tables {
+    color: var(--mute);
+    font-size: 10.5px; letter-spacing: 0.4px;
+    margin-top: 6px; line-height: 1.4;
+  }
+
+  /* ===== END-TO-END FLOW ===== */
+  .flow-stack {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin: 20px 0;
+  }
+  .flow-stack .step {
+    display: grid;
+    grid-template-columns: 36px 110px 1fr;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px dashed var(--line);
+    align-items: start;
+  }
+  .flow-stack .step:last-child { border-bottom: 0; }
+  .flow-stack .step .n {
+    font-family: 'Oswald', sans-serif; font-weight: 700;
+    font-size: 24px; color: var(--mute); line-height: 1;
+  }
+  .flow-stack .step .layer-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    font-weight: 700; letter-spacing: 1.2px;
+    padding: 3px 8px; border-radius: 4px;
+    text-transform: uppercase;
+    align-self: start; margin-top: 4px;
+  }
+  .flow-stack .step.l1 .layer-tag { background: rgba(79,143,247,0.18); color: #a8c8ff; }
+  .flow-stack .step.l2 .layer-tag { background: rgba(176,132,255,0.18); color: #d4baff; }
+  .flow-stack .step.l3 .layer-tag { background: rgba(255,112,40,0.18); color: #ffc09a; }
+  .flow-stack .step.l4 .layer-tag { background: rgba(20,192,140,0.18); color: #8ee4c3; }
+  .flow-stack .step .det { font-size: 13px; line-height: 1.5; }
+  .flow-stack .step .det .what {
+    font-family: 'Oswald', sans-serif; font-weight: 600;
+    font-size: 16px; text-transform: uppercase; letter-spacing: 0.3px;
+    margin-bottom: 2px;
+  }
+  .flow-stack .step .det code { font-size: 11.5px; }
+  .flow-stack .step .det .why { color: var(--mute); font-size: 12px; margin-top: 4px; }
+
+  /* ===== TABLES ===== */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-size: 10.5px; font-weight: 700; color: var(--mute);
+    text-transform: uppercase; letter-spacing: 1.2px;
+  }
+  td code { color: var(--ink); background: rgba(255,255,255,0.05); }
+  td.pill-user, td.pill-shared, td.pill-cache {
+    font-weight: 700; font-size: 10.5px;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    white-space: nowrap;
+  }
+  td.pill-user { color: var(--active); }
+  td.pill-shared { color: var(--shared); }
+  td.pill-cache { color: var(--engine); }
+
+  /* ===== code blocks ===== */
+  pre {
+    background: rgba(0,0,0,0.5);
+    border-radius: 8px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    color: rgba(246,247,248,0.92);
+    margin: 12px 0;
+    line-height: 1.6;
+    border-left: 3px solid var(--shared);
+  }
+  pre .k { color: #ff79c6; font-weight: 600; }
+  pre .s { color: var(--milestone); }
+  pre .c { color: var(--mute); font-style: italic; }
+  pre .t { color: var(--active); font-weight: 600; }
+  pre .h { background: rgba(244,63,94,0.15); }
+  pre .ok { background: rgba(20,192,140,0.12); }
+
+  /* call-out boxes */
+  .ok-box {
+    background: rgba(20,192,140,0.06);
+    border: 1px solid rgba(20,192,140,0.35);
+    border-radius: 12px; padding: 16px 20px; margin: 16px 0; font-size: 14px;
+  }
+  .ok-box strong { color: var(--recovery); text-transform: uppercase; letter-spacing: 0.8px; font-size: 11.5px; }
+  .warn-box {
+    background: rgba(244,63,94,0.06);
+    border: 1px solid rgba(244,63,94,0.35);
+    border-radius: 12px; padding: 16px 20px; margin: 16px 0; font-size: 14px;
+  }
+  .warn-box strong { color: var(--warn); text-transform: uppercase; letter-spacing: 0.8px; font-size: 11.5px; }
+
+  /* contract grid */
+  .contract-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 18px 0 24px;
+  }
+  .contract-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .contract-card.iso { border-left: 4px solid var(--active); }
+  .contract-card.shr { border-left: 4px solid var(--shared); }
+  .contract-card h4 { margin: 0 0 6px; font-size: 18px; }
+  .contract-card .stamp {
+    font-size: 10.5px; font-weight: 700;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .contract-card.iso .stamp { color: var(--active); }
+  .contract-card.shr .stamp { color: var(--shared); }
+  .contract-card ul { margin-top: 8px; }
+  .contract-card li { font-size: 13px; }
+
+  /* stat row */
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 12px; margin: 18px 0;
+  }
+  .stat {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .stat .n {
+    font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 30px;
+    color: var(--ink); line-height: 1;
+  }
+  .stat .l {
+    font-size: 10.5px; color: var(--mute);
+    text-transform: uppercase; letter-spacing: 1.2px; margin-top: 6px;
+  }
+  .stat.shared .n { color: var(--shared); }
+  .stat.user .n { color: var(--active); }
+  .stat.engine .n { color: var(--engine); }
+  .stat.ok .n { color: var(--recovery); }
+
+  /* toc */
+  .toc {
+    background: var(--card2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px 22px; margin: 24px 0 18px;
+  }
+  .toc ol { padding-left: 22px; margin: 0; columns: 2; column-gap: 24px; }
+  .toc li { margin: 5px 0; font-size: 13.5px; break-inside: avoid; }
+  .toc a { color: rgba(246,247,248,0.92); }
+  .toc a:hover { color: var(--shared); }
+  a { color: var(--shared); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ===== query annotated ===== */
+  .query-pair { display: grid; grid-template-columns: 1fr; gap: 14px; margin: 16px 0 24px; }
+  .query-pair .qb {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px;
+  }
+  .query-pair .qb.ban { border-left: 4px solid var(--warn); }
+  .query-pair .qb.good { border-left: 4px solid var(--recovery); }
+  .query-pair .qb .qt {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 1.4px;
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .query-pair .qb.ban .qt { color: var(--warn); }
+  .query-pair .qb.good .qt { color: var(--recovery); }
+  .query-pair pre { margin: 6px 0 4px; border-left-color: transparent; }
+  .query-pair .qb.ban pre { background: rgba(244,63,94,0.08); }
+  .query-pair .qb.good pre { background: rgba(20,192,140,0.06); }
+  .query-pair .qb p { font-size: 12px; color: var(--mute); margin: 6px 0 0; }
+
+  hr { border: 0; border-top: 1px solid var(--line); margin: 36px 0; }
+
+  /* mini section header */
+  .sechead {
+    font-family: 'Oswald', sans-serif; font-weight: 600;
+    font-size: 18px; text-transform: uppercase;
+    letter-spacing: 0.6px; margin: 22px 0 8px;
+    padding-bottom: 6px; border-bottom: 1px dashed var(--line);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>How User<br>Data <span class="accent">Lives.</span></h1>
+<p class="sub">
+  Every runner gets their own walled-off world — identity, runs, health, plan,
+  races, notifications. But every runner pulls from the <strong>same</strong>
+  source of truth for the research, the doctrine, the coach engine, and the
+  shared run library. <strong>One database. Four layers. Strict isolation
+  at L1 · perfect sharing at L2/L3.</strong>
+</p>
+<div class="meta-row">
+  <span>2026-05-30</span>
+  <span>Railway Postgres (production)</span>
+  <span>56 tables</span>
+  <span>4 layers</span>
+  <span>Cold-start: 22/22 isolation checks</span>
+</div>
+
+<div class="principle">
+  <div class="label">The Faff data principle</div>
+  <div class="body">
+    Per-runner data is <em>strictly isolated</em> by <code style="font-size:24px;background:rgba(176,132,255,0.18);padding:2px 8px;border-radius:6px;color:var(--shared)">user_uuid</code>.
+    Research, doctrine, run library, course library and the coach engine are <em>strictly shared</em>.
+    Onboarding a new user adds rows to L1 — never touches L2 or L3 code.
+  </div>
+</div>
+
+<div class="toc">
+<strong style="color: var(--shared); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; display: block; margin-bottom: 8px;">Contents</strong>
+<ol>
+  <li><a href="#hero">The one-glance view</a></li>
+  <li><a href="#layers">The four layers</a></li>
+  <li><a href="#isolation">L1 · The isolation contract</a></li>
+  <li><a href="#shared">L2/L3 · The shared contract</a></li>
+  <li><a href="#tables">Every table, classified</a></li>
+  <li><a href="#flow">End-to-end · one read, one write</a></li>
+  <li><a href="#queries">Query patterns · the right way</a></li>
+  <li><a href="#cold-start">Cold-start · proof of isolation</a></li>
+  <li><a href="#onboarding">Onboarding · what L1 rows get planted</a></li>
+  <li><a href="#proof">Proof points · numbers from production</a></li>
+</ol>
+</div>
+
+<!-- ========================================================= -->
+<!-- 1 · ONE-GLANCE VIEW -->
+<!-- ========================================================= -->
+<h2 id="hero"><span class="num">01</span>The one-glance view</h2>
+
+<p>
+  Three runners. Three completely separate L1 islands. One shared continent
+  underneath them. <strong>The runners never see each other</strong>;
+  <strong>they all read the same doctrine</strong>; <strong>the same
+  engine code computes their plans</strong>. The output is per-user; the
+  rules are universal.
+</p>
+
+<div class="hero-diagram">
+
+  <div class="row-title">L1 · Per-user data (isolated by user_uuid)</div>
+  <div class="users-row">
+
+    <div class="user-box a">
+      <div class="badge">User A · canonical</div>
+      <div class="uname">David</div>
+      <div class="desc">Marathon prep · VDOT 47.9 · advanced</div>
+      <div class="uuid">0645f40c-951d-4ccc-b86e-9979cd26c795</div>
+      <ul>
+        <li><strong>125</strong> Strava runs</li>
+        <li><strong>2,720</strong> health samples</li>
+        <li><strong>27</strong> archived plans + 1 active</li>
+        <li><strong>10</strong> races (AFC next, priority A)</li>
+        <li><strong>6</strong> active shoes</li>
+      </ul>
+    </div>
+
+    <div class="user-box b">
+      <div class="badge">User B · marathon</div>
+      <div class="uname">Future runner</div>
+      <div class="desc">First marathon · VDOT 38 · intermediate</div>
+      <div class="uuid">8f3c…b7e1 &nbsp;<span style="opacity:0.5">(synthetic)</span></div>
+      <ul>
+        <li><strong>0</strong> runs at signup → grows over time</li>
+        <li><strong>0</strong> health samples → grows after HealthKit auth</li>
+        <li><strong>1</strong> seed plan auto-built at onboarding</li>
+        <li><strong>1</strong> goal race (auto-pinned priority A)</li>
+        <li><strong>0</strong> shoes → manually added</li>
+      </ul>
+    </div>
+
+    <div class="user-box c">
+      <div class="badge">User C · beginner</div>
+      <div class="uname">Brand new</div>
+      <div class="desc">First 5K · VDOT 30 default · beginner</div>
+      <div class="uuid">c0ld…0001 &nbsp;<span style="opacity:0.5">(synthetic)</span></div>
+      <ul>
+        <li><strong>0</strong> runs · uses beginner volume floor (10 mpw)</li>
+        <li><strong>0</strong> health samples · manual entry path</li>
+        <li><strong>1</strong> seed plan · 5K block structure</li>
+        <li><strong>0</strong> races · personal goal first</li>
+        <li><strong>0</strong> shoes · manual</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="isolation-bar">
+    <span class="pipe">strict isolation · every L1 query scoped by user_uuid = $1</span>
+    <span class="down-arrow">▼</span>
+  </div>
+
+  <div class="shared-block">
+    <div class="title">L2 + L3 · The shared core</div>
+    <div class="desc">Read by every runner. Written centrally. The "rules of law."</div>
+    <div class="components">
+      <div class="component">
+        <div class="ct">L2 · Research files</div>
+        <div class="cd"><code>/Research/00a..24</code> · 28 markdown files · the engine reads at runtime · canonical doctrine</div>
+      </div>
+      <div class="component">
+        <div class="ct">L2 · learn_articles</div>
+        <div class="cd"><strong>45 rows</strong> shared · 21 SYSTEM DOCTRINE + 24 research summaries · queryable via <code>/api/learn/[slug]</code></div>
+      </div>
+      <div class="component">
+        <div class="ct">L2 · course_library</div>
+        <div class="cd"><strong>4 editorial</strong> + stub rows · hand-curated JSON from <code>legacy/web/data/courses/</code> · GPX populated later via upload / Strava match</div>
+      </div>
+      <div class="component">
+        <div class="ct">L2 · workout_library</div>
+        <div class="cd"><strong>54 rows</strong> · 19 families (recovery / easy / threshold / vo2max / hills / fartlek / ladder / etc.) · seeded from Research/04 vocabulary + Research/22 templates · engine reads via <code>lib/plan/workout-library.ts</code> · inline catalog kept as safety-net fallback</div>
+      </div>
+      <div class="component">
+        <div class="ct">L3 · Coach engine code</div>
+        <div class="cd"><code>lib/coach/*</code> · <code>lib/plan/*</code> · 9 adaptation triggers · same code every user</div>
+      </div>
+      <div class="component">
+        <div class="ct">L3 · Briefing contract</div>
+        <div class="cd">6 surfaces × 19 modes × 12 topics · Zod-typed prereqs · uniform shape for every runner</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="stat-grid">
+  <div class="stat user"><div class="n">~46</div><div class="l">L1 user-scoped tables</div></div>
+  <div class="stat shared"><div class="n">4</div><div class="l">L2 shared / read-only tables</div></div>
+  <div class="stat engine"><div class="n">~6</div><div class="l">L3 coach-output tables</div></div>
+  <div class="stat ok"><div class="n">22/22</div><div class="l">Cold-start isolation checks</div></div>
+</div>
+
+<!-- ========================================================= -->
+<!-- 2 · LAYERS -->
+<!-- ========================================================= -->
+<h2 id="layers"><span class="num">02</span>The four layers</h2>
+
+<p>
+  Faff sits on a single Railway Postgres. Every byte belongs to exactly one
+  of four layers. Two are <strong>per-user</strong> (L1 + L3 output). Two
+  are <strong>shared by every user</strong> (L2 doctrine + L4 ingest route code).
+</p>
+
+<div class="layer-stack">
+
+  <div class="layer l1">
+    <div class="ln">L1</div>
+    <div class="ldesc">
+      <div class="lh">Per-user data</div>
+      Identity, physiology, runs, plan, races, niggles, injuries, sick episodes,
+      check-ins, shoes, notifications, sessions, device tokens. <strong>Every row
+      tagged with <code>user_uuid</code>.</strong> One row per runner per fact.
+    </div>
+    <div class="lstamp">
+      <span class="scope">Isolated</span>
+      <div class="tables">~46 tables · keyed by <code>user_uuid</code></div>
+    </div>
+  </div>
+
+  <div class="layer l2">
+    <div class="ln">L2</div>
+    <div class="ldesc">
+      <div class="lh">Research / doctrine</div>
+      The coaching knowledge base — what the engine "knows." 28 canonical
+      markdown files under <code>/Research/</code>, runner-facing summaries in
+      <code>learn_articles</code>, curated race data in <code>course_library</code>,
+      run templates in <code>workout_library</code>. <strong>The same data is
+      visible to every user.</strong>
+    </div>
+    <div class="lstamp">
+      <span class="scope">Shared · read-only</span>
+      <div class="tables">4 DB tables + 28 files</div>
+    </div>
+  </div>
+
+  <div class="layer l3">
+    <div class="ln">L3</div>
+    <div class="ldesc">
+      <div class="lh">Coach engine</div>
+      Code (not data) that reads L1 + L2 and produces per-user output:
+      briefings, plan adaptations, proposals, intents, audit logs. The engine
+      is the <strong>same code for every runner</strong>; the output rows are
+      tagged with <code>user_uuid</code> just like L1.
+    </div>
+    <div class="lstamp">
+      <span class="scope">Shared code · per-user out</span>
+      <div class="tables">~6 output tables + <code>lib/coach/*</code></div>
+    </div>
+  </div>
+
+  <div class="layer l4">
+    <div class="ln">L4</div>
+    <div class="ldesc">
+      <div class="lh">Ingest paths</div>
+      How external data enters L1: Apple HealthKit (iOS bridge), Strava
+      (OAuth + webhook), Apple Watch (completion payloads), manual runner
+      input, coach engine derivations. <strong>One API route per source</strong>;
+      all writes scoped to the calling session's <code>user_uuid</code>.
+    </div>
+    <div class="lstamp">
+      <span class="scope">Shared routes · per-user writes</span>
+      <div class="tables">7 ingest routes</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- 3 · ISOLATION CONTRACT -->
+<!-- ========================================================= -->
+<h2 id="isolation"><span class="num">03</span>L1 · The isolation contract</h2>
+
+<p>
+  Every user has their own copy of every L1 fact. <code>users</code> is the
+  identity anchor — its <code>id</code> column (a UUID) is the foreign key
+  that every other L1 table uses as <code>user_uuid</code>. Nothing crosses
+  between users.
+</p>
+
+<div class="contract-grid">
+
+  <div class="contract-card iso">
+    <div class="stamp">L1 isolation rules</div>
+    <h4>How user data is walled off</h4>
+    <ul>
+      <li>Every L1 table has a <code>user_uuid uuid NOT NULL</code> column with an FK to <code>users(id)</code></li>
+      <li>Every read goes <code>WHERE user_uuid = $1</code> — the <code>$1</code> comes from the authenticated session</li>
+      <li>Every write/UPSERT carries <code>user_uuid</code> as part of its uniqueness key</li>
+      <li>Sessions resolve to <strong>exactly one</strong> <code>user_uuid</code> — Bearer (iOS) or cookie (web)</li>
+      <li>Connectors (Strava, HealthKit) attach their tokens to one <code>user_uuid</code> in <code>connector_tokens</code></li>
+      <li>Strava webhooks route by external athlete-id → lookup the owning <code>user_uuid</code> → write to that user only</li>
+      <li><strong>No row in L1 is global, shared, or "for everyone"</strong></li>
+    </ul>
+  </div>
+
+  <div class="contract-card shr">
+    <div class="stamp">L2/L3 sharing rules</div>
+    <h4>What every user inherits</h4>
+    <ul>
+      <li>The <strong>28 canonical Research markdown files</strong> — read by the engine at runtime; same content for every user</li>
+      <li><strong>45 <code>learn_articles</code> rows</strong> — 21 SYSTEM DOCTRINE + 24 research summaries — readable by any signed-in user via <code>/api/learn/[slug]</code></li>
+      <li><strong><code>course_library</code></strong> — 4 hand-curated editorial rows (AFC, Big Sur, CIM, Sombrero) from <code>legacy/web/data/courses/*.json</code> + per-user stubs; real GPS attached later via <code>/api/race/gpx</code> or Strava match</li>
+      <li><strong>The <code>workout_library</code> table</strong> — 54 doctrine-cited templates across 19 families (recovery, easy, medium-long, long variants, threshold, vo2max, speed, hills, fartlek, combo, marathon-specific, cutdown, ladder, race-specific, base-building, maintenance, walk-run, race, shakeout, rest) — every row carries a Research/ citation — engine reads at plan-build time via <code>lib/plan/workout-library.ts</code> with the old inline catalog as a safety-net fallback</li>
+      <li><strong>The <code>lib/coach/*</code> + <code>lib/plan/*</code> code</strong> — pace zones, VDOT, ACWR, readiness, the 9 adaptation triggers — executed identically per runner</li>
+      <li><strong>The briefing contract</strong> — surface × mode × topic schema — every runner gets the same payload shape</li>
+      <li><strong>Onboarding doctrine</strong> — input tiers, fallback ladder, minimum-set — applies identically to every signup</li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="ok-box">
+  <strong>The locked decision (2026-05-30)</strong><br>
+  No hybrid legacy/v2 coach engine. The <em>best implementation of each subsystem</em>
+  becomes the rule of law, ported into <code>web-v2/lib/coach/*</code> with its
+  citations intact. Every user — David, every future runner — runs against the
+  same canonical doctrine. Personalization happens through <strong>inputs at L1</strong>,
+  never through forks of the engine.
+</div>
+
+<!-- ========================================================= -->
+<!-- 4 · SHARED CONTRACT -->
+<!-- ========================================================= -->
+<h2 id="shared"><span class="num">04</span>L2 / L3 · The shared contract</h2>
+
+<p>
+  The shared layer is what makes the coach <em>a coach</em> instead of just a
+  database. It's the codified version of every lesson learned tuning David's
+  account — the readiness algorithm, the pace zones, the heat-adjustment table,
+  the race-week thresholds, the fueling ramps. <strong>Every new user inherits
+  the full body of doctrine at signup, zero migration required.</strong>
+</p>
+
+<div class="sechead">L2 · The 21 SYSTEM DOCTRINE rows</div>
+
+<p>
+  These are queryable by any signed-in user at <code>GET /api/learn/doctrine-&lt;slug&gt;</code>.
+  Filter on <code>learn_articles.eyebrow = 'SYSTEM DOCTRINE'</code>.
+</p>
+
+<table>
+<tr><th>Bucket</th><th>Slugs</th><th>Count</th></tr>
+<tr>
+  <td><strong>Data-handling</strong></td>
+  <td><code>race-data-source-of-truth</code> · <code>multi-writer-jsonb</code> · <code>per-finding-context-filters</code></td>
+  <td>3</td>
+</tr>
+<tr>
+  <td><strong>Coaching</strong></td>
+  <td><code>race-priority</code> · <code>vdot-computation</code> · <code>readiness-algorithm</code> · <code>acwr</code> · <code>plan-phases</code> · <code>race-week-thresholds</code> · <code>health-watch-thresholds</code> · <code>notification-taxonomy</code></td>
+  <td>8</td>
+</tr>
+<tr>
+  <td><strong>Inputs &amp; onboarding</strong></td>
+  <td><code>input-tiers</code> · <code>fallback-ladder</code> · <code>apple-health-optional</code> · <code>onboarding-min-set</code></td>
+  <td>4</td>
+</tr>
+<tr>
+  <td><strong>Engine</strong></td>
+  <td><code>briefing-driven</code> · <code>truth-contract-prereqs</code> · <code>one-voice</code></td>
+  <td>3</td>
+</tr>
+<tr>
+  <td><strong>Voice &amp; UX</strong></td>
+  <td><code>page-is-alive</code> · <code>three-questions</code> · <code>coach-philosophy</code></td>
+  <td>3</td>
+</tr>
+</table>
+
+<div class="sechead">L3 · The shared engine modules</div>
+
+<table>
+<tr><th>Module</th><th>What every user gets</th><th>Per-user input</th></tr>
+<tr>
+  <td><code>lib/plan/generate.ts</code></td>
+  <td>Same distance-specific block sizing &amp; quality mix for 5K/10K/HM/M</td>
+  <td>VDOT · experience_level · target race · weeks-to-race</td>
+</tr>
+<tr>
+  <td><code>lib/plan/adapt.ts</code></td>
+  <td>Same 9 adaptation triggers (RHR spike, sleep crater, niggle, injury, sick, PR bank, goal change, missed workout, volume overshoot)</td>
+  <td>Their own runs / health / niggles / injuries rows</td>
+</tr>
+<tr>
+  <td><code>lib/plan/injury-builder.ts</code></td>
+  <td>Same severity-scaled walk-run scaffold (minor 2wk / moderate 3wk / major 4wk)</td>
+  <td>Their <code>runner_injuries</code> row · severity · site</td>
+</tr>
+<tr>
+  <td><code>lib/training/vdot.ts</code></td>
+  <td>Same Daniels VDOT table (30–85), same race+0 / run-1 tiebreak</td>
+  <td>Their race results · their threshold/tempo/long runs</td>
+</tr>
+<tr>
+  <td><code>lib/training/prescriptions.ts</code></td>
+  <td>Same pace zones · same heat adjustment · same fueling computation</td>
+  <td>Their VDOT · their schedule · today's weather at their location</td>
+</tr>
+<tr>
+  <td><code>lib/weather/heat-adjustment.ts</code></td>
+  <td>Same Maughan/Ely/Vihma slowdown table (40–90°F × ability tier × distance scale)</td>
+  <td>Their VDOT-derived ability tier · their workout distance · today's tempF</td>
+</tr>
+<tr>
+  <td><code>lib/training/fueling.ts</code></td>
+  <td>Same Research/18 + Costa gut-training ramp (30–75 g/hr by duration)</td>
+  <td>Their <code>users.fuel_*</code> preferences · their workout duration</td>
+</tr>
+<tr>
+  <td><code>lib/coach/race-header.ts</code></td>
+  <td>Same canonical source ladder (actual_result.finishS → meta.finishTime → Strava match)</td>
+  <td>Their races · their projected VDOT trend</td>
+</tr>
+</table>
+
+<!-- ========================================================= -->
+<!-- 5 · TABLES CLASSIFIED -->
+<!-- ========================================================= -->
+<h2 id="tables"><span class="num">05</span>Every table, classified</h2>
+
+<p>
+  Each of the 56 tables falls into exactly one bucket. The pattern is
+  near-uniform: <strong>L1 tables carry <code>user_uuid</code>; L2 tables don't.</strong>
+  L3 tables carry <code>user_uuid</code> because they store engine output for
+  that user. L4 has no tables — it's route code.
+</p>
+
+<h4 style="color: var(--active);">L1 · Per-user tables (carry user_uuid)</h4>
+
+<table>
+<tr><th>Domain</th><th>Tables</th><th>Scope</th></tr>
+<tr>
+  <td><strong>Identity</strong></td>
+  <td><code>users</code> · <code>profile</code> · <code>user_prefs</code> · <code>user_settings</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Auth</strong></td>
+  <td><code>sessions</code> · <code>device_tokens</code> · <code>connector_tokens</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Health</strong></td>
+  <td><code>health_samples</code> · <code>health_metrics_daily</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Activity</strong></td>
+  <td><code>runs</code> · <code>runs_processed</code> · <code>strava_activities</code> · <code>post_run_rpe</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Plan</strong></td>
+  <td><code>training_plans</code> · <code>plan_weeks</code> · <code>plan_phases</code> · <code>plan_workouts</code> · <code>plan_mutations</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Races &amp; goals</strong></td>
+  <td><code>races</code> · <code>race_workouts</code> · <code>predictions</code> · <code>personal_goals</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Body &amp; status</strong></td>
+  <td><code>niggles</code> · <code>runner_injuries</code> · <code>sick_episodes</code> · <code>check_ins</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Gear</strong></td>
+  <td><code>shoes</code> · <code>shoe_events</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Engagement</strong></td>
+  <td><code>notifications</code> · <code>notifications_pending</code> · <code>day_actions</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Cross-training</strong></td>
+  <td><code>strength_sessions</code> · <code>cross_training_sessions</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>Sync</strong></td>
+  <td><code>sync_jobs</code> · <code>workout_weather_cache</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+<tr>
+  <td><strong>History</strong></td>
+  <td><code>profile_goals_history</code> · <code>projection_snapshots</code></td>
+  <td class="pill-user">Per-user</td>
+</tr>
+</table>
+
+<h4 style="color: var(--shared);">L2 · Shared tables (no user_uuid)</h4>
+
+<table>
+<tr><th>Table</th><th>What's in it</th><th>Scope</th></tr>
+<tr>
+  <td><code>learn_articles</code></td>
+  <td><strong>45 rows</strong> · 21 SYSTEM DOCTRINE + 24 research summaries · queryable at <code>/api/learn/[slug]</code></td>
+  <td class="pill-shared">Shared</td>
+</tr>
+<tr>
+  <td><code>course_library</code></td>
+  <td><strong>4 editorial rows</strong> (americas-finest-city, big-sur-marathon, cim, sombrero-half) from <code>legacy/web/data/courses/*.json</code> · seed script also auto-creates slug-only stub rows for any other David races; real GPS lat/lon is populated later via <code>POST /api/race/gpx</code> (upload) or <code>POST /api/gpx/import</code> (Strava match), at which point geometry lands on the per-race <code>races.course_geometry</code> column with <code>course_source IN ('library','upload','strava_match')</code></td>
+  <td class="pill-shared">Shared</td>
+</tr>
+<tr>
+  <td><code>pace_zone_definitions</code></td>
+  <td>Daniels zone definitions (E, M, T, I, R) · cross-referenced by VDOT</td>
+  <td class="pill-shared">Shared</td>
+</tr>
+<tr>
+  <td><code>workout_library</code></td>
+  <td><strong>54 rows</strong> · 19 families (recovery, easy, medium_long, long, threshold, vo2max, speed, hills, fartlek, combo, marathon_specific, cutdown, ladder, race_specific, base_building, maintenance, walk_run, shakeout, rest) · seeded from <code>Research/04-workout-vocabulary.md</code> + <code>Research/22-plan-templates.md</code> · every row carries a citation · engine reads via <code>lib/plan/workout-library.ts</code> at plan-build time · 10-min in-process cache</td>
+  <td class="pill-shared">Shared</td>
+</tr>
+</table>
+
+<h4 style="color: var(--engine);">L3 · Coach output tables (per-user, written by engine)</h4>
+
+<table>
+<tr><th>Table</th><th>Engine writes</th><th>Scope</th></tr>
+<tr>
+  <td><code>briefings</code></td>
+  <td>Per-(user, surface, mode) briefing payloads — generated; cached</td>
+  <td class="pill-cache">Engine · per-user</td>
+</tr>
+<tr>
+  <td><code>coach_actions</code></td>
+  <td>Audit log of every engine action (plan adapt, notification fire, intent satisfy)</td>
+  <td class="pill-cache">Engine · per-user</td>
+</tr>
+<tr>
+  <td><code>coach_proposals</code></td>
+  <td>Propose-only adjustments awaiting runner accept (illness, injury)</td>
+  <td class="pill-cache">Engine · per-user</td>
+</tr>
+<tr>
+  <td><code>coach_intents</code></td>
+  <td>What the coach is currently trying to do (e.g. "build base", "taper")</td>
+  <td class="pill-cache">Engine · per-user</td>
+</tr>
+<tr>
+  <td><code>coach_reads_cache</code> · <code>coach_today_cache</code></td>
+  <td>Memoization to avoid hot re-reads per render</td>
+  <td class="pill-cache">Engine · per-user</td>
+</tr>
+<tr>
+  <td><code>coach_usage</code></td>
+  <td>Token/cost metering per request</td>
+  <td class="pill-cache">Engine · per-user</td>
+</tr>
+<tr>
+  <td><code>runner_notes</code></td>
+  <td>Schema stays (harmless empty) · no UI planned per locked decision</td>
+  <td class="pill-cache">Engine · per-user</td>
+</tr>
+</table>
+
+<!-- ========================================================= -->
+<!-- 6 · END-TO-END FLOW -->
+<!-- ========================================================= -->
+<h2 id="flow"><span class="num">06</span>End-to-end · one read, one write</h2>
+
+<p>
+  To make the data path concrete: a runner finishes a tempo run on Strava
+  on a 78°F morning. Here's exactly how that one event flows through the
+  four layers — and where the per-user vs shared lines fall.
+</p>
+
+<div class="flow-stack">
+
+  <div class="step l4">
+    <div class="n">1</div>
+    <div class="layer-tag">L4 · ingest</div>
+    <div class="det">
+      <div class="what">Strava webhook fires</div>
+      <code>POST /api/strava/webhook</code> &mdash; payload arrives with the
+      external Strava athlete-id.
+      <div class="why">Webhook is route code shared by every user. <em>No L1 write yet.</em></div>
+    </div>
+  </div>
+
+  <div class="step l4">
+    <div class="n">2</div>
+    <div class="layer-tag">L4 · ingest</div>
+    <div class="det">
+      <div class="what">Athlete → user_uuid resolution</div>
+      <code>SELECT user_uuid FROM connector_tokens WHERE provider='strava' AND external_id=$athleteId</code>
+      <div class="why">L1 lookup. Resolves to exactly one runner. If no match → drop.</div>
+    </div>
+  </div>
+
+  <div class="step l1">
+    <div class="n">3</div>
+    <div class="layer-tag">L1 · per-user write</div>
+    <div class="det">
+      <div class="what">UPSERT into <code>strava_activities</code></div>
+      Tagged <code>user_uuid</code>. Then UPSERT into <code>runs</code> &amp;
+      <code>runs_processed</code> for normalized fields.
+      <div class="why">Three rows, all scoped to that one user. Other users' tables untouched.</div>
+    </div>
+  </div>
+
+  <div class="step l4">
+    <div class="n">4</div>
+    <div class="layer-tag">L4 · dedup</div>
+    <div class="det">
+      <div class="what"><code>autoMergeForDate(userId, date)</code></div>
+      Merges Strava-source row with any watch-completion row written earlier on the same date.
+      <div class="why">Per-user dedup. Source-of-truth precedence: actual_result &gt; meta.finishTime &gt; Strava elapsed.</div>
+    </div>
+  </div>
+
+  <div class="step l3">
+    <div class="n">5</div>
+    <div class="layer-tag">L3 · engine read</div>
+    <div class="det">
+      <div class="what">Plan-state recompute kicks off</div>
+      <code>state-loader.ts</code> reads the active plan (memoized via <code>lib/plan/lookup.ts</code>).
+      <div class="why">Engine code is shared. The query is <code>WHERE user_uuid = $1</code>. <em>60s TTL memoization.</em></div>
+    </div>
+  </div>
+
+  <div class="step l1">
+    <div class="n">6</div>
+    <div class="layer-tag">L1 · per-user read</div>
+    <div class="det">
+      <div class="what">Read runner's recent runs + health</div>
+      14-day RHR baseline, 2-night sleep, 7-day volume — all <code>WHERE user_uuid = $1</code>.
+      <div class="why">Pure L1. Other users' data invisible.</div>
+    </div>
+  </div>
+
+  <div class="step l2">
+    <div class="n">7</div>
+    <div class="layer-tag">L2 · shared doctrine</div>
+    <div class="det">
+      <div class="what">Engine consults the doctrine</div>
+      Reads <code>Research/15-wearable-data.md</code> (RHR thresholds), <code>Research/01-pace-zones-vdot.md</code> (zones),
+      and <code>Research/06-environment-and-weather.md</code> (Maughan heat table).
+      <div class="why">Same files every user reads. <em>Not parameterized; it's the rulebook.</em></div>
+    </div>
+  </div>
+
+  <div class="step l3">
+    <div class="n">8</div>
+    <div class="layer-tag">L3 · engine compute</div>
+    <div class="det">
+      <div class="what">Adaptation triggers evaluated</div>
+      All 9 triggers run against this one runner's data:
+      <code>missed_key_workout</code>, <code>rhr_spike</code>, <code>sleep_crater</code>,
+      <code>volume_overshoot</code>, <code>niggle_reported</code>, <code>sick_episode_active</code>,
+      <code>injury_active</code>, <code>pr_bank</code>, <code>goal_changed</code>.
+      <div class="why">Same code path for every user. Personalization is the runner's L1 data, not branched logic.</div>
+    </div>
+  </div>
+
+  <div class="step l3">
+    <div class="n">9</div>
+    <div class="layer-tag">L3 · engine write</div>
+    <div class="det">
+      <div class="what">Briefing + action log written</div>
+      Row in <code>briefings</code> with the new (surface, mode, topics).
+      Row in <code>coach_actions</code> as an audit record. Both tagged <code>user_uuid</code>.
+      <div class="why">Per-user output rows. Cache invalidated via <code>bustPlanLookupCache(userId)</code>.</div>
+    </div>
+  </div>
+
+  <div class="step l1">
+    <div class="n">10</div>
+    <div class="layer-tag">L1 · per-user read</div>
+    <div class="det">
+      <div class="what">Web/iOS pulls the new state</div>
+      Next request to <code>/api/today</code> (or watch via iOS bridge) returns
+      the briefing whose <code>user_uuid = session.user_uuid</code>.
+      <div class="why">Closes the loop. Same auth model for every client: Bearer or cookie → one user_uuid.</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="ok-box">
+  <strong>The pattern at a glance</strong><br>
+  L4 ingest writes L1 → L3 engine reads L1 + L2 → L3 engine writes more L1.
+  Every L1 read is filtered by <code>user_uuid</code>. Every L2 read is unfiltered
+  (shared). User A's data and User B's data never touch.
+</div>
+
+<!-- ========================================================= -->
+<!-- 7 · QUERY PATTERNS -->
+<!-- ========================================================= -->
+<h2 id="queries"><span class="num">07</span>Query patterns · the right way</h2>
+
+<p>
+  The P0 incident this audit caught was a query pattern that mixed legacy
+  identifiers — <code>WHERE (user_uuid = $1 OR user_id = 'me')</code>. The
+  legacy <code>'me'</code> clause matched David's pre-UUID rows for
+  <em>every</em> new user. Cold-start users were getting David's plan.
+  Fixed across 14 sites — now every L1 query is strict.
+</p>
+
+<div class="query-pair">
+  <div class="qb ban">
+    <div class="qt">✗ Banned · the P0 leak (now gone)</div>
+<pre><span class="k">SELECT</span> id, race_id, mode
+  <span class="k">FROM</span> training_plans
+ <span class="k">WHERE</span> (user_uuid = $1 <span class="k">OR</span> user_id = <span class="s">'me'</span>)
+   <span class="k">AND</span> archived_iso <span class="k">IS NULL</span>
+ <span class="k">LIMIT</span> 1;</pre>
+    <p>Why bad: <code>'me'</code> matched David's legacy row regardless of <code>$1</code>. Audited out of every loader on 2026-05-30.</p>
+  </div>
+
+  <div class="qb good">
+    <div class="qt">✓ Canonical · strict user_uuid</div>
+<pre><span class="k">SELECT</span> id, race_id, mode
+  <span class="k">FROM</span> training_plans
+ <span class="k">WHERE</span> user_uuid = $1
+   <span class="k">AND</span> archived_iso <span class="k">IS NULL</span>
+ <span class="k">LIMIT</span> 1;</pre>
+    <p>Only the calling session's user matches. Verified 22/22 cold-start checks.</p>
+  </div>
+</div>
+
+<div class="sechead">A read that joins L1 (user) with L2 (doctrine)</div>
+
+<pre><span class="c">-- One runner's adaptation check pulls 14d RHR (L1) + threshold doctrine (L2)
+-- Engine code lives in lib/plan/adapt.ts → detectRhrSpike()</span>
+
+<span class="c">-- L1 · user-scoped</span>
+<span class="k">SELECT</span> <span class="k">AVG</span>(value_num) <span class="k">AS</span> rhr_3d
+  <span class="k">FROM</span> <span class="t">health_samples</span>
+ <span class="k">WHERE</span> user_uuid = $1
+   <span class="k">AND</span> metric = <span class="s">'resting_hr'</span>
+   <span class="k">AND</span> sample_date &gt;= <span class="k">CURRENT_DATE</span> - <span class="k">INTERVAL</span> <span class="s">'3 days'</span>;
+
+<span class="c">-- L2 · shared doctrine (the threshold lives in Research/15-wearable-data.md
+-- and is mirrored into learn_articles for in-app reading)</span>
+<span class="k">SELECT</span> body
+  <span class="k">FROM</span> <span class="t">learn_articles</span>
+ <span class="k">WHERE</span> slug = <span class="s">'health-watch-thresholds'</span>;
+ <span class="c">-- → "RHR &gt;7 bpm above 14d baseline for 3 days → downgrade next quality"</span></pre>
+
+<div class="sechead">A write that respects the per-user contract</div>
+
+<pre><span class="c">-- Adaptation trigger writes a coach proposal — always with user_uuid</span>
+<span class="k">INSERT INTO</span> <span class="t">coach_proposals</span>
+       (user_uuid, proposal_type, payload, status, created_iso)
+<span class="k">VALUES</span> ($1, <span class="s">'rhr_spike_downgrade'</span>, $2::jsonb, <span class="s">'pending'</span>, <span class="k">NOW</span>());
+
+<span class="c">-- And the matching audit row in coach_actions — also user_uuid</span>
+<span class="k">INSERT INTO</span> <span class="t">coach_actions</span>
+       (user_uuid, action_kind, citation, payload, created_iso)
+<span class="k">VALUES</span> ($1, <span class="s">'detect.rhr_spike'</span>,
+        <span class="s">'Research/15-wearable-data.md §Resting-HR-deltas'</span>,
+        $2::jsonb, <span class="k">NOW</span>());</pre>
+
+<!-- ========================================================= -->
+<!-- 8 · COLD-START PROOF -->
+<!-- ========================================================= -->
+<h2 id="cold-start"><span class="num">08</span>Cold-start · proof of isolation</h2>
+
+<p>
+  The strongest test of the isolation contract: spin up a brand-new
+  <code>user_uuid</code>, fetch every read path, and confirm the
+  surface returns <strong>empty / default state</strong>, never David's
+  data. The full probe is at
+  <code>web-v2/scripts/_sim_cold_start_full.mjs</code> — 22 checks.
+</p>
+
+<table>
+<tr><th>#</th><th>Surface / read</th><th>Cold-start expects</th><th>Status</th></tr>
+<tr><td>01</td><td><code>GET /api/today</code></td><td>onboarding=true, no plan card</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>02</td><td><code>GET /api/plan</code></td><td>null plan</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>03</td><td><code>GET /api/races</code></td><td>empty array</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>04</td><td><code>GET /api/log</code></td><td>empty array</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>05</td><td><code>GET /api/health</code></td><td>no samples; manual-entry CTA</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>06</td><td><code>GET /api/profile</code></td><td>blank profile · birthday/sex/height NULL</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>07</td><td><code>GET /api/prescription</code></td><td>no VDOT → fall back to beginner default zones</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>08</td><td><code>GET /api/runs</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>09</td><td><code>GET /api/shoes</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>10</td><td><code>GET /api/goals</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>11</td><td><code>GET /api/check-ins</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>12</td><td><code>GET /api/notifications</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>13</td><td><code>GET /api/niggles</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>14</td><td><code>GET /api/injuries</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>15</td><td><code>GET /api/sick</code></td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>16</td><td>Connector tokens query</td><td>none</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>17</td><td>Sessions query</td><td>one (the auth session)</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>18</td><td>Briefings cache</td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>19</td><td>Coach proposals</td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>20</td><td>Day actions</td><td>empty</td><td class="pill-shared" style="color:var(--recovery)">✓</td></tr>
+<tr><td>21</td><td><code>GET /api/learn/doctrine-input-tiers</code></td><td><strong>RETURNS</strong> (L2 shared)</td><td class="pill-shared" style="color:var(--shared)">✓ shared</td></tr>
+<tr><td>22</td><td><code>GET /api/learn/doctrine-readiness-algorithm</code></td><td><strong>RETURNS</strong> (L2 shared)</td><td class="pill-shared" style="color:var(--shared)">✓ shared</td></tr>
+</table>
+
+<div class="ok-box">
+  <strong>The two outcomes you want</strong><br>
+  L1 surfaces (1–20) return empty for a cold-start user. L2 surfaces (21–22)
+  return doctrine content. Both are correct: the runner sees their own world
+  (currently empty) plus the shared rulebook.
+</div>
+
+<!-- ========================================================= -->
+<!-- 9 · ONBOARDING -->
+<!-- ========================================================= -->
+<h2 id="onboarding"><span class="num">09</span>Onboarding · what L1 rows get planted</h2>
+
+<p>
+  When a new user finishes the 7-step onboarding flow, exactly the following
+  L1 writes happen — atomically, in a single transaction. <strong>Zero L2 or
+  L3 code changes. Zero migrations.</strong> Just rows.
+</p>
+
+<div class="flow-stack">
+
+  <div class="step l4">
+    <div class="n">1</div>
+    <div class="layer-tag">L4 · auth</div>
+    <div class="det">
+      <div class="what">Magic-link sign-in creates the identity</div>
+      <code>users</code> row (id = new UUID, email, name) + <code>sessions</code> row (Bearer/cookie token).
+      <div class="why">The new <code>user_uuid</code> is born here. Every subsequent row threads it.</div>
+    </div>
+  </div>
+
+  <div class="step l1">
+    <div class="n">2</div>
+    <div class="layer-tag">L1 · profile</div>
+    <div class="det">
+      <div class="what">Profile + prefs written in one BEGIN/COMMIT</div>
+      <code>profile</code> (birthday, sex, height_cm, experience_level, units, RHR/LTHR/maxHR if known)
+      + <code>user_prefs</code> (preferred run days, default time, timezone).
+      <div class="why">Atomic transaction · ROLLBACK on error · no half-onboarded state possible.</div>
+    </div>
+  </div>
+
+  <div class="step l4">
+    <div class="n">3</div>
+    <div class="layer-tag">L4 · connectors (optional)</div>
+    <div class="det">
+      <div class="what">Strava / Apple Health if granted</div>
+      OAuth tokens land in <code>connector_tokens</code>. If skipped, fallback to manual-entry paths.
+      <div class="why">Apple-Health-optional · web-only users get <code>/api/health/manual</code>.</div>
+    </div>
+  </div>
+
+  <div class="step l1">
+    <div class="n">4</div>
+    <div class="layer-tag">L1 · race / goal</div>
+    <div class="det">
+      <div class="what">First race or personal goal pinned</div>
+      <code>races</code> row with <code>priority='A'</code> (default · changed from 'C' on 2026-05-30)
+      OR <code>personal_goals</code> row.
+      <div class="why">Race-priority doctrine = A is the goal race. Anchors the plan generator.</div>
+    </div>
+  </div>
+
+  <div class="step l3">
+    <div class="n">5</div>
+    <div class="layer-tag">L3 · auto-generate</div>
+    <div class="det">
+      <div class="what">Seed plan built by the shared engine</div>
+      <code>generatePlan()</code> reads the new user's L1 (experience_level, target race date, VDOT or beginner-default)
+      and the shared L2 doctrine (distance-specific block structure, volume floors, quality mixes).
+      Writes <code>training_plans</code> + <code>plan_weeks</code> + <code>plan_phases</code> + <code>plan_workouts</code>.
+      <div class="why">Same engine that built David's plan. Personalization = the new user's L1 inputs.</div>
+    </div>
+  </div>
+
+</div>
+
+<table style="margin-top: 12px;">
+<tr><th>Onboarding tier</th><th>Required?</th><th>If missing → fallback</th></tr>
+<tr><td><strong>T1 · Identity</strong> (email, name, units)</td><td>Required</td><td>Cannot complete signup</td></tr>
+<tr><td><strong>T2 · Physiology</strong> (birthday, sex, height)</td><td>Recommended</td><td>HR thresholds use age=35 default · zones widen</td></tr>
+<tr><td><strong>T3 · Connected source</strong> (Strava + HealthKit)</td><td>Optional</td><td>Manual run + health-sample entry paths</td></tr>
+<tr><td><strong>T4 · Volume + history</strong> (typical mpw, longest run)</td><td>Recommended</td><td>Experience-level default (beg 10 / int 15 / adv 20 mpw)</td></tr>
+<tr><td><strong>T5 · Schedule + units</strong> (run days, preferred time)</td><td>Required</td><td>Default Mon/Wed/Fri/Sun, 6am local</td></tr>
+<tr><td><strong>T6 · Pro features</strong> (LTHR, maxHR, fuel prefs)</td><td>Optional</td><td>Derived from age &amp; recent runs; fuel uses gut-training ramp</td></tr>
+</table>
+
+<!-- ========================================================= -->
+<!-- 10 · PROOF -->
+<!-- ========================================================= -->
+<h2 id="proof"><span class="num">10</span>Proof points · numbers from production</h2>
+
+<div class="stat-grid">
+  <div class="stat user"><div class="n">14</div><div class="l">Sites fixed to strict user_uuid (P0 leak)</div></div>
+  <div class="stat ok"><div class="n">22/22</div><div class="l">Cold-start isolation checks pass</div></div>
+  <div class="stat shared"><div class="n">45</div><div class="l">learn_articles rows shared by all users</div></div>
+  <div class="stat engine"><div class="n">9</div><div class="l">Adaptation triggers in shared engine</div></div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat user"><div class="n">125</div><div class="l">David's runs · own L1 island</div></div>
+  <div class="stat user"><div class="n">2,720</div><div class="l">David's health samples · own L1 island</div></div>
+  <div class="stat user"><div class="n">27+1</div><div class="l">David's plans (archived + active)</div></div>
+  <div class="stat shared"><div class="n">28</div><div class="l">Research/ markdown files shared</div></div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat shared"><div class="n">4</div><div class="l">course_library editorial rows (+stubs)</div></div>
+  <div class="stat shared"><div class="n">21</div><div class="l">SYSTEM DOCTRINE rows shared</div></div>
+  <div class="stat engine"><div class="n">1</div><div class="l">Query per /today render (memoized active-plan)</div></div>
+  <div class="stat ok"><div class="n">60s</div><div class="l">Active-plan cache TTL · busts on mutate</div></div>
+</div>
+
+<hr>
+
+<p style="color: var(--mute); font-size: 12.5px; text-align: center;">
+  <strong style="color: var(--ink);">Faff backend · 2026-05-30</strong><br>
+  Single Railway Postgres · 56 tables · 4 layers · strict L1 per-user · shared L2/L3<br>
+  Cold-start verified · 22/22 isolation checks pass · A+ across all 5 categories
+</p>
+
+</div>
+</body>
+</html>
