@@ -39,18 +39,47 @@ type RunDetail = {
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
+/** Coach-derived "what this run did" payload from /api/runs/[id]/recap.
+ *  Heat-aware: when conditions earn it the engine frames HR drift as
+ *  thermoregulation (not fitness regression) and surfaces a forward-
+ *  looking coach tip. Hooked here so the Activity drawer renders the
+ *  same recap the Today CompletedHero shows. */
+type RecapPayload = {
+  verdict: string;
+  facts: string[];
+  coach_tip: string | null;
+  conditions_note: string | null;
+  citations: Array<{ slug: string; label: string }>;
+};
+
 export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId: string | null; onClose: () => void }) {
   const [status, setStatus] = useState<Status>('idle');
   const [data, setData] = useState<RunDetail | null>(null);
+  const [recap, setRecap] = useState<RecapPayload | null>(null);
 
   useEffect(() => {
     if (!open || !runId) return;
     let cancelled = false;
-    setStatus('loading'); setData(null);
+    setStatus('loading'); setData(null); setRecap(null);
     fetch(`/api/runs/${encodeURIComponent(runId)}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then((j: RunDetail) => { if (!cancelled) { setData(j); setStatus('ready'); } })
       .catch(() => { if (!cancelled) setStatus('error'); });
+    // Recap fetch runs in parallel · failure is silent so the drawer
+    // renders splits + route even if the engine 404s on a malformed id.
+    fetch(`/api/runs/${encodeURIComponent(runId)}/recap`)
+      .then(r => r.ok ? r.json() : null)
+      .then((j: any) => {
+        if (cancelled || !j || j.ok !== true) return;
+        setRecap({
+          verdict: j.verdict,
+          facts: j.facts ?? [],
+          coach_tip: j.coach_tip ?? null,
+          conditions_note: j.conditions_note ?? null,
+          citations: j.citations ?? [],
+        });
+      })
+      .catch(() => { /* silent */ });
     return () => { cancelled = true; };
   }, [open, runId]);
 
@@ -91,6 +120,68 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 {data.elev_gain_ft != null && data.elev_gain_ft > 0 && <div><div className="k">GAIN</div><div className="v">{Math.round(data.elev_gain_ft)}<small> ft</small></div></div>}
               </div>
               <RouteAndElev data={data} />
+
+              {/* COACH RECAP · "what this run did" from the deterministic
+                  engine. Verdict + facts replace generic "Run logged" copy
+                  with research-cited framing. conditions_note + coach_tip
+                  earn their own callouts when material. */}
+              {recap && (
+                <div style={{ marginTop: 18 }}>
+                  <div className="fll" style={{ marginBottom: 6 }}>HOW IT WENT</div>
+                  <div style={{
+                    fontFamily: 'var(--f-display)', fontSize: 22, lineHeight: 1.15,
+                    color: '#fff', marginBottom: 8,
+                  }}>
+                    {recap.verdict}
+                  </div>
+                  {recap.facts.map((f, i) => (
+                    <p key={i} style={{
+                      margin: '0 0 8px', fontSize: 13.5, lineHeight: 1.55,
+                      color: 'rgba(255,255,255,0.86)',
+                    }}>
+                      {f}
+                    </p>
+                  ))}
+                  {recap.conditions_note && (
+                    <div style={{
+                      marginTop: 10, padding: '10px 12px', borderRadius: 8,
+                      background: 'rgba(255,136,71,0.12)',
+                      border: '1px solid rgba(255,136,71,0.32)',
+                      fontSize: 12.5, lineHeight: 1.5, color: '#FFE7C2',
+                    }}>
+                      <div style={{
+                        fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
+                        textTransform: 'uppercase', color: '#FF8847', marginBottom: 4,
+                      }}>CONDITIONS</div>
+                      {recap.conditions_note}
+                    </div>
+                  )}
+                  {recap.coach_tip && (
+                    <div style={{
+                      marginTop: 8, padding: '10px 12px', borderRadius: 8,
+                      background: 'rgba(85,221,208,0.10)',
+                      border: '1px solid rgba(85,221,208,0.32)',
+                      fontSize: 12.5, lineHeight: 1.5, color: '#cfeeec',
+                    }}>
+                      <div style={{
+                        fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
+                        textTransform: 'uppercase', color: '#54ddd0', marginBottom: 4,
+                      }}>COACH TIP</div>
+                      {recap.coach_tip}
+                    </div>
+                  )}
+                  {recap.citations.length > 0 && (
+                    <div style={{
+                      marginTop: 10, fontSize: 10, fontWeight: 700,
+                      letterSpacing: '0.8px', textTransform: 'uppercase',
+                      color: 'var(--mute)', lineHeight: 1.5,
+                    }}>
+                      WHY · {recap.citations.map(c => c.label).join(' · ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {data.splits?.length > 0 && (() => {
                 const maxFill = Math.max(...data.splits.map(s => paceToSec(s.pace ?? '') || 0));
                 const minFill = Math.min(...data.splits.filter(s => paceToSec(s.pace ?? '') > 0).map(s => paceToSec(s.pace!) || 0));

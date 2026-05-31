@@ -206,6 +206,74 @@ type RunSummary = {
   weather_context?: { message: string; hr_bump_bpm: number } | null;
 };
 
+/** Coach-derived "WHY THIS RUN" payload from /api/today/purpose. */
+type PurposePayload = {
+  verdict: string;
+  facts: string[];
+  citations: Array<{ slug: string; label: string }>;
+};
+/** Coach-derived "WHAT THIS RUN DID" payload from /api/runs/[id]/recap. */
+type RecapPayload = {
+  verdict: string;
+  facts: string[];
+  coach_tip: string | null;
+  conditions_note: string | null;
+  citations: Array<{ slug: string; label: string }>;
+};
+
+/** Fetch the pre-run "why this run" payload for a given date · the engine
+ *  derives verdict + facts + citations from workout type + phase + race
+ *  context. Replaces the hardcoded planVerdict/planRecap strings; falls
+ *  back to those when the fetch hasn't landed yet so the UI never blanks. */
+function useTodayPurpose(dateIso: string | undefined): { data: PurposePayload | null; loading: boolean } {
+  const [data, setData] = useState<PurposePayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!dateIso) { setData(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/today/purpose?date=${encodeURIComponent(dateIso)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((j: any) => {
+        if (cancelled || !j || j.ok !== true) return;
+        setData({ verdict: j.verdict, facts: j.facts ?? [], citations: j.citations ?? [] });
+      })
+      .catch(() => { /* swallow · fallback string covers it */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [dateIso]);
+  return { data, loading };
+}
+
+/** Fetch the post-run "what this run did" payload for a completed run.
+ *  Includes heat-aware conditions_note + forward-looking coach_tip when
+ *  conditions were material. Falls back silently when the fetch fails. */
+function useRunRecap(activityId: string | null | undefined): { data: RecapPayload | null; loading: boolean } {
+  const [data, setData] = useState<RecapPayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!activityId) { setData(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/runs/${encodeURIComponent(activityId)}/recap`)
+      .then(r => r.ok ? r.json() : null)
+      .then((j: any) => {
+        if (cancelled || !j || j.ok !== true) return;
+        setData({
+          verdict: j.verdict,
+          facts: j.facts ?? [],
+          coach_tip: j.coach_tip ?? null,
+          conditions_note: j.conditions_note ?? null,
+          citations: j.citations ?? [],
+        });
+      })
+      .catch(() => { /* swallow · existing deriveRecap fallback handles UI */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activityId]);
+  return { data, loading };
+}
+
 /** Lazy-fetch /api/runs/[id] for a past day. Shared by the TodayView hero
  *  stats grid AND the WorkoutCard's CompletedResultCard so both surfaces
  *  show real numbers (instead of seed.results placeholder · symbols). */
@@ -407,10 +475,21 @@ function PlannedHeroV2({
 
   const eyebrowState = skipped ? 'SKIPPED' : 'PLANNED';
   const planTag = skipped ? 'SKIPPED' : 'UPCOMING';
-  const planV   = skipped ? 'Skipped this one.' : planVerdict(d.type);
-  const planR   = skipped
+
+  // Coach-derived "why this run" payload · the deterministic engine reads
+  // workout type + phase + race context + research and returns verdict +
+  // facts + citations. Falls back to the legacy hardcoded strings while
+  // the fetch resolves (no skeleton needed · the legacy copy is honest
+  // enough as the loading state).
+  const { data: purpose } = useTodayPurpose(skipped ? undefined : d.iso);
+  const planV = skipped ? 'Skipped this one.'
+    : (purpose?.verdict ?? planVerdict(d.type));
+  const planR = skipped
     ? "No problem. One easy day won't set you back, and the plan keeps your weekly volume on track. Restore it if you change your mind."
-    : planRecap(d.type);
+    : (purpose?.facts.join(' ') ?? planRecap(d.type));
+  const purposeCitations = !skipped && purpose?.citations?.length
+    ? purpose.citations
+    : null;
 
   return (
     <div className={`hero-v2${skipped ? ' skipped' : ''}`}>
@@ -492,6 +571,15 @@ function PlannedHeroV2({
         </div>
         <div className="verdict">{planV}</div>
         <div className="recap">{planR}</div>
+        {purposeCitations && (
+          <div style={{
+            marginTop: 8, fontSize: 10, fontWeight: 700,
+            letterSpacing: '0.8px', textTransform: 'uppercase',
+            color: 'var(--mute)', lineHeight: 1.5,
+          }}>
+            WHY · {purposeCitations.map(c => c.label).join(' · ')}
+          </div>
+        )}
         <div className="divider" />
         <div className="tgts-h">TARGETS</div>
         <div className="tgt">
@@ -631,8 +719,15 @@ function CompletedHeroV2({
     ? elevPathFromSplits(runData.splits, 700, 64, 4)
     : null;
 
-  const verdict = deriveVerdict(d, runData);
-  const recap   = (result?.recap?.trim()) || deriveRecap(d, runData);
+  // Coach-derived post-run payload. When the engine has spoken we use its
+  // verdict + facts (which read on-plan vs heat-impacted vs fade with the
+  // right framing) and surface conditions_note + coach_tip in their own
+  // callouts. Falls back to the local heuristics while the fetch resolves.
+  const { data: recapPayload } = useRunRecap(d.activityId);
+  const verdict = recapPayload?.verdict ?? deriveVerdict(d, runData);
+  const recap = recapPayload?.facts?.length
+    ? recapPayload.facts.join(' ')
+    : ((result?.recap?.trim()) || deriveRecap(d, runData));
 
   // Zones from runData (preferred) → seed.results placeholder fallback.
   const zonePcts = runData?.hrZonePcts
@@ -873,7 +968,28 @@ function CompletedHeroV2({
         </div>
         <div className="verdict">{verdict}</div>
         <div className="recap">{recap}</div>
-        {runData?.weather_context ? (
+
+        {/* CONDITIONS · only renders when the engine flagged heat / weather
+            as material. Honors the doctrine ("69°F → 78°F · extreme heat
+            stress · Maughan/Ely model expects ~20.7% slowdown") so we
+            don't penalize the runner for thermoregulation. */}
+        {recapPayload?.conditions_note ? (
+          <div style={{
+            marginTop: 10, padding: '10px 12px', borderRadius: 8,
+            background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
+            fontSize: 12, lineHeight: 1.5, color: '#FFE7C2',
+          }}>
+            <div style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
+              textTransform: 'uppercase', color: '#FF8847', marginBottom: 4,
+            }}>
+              CONDITIONS
+            </div>
+            {recapPayload.conditions_note}
+          </div>
+        ) : runData?.weather_context ? (
+          // Legacy weather_context fallback · pre-engine surface, kept so
+          // already-enriched older runs still render their hot-day note.
           <div style={{
             marginTop: 10, padding: '8px 10px', borderRadius: 8,
             background: 'rgba(255,136,71,0.12)', border: '1px solid rgba(255,136,71,0.32)',
@@ -885,6 +1001,39 @@ function CompletedHeroV2({
             ) : null}
           </div>
         ) : null}
+
+        {/* COACH TIP · forward-looking advice ("start earlier next time",
+            "reschedule quality out of this window"). Visually distinct
+            from CONDITIONS so the runner sees it as an action, not just
+            context. */}
+        {recapPayload?.coach_tip ? (
+          <div style={{
+            marginTop: 8, padding: '10px 12px', borderRadius: 8,
+            background: 'rgba(85, 221, 208, 0.10)', border: '1px solid rgba(85, 221, 208, 0.32)',
+            fontSize: 12, lineHeight: 1.5, color: '#cfeeec',
+          }}>
+            <div style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: '1.2px',
+              textTransform: 'uppercase', color: '#54ddd0', marginBottom: 4,
+            }}>
+              COACH TIP
+            </div>
+            {recapPayload.coach_tip}
+          </div>
+        ) : null}
+
+        {/* CITATIONS · "WHY" trail at the bottom of the card. Stable slugs
+            in case the design wants to deep-link to the in-app reader. */}
+        {recapPayload?.citations?.length ? (
+          <div style={{
+            marginTop: 10, fontSize: 10, fontWeight: 700,
+            letterSpacing: '0.8px', textTransform: 'uppercase',
+            color: 'var(--mute)', lineHeight: 1.5,
+          }}>
+            WHY · {recapPayload.citations.map(c => c.label).join(' · ')}
+          </div>
+        ) : null}
+
         <div className="divider" />
         <div className="reshead">
           <span>MILE SPLITS</span>
