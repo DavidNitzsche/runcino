@@ -118,6 +118,16 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
         <span>+</span> Add a shoe
       </button>
 
+      <div className="fll" style={{ marginTop: 30 }}>DOCTRINE</div>
+      <div className="setlist">
+        <a className="setr" href="/learn" style={{ textDecoration: 'none', color: 'inherit', display: 'flex' }}>
+          <span className="setk">LEARN</span><span className="setv">Coach research</span><span className="sgo">›</span>
+        </a>
+        <a className="setr" href="/workouts" style={{ textDecoration: 'none', color: 'inherit', display: 'flex' }}>
+          <span className="setk">WORKOUT LIBRARY</span><span className="setv">Full catalog</span><span className="sgo">›</span>
+        </a>
+      </div>
+
       <div className="fll" style={{ marginTop: 30 }}>SETTINGS</div>
       <div className="setlist">
         <div className="setr" onClick={() => setUnits(units === 'Miles · °F' ? 'Kilometers · °C' : 'Miles · °F')}>
