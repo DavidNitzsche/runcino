@@ -266,7 +266,21 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
     return cached;
   }
 
-  if (!coords || !startISO) return null;
+  if (!coords || !startISO) {
+    // Mark un-enrichable rows (no GPS or no startLocal) so the cron's
+    // pending filter doesn't keep pulling them into every batch.
+    // Without this, ~30 GPS-less HK rows occupied a slot every night,
+    // returned null, and stayed in the queue forever — pushing more
+    // recent runs that DO have GPS out of the LIMIT 20 window.
+    // weather_enriched_at = NOW() is a "we tried, no input was usable"
+    // marker; data.weather stays absent so consumers correctly hide
+    // the weather card for these rows.
+    await pool.query(
+      `UPDATE strava_activities SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`,
+      [String(activityId)],
+    ).catch(() => {});
+    return null;
+  }
 
   const w = await fetchRunWeather(coords.lat, coords.lng, startISO);
   if (!w) {
@@ -296,14 +310,46 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
 
 /**
  * Nightly cron entry point. Walks recent runs that aren't enriched yet
- * (or were enriched > 7 days ago and have a route start) and tries them.
+ * AND retries previously-attempted-but-failed rows once a week, on the
+ * theory that Open-Meteo flake (transient 5xx, network blips) resolves
+ * by the next pass.
+ *
+ * The original query only matched `weather_enriched_at IS NULL`, which
+ * meant any row that got stamped during a failed Open-Meteo call (or
+ * stamped-as-un-enrichable for missing GPS) sat in `attempted_no_weather`
+ * limbo forever. Combined with the un-enrichable rows being pulled into
+ * every batch, the cron made very little real progress.
+ *
+ * New filter:
+ *   - never-attempted (NULL)                            → always pick up
+ *   - attempted >7 days ago AND still no `data.weather` → retry
+ *
+ *  …both gated by `data ? 'startLatLng'` so we don't waste a slot on
+ *  rows we already know are GPS-less. (The earlier null-coord fix
+ *  ensures any such rows that DO slip in get stamped quickly and stop
+ *  re-appearing.)
  */
 export async function enrichRecent(daysBack: number = 14, batchSize: number = 20): Promise<{ enriched: number; attempted: number }> {
+  // jsonb_typeof gate: 23 rows have `startLatLng` as JSONB null (key
+  // present, value null) — the `?` operator returns true for those,
+  // so the prior filter pulled them into every batch only for
+  // enrichOneActivity to bail at pickLatLng. Filter on the value
+  // shape (array, or real flat scalars) to skip them at the source.
   const rows = (await pool.query(
     `SELECT id FROM strava_activities
       WHERE (data->>'date')::date >= CURRENT_DATE - $1::int
-        AND weather_enriched_at IS NULL
         AND data ? 'startLocal'
+        AND (
+              jsonb_typeof(data->'startLatLng') = 'array'
+              OR jsonb_typeof(data->'startLat') = 'number'
+              OR jsonb_typeof(data->'start_lat') = 'number'
+              OR jsonb_typeof(data->'routeStartLat') = 'number'
+            )
+        AND NOT (data ? 'weather')
+        AND (
+              weather_enriched_at IS NULL
+              OR weather_enriched_at < NOW() - INTERVAL '7 days'
+            )
       ORDER BY (data->>'date') DESC
       LIMIT $2`,
     [daysBack, batchSize],

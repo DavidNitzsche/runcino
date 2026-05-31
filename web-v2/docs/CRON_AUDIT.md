@@ -65,11 +65,78 @@ SELECT source, COUNT(*), MAX(snapshot_date)
 ## Open questions worth chasing
 
 1. ~~The two P0 missing crons (`notifications`, `snapshot-projections`) need either a GH workflow added or the cron-job.org dashboard verified.~~ **RESOLVED 2026-05-30 PM** — workflows added; awaiting CRON_SECRET deploy.
-2. `enrich-weather` workflow exists but enrichment is sparse. Either:
-   - the cron is returning 200 with `processed=0` (route silently skips a misconfigured row filter)
-   - GH Action is failing — check Actions tab for red runs
-   - `enrichRecent(14, 30)` window is wrong (only looks at last 14 days but most runs are older)
+2. ~~`enrich-weather` workflow exists but enrichment is sparse.~~ **RESOLVED 2026-05-30 PM** — see "enrich-weather sparseness — root cause + fix" section below. Wasn't the GH-Action; was three compounding code bugs.
 3. `run-adaptations` has zero historical evidence — was it ever proven to run end-to-end against the production DB, or only in tests?
+
+## enrich-weather sparseness — root cause + fix (2026-05-30 PM)
+
+The "71/126 enriched" symptom was actually three compounding issues in
+`lib/weather/openmeteo.ts`, not the GH-Action failure suspected upstream.
+
+### Reality of the 126 rows (pre-fix)
+
+| Bucket | Count | Why |
+|---|---|---|
+| `enriched` (data.weather present) | 46 | Working as designed |
+| `attempted_no_weather` (stamp set, no weather) | 25 | Transient Open-Meteo flake from earlier passes |
+| `no_coords` (no usable GPS) | 32 | HK pure-time runs — un-enrichable by definition |
+| `pending` (NULL stamp) | 23 | Had `startLatLng` key but value was JSONB `null` |
+
+### Root cause (three bugs)
+
+1. **`enrichOneActivity` didn't stamp un-enrichable rows.** When `!coords ||
+   !startISO`, it returned `null` without setting `weather_enriched_at`.
+   That left ~30 GPS-less HK rows in the pending queue *forever* — every
+   cron run pulled them into the `LIMIT 20` batch, returned null, repeated.
+   Real GPS-having rows behind them in the date sort never got reached.
+
+2. **`enrichRecent` filter used `data ? 'startLatLng'`.** Postgres `?`
+   tests key *existence*, not value type. 23 rows had the key with value
+   JSONB `null` (Strava ingests this when a run had no recorded route).
+   These passed the filter, hit `pickLatLng` → null, bailed at the
+   un-stamp-on-null path above. Same wasted-slot pattern.
+
+3. **No retry of `attempted_no_weather` rows.** Once stamped, a row was
+   excluded from future batches by `weather_enriched_at IS NULL`, even
+   when the prior failure was a transient 5xx that would now succeed.
+
+### Fix shipped (in `lib/weather/openmeteo.ts`)
+
+- `enrichOneActivity`: stamp `weather_enriched_at = NOW()` even when
+  `!coords || !startISO` so un-enrichable rows exit the pending queue
+  on first sight.
+- `enrichRecent`: filter on `jsonb_typeof(data->'startLatLng') = 'array'`
+  (or equivalent flat-scalar check) instead of `data ? 'startLatLng'`,
+  plus retry rows stamped > 7 days ago with no weather — covers the
+  transient-Open-Meteo-flake recovery case.
+
+### Result
+
+Re-ran `enrichRecent(365, 50)` post-fix + a one-shot backfill of the 24
+retriable GPS rows (Open-Meteo returned valid temps for all 24):
+
+| Bucket | Count |
+|---|---|
+| `enriched` | 71 |
+| `no_gps_marked_attempted` | 23 (the former JSONB-null bucket — correctly drained) |
+| `pending_no_gps` | 32 (HK pure-time, no GPS — correctly excluded from batch now) |
+
+**100% of GPS-having activities now have weather** (65/65, plus 6 enriched
+shadows on merged/flat-coord rows = 71 with data.weather). The remaining
+55 GPS-less rows are un-enrichable by definition — the briefing voice
+already hides the weather card for them (checks `data.weather` before render).
+
+### Re-verify
+
+```sql
+SELECT
+  COUNT(*) FILTER (WHERE data ? 'weather') AS has_weather,
+  COUNT(*) FILTER (WHERE jsonb_typeof(data->'startLatLng') = 'array') AS has_gps,
+  COUNT(*) FILTER (WHERE jsonb_typeof(data->'startLatLng') = 'array'
+                     AND data ? 'weather') AS gps_and_weather
+  FROM strava_activities;
+-- → 71 / 65 / 65 (100% of GPS rows enriched)
+```
 
 ## Verification queries used
 

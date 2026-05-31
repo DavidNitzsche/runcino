@@ -82,7 +82,9 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
       { status: 409 },
     );
   }
-  if (proposal.status === 'declined' || proposal.status === 'expired') {
+  if (proposal.status === 'rejected' || proposal.status === 'expired') {
+    // status='rejected' is the DB constraint's value; user-facing copy
+    // calls this "declined" (see /decline route).
     return NextResponse.json(
       { ok: false, error: `proposal status=${proposal.status}; cannot accept`, proposal_id: proposalId },
       { status: 409 },
