@@ -69,13 +69,8 @@ struct RunDetailView: View {
                                                  stroke: Color(red: 0.333, green: 0.867, blue: 0.816).opacity(0.32),
                                                  chip: Color(red: 0.333, green: 0.867, blue: 0.816))
                                 }
-                                if !rc.citations.isEmpty {
-                                    Text("WHY · " + rc.citations.map(\.label).joined(separator: " · "))
-                                        .font(.display(10, weight: .bold))
-                                        .foregroundStyle(Theme.txt.opacity(0.55))
-                                        .lineSpacing(2)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
+                                // 2026-05-31: citation footer removed per voice
+                                // doctrine · plain English, no academic chrome.
                             }
                         }
                         .padding(.top, 22)

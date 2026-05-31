@@ -182,26 +182,40 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
     ? `${Math.round(tStart as number)}°F → ${Math.round(input.tempF_end as number)}°F (peak ${Math.round(t)}°F)`
     : `${Math.round(t)}°F`;
 
+  // Plain-English summary · this is what the runner reads on the run card.
+  // Doctrine drives the band; the words are everyday talk. No "evaporative
+  // cooling impaired", no "heat stress index", no model citations.
   let summary: string;
   if (heatBand === 'extreme') {
-    summary = `${tempPhrase} · extreme heat stress${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
+    summary = climbedMaterially
+      ? `Started at ${Math.round(tStart as number)}°F, hit ${Math.round(input.tempF_end as number)}°F. That's seriously hot.`
+      : `${Math.round(t)}°F · seriously hot.`;
   } else if (heatBand === 'hot') {
-    summary = `${tempPhrase} · hot, evaporative cooling impaired${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
+    summary = climbedMaterially
+      ? `Started at ${Math.round(tStart as number)}°F, climbed to ${Math.round(input.tempF_end as number)}°F. That's hot for running.`
+      : `${Math.round(t)}°F · hot for running.`;
   } else if (heatBand === 'warm') {
-    summary = `${tempPhrase} · warmer than optimum${td != null ? ` · dewpoint ${Math.round(td)}°F` : ''}`;
+    summary = climbedMaterially
+      ? `Got from ${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F · a bit warm.`
+      : `${Math.round(t)}°F · a bit warm.`;
   } else {
-    summary = `${tempPhrase} · within optimal range`;
+    summary = climbedMaterially
+      ? `${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F · good conditions.`
+      : `${Math.round(t)}°F · good conditions.`;
+  }
+  // Trailing "Costs you about X% on pace" framing only when material.
+  if (slowdownPct >= 2) {
+    summary += ` Costs you about ${Math.round(slowdownPct)}% on pace.`;
   }
 
-  // Forward-looking coach tip. Doctrine: heat tips kick in at the warm
-  // band and escalate with severity.
+  // Coach tip · what to do next time. Runner-to-runner, no jargon.
   let coachTipForNextTime: string | null = null;
   if (heatBand === 'warm') {
-    coachTipForNextTime = `Start earlier next time when possible · every 10°F cooler is roughly ${Math.round(slowdownPct)}% honest pace back. Add a pinch more sodium before long efforts in this range.`;
+    coachTipForNextTime = `Try to start earlier next time when it's warm like this. Drink something with salt in it before long ones.`;
   } else if (heatBand === 'hot') {
-    coachTipForNextTime = `Move the start earlier or postpone the quality stimulus · at this temp the cardiovascular cost is real. Pre-hydrate (16-24 oz with sodium) the hour before, and treat pace as a back-half discovery, not a front-half target.`;
+    coachTipForNextTime = `Start earlier next time. Heat like this is rough on the body · drink 16-24 oz with salt the hour before, and don't chase pace in the first miles.`;
   } else if (heatBand === 'extreme') {
-    coachTipForNextTime = `Reschedule hard sessions out of this window · the slowdown is large enough that quality work loses its purpose. Heat acclimation across 10-14 days is the real prep if you're racing in conditions like these.`;
+    coachTipForNextTime = `Move hard runs out of this window. Pace targets don't really work when it's this hot. If you're racing somewhere warm, give yourself 10-14 days running in the heat to get used to it.`;
   }
 
   return {

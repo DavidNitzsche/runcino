@@ -211,7 +211,6 @@ type RunSummary = {
 type PurposePayload = {
   verdict: string;
   facts: string[];
-  citations: Array<{ slug: string; label: string }>;
 };
 /** Coach-derived "WHAT THIS RUN DID" payload from /api/runs/[id]/recap. */
 type RecapPayload = {
@@ -219,7 +218,6 @@ type RecapPayload = {
   facts: string[];
   coach_tip: string | null;
   conditions_note: string | null;
-  citations: Array<{ slug: string; label: string }>;
 };
 
 /** Fetch the pre-run "why this run" payload for a given date · the engine
@@ -237,7 +235,7 @@ function useTodayPurpose(dateIso: string | undefined): { data: PurposePayload | 
       .then(r => r.ok ? r.json() : null)
       .then((j: any) => {
         if (cancelled || !j || j.ok !== true) return;
-        setData({ verdict: j.verdict, facts: j.facts ?? [], citations: j.citations ?? [] });
+        setData({ verdict: j.verdict, facts: j.facts ?? [] });
       })
       .catch(() => { /* swallow · fallback string covers it */ })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -265,7 +263,6 @@ function useRunRecap(activityId: string | null | undefined): { data: RecapPayloa
           facts: j.facts ?? [],
           coach_tip: j.coach_tip ?? null,
           conditions_note: j.conditions_note ?? null,
-          citations: j.citations ?? [],
         });
       })
       .catch(() => { /* swallow · existing deriveRecap fallback handles UI */ })
@@ -488,9 +485,9 @@ function PlannedHeroV2({
   const planR = skipped
     ? "No problem. One easy day won't set you back, and the plan keeps your weekly volume on track. Restore it if you change your mind."
     : (purpose?.facts.join(' ') ?? planRecap(d.type));
-  const purposeCitations = !skipped && purpose?.citations?.length
-    ? purpose.citations
-    : null;
+  // 2026-05-31: citations dropped per voice doctrine · no academic
+  // chrome on the runner's screen. The engine still reads research-
+  // grounded rules · just doesn't put the footnotes in the UI.
 
   return (
     <div className={`hero-v2${skipped ? ' skipped' : ''}`}>
@@ -572,15 +569,6 @@ function PlannedHeroV2({
         </div>
         <div className="verdict">{planV}</div>
         <div className="recap">{planR}</div>
-        {purposeCitations && (
-          <div style={{
-            marginTop: 8, fontSize: 10, fontWeight: 700,
-            letterSpacing: '0.8px', textTransform: 'uppercase',
-            color: 'var(--mute)', lineHeight: 1.5,
-          }}>
-            WHY · {purposeCitations.map(c => c.label).join(' · ')}
-          </div>
-        )}
         <div className="divider" />
         <div className="tgts-h">TARGETS</div>
         <div className="tgt">
@@ -876,15 +864,6 @@ function CompletedHeroV2({
               </div>
             ) : null}
 
-            {recapPayload?.citations?.length ? (
-              <div style={{
-                marginTop: 10, fontSize: 10, fontWeight: 700,
-                letterSpacing: '0.8px', textTransform: 'uppercase',
-                color: 'var(--mute)', lineHeight: 1.5,
-              }}>
-                WHY · {recapPayload.citations.map(c => c.label).join(' · ')}
-              </div>
-            ) : null}
           </div>
         </div>
 

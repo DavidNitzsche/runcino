@@ -49,7 +49,6 @@ type RecapPayload = {
   facts: string[];
   coach_tip: string | null;
   conditions_note: string | null;
-  citations: Array<{ slug: string; label: string }>;
 };
 
 export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId: string | null; onClose: () => void }) {
@@ -76,7 +75,6 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
           facts: j.facts ?? [],
           coach_tip: j.coach_tip ?? null,
           conditions_note: j.conditions_note ?? null,
-          citations: j.citations ?? [],
         });
       })
       .catch(() => { /* silent */ });
@@ -168,15 +166,6 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                         textTransform: 'uppercase', color: '#54ddd0', marginBottom: 4,
                       }}>COACH TIP</div>
                       {recap.coach_tip}
-                    </div>
-                  )}
-                  {recap.citations.length > 0 && (
-                    <div style={{
-                      marginTop: 10, fontSize: 10, fontWeight: 700,
-                      letterSpacing: '0.8px', textTransform: 'uppercase',
-                      color: 'var(--mute)', lineHeight: 1.5,
-                    }}>
-                      WHY · {recap.citations.map(c => c.label).join(' · ')}
                     </div>
                   )}
                 </div>

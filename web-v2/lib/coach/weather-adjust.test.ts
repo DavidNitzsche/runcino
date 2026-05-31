@@ -11,6 +11,11 @@
  *   · RunnersConnect dewpoint multiplier (≥55°F dewpoint starts to bite)
  *   · ~5°F solar bump on clear sky / cloudCover<25%
  *
+ * Voice doctrine (David, 2026-05-31): summary and coachTipForNextTime
+ * speak runner-English. No "Maughan/Ely model", no "evaporative cooling
+ * impaired", no "cardiovascular cost". The science still drives the
+ * rules; it does not drive the words shown.
+ *
  * These tests document the doctrine. If they regress, the engine has
  * drifted from the cited research and the coach is no longer honest.
  */
@@ -70,7 +75,9 @@ describe('judgeWeather · neutral band (50°F)', () => {
     expect(j.slowdownPct).toBe(0);
     expect(j.shouldFlagInRecap).toBe(false);
     expect(j.coachTipForNextTime).toBeNull();
-    expect(j.summary).toMatch(/within optimal range/);
+    // Neutral summary is plain English: "<temp> · good conditions."
+    expect(j.summary).toMatch(/good conditions/);
+    // Citation still travels on the judgment for internal references.
     expect(j.citation).toBe(CITATION_WEATHER);
   });
 
@@ -102,7 +109,8 @@ describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
     expect(j.slowdownPct).toBeLessThan(12);
     expect(j.shouldFlagInRecap).toBe(true);
     expect(j.coachTipForNextTime).not.toBeNull();
-    expect(j.coachTipForNextTime).toMatch(/Move the start earlier|postpone/);
+    // Hot tip leads with "Start earlier next time".
+    expect(j.coachTipForNextTime).toMatch(/Start earlier next time/);
   });
 
   it('65°F overcast stays in warm (no solar bump)', () => {
@@ -150,8 +158,10 @@ describe('judgeWeather · extreme band (78°F humid)', () => {
     expect(j.heatBand).toBe('extreme');
     expect(j.slowdownPct).toBeGreaterThanOrEqual(12);
     expect(j.shouldFlagInRecap).toBe(true);
-    expect(j.summary).toMatch(/extreme heat stress/);
-    expect(j.coachTipForNextTime).toMatch(/Reschedule|heat acclimation/);
+    // Extreme summary uses plain English: "seriously hot".
+    expect(j.summary).toMatch(/seriously hot/);
+    // Extreme tip mentions moving the run + acclimation in plain English.
+    expect(j.coachTipForNextTime).toMatch(/Move hard runs out of this window|10-14 days running in the heat/);
     // heatStressF = round(tempF + dewpointF).
     expect(j.heatStressF).not.toBeNull();
     expect(j.heatStressF!).toBeGreaterThan(140);  // 78 + ~71 ≈ 149
@@ -183,7 +193,8 @@ describe('judgeWeather · confirmed-Z input (peak-temp + thermal arc)', () => {
     });
     // Judged on peak 78°F + clear solar → 83°F effective. Should be extreme.
     expect(j.heatBand).toBe('extreme');
-    expect(j.summary).toMatch(/60°F → 78°F.*peak 78°F/);
+    // Plain-English arc framing: "Started at 60°F, hit 78°F."
+    expect(j.summary).toMatch(/Started at 60°F.*hit 78°F/);
   });
 
   it('quotes the climb when end - start ≥ 3°F', () => {
@@ -196,7 +207,9 @@ describe('judgeWeather · confirmed-Z input (peak-temp + thermal arc)', () => {
       conditions: 'partly cloudy',
       cloudCoverPct: 40,
     });
-    expect(j.summary).toMatch(/62°F → 70°F/);
+    // Plain-English: "Started at 62°F, climbed to 70°F" or
+    // "Got from 62°F to 70°F" depending on band.
+    expect(j.summary).toMatch(/62°F.*70°F/);
   });
 
   it('does NOT quote arc when climb < 3°F (within bucket noise)', () => {
@@ -209,8 +222,8 @@ describe('judgeWeather · confirmed-Z input (peak-temp + thermal arc)', () => {
       conditions: 'cloudy',
       cloudCoverPct: 80,
     });
-    // Should NOT contain the arrow → format.
-    expect(j.summary).not.toMatch(/→/);
+    // No arc framing: no "Started at" / "Got from" / "to" phrasing.
+    expect(j.summary).not.toMatch(/Started at|Got from/);
   });
 
   it('null tempF returns Conditions unknown', () => {
@@ -280,14 +293,86 @@ describe('judgeWeather · doctrine band boundaries', () => {
     expect(jWarm.heatBand).toBe('warm');
     expect(jHot.heatBand).toBe('hot');
     expect(jExtreme.heatBand).toBe('extreme');
-    expect(jWarm.coachTipForNextTime).toMatch(/Start earlier/);
-    expect(jHot.coachTipForNextTime).toMatch(/Move the start|cardiovascular cost/);
-    expect(jExtreme.coachTipForNextTime).toMatch(/Reschedule|acclimation/);
+    // Warm tip is the most casual: "Try to start earlier" + salt.
+    expect(jWarm.coachTipForNextTime).toMatch(/Try to start earlier|salt/);
+    // Hot tip leads with "Start earlier next time" + rough on the body + 16-24 oz.
+    expect(jHot.coachTipForNextTime).toMatch(/Start earlier next time|rough on the body|16-24 oz/);
+    // Extreme tip mentions moving the run + heat acclimation in plain English.
+    expect(jExtreme.coachTipForNextTime).toMatch(/Move hard runs out of this window|10-14 days running in the heat/);
+  });
+});
+
+describe('judgeWeather · plain-English voice doctrine', () => {
+  // Voice doctrine (David, 2026-05-31): no model-name citations
+  // ("Maughan/Ely model"), no "evaporative cooling impaired",
+  // no "cardiovascular cost", no "heat stress index" in the words shown.
+  // The numbers and citation field still travel for internal use.
+  const jargonWords = [
+    'Maughan',
+    'Ely',
+    'Vihma',
+    'evaporative cooling',
+    'cardiovascular cost',
+    'cardiovascular drift',
+    'heat stress index',
+    'thermoregulatory',
+    'thermoregulation',
+    'mitochondrial',
+    'lactate',
+    'VO2',
+    'honest slowdown',
+    'optimal range',
+  ];
+
+  function assertNoJargon(text: string): void {
+    const lower = text.toLowerCase();
+    for (const word of jargonWords) {
+      expect(lower).not.toContain(word.toLowerCase());
+    }
+  }
+
+  it('neutral summary uses plain English', () => {
+    const j = judgeWeather({
+      tempF: 50, humidityPct: 40, conditions: 'cloudy', cloudCoverPct: 80,
+    });
+    assertNoJargon(j.summary);
+  });
+
+  it('warm summary + tip use plain English', () => {
+    const j = judgeWeather({
+      tempF: 60, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
+    });
+    assertNoJargon(j.summary + ' ' + (j.coachTipForNextTime ?? ''));
+  });
+
+  it('hot summary + tip use plain English', () => {
+    const j = judgeWeather({
+      tempF: 72, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
+    });
+    assertNoJargon(j.summary + ' ' + (j.coachTipForNextTime ?? ''));
+  });
+
+  it('extreme summary + tip use plain English', () => {
+    const j = judgeWeather({
+      tempF: 82, humidityPct: 70, conditions: 'cloudy', cloudCoverPct: 80,
+    });
+    assertNoJargon(j.summary + ' ' + (j.coachTipForNextTime ?? ''));
+  });
+
+  it('material slowdown appends plain-English "Costs you about X% on pace"', () => {
+    // No "honest slowdown vs 50°F", just "Costs you about X% on pace".
+    const j = judgeWeather({
+      tempF: 78, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10,
+    });
+    expect(j.summary).toMatch(/Costs you about \d+% on pace/);
+    expect(j.summary).not.toMatch(/honest slowdown/);
   });
 });
 
 describe('judgeWeather · citation contract', () => {
-  it('every judgment carries the Research/06 citation', () => {
+  // Citation field still travels on the judgment for internal references,
+  // even though the words shown to the runner are plain English.
+  it('every judgment carries the Research/06 citation on the engine output', () => {
     const cases: WeatherInput[] = [
       { tempF: 50 },
       { tempF: 75, humidityPct: 60 },

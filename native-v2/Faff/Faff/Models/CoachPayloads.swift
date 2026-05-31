@@ -23,22 +23,11 @@
 
 import Foundation
 
-/// Research citation chip · stable slug into learn_articles so the UI
-/// can deep-link into the in-app reader.
-struct CoachCitation: Decodable, Identifiable {
-    var id: String { slug }
-    let slug: String
-    let label: String
-
-    enum CodingKeys: String, CodingKey { case slug, label }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.slug = try c.decodeIfPresent(String.self, forKey: .slug) ?? ""
-        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
-    }
-}
-
 /// Pre-run "WHY THIS RUN" payload from GET /api/today/purpose.
+///
+/// Voice doctrine (David, 2026-05-31): plain runner-English, no PhD
+/// jargon, no citations on the payload. The science is in the rules ·
+/// it's not in the words shown to the runner.
 struct RunPurpose: Decodable {
     let ok: Bool
     let date: String
@@ -49,11 +38,10 @@ struct RunPurpose: Decodable {
     let weeksToRace: Int?
     let verdict: String
     let facts: [String]
-    let citations: [CoachCitation]
 
     enum CodingKeys: String, CodingKey {
         case ok, date, type, phase, plannedMi, raceDistanceMi, weeksToRace
-        case verdict, facts, citations
+        case verdict, facts
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -66,7 +54,6 @@ struct RunPurpose: Decodable {
         self.weeksToRace = try c.decodeIfPresent(Int.self, forKey: .weeksToRace)
         self.verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
         self.facts = (try? c.decode([String].self, forKey: .facts)) ?? []
-        self.citations = (try? c.decode([CoachCitation].self, forKey: .citations)) ?? []
     }
 }
 
@@ -84,11 +71,10 @@ struct RunRecap: Decodable {
     let facts: [String]
     let coach_tip: String?
     let conditions_note: String?
-    let citations: [CoachCitation]
 
     enum CodingKeys: String, CodingKey {
         case ok, runId, date, type, phase
-        case verdict, facts, coach_tip, conditions_note, citations
+        case verdict, facts, coach_tip, conditions_note
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -101,6 +87,5 @@ struct RunRecap: Decodable {
         self.facts = (try? c.decode([String].self, forKey: .facts)) ?? []
         self.coach_tip = try c.decodeIfPresent(String.self, forKey: .coach_tip)
         self.conditions_note = try c.decodeIfPresent(String.self, forKey: .conditions_note)
-        self.citations = (try? c.decode([CoachCitation].self, forKey: .citations)) ?? []
     }
 }

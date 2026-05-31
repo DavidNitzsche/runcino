@@ -15,14 +15,18 @@
  *
  * Output shape (matches PurposePayload so consumers can share renderer):
  *   {
- *     verdict:  string,         // "Banked the long" / "Held threshold" / ...
- *     facts:    string[],       // 1-2 sentences on what landed
+ *     verdict:  string,         // "Long run done." / "Tempo done." / ...
+ *     facts:    string[],       // 1-2 plain-English sentences on what landed
  *     coach_tip: string | null, // forward-looking advice when warranted
  *     conditions_note: string | null,  // null when neutral
- *     citations: Citation[]
  *   }
+ *
+ * Voice doctrine (David, 2026-05-31): plain runner-English, no PhD jargon
+ * ("mitochondrial / cardiovascular drift / lactate threshold" all gone),
+ * and citations are NOT in the output. The science is in the rules · it's
+ * not in the words.
  */
-import type { Citation, Phase, WorkoutType } from '@/lib/coach/run-purpose';
+import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
 import {
   judgeWeather,
   type WeatherInput,
@@ -66,21 +70,11 @@ export interface RecapPayload {
   facts: string[];
   coach_tip: string | null;
   conditions_note: string | null;
-  citations: Citation[];
 }
 
-const CITE_VOCAB: Citation = {
-  slug: 'research-04-workout-vocabulary',
-  label: 'Research/04 · Workout Vocabulary',
-};
-const CITE_WEAR: Citation = {
-  slug: 'research-15-wearable-data',
-  label: 'Research/15 · Wearable Data',
-};
-const CITE_WEATHER: Citation = {
-  slug: 'research-06-weather-adjustments',
-  label: 'Research/06 · Weather Adjustments',
-};
+// Citations removed from output payloads (David, 2026-05-31). The
+// engine still reads research-grounded rules · the words shown to the
+// runner are plain English, not paper-style citations.
 
 function paceLabel(spm: number | null | undefined): string | null {
   if (!spm || spm <= 0) return null;
@@ -158,16 +152,14 @@ export function deriveRecap(input: RecapInput): RecapPayload {
   const paceStr = paceLabel(input.actualPaceSPerMi);
 
   const facts: string[] = [];
-  const citations: Citation[] = [CITE_VOCAB];
   let conditions_note: string | null = null;
   let coach_tip: string | null = null;
 
   // Compose the conditions sentence FIRST when it's material · it
-  // changes how we interpret pace + HR drift.
+  // changes how we read pace + HR drift.
   const conditionsMaterial = weather?.shouldFlagInRecap === true;
   if (conditionsMaterial && weather) {
-    conditions_note = `${weather.summary} · Maughan/Ely model expects ~${weather.slowdownPct.toFixed(1)}% honest slowdown vs 50°F.`;
-    citations.push(CITE_WEATHER);
+    conditions_note = weather.summary;
     if (weather.coachTipForNextTime) coach_tip = weather.coachTipForNextTime;
   }
 
@@ -175,109 +167,104 @@ export function deriveRecap(input: RecapInput): RecapPayload {
   const heatExplainsDrift =
     conditionsMaterial && (weather?.heatBand === 'warm' || weather?.heatBand === 'hot' || weather?.heatBand === 'extreme');
 
+  // Voice doctrine (David, 2026-05-31): plain English. No PhD jargon.
+  // "mitochondrial / lactate / VO2 / cardiovascular drift" all gone.
+  // The science still drives the rules · just not the words.
   switch (input.type) {
     case 'long': {
       facts.push(
-        `Long aerobic stimulus banked · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. The mitochondrial and capillary work doesn't care about the last-mile split — what counts is the time the slow-twitch fibers spent under load.`,
+        `Long run done · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. The miles you put in matter way more than how the last one felt.`,
       );
       if (drift && drift.drift >= 8) {
         if (heatExplainsDrift) {
           facts.push(
-            `HR climbed ${drift.drift} bpm from first half (${drift.firstHr}) to last (${drift.lastHr}) — cardiovascular drift at this temperature is expected, not a fitness signal. You did the right thermoregulatory work; the engine stayed honest.`,
+            `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). That's normal in heat like this · the body works harder to cool itself, not because you're slowing down.`,
           );
-          citations.push(CITE_WEAR);
         } else {
           facts.push(
-            `HR drifted ${drift.drift} bpm from first half to last (${drift.firstHr} → ${drift.lastHr}). Fueling + hydration cadence are the usual culprits on long runs — watch the second-half splits next week.`,
+            `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). Usually fuel or water · try eating something earlier and drinking more next time.`,
           );
-          citations.push(CITE_WEAR);
         }
       }
       if (fade && fade > 25 && !heatExplainsDrift) {
-        facts.push(`Back-third pace softened by ~${fade}s/mi. Worth checking fueling rhythm and last-meal timing.`);
+        facts.push(`The last third was about ${fade}s/mi slower than the rest. Worth checking your fueling.`);
       }
       return {
-        verdict: 'Banked the long.',
+        verdict: 'Long run done.',
         facts,
         coach_tip,
         conditions_note,
-        citations,
       };
     }
 
     case 'easy': {
       facts.push(
-        `Aerobic miles in the bank · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}. Boring is the point. The adaptation is from time on feet, not heroics.`,
+        `Easy ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}. Boring is good · that's the whole point of easy days.`,
       );
       if (input.plannedHrCap && input.actualAvgHr && input.actualAvgHr > input.plannedHrCap + 5) {
         if (heatExplainsDrift) {
-          facts.push(`Avg HR ${input.actualAvgHr} ran a touch above the ${input.plannedHrCap} cap, but ${weather!.heatBand} conditions explain it · effort was honest.`);
+          facts.push(`Your HR (${input.actualAvgHr}) ran a bit above the ${input.plannedHrCap} target, but it was hot · effort was right.`);
         } else {
-          facts.push(`Avg HR ${input.actualAvgHr} drifted past the ${input.plannedHrCap} cap. Slow it down next time — the easy day works when it's actually easy.`);
+          facts.push(`Your HR (${input.actualAvgHr}) ran past the ${input.plannedHrCap} target. Slow it down next time · easy days only work when they're actually easy.`);
         }
       }
       return {
-        verdict: 'Banked the easy.',
+        verdict: 'Easy done.',
         facts,
         coach_tip,
         conditions_note,
-        citations,
       };
     }
 
     case 'tempo':
     case 'threshold': {
       facts.push(
-        `Threshold work landed · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. Lactate-clearance training compounds across weeks; one session doesn't move the needle alone, but the bank does.`,
+        `Tempo done · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. These build up over weeks · one alone doesn't change much, but the bank pays off.`,
       );
       if (heatExplainsDrift && weather!.slowdownPct >= 4) {
-        facts.push(`Pace targets read ~${weather!.slowdownPct.toFixed(1)}% slower in ${weather!.heatBand} conditions · if you hit the planned HR band, the stimulus is the same regardless of clock pace.`);
+        facts.push(`The heat was costing you about ${Math.round(weather!.slowdownPct)}% on pace. If your HR was right, the stimulus was right · ignore the clock.`);
       }
       return {
-        verdict: 'Sat on threshold.',
+        verdict: 'Tempo done.',
         facts,
         coach_tip,
         conditions_note,
-        citations,
       };
     }
 
     case 'intervals': {
       facts.push(
-        `VO2 stimulus delivered · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualMaxHr ? ', peak HR ' + input.actualMaxHr : ''}. The work bouts pushed the aerobic ceiling; the easy jog recoveries protected the next rep.`,
+        `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualMaxHr ? ', peak HR ' + input.actualMaxHr : ''}. Pushed the work bouts, jogged the recoveries.`,
       );
       if (heatExplainsDrift) {
-        facts.push(`Heat compresses interval splits · pace by feel, not the clock. The fitness gain is from the HR + ventilation response, not the split times.`);
+        facts.push(`Heat makes interval pace harder. Go by feel and HR · the workout still counted.`);
       }
       return {
-        verdict: 'Emptied the engine.',
+        verdict: 'Reps done.',
         facts,
         coach_tip,
         conditions_note,
-        citations,
       };
     }
 
     case 'recovery':
     case 'shakeout': {
-      facts.push(`Recovery miles · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}. Blood flow, not training stress. Box checked.`);
+      facts.push(`Recovery jog · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}. Just blood flow. Box checked.`);
       return {
-        verdict: 'Cleared the legs.',
+        verdict: 'Legs cleared.',
         facts,
         coach_tip,
         conditions_note,
-        citations,
       };
     }
 
     case 'race': {
-      facts.push(`Race effort · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}. The block's full test.`);
+      facts.push(`Race · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`);
       return {
         verdict: 'Raced it.',
         facts,
         coach_tip,
         conditions_note,
-        citations,
       };
     }
 
@@ -288,7 +275,6 @@ export function deriveRecap(input: RecapInput): RecapPayload {
         facts,
         coach_tip,
         conditions_note,
-        citations,
       };
     }
   }

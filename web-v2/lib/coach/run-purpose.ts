@@ -21,6 +21,12 @@
  *   }
  */
 
+/**
+ * Citation type kept for the legacy import in run-recap.ts. Citations
+ * are NOT surfaced to the runner anymore (David's voice doctrine ·
+ * 2026-05-31); they remain in the type system for internal references
+ * only. New code should not export citations on payloads.
+ */
 export interface Citation {
   slug: string;
   label: string;
@@ -49,7 +55,6 @@ export interface PurposeInput {
 export interface PurposePayload {
   verdict: string;
   facts: string[];
-  citations: Citation[];
 }
 
 const CITE_VOCAB: Citation = {
@@ -79,91 +84,78 @@ const isShortBlock = (raceDist?: number | null) =>
 /**
  * The deterministic engine. Reads inputs, returns a verdict + facts
  * payload. Pure function; no DB or LLM calls.
+ *
+ * VOICE DOCTRINE (David, 2026-05-31):
+ *   Plain English. No PhD jargon. The runner is a runner, not a
+ *   physiologist. "mitochondrial density" / "VO2max" / "lactate
+ *   threshold" / "slow-twitch oxidative" — none of that lands. Say
+ *   what the run IS in everyday words. The science still drives the
+ *   rules; it doesn't drive the output text. And no citations on the
+ *   payload · "rooted in research" is for the engine, not the runner.
  */
 export function derivePurpose(input: PurposeInput): PurposePayload {
-  const { type, phase, raceDistanceMi, plannedMi } = input;
+  const { type, phase, raceDistanceMi } = input;
 
   switch (type) {
     case 'easy': {
       const facts: string[] = [];
-      facts.push('Aerobic base · capillary density and mitochondrial volume. The bulk of weekly volume sits here because it produces fitness without leaving fatigue you have to dig out of.');
+      facts.push('Easy day. Conversational pace · should feel like nothing.');
       if (phase === 'BASE') {
-        facts.push('In the base phase this IS the work · keep it boring, keep it conversational, and let the week\'s volume compound.');
+        facts.push("Just put the miles in. The week's volume is what matters · not how fast any one run goes.");
       } else if (phase === 'PEAK' || phase === 'TAPER') {
-        facts.push('Around quality + race work, easy days exist to let adaptation land. Drift faster and you blunt the next hard session.');
+        facts.push("Easy means easy. Today is about recovering for the hard stuff coming up · don't get fancy.");
       }
-      return {
-        verdict: 'Build aerobic capacity.',
-        facts,
-        citations: [CITE_VOCAB, CITE_ZONES, CITE_HR],
-      };
+      return { verdict: 'Easy day.', facts };
     }
 
     case 'long': {
       const facts: string[] = [];
-      // Marathon-specific framing earns the strongest language.
       if (isMarathonBlock(raceDistanceMi)) {
-        facts.push(`Marathon-specific aerobic stimulus. Long efforts above ~${Math.max(10, Math.round(plannedMi * 0.7))} mi push mitochondrial biogenesis, slow-twitch oxidative capacity, and the fat-oxidation pathways your last 10K depends on.`);
+        facts.push('The long run is the single most important run of your marathon week. Time on feet builds the endurance you need for the back half of race day.');
       } else if (isHalfBlock(raceDistanceMi)) {
-        facts.push(`Aerobic ceiling work. For a half-marathon block, the long run extends time-on-feet and lifts the steady-state pace you can hold without crossing threshold.`);
-      } else if (isShortBlock(raceDistanceMi)) {
-        facts.push('Long aerobic stimulus. Even for short-distance racing, this is the day that lifts your VO2 ceiling by giving slow-twitch fibers the volume they grow under.');
+        facts.push("The long run lifts the pace you can hold for a half. The longer you can run comfortably, the easier race pace feels.");
       } else {
-        facts.push('Long aerobic stimulus. The single most important run of the week for endurance · mitochondrial density and capillarization scale with duration, not pace.');
+        facts.push('The long run is where the endurance lives. Time on feet beats hitting any specific pace.');
       }
-      // Phase + execution cue.
       if (phase === 'PEAK') {
-        facts.push('In peak phase the long should rehearse race effort · last third controlled at marathon-effort range, fueling cadence, kit you\'ll race in.');
+        facts.push("Practice race effort in the last third · pace, fueling, what you'll wear. Today is dress rehearsal.");
       } else {
-        facts.push('Fuel early and often. Run the first half by feel and let it settle in · pick up the final third only if everything is clicking.');
+        facts.push("Fuel early and often. Start easy and let it settle · pick it up at the end only if everything still feels good.");
       }
-      return {
-        verdict: 'Build the base.',
-        facts,
-        citations: [CITE_VOCAB, CITE_DISTRUN, CITE_ZONES],
-      };
+      return { verdict: 'Long run.', facts };
     }
 
     case 'tempo':
     case 'threshold': {
       const facts: string[] = [];
-      facts.push('Lactate-threshold work · the pace your body learns to clear lactate at. Sitting at LT2 (~1-hour race pace) trains the slow-twitch fibers to run faster aerobically. Don\'t freelance the pace · the band IS the prescription.');
+      facts.push("This is your comfortably-hard pace · about what you could hold for an hour all-out. Lock in and stay there.");
       if (phase === 'BUILD' || phase === 'PEAK') {
-        facts.push('Threshold compounds over weeks. Banked at the right intensity, this is the work that lifts every other pace in the system.');
+        facts.push("These sessions pay off over weeks · one good tempo doesn't change much, but ten of them changes your race time.");
       } else {
-        facts.push('Pace creeping = HR creeping. Back off before you bury the next session.');
+        facts.push("If your pace starts creeping or your HR starts climbing, back off. Better to nail it than try too hard and bury yourself.");
       }
-      return {
-        verdict: 'Sit on threshold.',
-        facts,
-        citations: [CITE_VOCAB, CITE_ZONES, CITE_HR],
-      };
+      return { verdict: 'Tempo.', facts };
     }
 
     case 'intervals': {
       const facts: string[] = [];
-      facts.push('VO2max stimulus. Reps at 95-100% of VO2max push the aerobic ceiling · the engine, not the splits. Drive turnover on the work bouts, jog the recoveries truly easy.');
+      facts.push("Hard reps with easy jog recoveries. Push the work bouts · the recovery jogs should feel slow on purpose.");
       if (phase === 'PEAK') {
-        facts.push('Peak phase: race-specific economy + neuromuscular firing. The goal is sharpness, not depth · don\'t leave anything on the track.');
+        facts.push("Peak phase · this is about sharpness, not piling on more. Run the splits clean, don't grind out an extra rep.");
       } else {
-        facts.push('The point is the stimulus, not the splits. If form falls apart, the rep is done.');
+        facts.push("If your form falls apart, the rep is over. The point is the effort, not the clock.");
       }
-      return {
-        verdict: 'Empty the engine.',
-        facts,
-        citations: [CITE_VOCAB, CITE_ZONES],
-      };
+      return { verdict: 'Intervals.', facts };
     }
 
     case 'fartlek':
     case 'progression': {
       return {
-        verdict: 'Vary the engine.',
+        verdict: 'Mixed effort.',
         facts: [
-          'Mixed-intensity stimulus · alternating efforts across zones recruits a broader span of motor units than a steady run and improves pace control.',
-          'Treat it like a controlled play day. Surge by feel for the named segments, settle between · the stimulus comes from the contrast.',
+          "Alternating efforts · push the surges, settle in between. Run by feel, not by clock.",
+          "The variety is the workout. Don't overthink it.",
         ],
-        citations: [CITE_VOCAB, CITE_ZONES],
       };
     }
 
@@ -172,35 +164,28 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
       return {
         verdict: 'Shake the legs.',
         facts: [
-          'Active recovery only. Easier than easy · blood flow to clear metabolites, no training stress added. Cap the HR at ~70% of max.',
-          'If the legs ask for more rest, give it to them. The session you protect today is the one you nail tomorrow.',
+          "Easier than your easy day. Just blood flow · no training stress. Keep HR under about 70% of max.",
+          "If the legs are asking for more rest, give it. Protect this run and you nail tomorrow.",
         ],
-        citations: [CITE_HR, CITE_DISTRUN],
       };
     }
 
     case 'race': {
       return {
-        verdict: 'Race the gap.',
+        verdict: 'Race day.',
         facts: [
-          'Race-day execution · the test the block built toward. Pacing is the prescription · don\'t burn matches in the first third.',
-          'Trust the work. Conditions are conditions; adjust your effort, not your goal.',
-        ],
-        citations: [
-          { slug: 'research-08-pacing-and-race-week', label: 'Research/08 · Pacing And Race Week' },
+          "All the work you put in is in the bank. Pace it · don't burn it all in the first third.",
+          "Whatever the conditions are, adjust your effort, not your goal. Trust the training.",
         ],
       };
     }
 
     case 'rest': {
       return {
-        verdict: 'Take the rest.',
+        verdict: 'Rest day.',
         facts: [
-          'Adaptation happens between sessions. A real day off · sleep, eat, hydrate, walk.',
-          'Resist the urge to log a "junk" easy mile. The rest itself is the work.',
-        ],
-        citations: [
-          { slug: 'research-00b-recovery-protocols', label: 'Research/00b · Recovery Protocols' },
+          "Real rest. Sleep, eat, hydrate, walk if you want · no running.",
+          "You don't need a junk mile to feel productive. Resting IS the work today.",
         ],
       };
     }
@@ -209,8 +194,7 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
     default: {
       return {
         verdict: 'By feel.',
-        facts: ['No specific prescription · run by feel and let the body decide the dose.'],
-        citations: [CITE_DISTRUN],
+        facts: ["No specific plan today · run by feel."],
       };
     }
   }

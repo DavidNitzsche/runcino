@@ -3,11 +3,16 @@
  *
  * Doctrine focus:
  *   · HR drift requires ≥4 splits with avgHr to fire (Research/15).
- *   · Heat-aware framing: 'hot' / 'extreme' → thermoregulation framing.
+ *   · Heat-aware framing: 'warm' / 'hot' / 'extreme' → heat attributes the
+ *     drift to the body cooling itself, not a fitness signal.
  *   · Neutral conditions → fueling/hydration framing.
  *   · conditions_note + coach_tip are null when heat is neutral.
+ *   · Dual-key split tolerance: {mile, hr, pace} AND {mile, avgHr,
+ *     paceSPerMi} both work.
  *
- * Tests document the exact split-count gate (the "4" is in detectHrDrift).
+ * Voice doctrine (David, 2026-05-31): plain runner-English, no PhD jargon
+ * ("mitochondrial / cardiovascular drift / lactate threshold" all gone),
+ * citations are NOT in the output.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -44,7 +49,7 @@ function makeSplits(
 }
 
 describe('deriveRecap · payload shape', () => {
-  it('returns verdict + facts + coach_tip + conditions_note + citations', () => {
+  it('returns verdict + facts + coach_tip + conditions_note (no citations)', () => {
     const r = deriveRecap(baseLongRun);
     expect(typeof r.verdict).toBe('string');
     expect(r.verdict.length).toBeGreaterThan(0);
@@ -53,8 +58,8 @@ describe('deriveRecap · payload shape', () => {
     // coach_tip + conditions_note may be null (that's a valid state).
     expect(r.coach_tip === null || typeof r.coach_tip === 'string').toBe(true);
     expect(r.conditions_note === null || typeof r.conditions_note === 'string').toBe(true);
-    expect(Array.isArray(r.citations)).toBe(true);
-    expect(r.citations.length).toBeGreaterThanOrEqual(1);
+    // Citations are NOT on the payload (David, 2026-05-31).
+    expect((r as unknown as { citations?: unknown }).citations).toBeUndefined();
   });
 });
 
@@ -64,7 +69,7 @@ describe('deriveRecap · HR drift detection gate (≥4 splits w/ avgHr)', () => 
       ...baseLongRun,
       splits: makeSplits(3, 150, 170),
     });
-    expect(r.facts.join(' ')).not.toMatch(/HR (climbed|drifted)/);
+    expect(r.facts.join(' ')).not.toMatch(/HR climbed/);
   });
 
   it('fires HR-drift fact with exactly 4 splits + drift ≥8 bpm', () => {
@@ -72,7 +77,7 @@ describe('deriveRecap · HR drift detection gate (≥4 splits w/ avgHr)', () => 
       ...baseLongRun,
       splits: makeSplits(4, 150, 165),  // 15 bpm drift
     });
-    expect(r.facts.join(' ')).toMatch(/HR (climbed|drifted)/);
+    expect(r.facts.join(' ')).toMatch(/HR climbed/);
   });
 
   it('does NOT fire when drift < 8 bpm (signal too small)', () => {
@@ -80,7 +85,7 @@ describe('deriveRecap · HR drift detection gate (≥4 splits w/ avgHr)', () => 
       ...baseLongRun,
       splits: makeSplits(6, 155, 159),  // 4 bpm drift
     });
-    expect(r.facts.join(' ')).not.toMatch(/HR (climbed|drifted)/);
+    expect(r.facts.join(' ')).not.toMatch(/HR climbed/);
   });
 
   it('skips splits that lack avgHr (need 4 with HR, not just 4 splits)', () => {
@@ -94,14 +99,36 @@ describe('deriveRecap · HR drift detection gate (≥4 splits w/ avgHr)', () => 
       { mile: 6, paceSPerMi: 525, avgHr: 170 },
     ];
     const r = deriveRecap({ ...baseLongRun, splits });
-    expect(r.facts.join(' ')).not.toMatch(/HR (climbed|drifted)/);
+    expect(r.facts.join(' ')).not.toMatch(/HR climbed/);
+  });
+});
+
+describe('deriveRecap · dual-key split tolerance', () => {
+  // Canonical wire shape is {mile, hr, pace} but legacy code paths emit
+  // {mile, avgHr, paceSPerMi}. Both must work for drift detection.
+  it('detects HR drift with canonical {mile, hr, pace} shape', () => {
+    const splits = Array.from({ length: 6 }, (_, i) => ({
+      mile: i + 1,
+      pace: '8:45',
+      hr: i < 3 ? 150 : 168,
+    }));
+    const r = deriveRecap({ ...baseLongRun, splits });
+    expect(r.facts.join(' ')).toMatch(/HR climbed/);
+  });
+
+  it('detects HR drift with legacy {mile, avgHr, paceSPerMi} shape', () => {
+    const r = deriveRecap({
+      ...baseLongRun,
+      splits: makeSplits(6, 150, 168),
+    });
+    expect(r.facts.join(' ')).toMatch(/HR climbed/);
   });
 });
 
 describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
   const driftingSplits = makeSplits(6, 150, 168);  // 18 bpm drift
 
-  it("HOT heat → drift attributed to thermoregulation ('right thermoregulatory work')", () => {
+  it('HOT heat → drift attributed to body cooling itself, not fitness', () => {
     const r = deriveRecap({
       ...baseLongRun,
       splits: driftingSplits,
@@ -113,13 +140,14 @@ describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
       },
     });
     const text = r.facts.join(' ');
-    // Heat-attributed framing.
-    expect(text).toMatch(/thermoregulat|expected, not a fitness signal/i);
+    // Heat-attributed framing: "normal in heat", "body works harder to
+    // cool itself", "not because you're slowing down".
+    expect(text).toMatch(/normal in heat|cool itself|not because you're slowing down/i);
     expect(r.conditions_note).not.toBeNull();
     expect(r.coach_tip).not.toBeNull();
   });
 
-  it("EXTREME heat → drift attributed to thermoregulation", () => {
+  it('EXTREME heat → drift attributed to heat, not fitness', () => {
     const r = deriveRecap({
       ...baseLongRun,
       splits: driftingSplits,
@@ -130,10 +158,10 @@ describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
         cloudCoverPct: 10,
       },
     });
-    expect(r.facts.join(' ')).toMatch(/thermoregulat|expected, not a fitness signal/i);
+    expect(r.facts.join(' ')).toMatch(/normal in heat|cool itself|not because you're slowing down/i);
   });
 
-  it("NEUTRAL heat → drift attributed to fueling/hydration", () => {
+  it('NEUTRAL heat → drift attributed to fuel/water', () => {
     const r = deriveRecap({
       ...baseLongRun,
       splits: driftingSplits,
@@ -145,21 +173,21 @@ describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
       },
     });
     const text = r.facts.join(' ');
-    expect(text).toMatch(/Fueling \+ hydration|fueling cadence/i);
+    expect(text).toMatch(/Usually fuel or water|eating something earlier|drinking more/i);
     // NOT heat-attributed.
-    expect(text).not.toMatch(/thermoregulat/i);
+    expect(text).not.toMatch(/normal in heat|cool itself/i);
   });
 
-  it("NO weather provided → fueling/hydration framing", () => {
+  it('NO weather provided → fuel/water framing', () => {
     const r = deriveRecap({
       ...baseLongRun,
       splits: driftingSplits,
       // weather omitted entirely.
     });
-    expect(r.facts.join(' ')).toMatch(/Fueling \+ hydration|fueling cadence/i);
+    expect(r.facts.join(' ')).toMatch(/Usually fuel or water|eating something earlier|drinking more/i);
   });
 
-  it("WARM (band) → drift treated as heat-explained too (not just hot/extreme)", () => {
+  it('WARM (band) → drift treated as heat-explained too (not just hot/extreme)', () => {
     // Doctrine in run-recap.ts: heatExplainsDrift true for warm/hot/extreme.
     const r = deriveRecap({
       ...baseLongRun,
@@ -172,7 +200,7 @@ describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
       },
     });
     // 60°F cloudy = warm band (~3% slowdown).
-    expect(r.facts.join(' ')).toMatch(/thermoregulat|expected, not a fitness signal/i);
+    expect(r.facts.join(' ')).toMatch(/normal in heat|cool itself|not because you're slowing down/i);
   });
 });
 
@@ -208,7 +236,10 @@ describe('deriveRecap · null conditions_note + coach_tip when heat is neutral',
       },
     });
     expect(r.conditions_note).not.toBeNull();
-    expect(r.conditions_note).toMatch(/Maughan\/Ely model.*honest slowdown vs 50°F/);
+    // New plain-English template: "<temp> · hot for running. Costs you
+    // about X% on pace." (or "Started at X°F, climbed to Y°F." when arc
+    // is material).
+    expect(r.conditions_note).toMatch(/hot for running|seriously hot|Costs you about/);
     expect(r.coach_tip).not.toBeNull();
   });
 });
@@ -226,9 +257,9 @@ describe('deriveRecap · type=easy', () => {
       actualAvgHr: 142,
       actualMaxHr: 152,
     });
-    expect(r.verdict).toBe('Banked the easy.');
-    expect(r.facts.join(' ')).toMatch(/Aerobic miles in the bank/);
-    expect(r.facts.join(' ')).not.toMatch(/drifted past the.*cap/);
+    expect(r.verdict).toBe('Easy done.');
+    expect(r.facts.join(' ')).toMatch(/Boring is good|whole point of easy days/);
+    expect(r.facts.join(' ')).not.toMatch(/ran past the.*target/);
   });
 
   it('HR overshoot (>cap+5) in NEUTRAL conditions → slow-down nudge', () => {
@@ -244,10 +275,10 @@ describe('deriveRecap · type=easy', () => {
       actualMaxHr: 168,
       weather: { tempF: 48, conditions: 'cloudy', cloudCoverPct: 80 },
     });
-    expect(r.facts.join(' ')).toMatch(/drifted past the 145 cap.*Slow it down/);
+    expect(r.facts.join(' ')).toMatch(/ran past the 145 target.*Slow it down|easy days only work when they're actually easy/);
   });
 
-  it('HR overshoot in HOT conditions → heat-explained, effort honest', () => {
+  it('HR overshoot in HOT conditions → heat-explained, effort right', () => {
     const r = deriveRecap({
       type: 'easy',
       phase: 'BASE',
@@ -263,7 +294,7 @@ describe('deriveRecap · type=easy', () => {
         tempF: 80, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10,
       },
     });
-    expect(r.facts.join(' ')).toMatch(/effort was honest/);
+    expect(r.facts.join(' ')).toMatch(/it was hot.*effort was right|effort was right/);
   });
 });
 
@@ -280,11 +311,11 @@ describe('deriveRecap · type=tempo/threshold', () => {
       actualAvgHr: 168,
       actualMaxHr: 175,
     });
-    expect(r.verdict).toBe('Sat on threshold.');
-    expect(r.facts.join(' ')).toMatch(/Threshold work landed|Lactate-clearance/);
+    expect(r.verdict).toBe('Tempo done.');
+    expect(r.facts.join(' ')).toMatch(/build up over weeks|bank pays off/);
   });
 
-  it('threshold in hot weather with ≥4% slowdown adds heat-adjusted-pace fact', () => {
+  it('threshold in hot weather with ≥4% slowdown adds heat-cost fact', () => {
     const r = deriveRecap({
       type: 'threshold',
       phase: 'BUILD',
@@ -300,7 +331,7 @@ describe('deriveRecap · type=tempo/threshold', () => {
         tempF: 78, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10,
       },
     });
-    expect(r.facts.join(' ')).toMatch(/Pace targets read|stimulus is the same/);
+    expect(r.facts.join(' ')).toMatch(/heat was costing you about|stimulus was right|ignore the clock/);
   });
 });
 
@@ -317,11 +348,11 @@ describe('deriveRecap · type=intervals', () => {
       actualAvgHr: 165,
       actualMaxHr: 184,
     });
-    expect(r.verdict).toBe('Emptied the engine.');
-    expect(r.facts.join(' ')).toMatch(/VO2 stimulus delivered/);
+    expect(r.verdict).toBe('Reps done.');
+    expect(r.facts.join(' ')).toMatch(/Pushed the work bouts|jogged the recoveries/);
   });
 
-  it('intervals in hot weather adds "pace by feel" fact', () => {
+  it('intervals in hot weather adds "go by feel and HR" fact', () => {
     const r = deriveRecap({
       type: 'intervals',
       phase: 'PEAK',
@@ -337,7 +368,7 @@ describe('deriveRecap · type=intervals', () => {
         tempF: 82, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10,
       },
     });
-    expect(r.facts.join(' ')).toMatch(/Heat compresses interval splits|pace by feel/);
+    expect(r.facts.join(' ')).toMatch(/Heat makes interval pace harder|Go by feel and HR|workout still counted/);
   });
 });
 
@@ -354,8 +385,8 @@ describe('deriveRecap · type=recovery/shakeout/race/default', () => {
       actualAvgHr: 125,
       actualMaxHr: 135,
     });
-    expect(r.verdict).toBe('Cleared the legs.');
-    expect(r.facts.join(' ')).toMatch(/Recovery miles|Box checked/);
+    expect(r.verdict).toBe('Legs cleared.');
+    expect(r.facts.join(' ')).toMatch(/Recovery jog|blood flow|Box checked/);
   });
 
   it('race: race-effort framing', () => {
@@ -371,7 +402,7 @@ describe('deriveRecap · type=recovery/shakeout/race/default', () => {
       actualMaxHr: 180,
     });
     expect(r.verdict).toBe('Raced it.');
-    expect(r.facts.join(' ')).toMatch(/Race effort.*block's full test/);
+    expect(r.facts.join(' ')).toMatch(/Race ·/);
   });
 
   it('unknown type falls back to Logged.', () => {
@@ -390,30 +421,82 @@ describe('deriveRecap · type=recovery/shakeout/race/default', () => {
   });
 });
 
-describe('deriveRecap · citations are always present', () => {
-  it('every recap includes the workout-vocab citation', () => {
+describe('deriveRecap · plain-English voice doctrine', () => {
+  // Voice doctrine (David, 2026-05-31): no PhD jargon on payloads.
+  // The engine reads research-grounded rules, but the words shown to
+  // the runner are everyday talk.
+  const jargonWords = [
+    'mitochondrial',
+    'lactate threshold',
+    'lactate-clearance',
+    'VO2max',
+    'VO2 stimulus',
+    'cardiovascular drift',
+    'thermoregulation',
+    'thermoregulatory',
+    'evaporative cooling',
+    'Maughan',
+    'Ely',
+  ];
+
+  function assertNoJargon(text: string): void {
+    const lower = text.toLowerCase();
+    for (const word of jargonWords) {
+      expect(lower).not.toContain(word.toLowerCase());
+    }
+  }
+
+  it('long-run payload has no PhD jargon (neutral)', () => {
     const r = deriveRecap(baseLongRun);
-    const slugs = r.citations.map((c) => c.slug);
-    expect(slugs).toContain('research-04-workout-vocabulary');
+    assertNoJargon(r.verdict + ' ' + r.facts.join(' '));
   });
 
-  it('weather flagged → weather citation included', () => {
-    const r = deriveRecap({
-      ...baseLongRun,
-      weather: {
-        tempF: 78, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10,
-      },
-    });
-    const slugs = r.citations.map((c) => c.slug);
-    expect(slugs).toContain('research-06-weather-adjustments');
-  });
-
-  it('HR drift detected → wearable citation included', () => {
+  it('long-run payload has no PhD jargon (hot, with drift)', () => {
     const r = deriveRecap({
       ...baseLongRun,
       splits: makeSplits(6, 150, 168),
+      weather: { tempF: 78, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10 },
     });
-    const slugs = r.citations.map((c) => c.slug);
-    expect(slugs).toContain('research-15-wearable-data');
+    const text = r.verdict + ' ' + r.facts.join(' ')
+      + ' ' + (r.coach_tip ?? '') + ' ' + (r.conditions_note ?? '');
+    assertNoJargon(text);
+  });
+
+  it('threshold payload has no PhD jargon (hot)', () => {
+    const r = deriveRecap({
+      type: 'threshold',
+      phase: 'BUILD',
+      plannedMi: 6,
+      plannedPaceSPerMi: 7 * 60 + 30,
+      plannedHrCap: 170,
+      actualMi: 6,
+      actualPaceSPerMi: 8 * 60 + 5,
+      actualAvgHr: 172,
+      actualMaxHr: 178,
+      splits: makeSplits(6, 165, 175),
+      weather: { tempF: 78, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10 },
+    });
+    const text = r.verdict + ' ' + r.facts.join(' ')
+      + ' ' + (r.coach_tip ?? '') + ' ' + (r.conditions_note ?? '');
+    assertNoJargon(text);
+  });
+
+  it('intervals payload has no PhD jargon (hot)', () => {
+    const r = deriveRecap({
+      type: 'intervals',
+      phase: 'PEAK',
+      plannedMi: 7,
+      plannedPaceSPerMi: 6 * 60 + 30,
+      plannedHrCap: null,
+      actualMi: 7,
+      actualPaceSPerMi: 7 * 60 + 10,
+      actualAvgHr: 168,
+      actualMaxHr: 186,
+      splits: makeSplits(6, 160, 175),
+      weather: { tempF: 82, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10 },
+    });
+    const text = r.verdict + ' ' + r.facts.join(' ')
+      + ' ' + (r.coach_tip ?? '') + ' ' + (r.conditions_note ?? '');
+    assertNoJargon(text);
   });
 });
