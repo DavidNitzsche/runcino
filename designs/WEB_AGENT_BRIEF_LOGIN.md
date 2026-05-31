@@ -103,24 +103,7 @@ PR and hide the button (or grey it with a "Coming soon" hover) if OAuth setup
 adds too much scope. The user is iPhone-first; Apple is the primary path. Don't
 block the PR on Google.
 
-### 4. Helper script `web-v2/scripts/_reset_user_password.mjs`
-
-Idempotent password-reset utility for the user (and any future user setup).
-Reads email + password from STDIN (NOT command-line args, to avoid shell
-history). Bcrypts the password. Updates `users.password_hash`. Verifies the
-hash works by running `bcrypt.compare` round-trip.
-
-Usage:
-```
-node scripts/_reset_user_password.mjs
-> email: dnitch85@me.com
-> password: ******
-✓ password_hash updated for user 0645f40c-...
-```
-
-This is how David sets his own password without typing it into git or chat.
-
-### 5. New probe `web-v2/scripts/_sim_login_surface.mjs`
+### 4. New probe `web-v2/scripts/_sim_login_surface.mjs`
 
 Static-audit probe that asserts:
 - `/login` page exists and contains `data-test="signin-apple"`, `signin-google`,
@@ -144,20 +127,24 @@ default; pass `--live` to actually POST to the routes with synthetic creds.
 - Magic-link auth · explicitly not in this design
 - Two-factor · not in this design
 
-## How to set David's account up for first login
+## How David signs in first time (no separate script)
 
-After your code is merged, run from the project root:
+Two paths, his choice:
 
-```bash
-cd web-v2
-node scripts/_reset_user_password.mjs
-# email: dnitch85@me.com
-# password: <choose interactively>
-```
+**Primary · Continue with Apple.** His `users.email` is `dnitch85@me.com` (an
+Apple ID). The existing `/api/auth/apple` route looks up by email, finds his
+row, mints session, sets cookie, redirects to `/today`. **Click → done. Zero
+ceremony.**
 
-David's `users` row already exists (`id 0645f40c-…`, `is_admin true`,
-`onboarding_complete true`). After this script runs, he can sign in with the
-new email path immediately and land on `/today` with all his data visible.
+**Alternative · Sign in with email.** His current state is `is_admin = true,
+email_verified_at = NULL`, which triggers the bootstrap branch in step 4 of the
+email route. First attempt with whatever password he types sets that password
+as authoritative AND stamps email_verified_at. Subsequent attempts use normal
+bcrypt verification. Safe · gated on admin-and-unverified · closes after first
+use.
+
+Either path lands him on `/today` with all his data visible (8/8 david-intact
+post-login). No script. No CLI. No password reset link he has to wait for.
 
 ## Acceptance criteria
 
@@ -169,8 +156,11 @@ The PR is complete when:
 4. The `/login` route renders pixel-close to `designs/faff-web-signin.html`
    (open both in a browser side-by-side; the production version drops the
    `.win` mockup wrapper — full viewport instead)
-5. David runs `_reset_user_password.mjs`, then submits the email form, then
-   lands on `/today` with his data visible (8/8 david-intact pass post-login)
+5. David signs in either via Apple OR via email (with the bootstrap branch
+   accepting whatever password he types on first attempt because his row has
+   `is_admin = true AND email_verified_at = NULL`) and lands on `/today` with
+   his data visible (8/8 david-intact pass post-login). **No CLI script
+   needed.**
 6. Cold-start user (no session) hitting `/login` sees the form. Hitting any
    protected route (e.g. `/today`) redirects them to `/login`
 7. The middlware / SSR cookie check from `web-v2/components/faff-app/seed.ts`
