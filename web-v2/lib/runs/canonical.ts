@@ -115,7 +115,7 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     shoe_id: number | null;
   }>(
     `SELECT id, data, provenance, shoe_id
-       FROM strava_activities
+       FROM runs
       WHERE id = $1::BIGINT`,
     [canonicalId],
   )).rows[0];
@@ -174,7 +174,7 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     });
     if (shoeId != null) {
       await pool.query(
-        `UPDATE strava_activities SET shoe_id = $1 WHERE id = $2::BIGINT AND shoe_id IS NULL`,
+        `UPDATE runs SET shoe_id = $1 WHERE id = $2::BIGINT AND shoe_id IS NULL`,
         [shoeId, canonicalId],
       );
       shoeAttributed = shoeId;
@@ -207,7 +207,7 @@ export async function enhanceCanonicalFromAbsorbed(args: {
   // Commit the data + provenance updates
   if (fieldsAdded.some(f => !f.includes('shoe_id') && !f.includes('post_run_rpe'))) {
     await pool.query(
-      `UPDATE strava_activities
+      `UPDATE runs
           SET data = $1::jsonb, provenance = $2::jsonb
         WHERE id = $3::BIGINT`,
       [JSON.stringify(updatedData), JSON.stringify(updatedProv), canonicalId],
@@ -216,7 +216,7 @@ export async function enhanceCanonicalFromAbsorbed(args: {
 
   // Stamp the absorbed row
   await pool.query(
-    `UPDATE strava_activities
+    `UPDATE runs
         SET absorbed_into_canonical_at = NOW()
       WHERE id = $1::BIGINT
         AND absorbed_into_canonical_at IS NULL`,

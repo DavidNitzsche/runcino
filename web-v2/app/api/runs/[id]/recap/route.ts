@@ -66,7 +66,7 @@ export async function GET(
     data: Record<string, any>;
   }>(
     `SELECT id::text AS id, data
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND (id::text = $2 OR data->>'activityId' = $2 OR data->>'id' = $2)
         AND absorbed_into_canonical_at IS NULL

@@ -142,7 +142,7 @@ export async function autoMergeForDate(
 
   const rows = (await pool.query(
     `SELECT id::text AS id, user_uuid::text AS user_uuid, data
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND data->>'date' = $2`,
     [userId, date],
@@ -162,7 +162,7 @@ export async function autoMergeForDate(
     // flagged before when a richer source hadn't arrived yet).
     if (canonical.data?.mergedIntoId != null) {
       await pool.query(
-        `UPDATE strava_activities
+        `UPDATE runs
             SET data = data - 'mergedIntoId'
           WHERE id = $1::BIGINT`,
         [canonicalId],
@@ -175,7 +175,7 @@ export async function autoMergeForDate(
       const alreadyMerged = String(current) === canonicalId;
       if (!alreadyMerged) {
         await pool.query(
-          `UPDATE strava_activities
+          `UPDATE runs
               SET data = jsonb_set(data, '{mergedIntoId}', to_jsonb($1::BIGINT))
             WHERE id = $2::BIGINT`,
           [canonicalId, loser.id],
@@ -261,7 +261,7 @@ export async function canonicalMileageByDay(
 ): Promise<Map<string, { mi: number; canonicalIds: string[] }>> {
   const rows = (await pool.query(
     `SELECT id::text AS id, user_uuid::text AS user_uuid, data
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
