@@ -230,8 +230,20 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   }) : [];
 
   // HR zone percentages — stored or computed from splits if missing.
+  //
+  // 2026-05-31: treat an all-zero hrZonePcts as MISSING data and fall
+  // through to deriveHrZones. Strava (and the Watch sync path) often
+  // persists a placeholder `{z1:0,...,z5:0}` when the activity has HR
+  // but no per-zone breakdown was computed at write-time. Without this
+  // check, the post-run hero's Z1-Z5 bar reads empty on completed runs
+  // that DO have avg+max+per-mile HR (David's Tue tempo: 156/172 avg/pk).
   const hrPctsRaw = r.hrZonePcts ?? r.hr_zones ?? null;
-  const hrZonePcts = hrPctsRaw
+  const hrPctsSum = hrPctsRaw
+    ? (Number(hrPctsRaw.z1) || 0) + (Number(hrPctsRaw.z2) || 0)
+      + (Number(hrPctsRaw.z3) || 0) + (Number(hrPctsRaw.z4) || 0)
+      + (Number(hrPctsRaw.z5) || 0)
+    : 0;
+  const hrZonePcts = (hrPctsRaw && hrPctsSum > 0)
     ? {
         z1: Number(hrPctsRaw.z1) || 0, z2: Number(hrPctsRaw.z2) || 0,
         z3: Number(hrPctsRaw.z3) || 0, z4: Number(hrPctsRaw.z4) || 0,
@@ -671,6 +683,24 @@ async function deriveHrZones(
   const z = computeZones({ lthr });
   if (!z) return empty;
 
+  // Classify a HR reading. Friel's bands leave 1-bpm gaps between zones
+  // (e.g. Z2 upper 144, Z3 lower 146 at LTHR=162). A reading of 145 used to
+  // default to Z1 because the `.find()` missed every band — flooring it
+  // into Recovery is the opposite of what the runner did. Snap to the
+  // nearest band by midpoint distance instead.
+  const classify = (bpm: number) => {
+    const exact = z.zones.find((zz) => bpm >= zz.lower && bpm <= zz.upper);
+    if (exact) return exact;
+    let best = z.zones[0];
+    let bestDist = Infinity;
+    for (const zz of z.zones) {
+      const mid = (zz.lower + zz.upper) / 2;
+      const dist = Math.abs(bpm - mid);
+      if (dist < bestDist) { bestDist = dist; best = zz; }
+    }
+    return best;
+  };
+
   // If we have per-mile HR, classify each mile.
   if (splits.length > 0 && splits.some((s) => s.hr)) {
     const counts = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
@@ -678,7 +708,7 @@ async function deriveHrZones(
     for (const s of splits) {
       if (!s.hr) continue;
       total++;
-      const zone = z.zones.find((zz) => s.hr! >= zz.lower && s.hr! <= zz.upper) ?? z.zones[0];
+      const zone = classify(s.hr);
       const k = `z${zone.idx}` as keyof typeof counts;
       counts[k]++;
     }
@@ -692,7 +722,7 @@ async function deriveHrZones(
   }
 
   // No splits — assign 100% to the band the avg HR falls in.
-  const zone = z.zones.find((zz) => hr >= zz.lower && hr <= zz.upper) ?? z.zones[0];
+  const zone = classify(hr);
   const k = `z${zone.idx}` as keyof typeof empty;
   return { ...empty, [k]: 100 };
 }
