@@ -418,28 +418,12 @@ struct TodayView: View {
                         }
                         .padding(.top, 2)
                     }
-                    if !pp.citations.isEmpty {
-                        // Citation chips deep-link into LearnArticleSheet
-                        // via the existing FaffRoute.learn(slug:) destination.
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(pp.citations) { c in
-                                    NavigationLink(value: FaffRoute.learn(slug: c.slug)) {
-                                        Text(c.label.uppercased())
-                                            .font(.label(9)).tracking(1.2)
-                                            .foregroundStyle(Color(hex: 0x5C574E))
-                                            .padding(.horizontal, 8).padding(.vertical, 5)
-                                            .background(Color(hex: 0xEEE7DA),
-                                                        in: RoundedRectangle(cornerRadius: 6))
-                                            .overlay(RoundedRectangle(cornerRadius: 6)
-                                                .stroke(Color(hex: 0xC8C0AE), lineWidth: 1))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
+                    // Citation chips removed 2026-05-31 · coach voice
+                    // doctrine (c14df7c5) dropped the academic citations
+                    // surface from /api/today/purpose payloads. The science
+                    // is in the rules · it's not in the words shown to the
+                    // runner. RunPurpose.citations no longer exists on the
+                    // wire model so the chip row is dead code.
                 }
                 .padding(.horizontal, 24).padding(.vertical, 18)
             }
