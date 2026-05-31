@@ -1158,12 +1158,14 @@
       HRV 25% + RHR 20% + Load 15% + RPE 15%) showing which input dragged
       the score up or down. The iPhone reads only the top-line score +
       band today.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. The
-      existing ReadinessBreakdownSheet on iPhone has the layout · just
-      wire the per-input contribution numbers from the readiness API
-      payload (need to extend /api/readiness to return them, or pull
-      from CoachFacts).</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · commit bb1c9f93 · IOS</strong>. ReadinessSnapshot
+      now decodes the API's <code>inputs</code> array (was stubbed to
+      return []). HealthView ReadinessBreakdownSheet renders real
+      per-driver rows from <code>readiness.inputs</code>; NudgeSheet
+      morning check ditches its hardcoded HRV/RHR/SLEEP/LOAD mock
+      placeholder and reads the same array. Coach text in NudgeSheet
+      now pulled from the top driver's <code>meaning</code>.</td>
   <td><code>lib/coach/readiness.ts:computeReadiness</code></td>
   <td class="client-ios">IOS</td>
 </tr>
