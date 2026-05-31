@@ -187,7 +187,11 @@ function stravaToFaffPayload(act, detail) {
     distanceMi: Math.round((act.distance / 1609.344) * 100) / 100,
     durationSec: act.elapsed_time,
     movingTimeS: act.moving_time,
-    avgPaceMinPerMi: act.average_speed > 0 ? (60 / (act.average_speed * 60 / 26.8224)) : null,
+    // avgPaceMinPerMi is intentionally omitted · log-state.ts derives a
+    // formatted "M:SS" string from paceSPerMi when missing. Writing a
+    // numeric value here breaks paceSec/paceToSec callers (TypeError:
+    // p.split is not a function).
+    paceSPerMi: act.average_speed > 0 ? Math.round(1609.344 / act.average_speed) : null,
     avgHr: act.average_heartrate ?? null,
     maxHr: act.max_heartrate ?? null,
     elevGainFt: act.total_elevation_gain ? Math.round(act.total_elevation_gain * 3.281) : null,

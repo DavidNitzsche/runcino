@@ -667,6 +667,12 @@ function adaptPRs(races: Races | null, log: LogT | null): PR[] {
 }
 function paceSec(p: string): number {
   if (!p) return 0;
+  // Defensive: callers occasionally pass a number when an upstream writer
+  // stored data.avgPaceMinPerMi as a decimal min/mi (e.g. 7.96) instead
+  // of "M:SS". Coerce: a number is already minutes-per-mile, scale to
+  // seconds. A non-string non-number is 0.
+  if (typeof p === 'number') return Math.round((p as number) * 60);
+  if (typeof p !== 'string') return 0;
   const parts = p.split(':').map(x => parseInt(x, 10) || 0);
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -682,6 +688,7 @@ function hms(sec: number): string {
 }
 function compareTimes(a: string, b: string): number {
   const toSec = (t: string) => {
+    if (typeof t !== 'string') return 0;
     const parts = t.split(':').map(x => parseInt(x, 10) || 0);
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
     if (parts.length === 2) return parts[0] * 60 + parts[1];
@@ -905,6 +912,8 @@ function recordsFromRuns(runs: LogRun[]): ActivityData['ranges']['year']['recs']
   return records;
 }
 function paceToSec(p: string): number {
+  if (typeof p === 'number') return Math.round((p as number) * 60);
+  if (typeof p !== 'string' || !p) return 9999;
   const parts = p.split(':').map(x => parseInt(x, 10) || 0);
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
