@@ -393,11 +393,32 @@ struct RaceDayView: View {
 
     private var heroEyebrow: String {
         if let d = detail?.race.date { return "\(d.uppercased()) · YOUR A-RACE" }
-        return "DEC 6 · YOUR A-RACE"
+        return "YOUR A-RACE"
     }
 
-    private var goalTime: String { detail?.race.goal ?? "2:59:30" }
-    private var goalPace: String { "6:51" }
+    /// Goal time string from the race detail. Used to render the hero
+    /// time. Returns "—" when no race is loaded · the previous "2:59:30"
+    /// fallback rendered as if the runner had committed to a sub-3 even
+    /// when the race detail hadn't loaded (or no goal was set).
+    private var goalTime: String { detail?.race.goal ?? "—" }
+
+    /// Pace per mile derived from goal time / distance. Falls back to
+    /// "—" when either is unknown. The "6:51" hardcode was the old
+    /// sub-3-marathon placeholder · misleading when shown over another
+    /// distance or no race.
+    private var goalPace: String {
+        guard let g = detail?.race.goal,
+              let dist = detail?.race.distance_mi, dist > 0 else { return "—" }
+        let parts = g.split(separator: ":").map { Int($0) ?? 0 }
+        let totalSec: Int
+        switch parts.count {
+        case 3: totalSec = parts[0] * 3600 + parts[1] * 60 + parts[2]
+        case 2: totalSec = parts[0] * 60 + parts[1]
+        default: return "—"
+        }
+        let perMile = Int(round(Double(totalSec) / dist))
+        return String(format: "%d:%02d", perMile / 60, perMile % 60)
+    }
     private var courseStat: String {
         let mi = detail?.race.distance_mi.map { String(format: "%.1f MI", $0) }
         // RaceDetail has no elev field today; fall back to "" if absent.

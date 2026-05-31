@@ -13,7 +13,11 @@
 import SwiftUI
 
 struct EmailSignInSheet: View {
-    let onSignedIn: () -> Void
+    /// Forwarded to SignInView. `skipOnboarding` reflects the auth
+    /// response's `redirect` field · "/today" means the runner has an
+    /// onboarding-complete user row server-side and should land in the
+    /// main app, "/onboarding" means walk the gate.
+    let onSignedIn: (_ skipOnboarding: Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -204,7 +208,10 @@ struct EmailSignInSheet: View {
                     expiresAt: resp.expires_at,
                     userUuid: resp.user_uuid
                 )
-                onSignedIn()
+                // "/today" = returning user, skip the onboarding gate.
+                // "/onboarding" or unknown = walk RolePick + Onboarding.
+                let skipOnboarding = (resp.redirect == "/today")
+                onSignedIn(skipOnboarding)
                 dismiss()
             } else if let msg = resp.error {
                 error = humanize(msg)

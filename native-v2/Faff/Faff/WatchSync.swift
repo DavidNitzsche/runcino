@@ -106,9 +106,14 @@ final class WatchSync: NSObject, ObservableObject {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = data
+        // Was raw URLSession with no Authorization header. After the
+        // 2026-05-30 audit added Bearer auth to /api/watch/workouts/complete
+        // (and dropped the ?user_id fallback), every queued watch completion
+        // POST'd by the iPhone silently 401'd · the queue grew unbounded
+        // and watch runs never landed. Route through authedSend so the
+        // bearer attaches and 401 surfaces via .faffSessionExpired.
         do {
-            let (_, resp) = try await URLSession.shared.data(for: req)
-            guard let http = resp as? HTTPURLResponse else { return false }
+            let (_, http) = try await API.authedSend(req)
             return (200..<300).contains(http.statusCode)
         } catch {
             return false

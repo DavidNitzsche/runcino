@@ -34,15 +34,22 @@ struct WeekAheadView: View {
                             .padding(.top, 24)
                     }
 
-                    agenda
-                        .padding(.top, 24)
+                    if agendaRows.isEmpty {
+                        emptyAgenda
+                            .padding(.horizontal, 24)
+                            .padding(.top, 32)
+                            .padding(.bottom, 40)
+                    } else {
+                        agenda
+                            .padding(.top, 24)
 
-                    Text("Tap any session for the full plan · paces, fuel & why")
-                        .font(.display(10, weight: .bold))
-                        .foregroundStyle(Theme.txt.opacity(0.45))
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 6)
-                        .padding(.bottom, 40)
+                        Text("Tap any session for the full plan · paces, fuel & why")
+                            .font(.display(10, weight: .bold))
+                            .foregroundStyle(Theme.txt.opacity(0.45))
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 6)
+                            .padding(.bottom, 40)
+                    }
                 }
             }
         }
@@ -101,17 +108,21 @@ struct WeekAheadView: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SpecLabel(text: "WEEK 14 OF 26 · BUILD PHASE", size: 11, tracking: 2.5, color: Theme.txt.opacity(0.66))
+            if let phaseLabel {
+                SpecLabel(text: phaseLabel, size: 11, tracking: 2.5, color: Theme.txt.opacity(0.66))
+            }
             Text("The week\nahead.")
                 .font(.display(40, weight: .bold))
                 .tracking(-1.5)
                 .lineSpacing(-8)
                 .foregroundStyle(Theme.txt)
                 .padding(.top, 9)
-            Text(dateRangeLabel)
-                .font(.display(11, weight: .bold))
-                .foregroundStyle(Theme.txt.opacity(0.7))
-                .padding(.top, 10)
+            if !dateRangeLabel.isEmpty {
+                Text(dateRangeLabel)
+                    .font(.display(11, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.7))
+                    .padding(.top, 10)
+            }
 
             HStack(alignment: .top, spacing: 26) {
                 bigStat(value: plannedMi, unit: " mi", key: "PLANNED")
@@ -155,60 +166,82 @@ struct WeekAheadView: View {
 
     // MARK: - Data
 
+    private var emptyAgenda: some View {
+        VStack(spacing: 10) {
+            Text("Plan loading…")
+                .font(.display(14, weight: .bold))
+                .foregroundStyle(Theme.txt.opacity(0.7))
+            Text("If this stays empty, sign out and back in to refresh your session.")
+                .font(.display(11, weight: .semibold))
+                .foregroundStyle(Theme.txt.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 280)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// "WEEK 14 OF 26 · BUILD PHASE" — pulled from planFacts when available,
+    /// otherwise hidden. Was previously hardcoded; now it tracks the
+    /// runner's actual phase / week index or stays out of the layout.
+    private var phaseLabel: String? {
+        guard let facts = planFacts?.facts else { return nil }
+        let phase = facts.first(where: { $0.label.uppercased().contains("PHASE") })?.value
+        let week = facts.first(where: { $0.label.uppercased().contains("WEEK") })?.value
+        switch (week, phase) {
+        case let (w?, p?): return "\(w) · \(p)".uppercased()
+        case let (w?, nil): return w.uppercased()
+        case let (nil, p?): return p.uppercased()
+        default: return nil
+        }
+    }
+
+    /// "MAY 26 – JUN 1" — derived from the plan's week_start_iso /
+    /// week_end_iso so the chip matches what the user actually has on
+    /// their calendar instead of a frozen "May 26 – Jun 1" label.
     private var dateRangeLabel: String {
-        "May 26 – Jun 1"
+        guard let pw = planWeek else { return "" }
+        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"
+        let outF = DateFormatter(); outF.dateFormat = "MMM d"
+        guard let start = inF.date(from: pw.week_start_iso),
+              let end = inF.date(from: pw.week_end_iso) else { return "" }
+        return "\(outF.string(from: start)) – \(outF.string(from: end))"
     }
 
     private var plannedMi: String {
-        if let pw = planWeek {
-            let mi = pw.days.reduce(0.0) { $0 + $1.distance_mi }
-            if mi > 0 { return "\(Int(round(mi)))" }
-        }
-        return "50"
+        guard let pw = planWeek else { return "—" }
+        let mi = pw.days.reduce(0.0) { $0 + $1.distance_mi }
+        return mi > 0 ? "\(Int(round(mi)))" : "0"
     }
 
     private var sessionsCount: Int {
-        if let pw = planWeek {
-            return pw.days.filter { $0.type != "rest" && $0.distance_mi > 0 }.count
-        }
-        return 5
+        guard let pw = planWeek else { return 0 }
+        return pw.days.filter { $0.type != "rest" && $0.distance_mi > 0 }.count
     }
 
     private var doneCount: Int {
-        if let pw = planWeek {
-            return pw.days.compactMap { $0.completedRunId }.count
-        }
-        return 2
+        guard let pw = planWeek else { return 0 }
+        return pw.days.compactMap { $0.completedRunId }.count
     }
 
+    /// Real plan rows from /api/plan/week. Empty when no plan data yet ·
+    /// surfaces an empty-state instead of the prior 7-row mock that made
+    /// it look like the runner had a fake week of Easy Aerobic / Track
+    /// Intervals / Tempo Run scheduled (which David was seeing when the
+    /// real plan fetch hadn't landed).
     private var agendaRows: [AgendaDay] {
-        if let pw = planWeek {
-            return pw.days.map { d in
-                AgendaDay(
-                    id: d.date_iso,
-                    dow: dowFromIdx(d.dow),
-                    dn: dayNumberFromDate(d.date_iso),
-                    name: nameFor(type: d.type, label: d.sub_label),
-                    detail: detailFor(d),
-                    effort: FaffEffort.fromType(d.type),
-                    isToday: d.is_today,
-                    isDone: d.completedRunId != nil
-                )
-            }
+        guard let pw = planWeek else { return [] }
+        return pw.days.map { d in
+            AgendaDay(
+                id: d.date_iso,
+                dow: dowFromIdx(d.dow),
+                dn: dayNumberFromDate(d.date_iso),
+                name: nameFor(type: d.type, label: d.sub_label),
+                detail: detailFor(d),
+                effort: FaffEffort.fromType(d.type),
+                isToday: d.is_today,
+                isDone: d.completedRunId != nil
+            )
         }
-        return placeholderDays
-    }
-
-    private var placeholderDays: [AgendaDay] {
-        [
-            AgendaDay(id: "0", dow: "MON", dn: 26, name: "Easy Aerobic", detail: "6.0 mi · 8:45/mi", effort: .easy, isToday: false, isDone: true),
-            AgendaDay(id: "1", dow: "TUE", dn: 27, name: "Track Intervals", detail: "6.0 mi · 6×800 @ 6:05", effort: .intervals, isToday: false, isDone: true),
-            AgendaDay(id: "2", dow: "WED", dn: 28, name: "Tempo Run", detail: "8.0 mi · 6:38 threshold", effort: .tempo, isToday: true, isDone: false),
-            AgendaDay(id: "3", dow: "THU", dn: 29, name: "Recovery Jog", detail: "4.0 mi · 9:30/mi", effort: .recovery, isToday: false, isDone: false),
-            AgendaDay(id: "4", dow: "FRI", dn: 30, name: "Rest Day", detail: "mobility · sleep", effort: .rest, isToday: false, isDone: false),
-            AgendaDay(id: "5", dow: "SAT", dn: 31, name: "Long Run", detail: "18.0 mi · Z2→MP", effort: .long, isToday: false, isDone: false),
-            AgendaDay(id: "6", dow: "SUN", dn: 1, name: "Recovery Jog", detail: "4.0 mi · shakeout", effort: .recovery, isToday: false, isDone: false)
-        ]
     }
 
     private func dowFromIdx(_ i: Int) -> String {

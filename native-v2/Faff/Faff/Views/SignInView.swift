@@ -11,7 +11,11 @@
 import SwiftUI
 
 struct SignInView: View {
-    let onSignedIn: () -> Void
+    /// Called when sign-in succeeds. `skipOnboarding` is true when the
+    /// server told us the runner has `onboarding_complete=true` (returning
+    /// user, e.g. David) so the gate should drop them straight into the
+    /// main app instead of walking RolePick + Onboarding again.
+    let onSignedIn: (_ skipOnboarding: Bool) -> Void
 
     /// 5-blob mesh in the canonical RECOVERY teal palette (matches
     /// color-system.md). FaffMeshView already paints the design's 4-blob
@@ -88,7 +92,11 @@ struct SignInView: View {
         VStack(spacing: 11) {
             // Apple is the canonical button · the native AS framework
             // renders the lockup so we don't recreate the glyph in SwiftUI.
-            SignInWithAppleView(onResult: { ok in if ok { onSignedIn() } })
+            // Apple flow doesn't yet thread the redirect, so default to
+            // the gated path (skipOnboarding: false) — new Apple sign-ups
+            // walk RolePick + Onboarding, returning users see one extra
+            // tap. Email flow honors the server's redirect directly.
+            SignInWithAppleView(onResult: { ok in if ok { onSignedIn(false) } })
 
             // Google: glass-style button with the real Google G mark.
             // Tap = toast only (no OAuth in this PR per the brief).

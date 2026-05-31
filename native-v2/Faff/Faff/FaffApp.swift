@@ -145,7 +145,19 @@ struct RootContainer: View {
             case .checking:
                 Color.clear.task { await decideInitialStep() }
             case .signIn:
-                SignInView(onSignedIn: { advance(.rolePick) })
+                // Returning users (David, anyone with onboarding_complete=true
+                // on their `users` row) come back through SignIn occasionally
+                // when their session expires. The auth response carries a
+                // `redirect` of "/today" for that case; we forward it via the
+                // skipOnboarding flag so they don't get re-routed through
+                // RolePick + Onboarding. New sign-ups still walk the gate.
+                SignInView(onSignedIn: { skipOnboarding in
+                    if skipOnboarding {
+                        complete()
+                    } else {
+                        advance(.rolePick)
+                    }
+                })
             case .rolePick:
                 RolePickView(onPick: { _ in advance(.onboarding) })
             case .onboarding:

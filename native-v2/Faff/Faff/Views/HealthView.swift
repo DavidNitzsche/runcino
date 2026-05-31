@@ -427,20 +427,20 @@ struct ReadinessBreakdownSheet: View {
 
                     SpecLabel(text: "WHAT'S DRIVING IT", size: 11, tracking: 2, color: Theme.txt.opacity(0.6))
 
-                    ForEach((snapshot?.inputs ?? []), id: \.label) { i in
+                    ForEach((snapshot?.inputs ?? []), id: \.self) { i in
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(i.label)
                                     .font(.body(14, weight: .extraBold))
                                     .foregroundStyle(Theme.txt)
-                                if let why = i.why {
+                                if let why = i.meaning ?? i.observedSub {
                                     Text(why).font(.display(10, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.62))
                                 }
                             }
                             Spacer()
-                            Text(i.deltaLabel ?? "")
+                            Text(i.observedV ?? "")
                                 .font(.display(15, weight: .semibold))
-                                .foregroundStyle(i.positive ? Color(hex: 0x7BE8A0) : Color(hex: 0xFFB24D))
+                                .foregroundStyle((i.weight ?? 0) >= 0 ? Color(hex: 0x7BE8A0) : Color(hex: 0xFFB24D))
                         }
                         .padding(.vertical, 8)
                     }
@@ -450,19 +450,4 @@ struct ReadinessBreakdownSheet: View {
             }
         }
     }
-}
-
-// MARK: - ReadinessSnapshot adapter extensions (loose)
-
-extension ReadinessSnapshot {
-    /// Best-effort inputs accessor; the wire model may expose this under a
-    /// different name. Returns empty if not present.
-    var inputs: [ReadinessInputAdapter] { [] }
-}
-
-struct ReadinessInputAdapter: Hashable {
-    let label: String
-    let why: String?
-    let deltaLabel: String?
-    let positive: Bool
 }

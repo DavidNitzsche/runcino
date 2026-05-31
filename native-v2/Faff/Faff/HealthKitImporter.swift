@@ -651,11 +651,17 @@ final class HealthKitImporter: ObservableObject {
             }
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        // Was using a raw URLSession.shared.data(for:) — no Authorization
+        // header, no 401 → SignIn bounce. After the 2026-05-30 audit
+        // hardened /api/ingest/health to require Bearer, every HK push was
+        // silently 401'ing and the runner's sleep/HRV/RHR never reached
+        // the server. Route through authedSend so the same Bearer +
+        // .faffSessionExpired contract that surface reads use applies here.
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
             let bodyStr = String(data: data, encoding: .utf8) ?? "<unreadable>"
-            print("[HKImporter] POST /api/ingest/health \((resp as? HTTPURLResponse)?.statusCode ?? -1): \(bodyStr)")
-            throw API.APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+            print("[HKImporter] POST /api/ingest/health \(http.statusCode): \(bodyStr)")
+            throw API.APIError.badStatus(http.statusCode)
         }
     }
 
@@ -667,8 +673,11 @@ final class HealthKitImporter: ObservableObject {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse else { throw API.APIError.badStatus(-1) }
+        // Same audit gap as postHealthSamples — was bypassing authedSend, so
+        // every HK-imported workout silently 401'd post-audit. Runs from
+        // Apple Watch that aren't on Strava (treadmill, indoor) never
+        // landed in workout_completions. Route through authedSend.
+        let (data, http) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else {
             let bodyStr = String(data: data, encoding: .utf8) ?? "<unreadable>"
             print("[HKImporter] POST /api/ingest/workout \(http.statusCode): \(bodyStr)")

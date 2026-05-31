@@ -122,6 +122,13 @@ enum API {
         let user_uuid: String?
         let created: Bool?
         let error: String?
+        // Server emits "/today" when the runner has onboarding_complete=true
+        // (returning user · skip rolepick + onboarding) and "/onboarding"
+        // for new sign-ups that still need to set role + race. The iPhone
+        // used to ignore this and always advance to rolepick, which kicked
+        // already-onboarded users (David) through the new-user flow on
+        // every sign-in.
+        let redirect: String?
     }
 
     /// POST /api/auth/email · single endpoint that handles both signin
@@ -711,6 +718,24 @@ struct ReadinessSnapshot: Decodable {
     let hrvCurrent: Int?
     let hrvBaseline: Int?
     let loadAcwr: Double?
+    // /api/readiness ships an `inputs` array — one row per driver (sleep,
+    // hrv, rhr, load) with the human-readable label/observation/weight.
+    // Was previously stubbed via an extension that returned []; HealthView
+    // and NudgeSheet rendered fake placeholder rows because of it.
+    let inputs: [ReadinessInput]?
+}
+
+/// One driver of the readiness score. Mirrors the row shape served by
+/// /api/readiness:  { key, label, observedV, observedSub, weight, meaning }.
+/// `weight` is signed; negative pulls the score down (a "bad" driver),
+/// positive pushes it up. UI surfaces use `weight < 0` to color the row.
+struct ReadinessInput: Decodable, Hashable {
+    let key: String
+    let label: String
+    let observedV: String?
+    let observedSub: String?
+    let weight: Int?
+    let meaning: String?
 }
 
 // MARK: - P29 Settings + Profile

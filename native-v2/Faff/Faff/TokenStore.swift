@@ -128,6 +128,16 @@ final class TokenStore: ObservableObject {
     }
 
     /// Write a string to Keychain · upserts the account row. Nil clears.
+    ///
+    /// Strategy: delete-then-add rather than update-or-add. Update-first was
+    /// silently failing on some installs (the legacy item carried a different
+    /// accessibility class than the new write, SecItemUpdate returned
+    /// errSecParam or similar non-`itemNotFound`, the fall-through never
+    /// fired, and the new token never landed). The runner appeared signed in
+    /// (the @Published `token` was set) but every authedSend read the stale /
+    /// missing keychain row · backend returned 401 · NudgeSheet etc. rendered
+    /// empty. Delete-then-add costs one extra SecItem call per write but
+    /// removes the failure mode.
     nonisolated fileprivate static func keychainWrite(_ account: String, value: String?) {
         guard let value, let data = value.data(using: .utf8) else {
             keychainDelete(account); return
@@ -137,18 +147,23 @@ final class TokenStore: ObservableObject {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        let attrs: [String: Any] = [
-            kSecValueData as String: data,
-            // `WhenUnlockedThisDeviceOnly` keeps the token off iCloud
-            // backups and only readable while the device is unlocked ·
-            // the right default for a session token.
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        ]
-        // SecItemUpdate first; SecItemAdd if the row doesn't exist.
-        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, attrs as CFDictionary)
-        if updateStatus == errSecItemNotFound {
-            var add = baseQuery
-            add.merge(attrs) { _, new in new }
+        // Drop any existing row (or no-op if absent). errSecItemNotFound here
+        // is expected on first write and not actionable.
+        _ = SecItemDelete(baseQuery as CFDictionary)
+        var add = baseQuery
+        add[kSecValueData as String] = data
+        // `WhenUnlockedThisDeviceOnly` keeps the token off iCloud backups and
+        // only readable while the device is unlocked · the right default for
+        // a session token. Background-launched contexts (notifications, BG
+        // fetch) run with the device unlocked or after the first unlock, so
+        // this still serves them.
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(add as CFDictionary, nil)
+        // Add can return errSecDuplicateItem if a system race re-inserted the
+        // row between our delete + add. One retry handles that without
+        // looping forever on a real failure.
+        if status == errSecDuplicateItem {
+            _ = SecItemDelete(baseQuery as CFDictionary)
             _ = SecItemAdd(add as CFDictionary, nil)
         }
     }
