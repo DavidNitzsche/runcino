@@ -48,6 +48,10 @@ enum FaffRoute: Hashable {
     case shoes
     case pro
     case paywall
+    /// Learn modal — 45 doctrine articles seeded server-side after the
+    /// 2026-05-30 backend audit. Pushed from health-tab tile taps and
+    /// from any coach card with a `learn` deep-link.
+    case learn(slug: String)
 }
 
 struct RootTabView: View {
@@ -108,6 +112,7 @@ struct RootTabView: View {
         case .shoes:               ShoesView().navigationBarHidden(true)
         case .pro:                 ProView().navigationBarHidden(true)
         case .paywall:             PaywallView().navigationBarHidden(true)
+        case .learn(let slug):     LearnArticleSheet(slug: slug).navigationBarHidden(true)
         }
     }
 

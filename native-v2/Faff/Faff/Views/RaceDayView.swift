@@ -33,6 +33,13 @@ struct RaceDayView: View {
                             SpecLabel(text: "ROUTE", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
                             mapPlaceholder
                                 .frame(height: 118)
+                            if let prov = courseProvenanceLabel {
+                                Text(prov)
+                                    .font(.display(10, weight: .bold))
+                                    .tracking(0.5)
+                                    .foregroundStyle(Theme.txt.opacity(0.55))
+                                    .padding(.top, 2)
+                            }
                             SpecLabel(text: "ELEVATION", size: 9, tracking: 2, color: Theme.txt.opacity(0.5))
                                 .padding(.top, 4)
                             elevationPlaceholder
@@ -395,6 +402,17 @@ struct RaceDayView: View {
         let mi = detail?.race.distance_mi.map { String(format: "%.1f MI", $0) }
         // RaceDetail has no elev field today; fall back to "" if absent.
         return mi ?? ""
+    }
+
+    /// Crowd-sourced provenance line shown under the route. Drawn only when
+    /// the course came from the shared course_library and at least one
+    /// other runner has raced it. New 2026-05-30 backend audit surface.
+    private var courseProvenanceLabel: String? {
+        guard let lib = detail?.course_library else { return nil }
+        let n = lib.contributor_count
+        guard n > 0 else { return nil }
+        if n == 1 { return "CROWD-SOURCED · 1 RUNNER" }
+        return "CROWD-SOURCED · \(n) RUNNERS"
     }
 
     private func factTint(_ tone: String?) -> Color {

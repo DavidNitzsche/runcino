@@ -32,6 +32,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
     const courseSource = geoRow.rows[0]?.course_source ?? null;
 
+    // Course-library provenance (2026-05-30 audit) — when the course came
+    // from the shared library, surface `source` + `contributor_count` so
+    // the iPhone can render "Crowd-sourced by N runners" on the race page.
+    const libRow = await pool.query(
+      `SELECT source, contributor_count FROM course_library WHERE slug = $1`,
+      [slug],
+    ).catch(() => ({ rows: [] }));
+    const courseLibrary = libRow.rows[0] ? {
+      source: libRow.rows[0].source ?? null,
+      contributor_count: Number(libRow.rows[0].contributor_count ?? 0),
+    } : null;
+
     const proximity = (race as any).days < 0 ? 'post-race'
       : (race as any).days <= 7 ? 'race-week'
       : (race as any).days <= 60 ? 'sharpening'
@@ -42,6 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       proximity,
       course_geometry: courseGeometry,
       course_source: courseSource,
+      course_library: courseLibrary,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });

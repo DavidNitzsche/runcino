@@ -10,6 +10,20 @@ struct RaceDetailResponse: Decodable {
     let proximity: String   // "post-race" | "race-week" | "sharpening" | "building"
     let course_geometry: CourseGeometry?   // raw GPX geometry; all-optional so it can't break decode
     let course_source: String?
+    /// Course-library provenance — when this race's course came from the
+    /// shared library, the iPhone shows "Crowd-sourced by N runners" so
+    /// David knows the GPX wasn't his upload. New 2026-05-30 audit. Nil
+    /// when the course is a personal upload or no course exists.
+    let course_library: CourseLibraryProvenance?
+}
+
+/// One row from `course_library` joined to the race. `source` is the
+/// origin tag ("upload" / "strava_match" / "promoted") and
+/// `contributor_count` is the number of distinct runners who have raced
+/// this course. Used by RaceDayView to render the crowd-sourced badge.
+struct CourseLibraryProvenance: Decodable {
+    let source: String?
+    let contributor_count: Int
 }
 
 struct RaceDetail: Decodable {

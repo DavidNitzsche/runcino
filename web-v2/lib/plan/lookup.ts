@@ -23,6 +23,11 @@ export interface ActivePlan {
   mode: string | null;
   goal_iso: string | null;
   authored_iso: string;
+  /** ISO timestamp of the last `run-adaptations` cron pass that touched
+   *  this plan (or null if the cron has never run for this plan yet). The
+   *  iPhone surfaces "Plan refreshed Xh ago" so the user knows the plan
+   *  is alive. Added 2026-05-30 audit pass. */
+  last_adapted_at: string | null;
 }
 
 interface CacheEntry { value: ActivePlan | null; expires: number; }
@@ -41,7 +46,8 @@ export async function loadActivePlan(userId: string): Promise<ActivePlan | null>
   if (hit && hit.expires > Date.now()) return hit.value;
 
   const r = await pool.query<ActivePlan>(
-    `SELECT id, race_id, mode, goal_iso::text AS goal_iso, authored_iso::text AS authored_iso
+    `SELECT id, race_id, mode, goal_iso::text AS goal_iso, authored_iso::text AS authored_iso,
+            last_adapted_at::text AS last_adapted_at
        FROM training_plans
       WHERE user_uuid = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,

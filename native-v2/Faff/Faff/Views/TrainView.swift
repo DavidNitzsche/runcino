@@ -85,8 +85,8 @@ struct TrainView: View {
     /// /api/coach/facts?surface=plan block.
     @ViewBuilder
     private var coachOverlay: some View {
-        if let facts = planFacts?.facts, !facts.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            if let facts = planFacts?.facts, !facts.isEmpty {
                 ForEach(facts.prefix(3)) { f in
                     HStack(spacing: 8) {
                         SpecLabel(text: f.label, size: 9, tracking: 1.2, color: Theme.txt.opacity(0.55))
@@ -99,7 +99,46 @@ struct TrainView: View {
                     }
                 }
             }
+            // Plan-freshness ticker — 2026-05-30 audit surface. Tells the
+            // runner the run-adaptations cron actually ran recently so the
+            // plan isn't stale. Hidden if last_adapted_at is unset / older
+            // than 7 days (cron is broken — would rather show nothing than
+            // a misleadingly old timestamp).
+            if let freshness = planFreshnessLabel {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Theme.txt.opacity(0.45))
+                    Text(freshness)
+                        .font(.display(10, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.txt.opacity(0.55))
+                    Spacer()
+                }
+            }
         }
+    }
+
+    /// "Plan refreshed 2h ago" line. Uses ISO8601DateFormatter to parse the
+    /// server's `last_adapted_at` (Postgres timestamptz cast to text). Hidden
+    /// when nil, in the future, or > 7d old.
+    private var planFreshnessLabel: String? {
+        guard let iso = state?.last_adapted_at else { return nil }
+        // Postgres emits "2026-05-30 14:22:01.123+00" by default · the
+        // ISO8601DateFormatter wants "2026-05-30T14:22:01Z" — try both.
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let cleaned = iso.replacingOccurrences(of: " ", with: "T")
+        let date = fmt.date(from: cleaned) ?? fmt.date(from: cleaned + "Z")
+        guard let d = date else { return nil }
+        let elapsed = Date().timeIntervalSince(d)
+        if elapsed < 0 { return nil }
+        let days = Int(elapsed / 86400)
+        if days > 7 { return nil }   // cron is stale; don't lie
+        let hours = Int(elapsed / 3600)
+        if hours < 1 { return "PLAN REFRESHED · JUST NOW" }
+        if hours < 24 { return "PLAN REFRESHED · \(hours)H AGO" }
+        return "PLAN REFRESHED · \(days)D AGO"
     }
 
     private func tint(_ tone: String?) -> Color {

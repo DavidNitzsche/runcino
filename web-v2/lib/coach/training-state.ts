@@ -56,6 +56,10 @@ export interface TrainingState {
   nextQuality: { date: string; dow: number; type: string; label: string | null; mi: number } | null;
   weekDone: number;            // strava sum Mon→today for current week
   weekPlanned: number | null;
+  /** ISO timestamp of the last run-adaptations cron pass. Drives the
+   *  "Plan refreshed Xh ago" freshness line on the Train tab. Added
+   *  2026-05-30 audit. Null when the cron hasn't run yet. */
+  last_adapted_at: string | null;
 }
 
 export async function loadTrainingState(userId: string): Promise<TrainingState> {
@@ -68,6 +72,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       plan_id: null, today, race: null, phases: [], weeks: [],
       currentPhase: null, currentWeekIdx: null, nextQuality: null,
       weekDone: 0, weekPlanned: null,
+      last_adapted_at: null,
     };
   }
 
@@ -232,5 +237,6 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   return {
     plan_id: plan.id, today, race, phases, weeks,
     currentPhase, currentWeekIdx, nextQuality, weekDone, weekPlanned,
+    last_adapted_at: plan.last_adapted_at,
   };
 }

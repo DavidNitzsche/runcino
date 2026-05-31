@@ -158,6 +158,19 @@ struct RootContainer: View {
             // Settings → Sign out cleared the session. Bounce back to gate.
             withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faffSessionExpired)) { _ in
+            // Auth contract changed 2026-05-30 — /api/* no longer falls back
+            // to DEFAULT_USER_ID, so a 401 from any read means the session
+            // token expired (or never existed on this install). Clear local
+            // state and bounce to SignIn so the user can mint a fresh one.
+            //
+            // We don't await here — the notification fires from the fetch
+            // helper's hot path. The view layer keeps whatever stale data
+            // it had until the user re-auths and the cache repopulates.
+            TokenStore.shared.clear()
+            UserDefaults.standard.removeObject(forKey: "faff.onboarded")
+            withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
+        }
     }
 
     private func decideInitialStep() async {

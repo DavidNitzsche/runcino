@@ -26,6 +26,7 @@ struct TodayView: View {
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
+    @State private var weather: WeatherBaseline?   // forecast vs 14-day baseline · drives the HOTTER THAN USUAL tag
 
     var body: some View {
         let mesh = selectedEffort.mesh
@@ -176,9 +177,19 @@ struct TodayView: View {
 
     private var heroBlock: some View {
         VStack(alignment: .leading, spacing: 18) {
-            // sub label
-            SpecLabel(text: subLabel, size: 13, tracking: 0.5, color: Theme.txt.opacity(0.92))
-                .textCase(.uppercase)
+            // sub label + optional weather tag (drawn inline so it sits on
+            // the same baseline as the existing "EASY · 8:30/mi" eyebrow)
+            HStack(spacing: 8) {
+                SpecLabel(text: subLabel, size: 13, tracking: 0.5, color: Theme.txt.opacity(0.92))
+                    .textCase(.uppercase)
+                if let tag = weatherTagLabel {
+                    Text(tag)
+                        .font(.label(9)).tracking(1.5)
+                        .foregroundStyle(Color(hex: 0x1C0A02))
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(weatherTagColor, in: RoundedRectangle(cornerRadius: 5))
+                }
+            }
             // big workout name
             Text(workoutName)
                 .displayRecipe(size: 58, weight: .bold)
@@ -292,6 +303,47 @@ struct TodayView: View {
                 }
             }
 
+            // FUELING — promoted to its own block (2026-05-30 audit). Server
+            // emits prescription.fueling with shortLine / gels / atMins; older
+            // surfaces buried this inside a 2x2 conditions grid which lost the
+            // detail. Tile renders only when the backend says fueling is needed.
+            if let f = displayWorkout?.fueling, f.needed {
+                pBlock(title: "FUELING") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !f.shortLine.isEmpty {
+                            Text(f.shortLine)
+                                .font(.body(15, weight: .extraBold))
+                                .tracking(-0.2)
+                                .foregroundStyle(Color(hex: 0x14110D))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        HStack(spacing: 18) {
+                            fuelStat(key: "GELS",   value: "\(f.gels)")
+                            fuelStat(key: "G/HR",   value: "\(f.gPerHr)")
+                            fuelStat(key: "TOTAL",  value: "\(f.totalCarbsG) g")
+                        }
+                        if !f.atMins.isEmpty {
+                            HStack(spacing: 6) {
+                                SpecLabel(text: "AT MIN", size: 9, tracking: 1.5, color: Color(hex: 0xA39A8C))
+                                Text(f.atMins.map(String.init).joined(separator: " · "))
+                                    .font(.display(13, weight: .bold))
+                                    .foregroundStyle(Color(hex: 0x14110D))
+                            }
+                        }
+                        if !f.why.isEmpty {
+                            Text(f.why)
+                                .font(.body(11, weight: .medium))
+                                .foregroundStyle(Color(hex: 0x736C61))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(hex: 0xEEE7DA))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+            }
+
             pBlock(title: "CONDITIONS & KIT") {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)], spacing: 1) {
                     infoCell(key: "Weather", value: conditions.weather)
@@ -338,6 +390,19 @@ struct TodayView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(Color.white)
+    }
+
+    /// Inline stat for the FUELING block — small caps label over a single
+    /// big number. Lives inline so the gels/g·hr/total row reads as a
+    /// quick-glance metric strip, not a sub-table.
+    private func fuelStat(key: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            SpecLabel(text: key, size: 9, tracking: 1.2, color: Color(hex: 0xA39A8C))
+            Text(value)
+                .font(.display(17, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Color(hex: 0x14110D))
+        }
     }
 
     // MARK: - Derived
@@ -439,6 +504,25 @@ struct TodayView: View {
     }
 
     private var plainWorkoutName: String { workoutName.replacingOccurrences(of: "\n", with: " ") }
+
+    /// "HOTTER 78°F" / "COOLER 52°F" tag derived from /api/prescription's
+    /// weather_baseline. Hidden when the delta from baseline is < 6°F
+    /// (Maughan's threshold for meaningful heat impact). Returns nil to
+    /// hide the badge entirely.
+    private var weatherTagLabel: String? {
+        guard let wx = weather, let d = wx.deltaF, let t = wx.tempF else { return nil }
+        if abs(d) < 6 { return nil }
+        let degrees = Int(t.rounded())
+        return d > 0 ? "HOTTER \(degrees)°F" : "COOLER \(degrees)°F"
+    }
+
+    /// Background color for the weather tag — race-orange for hotter (it's
+    /// a "watch your effort" cue), recovery-cyan for cooler (a "you might
+    /// surprise yourself" cue).
+    private var weatherTagColor: Color {
+        guard let d = weather?.deltaF, d > 0 else { return Color(hex: 0x9AF0BF) }
+        return Color(hex: 0xFFD27A)
+    }
 
     private var todayISO: String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date())
@@ -549,6 +633,15 @@ struct TodayView: View {
         async let pr = (try? await API.fetchProfileState())
 
         let (planWeek, watch, ready, brief, skip, prof) = await (p, w, r, b, s, pr)
+        // Weather baseline runs second-pass — it needs the workout type
+        // and weekly mileage from the plan/workout. Fire-and-forget; the
+        // HOTTER THAN USUAL tag silently hides if the lookup fails.
+        // Derive workout type from today's PlanWeek entry (PlanDay.type is
+        // the canonical type string the prescription endpoint expects);
+        // WatchWorkout doesn't carry a type field directly.
+        let todayType = planWeek?.days.first(where: { $0.is_today })?.type.lowercased() ?? "easy"
+        let weeklyMi = Int(planWeek?.days.reduce(0.0) { $0 + $1.distance_mi } ?? 30)
+        let wx = try? await API.fetchPrescriptionWeather(type: todayType, weeklyMi: weeklyMi)
         await MainActor.run {
             self.plan = planWeek
             self.workout = watch
@@ -556,6 +649,7 @@ struct TodayView: View {
             self.briefing = brief
             self.skipped = skip
             self.profile = prof
+            self.weather = wx
             if let today = planWeek?.today_iso, selectedDayID.isEmpty { selectedDayID = today }
         }
     }

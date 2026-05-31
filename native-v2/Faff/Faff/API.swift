@@ -5,7 +5,42 @@
 
 import Foundation
 
+extension Notification.Name {
+    /// Posted when any /api/* call returns 401. RootContainer listens for
+    /// this and bounces to SignIn so the user can mint a fresh session.
+    /// Auth contract changed 2026-05-30 · /api/* no longer falls back to
+    /// the default user when no token is present.
+    static let faffSessionExpired = Notification.Name("faff.session.expired")
+}
+
+enum APIAuthError: Error { case unauthorized }
+
 enum API {
+
+    /// Auth-aware GET helper. Every read-side endpoint should call this so
+    /// (a) the Authorization: Bearer token is attached when present and
+    /// (b) a 401 posts .faffSessionExpired so the gate can take over.
+    static func authedGET(_ url: URL) async throws -> (Data, HTTPURLResponse) {
+        let req = URLRequest(url: url)
+        return try await authedSend(req)
+    }
+
+    /// Auth-aware request helper for ANY HTTP method (POST/PATCH/DELETE/etc.).
+    /// Caller assembles the URLRequest (method, headers, body); we attach the
+    /// bearer + do 401 handling so write paths share the same session contract
+    /// as reads. Returns the (Data, HTTPURLResponse) tuple — caller decides
+    /// what to do with the body / status.
+    static func authedSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        var req = request
+        TokenStore.shared.authorize(&req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw APIError.badStatus(-1) }
+        if http.statusCode == 401 {
+            NotificationCenter.default.post(name: .faffSessionExpired, object: nil)
+            throw APIAuthError.unauthorized
+        }
+        return (data, http)
+    }
     /// Production API base. next.faff.run was the pre-cutover staging
     /// subdomain — it's no longer routed, which caused build 65/66 to
     /// land on a 404 HTML page in TestFlight. www.faff.run is the live
@@ -30,9 +65,9 @@ enum API {
         if let mode { items.append(URLQueryItem(name: "mode", value: mode)) }
         comps.queryItems = items
 
-        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
         let decoded = try JSONDecoder().decode(Briefing.self, from: data)
         // Cache the raw bytes so the next launch can hydrate this
@@ -66,7 +101,7 @@ enum API {
             "briefing_id": briefingId ?? NSNull(),
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        _ = try await URLSession.shared.data(for: req)
+        _ = try await API.authedSend(req)
     }
 
     /// Closed loop §8.6 — submit a profile gap input (height, weight, etc.).
@@ -75,7 +110,7 @@ enum API {
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: patch)
-        _ = try await URLSession.shared.data(for: req)
+        _ = try await API.authedSend(req)
     }
 
     // MARK: - P39 auth — Sign in with Apple
@@ -130,7 +165,7 @@ enum API {
             resolvingAgainstBaseURL: false
         )!
         comps.queryItems = [URLQueryItem(name: "action", value: "connect")]
-        let (data, _) = try await URLSession.shared.data(from: comps.url!)
+        let (data, _): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
         let r = try? JSONDecoder().decode(StravaConnectURLResponse.self, from: data)
         guard let urlStr = r?.url else { return nil }
         return URL(string: urlStr)
@@ -140,8 +175,8 @@ enum API {
 
     static func fetchSettings() async throws -> UserSettings? {
         let url = baseURL.appendingPathComponent("api/settings")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         return try? JSONDecoder().decode(UserSettings.self, from: data)
     }
 
@@ -150,16 +185,16 @@ enum API {
         req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: patch)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
     }
 
     static func fetchProfile() async throws -> ProfileFields? {
         let url = baseURL.appendingPathComponent("api/profile")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         return try? JSONDecoder().decode(ProfileFields.self, from: data)
     }
 
@@ -167,8 +202,8 @@ enum API {
 
     static func fetchRaceDetail(slug: String) async throws -> RaceDetailResponse? {
         let url = baseURL.appendingPathComponent("api/race/\(slug)")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         return try? JSONDecoder().decode(RaceDetailResponse.self, from: data)
     }
 
@@ -176,8 +211,8 @@ enum API {
 
     static func fetchShoes() async throws -> ShoesResponse? {
         let url = baseURL.appendingPathComponent("api/shoe")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         return try? JSONDecoder().decode(ShoesResponse.self, from: data)
     }
 
@@ -187,9 +222,9 @@ enum API {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = ["shoe_id": shoeId as Any]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
     }
 
@@ -200,9 +235,9 @@ enum API {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
     }
 
@@ -213,9 +248,9 @@ enum API {
         var payload = body
         payload["slug"] = slug
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
     }
 
@@ -224,9 +259,9 @@ enum API {
     /// exactly — the watch decodes from Data into its own WatchWorkout).
     static func fetchWatchTodayRaw() async throws -> Data {
         let url = baseURL.appendingPathComponent("api/watch/today")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
         return data
     }
@@ -241,9 +276,9 @@ enum API {
             resolvingAgainstBaseURL: false
         )!
         if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
-        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
         let w = try JSONDecoder().decode(TodayWorkoutWrapper.self, from: data)
         // Cache the *raw* wrapper (not just the workout) so the next
@@ -263,8 +298,8 @@ enum API {
             resolvingAgainstBaseURL: false
         )!
         comps.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
-        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         guard let decoded = try? JSONDecoder().decode(LogState.self, from: data) else { return nil }
         AppCache.writeRaw(.logState, data: data)
         return decoded
@@ -273,8 +308,8 @@ enum API {
     /// Single run detail (P28). Powers RunDetailSheet.
     static func fetchRunDetail(id: String) async throws -> RunDetail? {
         let url = baseURL.appendingPathComponent("api/runs/\(id)")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         return try? JSONDecoder().decode(RunDetail.self, from: data)
     }
 
@@ -283,8 +318,8 @@ enum API {
     /// one (no health data yet) — UI degrades to a "?" instead of lying.
     static func fetchReadiness() async throws -> ReadinessSnapshot? {
         let url = baseURL.appendingPathComponent("api/readiness")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else {
             return nil
         }
         guard let decoded = try? JSONDecoder().decode(ReadinessSnapshot.self, from: data) else { return nil }
@@ -309,10 +344,9 @@ enum API {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/onboarding/complete"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        TokenStore.shared.authorize(&req)
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return false }
         return true
     }
 
@@ -323,10 +357,9 @@ enum API {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/strava/push/\(runId)"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        TokenStore.shared.authorize(&req)
         req.httpBody = "{}".data(using: .utf8)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return false }
         return true
     }
 
@@ -338,11 +371,10 @@ enum API {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/coach/proposal"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        TokenStore.shared.authorize(&req)
         let body: [String: Any] = ["action": action, "proposal": proposal]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return false }
         return true
     }
 
@@ -356,8 +388,8 @@ enum API {
             resolvingAgainstBaseURL: false
         )!
         comps.queryItems = [URLQueryItem(name: "surface", value: surface)]
-        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         let envelope = try? JSONDecoder().decode(CoachFactsEnvelope.self, from: data)
         return envelope?.block
     }
@@ -367,8 +399,8 @@ enum API {
     /// the UI doesn't lie about a skip the user didn't make.
     static func fetchTodaySkipped() async throws -> Bool {
         let url = baseURL.appendingPathComponent("api/today/skip")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else {
             return false
         }
         let decoded = try? JSONDecoder().decode(SkipResponse.self, from: data)
@@ -384,9 +416,9 @@ enum API {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // Empty body — server picks today by default.
         req.httpBody = "{}".data(using: .utf8)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
     }
 
@@ -396,9 +428,9 @@ enum API {
         req.httpMethod = "DELETE"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = "{}".data(using: .utf8)
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
     }
 
@@ -407,8 +439,8 @@ enum API {
     /// ProfileView. See web-v2/app/api/profile/state/route.ts.
     static func fetchProfileState() async throws -> ProfileState? {
         let url = baseURL.appendingPathComponent("api/profile/state")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         guard let decoded = try? JSONDecoder().decode(ProfileState.self, from: data) else { return nil }
         AppCache.writeRaw(.profileState, data: data)
         return decoded
@@ -418,8 +450,8 @@ enum API {
     /// the web list reads. Sorted upcoming-first.
     static func fetchRaces() async throws -> RaceListResponse? {
         let url = baseURL.appendingPathComponent("api/races")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         guard let decoded = try? JSONDecoder().decode(RaceListResponse.self, from: data) else { return nil }
         AppCache.writeRaw(.raceList, data: data)
         return decoded
@@ -430,19 +462,53 @@ enum API {
     /// using the same data web /training reads.
     static func fetchTrainingState() async throws -> TrainingState? {
         let url = baseURL.appendingPathComponent("api/training/state")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         guard let decoded = try? JSONDecoder().decode(TrainingState.self, from: data) else { return nil }
         AppCache.writeRaw(.trainingState, data: data)
         return decoded
+    }
+
+    /// GET /api/prescription — pulls back JUST the weather_baseline block
+    /// for surfacing "HOTTER THAN USUAL" tags. The full prescription shape
+    /// (paces, hrTargets, fueling) is not decoded here — WatchWorkout
+    /// already carries the structured workout, and we only need the heat
+    /// context for the tag. Pass `type` and `weeklyMi` to match the
+    /// /api/prescription contract.
+    static func fetchPrescriptionWeather(type: String, weeklyMi: Int, date: String? = nil) async throws -> WeatherBaseline? {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/prescription"),
+            resolvingAgainstBaseURL: false
+        )!
+        var items = [
+            URLQueryItem(name: "type", value: type),
+            URLQueryItem(name: "weeklyMi", value: "\(weeklyMi)"),
+        ]
+        if let date { items.append(URLQueryItem(name: "date", value: date)) }
+        comps.queryItems = items
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        let envelope = try? JSONDecoder().decode(PrescriptionWeatherEnvelope.self, from: data)
+        return envelope?.weather_baseline
+    }
+
+    /// GET /api/learn/[slug] — full doctrine article body the modal reads.
+    /// 45 articles seeded server-side after the 2026-05-30 audit pass. Returns
+    /// nil when slug not found (404). Cached for an hour by the server's
+    /// Cache-Control header so we don't bother with AppCache here.
+    static func fetchLearnArticle(slug: String) async throws -> LearnArticle? {
+        let url = baseURL.appendingPathComponent("api/learn/\(slug)")
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(LearnArticle.self, from: data)
     }
 
     /// /api/health/state — 30-day trends + summary + watch-mode for
     /// every health metric the iPhone /health tab renders.
     static func fetchHealthState() async throws -> HealthState? {
         let url = baseURL.appendingPathComponent("api/health/state")
-        let (data, resp) = try await URLSession.shared.data(from: url)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
         guard let decoded = try? JSONDecoder().decode(HealthState.self, from: data) else { return nil }
         AppCache.writeRaw(.healthState, data: data)
         return decoded
@@ -456,9 +522,9 @@ enum API {
             resolvingAgainstBaseURL: false
         )!
         if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
-        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus((resp as? HTTPURLResponse)?.statusCode ?? -1)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
         let decoded = try JSONDecoder().decode(PlanWeek.self, from: data)
         // Current-week only — date-overridden fetches are previews and
@@ -486,7 +552,7 @@ enum API {
         if let v = appVersion { body["app_version"] = v }
         do {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            _ = try? await URLSession.shared.data(for: req)
+            _ = try? await API.authedSend(req)
         } catch {
             // JSON failed to serialize — silent.
         }
@@ -511,7 +577,7 @@ enum API {
         if let d = dedupKey { body["dedup_key"] = d }
         do {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            _ = try? await URLSession.shared.data(for: req)
+            _ = try? await API.authedSend(req)
         } catch {
             // Silent.
         }
@@ -780,6 +846,11 @@ struct TrainingState: Decodable {
     let nextQuality: TrainingNextQuality?
     let weekDone: Double
     let weekPlanned: Double?
+    /// ISO timestamp of the last run-adaptations cron pass. Drives the
+    /// "Plan refreshed Xh ago" freshness line on the Train tab so the
+    /// runner knows the plan is alive. Optional — null when the cron
+    /// hasn't run yet for this plan. New 2026-05-30 audit.
+    let last_adapted_at: String?
 }
 
 struct TrainingRace: Decodable {
@@ -889,3 +960,24 @@ struct RaceListItem: Decodable, Identifiable {
     /// Slug doubles as the stable identity for SwiftUI ForEach.
     var id: String { slug }
 }
+
+// MARK: - Prescription weather (2026-05-30 audit · "HOTTER THAN USUAL" tag)
+//
+// Tiny envelope around /api/prescription · we only decode the weather block.
+// `deltaF` is positive when today is hotter than the 14-day baseline at the
+// runner's typical lat/lon; negative when cooler. The iPhone surfaces the
+// tag when |deltaF| >= 6 (Maughan curve calls 5°F the meaningful threshold).
+
+struct PrescriptionWeatherEnvelope: Decodable {
+    let weather_baseline: WeatherBaseline?
+}
+
+struct WeatherBaseline: Decodable {
+    let tempF: Double?
+    let baselineTempF: Double?
+    let deltaF: Int?
+}
+
+// LearnArticle model lives in Models/Tips.swift — was the original P40
+// home; extended with citations_json in the 2026-05-30 audit so the
+// /api/learn/[slug] reader has the full payload to render.

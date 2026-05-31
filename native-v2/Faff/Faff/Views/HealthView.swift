@@ -47,7 +47,12 @@ struct HealthView: View {
                         .padding(.vertical, 14)
 
                     focusChart
-                        .padding(.horizontal, 22).padding(.bottom, 40)
+                        .padding(.horizontal, 22).padding(.bottom, 22)
+
+                    SectionLabel(title: "LEARN THE DOCTRINE")
+                        .padding(.horizontal, 22).padding(.top, 12)
+                    learnLinks
+                        .padding(.horizontal, 22).padding(.top, 10).padding(.bottom, 40)
                 }
                 .padding(.bottom, 120)
             }
@@ -55,6 +60,41 @@ struct HealthView: View {
         .task { await reload() }
         .refreshable { await reload() }
         .sheet(isPresented: $sheet) { ReadinessBreakdownSheet(snapshot: readiness) }
+    }
+
+    /// Doctrine entry points. Each tile pushes onto the tab's NavigationStack
+    /// via FaffRoute.learn(slug:) — landing in LearnArticleSheet. Slugs match
+    /// the article SEED in web-v2/app/learn/[slug]/seed.ts.
+    private var learnLinks: some View {
+        VStack(spacing: 8) {
+            learnTile(slug: "why-rest-works", title: "Why rest works", eyebrow: "RECOVERY")
+            learnTile(slug: "hrv",             title: "HRV — what it is",       eyebrow: "PHYSIOLOGY")
+            learnTile(slug: "rhr",             title: "Resting heart rate",     eyebrow: "PHYSIOLOGY")
+            learnTile(slug: "heart-rate-zones",title: "Heart-rate zones, Friel-style", eyebrow: "METHODOLOGY")
+            learnTile(slug: "vo2-max",         title: "VO2 max",                eyebrow: "PHYSIOLOGY")
+        }
+    }
+
+    private func learnTile(slug: String, title: String, eyebrow: String) -> some View {
+        NavigationLink(value: FaffRoute.learn(slug: slug)) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    SpecLabel(text: eyebrow, size: 9, tracking: 1.5, color: Theme.txt.opacity(0.5))
+                    Text(title)
+                        .font(.body(14, weight: .semibold))
+                        .foregroundStyle(Theme.txt)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.txt.opacity(0.4))
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func reload() async {

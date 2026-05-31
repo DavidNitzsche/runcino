@@ -29,12 +29,22 @@ struct FormBand: Decodable, Identifiable {
     let meaning: String
 }
 
-// MARK: - LearnArticle (P40 /learn modal)
+// MARK: - LearnArticle (P40 /learn modal · 2026-05-30 audit added citations)
 struct LearnArticle: Decodable, Identifiable {
     var id: String { slug }
     let slug: String
     let title: String
     let eyebrow: String?
     let body_md: String
+    let citations_json: [LearnCitation]?
     let related_slugs: [String]?
+}
+
+struct LearnCitation: Decodable {
+    let author: String
+    let year: Int
+    let title: String
+    let journal: String?
+    let doi: String?
+    let url: String?
 }

@@ -76,6 +76,10 @@ export async function GET(req: NextRequest) {
   // baseline avg over last 14d when exact date not cached yet.
   const explicitTempF = Number(sp.get('tempF'));
   let tempF: number | null = isFinite(explicitTempF) ? explicitTempF : null;
+  // Baseline temp (14-day avg at the runner's typical lat/lon) is also
+  // returned so the iPhone can render a "HOTTER THAN USUAL" tag even
+  // when the heat slowdown is trivial. Set in the same lookup loop.
+  let baseline: number | null = null;
   if (tempF == null) {
     // Use the runner's most-recent Strava activity coords as a proxy
     // for "where they usually run". Slim lookup; never blocks the
@@ -107,10 +111,13 @@ export async function GET(req: NextRequest) {
         if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
           tempF = await lookupTempF(lat, lon, dateParam);
         }
-        // Fall back to 14-day baseline if no exact-date forecast cached.
-        if (tempF == null) {
-          tempF = await baselineTempF(lat, lon, today, 14);
-        }
+        // Always pull the baseline so the iPhone can render the
+        // "HOTTER THAN USUAL" tag — even when the forecast is exactly
+        // the baseline temp and heat-adjustment is a no-op.
+        baseline = await baselineTempF(lat, lon, today, 14);
+        // Fall back to baseline as the forecast itself if no exact-date
+        // entry is cached yet.
+        if (tempF == null) tempF = baseline;
       }
     } catch { /* non-fatal */ }
   }
@@ -180,10 +187,20 @@ export async function GET(req: NextRequest) {
     citation: fueling.citation,
   } : null;
 
+  // Augment with weather-baseline context so the iPhone can render a
+  // "HOTTER THAN USUAL" tag without another network call. Lives at the
+  // top level (alongside prescription) instead of inside prescription.weather
+  // because the existing weatherSummary suppresses itself on trivial slowdowns.
+  const weather_baseline = (baseline != null || tempF != null) ? {
+    tempF: tempF ?? null,
+    baselineTempF: baseline,
+    deltaF: (tempF != null && baseline != null) ? Math.round(tempF - baseline) : null,
+  } : null;
+
   // Prescriptions are deterministic from (type, weeklyMi, lthr, goal_*).
   // The same query string returns the same output until the runner's
   // profile changes — safe to cache aggressively client-side.
-  return NextResponse.json(prescription, {
+  return NextResponse.json({ ...prescription, weather_baseline }, {
     headers: { 'Cache-Control': 'private, max-age=600, stale-while-revalidate=60' },
   });
 }
