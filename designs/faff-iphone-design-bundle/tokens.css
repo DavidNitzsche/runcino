@@ -1,0 +1,58 @@
+/* ============================================================
+   Faff · design tokens  (source of truth for Claude Code)
+   Type system + palette lifted from the canonical Faff Web App.
+   The approved iOS screens use these roles; values below are the
+   reference for the SwiftUI build.
+   ============================================================ */
+:root{
+  /* ---------- TYPE ROLES ----------
+     Anton  → brand wordmark only (skewed -9deg, uppercase)
+     Oswald → display headlines + ALL numerics (uppercase, condensed,
+              weight 500/600, tight tracking). e.g. titles, big stats,
+              ring values, paces, countdowns, gap numbers.
+     Inter  → body copy, labels, eyebrows (tracked caps), captions,
+              buttons. weight 400–800.
+  */
+  --font-brand:   'Anton', sans-serif;
+  --font-display: 'Oswald', sans-serif;   /* display + numeric */
+  --font-body:    'Inter', sans-serif;
+
+  /* type scale (px @1x phone) */
+  --t-hero: 58;   /* screen hero headline (Oswald 600) */
+  --t-h1:   38;   /* section headline */
+  --t-stat: 30;   /* prominent numeric (Oswald) */
+  --t-body: 15;   /* Inter 500/600 */
+  --t-label:11;   /* Inter 800, letter-spacing ~2px, uppercase */
+  --t-cap:  10;   /* Oswald 600/700, data captions */
+
+  /* ---------- NEUTRALS (web app) ---------- */
+  --bg:#0A0C10; --card:#11141A; --line:rgba(255,255,255,.08);
+  --txt:#F6F7F8; --mute:#8A90A0; --dim:#4B505E;
+
+  /* ---------- BRAND ---------- */
+  --brand-1:#9013FE; --brand-2:#008FEC;
+  /* animated wordmark sweep */
+  --brand-sweep:linear-gradient(95deg,#F43F5E,#FF5722 17%,#F5C518 35%,#14C08C 55%,#4F8FF7 75%,#F43F5E);
+
+  /* ---------- EFFORT / TEMPERATURE SCALE ----------
+     The system's core idea: every run/day has an "effort temperature".
+     Cool = recovery, hot = race. Mesh + accents are driven by this. */
+  --eff-recovery:#3AB0CF;   /* cool blue   */
+  --eff-easy:    #34C194;   /* green       */
+  --eff-long:    #F8B85F;   /* amber       */
+  --eff-tempo:   #FF7A45;   /* orange      */
+  --eff-intervals:#FF5A52;  /* red-orange  */
+  --eff-race:    #D6263C;   /* hot red     */
+
+  /* web-app zone aliases (same intent) */
+  --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64;
+  --dist:#27B4E0;  --rest:#008FEC; --race:#FF8847;
+
+  /* ---------- EMBER MESH (Today / race) ---------- */
+  --mesh-1:#FFC98A; --mesh-2:#FF8847; --mesh-3:#F2673A;
+  --mesh-4:#E85D26; --mesh-5:#C23A1C; --mesh-base:#4A1208;
+
+  /* ---------- SHAPE ---------- */
+  --r-card:18px; --r-sheet:30px; --r-pill:30px;
+  --blur-glass:blur(16px);
+}
