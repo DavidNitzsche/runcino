@@ -186,3 +186,85 @@ export function elevPathFromSplits(
   const area = `${line} L${pts[pts.length - 1][0].toFixed(1)},${viewH} L${pts[0][0].toFixed(1)},${viewH} Z`;
   return { line, area };
 }
+
+/**
+ * Walk the polyline accumulating Haversine ground distance and return the
+ * projected SVG positions of each integer-mile crossing (1 mi, 2 mi, ...).
+ * Used by the done-hero route map to overlay subtle mile markers along the
+ * track. Uses the same projection as `polylineToSvgPath` so positions land
+ * exactly on the rendered stroke.
+ *
+ * Skips mile 0 (that's the start endpoint dot) and the final fractional
+ * tail (that's the finish endpoint dot).
+ */
+const EARTH_MI = 3958.7613;
+function haversineMi(a: [number, number], b: [number, number]): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const x = Math.sin(dLat / 2) ** 2
+    + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * EARTH_MI * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+
+export function mileMarkersAlongPolyline(
+  points: Array<[number, number]>,
+  viewW: number,
+  viewH: number,
+  pad = 10,
+): Array<{ mile: number; x: number; y: number }> {
+  if (points.length < 2) return [];
+
+  // Reproject bbox once · same math as polylineToSvgPath so markers land on
+  // the rendered stroke.
+  let minLat = points[0][0], maxLat = points[0][0];
+  let minLng = points[0][1], maxLng = points[0][1];
+  for (const [lat, lng] of points) {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  }
+  const latSpan = maxLat - minLat || 1e-9;
+  const lngSpan = maxLng - minLng || 1e-9;
+  const midLat = (minLat + maxLat) / 2;
+  const lngScale = Math.cos((midLat * Math.PI) / 180);
+  const xSpan = lngSpan * lngScale || 1e-9;
+  const w = viewW - 2 * pad;
+  const h = viewH - 2 * pad;
+  const scale = Math.min(w / xSpan, h / latSpan);
+  const offX = pad + (w - xSpan * scale) / 2;
+  const offY = pad + (h - latSpan * scale) / 2;
+  const project = ([lat, lng]: [number, number]): [number, number] => [
+    offX + (lng - minLng) * lngScale * scale,
+    offY + (maxLat - lat) * scale,
+  ];
+
+  // Walk segment by segment, accumulating distance. When the running
+  // total crosses an integer mile boundary, interpolate the crossing
+  // point on the current segment and emit a marker.
+  const markers: Array<{ mile: number; x: number; y: number }> = [];
+  let total = 0;
+  let nextMile = 1;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const segMi = haversineMi(a, b);
+    if (segMi <= 0) continue;
+    const segStart = total;
+    const segEnd = total + segMi;
+    // Emit every integer mile boundary inside [segStart, segEnd).
+    while (nextMile >= segStart && nextMile < segEnd) {
+      const t = (nextMile - segStart) / segMi; // 0..1 along segment
+      const lat = a[0] + (b[0] - a[0]) * t;
+      const lng = a[1] + (b[1] - a[1]) * t;
+      const [x, y] = project([lat, lng]);
+      markers.push({ mile: nextMile, x, y });
+      nextMile += 1;
+    }
+    total = segEnd;
+  }
+  return markers;
+}

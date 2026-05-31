@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
-import { elevPathFromSplits, decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
+import { elevPathFromSplits, decodePolyline, polylineToSvgPath, polylineEndpoints, mileMarkersAlongPolyline } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 
 export function TodayView({
@@ -602,13 +602,34 @@ function CompletedHeroV2({
   persistShoe: boolean;
 }) {
   // Decode the run's GPS polyline once per runData change.
+  // 2026-05-31: viewBox bumped to 700x440 (closer to the card's natural
+  // aspect on desktop) and the route now carries projected mile markers +
+  // an elevation strip so the map reads as more than a thin line on a
+  // grid. Markers are placed by walking Haversine distance along the
+  // polyline so they land on the rendered stroke regardless of route
+  // shape.
+  const ROUTE_VW = 700;
+  const ROUTE_VH = 440;
+  const ROUTE_PAD = 24;
   const route = (() => {
     if (!runData?.route_polyline) return null;
     const pts = decodePolyline(runData.route_polyline);
-    const path = polylineToSvgPath(pts, 700, 360, 18);
-    const ends = polylineEndpoints(pts, 700, 360, 18);
-    return path ? { path, ends } : null;
+    const path = polylineToSvgPath(pts, ROUTE_VW, ROUTE_VH, ROUTE_PAD);
+    const ends = polylineEndpoints(pts, ROUTE_VW, ROUTE_VH, ROUTE_PAD);
+    // Only emit markers when the run is long enough that mile dots add
+    // signal · sub-3mi runs would clutter the map with adjacent dots.
+    const totalMi = runData.distance_mi ?? 0;
+    const markers = totalMi >= 3
+      ? mileMarkersAlongPolyline(pts, ROUTE_VW, ROUTE_VH, ROUTE_PAD)
+      : [];
+    return path ? { path, ends, markers } : null;
   })();
+  // Per-mile elevation strip · runs along the bottom of the route card
+  // when the run has meaningful elevation change. Helper returns null
+  // when the range is <3ft (honest flat instead of fake zigzag).
+  const elevStrip = (runData?.splits && runData.splits.length >= 2)
+    ? elevPathFromSplits(runData.splits, 700, 64, 4)
+    : null;
 
   const verdict = deriveVerdict(d, runData);
   const recap   = (result?.recap?.trim()) || deriveRecap(d, runData);
@@ -716,13 +737,108 @@ function CompletedHeroV2({
           </div>
 
           <div className="mapcol">
-            <div className="routemap">
+            <div className="routemap routemap-rich">
               {route ? (
-                <svg viewBox="0 0 700 360" preserveAspectRatio="xMidYMid meet">
-                  <path d={route.path} fill="none" stroke="#FF8847" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
-                  {route.ends && <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="7" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
-                  {route.ends && <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="7" fill="#FF8847" stroke="#fff" strokeWidth="2" />}
-                </svg>
+                <>
+                  <svg
+                    viewBox={`0 0 ${ROUTE_VW} ${ROUTE_VH}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    aria-label="Run route map"
+                  >
+                    <defs>
+                      {/* Soft glow under the route stroke. Keeps the coral
+                          line visible against the dark terrain fill without
+                          a blunt outline. */}
+                      <filter id="routeGlow" x="-10%" y="-10%" width="120%" height="120%">
+                        <feGaussianBlur stdDeviation="3.2" result="blur" />
+                        <feMerge>
+                          <feMergeNode in="blur" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                      {/* Vignette gradient · darker at the corners, light
+                          near the route's centroid · sells "this is a map,
+                          not a chart". */}
+                      <radialGradient id="routeVignette" cx="50%" cy="42%" r="78%">
+                        <stop offset="0" stopColor="rgba(255,206,138,0.06)" />
+                        <stop offset="0.6" stopColor="rgba(8,12,18,0.0)" />
+                        <stop offset="1" stopColor="rgba(0,0,0,0.55)" />
+                      </radialGradient>
+                      {/* Subtle topo-style ring lines emanating from the
+                          centroid · pure decoration but reads as terrain
+                          contours behind the route. */}
+                      <pattern id="topoRings" x="0" y="0" width="120" height="120" patternUnits="userSpaceOnUse">
+                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.025)" strokeWidth="1" />
+                        <circle cx="60" cy="60" r="32" fill="none" stroke="rgba(255,255,255,0.020)" strokeWidth="1" />
+                        <circle cx="60" cy="60" r="16" fill="none" stroke="rgba(255,255,255,0.018)" strokeWidth="1" />
+                      </pattern>
+                    </defs>
+
+                    {/* Terrain layers · stack the topo pattern + radial
+                        vignette UNDER the route. */}
+                    <rect width={ROUTE_VW} height={ROUTE_VH} fill="url(#topoRings)" />
+                    <rect width={ROUTE_VW} height={ROUTE_VH} fill="url(#routeVignette)" />
+
+                    {/* Route stroke · glow underlayer + sharp top stroke. */}
+                    <path
+                      d={route.path}
+                      fill="none"
+                      stroke="rgba(255,180,90,0.55)"
+                      strokeWidth="9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      filter="url(#routeGlow)"
+                    />
+                    <path
+                      d={route.path}
+                      fill="none"
+                      stroke="#FFC98A"
+                      strokeWidth="3.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+
+                    {/* Mile markers · small filled dots with thin outline.
+                        Skipped for runs <3mi to avoid clutter. */}
+                    {route.markers.map((m) => (
+                      <g key={m.mile}>
+                        <circle cx={m.x} cy={m.y} r="5" fill="rgba(8,12,18,0.85)" />
+                        <circle cx={m.x} cy={m.y} r="2.4" fill="#FFE7C2" />
+                      </g>
+                    ))}
+
+                    {/* Endpoint dots. Start = teal halo, finish = coral.
+                        Drawn last so they sit above the mile markers. */}
+                    {route.ends && (
+                      <>
+                        <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="9" fill="rgba(20,192,140,0.18)" />
+                        <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="2.6" />
+                        <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="9" fill="rgba(255,136,71,0.22)" />
+                        <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />
+                      </>
+                    )}
+                  </svg>
+
+                  {/* Elevation strip · only renders when the run had real
+                      vert change. Sits absolutely along the bottom of the
+                      card so the map and the elev profile share the same
+                      coordinate space without crowding either. */}
+                  {elevStrip ? (
+                    <div className="routemap-elev" aria-label="Elevation profile">
+                      <svg viewBox="0 0 700 64" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="elevFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0" stopColor="rgba(255,206,138,0.36)" />
+                            <stop offset="1" stopColor="rgba(255,206,138,0)" />
+                          </linearGradient>
+                        </defs>
+                        <path d={elevStrip.area} fill="url(#elevFill)" />
+                        <path d={elevStrip.line} fill="none" stroke="#FFE7C2" strokeWidth="1.5" />
+                      </svg>
+                      <span className="routemap-elev-lbl">ELEV PROFILE</span>
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <div className="ph">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20l-5.5 2.5V6L9 3.5m0 16.5l6 2.5m-6-2.5V3.5m6 19L20.5 20V3.5L15 6m0 16.5V6m0 0L9 3.5"/></svg>

@@ -198,12 +198,45 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .cond{display:grid;grid-template-columns:1fr 1fr;gap:18px 22px;margin-top:30px;}
 .hero-v2 .cond .kcl{font-size:9.5px;font-weight:700;letter-spacing:1px;opacity:.55;}
 .hero-v2 .cond .kcv{font-size:14px;font-weight:700;margin-top:5px;}
-.hero-v2 .mapcol{flex:1;display:flex;min-height:0;}
-.hero-v2 .routemap{position:relative;flex:1;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:radial-gradient(120% 90% at 30% 0%, rgba(143,240,176,.10), transparent 60%),repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 34px),repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 1px, transparent 1px 34px),rgba(4,14,10,.42);display:flex;align-items:center;justify-content:center;min-height:280px;}
-.hero-v2 .routemap svg{width:100%;height:100%;display:block;}
-.hero-v2 .routemap .ph{display:flex;flex-direction:column;align-items:center;gap:10px;opacity:.5;text-align:center;}
+.hero-v2 .mapcol{flex:1;display:flex;min-height:0;align-self:stretch;}
+.hero-v2 .routemap{position:relative;flex:1;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:radial-gradient(120% 90% at 30% 0%, rgba(143,240,176,.10), transparent 60%),repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 34px),repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 1px, transparent 1px 34px),rgba(4,14,10,.42);display:flex;align-items:stretch;justify-content:stretch;min-height:280px;}
+.hero-v2 .routemap > svg{width:100%;height:100%;display:block;}
+.hero-v2 .routemap .ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:.5;text-align:center;width:100%;}
 .hero-v2 .routemap .ph svg{width:26px;height:26px;}
 .hero-v2 .routemap .ph span{font-size:10px;font-weight:700;letter-spacing:1.5px;}
+/* "Rich" route card · darker terrain fill + finer grid so the route reads
+   as a hand-drawn map on slate paper, not a thin coral line floating on
+   the orange mesh. Stack a richer multi-layer background under the SVG
+   and add an inner shadow ring for vignette depth. */
+.hero-v2 .routemap-rich{
+  background:
+    radial-gradient(140% 100% at 18% -10%, rgba(143,240,176,.18), transparent 56%),
+    radial-gradient(80% 60% at 86% 110%, rgba(20,40,32,.55), transparent 65%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 28px),
+    linear-gradient(155deg, rgba(8,14,22,0.85), rgba(4,18,16,0.78));
+  border-color:rgba(255,255,255,.16);
+  box-shadow:
+    0 22px 44px -22px rgba(0,0,0,.7),
+    inset 0 0 0 1px rgba(255,255,255,.04),
+    inset 0 -38px 56px -36px rgba(0,0,0,.5);
+}
+/* Elevation profile · 64px strip pinned along the bottom of the card.
+   Sits below the route's max-elevation point in most cases · the SVG path
+   is filled with a transparent honey gradient so it reads as sub-data,
+   not a competing chart. */
+.hero-v2 .routemap-elev{
+  position:absolute; left:0; right:0; bottom:0;
+  height:64px; pointer-events:none;
+  background:linear-gradient(180deg, transparent, rgba(0,0,0,0.32));
+  border-top:1px solid rgba(255,255,255,0.06);
+}
+.hero-v2 .routemap-elev svg{position:absolute;inset:0;width:100%;height:100%;display:block;}
+.hero-v2 .routemap-elev-lbl{
+  position:absolute; left:12px; top:8px;
+  font-size:9px; font-weight:700; letter-spacing:1.4px;
+  color:rgba(255,231,194,0.62);
+}
 .hero-v2 .wcard{flex:0 0 344px;background:rgba(8,10,14,.42);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:24px;display:flex;flex-direction:column;min-height:0;}
 .hero-v2 .wcl{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:8px;margin-bottom:0;}
 .hero-v2 .wcl .ok{color:#86efa0;display:inline-flex;align-items:center;gap:5px;margin-left:auto;}
