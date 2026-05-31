@@ -29,7 +29,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 
 export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get('action') ?? 'connect';
@@ -45,7 +45,9 @@ export async function POST(req: NextRequest) {
 }
 
 async function connectURL(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const clientId = process.env.STRAVA_CLIENT_ID;
   const redirect = process.env.STRAVA_OAUTH_REDIRECT
     ?? `${req.nextUrl.origin}/api/auth/strava?action=callback`;
@@ -152,7 +154,9 @@ async function callback(req: NextRequest) {
 }
 
 async function disconnect(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   // Best-effort token revoke on Strava's side
   try {
     const r = await pool.query(`SELECT strava_access_token FROM profile WHERE user_uuid = $1`, [userId]);

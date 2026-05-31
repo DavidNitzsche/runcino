@@ -17,8 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { DEFAULT_PREFS, bustPrefsCache, loadNotificationPrefs } from '@/lib/notifications/prefs';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 const ALLOWED_KEYS = new Set<keyof typeof DEFAULT_PREFS>([
   'master_enabled',
@@ -40,17 +39,20 @@ function validHm(s: unknown): s is string {
 }
 
 export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const prefs = await loadNotificationPrefs(userId);
   return NextResponse.json({ prefs });
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: Record<string, unknown>;
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
-
-  const userId = (body.user_id as string | undefined) ?? DAVID_USER_ID;
 
   // Validate the patch shape
   const patch: Record<string, unknown> = {};

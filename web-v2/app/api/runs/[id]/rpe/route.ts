@@ -17,14 +17,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(req: NextRequest, { params }: Params) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const { id } = await params;
-  const userId = await userIdFromRequest(req);
   if (!id) return NextResponse.json({ ok: false, error: 'activity id required' }, { status: 400 });
 
   const r = await pool.query(
@@ -38,8 +40,10 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const { id: activityId } = await params;
-  const userId = await userIdFromRequest(req);
   if (!activityId) return NextResponse.json({ ok: false, error: 'activity id required' }, { status: 400 });
 
   let body: { rpe?: number | null; notes?: string };

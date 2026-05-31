@@ -5,25 +5,29 @@
  * web /races/[slug] composes server-side: race meta + course geometry +
  * derived proximity mode.
  */
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { loadRacesState } from '@/lib/coach/races-state';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const { slug } = await params;
   try {
-    const races = await loadRacesState(DAVID_USER_ID);
+    const races = await loadRacesState(userId);
     const race = [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs, ...races.past]
       .find((r: any) => r?.slug === slug);
     if (!race) return NextResponse.json({ error: 'race not found' }, { status: 404 });
 
+    // Scope course-geometry lookup by user_uuid so a slug guess can't leak
+    // another runner's GPX even if a name collision would otherwise match.
     const geoRow = await pool.query(
-      `SELECT course_geometry, course_source FROM races WHERE slug = $1`,
-      [slug]
+      `SELECT course_geometry, course_source FROM races WHERE slug = $1 AND user_uuid = $2`,
+      [slug, userId],
     ).catch(() => ({ rows: [] }));
     const courseGeometry = geoRow.rows[0]?.course_geometry ?? null;
     const courseSource = geoRow.rows[0]?.course_source ?? null;

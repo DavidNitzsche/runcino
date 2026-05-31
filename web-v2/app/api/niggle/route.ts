@@ -25,8 +25,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
 import { renderNiggleCheck } from '@/lib/notifications/templates';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 interface NigglePostBody {
   body_part: string;
@@ -46,7 +45,10 @@ async function readJson<T>(req: NextRequest): Promise<Partial<T>> {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   try {
     const row = (await pool.query(
       `SELECT id, body_part, side, severity, status, note, logged_at, cleared_at
@@ -54,7 +56,7 @@ export async function GET() {
         WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC
         LIMIT 1`,
-      [DAVID_USER_ID],
+      [userId],
     )).rows[0];
     return NextResponse.json({ active: row ?? null });
   } catch (err: any) {
@@ -63,6 +65,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await readJson<NigglePostBody>(req);
   if (!body.body_part || typeof body.severity !== 'number' || !body.status) {
     return NextResponse.json(
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
        VALUES ($1, $1, $2, $3, $4, $5, $6)
        RETURNING id`,
       [
-        DAVID_USER_ID,
+        userId,
         body.body_part,
         body.side ?? null,
         body.severity,
@@ -94,13 +99,13 @@ export async function POST(req: NextRequest) {
       const fireAt = nextMorning0715(new Date());
       const dateIso = fireAt.toISOString().slice(0, 10);
       const tpl = renderNiggleCheck({
-        user_id: DAVID_USER_ID,
+        user_id: userId,
         niggle_id: niggleId,
         date_iso: dateIso,
         body_part: body.body_part,
         days_active: 1,
       });
-      await enqueueNotification(DAVID_USER_ID, tpl, fireAt);
+      await enqueueNotification(userId, tpl, fireAt);
     } catch { /* non-blocking */ }
     return NextResponse.json({ niggle_id: niggleId, active: true });
   } catch (err: any) {
@@ -112,7 +117,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   try {
     await pool.query(
       `UPDATE niggles
@@ -123,7 +131,7 @@ export async function DELETE() {
            ORDER BY logged_at DESC
            LIMIT 1
         )`,
-      [DAVID_USER_ID],
+      [userId],
     );
     return NextResponse.json({ active: false });
   } catch (err: any) {

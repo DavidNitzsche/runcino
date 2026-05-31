@@ -12,13 +12,15 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const VALID_INTENSITY = new Set(['easy', 'moderate', 'hard']);
 
 export async function GET(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const days = Math.max(1, Math.min(90, Number(req.nextUrl.searchParams.get('days') ?? 14)));
   const r = await pool.query(
     `SELECT id, date::text AS date, modality, duration_min, intensity,
@@ -33,7 +35,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: Record<string, unknown>;
   try { body = await req.json(); }
   catch { return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 }); }

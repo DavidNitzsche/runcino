@@ -24,12 +24,14 @@
  * agree.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { autoMergeRecent } from '@/lib/runs/merge';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 export async function POST(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const daysParam = req.nextUrl.searchParams.get('days');
   const days = Math.min(90, Math.max(1, Number(daysParam) || 14));
 

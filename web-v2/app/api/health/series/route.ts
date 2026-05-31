@@ -8,8 +8,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { requireUserId } from '@/lib/auth/session';
 
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const ALLOWED_KINDS = new Set([
   'hrv', 'resting_hr', 'sleep_hours', 'vo2_max', 'max_hr',
   'body_mass', 'wrist_temp', 'respiratory_rate', 'spo2',
@@ -18,9 +18,11 @@ const ALLOWED_KINDS = new Set([
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const kind = req.nextUrl.searchParams.get('kind') ?? 'hrv';
   const days = Math.min(Number(req.nextUrl.searchParams.get('days') ?? '30'), 365);
-  const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
   if (!ALLOWED_KINDS.has(kind)) {
     return NextResponse.json({ error: `kind must be one of ${[...ALLOWED_KINDS].join(', ')}` }, { status: 400 });
   }

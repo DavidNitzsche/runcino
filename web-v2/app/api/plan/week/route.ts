@@ -28,8 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 function todayPT(): string {
   // PT-adjusted "today" — matches buildWatchToday + briefing engine.
@@ -37,8 +36,10 @@ function todayPT(): string {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const dateParam = req.nextUrl.searchParams.get('date') ?? todayPT();
-  const userId = req.nextUrl.searchParams.get('user_id') ?? DAVID_USER_ID;
 
   // Mon-Sun week containing date.
   const dow = new Date(dateParam + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat

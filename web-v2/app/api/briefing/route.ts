@@ -37,11 +37,11 @@ import {
 } from '@/lib/coach/fact-reciter';
 import { buildPoster, resolveDayState } from '@/lib/faff/glance-adapter';
 import type { PosterBreakdownRow } from '@/lib/faff/types';
+import { requireUserId } from '@/lib/auth/session';
 
 // Pure DB reads now — no LLM tail latency. 15s is more than enough.
 export const maxDuration = 15;
 
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const SURFACE_ALIASES: Record<string, 'today' | 'plan' | 'races' | 'race_detail' | 'health' | 'me'> = {
   today: 'today',
   training: 'plan',
@@ -55,10 +55,12 @@ const SURFACE_ALIASES: Record<string, 'today' | 'plan' | 'races' | 'race_detail'
 };
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const params = req.nextUrl.searchParams;
   const surfaceParam = (params.get('surface') ?? 'today').toLowerCase();
   const surface = SURFACE_ALIASES[surfaceParam];
-  const userId = params.get('user_id') ?? DAVID_USER_ID;
   const raceSlug = params.get('race') ?? undefined;
 
   if (!surface) {

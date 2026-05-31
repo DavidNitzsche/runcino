@@ -15,8 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 let constraintEnsured = false;
 async function ensureShoeAction(): Promise<void> {
@@ -43,11 +42,13 @@ function todayIso(): string {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null) as { date_iso?: string; shoe_id?: string; user_id?: string } | null;
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+  const body = await req.json().catch(() => null) as { date_iso?: string; shoe_id?: string } | null;
   if (!body?.shoe_id) {
     return NextResponse.json({ error: 'shoe_id required' }, { status: 400 });
   }
-  const userId = body.user_id ?? DAVID_USER_ID;
   const dateIso = body.date_iso || todayIso();
 
   try {
@@ -70,8 +71,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const body = await req.json().catch(() => null) as { date_iso?: string; user_id?: string } | null;
-  const userId = body?.user_id ?? DAVID_USER_ID;
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+  const body = await req.json().catch(() => null) as { date_iso?: string } | null;
   const dateIso = body?.date_iso || todayIso();
   try {
     await pool.query(

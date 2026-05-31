@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
 const VALID_GOAL_TYPES = new Set([
@@ -23,7 +23,9 @@ const VALID_GOAL_TYPES = new Set([
 ]);
 
 export async function GET(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const r = await pool.query(
     `SELECT id, goal_type, target, current, deadline::text AS deadline,
             tolerance, rationale, created_at::text AS created_at,
@@ -38,7 +40,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   let body: Record<string, unknown>;
   try { body = await req.json(); }
   catch { return NextResponse.json({ ok: false, error: 'invalid json' }, { status: 400 }); }

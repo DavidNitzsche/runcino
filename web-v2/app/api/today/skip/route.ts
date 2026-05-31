@@ -23,8 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
 import { renderSkipRecovery } from '@/lib/notifications/templates';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 interface SkipBody {
   date?: string;
@@ -49,6 +48,9 @@ async function readBody(req: NextRequest): Promise<SkipBody> {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   // Optional ?date=YYYY-MM-DD override (matches the POST/DELETE body
   // shape). Defaults to today using the same -7h offset as
   // lib/coach/glance-state.ts:56 so iPhone and web agree on "today".
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest) {
     const row = await pool.query(
       `SELECT 1 FROM day_actions
         WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
-      [DAVID_USER_ID, date],
+      [userId, date],
     );
     return NextResponse.json({ skipped: row.rows.length > 0, date });
   } catch (err: any) {
@@ -70,6 +72,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await readBody(req);
   const date = body.date ?? todayIso();
 
@@ -79,7 +84,7 @@ export async function POST(req: NextRequest) {
        VALUES ($1, $1, $2, 'skip')
        ON CONFLICT (user_id, date_iso, action) DO UPDATE
          SET user_uuid = COALESCE(day_actions.user_uuid, EXCLUDED.user_uuid)`,
-      [DAVID_USER_ID, date],
+      [userId, date],
     );
   } catch (err: any) {
     return NextResponse.json({
@@ -96,14 +101,14 @@ export async function POST(req: NextRequest) {
     const tomorrow = new Date(date + 'T00:00:00Z');
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const tomorrowIso = tomorrow.toISOString().slice(0, 10);
-    const planned = await lookupPlannedWorkout(DAVID_USER_ID, tomorrowIso);
+    const planned = await lookupPlannedWorkout(userId, tomorrowIso);
     const tpl = renderSkipRecovery({
-      user_id: DAVID_USER_ID,
+      user_id: userId,
       date_iso: tomorrowIso,
       planned_today_verb: planned.verb,
       planned_today_distance: planned.distance,
     });
-    await enqueueNotification(DAVID_USER_ID, tpl, nextMorning0715(new Date()));
+    await enqueueNotification(userId, tpl, nextMorning0715(new Date()));
   } catch { /* notif enqueue is non-blocking */ }
 
   return NextResponse.json({ skipped: true, date });
@@ -139,6 +144,9 @@ async function lookupPlannedWorkout(
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await readBody(req);
   const date = body.date ?? todayIso();
 
@@ -146,7 +154,7 @@ export async function DELETE(req: NextRequest) {
     await pool.query(
       `DELETE FROM day_actions
         WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip'`,
-      [DAVID_USER_ID, date],
+      [userId, date],
     );
   } catch (err: any) {
     return NextResponse.json({

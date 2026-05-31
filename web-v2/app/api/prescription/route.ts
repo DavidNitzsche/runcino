@@ -14,8 +14,7 @@ import {
   computeFueling,
   type WorkoutFuelingType,
 } from '@/lib/training/fueling';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 const VALID: WorkoutType[] = ['easy','long','tempo','threshold','intervals','race','shakeout','rest','unplanned'];
 
@@ -37,8 +36,10 @@ function distanceMiFromLabel(label: string | null): number | null {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const sp = req.nextUrl.searchParams;
-  const userId = sp.get('user_id') ?? DAVID_USER_ID;
   const typeRaw = (sp.get('type') ?? 'easy').toLowerCase() as WorkoutType;
   const type: WorkoutType = VALID.includes(typeRaw) ? typeRaw : 'easy';
   const weeklyMi = Number(sp.get('weeklyMi')) || 30;

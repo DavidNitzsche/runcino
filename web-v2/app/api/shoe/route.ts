@@ -15,10 +15,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { requireUserId } from '@/lib/auth/session';
 
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
-
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   // Shape mirrors getShoes() in lib/coach/tools.ts so the coach + UI
   // share the same field set. Ordered preferred-first then by mileage
   // descending so the main shoe appears at the top of the picker.
@@ -34,7 +36,7 @@ export async function GET() {
        FROM shoes
       WHERE user_uuid = $1
       ORDER BY retired ASC, preferred DESC, mileage DESC NULLS LAST`,
-    [DAVID_USER_ID]
+    [userId]
   ).catch(() => ({ rows: [] }))).rows;
   return NextResponse.json({
     shoes: rows.map((s: any) => ({
@@ -58,6 +60,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.brand || !body?.model) {
     return NextResponse.json({ error: 'brand + model required' }, { status: 400 });
@@ -74,10 +79,10 @@ export async function POST(req: NextRequest) {
         body.run_types ?? [],
         body.mileage ?? 0,
         body.mileage_cap ?? 400,
-        body.user_uuid ?? DAVID_USER_ID,
+        userId,
       ]
     );
-    await bustBriefingCacheForEvent(DAVID_USER_ID, 'shoe_crud');
+    await bustBriefingCacheForEvent(userId, 'shoe_crud');
     return NextResponse.json({ ok: true, id: r.rows[0].id });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -87,25 +92,32 @@ export async function POST(req: NextRequest) {
 const ALLOWED_PATCH = new Set(['mileage', 'mileage_cap', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
   const cols: string[] = [];
-  const vals: any[] = [body.id];
+  const vals: any[] = [body.id, userId];
   for (const k of Object.keys(body)) {
     if (k === 'id') continue;
     if (!ALLOWED_PATCH.has(k)) continue;
     cols.push(`${k} = $${vals.length + 1}`);
     vals.push(body[k]);
   }
-  if (cols.length === 0) {
+  if (cols.length === 2) {
     return NextResponse.json({ error: 'no allowed fields in body' }, { status: 400 });
   }
 
   try {
-    const r = await pool.query(`UPDATE shoes SET ${cols.join(', ')} WHERE id = $1 RETURNING id`, vals);
+    // Scope by user_uuid so a runner can't PATCH another runner's shoe by id.
+    const r = await pool.query(
+      `UPDATE shoes SET ${cols.join(', ')} WHERE id = $1 AND user_uuid = $2 RETURNING id`,
+      vals,
+    );
     if (r.rowCount === 0) return NextResponse.json({ error: 'shoe not found' }, { status: 404 });
-    await bustBriefingCacheForEvent(DAVID_USER_ID, 'shoe_crud');
+    await bustBriefingCacheForEvent(userId, 'shoe_crud');
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -113,11 +125,15 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   try {
-    await pool.query(`DELETE FROM shoes WHERE id = $1`, [body.id]);
-    await bustBriefingCacheForEvent(DAVID_USER_ID, 'shoe_crud');
+    // Scope by user_uuid so a runner can't DELETE another runner's shoe by id.
+    await pool.query(`DELETE FROM shoes WHERE id = $1 AND user_uuid = $2`, [body.id, userId]);
+    await bustBriefingCacheForEvent(userId, 'shoe_crud');
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

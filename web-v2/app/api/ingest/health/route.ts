@@ -21,8 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheDebounced } from '@/lib/coach/cache';
-
-const DAVID_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { requireUserId } from '@/lib/auth/session';
 
 // Only these sample types move the readiness needle day-to-day, so only
 // these justify a fresh LLM regen on arrival. Weight / VO2 / body fat
@@ -41,13 +40,14 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
   const body = await req.json().catch(() => null);
   const samples: any[] = body?.samples;
   if (!Array.isArray(samples)) {
     return NextResponse.json({ error: 'body.samples must be an array' }, { status: 400 });
   }
-
-  const userId = body.user_id ?? DAVID_USER_ID;
   let inserted = 0;
   let skipped = 0;
   let errors = 0;
