@@ -213,6 +213,14 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
     const est = estMin != null
       ? (estMin >= 60 ? `~${Math.floor(estMin/60)}:${String(estMin%60).padStart(2,'0')}` : `~${estMin} min`)
       : (d.plannedMi > 0 ? `~${Math.round(d.plannedMi * 9)} min` : ' · ');
+    // PlannedHeroV2 surfaces the spec's HR cap as the TARGETS · HEART RATE
+    // value. Each spec shape stores it under hr_cap_bpm (easy/long/recovery)
+    // or hr_target_bpm (tempo) or lthr_bpm (threshold/intervals).
+    const hrCap = (() => {
+      const s = d.plannedSpec as { hr_cap_bpm?: number | null; hr_target_bpm?: number | null; lthr_bpm?: number | null } | null;
+      if (!s) return null;
+      return s.hr_cap_bpm ?? s.hr_target_bpm ?? s.lthr_bpm ?? null;
+    })();
     return {
       dw: DOW[(d.dow + 6) % 7],
       dn: fullDate.getUTCDate(),
@@ -230,6 +238,7 @@ function adaptWeek(glance: Glance | null): { week: PlannedDay[]; todayIdx: numbe
       done: d.isPast && d.doneMi > 0,
       today: d.isToday,
       activityId: d.activityId,
+      hrCap,
     };
   });
   const todayIdx = Math.max(0, week.findIndex(w => w.today));

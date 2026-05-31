@@ -77,6 +77,9 @@ export type PlannedDay = {
   /** Strava activity / run id when the day has been completed. Drives the
    *  lazy-fetched run-detail in week-row clicks + today's RESULT card. */
   activityId?: string | null;
+  /** Planned HR cap (bpm) from workout_spec.hr_cap_bpm. Surfaced on the
+   *  PlannedHeroV2 TARGETS row. null when no spec or no HR-band data. */
+  hrCap?: number | null;
 };
 
 export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: string[] }> = {

@@ -95,11 +95,10 @@ export function TodayView({
         ))}
       </div>
 
-      {/* 2026-05-31: post-run detail (v2) takes over the hero on done days.
-          Layout per "Post-Run Detail (Easy)" handoff: leftstack (stats + zones
-          + conditions incl. shoe picker) → GPS route map → wcard (HOW IT WENT
-          verdict + recap + splits). Planned + rest days keep the existing
-          hero layout below until the upcoming-run design lands. */}
+      {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
+          Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
+          (Run Detail Planned (Easy)). Rest days keep the simple Recovery
+          panel below for now. */}
       {d.done && !isRest ? (
         <CompletedHeroV2
           d={d}
@@ -118,6 +117,16 @@ export function TodayView({
             : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
           persistShoe={curDay === seed.todayIdx}
         />
+      ) : !isRest ? (
+        <PlannedHeroV2
+          d={d}
+          shoes={seed.shoes}
+          seedShoe={(seed.todayShoeId != null
+            ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
+            : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+          persistShoe={curDay === seed.todayIdx}
+          cadenceBaseline={seed.health.body.find(m => m.k === 'cadence')?.current ?? null}
+        />
       ) : (
         <div className="hero">
           <div className="hmain">
@@ -126,34 +135,14 @@ export function TodayView({
             </div>
             <div className="htitle">{d.name}</div>
             <div className="stats">
-              {isRest ? (
-                <>
-                  <div><div className="v">{formatSleep(seed.health.body.find(m => m.k === 'sleep')?.current)}</div><div className="k">SLEEP</div></div>
-                  <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}<small> bpm</small></div><div className="k">RESTING HR</div></div>
-                  <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}<small> ms</small></div><div className="k">HRV</div></div>
-                </>
-              ) : (
-                <>
-                  <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
-                  <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
-                  <div><div className="v">{d.est}<small></small></div><div className="k">EST TIME</div></div>
-                </>
-              )}
+              <div><div className="v">{formatSleep(seed.health.body.find(m => m.k === 'sleep')?.current)}</div><div className="k">SLEEP</div></div>
+              <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'rhr')?.current ?? 0) || '·'}<small> bpm</small></div><div className="k">RESTING HR</div></div>
+              <div><div className="v">{Math.round(seed.health.body.find(m => m.k === 'hrv')?.current ?? 0) || '·'}<small> ms</small></div><div className="k">HRV</div></div>
             </div>
-            {!isRest && (
-              <div className="effort">
-                <div className="etrack">
-                  <div className="emark" style={{ left: `${e.mark}%` }}>
-                    <span className="elbl">{e.lbl}</span><span className="ecaret" />
-                  </div>
-                </div>
-                <div className="ezones"><span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span></div>
-              </div>
-            )}
           </div>
           <WorkoutCard
             d={d}
-            done={!!d.done}
+            done={false}
             result={result}
             runData={runData}
             runLoading={runLoading}
@@ -275,6 +264,191 @@ function paceToSec(p: string): number {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   return 0;
+}
+
+/* ───────────────  PlannedHeroV2 (Run Detail Planned · Easy)  ───────────────
+ * Upcoming-run counterpart to CompletedHeroV2. Same hero-v2 frame, with:
+ *   - No "on plan" check (nothing to confirm yet)
+ *   - Stats are TARGETS (distance / target pace / est time)
+ *   - Time-in-zones → EFFORT TARGET gradient band with marker
+ *   - No route map → SESSION panel (workout shape + segments + cue)
+ *   - Conditions 2×2: FORECAST / SHOE / FUEL / BEST WINDOW
+ *   - Right card: "THE PLAN · UPCOMING" verdict + recap + TARGETS list
+ * Source: project Run Detail Planned (Easy).html · approved 2026-05-31.
+ */
+function planVerdict(t: string): string {
+  switch (t) {
+    case 'easy':      return 'Keep it easy.';
+    case 'long':      return 'Build the base.';
+    case 'tempo':     return 'Sit on threshold.';
+    case 'intervals': return 'Empty the engine.';
+    case 'recovery':  return 'Shake the legs.';
+    default:          return 'Get it done.';
+  }
+}
+function planRecap(t: string): string {
+  switch (t) {
+    case 'easy':      return 'Base-building, not a workout. Keep it boring and bank the aerobic volume. If the legs feel flat, slow down. The point is time on feet, not pace.';
+    case 'long':      return 'Long aerobic stimulus. Fuel early and often. Run the first half by feel and let it settle in; pick up the final third if everything is clicking.';
+    case 'tempo':     return 'Threshold work compounds. Lock into the band and stay there. Pace creeping = HR creeping; back off before you bury the next session.';
+    case 'intervals': return 'Quality day. Drive turnover on the reps, jog the recoveries truly easy. The point is the engine, not your splits.';
+    case 'recovery':  return 'Active recovery only. Easier than easy. Skip if the legs ask for it.';
+    default:          return 'Run the prescription. Don\'t freelance.';
+  }
+}
+function planEffortLabel(t: string): { copy: string; ratio: string } {
+  switch (t) {
+    case 'easy':      return { copy: 'Conversational · Z2',     ratio: '3 / 10' };
+    case 'long':      return { copy: 'Aerobic · Z2-Z3',        ratio: '5 / 10' };
+    case 'tempo':     return { copy: 'Comfortably hard · Z4',  ratio: '7 / 10' };
+    case 'intervals': return { copy: 'Hard · Z5 spikes',       ratio: '9 / 10' };
+    case 'recovery':  return { copy: 'Very easy · Z1',         ratio: '2 / 10' };
+    default:          return { copy: 'By feel',                ratio: '— / 10' };
+  }
+}
+function planCadenceTarget(t: string, baseline: number | null | undefined): string {
+  const base = baseline && baseline > 0 ? `${Math.round(baseline)} spm` : 'relaxed';
+  switch (t) {
+    case 'easy':      return base;
+    case 'long':      return base;
+    case 'tempo':     return baseline ? `${Math.round(baseline) + 4} spm` : 'drive turnover';
+    case 'intervals': return baseline ? `${Math.round(baseline) + 8} spm` : 'high turnover';
+    case 'recovery':  return base;
+    default:          return base;
+  }
+}
+function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: string } {
+  if (d.hrCap != null) {
+    if (d.type === 'tempo' || d.type === 'intervals') return { value: `~${d.hrCap}`, sub: ` bpm · Z4` };
+    return { value: `< ${d.hrCap}`, sub: ` bpm · ${d.type === 'long' ? 'Z3' : 'Z2'}` };
+  }
+  return { value: 'by feel', sub: '' };
+}
+
+function PlannedHeroV2({
+  d, shoes, seedShoe, persistShoe, cadenceBaseline,
+}: {
+  d: FaffSeed['week'][number];
+  shoes: FaffSeed['shoes'];
+  seedShoe: string;
+  persistShoe: boolean;
+  cadenceBaseline: number | null;
+}) {
+  const segs = SEGS[d.type] ?? SEGS.easy;
+  const eff  = EFF[d.type];
+  const kit  = KIT[d.type];
+  const forecast = useDayForecast(d.iso);
+  const weatherLabel = formatForecast(forecast) ?? '—';
+  const effortLbl = planEffortLabel(d.type);
+  const hr = hrTargetLabel(d);
+  const cadenceTgt = planCadenceTarget(d.type, cadenceBaseline);
+  return (
+    <div className="hero-v2">
+      <div className="hmain">
+        <div className="htag">{(d.today ? 'TODAY' : d.dw) + ' · ' + d.type.toUpperCase() + ' · PLANNED'}</div>
+        <div className="titlerow">
+          <h1 className="htitle">{d.name}</h1>
+        </div>
+
+        <div className="hbody">
+          <div className="leftstack">
+            <div className="stats">
+              <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
+              <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
+              <div><div className="v">{d.est.replace(/^~/, '~')}</div><div className="k">EST TIME</div></div>
+            </div>
+
+            <div className="effort-band">
+              <div className="ehead">
+                <span>EFFORT TARGET</span>
+                <span className="em">{effortLbl.copy}</span>
+              </div>
+              <div className="etrack">
+                <div className="emark" style={{ left: `${eff.mark}%` }}>
+                  <span className="elbl">{eff.lbl}</span>
+                  <span className="ecaret" />
+                </div>
+              </div>
+              <div className="ezones">
+                <span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span>
+              </div>
+            </div>
+
+            <div className="cond">
+              <div>
+                <div className="kcl">FORECAST</div>
+                <div className="kcv">{weatherLabel}</div>
+              </div>
+              <div>
+                <div className="kcl">SHOE</div>
+                <ShoePicker shoes={shoes} initial={seedShoe} persist={persistShoe} />
+              </div>
+              <div>
+                <div className="kcl">FUEL</div>
+                <div className="kcv">{kit.fuel?.trim() && kit.fuel !== ' · ' ? kit.fuel : 'Water'}</div>
+              </div>
+              <div>
+                <div className="kcl">BEST WINDOW</div>
+                <div className="kcv">{bestWindow(forecast)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="session">
+            <div className="sh">SESSION</div>
+            <div className="shape">
+              {segs.map((x, i) => <i key={i} style={{ width: `${x.w}%`, background: x.c }} />)}
+            </div>
+            <div className="segs">
+              {segs.map((x, i) => (
+                <div className="seg" key={i}>
+                  <span className="sd" style={{ background: x.c }} />
+                  <span className="sl">{x.l}</span>
+                  <span className="ss">{x.sub}</span>
+                </div>
+              ))}
+            </div>
+            <div className="scue">
+              <span className="ct">CUE</span>{kit.coach}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside className="wcard">
+        <div className="wcl">
+          THE PLAN
+          <span className="tag">UPCOMING</span>
+        </div>
+        <div className="verdict">{planVerdict(d.type)}</div>
+        <div className="recap">{planRecap(d.type)}</div>
+        <div className="divider" />
+        <div className="tgts-h">TARGETS</div>
+        <div className="tgt">
+          <span className="tk">HEART RATE</span>
+          <span className="tv">{hr.value}<small>{hr.sub}</small></span>
+        </div>
+        <div className="tgt">
+          <span className="tk">EFFORT</span>
+          <span className="tv">{effortLbl.ratio}<small> · {d.type}</small></span>
+        </div>
+        <div className="tgt">
+          <span className="tk">CADENCE</span>
+          <span className="tv">{cadenceTgt}</span>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/** Pick the coolest morning window for a planned run. Falls back to a
+ *  reasonable AM-runner default ("6-8 AM") when no forecast detail. */
+function bestWindow(f: { temp_min_f: number | null; temp_max_f: number | null } | null): string {
+  if (!f) return '6–8 AM';
+  // Runs at lower temps are more comfortable; AM windows almost always win.
+  if (f.temp_max_f != null && f.temp_max_f >= 80) return 'Before 7 AM';
+  if (f.temp_max_f != null && f.temp_max_f >= 70) return '6–8 AM';
+  return '6–9 AM';
 }
 
 /* ───────────────  CompletedHeroV2 (Post-Run Detail · Easy)  ───────────────

@@ -190,6 +190,39 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2 .spp{font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;width:62px;text-align:right;}
 .hero-v2 .spp small{font-family:'Inter',sans-serif;font-size:10px;font-weight:500;opacity:.65;}
 
+/* ── Planned variant additions (Run Detail Planned (Easy), 2026-05-31) ──
+   Same hero-v2 frame, swaps zones → effort target, route map → SESSION panel,
+   right card recap+splits → THE PLAN verdict+recap+TARGETS. */
+.hero-v2 .effort-band{margin-top:30px;}
+.hero-v2 .effort-band .ehead{font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:22px;opacity:.9;display:flex;justify-content:space-between;gap:10px;}
+.hero-v2 .effort-band .ehead .em{opacity:.8;font-weight:600;white-space:nowrap;}
+.hero-v2 .effort-band .etrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#5B7CB8,#48B3B5,#8FC04A,#E89B3A,#D63E4E);}
+.hero-v2 .effort-band .emark{position:absolute;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;}
+.hero-v2 .effort-band .emark .elbl{font-family:'Oswald',sans-serif;background:#F6F7F8;color:#0A0C10;font-weight:600;font-size:12px;letter-spacing:1.5px;padding:4px 11px;border-radius:8px;white-space:nowrap;}
+.hero-v2 .effort-band .emark .ecaret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #F6F7F8;}
+.hero-v2 .effort-band .ezones{display:flex;justify-content:space-between;font-size:9px;font-weight:600;opacity:.85;margin-top:9px;letter-spacing:1px;}
+
+.hero-v2 .session{flex:1;display:flex;flex-direction:column;border-radius:16px;border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -22px rgba(0,0,0,.6);background:rgba(4,14,10,.32);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:22px 24px;min-height:0;}
+.hero-v2 .session .sh{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.55);}
+.hero-v2 .session .shape{display:flex;gap:3px;height:9px;margin:16px 0 22px;}
+.hero-v2 .session .shape i{border-radius:3px;}
+.hero-v2 .session .segs{display:flex;flex-direction:column;gap:16px;}
+.hero-v2 .session .seg{display:flex;align-items:baseline;gap:11px;}
+.hero-v2 .session .seg .sd{width:8px;height:8px;border-radius:50%;flex:0 0 auto;transform:translateY(2px);}
+.hero-v2 .session .seg .sl{font-size:15px;font-weight:700;}
+.hero-v2 .session .seg .ss{font-size:13px;font-weight:500;color:rgba(255,255,255,.7);margin-left:auto;text-align:right;}
+.hero-v2 .session .seg .ss .mono{font-family:'Oswald',sans-serif;font-weight:600;color:#fff;letter-spacing:.3px;}
+.hero-v2 .session .scue{margin-top:auto;padding-top:20px;font-size:13px;font-weight:500;line-height:1.55;color:rgba(255,255,255,.82);}
+.hero-v2 .session .scue .ct{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:1px;color:#9af0bf;border:1px solid rgba(154,240,191,.4);border-radius:5px;padding:2px 6px;margin-right:8px;vertical-align:middle;}
+
+.hero-v2 .wcl .tag{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:1px;color:#9af0bf;border:1px solid rgba(154,240,191,.35);border-radius:6px;padding:3px 8px;}
+.hero-v2 .tgts-h{font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;letter-spacing:.4px;margin:6px 0 4px;}
+.hero-v2 .tgt{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);}
+.hero-v2 .tgt:last-child{border-bottom:none;}
+.hero-v2 .tgt .tk{font-size:10px;font-weight:700;letter-spacing:1px;opacity:.6;}
+.hero-v2 .tgt .tv{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;text-align:right;}
+.hero-v2 .tgt .tv small{font-family:'Inter',sans-serif;font-size:11px;font-weight:500;opacity:.7;}
+
 /* week */
 .weeklab{font-size:11px;font-weight:700;letter-spacing:2px;opacity:1;margin:26px 0 12px;}
 .week{display:flex;gap:10px;}
