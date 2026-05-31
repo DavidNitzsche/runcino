@@ -217,20 +217,27 @@ enum FaffEffort: String, CaseIterable, Identifiable, Hashable {
     /// animated background. Cool to hot. mBase is the deep wash behind the
     /// blobs. Per locked design: Today re-tints to the selected day's effort
     /// over 0.7s ease.
+    ///
+    /// Retuned 2026-05-31 per Effort Mesh Background spec · luminous, no
+    /// brown. Recovery and Easy intentionally share the teal mesh (they
+    /// differ only by accent dot). Race tracks Intervals (no separate
+    /// race-only mesh in the spec).
     var mesh: FaffMesh {
         switch self {
         case .recovery, .easy:
-            return FaffMesh(c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0, c4: 0x1F8F76, c5: 0x11605E, base: 0x06302E)
+            return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
         case .long:
-            return FaffMesh(c1: 0xFFE0A0, c2: 0xF3AD38, c3: 0xE89B3A, c4: 0xE07A2A, c5: 0xC47812, base: 0x3E2A0A)
+            return FaffMesh(c1: 0xFFE7B0, c2: 0xF8BC4E, c3: 0xF0A638, c4: 0xEC8C2A, c5: 0xD9791C, base: 0xA85A14)
         case .tempo:
-            return FaffMesh(c1: 0xFFC98A, c2: 0xFF8847, c3: 0xF2673A, c4: 0xE85D26, c5: 0xC23A1C, base: 0x4A1208)
+            return FaffMesh(c1: 0xFFD2A4, c2: 0xFF9A54, c3: 0xFB6E3C, c4: 0xF4502F, c5: 0xE23A47, base: 0x9E2438)
         case .intervals:
-            return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+            return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
         case .rest:
-            return FaffMesh(c1: 0xD6BE98, c2: 0xB2916A, c3: 0x8A6A48, c4: 0x5E4630, c5: 0x45331F, base: 0x1C140D)
+            return FaffMesh(c1: 0xC4C8D2, c2: 0x9CA2B0, c3: 0x787E8E, c4: 0x58606E, c5: 0x3E4350, base: 0x252935)
         case .race:
-            return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+            // No separate race mesh in the spec. Track Intervals so race
+            // day reads as the highest-intensity backdrop the runner sees.
+            return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
         }
     }
 
@@ -282,11 +289,15 @@ struct FaffMesh: Equatable {
         switch v {
         case .train:     return FaffMesh(c1: 0xFFE0A0, c2: 0xF3AD38, c3: 0xE89B3A, c4: 0xE07A2A, c5: 0xC47812, base: 0x3E2A0A)
         case .activity:  return FaffMesh(c1: 0xD6BE98, c2: 0xB2916A, c3: 0x8A6A48, c4: 0x5E4630, c5: 0x45331F, base: 0x1C140D)
-        case .health:    return FaffMesh(c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0, c4: 0x1F8F76, c5: 0x11605E, base: 0x06302E)
-        case .targets:   return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        // HEALTH + SPECTATOR share the recovery/easy teal identity ·
+        // updated 2026-05-31 to the luminous teal stops so view meshes
+        // stay in sync with the effort palette when the runner cycles
+        // from a teal effort day into the Health tab.
+        case .health:    return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
+        case .targets:   return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
         case .profile:   return FaffMesh(c1: 0x6B6358, c2: 0x4E4840, c3: 0x3A352E, c4: 0x2A2723, c5: 0x1E1C19, base: 0x121110)
-        case .spectator: return FaffMesh(c1: 0x7FE6D6, c2: 0x3FB6B0, c3: 0x27B4E0, c4: 0x1F8F76, c5: 0x11605E, base: 0x06302E)
-        case .race:      return FaffMesh(c1: 0xFFD27A, c2: 0xFF7A45, c3: 0xFC4D64, c4: 0xD6263C, c5: 0x9E1733, base: 0x3A0E12)
+        case .spectator: return FaffMesh(c1: 0x8FF0E0, c2: 0x46CFC6, c3: 0x2FC0E6, c4: 0x23A98E, c5: 0x1B8C7C, base: 0x0E5A54)
+        case .race:      return FaffMesh(c1: 0xFFDA84, c2: 0xFF8A54, c3: 0xFF526C, c4: 0xE82B49, c5: 0xC61E46, base: 0x7E1432)
         }
     }
 
