@@ -163,6 +163,10 @@ export function TrainView({
   // week + label by type. Done past weeks marked done; current week tagged NOW.
   // 2026-05-31: done rows also carry actual pace + influence (hit/miss vs
   // planned target) so the runner can see what each workout did.
+  // 2026-05-31 (closed-loop): cross-reference seed.season.adaptations
+  // (coach_intents.reason LIKE 'plan_adapt_%') so DONE workouts that
+  // triggered a plan change AND future workouts that were modified both
+  // surface a follow-on "→ Adapted" line.
   const milestones = useMemo(() => {
     type Mile = {
       wkLabel: string; dot: string; title: string; sub: string;
@@ -171,14 +175,18 @@ export function TrainView({
       date?: string;
       done?: boolean;
       influence?: { kind: 'hit' | 'close' | 'off'; copy: string } | null;
+      adapt?: { kind: 'incoming' | 'outgoing'; copy: string } | null;
     };
     const out: Mile[] = [];
     type DayShape = {
+      id?: string;
       dow: string; type: string; name: string; mi: number;
       paceSec: number | null; done: boolean; activityId?: string | null;
       donePaceSec?: number | null; doneAvgHr?: number | null;
       date?: string;
     };
+    const adapts = seed.season.adaptations ?? [];
+    const verbForKind = (k: string) => k === 'reschedule' ? 'rescheduled' : k === 'downgrade' ? 'eased' : k === 'shave' ? 'shaved' : 'adjusted';
     seed.season.weekDays.forEach((days, i) => {
       if (i >= raceIdx) return;
       const order = ['intervals', 'tempo', 'long'];
@@ -211,7 +219,41 @@ export function TrainView({
           influence = { kind: 'hit', copy: `Faster · ${fmtPace(pick.donePaceSec)} actual` };
         }
       }
-      out.push({ wkLabel, dot, title, sub, state, date: pick.date, done: !!pick.done, influence });
+      // Adaptation cross-reference. Two angles:
+      // 1. INCOMING — this week's quality day was itself modified by an
+      //    adapt (coach_intents row targeting pick.id). Render on FUTURE
+      //    rows: "← Adapted: eased, was tempo" so the runner sees the
+      //    plan changed under them.
+      // 2. OUTGOING — this week's DONE workout triggered an adapt that
+      //    modified a LATER week. Render on DONE rows: "→ Triggered:
+      //    Wk N tempo eased" so the runner sees the closed loop.
+      let adapt: Mile['adapt'] = null;
+      if (pick.id) {
+        // Incoming: adapt directly targeting this week's quality workout.
+        const incoming = adapts.find((a) => a.workoutId === pick.id);
+        if (incoming && (isMid || isNow)) {
+          const v = verbForKind(incoming.kind);
+          const noun = incoming.newType ? ` to ${incoming.newType}` : '';
+          adapt = { kind: 'incoming', copy: `Adapted: ${v}${noun} — ${shortWhy(incoming.why)}` };
+        }
+        // Outgoing: any adapt to a LATER week's workout, applied within
+        // 3 days after this DONE workout (treats this week's result as
+        // the trigger). Pick the closest match.
+        if (!adapt && state === 'DONE' && pick.date) {
+          const triggerMs = Date.parse(pick.date + 'T12:00:00Z');
+          const candidates = adapts
+            .filter((a) => a.weekIdx > i)
+            .map((a) => ({ a, dt: Date.parse(a.ts) - triggerMs }))
+            .filter((x) => x.dt >= 0 && x.dt <= 4 * 86400000);
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => a.dt - b.dt);
+            const a = candidates[0].a;
+            const v = verbForKind(a.kind);
+            adapt = { kind: 'outgoing', copy: `Triggered: Wk ${a.weekIdx + 1} ${v}` };
+          }
+        }
+      }
+      out.push({ wkLabel, dot, title, sub, state, date: pick.date, done: !!pick.done, influence, adapt });
     });
     if (goal) {
       out.push({
@@ -432,6 +474,11 @@ export function TrainView({
                         → {m.influence.copy}
                       </div>
                     )}
+                    {m.adapt && (
+                      <div className="minf madapt">
+                        {m.adapt.kind === 'incoming' ? '← ' : '→ '}{m.adapt.copy}
+                      </div>
+                    )}
                   </div>
                   {m.state && (
                     <span className="mst" style={m.state === 'NOW' ? { color: '#FFCE8A', opacity: 0.95 } : undefined}>
@@ -641,6 +688,23 @@ function fmtPace(sec: number | null | undefined): string {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+/** Trim coach_intents adapt `why` strings into a 5-6 word tag for the
+ *  KEY WORKOUTS row. Full prose lives in the briefing voice; this card
+ *  just wants enough to know what the signal was. */
+function shortWhy(why: string): string {
+  if (!why) return 'signal';
+  const w = why.toLowerCase();
+  if (w.includes('rhr'))             return 'RHR spike';
+  if (w.includes('sleep'))           return 'sleep deficit';
+  if (w.includes('niggle'))          return 'niggle';
+  if (w.includes('sick'))            return 'illness';
+  if (w.includes('injury'))          return 'injury';
+  if (w.includes('overshoot') || w.includes('cap')) return 'volume cap';
+  if (w.includes('missed') || w.includes('uncompleted')) return 'missed session';
+  if (w.includes('vdot') || w.includes('pr'))            return 'PR / VDOT bump';
+  // Fall back to first 6 words.
+  return why.split(/\s+/).slice(0, 6).join(' ');
 }
 function formatDate(iso: string): string {
   if (!iso) return '·';

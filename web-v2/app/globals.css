@@ -387,6 +387,9 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* DONE workouts that influenced the plan (hit pace, off pace, etc.) —
    color-coded follow-on line shown under the planned mi @ pace meta. */
 .train2 .mile .minf{font-size:11px;font-weight:600;letter-spacing:.1px;margin-top:3px;}
+/* Closed-loop adapt line — violet-tinted so it reads as a system action,
+   distinct from the green/amber/orange pace-hit colors above it. */
+.train2 .mile .minf.madapt{color:#C7B8FF;}
 
 .train2 .arow{display:grid;grid-template-columns:1.15fr 1fr 1.1fr;gap:16px;min-height:0;}
 

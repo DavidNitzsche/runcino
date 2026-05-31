@@ -17,6 +17,9 @@ export interface PlanWeek {
   startDate: string;
   plannedMi: number;
   days: Array<{
+    /** plan_workouts.id — used by TrainView to cross-reference coach_intents
+     *  rows (action='plan_adapt_*') that targeted this specific workout. */
+    id: string;
     date: string; dow: number; type: string;
     mi: number; label: string | null;
     // 2026-05-30: workout_spec jsonb (migration 120) so the train-view week
@@ -73,7 +76,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     [plan.id]
   )).rows;
   const workouts = (await pool.query(
-    `SELECT week_id::text AS week_id, date_iso, dow, type, distance_mi, sub_label, workout_spec
+    `SELECT id::text AS id, week_id::text AS week_id, date_iso, dow, type, distance_mi, sub_label, workout_spec
        FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso`,
     [plan.id]
   )).rows;
@@ -134,9 +137,9 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       .map((d: any) => {
         const actual = actualByDate.get(d.date_iso);
         return {
+          id: String(d.id),
           date: d.date_iso, dow: d.dow, type: d.type,
           mi: Number(d.distance_mi) || 0, label: d.sub_label,
-          // workout_spec parses as a JS object via node-postgres JSON typecast.
           spec: d.workout_spec ?? null,
           doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
           activityId: actual?.id ?? null,

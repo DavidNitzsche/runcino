@@ -50,6 +50,8 @@ export type FaffSeed = {
     /** Per-week real plan workouts so non-current weeks render the real
      *  plan instead of phase-template fluff. */
     weekDays: Array<Array<{
+      /** plan_workouts.id — joins to coach_intents.field for adaptations. */
+      id?: string;
       dow: string;          // MON / TUE / ...
       type: import('./constants').EffortKey;
       name: string;
@@ -62,6 +64,20 @@ export type FaffSeed = {
       donePaceSec?: number | null;
       doneAvgHr?: number | null;
     }>>;
+    /** Closed-loop plan adaptations from coach_intents (P1 #8 — written by
+     *  applyAdaptations whenever a readiness/volume signal forced a plan
+     *  mutation). TrainView's KEY WORKOUTS list cross-references these so
+     *  the runner can see what each DONE quality day triggered. */
+    adaptations: Array<{
+      workoutId: string;        // plan_workouts.id that was modified
+      weekIdx: number;          // resolved from the workout's date
+      kind: 'reschedule' | 'downgrade' | 'shave' | 'mark_dirty' | 'other';
+      newType?: string;
+      newDate?: string;
+      shaveFraction?: number;
+      why: string;              // the trigger reason (from value.why)
+      ts: string;               // when the adapt was applied (ISO)
+    }>;
   };
 
   // health view

@@ -137,6 +137,44 @@ async function loadWeekSkips(): Promise<{ ok: true; value: Set<string> }> {
   }
 }
 
+/** Plan adaptations from coach_intents (P1 #8). Pulls every plan_adapt_*
+ *  row in the active plan window, resolves workout_id → date_iso so we can
+ *  attribute each adapt to a week. Used by TrainView's KEY WORKOUTS list. */
+async function loadPlanAdapts(planId: string | null): Promise<{ ok: true; value: Array<{ workoutId: string; dateIso: string; kind: string; newType?: string; newDate?: string; shaveFraction?: number; why: string; ts: string }> }> {
+  if (!planId) return { ok: true, value: [] };
+  try {
+    const { pool } = await import('@/lib/db/pool');
+    const r = await pool.query(
+      `SELECT ci.field AS workout_id, ci.reason, ci.value, ci.ts, pw.date_iso
+         FROM coach_intents ci
+         JOIN plan_workouts pw ON pw.id::text = ci.field
+        WHERE ci.user_id = $1
+          AND ci.reason LIKE 'plan_adapt_%'
+          AND pw.plan_id = $2
+        ORDER BY ci.ts ASC`,
+      [DEFAULT_USER_ID, planId]
+    ).catch(() => ({ rows: [] as Array<{ workout_id: string; reason: string; value: string; ts: Date | string; date_iso: string }> }));
+    const out = r.rows.map((row) => {
+      let parsed: { kind?: string; newType?: string; newDate?: string; shaveFraction?: number; why?: string } = {};
+      try { parsed = JSON.parse(typeof row.value === 'string' ? row.value : String(row.value)); } catch { /* swallow */ }
+      const kind = (parsed.kind ?? row.reason.replace(/^plan_adapt_/, '')) as string;
+      return {
+        workoutId: String(row.workout_id),
+        dateIso: row.date_iso,
+        kind,
+        newType: parsed.newType,
+        newDate: parsed.newDate,
+        shaveFraction: parsed.shaveFraction,
+        why: String(parsed.why ?? ''),
+        ts: row.ts instanceof Date ? row.ts.toISOString() : String(row.ts),
+      };
+    });
+    return { ok: true, value: out };
+  } catch {
+    return { ok: true, value: [] };
+  }
+}
+
 /** Per-day shoe assignment from day_actions (action='shoe', note=shoe_id).
  *  Returns the shoe_id (numeric or string) for today's row if present,
  *  else null. Errors swallowed — UI falls back to recommended shoe. */
@@ -422,8 +460,8 @@ function adaptVolumeBars(log: LogT | null, training: Training | null): { bars: V
   return { bars, thisWeek, avg };
 }
 
-function adaptSeason(training: Training | null) {
-  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [] };
+function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeof loadPlanAdapts>>['value']) {
+  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [], adaptations: [] };
   const miles = training.weeks.map(w => Math.round(w.plannedMi || 0));
   const nowIdx = Math.max(0, Math.min(miles.length - 1, training.currentWeekIdx ?? 0));
   const raceIdx = miles.length - 1;
@@ -440,8 +478,9 @@ function adaptSeason(training: Training | null) {
     // backfill) for the per-day pace cell. PACE_DEFAULT is only the fallback
     // for plan-builder rows that authored without a VDOT.
     const specPace = paceFromSpec((d as { spec?: import('@/lib/faff/types').WorkoutSpec | null }).spec);
-    const anyD = d as unknown as { donePaceSec?: number | null; doneAvgHr?: number | null };
+    const anyD = d as unknown as { id?: string; donePaceSec?: number | null; doneAvgHr?: number | null };
     return {
+      id: anyD.id,
       dow: DOW[(d.dow + 6) % 7],
       type: t as import('./constants').EffortKey,
       name: d.label || humanName(t, d.mi),
@@ -461,7 +500,31 @@ function adaptSeason(training: Training | null) {
     startWeekIdx: p.startWeekIdx,
     endWeekIdx: p.endWeekIdx,
   }));
-  return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, phases, weekDays };
+  // Resolve each adaptation to its weekIdx by date_iso → matching weekDays
+  // entry. coach_intents rows carry the affected workout_id + date; we
+  // walk the week list to find which weekIdx that date belongs to.
+  const adaptations = adapts.map((a) => {
+    let weekIdx = -1;
+    for (let i = 0; i < weekDays.length; i++) {
+      // weekDays[i] doesn't carry the iso date — use training.weeks[i].days[*].date
+      const dayInWeek = training!.weeks[i]?.days.find((d) => d.date === a.dateIso);
+      if (dayInWeek) { weekIdx = i; break; }
+    }
+    const allowed = ['reschedule', 'downgrade', 'shave', 'mark_dirty'];
+    const kind = (allowed.includes(a.kind) ? a.kind : 'other') as 'reschedule' | 'downgrade' | 'shave' | 'mark_dirty' | 'other';
+    return {
+      workoutId: a.workoutId,
+      weekIdx,
+      kind,
+      newType: a.newType,
+      newDate: a.newDate,
+      shaveFraction: a.shaveFraction,
+      why: a.why,
+      ts: a.ts,
+    };
+  }).filter((a) => a.weekIdx >= 0);
+
+  return { nowIdx, raceIdx, miles, maxMi: Math.max(1, ...miles) + 5, phases, weekDays, adaptations };
 }
 
 function adaptHealth(health: Health | null, form: Form | null): HealthSnapshot {
@@ -967,7 +1030,9 @@ export async function buildSeed(): Promise<FaffSeed> {
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
-  const season = adaptSeason(training);
+  // Load plan adapts AFTER training so we have plan_id to scope the query.
+  const planAdapts = await loadPlanAdapts(training?.plan_id ?? null);
+  const season = adaptSeason(training, planAdapts.value);
   const healthSnapshot = adaptHealth(health, formMetrics);
   healthSnapshot.readiness = readiness;
   const prs = adaptPRs(races, log);
