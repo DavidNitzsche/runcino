@@ -1,9 +1,10 @@
-# Cron audit — 2026-05-30
+# Cron audit — 2026-05-30 (updated 2026-05-30 PM: schedulers wired)
 
-Six cron routes ship in `web-v2/app/api/cron/*`. Four have a GitHub Actions
-workflow that fires them. Two have **no scheduler config of any kind** — the
-route exists, but nothing on the planet POSTs to it on a schedule. Doctrine
-that depends on those two crons is silently dead.
+Six cron routes ship in `web-v2/app/api/cron/*`. **All six now have a GitHub
+Actions workflow.** The two previously-missing schedulers (`notifications`,
+`snapshot-projections`) were added in this pass. Both depend on
+`CRON_SECRET` being set in the GitHub repo secrets — **ops action required**
+(see "Ops note for David" below).
 
 ## Summary table
 
@@ -13,16 +14,18 @@ that depends on those two crons is silently dead.
 | `enrich-weather` | Walk recent un-enriched Strava runs, fold tempF + weather blob | `CRON_SECRET` | **Weak** — 6/125 rows enriched total (5%). Last batch 2026-05-30 had 5 rows (likely from webhook ingestion, not cron pass). Previous batch was 2026-05-27 (3 days earlier — should be daily) | `.github/workflows/enrich-weather.yml` — daily 07:30 UTC | **P2** — workflow exists but evidence pattern suggests cron is failing or the route returns empty; doctrine ("pre-run pace adjustment from weather") relies on enriched rows |
 | `run-adaptations` | Detect missed key workouts, RHR spike, sleep crater, volume overshoot → mutate plan_workouts | `CRON_SECRET` | **None for cron path** — `coach_actions` has only 2 rows total, both 2026-05-24/25 (manual seed era, trigger='fitness_shift'), never from `cron-adapt` source. 5 days stale | `.github/workflows/run-adaptations.yml` — daily 07:15 UTC | **P0** — 9 adaptation triggers are wired in `lib/plan/adapt.ts` (GOAL_CHANGED, RHR_SPIKE, SLEEP_CRATER, etc.) but no proof they ever ran in production. The "coach as mastermind" doctrine sits on this cron |
 | `keep-warm` | Ping pg pool + warm CoachState loaders per active user | `CRON_SECRET` | No DB writes by design → no direct evidence. No `ops_alerts` rows from `cron` source either, which is good (no failures) | `.github/workflows/keep-warm.yml` — every 15 min, 14-06 UTC | Low — even if it stops, cost is one slow first-load per cold start |
-| `notifications` | Drain `notifications_pending` queue + schedule time-based categories (race eve, weekly check-in, niggle/sick, race countdown) | `CRON_SECRET` | **None.** `notifications_log` is empty (0 rows). 1 pending row from 2026-05-29 with `fire_at=2026-05-29T07:15Z` is **still unprocessed**. The cron is not running — the pending row is stuck | **MISSING — no GH workflow, no Vercel config** | **P0** — notification system is wired end-to-end (APNs dispatch, templates, prefs, dedup) but nothing fires the cron. Skip-recovery notification has been sitting in queue for 1+ day |
-| `snapshot-projections` | Daily VDOT + race projection snapshot per active user (HM, M, anchor distance) | `CRON_SECRET` | **None for cron path.** 14 rows exist in `projection_snapshots` but **all have `source='seed-script'`** — never `'cron-daily'`. The route hardcodes `'cron-daily'` on line 185, so zero rows from cron | **MISSING — no GH workflow, no Vercel config** | **P0** — race-header.ts uses `projection_snapshots` to compute the projection-trend delta. With no daily snapshots, the trend line is static and silently wrong |
+| `notifications` | Drain `notifications_pending` queue + schedule time-based categories (race eve, weekly check-in, niggle/sick, race countdown) | `CRON_SECRET` | **None.** `notifications_log` is empty (0 rows). 1 pending row from 2026-05-29 with `fire_at=2026-05-29T07:15Z` is **still unprocessed**. The cron is not running — the pending row is stuck | `.github/workflows/notifications.yml` — every 30 min, 14-06 UTC (**NEW 2026-05-30 PM**) | **Scheduler now configured, needs CRON_SECRET in GH repo secrets** |
+| `snapshot-projections` | Daily VDOT + race projection snapshot per active user (HM, M, anchor distance) | `CRON_SECRET` | **None for cron path.** 14 rows exist in `projection_snapshots` but **all have `source='seed-script'`** — never `'cron-daily'`. The route hardcodes `'cron-daily'` on line 185, so zero rows from cron | `.github/workflows/snapshot-projections.yml` — daily 07:30 UTC (**NEW 2026-05-30 PM**) | **Scheduler now configured, needs CRON_SECRET in GH repo secrets** |
 
 ## Scheduler config inventory
 
 **GitHub Actions** (`.github/workflows/`):
 - `enrich-weather.yml` → `30 7 * * *`
 - `keep-warm.yml` → `*/15 14-23 * * *` + `*/15 0-6 * * *`
+- `notifications.yml` → `*/30 14-23 * * *` + `*/30 0-6 * * *` (added 2026-05-30 PM)
 - `refresh-briefings.yml` → `5 7 * * *`
 - `run-adaptations.yml` → `15 7 * * *`
+- `snapshot-projections.yml` → `30 7 * * *` (added 2026-05-30 PM)
 
 **Vercel config**: no `vercel.json` in the repo. App ships on Railway (see `web-v2/railway.json`), not Vercel.
 
@@ -30,9 +33,38 @@ that depends on those two crons is silently dead.
 
 **npm scripts**: none cron-related (`package.json` only has `dev / build / start / lint / typecheck / eval:voice / test:adapt / test:truth`).
 
+## Ops note for David
+
+The two new workflows (`notifications.yml`, `snapshot-projections.yml`) both
+authenticate with `Bearer $CRON_SECRET` against `https://www.faff.run/api/cron/*`.
+They will **fail with HTTP 401** until the GH repo secret is set:
+
+```
+# At https://github.com/<owner>/<repo>/settings/secrets/actions
+CRON_SECRET = <same value as Railway env var of the same name>
+```
+
+The existing four workflows (`enrich-weather`, `keep-warm`, `refresh-briefings`,
+`run-adaptations`) already use this same secret, so if they're running green
+in the Actions tab the new ones will too once the file lands on main.
+
+Verify after first run by querying:
+
+```sql
+-- notifications drained?
+SELECT COUNT(*) FROM notifications_log;
+SELECT COUNT(*) FROM notifications_pending WHERE processed_at IS NOT NULL;
+
+-- projection snapshots from cron path?
+SELECT source, COUNT(*), MAX(snapshot_date)
+  FROM projection_snapshots
+ GROUP BY source;
+-- expect a 'cron-daily' row group appearing the day after the first run
+```
+
 ## Open questions worth chasing
 
-1. The two P0 missing crons (`notifications`, `snapshot-projections`) need either a GH workflow added or the cron-job.org dashboard verified. The doc strings *claim* cron-job.org runs notifications every 15 min but evidence contradicts that.
+1. ~~The two P0 missing crons (`notifications`, `snapshot-projections`) need either a GH workflow added or the cron-job.org dashboard verified.~~ **RESOLVED 2026-05-30 PM** — workflows added; awaiting CRON_SECRET deploy.
 2. `enrich-weather` workflow exists but enrichment is sparse. Either:
    - the cron is returning 200 with `processed=0` (route silently skips a misconfigured row filter)
    - GH Action is failing — check Actions tab for red runs

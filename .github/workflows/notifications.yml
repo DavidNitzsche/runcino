@@ -1,0 +1,76 @@
+# Drain notifications_pending + schedule time-based categories.
+#
+# Why this workflow exists: the notification system is wired end-to-end
+# (APNs dispatch, templates, prefs, dedup) but until this workflow shipped
+# nothing fired the cron on a schedule. Pending rows piled up unread.
+# See web-v2/docs/CRON_AUDIT.md (P0 missing scheduler).
+#
+# What the route does (per web-v2/app/api/cron/notifications/route.ts):
+#   1. DRAINS every notifications_pending row where fire_at <= now()
+#      AND processed_at IS NULL — payload was pre-rendered at enqueue
+#      time, so the cron just dispatches it.
+#   2. SCHEDULES time-based categories (B race eve T-21:00, D Sunday
+#      20:00 weekly check-in, F race-countdown thresholds) for every
+#      active user — idempotent via dedup_key.
+#
+# Schedule: every 30 min during waking hours (14:00-06:00 UTC = 7am-
+# 11pm PT). Off overnight — race-eve fires at 21:00 local which falls
+# inside the waking window every time zone we care about.
+#
+# Manual trigger: Actions tab > "Drain notifications queue" > Run workflow.
+
+name: Drain notifications queue
+
+on:
+  schedule:
+    # GitHub uses UTC. PT is UTC-7 (PDT) or UTC-8 (PST). The window
+    # 14:00-06:00 UTC covers 7am-11pm PT during PDT (most of the year)
+    # and 6am-10pm PT during PST — both span the waking hours we want.
+    #
+    # Every 30 min × 16 hours = 32 ticks/day. Each drain is cheap (a
+    # COUNT + a small batch dispatch + scheduler pass).
+    - cron: '*/30 14-23 * * *'
+    - cron: '*/30 0-6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/notifications
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 60 \
+            https://www.faff.run/api/cron/notifications)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" = "401" ]; then
+            echo "::error::Unauthorized — CRON_SECRET may be stale"
+            exit 1
+          fi
+          # 5xx gets a warning but not a failure; transient blips during
+          # Railway cold-start would otherwise spam alerts. A persistent
+          # 5xx will show up in the Actions tab.
+          if [ "$status" -ge "500" ] 2>/dev/null; then
+            echo "::warning::Server returned $status"
+          fi
+          # 200 path is the only success — anything else outside 401/5xx
+          # we surface as a warning so we notice the drift.
+          if [ "$status" != "200" ] && [ "$status" != "401" ] && [ "$status" -lt "500" ] 2>/dev/null; then
+            echo "::warning::Unexpected status $status"
+          fi
