@@ -7,6 +7,27 @@ the existing `web-v2/` backend. **Apple is the only working path.** Render the
 Google + email buttons as the design shows (visual parity) but mark them as
 deferred · no functional handler yet.
 
+## Lifecycle state updates · you own the coverage doc, the design agent doesn't
+
+The design agent runs in Claude Design (canvas tool, no direct repo write).
+They produce design files + a memo that references coverage doc rows by
+surface section + capability name. **You update the coverage doc Recommendation
+cell prefix** as you move work through the pipeline:
+
+| When | Prefix becomes |
+|---|---|
+| You read the design memo and find a row designed for | `DESIGN-READY · designs/<file>.html` |
+| You start a branch implementing it | `IMPLEMENTING · branch <name>` |
+| Your merge lands | `SHIPPED · commit <sha> · WEB` (or `· BOTH` if iOS also shipped) |
+
+Grep `docs/BACKEND_FRONTEND_COVERAGE.html` for `DESIGN-READY` rows whose
+Found-by matches your platform · that's your queue. Pull the highest-leverage
+rows first per the design memo's ranking.
+
+If a row is `GAP` and you decide to inline-implement without a design pass,
+that's fine · update to `IMPLEMENTING · branch <name> · inline (no separate design)`
+to keep the audit trail honest.
+
 ## Self-schedule a recurring coverage audit · DO THIS LAST
 
 After your login work merges and probes pass, **before you finish**, schedule
