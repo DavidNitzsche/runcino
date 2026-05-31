@@ -372,7 +372,40 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     hr_max: Number(r.maxHr) || null,
     // Prefer activity-supplied cadence; fall back to the day's HealthKit cadence.
     cadence_avg: Number(r.avgCadence) || form.cadence_spm,
-    elev_gain_ft: Number(r.elevGainFt) || null,
+    // 2026-05-31: barometric-drift sanity check on Strava's rolled-up
+    // elev_gain_ft. Barometric watches occasionally report 5-10x the
+    // real gain when ambient pressure swings during a run (humidity,
+    // weather front, indoor-to-outdoor transition · David's 12.1mi
+    // long run came back at 4684 ft / 387 ft/mi · mountain territory
+    // on a suburban route). When the raw ratio exceeds 250 ft/mi
+    // (Research/12 cap for credible urban / trail runs) AND we have
+    // per-mile splits with their own elev deltas, swap the raw value
+    // for sum-of-positive-deltas from splits. The splits sum is a
+    // lower bound (it misses in-mile climbs that net to zero) but a
+    // credible one · always better than a fictional number.
+    elev_gain_ft: (() => {
+      const raw = Number(r.elevGainFt) || null;
+      const distMi = Number(r.distanceMi) || 0;
+      if (raw == null || raw <= 0 || distMi <= 0) return raw;
+      const ftPerMi = raw / distMi;
+      // Below the suspicion threshold · trust the source.
+      if (ftPerMi <= 250) return raw;
+      // Above threshold · only recompute when splits coverage is real
+      // (at least 75% of the miles have splits AND positive sum > 0).
+      const minSplits = Math.max(3, Math.floor(distMi * 0.75));
+      if (splits.length < minSplits) return raw;
+      const splitsPositive = splits.reduce((s, sp) => {
+        const c = Number(sp.elev_change_ft ?? 0);
+        return s + (c > 0 ? c : 0);
+      }, 0);
+      if (splitsPositive <= 0) return raw;
+      // Only swap when the splits-summed positive is meaningfully
+      // smaller · otherwise we'd be substituting one inflated number
+      // for another. 0.6x is the cutoff · if splits agree within
+      // 60% of raw, the raw is probably honest after all.
+      if (splitsPositive >= raw * 0.6) return raw;
+      return Math.round(splitsPositive);
+    })(),
     temp_f: Number(r.tempF) || null,
     weather_context: weatherCtx,
     suffer_score: Number(r.sufferScore) || null,
