@@ -1,0 +1,69 @@
+# Daily VDOT + race-projection snapshot per active user.
+#
+# Why this workflow exists: race-header.ts reads projection_snapshots
+# to compute the projection-trend delta without recomputing the full
+# VDOT chain on every page load. Until this workflow shipped, the route
+# existed but no cron POSTed to it — the trend line was static and
+# silently wrong (all 14 production rows had source='seed-script').
+# See web-v2/docs/CRON_AUDIT.md (P0 missing scheduler).
+#
+# What the route does (per web-v2/app/api/cron/snapshot-projections/route.ts):
+#   For each active user:
+#     1. Read recent A/B races (last 180d, actual_result preferred)
+#     2. Read recent quality runs (last 60d, >=4mi, >=80% MHR or quality-typed)
+#     3. Compute bestRecentVdot off race + run candidates
+#     4. Compute projection for HM, M, and user's anchor race distance
+#     5. UPSERT projection_snapshots (source='cron-daily')
+#
+# Schedule: 07:30 UTC daily = 00:30 PT — after run-adaptations (07:15)
+# so the snapshot reflects any plan adaptation that landed first, and
+# after refresh-briefings (07:05) for the same reason.
+#
+# Manual trigger: Actions tab > "Snapshot race projections" > Run workflow.
+
+name: Snapshot race projections
+
+on:
+  schedule:
+    - cron: '30 7 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hit /api/cron/snapshot-projections
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 120 \
+            https://www.faff.run/api/cron/snapshot-projections)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Snapshot failed with HTTP $status"
+            exit 1
+          fi
+
+          # Surface failed users (if any) as a warning, but don't fail
+          # the whole run — the route is idempotent (UPSERT on
+          # user_uuid+snapshot_date+distance_mi), so a partial-success
+          # day gets re-snapped clean on the next run.
+          failed=$(echo "$body" | python3 -c 'import sys,json; d=json.loads(sys.stdin.read()); print(d.get("failed", 0))' 2>/dev/null || echo "0")
+          if [ "$failed" != "0" ]; then
+            echo "::warning::$failed user(s) failed to snapshot — see body above"
+          fi
