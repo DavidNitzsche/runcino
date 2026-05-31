@@ -46,6 +46,17 @@ export async function POST(req: NextRequest) {
       const { triggers, actions } = await detectAdaptations(uid);
       const applied = await applyAdaptations(uid, actions);
       if (applied > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
+      // Stamp last_adapted_at even when 0 actions applied — this is the only
+      // cron-fire proof we have. Without it we can't distinguish "cron never
+      // fired" from "cron fired but found nothing to do". applyAdaptations
+      // already stamps on the mutating path; this covers the no-op path.
+      if (applied === 0) {
+        await pool.query(
+          `UPDATE training_plans SET last_adapted_at = NOW()
+            WHERE user_uuid = $1 AND archived_iso IS NULL`,
+          [uid],
+        );
+      }
       results.push({ user_id: uid, triggers: triggers.length, applied });
     } catch (e: any) {
       results.push({ user_id: uid, triggers: 0, applied: 0, error: e?.message ?? String(e) });
