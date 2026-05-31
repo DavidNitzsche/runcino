@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { EFF, SEGS, KIT, ROLECOL } from '../constants';
-import { elevPathFromSplits, decodePolyline, polylineToSvgPath, polylineEndpoints, mileMarkersAlongPolyline } from '@/lib/route/polyline';
+import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
+import { RouteMap } from '../RouteMap';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace,
@@ -692,29 +693,17 @@ function CompletedHeroV2({
   // Decode the run's GPS polyline once per runData change.
   // 2026-05-31: viewBox bumped to 700x440 (closer to the card's natural
   // aspect on desktop) and the route now carries projected mile markers +
-  // an elevation strip so the map reads as more than a thin line on a
-  // grid. Markers are placed by walking Haversine distance along the
-  // polyline so they land on the rendered stroke regardless of route
-  // shape.
-  const ROUTE_VW = 700;
-  const ROUTE_VH = 440;
-  const ROUTE_PAD = 24;
-  const route = (() => {
-    if (!runData?.route_polyline) return null;
-    const pts = decodePolyline(runData.route_polyline);
-    const path = polylineToSvgPath(pts, ROUTE_VW, ROUTE_VH, ROUTE_PAD);
-    const ends = polylineEndpoints(pts, ROUTE_VW, ROUTE_VH, ROUTE_PAD);
-    // Only emit markers when the run is long enough that mile dots add
-    // signal · sub-3mi runs would clutter the map with adjacent dots.
-    const totalMi = runData.distance_mi ?? 0;
-    const markers = totalMi >= 3
-      ? mileMarkersAlongPolyline(pts, ROUTE_VW, ROUTE_VH, ROUTE_PAD)
-      : [];
-    return path ? { path, ends, markers } : null;
-  })();
-  // Per-mile elevation strip · runs along the bottom of the route card
-  // when the run has meaningful elevation change. Helper returns null
-  // when the range is <3ft (honest flat instead of fake zigzag).
+  // 2026-05-31 ship · the SVG-only route render (with synthetic terrain
+  // grid + mile markers + endpoint dots) was replaced with the Style F+
+  // stack: CartoDB Dark Matter tiles via Leaflet + pace-graded polyline
+  // overlay. Component is at <RouteMap polyline=... splits=... />. See
+  // designs/route-map-mockups + /dev/route-map-mockups for the review
+  // surface that approved it.
+  const hasRoute = Boolean(runData?.route_polyline);
+  // Per-mile elevation strip · still drawn as a small absolute-positioned
+  // SVG overlay along the bottom of the map card when the run has
+  // meaningful elevation change. The helper returns null for <3ft range
+  // so flat runs stay honest.
   const elevStrip = (runData?.splits && runData.splits.length >= 2)
     ? elevPathFromSplits(runData.splits, 700, 64, 4)
     : null;
@@ -900,48 +889,13 @@ function CompletedHeroV2({
         </div>
 
           <div className="mapcol">
-            <div className="routemap routemap-rich">
-              {route ? (
+            <div className="routemap routemap-leaflet-host">
+              {hasRoute && runData?.route_polyline ? (
                 <>
-                  <svg
-                    viewBox={`0 0 ${ROUTE_VW} ${ROUTE_VH}`}
-                    preserveAspectRatio="xMidYMid meet"
-                    aria-label="Run route map"
-                  >
-                    {/* Stripped 2026-05-31: the previous filter glow + fake
-                        topo rings + radial vignette were costume jewellery,
-                        not terrain. Final shape pending design approval
-                        from designs/route-map-mockups.html · this is the
-                        honest holding pattern until a real map vendor
-                        (Mapbox / Maptiler) lands. */}
-                    <path
-                      d={route.path}
-                      fill="none"
-                      stroke="#FF8847"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-
-                    {/* Mile markers · small filled dots. Skipped for runs
-                        <3mi to avoid clutter. */}
-                    {route.markers.map((m) => (
-                      <circle key={m.mile} cx={m.x} cy={m.y} r="3.2" fill="#FFE7C2" stroke="rgba(8,12,18,0.7)" strokeWidth="1.4" />
-                    ))}
-
-                    {/* Endpoint dots · start green ring, finish coral. */}
-                    {route.ends && (
-                      <>
-                        <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="2.4" />
-                        <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="1.8" />
-                      </>
-                    )}
-                  </svg>
-
-                  {/* Elevation strip · only renders when the run had real
-                      vert change. Sits absolutely along the bottom of the
-                      card so the map and the elev profile share the same
-                      coordinate space without crowding either. */}
+                  <RouteMap
+                    polyline={runData.route_polyline}
+                    splits={(runData.splits ?? []).map(s => ({ mile: s.mile, pace: s.pace ?? null }))}
+                  />
                   {elevStrip ? (
                     <div className="routemap-elev" aria-label="Elevation profile">
                       <svg viewBox="0 0 700 64" preserveAspectRatio="none">
@@ -957,6 +911,9 @@ function CompletedHeroV2({
                       <span className="routemap-elev-lbl">ELEV PROFILE</span>
                     </div>
                   ) : null}
+                  <div className="routemap-attribution" aria-hidden="true">
+                    Map: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OSM</a> · <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>
+                  </div>
                 </>
               ) : (
                 <div className="ph">
