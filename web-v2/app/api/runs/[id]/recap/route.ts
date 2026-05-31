@@ -92,7 +92,7 @@ export async function GET(
     pace_target_s: number | null;
   }>(
     `SELECT pw.type, pw.distance_mi, pw.workout_spec,
-            COALESCE(pwk.phase_label, NULL) AS phase,
+            pp.label AS phase,
             COALESCE(
               (pw.workout_spec->>'hr_cap_bpm')::int,
               (pw.workout_spec->>'hr_target_bpm')::int,
@@ -100,11 +100,12 @@ export async function GET(
             ) AS hr_cap,
             (pw.workout_spec->>'pace_target_s_per_mi')::int AS pace_target_s
        FROM plan_workouts pw
-       JOIN plans p ON p.id = pw.plan_id
+       JOIN training_plans p ON p.id = pw.plan_id
        LEFT JOIN plan_weeks pwk ON pwk.id = pw.week_id
-      WHERE p.user_uuid = $1
+       LEFT JOIN plan_phases pp ON pp.id = pwk.phase_id
+      WHERE COALESCE(p.user_uuid::text, p.user_id) = $1
         AND pw.date_iso = $2
-      ORDER BY p.created_at DESC LIMIT 1`,
+      ORDER BY p.authored_iso DESC LIMIT 1`,
     [userId, date],
   )).rows[0] : null;
 

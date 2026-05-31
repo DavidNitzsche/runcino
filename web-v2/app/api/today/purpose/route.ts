@@ -66,13 +66,13 @@ export async function GET(req: NextRequest) {
     weeks_to_race: number | null;
   }>(
     `WITH active AS (
-       SELECT id, race_id FROM plans
-        WHERE user_uuid = $1 AND archived_at IS NULL
-        ORDER BY created_at DESC LIMIT 1
+       SELECT id, race_id FROM training_plans
+        WHERE COALESCE(user_uuid::text, user_id) = $1 AND archived_iso IS NULL
+        ORDER BY authored_iso DESC LIMIT 1
      )
      SELECT pw.type,
             pw.distance_mi,
-            pwk.phase_label AS phase,
+            pp.label AS phase,
             (r.meta->>'distanceMi')::numeric AS race_distance_mi,
             CASE WHEN r.meta->>'date' IS NOT NULL
                  THEN CEIL(EXTRACT(EPOCH FROM ((r.meta->>'date')::date - $2::date)) / 86400.0 / 7)
@@ -80,7 +80,8 @@ export async function GET(req: NextRequest) {
        FROM active a
        JOIN plan_workouts pw ON pw.plan_id = a.id AND pw.date_iso = $2
        LEFT JOIN plan_weeks pwk ON pwk.id = pw.week_id
-       LEFT JOIN races r ON r.id = a.race_id
+       LEFT JOIN plan_phases pp ON pp.id = pwk.phase_id
+       LEFT JOIN races r ON r.slug = a.race_id
       LIMIT 1`,
     [userId, date],
   )).rows[0];
