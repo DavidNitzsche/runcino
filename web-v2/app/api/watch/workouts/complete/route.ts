@@ -42,12 +42,12 @@ export async function POST(req: NextRequest) {
   // (user_id, reason, field) — re-POSTing the same workoutId overwrites.
   await pool.query(
     `DELETE FROM coach_intents
-      WHERE user_id = $1 AND reason = 'watch_completion' AND field = $2`,
+      WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion' AND field = $2`,
     [userId, body.workoutId]
   ).catch(() => {});
   await pool.query(
-    `INSERT INTO coach_intents (user_id, reason, field, value, briefing_id)
-     VALUES ($1, 'watch_completion', $2, $3, NULL)`,
+    `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value, briefing_id)
+     VALUES ($1, $1, 'watch_completion', $2, $3, NULL)`,
     [userId, body.workoutId, JSON.stringify(body)]
   ).catch(() => {});
 

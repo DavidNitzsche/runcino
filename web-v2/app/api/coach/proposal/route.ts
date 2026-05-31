@@ -50,8 +50,8 @@ export async function POST(req: NextRequest) {
     // Just persist the decline + bust cache. The coach reads pendingIntents
     // and skips re-proposing for today.
     await pool.query(
-      `INSERT INTO coach_intents (user_id, reason, field, value)
-       VALUES ($1, 'swap_declined', $2, $3)`,
+      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+       VALUES ($1, $1, 'swap_declined', $2, $3)`,
       [userId, today, JSON.stringify(p)]
     ).catch(() => {});
     await bustBriefingCacheForEvent(userId, 'plan_swap');
@@ -89,8 +89,8 @@ export async function POST(req: NextRequest) {
   // ack pipeline already plumbed by /api/plan/workout PATCH catches
   // this too).
   await pool.query(
-    `INSERT INTO coach_intents (user_id, reason, field, value)
-     VALUES ($1, 'workout_swapped', $2, $3)`,
+    `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+     VALUES ($1, $1, 'workout_swapped', $2, $3)`,
     [userId, today, JSON.stringify({ via: 'coach_proposal', proposal: p, applied: patched.rows[0] })]
   ).catch(() => {});
 

@@ -49,7 +49,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   ] = await Promise.all([
     pool.query(
       `SELECT sample_date, value FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'sleep_hours'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
           AND sample_date >= ($2::date - interval '30 days')
           AND sample_date <= $2::date
         ORDER BY sample_date ASC`,
@@ -57,7 +57,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     ).then((r) => r.rows),
     pool.query(
       `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'resting_hr'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
           AND recorded_at >= NOW() - interval '60 days'
         GROUP BY recorded_at::date
         ORDER BY d ASC`,
@@ -65,7 +65,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     ).then((r) => r.rows),
     pool.query(
       `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'hrv'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
           AND recorded_at >= NOW() - interval '60 days'
         GROUP BY recorded_at::date
         ORDER BY d ASC`,
@@ -73,7 +73,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     ).then((r) => r.rows),
     pool.query(
       `SELECT sample_date, value FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'body_mass'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'body_mass'
           AND sample_date >= ($2::date - interval '30 days')
           AND sample_date <= $2::date
         ORDER BY sample_date ASC`,
@@ -81,13 +81,13 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     ).then((r) => r.rows),
     pool.query(
       `SELECT AVG(value)::numeric AS avg FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'cadence'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'cadence'
           AND sample_date >= ($2::date - interval '60 days')`,
       [userId, today]
     ).then((r) => r.rows[0]),
     pool.query(
       `SELECT value FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'vo2_max'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'vo2_max'
         ORDER BY recorded_at DESC LIMIT 1`,
       [userId]
     ).then((r) => r.rows[0]),
@@ -95,7 +95,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     // sparsely (1-2 readings/wk) so 30 days is too few points for a chart.
     pool.query(
       `SELECT sample_date::date AS d, value FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'vo2_max'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'vo2_max'
           AND sample_date >= ($2::date - interval '180 days')
         ORDER BY sample_date ASC`,
       [userId, today]

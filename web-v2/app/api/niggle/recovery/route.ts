@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     // Find active niggle
     const active = (await pool.query(
       `SELECT id FROM niggles
-        WHERE user_id = $1 AND cleared_at IS NULL
+        WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC
         LIMIT 1`,
       [DAVID_USER_ID],

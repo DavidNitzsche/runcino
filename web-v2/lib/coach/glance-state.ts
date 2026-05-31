@@ -232,7 +232,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // Sleep
   const sleep = (await pool.query(
     `SELECT value FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'sleep_hours' AND sample_date <= $2::date
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours' AND sample_date <= $2::date
       ORDER BY sample_date DESC LIMIT 7`,
     [userId, today]
   )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
@@ -241,7 +241,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
 
   // RHR
   const rhr = (await pool.query(
-    `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'resting_hr'
+    `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
        AND recorded_at >= NOW() - interval '60 days' ORDER BY recorded_at DESC LIMIT 14`,
     [userId]
   )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
@@ -257,7 +257,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // → hrvCurrent null → readiness drops HRV to weight 0 ("no data") and
   // re-weights the remaining pillars (see readiness.ts §HRV).
   const hrv = (await pool.query(
-    `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'hrv'
+    `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
        AND recorded_at >= NOW() - interval '60 days'
        ORDER BY recorded_at DESC LIMIT 30`,
     [userId]
@@ -268,14 +268,14 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // Cadence
   const cad = (await pool.query(
     `SELECT AVG(value)::numeric AS avg FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'cadence' AND sample_date >= ($2::date - interval '60 days')`,
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'cadence' AND sample_date >= ($2::date - interval '60 days')`,
     [userId, today]
   )).rows[0];
   const cadenceBaseline = cad?.avg ? Math.round(Number(cad.avg)) : null;
 
   // Recent check-ins
   const checkIns = await pool.query(
-    `SELECT ts, rating FROM check_ins WHERE user_id = $1 AND ts >= NOW() - interval '7 days'
+    `SELECT ts, rating FROM check_ins WHERE COALESCE(user_uuid, user_id) = $1 AND ts >= NOW() - interval '7 days'
       ORDER BY ts DESC LIMIT 10`,
     [userId]
   ).catch(() => ({ rows: [] }));
@@ -311,7 +311,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // false so the loader doesn't hard-fail.
   const skipRow = await pool.query(
     `SELECT 1 FROM day_actions
-      WHERE user_id = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
+      WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
     [userId, today],
   ).catch(() => ({ rows: [] as any[] }));
   const todaySkipped = skipRow.rows.length > 0;
@@ -324,7 +324,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     `SELECT id, body_part, side, severity, status, logged_at,
             EXTRACT(EPOCH FROM (now() - logged_at)) / 86400.0 AS days_active
        FROM niggles
-      WHERE user_id = $1 AND cleared_at IS NULL
+      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
       ORDER BY logged_at DESC
       LIMIT 1`,
     [userId],
@@ -345,7 +345,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     `SELECT id, symptoms, started, has_fever, logged_at,
             EXTRACT(EPOCH FROM (now() - logged_at)) / 86400.0 AS days_active
        FROM sick_episodes
-      WHERE user_id = $1 AND cleared_at IS NULL
+      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
       ORDER BY logged_at DESC
       LIMIT 1`,
     [userId],

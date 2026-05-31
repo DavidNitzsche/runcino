@@ -185,7 +185,7 @@ export async function findSubscriptionByVerifyToken(
 export async function userIdForAthlete(athleteId: number): Promise<string | null> {
   const athleteStr = String(athleteId);
   const fromConnectors = (await pool.query(
-    `SELECT user_id::text AS user_uuid
+    `SELECT COALESCE(user_uuid, user_id)::text AS user_uuid
        FROM connector_tokens
       WHERE provider = 'strava'
         AND provider_user_id = $1

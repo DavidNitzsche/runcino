@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
         await pool.query(
           `UPDATE coach_intents
               SET acknowledged_at = NOW()
-            WHERE user_id = $1
+            WHERE COALESCE(user_uuid, user_id) = $1
               AND reason = 'watch_completion'
               AND acknowledged_at IS NULL
               AND ts::date = $2::date

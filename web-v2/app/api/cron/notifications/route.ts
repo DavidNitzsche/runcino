@@ -236,8 +236,8 @@ async function enqueueIfFresh(
   if (dup.rows.length > 0) return false;
 
   await pool.query(
-    `INSERT INTO notifications_pending (user_id, category, fire_at, payload, dedup_key)
-     VALUES ($1, $2, $3, $4::jsonb, $5)`,
+    `INSERT INTO notifications_pending (user_id, user_uuid, category, fire_at, payload, dedup_key)
+     VALUES ($1, $1, $2, $3, $4::jsonb, $5)`,
     [userId, tpl.category, fireAt.toISOString(), JSON.stringify(tpl), tpl.dedup_key],
   );
   return true;
@@ -503,7 +503,7 @@ async function activeNiggle(userId: string): Promise<{ id: number; body_part: st
   try {
     const r = await pool.query(
       `SELECT id, body_part, logged_at FROM niggles
-        WHERE user_id = $1 AND cleared_at IS NULL
+        WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC LIMIT 1`,
       [userId],
     );
@@ -517,7 +517,7 @@ async function activeSickEpisode(userId: string): Promise<{ id: number; logged_a
   try {
     const r = await pool.query(
       `SELECT id, logged_at FROM sick_episodes
-        WHERE user_id = $1 AND cleared_at IS NULL
+        WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC LIMIT 1`,
       [userId],
     );

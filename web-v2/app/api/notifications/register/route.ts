@@ -47,10 +47,11 @@ export async function POST(req: NextRequest) {
     // previously (e.g. handoff), the user_id flips — that's fine, the
     // physical device only belongs to one runner at a time.
     await pool.query(
-      `INSERT INTO device_tokens (user_id, device_token, platform, app_version, registered_at, last_seen_at, revoked_at)
-       VALUES ($1, $2, $3, $4, now(), now(), null)
+      `INSERT INTO device_tokens (user_id, user_uuid, device_token, platform, app_version, registered_at, last_seen_at, revoked_at)
+       VALUES ($1, $1, $2, $3, $4, now(), now(), null)
        ON CONFLICT (device_token) DO UPDATE
          SET user_id     = EXCLUDED.user_id,
+             user_uuid   = EXCLUDED.user_uuid,
              platform    = EXCLUDED.platform,
              app_version = EXCLUDED.app_version,
              last_seen_at = now(),

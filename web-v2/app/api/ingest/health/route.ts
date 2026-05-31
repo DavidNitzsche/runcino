@@ -64,11 +64,11 @@ export async function POST(req: NextRequest) {
       // double-count if iOS replays. Tries ON CONFLICT first; if no unique
       // index exists, falls back to a check-then-insert.
       const r = await pool.query(
-        `INSERT INTO health_samples (user_id, sample_type, value, sample_date, recorded_at)
-         SELECT $1, $2, $3, $4::date, $5
+        `INSERT INTO health_samples (user_id, user_uuid, sample_type, value, sample_date, recorded_at)
+         SELECT $1, $1, $2, $3, $4::date, $5
           WHERE NOT EXISTS (
             SELECT 1 FROM health_samples
-             WHERE user_id = $1
+             WHERE COALESCE(user_uuid, user_id) = $1
                AND sample_type = $2
                AND sample_date = $4::date
                AND recorded_at = $5

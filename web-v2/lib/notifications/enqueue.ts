@@ -53,8 +53,8 @@ export async function enqueueNotification(
     }
 
     const ins = await pool.query(
-      `INSERT INTO notifications_pending (user_id, category, fire_at, payload, dedup_key)
-       VALUES ($1, $2, $3, $4::jsonb, $5)
+      `INSERT INTO notifications_pending (user_id, user_uuid, category, fire_at, payload, dedup_key)
+       VALUES ($1, $1, $2, $3, $4::jsonb, $5)
        RETURNING id`,
       [userId, tpl.category, fireAt.toISOString(), JSON.stringify(tpl), tpl.dedup_key],
     );

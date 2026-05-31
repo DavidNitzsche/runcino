@@ -50,7 +50,7 @@ export async function userIdFromRequest(req: Request | { headers: Headers, url?:
   const tokenHash = hashToken(token);
   try {
     const r = (await pool.query(
-      `SELECT user_id::text AS user_uuid
+      `SELECT COALESCE(user_uuid, user_id)::text AS user_uuid
          FROM sessions
         WHERE session_token = $1
           AND expires_at > NOW()
@@ -79,7 +79,7 @@ export async function requireAuth(req: Request | { headers: Headers }): Promise<
   if (!token) throw new AuthError('no token');
   const tokenHash = hashToken(token);
   const r = (await pool.query(
-    `SELECT user_id::text AS user_uuid
+    `SELECT COALESCE(user_uuid, user_id)::text AS user_uuid
        FROM sessions
       WHERE session_token = $1
         AND expires_at > NOW()
@@ -118,8 +118,8 @@ export async function createSession(
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 86400000).toISOString();
   await pool.query(
-    `INSERT INTO sessions (user_id, session_token, expires_at, kind, user_agent, ip_address, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    `INSERT INTO sessions (user_id, user_uuid, session_token, expires_at, kind, user_agent, ip_address, created_at)
+     VALUES ($1, $1, $2, $3, $4, $5, $6, NOW())`,
     [userUuid, tokenHash, expiresAt, opts?.kind ?? 'app', opts?.userAgent ?? null, opts?.ipHash ?? null],
   );
   return { token, expiresAt };

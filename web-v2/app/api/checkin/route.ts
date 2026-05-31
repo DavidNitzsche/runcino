@@ -117,8 +117,8 @@ export async function POST(req: NextRequest) {
   let insertedId: string | null = null;
   try {
     const r = await pool.query(
-      `INSERT INTO check_ins (user_id, rating, briefing_id, surface, note, ts, extras)
-       VALUES ($1, $2, $3, $4, $5, now(), $6::jsonb)
+      `INSERT INTO check_ins (user_id, user_uuid, rating, briefing_id, surface, note, ts, extras)
+       VALUES ($1, $1, $2, $3, $4, $5, now(), $6::jsonb)
        RETURNING id`,
       [userId, rating, body.briefing_id ?? null, surface, body.note ?? null, extrasJson]
     );

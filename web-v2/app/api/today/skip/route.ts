@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   try {
     const row = await pool.query(
       `SELECT 1 FROM day_actions
-        WHERE user_id = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
+        WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
       [DAVID_USER_ID, date],
     );
     return NextResponse.json({ skipped: row.rows.length > 0, date });
@@ -75,9 +75,10 @@ export async function POST(req: NextRequest) {
 
   try {
     await pool.query(
-      `INSERT INTO day_actions (user_id, date_iso, action)
-       VALUES ($1, $2, 'skip')
-       ON CONFLICT (user_id, date_iso, action) DO NOTHING`,
+      `INSERT INTO day_actions (user_id, user_uuid, date_iso, action)
+       VALUES ($1, $1, $2, 'skip')
+       ON CONFLICT (user_id, date_iso, action) DO UPDATE
+         SET user_uuid = COALESCE(day_actions.user_uuid, EXCLUDED.user_uuid)`,
       [DAVID_USER_ID, date],
     );
   } catch (err: any) {
@@ -144,7 +145,7 @@ export async function DELETE(req: NextRequest) {
   try {
     await pool.query(
       `DELETE FROM day_actions
-        WHERE user_id = $1 AND date_iso = $2 AND action = 'skip'`,
+        WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip'`,
       [DAVID_USER_ID, date],
     );
   } catch (err: any) {

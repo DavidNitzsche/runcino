@@ -428,7 +428,7 @@ async function loadPhaseBreakdown(userId: string, date: string | null): Promise<
   if (!date) return [];
   const row = (await pool.query(
     `SELECT value FROM coach_intents
-      WHERE user_id = $1
+      WHERE COALESCE(user_uuid, user_id) = $1
         AND reason = 'watch_completion'
         AND ts::date = $2::date
       ORDER BY ts DESC LIMIT 1`,
@@ -636,7 +636,7 @@ async function loadFormMetrics(userId: string, date: string | null): Promise<Run
   const rows = (await pool.query(
     `SELECT sample_type, AVG(value)::numeric AS avg
        FROM health_samples
-      WHERE user_id = $1
+      WHERE COALESCE(user_uuid, user_id) = $1
         AND sample_date = $2::date
         AND sample_type IN (
           'cadence','ground_contact_time','stride_length',

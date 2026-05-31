@@ -80,10 +80,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const r = await pool.query(
-      `INSERT INTO health_samples (user_id, sample_type, value, sample_date, source, recorded_at)
-       VALUES ($1, $2, $3, $4::date, 'manual', NOW())
+      `INSERT INTO health_samples (user_id, user_uuid, sample_type, value, sample_date, source, recorded_at)
+       VALUES ($1, $1, $2, $3, $4::date, 'manual', NOW())
        ON CONFLICT (user_id, sample_type, sample_date) DO UPDATE
-       SET value = EXCLUDED.value, source = 'manual', recorded_at = NOW()
+       SET value = EXCLUDED.value, source = 'manual',
+           user_uuid = COALESCE(health_samples.user_uuid, EXCLUDED.user_uuid),
+           recorded_at = NOW()
        RETURNING id, sample_type, value, sample_date::text AS sample_date, source`,
       [userId, sampleType, value, sampleDate],
     );

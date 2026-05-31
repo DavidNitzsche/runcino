@@ -186,8 +186,9 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
               SET disconnected_at = NOW(),
                   last_sync_status = 'error',
                   last_sync_error = 'STRAVA_DEAUTHORIZED_VIA_WEBHOOK',
+                  user_uuid       = COALESCE(user_uuid, $1),
                   updated_at = NOW()
-            WHERE user_id = $1 AND provider = 'strava'`,
+            WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava'`,
           [userId]
         );
         // Bust the cache so the connection card re-reads state.

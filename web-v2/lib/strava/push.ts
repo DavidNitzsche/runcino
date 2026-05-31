@@ -171,8 +171,9 @@ export async function pushRunToStrava(
           `UPDATE connector_tokens
               SET last_sync_status = 'error',
                   last_sync_error  = 'PUSH_401_REAUTH_REQUIRED',
+                  user_uuid        = COALESCE(user_uuid, $1),
                   updated_at       = NOW()
-            WHERE user_id = $1 AND provider = 'strava'`,
+            WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava'`,
           [userId]
         ).catch(() => {});
         // Notifications v1 §G — fire the reconnect push on the 3rd consecutive
