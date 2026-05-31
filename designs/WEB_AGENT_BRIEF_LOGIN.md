@@ -78,15 +78,33 @@ Request body:
 
 Steps:
 1. Validate shape (zod or manual)
-2. `SELECT id, password_hash, status, onboarding_complete FROM users WHERE email = $1`
-3. If no row OR status != 'active' OR no password_hash → 401
-4. `bcrypt.compare(password, password_hash)` · if false → 401 (use `bcryptjs`
-   for Edge compatibility; if Node-runtime, regular `bcrypt` is fine)
-5. INSERT a `sessions` row with token + expires_at (mirror apple route line ~140)
-6. `res.cookies.set('faff_session', sess.token, { httpOnly: true, secure: prod,
+2. `SELECT id, password_hash, status, onboarding_complete, is_admin,
+    email_verified_at FROM users WHERE email = $1`
+3. If no row OR status != 'active' → 401
+4. **Bootstrap branch** · first login for admins who never set a password via
+   this surface:
+   - IF `is_admin = TRUE AND email_verified_at IS NULL`:
+     - `UPDATE users SET password_hash = bcrypt(password),
+        email_verified_at = NOW() WHERE id = $userId`
+     - Skip the bcrypt.compare step (the stored hash may be stale legacy
+       bcrypt with a different cost / algo and is being replaced)
+     - Continue to step 6 (mint session)
+   - This branch is gated · admin-and-unverified only · closes after first
+     successful login (because `email_verified_at` is now stamped) · safe
+     against non-admin bypass
+5. **Normal branch** · `bcrypt.compare(password, password_hash)` · if false
+   → 401 (use `bcryptjs` for Edge compatibility; if Node-runtime, regular
+   `bcrypt` is fine)
+6. INSERT a `sessions` row with token + expires_at (mirror apple route ~140)
+7. `res.cookies.set('faff_session', sess.token, { httpOnly: true, secure: prod,
    sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 30 })`
-7. Update `users.last_login_at = NOW()`
-8. Return `{ ok: true, redirect: onboarding_complete ? '/today' : '/onboarding' }`
+8. Update `users.last_login_at = NOW()`
+9. Return `{ ok: true, redirect: onboarding_complete ? '/today' : '/onboarding' }`
+
+The bootstrap branch lets David (or any future bootstrap admin) sign in for
+the first time without a separate password-reset script · he types whatever
+password he wants to use going forward, step 4 sets it, step 6 mints the
+session, he's in. Subsequent logins go through the normal branch.
 
 ### 3. New API route `POST /api/auth/google`
 
