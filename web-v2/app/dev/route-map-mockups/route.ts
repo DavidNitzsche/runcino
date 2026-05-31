@@ -2,26 +2,35 @@
  * GET /dev/route-map-mockups
  *
  * Auth-gated design-review page. Pulls the signed-in runner's most
- * recent GPS-tracked run from strava_activities and renders the six
+ * recent GPS-tracked run from strava_activities and renders the four
  * candidate route-map styles against that real polyline · no paste,
- * no synthetic stub. The leading card is Style F+ (pace-graded SVG
- * route overlaid on Mapbox dark tiles), with the other five below
- * for side-by-side comparison.
+ * no synthetic stub, no API token required. The leading card is
+ * Style F+ (pace-graded route on a free OSM-derived dark map).
  *
  * Style F+ stack:
- *   · background  · Mapbox dark-v11 static-image tile, requested at
- *                   the polyline bbox + 8% padding, projected with
- *                   explicit center + zoom so our SVG overlay aligns
- *                   pixel-perfect via the same Web Mercator math
- *   · route       · SVG polyline split into pace buckets · each
+ *   · background  · CartoDB Dark Matter raster tiles · OpenStreetMap
+ *                   data, freely licensed, no token required. CDN
+ *                   served (basemaps.cartocdn.com). Attribution shown
+ *                   in the bottom-right corner per OSM + CARTO terms.
+ *   · library     · Leaflet 1.9 from unpkg CDN (~40KB gzip) · used
+ *                   only to draw the tiles + fit the polyline bounds.
+ *                   Interaction (zoom/pan) is disabled so the card
+ *                   reads as a still image.
+ *   · route       · Leaflet polylines, one per pace bucket. Each
  *                   segment colored by the runner's actual per-mile
- *                   pace bucket (faster brighter, slower dimmer)
+ *                   pace (faster warmer, slower cooler · same effort-
+ *                   temperature semantics as the EFF dots).
+ *
+ * Comparison styles below (all SVG-only, no external deps):
+ *   A · Current production stripped (flat dark + grid)
+ *   B · Cream paper · Apple Health pocket-map feel
+ *   C · Topo blueprint · navy with iso-contour rings
+ *   F · Pace-graded route on flat dark fill (no map background)
  *
  * Override the run with ?id=<activityId> to compare a specific run.
  *
- * Bring a Mapbox token via the textbox in the page, or set
- * NEXT_PUBLIC_MAPBOX_TOKEN at deploy time and the page picks it up
- * server-side so it renders without paste.
+ * Mapbox / Maptiler / paid tile vendors NOT used · the question
+ * "why do I need Mapbox?" answered itself · we don't.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { userIdFromCookies } from '@/lib/auth/session';
@@ -99,8 +108,7 @@ export async function GET(req: NextRequest) {
   }
   const activityId = req.nextUrl.searchParams.get('id');
   const run = await loadRun(userId, activityId);
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
-  const html = renderHtml(run, mapboxToken);
+  const html = renderHtml(run);
   return new NextResponse(html, {
     headers: {
       'content-type': 'text/html; charset=utf-8',
@@ -109,16 +117,12 @@ export async function GET(req: NextRequest) {
   });
 }
 
-function renderHtml(run: RunSummary | null, mapboxToken: string): string {
+function renderHtml(run: RunSummary | null): string {
   const polyline = run?.polyline ?? '';
   const splitsJson = JSON.stringify(run?.splits ?? []);
   const runMeta = run
     ? `${run.name ?? 'Run'} · ${run.distanceMi?.toFixed(1) ?? '?'} mi · ${run.date ?? ''}`
     : 'No GPS run found · paste a polyline below';
-  // Mapbox token is embedded so the dark tile renders without paste.
-  // It's a public client-side token by design (URL-restricted in the
-  // Mapbox dashboard); safe to ship in HTML.
-  const token = (mapboxToken || '').replace(/[<>"]/g, '');
 
   return `<!doctype html>
 <html lang="en">
@@ -129,6 +133,8 @@ function renderHtml(run: RunSummary | null, mapboxToken: string): string {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
   :root{
     --bg:#0A0C10; --ink:#F6F7F8; --mute:#8A90A0;
@@ -216,24 +222,19 @@ function renderHtml(run: RunSummary | null, mapboxToken: string): string {
     <div>
       <label for="poly">ENCODED POLYLINE · loaded from your run</label>
       <textarea id="poly" spellcheck="false">${polyline.replace(/[<>"]/g, '')}</textarea>
-      <span class="hint">Override with <code>?id=&lt;activityId&gt;</code> in the URL to load a different run.</span>
-    </div>
-    <div>
-      <label for="token">MAPBOX TOKEN</label>
-      <input id="token" type="text" placeholder="pk.eyJ1Ijoi…" spellcheck="false" value="${token}" />
-      <span class="hint">${token ? 'Loaded from <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> env var.' : 'Paste a token to render the Mapbox-backed styles. Free tier · 50k loads/month at <code>mapbox.com</code>.'}</span>
+      <span class="hint">Override with <code>?id=&lt;activityId&gt;</code> in the URL to load a different run. No API tokens needed · the dark map is OpenStreetMap data via CartoDB's free CDN.</span>
     </div>
     <div style="flex:0 0 auto;">
       <button id="render">RENDER</button>
     </div>
   </div>
 
-  <!-- Featured · Style F+ · pace-graded route on dark map -->
+  <!-- Featured · Style F+ · pace-graded route on real OSM dark map -->
   <div class="featured">
     <div class="card">
       <div class="card-head">
-        <h3>F+ · Pace-graded route on dark map <span class="badge fav">RECOMMENDED</span> <span class="badge token">TOKEN</span></h3>
-        <p class="note">Mapbox dark-v11 tiles as the actual map background · SVG polyline overlaid with per-mile pace coloring. Faster miles glow brighter coral, slower miles fade toward dim. The map is darker than the route so the line pops · same coordinate space because we project our SVG with the same Web Mercator that Mapbox uses.</p>
+        <h3>F+ · Pace-graded route on dark map <span class="badge fav">RECOMMENDED</span> <span class="badge svg">FREE TILES</span></h3>
+        <p class="note">CartoDB Dark Matter tiles (OpenStreetMap data, free, no token) as the actual map background. Leaflet draws the tiles and your route on top, with per-mile pace coloring · faster miles burn warmer, slower miles cool toward teal. The map is darker than the route so the line pops. Real streets, real parks, real water · all the OSM data without paying a vendor.</p>
       </div>
       <div class="map-frame" id="map-fplus"></div>
       <div class="pace-legend" id="pace-legend"></div>
@@ -242,7 +243,7 @@ function renderHtml(run: RunSummary | null, mapboxToken: string): string {
 
   <div class="grid">
     <div class="card">
-      <div class="card-head"><h3>A · Current stripped <span class="badge svg">SVG</span></h3><p class="note">What's on /today right now · plain coral stroke on dark grid · honest schematic.</p></div>
+      <div class="card-head"><h3>A · Current stripped <span class="badge svg">SVG</span></h3><p class="note">What's on /today right now · plain coral stroke on dark grid · honest schematic, no real terrain.</p></div>
       <div class="map-frame style-a" id="map-a"></div>
     </div>
     <div class="card">
@@ -254,15 +255,7 @@ function renderHtml(run: RunSummary | null, mapboxToken: string): string {
       <div class="map-frame style-c" id="map-c"></div>
     </div>
     <div class="card">
-      <div class="card-head"><h3>D · Mapbox dark tiles <span class="badge token">TOKEN</span></h3><p class="note">Real map · Mapbox dark-v11 with the polyline baked into the static image (single color, no pace gradient).</p></div>
-      <div class="map-frame" id="map-d"></div>
-    </div>
-    <div class="card">
-      <div class="card-head"><h3>E · Mapbox streets light <span class="badge token">TOKEN</span></h3><p class="note">Daylight streets-v12 with neighborhoods + landmarks named. The closest to a real-world map.</p></div>
-      <div class="map-frame" id="map-e"></div>
-    </div>
-    <div class="card">
-      <div class="card-head"><h3>F · Pace-graded on dark fill <span class="badge compute">SVG + DATA</span></h3><p class="note">Same pace coloring as F+ but on a flat dark fill instead of Mapbox tiles. Zero token cost · no real terrain.</p></div>
+      <div class="card-head"><h3>F · Pace-graded on dark fill <span class="badge compute">SVG + DATA</span></h3><p class="note">Same pace coloring as F+ but on a flat dark fill instead of real map tiles. No external requests at all · pure SVG.</p></div>
       <div class="map-frame style-a" id="map-f"></div>
     </div>
   </div>
@@ -432,35 +425,48 @@ function renderC(host, pts) {
   host.innerHTML = '<svg viewBox="0 0 ' + VW + ' ' + VH + '" preserveAspectRatio="xMidYMid meet">' + body + '</svg>';
 }
 
-function renderMapboxTile(host, points, styleId, token, opts) {
+/* Render the featured F+ card · Leaflet map with CartoDB Dark Matter
+   tiles + pace-graded polyline segments overlaid as native Leaflet
+   polylines. No tokens, no env vars, no Mapbox. */
+let leafletMap = null;
+function renderFPlus(host, points) {
   if (!points || points.length < 2) {
     host.innerHTML = '<div class="placeholder"><strong>No polyline</strong>nothing to draw</div>';
     return;
   }
-  if (!token) {
-    host.innerHTML = '<div class="placeholder"><strong>Paste a Mapbox token above</strong>to render <code>' + styleId + '</code> tiles</div>';
+  if (typeof L === 'undefined') {
+    host.innerHTML = '<div class="placeholder"><strong>Leaflet failed to load</strong>check your network</div>';
     return;
   }
-  const W = opts.W, H = opts.H;
-  // For Style D/E · let Mapbox auto-fit with the polyline as the visible overlay.
-  if (opts.bakeRoute) {
-    const overlayColor = opts.bakeColor || 'ff8847';
-    const path = 'path-4+' + overlayColor + '-1(' + encodeURIComponent(encodePolyline(points)) + ')';
-    const url = 'https://api.mapbox.com/styles/v1/mapbox/' + styleId + '/static/' + path + '/auto/' + W + 'x' + H + '@2x?access_token=' + token;
-    host.innerHTML = '<img src="' + url + '" alt="' + styleId + '" onerror="this.parentElement.innerHTML=\\'<div class=&quot;placeholder&quot;><strong>Mapbox returned an error.</strong>Double-check the token + style.</div>\\'"/>';
-    return;
-  }
-  // For F+ · explicit center+zoom from our Mercator projection so SVG aligns.
-  const proj = projectMercator(points, W, H, 0.08);
-  if (!proj) return;
-  const url = 'https://api.mapbox.com/styles/v1/mapbox/' + styleId + '/static/' + proj.centerLng + ',' + proj.centerLat + ',' + proj.zoom.toFixed(2) + ',0,0/' + W + 'x' + H + '@2x?access_token=' + token;
-  // SVG overlay with the same projection.
-  let segments = '';
+  // Reset the host · Leaflet needs a clean container each render.
+  host.innerHTML = '';
+  host.style.position = 'relative';
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+
+  leafletMap = L.map(host, {
+    zoomControl: false,
+    attributionControl: true,
+    dragging: false,
+    touchZoom: false,
+    doubleClickZoom: false,
+    scrollWheelZoom: false,
+    boxZoom: false,
+    keyboard: false,
+    tap: false,
+  });
+
+  // CartoDB Dark Matter · free OSM-derived dark tiles. Attribution
+  // required (shown bottom-right by default).
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', {
+    subdomains: 'abcd',
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  }).addTo(leafletMap);
+
   const buckets = paceBuckets(SPLITS);
   if (buckets && SPLITS.length >= 2) {
-    // Walk the polyline accumulating per-segment distance · assign each
-    // sub-segment to the split whose mile band it falls in, then color
-    // by that split's pace bucket.
+    // Walk the polyline by Haversine distance · split into segments by
+    // pace bucket so each Leaflet polyline gets a single color.
     const EARTH_MI = 3958.7613;
     function distMi(a, b) {
       const toRad = d => d * Math.PI / 180;
@@ -469,13 +475,18 @@ function renderMapboxTile(host, points, styleId, token, opts) {
       return 2 * EARTH_MI * Math.asin(Math.min(1, Math.sqrt(x)));
     }
     let total = 0;
-    let lastIdx = 0;
+    let segStartIdx = 0;
     let lastBucket = null;
     function flush(endIdx, b) {
-      if (lastIdx >= endIdx || b == null) return;
-      const seg = proj.pts.slice(lastIdx, endIdx + 1);
-      const d = seg.map((p, i) => (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-      segments += '<path d="' + d + '" fill="none" stroke="' + buckets.colors[b] + '" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>';
+      if (segStartIdx >= endIdx || b == null) return;
+      const segPts = points.slice(segStartIdx, endIdx + 1);
+      L.polyline(segPts, {
+        color: buckets.colors[b],
+        weight: 5,
+        opacity: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(leafletMap);
     }
     for (let i = 0; i < points.length; i++) {
       if (i > 0) total += distMi(points[i-1], points[i]);
@@ -485,23 +496,28 @@ function renderMapboxTile(host, points, styleId, token, opts) {
       if (lastBucket == null) lastBucket = b;
       if (b !== lastBucket) {
         flush(i, lastBucket);
-        lastIdx = i;
+        segStartIdx = i;
         lastBucket = b;
       }
     }
     flush(points.length - 1, lastBucket);
   } else {
-    // No splits · single coral stroke as fallback.
-    const d = proj.pts.map((p, i) => (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-    segments = '<path d="' + d + '" fill="none" stroke="#FF8847" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>';
+    // No splits · render as a single coral stroke.
+    L.polyline(points, { color: '#FF8847', weight: 5, opacity: 1, lineCap: 'round' }).addTo(leafletMap);
   }
-  // Endpoints
-  const first = proj.pts[0], last = proj.pts[proj.pts.length-1];
-  segments += '<circle cx="' + first[0].toFixed(1) + '" cy="' + first[1].toFixed(1) + '" r="7" fill="#04201f" stroke="#14C08C" stroke-width="2.6"/>';
-  segments += '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="7" fill="#FF8847" stroke="#fff" stroke-width="2"/>';
-  host.innerHTML =
-    '<img src="' + url + '" alt="dark map" onerror="this.parentElement.querySelector(&quot;.placeholder&quot;)?.classList.remove(&quot;hidden&quot;)"/>' +
-    '<svg class="overlay" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' + segments + '</svg>';
+
+  // Endpoint markers · circle markers so they scale with zoom.
+  L.circleMarker(points[0], {
+    radius: 7, fillColor: '#04201f', color: '#14C08C', weight: 3, fillOpacity: 1,
+  }).addTo(leafletMap);
+  L.circleMarker(points[points.length - 1], {
+    radius: 7, fillColor: '#FF8847', color: '#fff', weight: 2, fillOpacity: 1,
+  }).addTo(leafletMap);
+
+  // Fit the map to the route's bounds with a small padding so the line
+  // doesn't touch the edges.
+  const bounds = L.latLngBounds(points);
+  leafletMap.fitBounds(bounds, { padding: [24, 24] });
 }
 
 function renderF(host, pts) {
@@ -570,7 +586,6 @@ function buildLegend(host) {
 
 function renderAll() {
   const encoded = document.getElementById('poly').value.trim();
-  const token = document.getElementById('token').value.trim();
   const points = decodePolyline(encoded);
   buildLegend(document.getElementById('pace-legend'));
   if (points.length < 2) {
@@ -582,10 +597,8 @@ function renderAll() {
   renderB(document.getElementById('map-b'), flatPts);
   renderC(document.getElementById('map-c'), flatPts);
   renderF(document.getElementById('map-f'), flatPts);
-  renderMapboxTile(document.getElementById('map-d'), points, 'dark-v11', token, { W: 700, H: 380, bakeRoute: true, bakeColor: 'ff8847' });
-  renderMapboxTile(document.getElementById('map-e'), points, 'streets-v12', token, { W: 700, H: 380, bakeRoute: true, bakeColor: 'ff8847' });
-  // Featured F+ with proper Mercator alignment.
-  renderMapboxTile(document.getElementById('map-fplus'), points, 'dark-v11', token, { W: 1240, H: 520, bakeRoute: false });
+  // Featured F+ · CartoDB Dark Matter via Leaflet · no token required.
+  renderFPlus(document.getElementById('map-fplus'), points);
 }
 
 document.getElementById('render').addEventListener('click', renderAll);
