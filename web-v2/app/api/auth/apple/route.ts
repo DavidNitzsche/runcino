@@ -90,9 +90,8 @@ export async function POST(req: NextRequest) {
   catch { return NextResponse.json({ error: 'invalid JSON' }, { status: 400 }); }
 
   const identityToken = body?.identity_token;
-  const appleUserId = body?.user;
-  if (!identityToken || !appleUserId) {
-    return NextResponse.json({ error: 'identity_token + user required' }, { status: 400 });
+  if (!identityToken) {
+    return NextResponse.json({ error: 'identity_token required' }, { status: 400 });
   }
 
   let claims: any;
@@ -102,12 +101,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `token verify failed: ${e?.message}` }, { status: 401 });
   }
 
-  // Apple's sub == apple_user_id we'll persist.
+  // body.user is optional · web sign-in only ships authorization + id_token,
+  // so we fall back to extracting sub from the verified claims when the
+  // client doesn't include it. Native iOS still passes user explicitly so
+  // both surfaces converge on the same persisted identifier.
+  const appleUserId = (body?.user ?? '').trim() || (claims?.sub ?? '').trim();
+  if (!appleUserId) {
+    return NextResponse.json({ error: 'apple user identifier missing from token + body' }, { status: 400 });
+  }
   if (claims.sub && claims.sub !== appleUserId) {
     return NextResponse.json({ error: 'sub mismatch with body.user' }, { status: 400 });
   }
 
+  // Apple's email lives in the verified JWT claims on first sign-in (and
+  // sometimes on every sign-in for relay emails). Trust claims.email over
+  // body.email · the body could be forged, the token has been verified.
+  const email: string | null = (claims.email ?? body.email ?? null) || null;
+
   // Find or create the profile row.
+  // 1) Direct apple_user_id match wins (returning Apple user, already linked).
+  // 2) Email-bootstrap fallback. First-time Apple sign-in for an account
+  //    that pre-existed in `users` (David is the canonical example: his
+  //    users.email = dnitch85@me.com but profile.apple_user_id was never
+  //    set). We look up users by email, then upsert the profile row with
+  //    apple_user_id populated. Lands him on his real 91-workout plan
+  //    instead of creating a phantom new account.
+  // 3) Genuine new signup. INSERT a fresh profile row. user_uuid is NULL
+  //    until a downstream onboarding step claims a users row · keeps the
+  //    schema clean while the new account decides what to do.
   let userUuid: string | null = null;
   try {
     const existing = (await pool.query(
@@ -116,20 +137,48 @@ export async function POST(req: NextRequest) {
     )).rows[0];
     if (existing) {
       userUuid = existing.user_uuid;
-      // Update email if provided + previously missing.
-      if (body.email) {
+      if (email) {
         await pool.query(
           `UPDATE profile SET apple_email = COALESCE(apple_email, $1) WHERE user_uuid = $2`,
-          [body.email, userUuid],
+          [email, userUuid],
         );
       }
-    } else {
+    } else if (email) {
+      const linked = (await pool.query(
+        `SELECT id::text AS user_uuid FROM users WHERE email = $1 LIMIT 1`,
+        [email],
+      )).rows[0];
+      if (linked) {
+        userUuid = linked.user_uuid;
+        // Upsert the profile row to carry the Apple identifier going forward.
+        // ON CONFLICT path: an existing profile row already keyed by user_uuid
+        // (legacy single-user 'me' default) gets its Apple columns populated;
+        // a fresh INSERT happens when the row didn't exist.
+        await pool.query(
+          `INSERT INTO profile (user_uuid, apple_user_id, apple_email)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (user_uuid) DO UPDATE
+             SET apple_user_id = EXCLUDED.apple_user_id,
+                 apple_email   = COALESCE(profile.apple_email, EXCLUDED.apple_email)`,
+          [userUuid, appleUserId, email],
+        ).catch(async () => {
+          // Fallback when no unique constraint on user_uuid · just update.
+          await pool.query(
+            `UPDATE profile SET apple_user_id = $1, apple_email = COALESCE(apple_email, $2)
+              WHERE user_uuid = $3`,
+            [appleUserId, email, userUuid],
+          );
+        });
+      }
+    }
+
+    if (!userUuid) {
       const fullName = body.full_name ? `${body.full_name.givenName ?? ''} ${body.full_name.familyName ?? ''}`.trim() : null;
       const r = (await pool.query(
         `INSERT INTO profile (apple_user_id, apple_email, full_name, onboarded_at)
          VALUES ($1, $2, $3, NOW())
          RETURNING user_uuid::text AS user_uuid`,
-        [appleUserId, body.email ?? null, fullName],
+        [appleUserId, email, fullName],
       )).rows[0];
       userUuid = r.user_uuid;
     }
