@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Route map · mockups for approval</title>
+<meta name="viewport" content="width=1400">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  /* The orange Today mesh · same effort tokens as production · sits behind
+     each card so the previews feel embedded, not abstract. */
+  :root{
+    --bg:#0A0C10; --ink:#F6F7F8; --mute:#8A90A0;
+    --c1:#FFD2A4; --c2:#FF9A54; --c3:#FB6E3C; --c4:#F4502F; --c5:#E23A47; --base:#9E2438;
+  }
+  html,body{margin:0;padding:0;font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;}
+  body{background:var(--base);position:relative;overflow-x:hidden;}
+  .meshwrap{position:fixed;inset:0;z-index:0;background:var(--base);overflow:hidden;}
+  .blobs{position:absolute;inset:-12%;filter:blur(46px);}
+  .blob{position:absolute;border-radius:50%;opacity:.92;}
+  .b1{left:-12%;top:-14%;width:74%;height:74%;background:var(--c1);}
+  .b2{left:34%;top:-10%;width:70%;height:72%;background:var(--c2);}
+  .b3{left:4%;top:18%;width:96%;height:88%;background:var(--c5);}
+  .b4{left:-16%;top:42%;width:78%;height:78%;background:var(--c4);}
+  .b5{left:30%;top:40%;width:80%;height:80%;background:var(--c3);}
+  .fade{position:fixed;inset:0;z-index:1;background:linear-gradient(180deg,rgba(0,0,0,.36),rgba(0,0,0,0) 26%,rgba(0,0,0,0) 56%,rgba(0,0,0,.46));pointer-events:none;}
+
+  .wrap{position:relative;z-index:2;max-width:1320px;margin:0 auto;padding:60px 32px 100px;}
+  h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:68px;line-height:.92;letter-spacing:-1px;margin:0;text-transform:uppercase;}
+  .lede{color:rgba(246,247,248,.86);margin-top:16px;font-size:15px;max-width:780px;line-height:1.6;}
+
+  .controls{
+    background:rgba(8,10,14,.55);backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.14);border-radius:14px;
+    padding:18px 20px;margin:28px 0 36px;
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .controls label{font-size:11px;font-weight:700;letter-spacing:1.4px;color:rgba(255,255,255,.7);}
+  .controls textarea{
+    width:100%;min-height:64px;resize:vertical;
+    background:rgba(8,10,14,.7);color:#FFE7C2;
+    border:1px solid rgba(255,255,255,.12);border-radius:10px;
+    padding:10px 12px;font-family:'JetBrains Mono',monospace;font-size:11.5px;
+  }
+  .controls input{
+    background:rgba(8,10,14,.7);color:#FFE7C2;
+    border:1px solid rgba(255,255,255,.12);border-radius:10px;
+    padding:10px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;
+  }
+  .controls .row{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;}
+  .controls .row > div{flex:1;min-width:240px;display:flex;flex-direction:column;gap:6px;}
+  .controls button{
+    background:#FF8847;color:#0a0c10;font-weight:700;letter-spacing:.6px;
+    border:none;border-radius:10px;padding:11px 22px;cursor:pointer;
+    font-size:13px;align-self:flex-start;
+  }
+  .controls button:hover{background:#FFA566;}
+  .hint{color:rgba(246,247,248,.6);font-size:12px;line-height:1.5;}
+  code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#FFC98A;}
+
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;}
+  @media (max-width:1100px){.grid{grid-template-columns:1fr;}}
+  .card{background:rgba(8,10,14,.42);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:0;overflow:hidden;}
+  .card-head{padding:18px 22px 14px;border-bottom:1px solid rgba(255,255,255,.06);}
+  .card-head h3{margin:0;font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;letter-spacing:.3px;}
+  .card-head .badge{display:inline-block;padding:3px 9px;border-radius:5px;font-size:10px;letter-spacing:1.2px;font-weight:700;margin-left:8px;vertical-align:middle;}
+  .badge.svg{background:rgba(143,240,176,.18);color:#86efa0;}
+  .badge.token{background:rgba(255,206,138,.18);color:#FFCE8A;}
+  .badge.compute{background:rgba(176,132,255,.18);color:#B084FF;}
+  .card-head .note{color:rgba(246,247,248,.7);margin-top:6px;font-size:12.5px;line-height:1.5;}
+  .map-frame{height:340px;position:relative;background:#0A0C10;}
+  .map-frame svg, .map-frame img{display:block;width:100%;height:100%;}
+
+  /* ───────────────────────────────────────────────────────────────
+     Style A · Current production (after this stripped-back pass).
+     Plain coral stroke on a dark fill with a thin grid. Honest
+     about not being a real map.
+     ─────────────────────────────────────────────────────────────── */
+  .style-a{
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 28px),
+      linear-gradient(155deg, rgba(8,14,22,.85), rgba(4,18,16,.78));
+  }
+
+  /* ───────────────────────────────────────────────────────────────
+     Style B · Light cream paper. Apple Health / Garmin Connect.
+     Dark thin route stroke on warm cream. Reads like a printed
+     pocket map.
+     ─────────────────────────────────────────────────────────────── */
+  .style-b{
+    background:
+      radial-gradient(120% 100% at 20% 10%, #fff5e0, #f3e6c6 70%, #e7d6ab 100%);
+  }
+
+  /* ───────────────────────────────────────────────────────────────
+     Style C · Topo blueprint. Dark navy with cyan iso-contour rings
+     and route in coral. Schematic, not photo-real.
+     ─────────────────────────────────────────────────────────────── */
+  .style-c{
+    background:
+      radial-gradient(50% 60% at 50% 50%, rgba(64,180,224,.10), transparent 70%),
+      repeating-radial-gradient(circle at 50% 50%, rgba(64,180,224,.16) 0 1px, transparent 1px 32px),
+      linear-gradient(135deg, #0a1320, #0b1d2c 70%);
+  }
+
+  /* ───────────────────────────────────────────────────────────────
+     Style D · Real Mapbox dark tile. Requires token.
+     ─────────────────────────────────────────────────────────────── */
+  .style-d, .style-e{
+    background:rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .style-d .placeholder, .style-e .placeholder{
+    text-align:center;color:rgba(246,247,248,.5);font-size:12px;line-height:1.6;padding:18px;
+  }
+  .style-d .placeholder strong, .style-e .placeholder strong{color:#FFCE8A;}
+
+  /* Footer for each card · little annotation row */
+  .card-foot{padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;color:rgba(246,247,248,.62);font-size:11.5px;}
+  .card-foot .pros{color:#86efa0;}
+  .card-foot .cons{color:#FFCE8A;}
+</style>
+</head>
+<body>
+
+<div class="meshwrap" aria-hidden="true">
+  <div class="blobs">
+    <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <div class="blob b4"></div><div class="blob b5"></div>
+  </div>
+</div>
+<div class="fade" aria-hidden="true"></div>
+
+<div class="wrap">
+  <h1>Route map · pick a style</h1>
+  <p class="lede">
+    Five candidates. The first three are pure SVG (no external services).
+    D and E are real Mapbox static-image tiles (need a token; render once
+    you paste one). Same polyline drives all five so they're directly
+    comparable. Paste your encoded polyline below to render against your
+    actual run. Default is a synthetic shape matching today's long run.
+  </p>
+
+  <div class="controls">
+    <div class="row">
+      <div>
+        <label for="poly">ENCODED POLYLINE</label>
+        <textarea id="poly" spellcheck="false"></textarea>
+        <span class="hint">From <code>/api/runs/&lt;id&gt;</code> response, field <code>route_polyline</code>. The default is a stub matching today's long-run shape so something renders out of the box.</span>
+      </div>
+      <div>
+        <label for="token">MAPBOX TOKEN (optional)</label>
+        <input id="token" type="text" placeholder="pk.eyJ1Ijoi…" spellcheck="false" />
+        <span class="hint">Needed for styles D + E. Get one at <code>mapbox.com</code> · free tier covers 50k loads/month. Leave blank to see the SVG-only styles.</span>
+      </div>
+    </div>
+    <div><button id="render">RENDER</button></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-head">
+        <h3>A · Current (stripped) <span class="badge svg">SVG · LIVE</span></h3>
+        <p class="note">What's on /today right now after I pulled the glow + fake topo. Honest grid + plain coral stroke + mile dots + endpoint dots. No pretense of real terrain.</p>
+      </div>
+      <div class="map-frame style-a" id="map-a"></div>
+      <div class="card-foot"><span class="pros">+ zero cost · zero deps</span><span class="cons">– reads as schematic, not a map</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>B · Cream paper <span class="badge svg">SVG</span></h3>
+        <p class="note">Light cream / parchment background. Single dark stroke. Reads like an Apple Health summary map or a printed pocket guide. Calm, premium, contrasts hard against the orange Today mesh.</p>
+      </div>
+      <div class="map-frame style-b" id="map-b"></div>
+      <div class="card-foot"><span class="pros">+ premium feel · obvious shape</span><span class="cons">– still no real terrain</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>C · Topo blueprint <span class="badge svg">SVG</span></h3>
+        <p class="note">Dark navy with concentric cyan iso-contour rings · reads as a topographic schematic. Pure SVG, no data fetched. Sits between "honest decoration" and "looks intentional."</p>
+      </div>
+      <div class="map-frame style-c" id="map-c"></div>
+      <div class="card-foot"><span class="pros">+ feels like a map</span><span class="cons">– rings aren't real elevation</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>D · Mapbox dark tiles <span class="badge token">TOKEN</span></h3>
+        <p class="note">Real map. Actual streets, parks, water from the Mapbox dark-v11 style with the polyline baked into the static image. One <code>&lt;img&gt;</code> tag, server-rendered. Cache forever (run is immutable).</p>
+      </div>
+      <div class="map-frame style-d" id="map-d"></div>
+      <div class="card-foot"><span class="pros">+ actual map terrain</span><span class="cons">– needs token + cache</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>E · Mapbox streets light <span class="badge token">TOKEN</span></h3>
+        <p class="note">Same as D but with the streets-v12 light style. Reads as a daylight neighborhood map · neighborhoods named, streets visible, parks shaded green. The closest to "what an actual map looks like."</p>
+      </div>
+      <div class="map-frame style-e" id="map-e"></div>
+      <div class="card-foot"><span class="pros">+ named streets + landmarks</span><span class="cons">– may be too busy</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>F · Pace-graded route <span class="badge compute">SVG + DATA</span></h3>
+        <p class="note">SVG stroke colored per-segment by pace. Faster miles glow brighter coral, slower miles fade toward dim. The map IS the data story · no fake terrain needed. Needs per-mile pace data, which run-state already returns.</p>
+      </div>
+      <div class="map-frame style-a" id="map-f"></div>
+      <div class="card-foot"><span class="pros">+ map tells the run story</span><span class="cons">– needs split alignment</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ───────────────────────────────────────────────────────────────
+   Polyline decode · same algorithm as web-v2/lib/route/polyline.ts.
+   Mirrored here so the mockup runs as a single static file with
+   no build step.
+   ─────────────────────────────────────────────────────────────── */
+function decodePolyline(encoded) {
+  if (!encoded) return [];
+  const points = [];
+  let index = 0, lat = 0, lng = 0;
+  const len = encoded.length;
+  while (index < len) {
+    let shift = 0, result = 0, b;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    points.push([lat * 1e-5, lng * 1e-5]);
+  }
+  return points;
+}
+
+function project(points, viewW, viewH, pad = 18) {
+  if (points.length < 2) return null;
+  let minLat = points[0][0], maxLat = points[0][0];
+  let minLng = points[0][1], maxLng = points[0][1];
+  for (const [lat, lng] of points) {
+    if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+  }
+  const midLat = (minLat + maxLat) / 2;
+  const lngScale = Math.cos(midLat * Math.PI / 180);
+  const xSpan = (maxLng - minLng) * lngScale || 1e-9;
+  const ySpan = (maxLat - minLat) || 1e-9;
+  const w = viewW - 2 * pad, h = viewH - 2 * pad;
+  const scale = Math.min(w / xSpan, h / ySpan);
+  const drawW = xSpan * scale, drawH = ySpan * scale;
+  const offX = pad + (w - drawW) / 2, offY = pad + (h - drawH) / 2;
+  const projectOne = ([lat, lng]) => [
+    offX + (lng - minLng) * lngScale * scale,
+    offY + (maxLat - lat) * scale,
+  ];
+  const pts = points.map(projectOne);
+  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  return {
+    pathD,
+    pts,
+    start: pts[0],
+    end: pts[pts.length - 1],
+    bbox: { drawW, drawH, offX, offY },
+  };
+}
+
+/* Walk segment by segment by Haversine to place integer-mile markers. */
+function mileMarkers(points, viewW, viewH, pad = 18) {
+  if (points.length < 2) return [];
+  const proj = project(points, viewW, viewH, pad);
+  if (!proj) return [];
+  const EARTH_MI = 3958.7613;
+  const toRad = d => d * Math.PI / 180;
+  function dist(a, b) {
+    const dLat = toRad(b[0] - a[0]), dLng = toRad(b[1] - a[1]);
+    const x = Math.sin(dLat/2)**2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng/2)**2;
+    return 2 * EARTH_MI * Math.asin(Math.min(1, Math.sqrt(x)));
+  }
+  const markers = [];
+  let total = 0, next = 1;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i-1], b = points[i];
+    const segMi = dist(a, b);
+    if (segMi <= 0) continue;
+    const segEnd = total + segMi;
+    while (next >= total && next < segEnd) {
+      const t = (next - total) / segMi;
+      const lat = a[0] + (b[0]-a[0]) * t;
+      const lng = a[1] + (b[1]-a[1]) * t;
+      // Reuse the same projection math.
+      const tmp = project([[lat,lng], points[i]], viewW, viewH, pad);
+      // Quick hack: re-project the SINGLE mile point against the same
+      // bbox by calling project with full route + finding its location.
+      // Simpler: linearly interpolate between projected segment endpoints
+      // since they're already in the same projection space.
+      const aP = proj.pts[i-1], bP = proj.pts[i];
+      markers.push({ mile: next, x: aP[0] + (bP[0]-aP[0])*t, y: aP[1] + (bP[1]-aP[1])*t });
+      next += 1;
+    }
+    total = segEnd;
+  }
+  return markers;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Default stub polyline · roughly matches David's long-run shape
+   from today's screenshot: a horizontal east spur from the NW
+   corner, then a southern body that loops back to start.
+   ─────────────────────────────────────────────────────────────── */
+const STUB = 'k}poFnjvbVeBgGoCwHi@aB_AsCq@oBg@}@y@_BgAuBeBuDcAyCcAaEcAyDqAcEy@yBy@cBeCwFq@wAwAyCsCkGcCwGm@cBmCeIcA}DcAcEwAuFsAwEcAuCqAyDeAcDw@}BcAaDoBgGu@yByB{F}@_CmAuCsAaDw@}AcAoBkAyB_BoCmA}A_DyEcA{Ay@aAaBuBsAuAkAaBsAkBcAcByA{Ce@cBgAyCw@_CeAaDw@_CsA{Du@kBkAaDqAaDk@aBaB{D_BoDyA_DiAaCq@yA';
+// Synthetic shape: a 12mi long-run-like polyline mimicking the screenshot.
+function syntheticPolyline() {
+  // Build a route as raw lat/lng then encode.
+  const pts = [];
+  // Start near (37.85, -122.50). North-west of bay.
+  // Long east horizontal spur
+  for (let i = 0; i <= 60; i++) pts.push([37.852, -122.500 + i * 0.0024]);
+  // Drop south sharply
+  for (let i = 1; i <= 30; i++) pts.push([37.852 - i * 0.0007, -122.356]);
+  // South-east arc (the curved body)
+  for (let i = 1; i <= 80; i++) {
+    const t = i / 80;
+    const lat = 37.831 - 0.012 * Math.sin(t * Math.PI);
+    const lng = -122.356 + 0.030 * t;
+    pts.push([lat, lng]);
+  }
+  // Back to start along bottom edge
+  for (let i = 1; i <= 90; i++) pts.push([37.831 - 0.010, -122.326 - i * 0.0019]);
+  // Return spur back to start
+  for (let i = 1; i <= 12; i++) pts.push([37.831 - 0.010 + i * 0.0017, -122.500]);
+  return encodePolyline(pts);
+}
+function encodePolyline(points) {
+  let prevLat = 0, prevLng = 0, out = '';
+  for (const [lat, lng] of points) {
+    const cLat = Math.round(lat * 1e5);
+    const cLng = Math.round(lng * 1e5);
+    out += encodeSigned(cLat - prevLat);
+    out += encodeSigned(cLng - prevLng);
+    prevLat = cLat; prevLng = cLng;
+  }
+  return out;
+}
+function encodeSigned(v) {
+  v = v < 0 ? ~(v << 1) : (v << 1);
+  let out = '';
+  while (v >= 0x20) {
+    out += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+    v >>>= 5;
+  }
+  out += String.fromCharCode(v + 63);
+  return out;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Renderers · one per style.
+   ─────────────────────────────────────────────────────────────── */
+const VW = 700, VH = 380, PAD = 22;
+
+function renderA(host, points) {
+  const proj = project(points, VW, VH, PAD);
+  if (!proj) { host.innerHTML = '<div style="color:#888;padding:24px;font-size:12px">No route.</div>'; return; }
+  const markers = points.length > 20 ? mileMarkers(points, VW, VH, PAD) : [];
+  const m = markers.map(m => `<circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="3.2" fill="#FFE7C2" stroke="rgba(8,12,18,.7)" stroke-width="1.4"/>`).join('');
+  host.innerHTML = `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet">
+    <path d="${proj.pathD}" fill="none" stroke="#FF8847" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    ${m}
+    <circle cx="${proj.start[0].toFixed(1)}" cy="${proj.start[1].toFixed(1)}" r="6" fill="#04201f" stroke="#14C08C" stroke-width="2.4"/>
+    <circle cx="${proj.end[0].toFixed(1)}" cy="${proj.end[1].toFixed(1)}" r="6" fill="#FF8847" stroke="#fff" stroke-width="1.8"/>
+  </svg>`;
+}
+
+function renderB(host, points) {
+  const proj = project(points, VW, VH, PAD);
+  if (!proj) return;
+  const markers = points.length > 20 ? mileMarkers(points, VW, VH, PAD) : [];
+  const m = markers.map(m => `<circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="2.6" fill="#5e4a2e"/>`).join('');
+  host.innerHTML = `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet">
+    <path d="${proj.pathD}" fill="none" stroke="#2b1d12" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${m}
+    <circle cx="${proj.start[0].toFixed(1)}" cy="${proj.start[1].toFixed(1)}" r="5" fill="#fff5e0" stroke="#1f8a68" stroke-width="2.4"/>
+    <circle cx="${proj.end[0].toFixed(1)}" cy="${proj.end[1].toFixed(1)}" r="5" fill="#E23A47" stroke="#fff5e0" stroke-width="1.8"/>
+  </svg>`;
+}
+
+function renderC(host, points) {
+  const proj = project(points, VW, VH, PAD);
+  if (!proj) return;
+  const markers = points.length > 20 ? mileMarkers(points, VW, VH, PAD) : [];
+  const m = markers.map(m => `
+    <circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="4" fill="rgba(11,29,44,.95)" stroke="#40B4E0" stroke-width="1.4"/>
+  `).join('');
+  host.innerHTML = `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="cstroke" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#FFC98A"/>
+        <stop offset="1" stop-color="#FF6E3C"/>
+      </linearGradient>
+    </defs>
+    <path d="${proj.pathD}" fill="none" stroke="url(#cstroke)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    ${m}
+    <circle cx="${proj.start[0].toFixed(1)}" cy="${proj.start[1].toFixed(1)}" r="6" fill="#0a1320" stroke="#86efa0" stroke-width="2.4"/>
+    <circle cx="${proj.end[0].toFixed(1)}" cy="${proj.end[1].toFixed(1)}" r="6" fill="#FF8847" stroke="#fff" stroke-width="1.8"/>
+  </svg>`;
+}
+
+function renderMapbox(host, points, styleId, token) {
+  if (!token) {
+    host.innerHTML = `<div class="placeholder">
+      <strong>Paste a Mapbox token above</strong><br>
+      to render real <code>${styleId}</code> tiles<br>with your route baked in.
+    </div>`;
+    return;
+  }
+  // Build the path overlay descriptor for Mapbox Static Images API.
+  // path-{strokeWidth}+{color-no-hash}-{opacity}({encoded_polyline})
+  const encoded = encodePolyline(points);
+  // Static Images expects the encoded polyline url-encoded once.
+  const path = `path-4+ff8847-1(${encodeURIComponent(encoded)})`;
+  const url = `https://api.mapbox.com/styles/v1/mapbox/${styleId}/static/${path}/auto/700x380@2x?access_token=${token}`;
+  host.innerHTML = `<img src="${url}" alt="${styleId} map" onerror="this.parentElement.innerHTML='<div class=\\'placeholder\\'><strong>Mapbox returned an error.</strong><br>Double-check the token + style.</div>'"/>`;
+}
+
+function renderF(host, points) {
+  // Pace-graded: pretend faster mid-run, slower at start/end. Use a
+  // smooth coral → red → coral cycle along the path. When real per-mile
+  // pace lands the cycle gets driven by data.
+  const proj = project(points, VW, VH, PAD);
+  if (!proj) return;
+  const markers = points.length > 20 ? mileMarkers(points, VW, VH, PAD) : [];
+  const m = markers.map(m => `<circle cx="${m.x.toFixed(1)}" cy="${m.y.toFixed(1)}" r="3.2" fill="#FFE7C2" stroke="rgba(8,12,18,.7)" stroke-width="1.4"/>`).join('');
+  // Walk pts in chunks of 10 and render each chunk with a pace-bucket color.
+  const palette = ['#48B3B5','#3EBD41','#F3AD38','#FF8847','#FC4D64','#FF8847','#F3AD38','#3EBD41','#48B3B5','#48B3B5'];
+  let segments = '';
+  const N = proj.pts.length;
+  const buckets = palette.length;
+  for (let b = 0; b < buckets; b++) {
+    const start = Math.floor(N * b / buckets);
+    const end = Math.min(N - 1, Math.floor(N * (b + 1) / buckets));
+    if (end <= start) continue;
+    const segPath = proj.pts.slice(start, end + 1).map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    segments += `<path d="${segPath}" fill="none" stroke="${palette[b]}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
+  host.innerHTML = `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet">
+    ${segments}
+    ${m}
+    <circle cx="${proj.start[0].toFixed(1)}" cy="${proj.start[1].toFixed(1)}" r="6" fill="#04201f" stroke="#14C08C" stroke-width="2.4"/>
+    <circle cx="${proj.end[0].toFixed(1)}" cy="${proj.end[1].toFixed(1)}" r="6" fill="#FC4D64" stroke="#fff" stroke-width="1.8"/>
+  </svg>`;
+}
+
+function renderAll() {
+  const encoded = document.getElementById('poly').value.trim();
+  const points = decodePolyline(encoded);
+  if (points.length < 2) {
+    ['a','b','c','f'].forEach(k => document.getElementById('map-'+k).innerHTML = '<div style="color:#888;padding:24px;font-size:12px">Bad / empty polyline.</div>');
+    return;
+  }
+  const token = document.getElementById('token').value.trim();
+  renderA(document.getElementById('map-a'), points);
+  renderB(document.getElementById('map-b'), points);
+  renderC(document.getElementById('map-c'), points);
+  renderMapbox(document.getElementById('map-d'), points, 'dark-v11', token);
+  renderMapbox(document.getElementById('map-e'), points, 'streets-v12', token);
+  renderF(document.getElementById('map-f'), points);
+}
+
+document.getElementById('poly').value = syntheticPolyline();
+document.getElementById('render').addEventListener('click', renderAll);
+renderAll();
+</script>
+
+</body>
+</html>

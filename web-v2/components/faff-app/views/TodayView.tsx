@@ -840,76 +840,32 @@ function CompletedHeroV2({
                     preserveAspectRatio="xMidYMid meet"
                     aria-label="Run route map"
                   >
-                    <defs>
-                      {/* Soft glow under the route stroke. Keeps the coral
-                          line visible against the dark terrain fill without
-                          a blunt outline. */}
-                      <filter id="routeGlow" x="-10%" y="-10%" width="120%" height="120%">
-                        <feGaussianBlur stdDeviation="3.2" result="blur" />
-                        <feMerge>
-                          <feMergeNode in="blur" />
-                          <feMergeNode in="SourceGraphic" />
-                        </feMerge>
-                      </filter>
-                      {/* Vignette gradient · darker at the corners, light
-                          near the route's centroid · sells "this is a map,
-                          not a chart". */}
-                      <radialGradient id="routeVignette" cx="50%" cy="42%" r="78%">
-                        <stop offset="0" stopColor="rgba(255,206,138,0.06)" />
-                        <stop offset="0.6" stopColor="rgba(8,12,18,0.0)" />
-                        <stop offset="1" stopColor="rgba(0,0,0,0.55)" />
-                      </radialGradient>
-                      {/* Subtle topo-style ring lines emanating from the
-                          centroid · pure decoration but reads as terrain
-                          contours behind the route. */}
-                      <pattern id="topoRings" x="0" y="0" width="120" height="120" patternUnits="userSpaceOnUse">
-                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.025)" strokeWidth="1" />
-                        <circle cx="60" cy="60" r="32" fill="none" stroke="rgba(255,255,255,0.020)" strokeWidth="1" />
-                        <circle cx="60" cy="60" r="16" fill="none" stroke="rgba(255,255,255,0.018)" strokeWidth="1" />
-                      </pattern>
-                    </defs>
-
-                    {/* Terrain layers · stack the topo pattern + radial
-                        vignette UNDER the route. */}
-                    <rect width={ROUTE_VW} height={ROUTE_VH} fill="url(#topoRings)" />
-                    <rect width={ROUTE_VW} height={ROUTE_VH} fill="url(#routeVignette)" />
-
-                    {/* Route stroke · glow underlayer + sharp top stroke. */}
+                    {/* Stripped 2026-05-31: the previous filter glow + fake
+                        topo rings + radial vignette were costume jewellery,
+                        not terrain. Final shape pending design approval
+                        from designs/route-map-mockups.html · this is the
+                        honest holding pattern until a real map vendor
+                        (Mapbox / Maptiler) lands. */}
                     <path
                       d={route.path}
                       fill="none"
-                      stroke="rgba(255,180,90,0.55)"
-                      strokeWidth="9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      filter="url(#routeGlow)"
-                    />
-                    <path
-                      d={route.path}
-                      fill="none"
-                      stroke="#FFC98A"
-                      strokeWidth="3.6"
+                      stroke="#FF8847"
+                      strokeWidth="3"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
 
-                    {/* Mile markers · small filled dots with thin outline.
-                        Skipped for runs <3mi to avoid clutter. */}
+                    {/* Mile markers · small filled dots. Skipped for runs
+                        <3mi to avoid clutter. */}
                     {route.markers.map((m) => (
-                      <g key={m.mile}>
-                        <circle cx={m.x} cy={m.y} r="5" fill="rgba(8,12,18,0.85)" />
-                        <circle cx={m.x} cy={m.y} r="2.4" fill="#FFE7C2" />
-                      </g>
+                      <circle key={m.mile} cx={m.x} cy={m.y} r="3.2" fill="#FFE7C2" stroke="rgba(8,12,18,0.7)" strokeWidth="1.4" />
                     ))}
 
-                    {/* Endpoint dots. Start = teal halo, finish = coral.
-                        Drawn last so they sit above the mile markers. */}
+                    {/* Endpoint dots · start green ring, finish coral. */}
                     {route.ends && (
                       <>
-                        <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="9" fill="rgba(20,192,140,0.18)" />
-                        <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="2.6" />
-                        <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="9" fill="rgba(255,136,71,0.22)" />
-                        <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="2" />
+                        <circle cx={route.ends.start[0]} cy={route.ends.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="2.4" />
+                        <circle cx={route.ends.end[0]} cy={route.ends.end[1]} r="6" fill="#FF8847" stroke="#fff" strokeWidth="1.8" />
                       </>
                     )}
                   </svg>
