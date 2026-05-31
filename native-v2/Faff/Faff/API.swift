@@ -13,6 +13,25 @@ extension Notification.Name {
     static let faffSessionExpired = Notification.Name("faff.session.expired")
 }
 
+/// Decodes from either a JSON number OR a JSON string. Backstop against
+/// Postgres-NUMERIC drift · pg-node returns NUMERIC columns as strings to
+/// preserve precision and most API routes don't coerce. A single un-cast
+/// column (e.g. profile.height_cm) used to crash an entire response decode.
+///
+/// Use anywhere a column might come through as either. Read the value via
+/// `.value` (Double?).
+struct FlexibleDouble: Decodable {
+    let value: Double?
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self.value = nil; return }
+        if let d = try? c.decode(Double.self) { self.value = d; return }
+        if let i = try? c.decode(Int.self)    { self.value = Double(i); return }
+        if let s = try? c.decode(String.self) { self.value = Double(s); return }
+        self.value = nil
+    }
+}
+
 enum APIAuthError: Error { case unauthorized }
 
 enum API {
@@ -771,7 +790,11 @@ struct ProfileFields: Decodable {
     let maxhr: Int?
     let hrmax_observed: Int?
     let rhr: Int?
-    let height_cm: Double?
+    // FlexibleDouble · Postgres NUMERIC column comes through as a string
+    // from pg-node. Crashes the whole ProfileFields decode if we expect
+    // Double. Read via `heightCm` accessor below.
+    let height_cm: FlexibleDouble?
+    var heightCm: Double? { height_cm?.value }
     let gender: String?
     let experience_level: String?
     let birthday: String?
@@ -808,7 +831,15 @@ struct ProfileIdentity: Decodable {
     let birthday: String?
     let age: Int?
     let city: String?
-    let height_cm: Double?
+    // FlexibleDouble · backstop against Postgres NUMERIC strings. A naked
+    // `Double?` here used to throw on the JSON `"185.0"` payload that
+    // /api/profile/state was emitting · the whole ProfileState decode
+    // would fail (silent · inside try?) and EVERY iPhone view that reads
+    // profile.identity (TodayView avatar · ActivityView · ProfileView ·
+    // TargetsView · TrainView · 5 surfaces) would lose its data. Fixed
+    // 2026-05-31.
+    let height_cm: FlexibleDouble?
+    var heightCm: Double? { height_cm?.value }
     let experience_level: String?
 }
 
@@ -816,15 +847,31 @@ struct ProfilePhysiology: Decodable {
     let max_hr: Int?
     let max_hr_source: String?     // 'observed' / 'lthr-derived' / 'formula' / 'manual'
     let rhr: Int?
-    let vo2: Double?
-    let weight_lb: Double?
-    let vdot: Double?
+    // FlexibleDouble backstop · Postgres NUMERIC-as-string risk applies to
+    // every float-shaped physiology field. Today /api/profile/state returns
+    // vo2 / weight_lb / vdot as proper numbers (verified prod 2026-05-31)
+    // but the iPhone shouldn't crash if a future migration changes that.
+    // Public `var vo2 / weight_lb / vdot` accessors below preserve the
+    // existing Double? API every view already reads.
+    private let _vo2: FlexibleDouble?
+    private let _weight_lb: FlexibleDouble?
+    private let _vdot: FlexibleDouble?
+    var vo2: Double?       { _vo2?.value }
+    var weight_lb: Double? { _weight_lb?.value }
+    var vdot: Double?      { _vdot?.value }
     let lthr: Int?
     // v3 chrome cutover (2026-05-28) — Phase 25b adds the computed HR
     // zone table + LTHR-method provenance so the iPhone can render the
     // same 5-row Z1-Z5 anchor table the web /profile shows.
     let lthr_method: String?
     let zones: ProfileZoneTable?
+    enum CodingKeys: String, CodingKey {
+        case max_hr, max_hr_source, rhr
+        case _vo2 = "vo2"
+        case _weight_lb = "weight_lb"
+        case _vdot = "vdot"
+        case lthr, lthr_method, zones
+    }
 }
 
 /// Mirrors web's `ZoneTable` (lib/training/zones.ts). `method` is

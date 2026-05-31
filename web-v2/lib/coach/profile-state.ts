@@ -360,7 +360,13 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       birthday,
       age,
       city: p?.city ?? null,
-      height_cm: p?.height_cm ?? null,
+      // Postgres returns NUMERIC columns as strings by default to preserve
+      // precision · pg-node never coerces them. iPhone Decodable expects
+      // Double, so a String payload here crashed the entire ProfileState
+      // decode + emptied the iPhone Profile / Today / Activity / Targets /
+      // Train avatars (all 5 views read this struct). Cast to Number on
+      // the way out so the wire shape is honest. Added 2026-05-31.
+      height_cm: p?.height_cm != null ? Number(p.height_cm) : null,
       experience_level: (p?.experience_level as ExperienceLevel | null) ?? null,
     },
     physiology: {
