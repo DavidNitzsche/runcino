@@ -9,6 +9,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var settings: UserSettings?
+    @State private var profile: ProfileState?
     @State private var distanceMi: Bool = true
     @State private var paceMi: Bool = true
     @State private var adaptivePlan: Bool = true
@@ -73,9 +74,24 @@ struct SettingsView: View {
 
                     section("CONNECTIONS") {
                         VStack(spacing: 0) {
-                            navRow(title: "Apple Health", value: "Synced", good: true)
-                            navRow(title: "Strava", value: "Synced", good: true)
-                            navRow(title: "Garmin", value: "Connect")
+                            // Was hardcoded "Synced / Synced / Connect" for every
+                            // user. Reads real connection state from
+                            // /api/profile/state.connections now.
+                            navRow(
+                                title: "Apple Health",
+                                value: profile?.connections.appleHealth.connected == true ? "Synced" : "Connect",
+                                good: profile?.connections.appleHealth.connected == true
+                            )
+                            navRow(
+                                title: "Strava",
+                                value: profile?.connections.strava.connected == true ? "Synced" : "Connect",
+                                good: profile?.connections.strava.connected == true
+                            )
+                            navRow(
+                                title: "Apple Watch",
+                                value: profile?.connections.appleWatch.connected == true ? "Paired" : "Not paired",
+                                good: profile?.connections.appleWatch.connected == true
+                            )
                         }
                     }
 
@@ -98,7 +114,13 @@ struct SettingsView: View {
             }
         }
         .task {
-            settings = try? await API.fetchSettings()
+            async let s = (try? await API.fetchSettings())
+            async let p = (try? await API.fetchProfileState())
+            let (st, pf) = await (s, p)
+            await MainActor.run {
+                self.settings = st
+                self.profile = pf
+            }
             applyFromServer()
         }
     }
