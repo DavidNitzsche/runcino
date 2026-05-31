@@ -42,11 +42,21 @@ export interface RecapInput {
   actualPaceSPerMi: number | null;
   actualAvgHr: number | null;
   actualMaxHr: number | null;
-  /** Mile-by-mile splits with pace + HR per segment when available. */
+  /**
+   * Mile-by-mile splits with pace + HR per segment when available.
+   * 2026-05-31 fix: accept both naming conventions on the wire ·
+   * canonical rows store `{mile, hr, pace, cadence, elev_ft}` (Faff watch
+   * + Apple Watch shape) while older code paths emit `{mile, avgHr,
+   * paceSPerMi}`. detectHrDrift + detectPaceFade coalesce both via the
+   * normalizeSplit helper.
+   */
   splits?: Array<{
     mile?: number;
     paceSPerMi?: number | null;
     avgHr?: number | null;
+    /** Alternate shape: `pace` as "M:SS" string, `hr` as int. */
+    pace?: string | null;
+    hr?: number | null;
   }>;
   weather?: WeatherInput | null;
 }
@@ -77,6 +87,26 @@ function paceLabel(spm: number | null | undefined): string | null {
   return `${Math.floor(spm / 60)}:${String(Math.round(spm % 60)).padStart(2, '0')}/mi`;
 }
 
+/** Pull an HR out of a split using either canonical key (`avgHr` or `hr`). */
+function splitHr(s: { avgHr?: number | null; hr?: number | null } | undefined): number | null {
+  if (!s) return null;
+  if (typeof s.avgHr === 'number' && s.avgHr > 0) return s.avgHr;
+  if (typeof s.hr === 'number' && s.hr > 0) return s.hr;
+  return null;
+}
+
+/** Pull a paceSPerMi out of a split, accepting either the integer field
+ *  or a "M:SS" formatted pace string. */
+function splitPaceS(s: { paceSPerMi?: number | null; pace?: string | null } | undefined): number | null {
+  if (!s) return null;
+  if (typeof s.paceSPerMi === 'number' && s.paceSPerMi > 0) return s.paceSPerMi;
+  if (typeof s.pace === 'string') {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(s.pace.trim());
+    if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+  return null;
+}
+
 /**
  * Detect cardiovascular drift across the run: did HR climb in the back
  * half while pace held or slowed? Returns {drift, firstHr, lastHr} when
@@ -90,7 +120,7 @@ function detectHrDrift(splits: RecapInput['splits']): {
 } | null {
   if (!splits || splits.length < 4) return null;
   const withHr = splits
-    .map((s, i) => ({ i, hr: typeof s.avgHr === 'number' ? s.avgHr : null }))
+    .map((s, i) => ({ i, hr: splitHr(s) }))
     .filter((s): s is { i: number; hr: number } => s.hr != null && s.hr > 0);
   if (withHr.length < 4) return null;
   const half = Math.floor(withHr.length / 2);
@@ -111,11 +141,11 @@ function detectHrDrift(splits: RecapInput['splits']): {
  */
 function detectPaceFade(splits: RecapInput['splits']): number | null {
   if (!splits || splits.length < 5) return null;
-  const withPace = splits.filter((s) => typeof s.paceSPerMi === 'number' && s.paceSPerMi! > 0);
-  if (withPace.length < 5) return null;
-  const cut = Math.floor(withPace.length * 2 / 3);
-  const front = withPace.slice(0, cut).map(s => s.paceSPerMi!);
-  const back = withPace.slice(cut).map(s => s.paceSPerMi!);
+  const paced = splits.map(s => splitPaceS(s)).filter((p): p is number => p != null && p > 0);
+  if (paced.length < 5) return null;
+  const cut = Math.floor(paced.length * 2 / 3);
+  const front = paced.slice(0, cut);
+  const back = paced.slice(cut);
   const frontAvg = front.reduce((s, x) => s + x, 0) / front.length;
   const backAvg = back.reduce((s, x) => s + x, 0) / back.length;
   return Math.round(backAvg - frontAvg);

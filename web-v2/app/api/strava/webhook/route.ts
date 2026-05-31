@@ -192,7 +192,9 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
           [userId]
         );
         // Bust the cache so the connection card re-reads state.
-        await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
+        await bustBriefingCacheForEvent(userId, 'run_ingest').catch((err) => {
+          console.warn('[strava/webhook] cache bust failed', { userId, err: String(err?.message ?? err).slice(0, 200) });
+        });
         await markProcessed(eventRowId, 'ok');
       } catch (e: any) {
         await markProcessed(eventRowId, 'error', e?.message);
@@ -249,9 +251,19 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
       // same run (one from Strava, one from the watch ingest path).
       // autoMergeForDate is idempotent — no-op when nothing matches.
       if (upserted?.date) {
-        await autoMergeForDate(userId, upserted.date).catch(() => {});
+        await autoMergeForDate(userId, upserted.date).catch((err) => {
+          // 2026-05-31 audit: was silent. autoMerge failure leaves
+          // duplicate rows surfacing on /log + Today; worth logging.
+          console.warn('[strava/webhook] autoMerge failed', {
+            userId, date: upserted.date, err: String(err?.message ?? err).slice(0, 200),
+          });
+        });
       }
-      await bustBriefingCacheForEvent(userId, 'run_ingest').catch(() => {});
+      await bustBriefingCacheForEvent(userId, 'run_ingest').catch((err) => {
+        console.warn('[strava/webhook] cache bust failed', {
+          userId, err: String(err?.message ?? err).slice(0, 200),
+        });
+      });
       await markProcessed(eventRowId, 'ok');
     } catch (e: any) {
       await markProcessed(eventRowId, 'error', e?.message?.slice(0, 400));

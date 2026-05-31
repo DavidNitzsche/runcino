@@ -8,6 +8,7 @@
  * Docs: https://open-meteo.com/en/docs/historical-weather-api
  */
 import { pool } from '@/lib/db/pool';
+import { toUtcIso } from '@/lib/runs/normalize-time';
 
 export interface RunWeather {
   /**
@@ -479,18 +480,28 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
     return null;
   }
 
+  // Normalize startLocal into a confident UTC ISO before parsing.
+  // Different ingest paths stamp startLocal with different timezone
+  // conventions (apple_watch is local-no-Z; watch + Strava are UTC-no-Z;
+  // strava webhook + apple_health are UTC-with-Z). Date.parse on the
+  // ambiguous shapes interprets them as server-local · the recap engine
+  // runs on Railway (UTC) and so a local-PDT row would shift the
+  // weather window by ~7 hours. toUtcIso reads `source` to pick the
+  // right interpretation. See lib/runs/normalize-time.ts.
+  const utcStartISO = toUtcIso(startISO, row.data?.source as string | undefined) ?? startISO;
+
   // Prefer the span fetch when we know how long the run was · captures
   // the thermal arc instead of just the start-line temperature.
   const durSec = Number(row.data?.movingTimeS) || Number(row.data?.durationSec)
                 || Number(row.data?.elapsedTimeS) || 0;
   let w: RunWeather | null = null;
   if (durSec > 60) {
-    const endISO = new Date(Date.parse(startISO) + durSec * 1000).toISOString();
-    w = await fetchRunWeatherSpan(coords.lat, coords.lng, startISO, endISO);
+    const endISO = new Date(Date.parse(utcStartISO) + durSec * 1000).toISOString();
+    w = await fetchRunWeatherSpan(coords.lat, coords.lng, utcStartISO, endISO);
   }
   if (!w) {
     // Fallback to legacy single-point fetch.
-    w = await fetchRunWeather(coords.lat, coords.lng, startISO);
+    w = await fetchRunWeather(coords.lat, coords.lng, utcStartISO);
   }
   if (!w) {
     // Still mark attempted so we don't re-poll forever
