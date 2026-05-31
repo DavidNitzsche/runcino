@@ -1,0 +1,67 @@
+# Daily L1 → L2 course-library promotion sweep.
+#
+# Why: each user's race GPX should enrich the shared course_library for
+# the next runner. The inline trigger on /api/race/gpx + /api/gpx/import
+# is best-effort and can be missed if a future ingest path forgets to
+# call promoteCourseFromRace() or the inline call throws. This cron is
+# the safety net.
+#
+# What the route does (per web-v2/app/api/cron/promote-courses/route.ts):
+#   - Scans up to 200 races with course_geometry IS NOT NULL
+#     and promoted_to_library_iso IS NULL.
+#   - Calls promoteCourseFromRace() for each (genericizes the per-user
+#     blob, upserts course_library per the editorial / crowd-sourced /
+#     stub rules, marks the race as promoted).
+#
+# Idempotent: re-running the workflow on the same day is a noop.
+#
+# Schedule: 07:45 UTC daily = 00:45 PT (after run-adaptations at 07:15
+# and snapshot-projections at 07:30 — those crons don't depend on this
+# one, but spreading load is friendly to the Railway free-tier pool).
+#
+# Manual trigger: Actions tab > "Promote courses" > Run workflow.
+
+name: Promote courses
+
+on:
+  schedule:
+    - cron: '45 7 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/promote-courses
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 90 \
+            https://www.faff.run/api/cron/promote-courses)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Promotion failed with HTTP $status"
+            exit 1
+          fi
+
+          # Surface error count (if any) as a warning. Route is idempotent
+          # so anything that errored today gets retried tomorrow.
+          errs=$(echo "$body" | python3 -c 'import sys,json; d=json.loads(sys.stdin.read()); print(d.get("counts",{}).get("error",0))' 2>/dev/null || echo "0")
+          if [ "$errs" != "0" ]; then
+            echo "::warning::$errs promotion(s) failed — see body above"
+          fi

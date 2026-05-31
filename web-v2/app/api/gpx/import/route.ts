@@ -15,6 +15,7 @@ import { requireUserId } from '@/lib/auth/session';
 import { fetchStravaRouteGpx } from '@/lib/gpx/finder';
 import { parseGPX } from '@/lib/race/gpx-parser';
 import { bustBriefingCache } from '@/lib/coach/cache';
+import { promoteCourseFromRace } from '@/lib/courses/promote-from-race';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -74,10 +75,22 @@ export async function POST(req: NextRequest) {
   // Cache-bust: race detail page changes when course geometry lands.
   await bustBriefingCache(userId).catch(() => {});
 
+  // L1 → L2: promote into the shared course_library (best-effort).
+  let promotion: { action: string; source: string | null; contributor_count: number } | null = null;
+  try {
+    const r = await promoteCourseFromRace({ userUuid: userId, raceId: body.raceSlug });
+    promotion = {
+      action: r.action, source: r.source, contributor_count: r.contributor_count,
+    };
+  } catch (e: any) {
+    console.error('[gpx/import] promotion failed (non-fatal):', e?.message ?? e);
+  }
+
   return NextResponse.json({
     ok: true,
     distanceMi: geometry.distance_mi,
     elevationGainFt: geometry.elevation_gain_ft,
     trackPointCount: geometry.trackPoints.length,
+    promotion,
   });
 }
