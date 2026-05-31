@@ -26,6 +26,11 @@ export interface PlanWeek {
     // Actual side (strava activity if logged):
     doneMi: number;
     activityId: string | null;
+    // 2026-05-31: actual pace + avg HR for done days so the TrainView's
+    // KEY WORKOUTS list can render hit-or-miss vs the planned target
+    // ("→ 6:45 actual · Hit" or "→ 7:10 actual · Off pace").
+    donePaceSec: number | null;
+    doneAvgHr: number | null;
   }>;
   isCurrent: boolean;
 }
@@ -81,23 +86,44 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   const planRangeEnd = weekRows.length
     ? new Date(Date.parse(weekRows[weekRows.length - 1].week_start_iso + 'T00:00:00Z') + 7 * 86400000).toISOString().slice(0, 10)
     : today;
+  // 2026-05-31: also pull avg pace + HR per activity so the TrainView's
+  // milestones list can show hit-or-miss for past quality workouts. We
+  // aggregate per (day, activity) and pick the richest payload per day.
   const stravaRows = planRangeStart
     ? (await pool.query(
         `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
                 data->>'id' AS activity_id,
-                SUM((data->>'distanceMi')::numeric) AS mi
+                (data->>'distanceMi')::numeric AS mi,
+                NULLIF(data->>'paceSPerMi','')::numeric AS pace_sec,
+                NULLIF(data->>'avgPaceMinPerMi','')             AS pace_str,
+                NULLIF(data->>'movingTimeS','')::numeric AS moving_s,
+                NULLIF(data->>'avgHr','')::numeric AS avg_hr
            FROM strava_activities
           WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
-            AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text
-          GROUP BY day, activity_id`,
+            AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text`,
         [userId, planRangeStart, planRangeEnd]
       )).rows
     : [];
-  const actualByDate = new Map<string, { mi: number; id: string | null }>();
+  function parsePaceStr(s: string | null | undefined): number | null {
+    if (!s) return null;
+    const m = String(s).match(/^(\d+):(\d{2})$/);
+    if (!m) return null;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+  const actualByDate = new Map<string, { mi: number; id: string | null; paceSec: number | null; avgHr: number | null }>();
   for (const r of stravaRows) {
-    const cur = actualByDate.get(r.day) ?? { mi: 0, id: null };
-    cur.mi += Number(r.mi);
+    const cur = actualByDate.get(r.day) ?? { mi: 0, id: null, paceSec: null, avgHr: null };
+    cur.mi += Number(r.mi) || 0;
     if (!cur.id) cur.id = r.activity_id ?? null;
+    // Prefer the richer activity's pace + HR. paceSPerMi wins, then
+    // string "8:45" parse, then derived from movingTimeS / mi.
+    if (cur.paceSec == null) {
+      const direct = r.pace_sec != null ? Number(r.pace_sec) : null;
+      const fromStr = parsePaceStr(r.pace_str);
+      const fromMoving = r.moving_s && r.mi ? Math.round(Number(r.moving_s) / Number(r.mi)) : null;
+      cur.paceSec = direct ?? fromStr ?? fromMoving ?? null;
+    }
+    if (cur.avgHr == null && r.avg_hr != null) cur.avgHr = Math.round(Number(r.avg_hr));
     actualByDate.set(r.day, cur);
   }
 
@@ -114,6 +140,8 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
           spec: d.workout_spec ?? null,
           doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
           activityId: actual?.id ?? null,
+          donePaceSec: actual?.paceSec ?? null,
+          doneAvgHr: actual?.avgHr ?? null,
         };
       });
     const plannedMi = Math.round(days.reduce((s, d) => s + d.mi, 0) * 10) / 10;

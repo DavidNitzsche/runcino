@@ -57,6 +57,10 @@ export type FaffSeed = {
       paceSec: number | null;
       done: boolean;
       activityId?: string | null;
+      /** Actual pace from the matched Strava activity (s/mi). Used by
+       *  TrainView's KEY WORKOUTS list to render hit/miss tags. */
+      donePaceSec?: number | null;
+      doneAvgHr?: number | null;
     }>>;
   };
 

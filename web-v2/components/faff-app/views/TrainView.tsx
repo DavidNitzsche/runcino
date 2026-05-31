@@ -161,17 +161,28 @@ export function TrainView({
 
   // Key workouts pulled from real plan: pick the QUALITY day in each future
   // week + label by type. Done past weeks marked done; current week tagged NOW.
+  // 2026-05-31: done rows also carry actual pace + influence (hit/miss vs
+  // planned target) so the runner can see what each workout did.
   const milestones = useMemo(() => {
-    const out: Array<{
+    type Mile = {
       wkLabel: string; dot: string; title: string; sub: string;
       state: 'DONE' | 'NOW' | 'KEY' | '' | 'RACE';
       raceRow?: boolean;
-    }> = [];
+      date?: string;
+      done?: boolean;
+      influence?: { kind: 'hit' | 'close' | 'off'; copy: string } | null;
+    };
+    const out: Mile[] = [];
+    type DayShape = {
+      dow: string; type: string; name: string; mi: number;
+      paceSec: number | null; done: boolean; activityId?: string | null;
+      donePaceSec?: number | null; doneAvgHr?: number | null;
+      date?: string;
+    };
     seed.season.weekDays.forEach((days, i) => {
       if (i >= raceIdx) return;
-      // Find the most "quality" day: intervals > tempo > long > else first
       const order = ['intervals', 'tempo', 'long'];
-      let pick = days.find((d) => order.includes(d.type));
+      const pick = days.find((d) => order.includes(d.type)) as DayShape | undefined;
       if (!pick) return;
       const isNow = i === nowIdx;
       const isPast = i < nowIdx;
@@ -183,8 +194,24 @@ export function TrainView({
         : pick.type === 'long' ? 'Long run' : pick.name;
       const title = pick.name || ttype;
       const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
-      const state: 'DONE' | 'NOW' | 'KEY' | '' = isPast ? 'DONE' : isNow ? 'NOW' : isMid && i >= raceIdx - 3 ? 'KEY' : '';
-      out.push({ wkLabel, dot, title, sub, state });
+      const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : isMid && i >= raceIdx - 3 ? 'KEY' : '';
+      // Influence: hit/miss vs planned target. Tolerance is type-aware —
+      // intervals/tempo demand tighter execution than long runs.
+      let influence: Mile['influence'] = null;
+      if (state === 'DONE' && pick.donePaceSec && pick.paceSec) {
+        const delta = pick.donePaceSec - pick.paceSec;
+        const tol = pick.type === 'long' ? 18 : 10; // s/mi
+        if (Math.abs(delta) <= tol) {
+          influence = { kind: 'hit', copy: `Hit · ${fmtPace(pick.donePaceSec)} actual` };
+        } else if (delta > 0 && delta <= tol * 2) {
+          influence = { kind: 'close', copy: `Just off · ${fmtPace(pick.donePaceSec)} actual` };
+        } else if (delta > 0) {
+          influence = { kind: 'off', copy: `Off pace · ${fmtPace(pick.donePaceSec)} actual` };
+        } else {
+          influence = { kind: 'hit', copy: `Faster · ${fmtPace(pick.donePaceSec)} actual` };
+        }
+      }
+      out.push({ wkLabel, dot, title, sub, state, date: pick.date, done: !!pick.done, influence });
     });
     if (goal) {
       out.push({
@@ -193,7 +220,6 @@ export function TrainView({
         state: 'RACE', raceRow: true,
       });
     }
-    // Cap to ~8 most relevant rows so the card doesn't run off
     return out.slice(0, 9);
   }, [seed.season.weekDays, nowIdx, raceIdx, goal]);
 
@@ -397,6 +423,15 @@ export function TrainView({
                   <div className="mtx">
                     <div className="mtt">{m.title}</div>
                     <div className="mss">{m.sub}</div>
+                    {m.influence && (
+                      <div className="minf" style={{
+                        color: m.influence.kind === 'hit'   ? '#86efa0'
+                              : m.influence.kind === 'close' ? '#FFCE8A'
+                              :                                 '#FF9560',
+                      }}>
+                        → {m.influence.copy}
+                      </div>
+                    )}
                   </div>
                   {m.state && (
                     <span className="mst" style={m.state === 'NOW' ? { color: '#FFCE8A', opacity: 0.95 } : undefined}>
@@ -601,6 +636,12 @@ function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: numbe
   );
 }
 
+function fmtPace(sec: number | null | undefined): string {
+  if (!sec || sec <= 0) return '·';
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 function formatDate(iso: string): string {
   if (!iso) return '·';
   const d = new Date(iso);
