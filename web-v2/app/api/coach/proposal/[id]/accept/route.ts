@@ -31,7 +31,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { userIdFromRequest } from '@/lib/auth/session';
+import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { buildInjuryPlan } from '@/lib/plan/injury-builder';
 
@@ -59,7 +59,11 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
   if (!Number.isFinite(proposalId) || proposalId <= 0) {
     return NextResponse.json({ ok: false, error: 'invalid proposal id' }, { status: 400 });
   }
-  const userId = await userIdFromRequest(req);
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) {
+    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+  }
+  const userId = auth;
 
   // 1. Load proposal. Verify owner + still-pending.
   const proposal = (await pool.query(
