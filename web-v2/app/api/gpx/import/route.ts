@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
   // Verify the race belongs to the user before mutating.
   const race = (await pool.query(
-    `SELECT id, name FROM races WHERE slug = $1 AND (user_uuid = $2 OR user_uuid IS NULL) LIMIT 1`,
+    `SELECT id, name FROM races WHERE slug = $1 AND user_uuid = $2 LIMIT 1`,
     [body.raceSlug, userId]
   )).rows[0];
   if (!race) {

@@ -87,7 +87,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
                 data->>'id' AS activity_id,
                 SUM((data->>'distanceMi')::numeric) AS mi
            FROM strava_activities
-          WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
+          WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
             AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text
           GROUP BY day, activity_id`,
         [userId, planRangeStart, planRangeEnd]
@@ -156,7 +156,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
             SUM((data->>'distanceMi')::numeric) AS mi
        FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))
             BETWEEN $2::text AND $3::text

@@ -267,7 +267,7 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
   // matching workout type heuristic?
   const completed = (await pool.query(
     `SELECT COUNT(*) AS n FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'date')::date BETWEEN $2::date - 1 AND $2::date + 1
         AND (data->>'distanceMi')::numeric >= 4`,
@@ -577,7 +577,7 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
     `WITH vol AS (
        SELECT COALESCE(SUM((data->>'distanceMi')::numeric), 0) AS mi
          FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'date')::date >= CURRENT_DATE - 7
      ), p AS (

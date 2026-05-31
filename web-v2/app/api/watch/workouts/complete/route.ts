@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   try {
     await pool.query(
       `DELETE FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND data->>'client_workout_id' = $2`,
       [userId, body.workoutId]
     );

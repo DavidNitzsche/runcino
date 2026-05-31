@@ -32,7 +32,7 @@ export async function GET() {
             COALESCE(preferred, false) AS preferred,
             notes
        FROM shoes
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
       ORDER BY retired ASC, preferred DESC, mileage DESC NULLS LAST`,
     [DAVID_USER_ID]
   ).catch(() => ({ rows: [] }))).rows;

@@ -29,7 +29,7 @@ export async function loadSettings(userId: string): Promise<UserSettings> {
   try {
     const r = (await pool.query(
       `SELECT user_settings FROM profile
-        WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
+        WHERE user_uuid = $1
         ORDER BY (user_uuid = $1) DESC LIMIT 1`,
       [userId]
     )).rows[0]?.user_settings ?? {};

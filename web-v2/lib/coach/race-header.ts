@@ -188,7 +188,7 @@ async function loadCurrentVdot(userId: string, today: string, asOfDate?: string)
   const raceRows = (await pool
     .query(
       `SELECT slug, meta, actual_result FROM races
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
           AND (meta->>'date')::date < $2::date
           AND meta->>'priority' IN ('A', 'B')`,
@@ -207,7 +207,7 @@ async function loadCurrentVdot(userId: string, today: string, asOfDate?: string)
     ? (await pool
         .query(
           `SELECT data FROM strava_activities
-            WHERE (user_uuid = $1 OR user_uuid IS NULL)
+            WHERE user_uuid = $1
               AND NOT (data ? 'mergedIntoId')
               AND (data->>'distanceMi')::numeric > 2.5
               AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2
@@ -267,7 +267,7 @@ async function loadCurrentVdot(userId: string, today: string, asOfDate?: string)
        (sa.data->>'movingTimeS')::numeric AS finish_seconds,
        (sa.data->>'avgHr')::numeric AS avg_hr
        FROM strava_activities sa
-      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
+      WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) < $3
@@ -275,7 +275,7 @@ async function loadCurrentVdot(userId: string, today: string, asOfDate?: string)
         AND (sa.data->>'movingTimeS')::numeric > 60
         AND NOT EXISTS (
           SELECT 1 FROM races r
-           WHERE (r.user_uuid = $1 OR r.user_uuid IS NULL)
+           WHERE r.user_uuid = $1
              AND ABS((r.meta->>'date')::date - COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date) <= 1
         )`,
     [userId, qualityCutoff, asOf]

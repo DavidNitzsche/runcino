@@ -147,7 +147,7 @@ export async function loadLogState(
             s.model AS shoe_model
        FROM strava_activities sa
        LEFT JOIN shoes s ON s.id = sa.shoe_id
-      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
+      WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')
         AND (sa.data->>'distanceMi')::numeric > 0.5
       ORDER BY COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) DESC,

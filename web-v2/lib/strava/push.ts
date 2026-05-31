@@ -66,7 +66,7 @@ export async function pushRunToStrava(
   // 2. Load run + profile prefs.
   const runRow = (await pool.query(
     `SELECT data FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
     [userId, runId]

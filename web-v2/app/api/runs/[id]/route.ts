@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       let updated = await pool.query(
         `UPDATE strava_activities
             SET shoe_id = $1::int
-          WHERE (user_uuid = $2 OR user_uuid IS NULL)
+          WHERE user_uuid = $2
             AND (data->>'id' = $3 OR data->>'activityId' = $3 OR id::text = $3)
        RETURNING id, shoe_id`,
         [shoeId, userId, id]
@@ -75,7 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           updated = await pool.query(
             `UPDATE strava_activities
                 SET shoe_id = $1::int
-              WHERE (user_uuid = $2 OR user_uuid IS NULL)
+              WHERE user_uuid = $2
                 AND NOT (data ? 'mergedIntoId')
                 AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
                 AND ABS((data->>'distanceMi')::numeric - $4::numeric) < 0.05
@@ -97,7 +97,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           updated = await pool.query(
             `UPDATE strava_activities
                 SET shoe_id = $1::int
-              WHERE (user_uuid = $2 OR user_uuid IS NULL)
+              WHERE user_uuid = $2
                 AND NOT (data ? 'mergedIntoId')
                 AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
            RETURNING id, shoe_id`,
@@ -134,13 +134,13 @@ async function recomputeShoeMileage(userId: string): Promise<void> {
        FROM (
          SELECT shoe_id, SUM((data->>'distanceMi')::numeric) AS total_mi
            FROM strava_activities
-          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          WHERE user_uuid = $1
             AND shoe_id IS NOT NULL
             AND NOT (data ? 'mergedIntoId')
           GROUP BY shoe_id
        ) t
       WHERE s.id = t.shoe_id
-        AND (s.user_uuid = $1 OR s.user_uuid IS NULL)`,
+        AND s.user_uuid = $1`,
     [userId]
   );
 }

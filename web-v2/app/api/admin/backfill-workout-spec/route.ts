@@ -235,7 +235,7 @@ export async function POST(req: NextRequest) {
     // 2. Goal race → T-pace.
     const raceRow = (await pool.query(
       `SELECT meta FROM races
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND meta->>'priority' = 'A'
           AND meta->>'goalDisplay' IS NOT NULL
           AND (meta->>'date')::date >= CURRENT_DATE - INTERVAL '1 day'

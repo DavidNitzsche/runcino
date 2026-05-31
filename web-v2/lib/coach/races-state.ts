@@ -43,7 +43,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
 
   const rows = (await pool.query(
     `SELECT slug, meta FROM races
-      WHERE user_uuid = $1 OR user_uuid IS NULL
+      WHERE user_uuid = $1
       ORDER BY (meta->>'date') NULLS LAST`,
     [userId]
   )).rows;
@@ -81,7 +81,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
     const earliestPast = past[past.length - 1].date;
     const candidates = (await pool.query(
       `SELECT data FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'distanceMi')::numeric > 2.5
           AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2

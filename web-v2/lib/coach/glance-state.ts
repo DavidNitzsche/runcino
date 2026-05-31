@@ -97,7 +97,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
 
   // Profile (just for name)
   const prof = (await pool.query(
-    `SELECT full_name, height_cm, lthr FROM profile WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me')
+    `SELECT full_name, height_cm, lthr FROM profile WHERE user_uuid = $1
       ORDER BY (user_uuid = $1) DESC LIMIT 1`,
     [userId]
   )).rows[0];
@@ -291,7 +291,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
                           THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS chronic_sum,
         COUNT(*) FILTER (WHERE data->>'date' >= ($1::date - interval '28 days')::text)::int AS runs28
        FROM strava_activities
-      WHERE (user_uuid = $2 OR user_uuid IS NULL)
+      WHERE user_uuid = $2
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric > 0.3`,
     [today, userId]
@@ -398,7 +398,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   {
     const goalRow = (await pool.query(
       `SELECT meta FROM races
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND meta->>'priority' = 'A'
           AND meta->>'goalDisplay' IS NOT NULL
           AND (meta->>'date')::date >= $2::date

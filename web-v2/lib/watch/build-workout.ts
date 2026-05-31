@@ -296,7 +296,7 @@ export async function buildWatchToday(
   // 2. Pull profile inputs for the prescription (LTHR + race goal)
   const prof = (await pool.query(
     `SELECT lthr FROM profile
-      WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me')
+      WHERE user_uuid = $1
       ORDER BY (user_uuid=$1) DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] }))).rows[0];
@@ -304,7 +304,7 @@ export async function buildWatchToday(
 
   const raceRow = (await pool.query(
     `SELECT meta FROM races
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND meta->>'priority' = 'A'
         AND meta->>'goalDisplay' IS NOT NULL
         AND (meta->>'date')::date >= $2::date

@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
 
   // Profile: LTHR
   const profRow = (await pool.query(
-    `SELECT lthr FROM profile WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me') ORDER BY (user_uuid=$1) DESC LIMIT 1`,
+    `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] }))).rows[0];
   const lthr = profRow?.lthr ?? null;
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   const today = new Date(Date.now() - 7 * 3600000).toISOString().slice(0, 10);
   const raceRow = (await pool.query(
     `SELECT meta FROM races
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND meta->>'priority' = 'A'
         AND meta->>'goalDisplay' IS NOT NULL
         AND (meta->>'date')::date >= $2::date
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       const r = await pool.query<{ start_lat: string | null; start_lng: string | null }>(
         `SELECT (data->>'startLat')::text AS start_lat, (data->>'startLng')::text AS start_lng
            FROM strava_activities
-          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          WHERE user_uuid = $1
             AND NOT (data ? 'mergedIntoId')
             AND data->>'startLat' IS NOT NULL
           ORDER BY (data->>'date') DESC LIMIT 1`,

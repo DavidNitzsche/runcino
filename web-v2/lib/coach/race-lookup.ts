@@ -71,7 +71,7 @@ export async function loadNextARace(
   if (!race) {
     const row = (await pool.query(
       `SELECT slug, meta FROM races
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND meta->>'priority' = 'A'
           AND (meta->>'date')::date >= $2::date
         ORDER BY (meta->>'date') ASC LIMIT 1`,

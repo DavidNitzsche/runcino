@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     // re-apply the warmup bonus to the new data before insert.
     const existing = (await pool.query(
       `SELECT data FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND data->>'client_workout_id' = $2
         LIMIT 1`,
       [userId, body.client_workout_id]
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
 
     await pool.query(
       `DELETE FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND data->>'client_workout_id' = $2`,
       [userId, body.client_workout_id]
     );
@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
             await pool.query(
               `UPDATE strava_activities
                   SET data = $1, weather_enriched_at = NOW()
-                WHERE (user_uuid = $2 OR user_uuid IS NULL)
+                WHERE user_uuid = $2
                   AND data->>'client_workout_id' = $3`,
               [data, userId, body.client_workout_id]
             );

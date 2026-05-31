@@ -82,7 +82,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
               lthr, hrmax_observed, experience_level,
               lthr_method, lthr_set_at::text AS lthr_set_at
          FROM profile
-        WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
+        WHERE user_uuid = $1
         ORDER BY (user_uuid = $1) DESC LIMIT 1`,
       [userId]
     ).then((r) => r.rows[0]),
@@ -109,7 +109,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     pool.query(
       `SELECT id, brand, model, color, color2, notes, run_types, mileage, mileage_cap, retired, preferred
          FROM shoes
-        WHERE user_uuid = $1 OR user_uuid IS NULL
+        WHERE user_uuid = $1
         ORDER BY id`,
       [userId]
     ).then((r) => r.rows),
@@ -120,7 +120,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     pool.query(
       `SELECT MAX(COALESCE(data->>'date', LEFT(data->>'startLocal',10))::text) AS last
          FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')`,
       [userId]
     ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
@@ -192,7 +192,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   //   3. Strava match by date+distance — provisional fallback
   const raceRows = (await pool.query(
     `SELECT slug, meta, actual_result FROM races
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND (meta->>'date')::date >= ($2::date - interval '180 days')::date
         AND (meta->>'date')::date < $2::date
         AND meta->>'priority' IN ('A', 'B')`,
@@ -208,7 +208,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     : null;
   const candidateRuns = earliestDate ? (await pool.query(
     `SELECT data FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric > 2.5
         AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2
@@ -231,7 +231,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
        (sa.data->>'movingTimeS')::numeric AS finish_seconds,
        (sa.data->>'avgHr')::numeric AS avg_hr
        FROM strava_activities sa
-      WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
+      WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) < $3
@@ -239,7 +239,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
         AND (sa.data->>'movingTimeS')::numeric > 60
         AND NOT EXISTS (
           SELECT 1 FROM races r
-           WHERE (r.user_uuid = $1 OR r.user_uuid IS NULL)
+           WHERE r.user_uuid = $1
              AND ABS((r.meta->>'date')::date - COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date) <= 1
         )`,
     [userId, qualityCutoff, today]
@@ -319,7 +319,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     // Try to derive from race data — half-marathon avg HR is the best proxy
     const raceWithHr = (await pool.query(
       `SELECT meta FROM races
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND meta->>'finishTime' IS NOT NULL
           AND meta->>'avgHrBpm' IS NOT NULL
         ORDER BY (meta->>'date') DESC NULLS LAST LIMIT 5`,

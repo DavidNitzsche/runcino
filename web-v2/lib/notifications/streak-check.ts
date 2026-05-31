@@ -50,7 +50,7 @@ async function computeRunStreak(userId: string): Promise<number> {
     const r = await pool.query(
       `SELECT DISTINCT (data->>'date')::date AS d
          FROM strava_activities
-        WHERE (user_uuid = $1 OR user_uuid IS NULL)
+        WHERE user_uuid = $1
           AND data->>'date' IS NOT NULL
           AND (data->>'date')::date > now() - interval '200 days'
         ORDER BY d DESC`,

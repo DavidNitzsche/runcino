@@ -19,7 +19,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
     `SELECT full_name, sex, age, city, hrmax, hrmax_observed, lthr,
             rhr, height_cm, experience_level
        FROM profile
-      WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id = 'me')
+      WHERE user_uuid = $1
       ORDER BY (user_uuid = $1) DESC LIMIT 1`,
     [userId]
   );
@@ -29,7 +29,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   const recent = await pool.query(
     `SELECT data
        FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) <= $2
       ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC,
@@ -56,7 +56,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // prompt to prevent hallucination about runs that didn't happen.
   const recentRows = (await pool.query(
     `SELECT data FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric > 0.5
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text >= ($2::date - interval '7 days')::date::text

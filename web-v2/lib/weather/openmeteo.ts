@@ -167,7 +167,7 @@ export async function resolveHomeLatLng(userId: string): Promise<{ lat: number; 
   const r = (await pool.query(
     `SELECT data
        FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (
               (data ? 'startLat'    AND data ? 'startLng')    OR

@@ -177,7 +177,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // when the activity has no first-party id, e.g. watch-synced runs).
   let row = (await pool.query(
     `SELECT data, shoe_id FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
     [userId, activityId]
@@ -190,7 +190,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       const [, date, mi] = m;
       const fb = (await pool.query(
         `SELECT data, shoe_id FROM strava_activities
-          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          WHERE user_uuid = $1
             AND NOT (data ? 'mergedIntoId')
             AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $2
             AND ABS((data->>'distanceMi')::numeric - $3::numeric) < 0.05
@@ -242,7 +242,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // Bring the user's LTHR-anchored zone ranges so the modal can render
   // an actionable "where your HR landed" panel.
   const lthrRow = await pool.query(
-    `SELECT lthr FROM profile WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me') ORDER BY (user_uuid=$1) DESC LIMIT 1`,
+    `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] }));
   const lthr = lthrRow.rows[0]?.lthr ?? null;
@@ -318,7 +318,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
             COALESCE(preferred, false) AS preferred,
             notes
        FROM shoes
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND COALESCE(retired, false) = false
       ORDER BY preferred DESC, mileage DESC NULLS LAST`,
     [userId]
@@ -663,7 +663,7 @@ async function deriveHrZones(
 
   // Pull LTHR for zone bands
   const lthrRow = await pool.query(
-    `SELECT lthr FROM profile WHERE user_uuid = $1 OR (user_uuid IS NULL AND user_id='me') ORDER BY (user_uuid=$1) DESC LIMIT 1`,
+    `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] }));
   const lthr = lthrRow.rows[0]?.lthr;

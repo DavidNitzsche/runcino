@@ -146,7 +146,7 @@ export async function autoMergeForDate(
   const rows = (await pool.query(
     `SELECT id::text AS id, user_uuid::text AS user_uuid, data
        FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND data->>'date' = $2`,
     [userId, date],
   )).rows as Row[];
@@ -241,7 +241,7 @@ export async function canonicalMileageByDay(
   const rows = (await pool.query(
     `SELECT id::text AS id, user_uuid::text AS user_uuid, data
        FROM strava_activities
-      WHERE (user_uuid = $1 OR user_uuid IS NULL)
+      WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
     [userId, fromDate, toDate],

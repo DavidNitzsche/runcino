@@ -218,7 +218,7 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
     try {
       await pool.query(
         `DELETE FROM strava_activities
-          WHERE (user_uuid = $1 OR user_uuid IS NULL)
+          WHERE user_uuid = $1
             AND id = $2::bigint`,
         [userId, String(objectId)]
       );
