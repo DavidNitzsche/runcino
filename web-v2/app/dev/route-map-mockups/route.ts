@@ -238,6 +238,7 @@ function renderHtml(run: RunSummary | null): string {
       </div>
       <div class="map-frame" id="map-fplus"></div>
       <div class="pace-legend" id="pace-legend"></div>
+      <div class="diag" id="diag" style="padding:8px 22px;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:rgba(246,247,248,.45);border-top:1px solid rgba(255,255,255,.04);"></div>
     </div>
   </div>
 
@@ -259,6 +260,11 @@ function renderHtml(run: RunSummary | null): string {
       <div class="map-frame style-a" id="map-f"></div>
     </div>
   </div>
+
+  <p style="margin-top:48px;text-align:center;font-size:11px;color:rgba(246,247,248,.45);">
+    Map tiles in F+ provided by <a href="https://carto.com/attributions" style="color:inherit;text-decoration:underline;">CARTO</a> using
+    <a href="https://www.openstreetmap.org/copyright" style="color:inherit;text-decoration:underline;">OpenStreetMap</a> data.
+  </p>
 </div>
 
 <script>
@@ -445,7 +451,11 @@ function renderFPlus(host, points) {
 
   leafletMap = L.map(host, {
     zoomControl: false,
-    attributionControl: true,
+    // No attribution control · drops the "Leaflet | ..." watermark
+    // and the Ukraine support flag that Leaflet 1.9 ships in attribution.
+    // OSM/CARTO credit is shown as a static line in the page footer
+    // instead so we still satisfy the licenses without a UI watermark.
+    attributionControl: false,
     dragging: false,
     touchZoom: false,
     doubleClickZoom: false,
@@ -456,11 +466,24 @@ function renderFPlus(host, points) {
   });
 
   // CartoDB Dark Matter · free OSM-derived dark tiles. Attribution
-  // required (shown bottom-right by default).
+  // satisfied in the page footer.
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', {
     subdomains: 'abcd',
     maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    attribution: '',
+  }).addTo(leafletMap);
+
+  // Baseline route · a single full-route polyline rendered FIRST so
+  // the line is always visible even if the per-mile bucket walker
+  // below has a bug or splits coverage is thin. Bucket-colored
+  // segments overlay this baseline; if they fail to draw the
+  // baseline still tells the story.
+  L.polyline(points, {
+    color: '#FF8847',
+    weight: 5,
+    opacity: 0.95,
+    lineCap: 'round',
+    lineJoin: 'round',
   }).addTo(leafletMap);
 
   const buckets = paceBuckets(SPLITS);
@@ -482,7 +505,7 @@ function renderFPlus(host, points) {
       const segPts = points.slice(segStartIdx, endIdx + 1);
       L.polyline(segPts, {
         color: buckets.colors[b],
-        weight: 5,
+        weight: 6,
         opacity: 1,
         lineCap: 'round',
         lineJoin: 'round',
@@ -501,9 +524,6 @@ function renderFPlus(host, points) {
       }
     }
     flush(points.length - 1, lastBucket);
-  } else {
-    // No splits · render as a single coral stroke.
-    L.polyline(points, { color: '#FF8847', weight: 5, opacity: 1, lineCap: 'round' }).addTo(leafletMap);
   }
 
   // Endpoint markers · circle markers so they scale with zoom.
@@ -511,13 +531,32 @@ function renderFPlus(host, points) {
     radius: 7, fillColor: '#04201f', color: '#14C08C', weight: 3, fillOpacity: 1,
   }).addTo(leafletMap);
   L.circleMarker(points[points.length - 1], {
-    radius: 7, fillColor: '#FF8847', color: '#fff', weight: 2, fillOpacity: 1,
+    radius: 7, fillColor: '#FC4D64', color: '#fff', weight: 2, fillOpacity: 1,
   }).addTo(leafletMap);
 
   // Fit the map to the route's bounds with a small padding so the line
-  // doesn't touch the edges.
+  // doesn't touch the edges. invalidateSize() called after fit because
+  // Leaflet sometimes measures the container before CSS settles on
+  // first render · the second pass picks up the correct dimensions.
   const bounds = L.latLngBounds(points);
   leafletMap.fitBounds(bounds, { padding: [24, 24] });
+  setTimeout(() => {
+    if (leafletMap) {
+      leafletMap.invalidateSize();
+      leafletMap.fitBounds(bounds, { padding: [24, 24] });
+    }
+  }, 80);
+
+  // Surface diagnostics in case the map still looks off · helps
+  // distinguish "polyline data missing" from "Leaflet positioning bug."
+  const diag = document.getElementById('diag');
+  if (diag) {
+    const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+    diag.textContent = points.length + ' polyline pts · bbox ' +
+      sw.lat.toFixed(4) + ',' + sw.lng.toFixed(4) + ' → ' +
+      ne.lat.toFixed(4) + ',' + ne.lng.toFixed(4) + ' · ' +
+      SPLITS.length + ' splits';
+  }
 }
 
 function renderF(host, pts) {
