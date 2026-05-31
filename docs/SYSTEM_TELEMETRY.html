@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>System Telemetry · Faff</title>
+<meta name="viewport" content="width=900">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0c10; --ink:#f6f7f8; --mute:#8a90a0;
+    --line:rgba(255,255,255,0.08); --card:#11141a; --card2:#1a1d24;
+    --good:#14C08C; --warn:#F5C518; --bad:#F43F5E;
+    --active:#4F8FF7; --learn:#B084FF;
+  }
+  html,body{background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px;margin:0 auto;padding:48px 28px 96px;}
+  h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:54px;letter-spacing:-0.5px;margin:0;line-height:.92;text-transform:uppercase;}
+  h1 .sub{color:var(--learn);}
+  .lede{color:var(--mute);margin-top:12px;font-size:14px;max-width:760px;line-height:1.55;}
+  .stamp{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;background:rgba(176,132,255,0.18);color:#d4baff;margin-top:10px;font-family:'JetBrains Mono',monospace;}
+  h2{font-family:'Oswald',sans-serif;font-weight:600;font-size:28px;letter-spacing:.3px;margin:48px 0 12px;border-bottom:1px solid var(--line);padding-bottom:8px;text-transform:uppercase;}
+  h2 .num{font-size:14px;color:var(--mute);margin-right:12px;font-family:'JetBrains Mono',monospace;font-weight:400;letter-spacing:.4px;}
+  h3{font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:var(--learn);letter-spacing:1.4px;text-transform:uppercase;margin:24px 0 8px;}
+  p{color:rgba(246,247,248,0.9);line-height:1.6;margin:0 0 12px;font-size:14px;}
+  code{background:rgba(255,255,255,0.06);padding:1px 6px;border-radius:4px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--active);}
+  table{width:100%;border-collapse:collapse;margin:10px 0 22px;font-size:13px;background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--line);}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-size:10.5px;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:1.2px;background:var(--card2);}
+  td.mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
+  td.right{text-align:right;}
+  td.num{font-family:'Oswald',sans-serif;font-weight:600;}
+  .tone-good{color:var(--good);font-weight:700;}
+  .tone-warn{color:var(--warn);font-weight:700;}
+  .tone-bad{color:var(--bad);font-weight:700;}
+  .tone-neutral{color:var(--mute);}
+  .pill{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;}
+  .pill.good{background:rgba(20,192,140,0.18);color:#8ee4c3;}
+  .pill.warn{background:rgba(245,197,24,0.18);color:#ffde7a;}
+  .pill.bad{background:rgba(244,63,94,0.18);color:#ffb3bd;}
+  .pill.neutral{background:rgba(255,255,255,0.06);color:var(--mute);}
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0;}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  .stat .n{font-family:'Oswald',sans-serif;font-weight:700;font-size:28px;color:var(--ink);line-height:1;}
+  .stat .l{font-size:10.5px;color:var(--mute);text-transform:uppercase;letter-spacing:1.2px;margin-top:6px;}
+  .stat.good .n{color:var(--good);}
+  .stat.warn .n{color:var(--warn);}
+  .stat.bad .n{color:var(--bad);}
+  .stat.neutral .n{color:var(--learn);}
+  .signal{background:rgba(176,132,255,0.06);border:1px solid rgba(176,132,255,0.30);border-radius:12px;padding:18px 22px;margin:12px 0;font-size:14px;}
+  .signal strong{color:var(--learn);}
+  .signal.warn{background:rgba(245,197,24,0.06);border-color:rgba(245,197,24,0.30);}
+  .signal.warn strong{color:var(--warn);}
+  .signal.bad{background:rgba(244,63,94,0.06);border-color:rgba(244,63,94,0.30);}
+  .signal.bad strong{color:var(--bad);}
+  .signal.good{background:rgba(20,192,140,0.06);border-color:rgba(20,192,140,0.30);}
+  .signal.good strong{color:var(--good);}
+  .empty{padding:18px;background:rgba(255,255,255,0.02);border:1px dashed var(--line);border-radius:8px;color:var(--mute);font-style:italic;font-size:13.5px;margin:8px 0;}
+  hr{border:0;border-top:1px solid var(--line);margin:32px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>System.<br><span class="sub">Telemetry.</span></h1>
+<p class="lede">
+  Live snapshot of what the coach is seeing, what data flowed in clean vs.
+  degraded, what's missing, and what's worth your attention. Re-run
+  <code>node web-v2/scripts/_emit_telemetry.mjs</code> any time to refresh.
+</p>
+<div class="stamp">Generated 2026-05-31T07:07:39.080Z</div>
+
+<!-- ─────────── 1. SYSTEM HEALTH ─────────── -->
+<h2><span class="num">01</span>System health</h2>
+
+<div class="stat-grid">
+  <div class="stat good">
+    <div class="n">1h ago</div>
+    <div class="l">Last adaptation tick</div>
+  </div>
+  <div class="stat good">
+    <div class="n">71/65</div>
+    <div class="l">Weather coverage (of GPS-having runs)</div>
+  </div>
+  <div class="stat good">
+    <div class="n">2</div>
+    <div class="l">Projection snapshots (cron-daily)</div>
+  </div>
+  <div class="stat warn">
+    <div class="n">1</div>
+    <div class="l">Notifications pending</div>
+  </div>
+</div>
+
+<h3>Active plan</h3>
+<table>
+<tr><th>Plan ID</th><th>Mode</th><th>Race</th><th>Goal date</th><th>Authored</th><th>Last adapted</th></tr>
+<tr>
+  <td class="mono">8599e3a1-07ab-4610…</td>
+  <td>race-prep</td>
+  <td><code>americas-finest-city</code></td>
+  <td>2026-08-16</td>
+  <td>2026-05-20 16:58 UTC</td>
+  <td class="tone-good">2026-05-31 05:34 UTC</td>
+</tr>
+</table>
+
+<!-- ─────────── 2. RUN INTEGRITY ─────────── -->
+<h2><span class="num">02</span>Run data integrity · last 15 runs</h2>
+<p>
+  For each recent run · did the backend see what it needed? GPS, HR samples, splits,
+  weather enrichment, shoe attribution, plan match, RPE log.
+</p>
+
+<table>
+<tr>
+  <th>Date</th><th>Name</th><th class="right">mi</th><th class="right">time</th>
+  <th>GPS</th><th>HR</th><th>splits</th><th>weather</th><th>shoe</th><th>plan match</th><th>RPE</th>
+</tr>
+
+<tr>
+  <td class="mono">2026-05-29</td>
+  <td>Run</td>
+  <td class="right num">7.7</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-27</td>
+  <td>Run</td>
+  <td class="right num">5.9</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-26</td>
+  <td>Run</td>
+  <td class="right num">7.6</td>
+  <td class="right mono">1h 2m</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">threshold</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-25</td>
+  <td>Run</td>
+  <td class="right num">0.0</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-25</td>
+  <td>Run</td>
+  <td class="right num">6.2</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-24</td>
+  <td>Run</td>
+  <td class="right num">1.0</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">long</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-24</td>
+  <td>Run</td>
+  <td class="right num">11.1</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">long</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-22</td>
+  <td>Friday Afternoon Run</td>
+  <td class="right num">7.8</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-22</td>
+  <td>Run</td>
+  <td class="right num">7.8</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21</td>
+  <td>Run</td>
+  <td class="right num">6.0</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21</td>
+  <td>Run</td>
+  <td class="right num">1.2</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-20</td>
+  <td>Run</td>
+  <td class="right num">5.1</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-19</td>
+  <td>Run</td>
+  <td class="right num">2.4</td>
+  <td class="right mono">—</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">threshold</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-18</td>
+  <td>Evening Run</td>
+  <td class="right num">6.0</td>
+  <td class="right mono">49m</td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-17</td>
+  <td>Run</td>
+  <td class="right num">11.0</td>
+  <td class="right mono">1h 31m</td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-bad">✗</span></td>
+  <td><span class="tone-good">easy</span></td>
+  <td><span class="tone-bad">✗</span></td>
+</tr>
+</table>
+
+<!-- ─────────── 3. COACH ACTIVITY ─────────── -->
+<h2><span class="num">03</span>Coach activity · last 14 days</h2>
+
+<h3>Intents written by reason</h3>
+<table>
+<tr><th>Reason</th><th class="right">n</th><th>Latest</th></tr>
+
+<tr><td><code>watch_completion</code></td><td class="right num">2</td><td class="mono">2026-05-29 18:25 UTC</td></tr>
+<tr><td><code>profile_field_added</code></td><td class="right num">2</td><td class="mono">2026-05-26 04:18 UTC</td></tr>
+</table>
+
+<h3>Recent intents · last 10 rows</h3>
+<table>
+<tr><th>When</th><th>Reason</th><th>Field</th><th>Value (preview)</th><th>Acked</th></tr>
+
+<tr>
+  <td class="mono">2026-05-29 18:25 UTC</td>
+  <td><code>watch_completion</code></td>
+  <td class="mono">0645f40c-951d-4ccc-b86e-</td>
+  <td class="mono">{"startedAt":"2026-05-29T17:08:07Z","completedAt":"2026-05-2…</td>
+  <td><span class="tone-neutral">no</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-27 23:37 UTC</td>
+  <td><code>watch_completion</code></td>
+  <td class="mono">0645f40c-951d-4ccc-b86e-</td>
+  <td class="mono">{"status":"completed","startedAt":"2026-05-27T19:35:29Z","to…</td>
+  <td><span class="tone-neutral">no</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-26 04:18 UTC</td>
+  <td><code>profile_field_added</code></td>
+  <td class="mono">height_cm</td>
+  <td class="mono">185</td>
+  <td><span class="tone-neutral">no</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-05-25 22:29 UTC</td>
+  <td><code>profile_field_added</code></td>
+  <td class="mono">sex</td>
+  <td class="mono">Male</td>
+  <td><span class="tone-neutral">no</span></td>
+</tr>
+</table>
+
+<h3>Coach proposals (injury / illness · propose-only)</h3>
+<table>
+<tr><th>Type</th><th>Status</th><th>Created</th><th>Responded</th><th>Expires</th></tr>
+
+<tr>
+  <td><code>goal_time_change</code></td>
+  <td><span class="pill warn">expired</span></td>
+  <td class="mono">2026-05-25 04:27 UTC</td>
+  <td class="mono">2026-05-25 07:36 UTC</td>
+  <td class="mono">2026-06-24 04:27 UTC</td>
+</tr>
+<tr>
+  <td><code>goal_time_change</code></td>
+  <td><span class="pill warn">expired</span></td>
+  <td class="mono">2026-05-24 15:50 UTC</td>
+  <td class="mono">2026-05-24 18:42 UTC</td>
+  <td class="mono">2026-06-23 15:50 UTC</td>
+</tr>
+</table>
+
+<h3>Briefings rendered · last 10</h3>
+<table>
+<tr><th>Surface</th><th>Mode</th><th>Generated</th></tr>
+
+<tr>
+  <td><code>profile</code></td>
+  <td>identity</td>
+  <td class="mono">2026-05-28 02:47 UTC</td>
+</tr>
+<tr>
+  <td><code>races</code></td>
+  <td>building</td>
+  <td class="mono">2026-05-28 02:47 UTC</td>
+</tr>
+<tr>
+  <td><code>races:ios</code></td>
+  <td>building</td>
+  <td class="mono">2026-05-28 02:46 UTC</td>
+</tr>
+<tr>
+  <td><code>profile:ios</code></td>
+  <td>identity</td>
+  <td class="mono">2026-05-28 02:46 UTC</td>
+</tr>
+</table>
+
+<!-- ─────────── 4. PLAN STATE ─────────── -->
+<h2><span class="num">04</span>Plan state · next 14 days</h2>
+
+<h3>Recent plan mutations · last 30 days</h3>
+<table>
+<tr><th>When</th><th>Workout date</th><th>Type</th><th>Reason</th><th>Trigger</th><th>Changed</th><th>Status</th></tr>
+
+<tr>
+  <td class="mono">2026-05-25 18:27 UTC</td>
+  <td class="mono">2026-06-01</td>
+  <td>easy</td>
+  <td>Running 9% above plan this week, nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":4.9}…</td>
+  <td>applied</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-24 08:24 UTC</td>
+  <td class="mono">2026-05-31</td>
+  <td>long</td>
+  <td>Running 10% above plan this week, nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":12.1}…</td>
+  <td>applied</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-22 20:34 UTC</td>
+  <td class="mono">2026-05-29</td>
+  <td>easy</td>
+  <td>Running 10% above plan this week, nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":6.1}…</td>
+  <td>seen</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-22 20:34 UTC</td>
+  <td class="mono">2026-05-28</td>
+  <td>easy</td>
+  <td>Running 10% above plan this week, nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":6.1}…</td>
+  <td>seen</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21 00:59 UTC</td>
+  <td class="mono">2026-05-27</td>
+  <td>easy</td>
+  <td>Running 6% above plan this week — nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":5.8}…</td>
+  <td>seen</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21 00:59 UTC</td>
+  <td class="mono">2026-05-26</td>
+  <td>threshold</td>
+  <td>Running 6% above plan this week — nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":7.9}…</td>
+  <td>seen</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21 00:59 UTC</td>
+  <td class="mono">2026-05-25</td>
+  <td>easy</td>
+  <td>Running 6% above plan this week — nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":5.8}…</td>
+  <td>seen</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21 00:59 UTC</td>
+  <td class="mono">2026-05-24</td>
+  <td>long</td>
+  <td>Running 6% above plan this week — nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":11.6}…</td>
+  <td>seen</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21 00:59 UTC</td>
+  <td class="mono">2026-05-22</td>
+  <td>easy</td>
+  <td>Running 6% above plan this week — nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":5.8}…</td>
+  <td>seen</td>
+</tr>
+<tr>
+  <td class="mono">2026-05-21 00:59 UTC</td>
+  <td class="mono">2026-05-21</td>
+  <td>easy</td>
+  <td>Running 6% above plan this week — nudging next week up within 10%/wk ramp cap.</td>
+  <td><code>positive-drift</code></td>
+  <td class="mono">{"distanceMi":5.8}…</td>
+  <td>seen</td>
+</tr>
+</table>
+
+<h3>Upcoming workouts (highlights modified rows)</h3>
+<table>
+<tr><th>Date</th><th>Type</th><th class="right">mi</th><th>Label</th><th>Status</th></tr>
+
+<tr>
+  <td class="mono">2026-05-31</td>
+  <td>long <span class="pill neutral">L</span></td>
+  <td class="right num">12.1</td>
+  <td></td>
+  <td><span class="tone-warn">modified</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-01</td>
+  <td>easy</td>
+  <td class="right num">4.9</td>
+  <td></td>
+  <td><span class="tone-warn">modified</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-02</td>
+  <td>threshold <span class="pill warn">Q</span></td>
+  <td class="right num">6.0</td>
+  <td>Cruise Intervals</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-03</td>
+  <td>easy</td>
+  <td class="right num">4.5</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-04</td>
+  <td>easy</td>
+  <td class="right num">4.5</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-05</td>
+  <td>easy</td>
+  <td class="right num">4.5</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-06</td>
+  <td>rest</td>
+  <td class="right num">0.0</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-07</td>
+  <td>long <span class="pill neutral">L</span></td>
+  <td class="right num">11.5</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-08</td>
+  <td>easy</td>
+  <td class="right num">6.0</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-09</td>
+  <td>threshold <span class="pill warn">Q</span></td>
+  <td class="right num">8.0</td>
+  <td>Cruise Intervals</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-10</td>
+  <td>easy</td>
+  <td class="right num">6.0</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-11</td>
+  <td>easy</td>
+  <td class="right num">6.0</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-12</td>
+  <td>easy</td>
+  <td class="right num">6.0</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-06-13</td>
+  <td>rest</td>
+  <td class="right num">0.0</td>
+  <td></td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+</table>
+
+<!-- ─────────── 5. HEALTH DATA ─────────── -->
+<h2><span class="num">05</span>Health data quality · last 14 days</h2>
+
+<h3>Samples by type and source</h3>
+<table>
+<tr><th>Type</th><th>Source</th><th class="right">n</th><th class="right">avg</th><th class="right">range</th><th>span</th></tr>
+
+<tr>
+  <td><code>active_energy</code></td>
+  <td>apple_health</td>
+  <td class="right num">9</td>
+  <td class="right num">1179.7</td>
+  <td class="right mono">310.0 – 2011.0</td>
+  <td class="mono">Sun May 17 → Mon May 25</td>
+</tr>
+<tr>
+  <td><code>body_fat_pct</code></td>
+  <td>apple_health</td>
+  <td class="right num">1</td>
+  <td class="right num">13.5</td>
+  <td class="right mono">13.5 – 13.5</td>
+  <td class="mono">Sun May 24 → Sun May 24</td>
+</tr>
+<tr>
+  <td><code>body_mass</code></td>
+  <td>apple_health</td>
+  <td class="right num">1</td>
+  <td class="right num">84.4</td>
+  <td class="right mono">84.4 – 84.4</td>
+  <td class="mono">Sun May 24 → Sun May 24</td>
+</tr>
+<tr>
+  <td><code>cadence</code></td>
+  <td>apple_health</td>
+  <td class="right num">7</td>
+  <td class="right num">162.6</td>
+  <td class="right mono">156.0 – 169.0</td>
+  <td class="mono">Sun May 17 → Mon May 25</td>
+</tr>
+<tr>
+  <td><code>ground_contact_time</code></td>
+  <td>apple_health</td>
+  <td class="right num">7</td>
+  <td class="right num">241.0</td>
+  <td class="right mono">225.0 – 255.0</td>
+  <td class="mono">Sun May 17 → Mon May 25</td>
+</tr>
+<tr>
+  <td><code>hr_recovery</code></td>
+  <td>apple_health</td>
+  <td class="right num">1</td>
+  <td class="right num">47.0</td>
+  <td class="right mono">47.0 – 47.0</td>
+  <td class="mono">Fri May 29 → Fri May 29</td>
+</tr>
+<tr>
+  <td><code>hrv</code></td>
+  <td>apple_health</td>
+  <td class="right num">14</td>
+  <td class="right num">57.6</td>
+  <td class="right mono">39.0 – 71.0</td>
+  <td class="mono">Sun May 17 → Sat May 30</td>
+</tr>
+<tr>
+  <td><code>lean_mass</code></td>
+  <td>apple_health</td>
+  <td class="right num">1</td>
+  <td class="right num">73.0</td>
+  <td class="right mono">73.0 – 73.0</td>
+  <td class="mono">Sun May 24 → Sun May 24</td>
+</tr>
+<tr>
+  <td><code>max_hr</code></td>
+  <td>apple_health</td>
+  <td class="right num">14</td>
+  <td class="right num">124.6</td>
+  <td class="right mono">58.0 – 172.0</td>
+  <td class="mono">Sun May 17 → Sat May 30</td>
+</tr>
+<tr>
+  <td><code>respiratory_rate</code></td>
+  <td>apple_health</td>
+  <td class="right num">13</td>
+  <td class="right num">15.6</td>
+  <td class="right mono">14.8 – 20.9</td>
+  <td class="mono">Sun May 17 → Sat May 30</td>
+</tr>
+<tr>
+  <td><code>resting_hr</code></td>
+  <td>apple_health</td>
+  <td class="right num">14</td>
+  <td class="right num">48.5</td>
+  <td class="right mono">42.0 – 54.0</td>
+  <td class="mono">Sun May 17 → Sat May 30</td>
+</tr>
+<tr>
+  <td><code>run_power</code></td>
+  <td>apple_health</td>
+  <td class="right num">8</td>
+  <td class="right num">272.3</td>
+  <td class="right mono">250.0 – 287.0</td>
+  <td class="mono">Sun May 17 → Mon May 25</td>
+</tr>
+<tr>
+  <td><code>sleep_hours</code></td>
+  <td>apple_health</td>
+  <td class="right num">12</td>
+  <td class="right num">6.4</td>
+  <td class="right mono">4.9 – 7.9</td>
+  <td class="mono">Sun May 17 → Sat May 30</td>
+</tr>
+<tr>
+  <td><code>spo2</code></td>
+  <td>apple_health</td>
+  <td class="right num">14</td>
+  <td class="right num">96.6</td>
+  <td class="right mono">95.5 – 99.0</td>
+  <td class="mono">Sun May 17 → Sat May 30</td>
+</tr>
+<tr>
+  <td><code>stride_length</code></td>
+  <td>apple_health</td>
+  <td class="right num">7</td>
+  <td class="right num">1.2</td>
+  <td class="right mono">1.1 – 1.2</td>
+  <td class="mono">Sun May 17 → Mon May 25</td>
+</tr>
+<tr>
+  <td><code>vertical_oscillation</code></td>
+  <td>apple_health</td>
+  <td class="right num">7</td>
+  <td class="right num">10.1</td>
+  <td class="right mono">9.7 – 10.5</td>
+  <td class="mono">Sun May 17 → Mon May 25</td>
+</tr>
+<tr>
+  <td><code>vertical_ratio</code></td>
+  <td>apple_health</td>
+  <td class="right num">7</td>
+  <td class="right num">8.7</td>
+  <td class="right mono">8.3 – 8.9</td>
+  <td class="mono">Sun May 17 → Mon May 25</td>
+</tr>
+<tr>
+  <td><code>vo2_max</code></td>
+  <td>apple_health</td>
+  <td class="right num">9</td>
+  <td class="right num">61.7</td>
+  <td class="right mono">61.3 – 62.3</td>
+  <td class="mono">Mon May 18 → Fri May 29</td>
+</tr>
+<tr>
+  <td><code>wrist_temp</code></td>
+  <td>apple_health</td>
+  <td class="right num">8</td>
+  <td class="right num">36.0</td>
+  <td class="right mono">35.9 – 36.2</td>
+  <td class="mono">Mon May 18 → Sat May 30</td>
+</tr>
+</table>
+
+<h3>Sleep coverage · last 14 days</h3>
+<table>
+<tr><th>Date</th><th>Sample?</th></tr>
+
+<tr><td class="mono">Mon May 18</td><td><span class="tone-bad">✗</span></td></tr>
+<tr><td class="mono">Tue May 19</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Wed May 20</td><td><span class="tone-bad">✗</span></td></tr>
+<tr><td class="mono">Thu May 21</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Fri May 22</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Sat May 23</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Sun May 24</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Mon May 25</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Tue May 26</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Wed May 27</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Thu May 28</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Fri May 29</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Sat May 30</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Sun May 31</td><td><span class="tone-bad">✗</span></td></tr>
+</table>
+
+<h3>RHR baseline · last 14 days</h3>
+<p>
+  Avg: <strong>48.5 bpm</strong>
+  · samples: <strong>14</strong>
+  
+</p>
+
+<h3>Suspect values (physiologically improbable)</h3>
+<table>
+<tr><th>Type</th><th>Value</th><th>Source</th><th>Date</th></tr>
+
+<tr><td><code>sleep_hours</code></td><td class="tone-bad">0.1</td><td>apple_health</td><td class="mono">Sat May 02</td></tr>
+</table>
+
+<!-- ─────────── 6. WHAT'S MISSING ─────────── -->
+<h2><span class="num">06</span>What's missing · gaps the coach can't fill</h2>
+
+<h3>Recent runs without RPE</h3>
+<p>RPE feeds the adaptation engine. Without it, missed-key-workout and quality-tolerance signals are degraded.</p>
+<table>
+<tr><th>Date</th><th>Run</th><th class="right">mi</th></tr>
+
+<tr><td class="mono">2026-05-29</td><td>Run</td><td class="right num">7.7</td></tr>
+<tr><td class="mono">2026-05-27</td><td>Run</td><td class="right num">5.9</td></tr>
+<tr><td class="mono">2026-05-26</td><td>Run</td><td class="right num">7.6</td></tr>
+<tr><td class="mono">2026-05-25</td><td>Run</td><td class="right num">0.0</td></tr>
+<tr><td class="mono">2026-05-25</td><td>Run</td><td class="right num">6.2</td></tr>
+<tr><td class="mono">2026-05-24</td><td>Run</td><td class="right num">1.0</td></tr>
+<tr><td class="mono">2026-05-24</td><td>Run</td><td class="right num">11.1</td></tr>
+<tr><td class="mono">2026-05-22</td><td>Friday Afternoon Run</td><td class="right num">7.8</td></tr>
+<tr><td class="mono">2026-05-22</td><td>Run</td><td class="right num">7.8</td></tr>
+<tr><td class="mono">2026-05-21</td><td>Run</td><td class="right num">6.0</td></tr>
+</table>
+
+<h3>Runs with GPS but no weather</h3>
+<div class="empty"><span class="tone-good">All last-14d GPS-having runs got weather data.</span></div>
+
+<h3>Quality workouts that look unmatched</h3>
+<div class="empty"><span class="tone-good">No unmatched quality workouts in the last 14 days.</span></div>
+
+<!-- ─────────── 7. SIGNALS ─────────── -->
+<h2><span class="num">07</span>Signals worth watching</h2>
+
+<div class="signal good"><strong>Adaptation cron is firing.</strong> last_adapted_at moved within the last 2 days. The 9 detectors are running daily.</div><div class="signal good"><strong>Projection snapshots are firing.</strong> The trend chart will have data.</div><div class="signal good"><strong>Coach is talking</strong> · 2 distinct intent reasons fired in the last 14 days.</div><div class="signal warn"><strong>10 recent runs without RPE.</strong> Surfacing an RPE prompt in DayDetailModal or post-run drawer would feed the adaptation engine richer signal.</div><div class="signal good"><strong>RHR baseline solid</strong> · 14 samples in 14 days. rhr-spike detector has a stable baseline to compare against.</div><div class="signal good"><strong>Weather coverage healthy</strong> · 71/65 GPS-having runs enriched.</div>
+
+<hr>
+<p style="color:var(--mute);font-size:12.5px;text-align:center;">
+  <strong style="color:var(--ink);">SYSTEM_TELEMETRY.html</strong><br>
+  Generated by <code>web-v2/scripts/_emit_telemetry.mjs</code> · re-run any time to refresh<br>
+  Read-only queries · safe to run anytime · doesn't mutate state
+</p>
+
+</div>
+</body>
+</html>

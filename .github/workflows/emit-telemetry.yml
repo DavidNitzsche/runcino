@@ -1,0 +1,63 @@
+name: Emit system telemetry
+
+# Refreshes docs/SYSTEM_TELEMETRY.html with the latest read-only snapshot
+# of what the coach is seeing, what data flowed in clean vs. degraded,
+# what's missing, and what to watch.
+#
+# Read-only against production. Commits the refreshed HTML back to main
+# so the latest snapshot is always visible at:
+#   https://github.com/DavidNitzsche/runcino/blob/main/docs/SYSTEM_TELEMETRY.html
+# or in the local checkout.
+#
+# Schedule: daily at 06:00 UTC (just before the run-adaptations 07:15 UTC
+# tick, so the next-day report includes yesterday's adaptation activity).
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  emit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pg
+        working-directory: web-v2
+        run: npm ci --no-audit --no-fund || npm install pg
+
+      - name: Write .env.local with prod URL
+        working-directory: web-v2
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret not configured"
+            exit 1
+          fi
+          echo "DATABASE_URL=$DATABASE_URL" > .env.local
+
+      - name: Run telemetry
+        working-directory: web-v2
+        run: node scripts/_emit_telemetry.mjs
+
+      - name: Commit refreshed report if changed
+        run: |
+          git config user.name "telemetry-bot"
+          git config user.email "telemetry@faff.run"
+          if git diff --quiet docs/SYSTEM_TELEMETRY.html; then
+            echo "no changes"
+            exit 0
+          fi
+          git add docs/SYSTEM_TELEMETRY.html
+          git commit -m "telemetry: refresh $(date -u +%Y-%m-%dT%H:%M)"
+          git push
