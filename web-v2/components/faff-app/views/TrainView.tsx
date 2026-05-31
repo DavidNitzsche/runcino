@@ -1,47 +1,88 @@
 'use client';
 
+/**
+ * TrainView v2 — implements the approved "Train Options · Direction A
+ * (Dashboard)" handoff (project Train Options.html · chat 2026-05-31).
+ *
+ * Full visual swap of the previous TrainView. Wiring kept compatible:
+ *   - props: seed, onOpenDetail, onMeshChange (unchanged)
+ *   - reads from seed.season + seed.week + seed.goalRace
+ *
+ * Layout per spec:
+ *   - hero: kicker + ROAD TO eyebrow + BASE/BUILD/PEAK/TAPER ptitle +
+ *           FOCUS line + right-side wkpill / sline / countdown
+ *   - 13-week phase ramp (hover for mi tooltip, click to focus)
+ *   - lower dashboard:
+ *       row 1: phase-breakdown grid (Base/Build/Peak/Taper)
+ *       row 2: THIS WEEK list  ·  PROJECTION card  ·  KEY WORKOUTS
+ *   - full-plan modal (Month ↔ Weeks toggle)
+ */
 import { useEffect, useMemo, useState } from 'react';
 import type { FaffSeed } from '../types';
-import { PHASE, PHASE_TPL, SEASON_TYPE_COLOR, SEASON_TYPE_NAME, type Mesh, type PhaseKey } from '../constants';
+import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 
-const DOW = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
-const ANCH: { x: number; p: PhaseKey }[] = [
-  { x: 3.5,  p: 'base'  },
-  { x: 11.5, p: 'build' },
-  { x: 18.5, p: 'peak'  },
-  { x: 23.5, p: 'taper' },
-  { x: 26,   p: 'race'  },
-];
-
-function hx(h: string) {
-  const c = h.replace('#','');
-  return [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)];
+interface PhaseMeta {
+  k: PhaseKey;
+  name: string;
+  color: string;
+  desc: string;
+  weeksLabel: string;
+  vol: string;
 }
-function rgb([r,g,b]: number[]) { return `rgb(${r},${g},${b})`; }
 
-function meshAt(x: number): Mesh {
-  const anchors = ANCH.map(a => ({ x: a.x, m: PHASE[a.p].mesh.map(hx) }));
-  if (x <= anchors[0].x) return anchors[0].m.map(rgb) as Mesh;
-  const last = anchors[anchors.length - 1];
-  if (x >= last.x) return last.m.map(rgb) as Mesh;
-  for (let i = 0; i < anchors.length - 1; i++) {
-    if (x >= anchors[i].x && x < anchors[i+1].x) {
-      const lo = anchors[i], hi = anchors[i+1], t = (x - lo.x) / (hi.x - lo.x);
-      return lo.m.map((c, k) => rgb(c.map((v, j) => Math.round(v + (hi.m[k][j] - v) * t)))) as Mesh;
+const PHASE_TYPE_COLOR: Record<string, string> = {
+  easy: '#2faf7c', long: '#F3AD38', tempo: '#FF8847', threshold: '#FF8847',
+  intervals: '#FC4D64', recovery: '#27B4E0', rest: '#8A90A0',
+};
+
+/** Group consecutive week indices by phaseOf(i, raceIdx) — same boundaries
+ *  the old TrainView used (base <8, build <16, peak <22, taper else). */
+function phaseGroups(raceIdx: number): Array<{ phase: PhaseKey; from: number; to: number }> {
+  const groups: Array<{ phase: PhaseKey; from: number; to: number }> = [];
+  let prev: PhaseKey | null = null;
+  let from = 0;
+  for (let i = 0; i < raceIdx; i++) {
+    const p = phaseOf(i, raceIdx);
+    if (prev == null) { prev = p; from = i; continue; }
+    if (p !== prev) {
+      groups.push({ phase: prev, from, to: i - 1 });
+      prev = p; from = i;
     }
   }
-  return last.m.map(rgb) as Mesh;
+  if (prev != null && from < raceIdx) groups.push({ phase: prev, from, to: raceIdx - 1 });
+  return groups;
 }
-
-function barColor(i: number) {
-  return i < 8 ? '#3FB6B0' : i < 16 ? '#F3AD38' : i < 22 ? '#FC4D64' : '#3EBD41';
-}
-function phaseOf(i: number, race: number): PhaseKey {
-  if (i === race) return 'race';
+function phaseOf(i: number, raceIdx: number): PhaseKey {
+  if (i === raceIdx) return 'race';
   if (i < 8) return 'base';
   if (i < 16) return 'build';
   if (i < 22) return 'peak';
   return 'taper';
+}
+function phaseColor(p: PhaseKey): string {
+  // Use brand effort palette: base ≈ teal, build ≈ amber, peak ≈ orange, taper ≈ green.
+  if (p === 'base')  return '#3FB6B0';
+  if (p === 'build') return '#E0A23A';
+  if (p === 'peak')  return '#FF7A45';
+  if (p === 'taper') return '#34C194';
+  return '#FFCE8A'; // race
+}
+
+/** Per-phase metadata for the breakdown grid. Counts weeks from the actual
+ *  plan rather than hardcoding the 1-6, 7-10, etc. labels. */
+function buildPhaseMeta(raceIdx: number): PhaseMeta[] {
+  const groups = phaseGroups(raceIdx).filter((g) => g.phase !== 'race');
+  return groups.map((g) => {
+    const p = PHASE[g.phase];
+    return {
+      k: g.phase,
+      name: p?.name ?? g.phase,
+      color: phaseColor(g.phase),
+      desc: p?.focus ?? '',
+      weeksLabel: g.from === g.to ? `Wk ${g.from + 1}` : `Wk ${g.from + 1}–${g.to + 1}`,
+      vol: '', // filled in from miles below
+    };
+  });
 }
 
 export function TrainView({
@@ -52,163 +93,484 @@ export function TrainView({
   onMeshChange: (mesh: Mesh | null) => void;
 }) {
   const { nowIdx, raceIdx, miles, maxMi } = seed.season;
-  const [locked, setLocked] = useState(nowIdx);
   const [focusIdx, setFocusIdx] = useState(nowIdx);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planTab, setPlanTab] = useState<'month' | 'weeks'>('month');
 
-  const cur = focusIdx;
-  const isRace = cur === raceIdx;
-  const key = phaseOf(cur, raceIdx);
-  const p = PHASE[key];
+  const isRace = focusIdx === raceIdx;
+  const curPhase = phaseOf(focusIdx, raceIdx);
+  const curPhaseMeta = PHASE[curPhase];
+  const goal = seed.goalRace;
+  const daysOut = (raceIdx - focusIdx) * 7;
 
-  // Apply per-scrubber mesh while Train is active.
+  // Per-phase metadata + volume range (compute from miles in that span)
+  const phases = useMemo(() => {
+    const meta = buildPhaseMeta(raceIdx);
+    return meta.map((m) => {
+      const grp = phaseGroups(raceIdx).find((g) => g.phase === m.k);
+      if (!grp) return m;
+      const slice = miles.slice(grp.from, grp.to + 1).filter((mi) => mi > 0);
+      const lo = slice.length ? Math.min(...slice) : 0;
+      const hi = slice.length ? Math.max(...slice) : 0;
+      const vol = slice.length ? (lo === hi ? `${lo} mi` : `${lo}–${hi} mi`) : '—';
+      return { ...m, vol };
+    });
+  }, [raceIdx, miles]);
+
+  // Keep mesh in sync with focused week (lets the Shell mesh follow scrubbing)
   useEffect(() => {
-    onMeshChange(isRace ? p.mesh : meshAt(cur));
+    if (isRace) {
+      onMeshChange(curPhaseMeta?.mesh ?? null);
+    } else {
+      onMeshChange(curPhaseMeta?.mesh ?? null);
+    }
     return () => onMeshChange(null);
-  }, [cur, isRace, p.mesh, onMeshChange]);
+  }, [focusIdx, isRace, curPhaseMeta, onMeshChange]);
 
-  const phaseSpansFlex = useMemo(() => [['base',8],['build',8],['peak',6],['taper',4],['race',1]] as const, []);
+  // Key workouts pulled from real plan: pick the QUALITY day in each future
+  // week + label by type. Done past weeks marked done; current week tagged NOW.
+  const milestones = useMemo(() => {
+    const out: Array<{
+      wkLabel: string; dot: string; title: string; sub: string;
+      state: 'DONE' | 'NOW' | 'KEY' | '' | 'RACE';
+      raceRow?: boolean;
+    }> = [];
+    seed.season.weekDays.forEach((days, i) => {
+      if (i >= raceIdx) return;
+      // Find the most "quality" day: intervals > tempo > long > else first
+      const order = ['intervals', 'tempo', 'long'];
+      let pick = days.find((d) => order.includes(d.type));
+      if (!pick) return;
+      const isNow = i === nowIdx;
+      const isPast = i < nowIdx;
+      const isMid = i > nowIdx;
+      const wkLabel = `WK ${i + 1}`;
+      const dot = PHASE_TYPE_COLOR[pick.type] ?? '#8A90A0';
+      const ttype = pick.type === 'intervals' ? 'Intervals'
+        : pick.type === 'tempo' ? 'Tempo'
+        : pick.type === 'long' ? 'Long run' : pick.name;
+      const title = pick.name || ttype;
+      const sub = `${pick.mi.toFixed(1)} mi${pick.paceSec ? ` @ ${Math.floor(pick.paceSec / 60)}:${String(Math.round(pick.paceSec % 60)).padStart(2, '0')}` : ''}`;
+      const state: 'DONE' | 'NOW' | 'KEY' | '' = isPast ? 'DONE' : isNow ? 'NOW' : isMid && i >= raceIdx - 3 ? 'KEY' : '';
+      out.push({ wkLabel, dot, title, sub, state });
+    });
+    if (goal) {
+      out.push({
+        wkLabel: 'RACE', dot: '#FFCE8A',
+        title: goal.name, sub: `${goal.goal ? 'Sub ' + goal.goal + ' · ' : ''}${formatDate(goal.date)}`,
+        state: 'RACE', raceRow: true,
+      });
+    }
+    // Cap to ~8 most relevant rows so the card doesn't run off
+    return out.slice(0, 9);
+  }, [seed.season.weekDays, nowIdx, raceIdx, goal]);
 
-  const label = isRace ? 'RACE DAY' :
-    cur === nowIdx ? 'THIS WEEK' :
-    cur < nowIdx ? `WEEK ${cur + 1} · DONE` :
-    `WEEK ${cur + 1} · ${cur - nowIdx === 1 ? 'NEXT UP' : `${cur - nowIdx} WKS OUT`}`;
+  // Phase-ramp metadata aligned with the actual plan (for the bottom axis)
+  const phaseAxis = useMemo(() => {
+    const out: Array<{ key: PhaseKey; flex: number; color: string }> = [];
+    phaseGroups(raceIdx).forEach((g) => {
+      out.push({ key: g.phase, flex: g.to - g.from + 1, color: phaseColor(g.phase) });
+    });
+    out.push({ key: 'race', flex: 1, color: '#FFCE8A' });
+    return out;
+  }, [raceIdx]);
+
+  function openPlan(tab: 'month' | 'weeks' = 'month') {
+    setPlanTab(tab);
+    setPlanOpen(true);
+  }
 
   return (
-    <>
-      <div className="top">
+    <div className="train2">
+      {/* Header */}
+      <div className="t-htop">
         <div>
-          <div className="date">{seed.goalRace ? `${seed.goalRace.phaseLabel.split(' · ')[0]} block` : 'Active block'}</div>
-          <div className="wk">{seed.goalRace ? `${seed.goalRace.name}${seed.goalRace.location ? ' · ' + seed.goalRace.location : ''} · ${formatDate(seed.goalRace.date)}` : 'No goal race set'}</div>
+          <div className="t-kicker">
+            <span style={{ opacity: 0.92 }}>{(curPhaseMeta?.name ?? '—').toUpperCase()} PHASE · WEEK {focusIdx + 1}</span>
+            <br />
+            <span style={{ opacity: 0.74, letterSpacing: 1, fontWeight: 600 }}>
+              {goal ? `${goal.name}${goal.location ? ' · ' + goal.location : ''} · ${formatDate(goal.date)}` : 'No goal race set'}
+            </span>
+          </div>
+          <div className="t-eyebrow">
+            ROAD TO <b>{(goal?.name ?? 'GOAL').split(' ')[0].toUpperCase()}</b>{goal ? ` · SUB ${goal.goal}` : ''}
+          </div>
+          <div className="t-ptitle">{isRace ? 'RACE DAY' : (curPhaseMeta?.name ?? '—')}</div>
+          <div className="t-focus">
+            <span className="ftag">FOCUS</span>
+            <span className="ftx">{curPhaseMeta?.focus ?? 'Active block.'}</span>
+          </div>
+        </div>
+        <div className="t-status">
+          <span className="t-wkpill">
+            <span className="dot" style={{ background: phaseColor(curPhase), boxShadow: `0 0 8px ${phaseColor(curPhase)}` }} />
+            WK {focusIdx + 1} · {miles[focusIdx]} MI
+          </span>
+          <span className="sline">{(curPhaseMeta?.name ?? '—').toUpperCase()} · {(curPhaseMeta?.lab ?? '').toUpperCase()}</span>
+          <span className="cd">
+            {isRace ? <>Race day. It&rsquo;s here.</> : <><b>{daysOut}</b> days to the start line</>}
+          </span>
         </div>
       </div>
 
-      <div className="season">
-        <div className="season-top">
-          <div className="season-head">
-            <div className="season-eyebrow">ROAD TO <b>{(seed.goalRace?.name ?? 'GOAL').split(' ')[0].toUpperCase()}</b>{seed.goalRace ? ` · SUB ${seed.goalRace.goal}` : ''}</div>
-            <div className="season-phase">{p.name}</div>
-          </div>
-          <div className="season-meta">
-            <div className="season-readout">
-              <span>{isRace ? (seed.goalRace ? `${seed.goalRace.goal}` : 'RACE DAY') : `WK ${cur + 1} · ${miles[cur]} MI`}</span>
-              <span className={`now-tag${cur === nowIdx ? ' on' : ''}`}><i />NOW</span>
-            </div>
-            <div className="season-weeks">{p.lab}</div>
-            <div className="season-countdown">
-              {isRace ? <span>Race day. It&rsquo;s here.</span> :
-                <><b>{(raceIdx - cur) * 7}</b> days to the start line</>}
-            </div>
-          </div>
+      {/* Phase ramp */}
+      <div className="ramp-wrap">
+        <div className="ramp-head">
+          <span className="lbl">{raceIdx}-WEEK BLOCK · WEEKLY VOLUME</span>
+          <button className="ghostbtn" onClick={() => openPlan('month')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+            FULL PLAN
+          </button>
         </div>
-
-        <div className="season-focus">
-          <span className="ct">FOCUS</span>
-          <span className="cx">{p.focus}</span>
-        </div>
-
-        <div
-          className="strip"
-          onMouseLeave={() => setFocusIdx(locked)}
-        >
+        <div className="ramp">
           {miles.map((mi, i) => {
-            const h = Math.round((mi / maxMi) * 100);
-            const isNow = i === nowIdx;
-            const isFocus = i === focusIdx;
+            const h = mi > 0 ? Math.round((mi / Math.max(maxMi, 1)) * 100) : 6;
+            const ph = phaseOf(i, raceIdx);
+            const isCur = i === focusIdx;
+            const isPast = i < nowIdx;
             return (
               <div
                 key={i}
-                className={`swk${isNow ? ' now' : ''}${isFocus ? ' focus' : ''}`}
-                onMouseEnter={() => setFocusIdx(i)}
-                onClick={() => { setLocked(i); setFocusIdx(i); }}
+                className={`bar${isCur ? ' cur' : ''}`}
+                style={{ height: `${h}%`, background: phaseColor(ph), opacity: isPast && !isCur ? 0.62 : 1 }}
+                title={`Week ${i + 1} · ${mi} mi`}
+                onClick={() => setFocusIdx(i)}
                 role="button"
                 tabIndex={0}
               >
-                <div className="bar" style={{ height: `${h}%`, background: barColor(i) }} />
-                <span className="wn">{i + 1}</span>
+                <span className="bmi">{mi}</span>
               </div>
             );
           })}
           <div
-            className={`swk swk-fin${focusIdx === raceIdx ? ' focus' : ''}${nowIdx === raceIdx ? ' now' : ''}`}
-            onMouseEnter={() => setFocusIdx(raceIdx)}
-            onClick={() => { setLocked(raceIdx); setFocusIdx(raceIdx); }}
+            className={`bar race${focusIdx === raceIdx ? ' cur' : ''}`}
+            style={{ height: '30%' }}
+            title="Race day"
+            onClick={() => openPlan('weeks')}
             role="button"
             tabIndex={0}
-          >
-            <div className="rbar" />
-            <span className="wn">RACE</span>
-          </div>
+          />
         </div>
-
-        <div className="strip-phases">
-          {phaseSpansFlex.map(([pk, flex]) => (
-            <span key={pk} style={{ flex }} className={pk === key ? 'on' : ''}>{(PHASE[pk as PhaseKey]?.name ?? pk).slice(0,5).toUpperCase()}</span>
+        <div className="ramp-nums">
+          {miles.map((_, i) => <span key={i}>{i + 1}</span>)}
+          <span style={{ color: '#FFCE8A', opacity: 0.85 }}>★</span>
+        </div>
+        <div className="ramp-phases">
+          {phaseAxis.map((p, i) => (
+            <div key={i} className="pp" style={{ flex: p.flex, color: p.color }}>
+              {(p.key === 'race' ? 'RACE' : (PHASE[p.key]?.name ?? p.key)).toUpperCase()}
+            </div>
           ))}
         </div>
       </div>
 
-      <div className="fll" id="weekHeading" style={{ marginTop: 26, display: 'flex', justifyContent: 'space-between' }}>
-        <span>{label}</span>
-        <span style={{ opacity: 0.6 }}>{isRace ? (seed.goalRace ? formatDate(seed.goalRace.date) : '·') : `${miles[cur]} MI`}</span>
-      </div>
-
-      {isRace ? (
-        <div className="season-racestats" style={{ marginTop: 14 }}>
-          <div className="rc"><div className="k">GOAL</div><div className="v">{seed.goalRace ? `Sub ${seed.goalRace.goal}` : '·'}</div></div>
-          <div className="rc"><div className="k">PROJECTED</div><div className="v">{seed.goalRace?.projected ?? '·'}</div></div>
-          <div className="rc"><div className="k">DISTANCE</div><div className="v">{seed.goalRace ? '·' : '·'}<span style={{ fontSize: 13, opacity: 0.6 }}> mi</span></div></div>
+      {/* Lower dashboard */}
+      <div className="lower">
+        {/* Phase breakdown grid */}
+        <div className="phgrid">
+          {phases.map((p) => {
+            const now = p.k === curPhase;
+            return (
+              <div className={`phase${now ? ' now' : ''}`} key={p.k}>
+                <span className="pbar" style={{ background: p.color }} />
+                {now && <span className="nowtag">NOW</span>}
+                <div className="pnm" style={{ color: p.color }}>{p.name}</div>
+                <div className="pwk">{p.weeksLabel.toUpperCase()}</div>
+                <div className="pdesc">{p.desc}</div>
+                <div className="pvol">{p.vol} <small>TARGET VOL</small></div>
+              </div>
+            );
+          })}
         </div>
-      ) : (
-        <div className="twk">
-          {cur === nowIdx
-            ? seed.week.map((d, wi) => {
-                const col = (SEASON_TYPE_COLOR[d.type as keyof typeof SEASON_TYPE_COLOR] ?? '#8A90A0');
-                const meta = d.dist === ' · ' ? 'full recovery' : `${parseFloat(d.dist)} mi · ${d.pace}`;
-                return (
-                  <div className={`twr${d.skipped ? ' skipped' : ''}`} key={wi} style={{ cursor: 'pointer' }} onClick={() => onOpenDetail(wi)} role="button" tabIndex={0}>
-                    <span className="td">{d.dw}</span>
-                    <span className="tdot" style={{ background: col }} />
-                    <span className="tn">{d.name}</span>
-                    <span className="tm">{meta}</span>
-                    <span className="tc">
-                      {d.skipped ? (
-                        <span className="tdy" style={{ background: 'rgba(255,255,255,.10)', color: 'rgba(255,255,255,.7)' }}>SKIPPED</span>
-                      ) : d.done ? (
-                        <svg className="ck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                      ) : d.today ? (<span className="tdy">TODAY</span>) : null}
-                    </span>
-                  </div>
-                );
-              })
-            : (seed.season.weekDays[cur] ?? []).map((d, di) => {
+
+        {/* This week · Projection · Key workouts */}
+        <div className="arow">
+          {/* THIS WEEK list */}
+          <div className="card">
+            <div className="ch">
+              <span className="ct">THIS WEEK · WK {nowIdx + 1}</span>
+              <span className="cx">{miles[nowIdx]} MI PLANNED</span>
+            </div>
+            <div className="twk">
+              {seed.week.map((d, wi) => {
                 const col = SEASON_TYPE_COLOR[d.type as keyof typeof SEASON_TYPE_COLOR] ?? '#8A90A0';
-                const rest = d.type === 'rest';
-                const meta = rest ? 'full recovery' : `${d.mi.toFixed(1)} mi${d.paceSec ? ' · ' + paceFromSec(d.paceSec) : ''}`;
+                const meta = d.dist === ' · ' ? 'rest' : `${d.dist} mi · ${d.pace}`;
                 return (
-                  <div className="twr" key={di}>
-                    <span className="td">{d.dow}</span>
+                  <div
+                    key={wi}
+                    className={`twr${d.today ? ' today' : ''}${d.skipped ? ' skipped' : ''}`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => onOpenDetail(wi)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <span className="tdw">{d.dw}</span>
                     <span className="tdot" style={{ background: col }} />
-                    <span className="tn">{d.name}</span>
-                    <span className="tm">{meta}</span>
-                    <span className="tc">
-                      {d.done && (
-                        <svg className="ck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                      )}
-                    </span>
+                    <span className="tnm">{d.name}</span>
+                    <span className="tmeta">{meta}</span>
+                    {d.skipped ? null : d.done ? (
+                      <span style={{ marginLeft: 10, display: 'flex', alignItems: 'center' }}>
+                        <svg className="tck" viewBox="0 0 24 24" fill="none" stroke="#3EBD41" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      </span>
+                    ) : d.today ? (
+                      <span style={{ marginLeft: 10, fontSize: 9, fontWeight: 800, letterSpacing: 1, color: '#FFCE8A' }}>TODAY</span>
+                    ) : null}
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* PROJECTION card */}
+          <div className="card proj">
+            <div className="ch">
+              <span className="ct">PROJECTION</span>
+              <span className="cx">{goal ? `vs Sub ${goal.goal}` : '—'}</span>
+            </div>
+            {goal?.projected ? (
+              <>
+                <div className="pjbig" style={{ color: goal.onTrack ? '#86efa0' : '#FFCE8A' }}>{goal.projected}</div>
+                <div className="pjlab">PROJECTED FINISH TODAY</div>
+                <div className="pjbar">
+                  <i style={{ width: `${Math.min(100, goal.goalPct ?? 80)}%` }} />
+                  <span className="goalmark" style={{ left: '92%' }} />
+                </div>
+                <div className="pjrow">
+                  <span>Goal {goal.goal}</span>
+                  <span><b>{goal.delta}</b></span>
+                </div>
+                <div className="pjnote">
+                  {goal.onTrack
+                    ? 'On track. The threshold work in Build is what closes the last 100 seconds. Hold the easy days easy.'
+                    : 'Behind goal. The next threshold blocks close the gap — protect them.'}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="pjbig" style={{ opacity: 0.55 }}>—</div>
+                <div className="pjlab">NO RACE GOAL SET</div>
+                <div className="pjnote">Pick a primary race on /races to see the projection.</div>
+              </>
+            )}
+          </div>
+
+          {/* KEY WORKOUTS list */}
+          <div className="card">
+            <div className="ch"><span className="ct">KEY WORKOUTS TO RACE</span></div>
+            <div className="miles">
+              {milestones.map((m, i) => (
+                <div key={i} className={`mile${m.state === 'DONE' ? ' done' : ''}${m.raceRow ? ' race' : ''}`}>
+                  <span className="mwk">{m.wkLabel}</span>
+                  <span className="mdot" style={{ background: m.dot }} />
+                  <div className="mtx">
+                    <div className="mtt">{m.title}</div>
+                    <div className="mss">{m.sub}</div>
+                  </div>
+                  {m.state && (
+                    <span className="mst" style={m.state === 'NOW' ? { color: '#FFCE8A', opacity: 0.95 } : undefined}>
+                      {m.state}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Full-plan modal */}
+      {planOpen && (
+        <PlanModal
+          tab={planTab}
+          onSetTab={setPlanTab}
+          onClose={() => setPlanOpen(false)}
+          seed={seed}
+          focusIdx={focusIdx}
+          setFocusIdx={setFocusIdx}
+        />
       )}
-    </>
+    </div>
+  );
+}
+
+/* ─────────────────────────  Full-plan modal  ───────────────────────── */
+
+function PlanModal({
+  tab, onSetTab, onClose, seed, focusIdx, setFocusIdx,
+}: {
+  tab: 'month' | 'weeks';
+  onSetTab: (t: 'month' | 'weeks') => void;
+  onClose: () => void;
+  seed: FaffSeed;
+  focusIdx: number;
+  setFocusIdx: (i: number) => void;
+}) {
+  const goal = seed.goalRace;
+  return (
+    <div className="train2-ov" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="train2-sheet">
+        <div className="sheet-top">
+          <div>
+            <div className="stt">Full plan</div>
+            <div className="sts">{goal ? `${goal.name} · ${seed.season.raceIdx} weeks · Sub ${goal.goal}` : 'No goal race set'}</div>
+          </div>
+          <div className="seg">
+            <button className={tab === 'month' ? 'on' : ''} onClick={() => onSetTab('month')}>Month</button>
+            <button className={tab === 'weeks' ? 'on' : ''} onClick={() => onSetTab('weeks')}>Weeks</button>
+          </div>
+          <button className="sheet-x" onClick={onClose} aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div className="sheet-body">
+          {tab === 'month' ? <MonthCalendar seed={seed} /> : (
+            <WeeksList seed={seed} focusIdx={focusIdx} onPick={(i) => { setFocusIdx(i); onClose(); }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthCalendar({ seed }: { seed: FaffSeed }) {
+  const goal = seed.goalRace;
+  const today = new Date();
+  // Build all plan days into a Map<YYYY-MM-DD, day>
+  const planMap = new Map<string, { type: string; name: string; mi: number; paceSec: number | null }>();
+  seed.season.weekDays.forEach((wkDays, wkIdx) => {
+    wkDays.forEach((d) => {
+      // weekDays don't carry ISO date directly — derive from week's start? For now,
+      // skip month rendering when we can't anchor a date. Most weeks have it via training-state.
+      // Fall back to omitting unmatched cells.
+      const anyD = d as unknown as { date?: string };
+      if (anyD.date) planMap.set(anyD.date, { type: d.type, name: d.name, mi: d.mi, paceSec: d.paceSec });
+    });
+  });
+
+  // Pick months that overlap the plan range — use today ± 3 months as a sensible window.
+  const months: Array<{ y: number; m: number; nm: string }> = [];
+  for (let off = -1; off <= 2; off++) {
+    const dt = new Date(today.getFullYear(), today.getMonth() + off, 1);
+    months.push({
+      y: dt.getFullYear(),
+      m: dt.getMonth(),
+      nm: dt.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    });
+  }
+  const DOW_LBL = ['M','T','W','T','F','S','S'];
+  const tint = (c: string) => ({ background: `${c}38`, color: c });
+
+  return (
+    <div className="cal">
+      {months.map((mo) => {
+        const first = new Date(mo.y, mo.m, 1);
+        const lead = (first.getDay() + 6) % 7;
+        const daysInMonth = new Date(mo.y, mo.m + 1, 0).getDate();
+        const cells: React.ReactNode[] = [];
+        DOW_LBL.forEach((d, i) => cells.push(<div key={`dow-${i}`} className="cal-dow">{d}</div>));
+        for (let i = 0; i < lead; i++) cells.push(<div key={`e-${i}`} className="cell empty" />);
+        for (let dd = 1; dd <= daysInMonth; dd++) {
+          const date = new Date(mo.y, mo.m, dd);
+          const iso = date.toISOString().slice(0, 10);
+          const isToday = date.toDateString() === today.toDateString();
+          const isRace = goal && goal.date.slice(0, 10) === iso;
+          const past = date < today && !isToday;
+          const w = planMap.get(iso);
+          const cls = `cell${isToday ? ' today' : ''}${isRace ? ' race' : ''}${past ? ' past' : ''}`;
+          let body: React.ReactNode = null;
+          if (isRace) {
+            body = (
+              <div className="cwk">
+                <span className="ctag" style={tint('#FFCE8A')}>Race</span>
+                <div className="cmeta">Race<small> · {goal!.goal}</small></div>
+                <div className="cdet">{goal!.name}</div>
+              </div>
+            );
+          } else if (w && w.type === 'rest') {
+            body = <span className="crest">Rest day</span>;
+          } else if (w) {
+            const c = PHASE_TYPE_COLOR[w.type] ?? '#8A90A0';
+            const pace = w.paceSec ? ` · ${Math.floor(w.paceSec / 60)}:${String(Math.round(w.paceSec % 60)).padStart(2, '0')}` : '';
+            body = (
+              <div className="cwk">
+                <span className="ctag" style={tint(c)}>{w.name}</span>
+                <div className="cmeta">{w.mi.toFixed(1)}<small> mi{pace}</small></div>
+              </div>
+            );
+          }
+          cells.push(
+            <div key={`d-${dd}`} className={cls}>
+              <div className="cd">{dd}</div>
+              {body}
+            </div>
+          );
+        }
+        return (
+          <div className="calmonth" key={`${mo.y}-${mo.m}`}>
+            <div className="cm-h">{mo.nm}</div>
+            <div className="cal-grid">{cells}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WeeksList({ seed, focusIdx, onPick }: { seed: FaffSeed; focusIdx: number; onPick: (i: number) => void }) {
+  const { miles, maxMi, raceIdx } = seed.season;
+  const groups = phaseGroups(raceIdx);
+  const goal = seed.goalRace;
+  return (
+    <div className="weeklist">
+      {groups.map((g) => (
+        <div key={g.phase}>
+          <div className="phlabel" style={{ color: phaseColor(g.phase) }}>
+            {(PHASE[g.phase]?.name ?? g.phase).toUpperCase()}
+            <span className="pl-line" style={{ background: `${phaseColor(g.phase)}33` }} />
+          </div>
+          {Array.from({ length: g.to - g.from + 1 }, (_, k) => {
+            const i = g.from + k;
+            const mi = miles[i] ?? 0;
+            const dayList = seed.season.weekDays[i] ?? [];
+            const quality = dayList.find((d) => ['intervals','tempo','long'].includes(d.type));
+            const key = quality
+              ? `${quality.type === 'intervals' ? 'Intervals' : quality.type === 'tempo' ? 'Tempo' : 'Long run'} · ${quality.mi.toFixed(1)} mi`
+              : 'Easy week';
+            return (
+              <div
+                key={i}
+                className={`wkrow${i === focusIdx ? ' cur' : ''}`}
+                onClick={() => onPick(i)}
+                role="button"
+                tabIndex={0}
+              >
+                <span className="wn">{i + 1}</span>
+                <span className="wbar"><i style={{ width: `${Math.round((mi / Math.max(maxMi, 1)) * 100)}%`, background: phaseColor(g.phase) }} /></span>
+                <span className="wkey">{key}</span>
+                <span className="wmi">{mi} mi</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {goal && (
+        <>
+          <div className="phlabel" style={{ color: '#FFCE8A' }}>
+            RACE<span className="pl-line" style={{ background: '#FFCE8A33' }} />
+          </div>
+          <div className="wkrow race">
+            <span className="wn">★</span>
+            <span className="wkey">{goal.name} · Sub {goal.goal}</span>
+            <span className="wmi">{formatDate(goal.date)}</span>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
 function formatDate(iso: string): string {
+  if (!iso) return '·';
   const d = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
-}
-function paceFromSec(s: number): string {
-  if (!s) return '·';
-  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 }
