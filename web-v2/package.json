@@ -14,6 +14,8 @@
     "test:truth": "node ../scripts/sim/truth-contract.mjs"
   },
   "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
     "next": "15.1.6",
     "pg": "^8.13.1",
     "react": "19.0.0",

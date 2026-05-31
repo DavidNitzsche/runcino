@@ -201,6 +201,20 @@ const styles = `
   background:rgba(252,77,100,0.16);border:1px solid rgba(252,77,100,0.4);
   color:#ffd6dd;font-size:12px;line-height:1.45;
 }
+.login-shell .email-form{display:flex;flex-direction:column;gap:10px;margin-top:0;}
+.login-shell .email-input{
+  width:100%;background:rgba(255,255,255,0.06);border:1px solid var(--line);border-radius:12px;
+  padding:13px 14px;color:var(--txt);font-family:inherit;font-size:14.5px;font-weight:500;outline:none;
+  transition:border-color .15s, background .15s;
+}
+.login-shell .email-input::placeholder{color:rgba(255,255,255,0.42);font-weight:400;}
+.login-shell .email-input:focus{border-color:rgba(255,255,255,0.36);background:rgba(255,255,255,0.10);}
+.login-shell .email-submit{margin-top:4px;background:#fff;color:#0b0b0b;}
+.login-shell .email-cancel{
+  background:none;border:none;color:rgba(255,255,255,0.55);font-family:inherit;font-size:12px;
+  font-weight:600;cursor:pointer;padding:6px;margin-top:2px;
+}
+.login-shell .email-cancel:hover{color:rgba(255,255,255,0.85);}
 .login-shell .auth-toast{
   position:fixed;left:50%;bottom:38px;transform:translateX(-50%);z-index:80;
   padding:11px 18px;border-radius:999px;

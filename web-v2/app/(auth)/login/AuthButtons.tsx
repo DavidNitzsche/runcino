@@ -17,7 +17,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Phase = 'idle' | 'apple-loading' | 'apple-signing' | 'apple-error' | 'apple-ok';
+type Phase = 'idle' | 'apple-loading' | 'apple-signing' | 'apple-error' | 'apple-ok' | 'email-form' | 'email-signing' | 'email-error' | 'email-ok';
 
 declare global {
   interface Window {
@@ -162,10 +162,48 @@ export function AuthButtons({ appleClientId, redirectUri }: { appleClientId: str
     router.refresh();
   }
 
-  function onDeferred(kind: 'google' | 'email') {
-    showToast('Coming soon · use Continue with Apple for now.');
-    // No fetch · the probe asserts these stay quiet.
+  function onDeferred(kind: 'google') {
+    showToast('Coming soon · use Continue with Apple or email for now.');
     void kind;
+  }
+
+  function onEmailClick() {
+    setErrorMsg(null);
+    setPhase('email-form');
+  }
+
+  async function onEmailSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const email = String(fd.get('email') ?? '').trim();
+    const password = String(fd.get('password') ?? '');
+    if (!email || !password) { setErrorMsg('Enter your email and password.'); return; }
+    setErrorMsg(null);
+    setPhase('email-signing');
+    let server: Response;
+    try {
+      server = await fetch('/api/auth/email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (err) {
+      setPhase('email-error');
+      setErrorMsg(err instanceof Error ? err.message : 'network error');
+      return;
+    }
+    if (!server.ok) {
+      const body = await server.json().catch(() => ({} as { error?: string }));
+      setPhase('email-error');
+      setErrorMsg(body.error ?? `sign-in failed (HTTP ${server.status})`);
+      return;
+    }
+    let parsed: { ok?: boolean; redirect?: string } = {};
+    try { parsed = await server.json(); } catch {}
+    setPhase('email-ok');
+    router.replace(parsed.redirect ?? '/today');
+    router.refresh();
   }
 
   const busy = phase === 'apple-loading' || phase === 'apple-signing';
@@ -207,14 +245,22 @@ export function AuthButtons({ appleClientId, redirectUri }: { appleClientId: str
 
       <div className="auth-or">OR</div>
 
-      <button
-        className="gbtn email"
-        type="button"
-        data-test="signin-email"
-        onClick={() => onDeferred('email')}
-      >
-        Sign in with email
-      </button>
+      {phase === 'email-form' || phase === 'email-signing' || phase === 'email-error' ? (
+        <form className="email-form" onSubmit={onEmailSubmit} data-test="signin-email-form">
+          <input className="email-input" name="email" type="email" placeholder="Email" autoComplete="email" required autoFocus />
+          <input className="email-input" name="password" type="password" placeholder="Password" autoComplete="current-password" required minLength={6} />
+          <button type="submit" className="gbtn email-submit" disabled={phase === 'email-signing'}>
+            {phase === 'email-signing' ? 'Signing in…' : 'Sign in'}
+          </button>
+          <button type="button" className="email-cancel" onClick={() => { setPhase('idle'); setErrorMsg(null); }}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button className="gbtn email" type="button" data-test="signin-email" onClick={onEmailClick}>
+          Sign in with email
+        </button>
+      )}
 
       <div className="gfine">
         By continuing you agree to Faff&rsquo;s <u>Terms</u> &amp; <u>Privacy Policy</u>.
