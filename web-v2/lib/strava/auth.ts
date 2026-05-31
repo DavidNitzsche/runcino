@@ -38,7 +38,7 @@ export async function getStravaToken(userId: string): Promise<string> {
   let triple: TokenTriple | null = (await pool.query<TokenTriple>(
     `SELECT access_token, refresh_token, expires_at::text AS expires_at
        FROM connector_tokens
-      WHERE user_id = $1 AND provider = 'strava' AND disconnected_at IS NULL
+      WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava' AND disconnected_at IS NULL
       ORDER BY connected_at DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] as TokenTriple[] }))).rows[0] ?? null;
@@ -112,8 +112,9 @@ async function refreshStravaToken(userId: string, refreshToken: string): Promise
           SET access_token  = $1,
               refresh_token = $2,
               expires_at    = $3::timestamptz,
+              user_uuid     = COALESCE(user_uuid, $4),
               updated_at    = NOW()
-        WHERE user_id = $4 AND provider = 'strava'`,
+        WHERE COALESCE(user_uuid, user_id) = $4 AND provider = 'strava'`,
       [newAccess, newRefresh, newExpires, userId]
     ),
     pool.query(
@@ -134,7 +135,7 @@ export async function hasStravaConnection(userId: string): Promise<boolean> {
   // back to legacy profile.* columns.
   const conn = (await pool.query(
     `SELECT 1 FROM connector_tokens
-      WHERE user_id = $1 AND provider = 'strava'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava'
         AND access_token IS NOT NULL AND disconnected_at IS NULL LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] }))).rows[0];

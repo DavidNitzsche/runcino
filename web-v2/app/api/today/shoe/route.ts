@@ -53,10 +53,11 @@ export async function POST(req: NextRequest) {
   try {
     await ensureShoeAction();
     await pool.query(
-      `INSERT INTO day_actions (user_id, date_iso, action, note)
-       VALUES ($1, $2, 'shoe', $3)
+      `INSERT INTO day_actions (user_id, user_uuid, date_iso, action, note)
+       VALUES ($1, $1, $2, 'shoe', $3)
        ON CONFLICT (user_id, date_iso, action)
-       DO UPDATE SET note = EXCLUDED.note, created_at = NOW()`,
+       DO UPDATE SET note = EXCLUDED.note, created_at = NOW(),
+                     user_uuid = COALESCE(day_actions.user_uuid, EXCLUDED.user_uuid)`,
       [userId, dateIso, String(body.shoe_id)]
     );
     // shoe_crud is the canonical regen event for any shoe-row mutation.
@@ -75,7 +76,7 @@ export async function DELETE(req: NextRequest) {
   try {
     await pool.query(
       `DELETE FROM day_actions
-        WHERE user_id = $1 AND date_iso = $2 AND action = 'shoe'`,
+        WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'shoe'`,
       [userId, dateIso]
     );
     await bustBriefingCacheForEvent(userId, 'shoe_crud');

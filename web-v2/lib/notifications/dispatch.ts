@@ -39,7 +39,7 @@ async function activeDeviceTokens(userId: string): Promise<Array<{ device_token:
     const r = await pool.query(
       `SELECT device_token, platform
          FROM device_tokens
-        WHERE user_id = $1 AND revoked_at IS NULL`,
+        WHERE COALESCE(user_uuid, user_id) = $1 AND revoked_at IS NULL`,
       [userId],
     );
     return r.rows;
@@ -95,8 +95,8 @@ export async function dispatchNotification(
     // Log a row so a deck-style audit surfaces "tried, no creds" — but
     // don't crash. The scheduler keeps polling until env arrives.
     await pool.query(
-      `INSERT INTO notifications_log (user_id, category, payload, dedup_key, delivered)
-       VALUES ($1, $2, $3::jsonb, $4, false)`,
+      `INSERT INTO notifications_log (user_id, user_uuid, category, payload, dedup_key, delivered)
+       VALUES ($1, $1, $2, $3::jsonb, $4, false)`,
       [userId, tpl.category, JSON.stringify({ skipped: 'apns_not_configured', tpl }), tpl.dedup_key],
     ).catch(() => {});
     return { ok: true, skipped: 'apns_not_configured' };
@@ -124,8 +124,8 @@ export async function dispatchNotification(
     let logId: number | null = null;
     try {
       const r = await pool.query(
-        `INSERT INTO notifications_log (user_id, category, payload, dedup_key, delivered)
-         VALUES ($1, $2, $3::jsonb, $4, null) RETURNING id`,
+        `INSERT INTO notifications_log (user_id, user_uuid, category, payload, dedup_key, delivered)
+         VALUES ($1, $1, $2, $3::jsonb, $4, null) RETURNING id`,
         [userId, tpl.category, JSON.stringify(stripDeviceToken(args)), tpl.dedup_key],
       );
       logId = Number(r.rows[0].id);

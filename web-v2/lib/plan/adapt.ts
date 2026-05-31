@@ -233,8 +233,8 @@ async function writeIntent(
 ): Promise<void> {
   try {
     await client.query(
-      `INSERT INTO coach_intents (user_id, reason, field, value)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+       VALUES ($1, $1, $2, $3, $4)`,
       [userId, reason, workoutId, JSON.stringify(value)]
     );
   } catch (e: unknown) {
@@ -289,11 +289,11 @@ async function detectRhrSpike(userId: string): Promise<AdaptationTrigger | null>
   const r = (await pool.query(
     `WITH recent AS (
        SELECT AVG(value) AS avg3 FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'resting_hr'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
           AND sample_date >= CURRENT_DATE - 3
      ), baseline AS (
        SELECT AVG(value) AS avg14 FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'resting_hr'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
           AND sample_date BETWEEN CURRENT_DATE - 17 AND CURRENT_DATE - 4
      )
      SELECT recent.avg3, baseline.avg14,
@@ -318,7 +318,7 @@ async function detectSleepCrater(userId: string): Promise<AdaptationTrigger | nu
   const r = (await pool.query(
     `SELECT COUNT(*) AS bad_nights
        FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'sleep_hours'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
         AND sample_date >= CURRENT_DATE - 3
         AND value < 5`,
     [userId]
@@ -346,10 +346,12 @@ async function detectSleepCrater(userId: string): Promise<AdaptationTrigger | nu
  *       interrupts the planned session; 7/10 rests the area).
  */
 async function detectNiggleReported(userId: string): Promise<AdaptationTrigger | null> {
+  // Post-126: niggles uses canonical user_uuid. user_id (also uuid) kept
+  // for backward compat — COALESCE so unbackfilled rows still match.
   const r = (await pool.query(
     `SELECT id, body_part, side, severity, status, logged_at::text AS logged_at
        FROM niggles
-      WHERE user_id = $1 AND cleared_at IS NULL
+      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
       ORDER BY severity DESC, logged_at DESC LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
@@ -376,10 +378,11 @@ async function detectNiggleReported(userId: string): Promise<AdaptationTrigger |
  *       neck cold = run easy; below-the-neck OR fever = no running).
  */
 async function detectSickEpisodeActive(userId: string): Promise<AdaptationTrigger | null> {
+  // Post-126: sick_episodes uses canonical user_uuid.
   const r = (await pool.query(
     `SELECT id, symptoms, has_fever, started, logged_at::text AS logged_at
        FROM sick_episodes
-      WHERE user_id = $1 AND cleared_at IS NULL
+      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
       ORDER BY logged_at DESC LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];

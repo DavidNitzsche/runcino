@@ -152,16 +152,17 @@ async function ackSkipRecovery(userId: string, action: string): Promise<Record<s
   const yesterday = new Date(Date.now() - (7 + 24) * 3600000).toISOString().slice(0, 10);
   if (action === 'ready') {
     await pool.query(
-      `DELETE FROM day_actions WHERE user_id = $1 AND date_iso = $2 AND action = 'skip'`,
+      `DELETE FROM day_actions WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip'`,
       [userId, yesterday],
     );
     return { side_effect: 'unskipped_yesterday', date_iso: yesterday };
   }
   if (action === 'still_skipping') {
     await pool.query(
-      `INSERT INTO day_actions (user_id, date_iso, action)
-       VALUES ($1, $2, 'skip')
-       ON CONFLICT (user_id, date_iso, action) DO NOTHING`,
+      `INSERT INTO day_actions (user_id, user_uuid, date_iso, action)
+       VALUES ($1, $1, $2, 'skip')
+       ON CONFLICT (user_id, date_iso, action) DO UPDATE
+         SET user_uuid = COALESCE(day_actions.user_uuid, EXCLUDED.user_uuid)`,
       [userId, today],
     );
     return { side_effect: 'skipped_today', date_iso: today };
@@ -184,8 +185,8 @@ async function ackWeeklyCheckin(userId: string, action: string): Promise<Record<
     return { side_effect: 'unknown_action', action };
   }
   await pool.query(
-    `INSERT INTO check_ins (user_id, rating, briefing_id, surface, note, ts)
-     VALUES ($1, $2, null, 'weekly_notification', null, now())`,
+    `INSERT INTO check_ins (user_id, user_uuid, rating, briefing_id, surface, note, ts)
+     VALUES ($1, $1, $2, null, 'weekly_notification', null, now())`,
     [userId, action],
   );
   return { side_effect: 'checkin_recorded', rating: action };
@@ -213,7 +214,7 @@ async function ackNiggleSick(
     }
     const active = (await pool.query(
       `SELECT id FROM sick_episodes
-        WHERE user_id = $1 AND cleared_at IS NULL
+        WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC LIMIT 1`,
       [userId],
     )).rows[0];
@@ -236,7 +237,7 @@ async function ackNiggleSick(
   }
   const active = (await pool.query(
     `SELECT id FROM niggles
-      WHERE user_id = $1 AND cleared_at IS NULL
+      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
       ORDER BY logged_at DESC LIMIT 1`,
     [userId],
   )).rows[0];

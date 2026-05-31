@@ -48,7 +48,7 @@ export async function GET() {
     const row = (await pool.query(
       `SELECT id, symptoms, started, has_fever, note, logged_at, cleared_at
          FROM sick_episodes
-        WHERE user_id = $1 AND cleared_at IS NULL
+        WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC
         LIMIT 1`,
       [DAVID_USER_ID],
@@ -77,8 +77,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const ins = await pool.query(
-      `INSERT INTO sick_episodes (user_id, symptoms, started, has_fever, note)
-       VALUES ($1, $2::jsonb, $3, $4, $5)
+      `INSERT INTO sick_episodes (user_id, user_uuid, symptoms, started, has_fever, note)
+       VALUES ($1, $1, $2::jsonb, $3, $4, $5)
        RETURNING id`,
       [
         DAVID_USER_ID,
@@ -118,7 +118,7 @@ export async function DELETE() {
           SET cleared_at = now()
         WHERE id = (
           SELECT id FROM sick_episodes
-           WHERE user_id = $1 AND cleared_at IS NULL
+           WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
            ORDER BY logged_at DESC
            LIMIT 1
         )`,

@@ -52,7 +52,7 @@ export async function loadStravaConnectionStatus(
     `SELECT access_token, disconnected_at,
             last_sync_status, last_sync_error
        FROM connector_tokens
-      WHERE user_id = $1 AND provider = 'strava'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND provider = 'strava'
       ORDER BY connected_at DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] as any[] }))).rows[0] ?? null;

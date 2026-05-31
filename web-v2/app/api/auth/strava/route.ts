@@ -128,17 +128,18 @@ async function callback(req: NextRequest) {
     //    scopes, uploads kept 401-ing.
     await pool.query(
       `INSERT INTO connector_tokens (
-          user_id, provider, provider_user_id, scope,
+          user_id, user_uuid, provider, provider_user_id, scope,
           access_token, refresh_token, expires_at,
           connected_at, disconnected_at, updated_at
         )
-        VALUES ($1, 'strava', $2, $3, $4, $5, $6::timestamptz, NOW(), NULL, NOW())
+        VALUES ($1, $1, 'strava', $2, $3, $4, $5, $6::timestamptz, NOW(), NULL, NOW())
         ON CONFLICT (user_id, provider) DO UPDATE
           SET provider_user_id = EXCLUDED.provider_user_id,
               scope            = EXCLUDED.scope,
               access_token     = EXCLUDED.access_token,
               refresh_token    = EXCLUDED.refresh_token,
               expires_at       = EXCLUDED.expires_at,
+              user_uuid        = COALESCE(connector_tokens.user_uuid, EXCLUDED.user_uuid),
               connected_at     = NOW(),
               disconnected_at  = NULL,
               updated_at       = NOW()`,

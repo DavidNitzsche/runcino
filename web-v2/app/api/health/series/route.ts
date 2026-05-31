@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const r = (await pool.query(
       `SELECT sample_date::text AS date, ROUND(AVG(value)::numeric, 1) AS value
          FROM health_samples
-        WHERE user_id = $1 AND sample_type = $2
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = $2
           AND sample_date >= CURRENT_DATE - $3::int
         GROUP BY sample_date
         ORDER BY sample_date ASC`,

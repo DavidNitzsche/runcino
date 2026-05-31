@@ -135,8 +135,8 @@ export async function PATCH(req: NextRequest) {
             // No vdot column on profile — coach_intent tells the next
             // briefing about the new estimate.
             await pool.query(
-              `INSERT INTO coach_intents (user_id, reason, field, value)
-               VALUES ($1, 'vdot_auto_recalc', 'vdot', $2)`,
+              `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+               VALUES ($1, $1, 'vdot_auto_recalc', 'vdot', $2)`,
               [userId, String(v)]
             );
           }
@@ -151,8 +151,8 @@ export async function PATCH(req: NextRequest) {
             [cal.lthr, cal.method, userId]
           );
           await pool.query(
-            `INSERT INTO coach_intents (user_id, reason, field, value)
-             VALUES ($1, 'lthr_auto_calibrated', 'lthr', $2)`,
+            `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+             VALUES ($1, $1, 'lthr_auto_calibrated', 'lthr', $2)`,
             [userId, `${cal.lthr} (${cal.method})`]
           );
         }

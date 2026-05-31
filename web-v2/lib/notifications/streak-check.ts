@@ -90,7 +90,7 @@ async function longestPriorStreak(userId: string): Promise<number> {
     const r = await pool.query(
       `SELECT payload->'data'->>'streak_days' AS days
          FROM notifications_log
-        WHERE user_id = $1 AND category = 'streak' AND delivered = true
+        WHERE COALESCE(user_uuid, user_id) = $1 AND category = 'streak' AND delivered = true
         ORDER BY fired_at DESC
         LIMIT 50`,
       [userId],

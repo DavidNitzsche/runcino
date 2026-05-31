@@ -40,7 +40,7 @@ async function fetchPostRunCheckins(userId: string, days: number) {
   return (await pool.query(
     `SELECT id, ts, rating, surface, extras
        FROM check_ins
-      WHERE user_id = $1
+      WHERE COALESCE(user_uuid, user_id) = $1
         AND ts >= now() - ($2::int || ' days')::interval
         AND extras->>'kind' = 'post_run'
       ORDER BY ts DESC`,

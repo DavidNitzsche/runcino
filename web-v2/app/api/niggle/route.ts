@@ -51,7 +51,7 @@ export async function GET() {
     const row = (await pool.query(
       `SELECT id, body_part, side, severity, status, note, logged_at, cleared_at
          FROM niggles
-        WHERE user_id = $1 AND cleared_at IS NULL
+        WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
         ORDER BY logged_at DESC
         LIMIT 1`,
       [DAVID_USER_ID],
@@ -76,8 +76,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const ins = await pool.query(
-      `INSERT INTO niggles (user_id, body_part, side, severity, status, note)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO niggles (user_id, user_uuid, body_part, side, severity, status, note)
+       VALUES ($1, $1, $2, $3, $4, $5, $6)
        RETURNING id`,
       [
         DAVID_USER_ID,
@@ -119,7 +119,7 @@ export async function DELETE() {
           SET cleared_at = now()
         WHERE id = (
           SELECT id FROM niggles
-           WHERE user_id = $1 AND cleared_at IS NULL
+           WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
            ORDER BY logged_at DESC
            LIMIT 1
         )`,

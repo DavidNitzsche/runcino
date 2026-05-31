@@ -120,8 +120,8 @@ export async function PATCH(req: NextRequest) {
     // Log a coach_intent per field so the voice acknowledges once.
     for (const [k, v] of Object.entries(updates)) {
       await pool.query(
-        `INSERT INTO coach_intents (user_id, reason, field, value)
-         VALUES ($1, 'profile_field_added', $2, $3)`,
+        `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+         VALUES ($1, $1, 'profile_field_added', $2, $3)`,
         [userId, k, String(v)]
       );
     }

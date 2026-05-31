@@ -72,8 +72,8 @@ export async function PATCH(req: NextRequest) {
 
     // Log intent so coach acknowledges the swap once
     await pool.query(
-      `INSERT INTO coach_intents (user_id, reason, field, value)
-       VALUES ($1, 'workout_swapped', $2, $3)`,
+      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+       VALUES ($1, $1, 'workout_swapped', $2, $3)`,
       [userId, body.date_iso, JSON.stringify({ from: body.date_iso, to: newDate ?? body.date_iso, ...updates })]
     ).catch(() => {});
 

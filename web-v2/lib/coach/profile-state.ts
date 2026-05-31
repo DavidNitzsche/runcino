@@ -87,22 +87,22 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       [userId]
     ).then((r) => r.rows[0]),
     pool.query(
-      `SELECT MAX(value) AS m FROM health_samples WHERE user_id = $1 AND sample_type = 'hr'`,
+      `SELECT MAX(value) AS m FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hr'`,
       [userId]
     ).then((r) => r.rows[0]),
     pool.query(
       `SELECT AVG(value) AS a FROM health_samples
-        WHERE user_id = $1 AND sample_type = 'resting_hr'
+        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
           AND recorded_at >= NOW() - interval '60 days'`,
       [userId]
     ).then((r) => r.rows[0]),
     pool.query(
-      `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'vo2_max'
+      `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'vo2_max'
         ORDER BY recorded_at DESC LIMIT 1`,
       [userId]
     ).then((r) => r.rows[0]),
     pool.query(
-      `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'body_mass'
+      `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'body_mass'
         ORDER BY sample_date DESC LIMIT 1`,
       [userId]
     ).then((r) => r.rows[0]),
@@ -125,13 +125,13 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       [userId]
     ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
     pool.query(
-      `SELECT MAX(recorded_at) AS last FROM health_samples WHERE user_id = $1`,
+      `SELECT MAX(recorded_at) AS last FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1`,
       [userId]
     ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),
     pool.query(
       `SELECT MAX(recorded_at) AS last
          FROM health_samples
-        WHERE user_id = $1
+        WHERE COALESCE(user_uuid, user_id) = $1
           AND sample_type IN ('hrv_sdnn','vo2_max','resting_hr')`,
       [userId]
     ).catch(() => ({ rows: [{ last: null }] })).then((r) => r.rows[0]),

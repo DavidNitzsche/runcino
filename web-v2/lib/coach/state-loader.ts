@@ -188,7 +188,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // SLEEP last 7
   const sleep = (await pool.query(
     `SELECT value FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'sleep_hours'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
         AND sample_date <= $2::date
       ORDER BY sample_date DESC LIMIT 7`,
     [userId, today]
@@ -201,7 +201,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
 
   // HRV current + baseline
   const hrv = (await pool.query(
-    `SELECT value FROM health_samples WHERE user_id = $1 AND sample_type = 'hrv'
+    `SELECT value FROM health_samples WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
       ORDER BY recorded_at DESC LIMIT 30`,
     [userId]
   )).rows.map((r: any) => Number(r.value)).filter((v: number) => v > 0);
@@ -211,7 +211,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // RHR
   const rhr = (await pool.query(
     `SELECT value FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'resting_hr'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
         AND recorded_at >= NOW() - interval '60 days'
       ORDER BY recorded_at DESC LIMIT 14`,
     [userId]
@@ -222,7 +222,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // Cadence 60d baseline
   const cad = (await pool.query(
     `SELECT AVG(value)::numeric AS avg FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'cadence'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'cadence'
         AND sample_date >= ($2::date - interval '60 days')`,
     [userId, today]
   )).rows[0];
@@ -233,7 +233,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // weight in the readiness formula (lib/coach/readiness.ts § HR_REC).
   const hrRecRows = (await pool.query(
     `SELECT value FROM health_samples
-      WHERE user_id = $1 AND sample_type = 'hr_recovery'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hr_recovery'
         AND recorded_at >= NOW() - interval '30 days'
       ORDER BY recorded_at DESC LIMIT 30`,
     [userId]
@@ -246,7 +246,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // Recent check-ins (7 days) — pull extras so we can derive activeNiggle.
   const checkIns = await pool.query(
     `SELECT ts, rating, note, extras FROM check_ins
-      WHERE user_id = $1 AND ts >= NOW() - interval '7 days'
+      WHERE COALESCE(user_uuid, user_id) = $1 AND ts >= NOW() - interval '7 days'
       ORDER BY ts DESC LIMIT 10`,
     [userId]
   ).catch(() => ({ rows: [] }));  // table may not exist before P0.7 migration
@@ -310,7 +310,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // Pending intents (not yet acknowledged)
   const intents = await pool.query(
     `SELECT reason, field, value FROM coach_intents
-      WHERE user_id = $1 AND acknowledged_at IS NULL
+      WHERE COALESCE(user_uuid, user_id) = $1 AND acknowledged_at IS NULL
       ORDER BY ts DESC LIMIT 5`,
     [userId]
   ).catch(() => ({ rows: [] }));
