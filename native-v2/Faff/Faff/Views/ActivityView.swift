@@ -26,6 +26,11 @@ struct ActivityView: View {
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
     @State private var stravaStatus: API.StravaStatusResponse?
+    /// Async-fetch lifecycle for /api/log · drives the FailedLoadBanner
+    /// when fetch errors AND there's no cached log to fall back on.
+    /// Initial state mirrors the AppCache hydration result so first paint
+    /// doesn't show a "loading" pill when we've got prior data on disk.
+    @State private var loadState: LoadState = AppCache.read(.logState, as: LogState.self) == nil ? .idle : .loaded
 
     enum Range: String, CaseIterable { case month, year, all
         var label: String { rawValue.uppercased() == "ALL" ? "ALL TIME" : rawValue.uppercased() }
@@ -41,6 +46,15 @@ struct ActivityView: View {
                         .padding(.horizontal, 22).padding(.top, 12)
                     StravaReconnectBanner(status: stravaStatus)
                         .padding(.horizontal, 22).padding(.top, 10)
+                    // FailedLoadBanner · only shown when the last fetch
+                    // failed AND there's no cached log to fall back on.
+                    // The cached path is silent (banner stays hidden so the
+                    // runner sees their data, not an alert about a transient
+                    // blip while the cache is still valid).
+                    if let msg = loadState.failureMessage, log == nil {
+                        FailedLoadBanner(message: msg, retry: { Task { await reload() } })
+                            .padding(.horizontal, 22).padding(.top, 12)
+                    }
                     toggle
                         .padding(.horizontal, 22).padding(.top, 16)
                     if mode == .stats {
@@ -57,18 +71,39 @@ struct ActivityView: View {
     }
 
     private func reload() async {
-        async let l = (try? await API.fetchLog(limit: fetchLimit))
+        // Flip to .loading only when nothing is cached · cached views stay
+        // visible during a background refresh, avoiding a skeleton blink.
+        if log == nil { await MainActor.run { loadState = .loading } }
         async let p = (try? await API.fetchProfileState())
         async let ss = (try? await API.fetchStravaStatus())
-        let (logState, pf, sst) = await (l, p, ss)
-        await MainActor.run {
-            // Only overwrite cached state if the network call succeeded ·
-            // a transient 401 / 5xx shouldn't wipe the runner's existing
-            // feed visually. (fetchLog itself writes to AppCache on
-            // success so the next launch hydrates from disk.)
-            if let logState { self.log = logState }
-            if let pf { self.profile = pf }
-            if let sst { self.stravaStatus = sst }
+        do {
+            let logState = try await API.fetchLog(limit: fetchLimit)
+            let (pf, sst) = await (p, ss)
+            await MainActor.run {
+                if let logState {
+                    self.log = logState
+                    self.loadState = .loaded
+                } else {
+                    // 200 OK but JSON decode failed · with the lenient
+                    // doctrine in place this should be nearly impossible,
+                    // but keep the explicit branch so we don't silently
+                    // swallow the future case.
+                    self.loadState = .failed("Couldn't read the run log.")
+                }
+                if let pf { self.profile = pf }
+                if let sst { self.stravaStatus = sst }
+            }
+        } catch {
+            // Network failure or auth error · keep cached log so the feed
+            // stays visible. Banner only shows when log == nil (first run
+            // OR post-sign-out cache wipe).
+            let msg = loadFailureMessage(error)
+            let (pf, sst) = await (p, ss)
+            await MainActor.run {
+                self.loadState = .failed(msg)
+                if let pf { self.profile = pf }
+                if let sst { self.stravaStatus = sst }
+            }
         }
     }
 

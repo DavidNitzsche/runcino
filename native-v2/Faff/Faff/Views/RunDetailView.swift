@@ -18,6 +18,11 @@ struct RunDetailView: View {
     @State private var splitReadout: String?
     @State private var traceReadout: String?
     @State private var currentMetric: TraceMetric = .pace
+    /// Async-fetch lifecycle for /api/runs/[id] · drives the
+    /// FailedLoadBanner shown when fetch errors AND no RunDetail is
+    /// loaded (this view doesn't hydrate from AppCache · always cold
+    /// fetched, so `.idle` is the only valid initial state).
+    @State private var loadState: LoadState = .idle
 
     @Environment(\.dismiss) private var dismiss
 
@@ -33,6 +38,12 @@ struct RunDetailView: View {
                     header
                         .padding(.horizontal, 22)
                         .padding(.top, 8)
+
+                    if let msg = loadState.failureMessage, run == nil {
+                        FailedLoadBanner(message: msg, retry: { Task { await load() } })
+                            .padding(.horizontal, 22)
+                            .padding(.top, 12)
+                    }
 
                     hero
                         .padding(.horizontal, 24)
@@ -655,13 +666,23 @@ struct RunDetailView: View {
     }
 
     private func load() async {
+        if run == nil { await MainActor.run { loadState = .loading } }
         // Fire run detail + recap fetches in parallel. Each updates state
         // independently · the recap section renders the moment its
         // payload lands, regardless of the run detail's progress.
-        async let runTask = API.fetchRunDetail(id: runId)
         async let recapTask = API.fetchRunRecap(runId: runId)
-        if let r = try? await runTask {
-            await MainActor.run { run = r }
+        do {
+            let r = try await API.fetchRunDetail(id: runId)
+            await MainActor.run {
+                if let r {
+                    run = r
+                    loadState = .loaded
+                } else {
+                    loadState = .failed("Couldn't load this run.")
+                }
+            }
+        } catch {
+            await MainActor.run { loadState = .failed(loadFailureMessage(error)) }
         }
         if let rc = try? await recapTask {
             await MainActor.run { recap = rc }

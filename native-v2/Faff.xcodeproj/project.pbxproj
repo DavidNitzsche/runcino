@@ -106,6 +106,7 @@
 		FDFB5B7B4C41C8B3C7BBF7C8 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */; };
 		FE0352B79DCC62AE1008EB2A /* WorkoutEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B01231CF6EA2F9487242FC /* WorkoutEngine.swift */; };
 		FEA42A4E4B4191BD50CBCA23 /* FaceKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB076FD4BB8D790F2DB9B79 /* FaceKit.swift */; };
+		FF78B023B6AF759194C870EC /* LoadState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA4369345EE34EAFD3E307C /* LoadState.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -246,6 +247,7 @@
 		EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRootView.swift; sourceTree = "<group>"; };
+		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -290,6 +292,7 @@
 				0C18DDEE14414B527EFBB143 /* FaffMesh.swift */,
 				14A0089434ECA1192B331A77 /* GapBeam.swift */,
 				ADFCB78F95CAC1B19C758D37 /* Heatmap.swift */,
+				FCA4369345EE34EAFD3E307C /* LoadState.swift */,
 				0E832B4905DEB6F14ADB19D0 /* MileBars.swift */,
 				B0E2C05E3027A3C1CB45AEDD /* PageHeader.swift */,
 				2E0F934EAB1B1CC2AD163825 /* Primitives.swift */,
@@ -642,6 +645,7 @@
 				A9540BA3268DA8CC72864FA3 /* HealthView.swift in Sources */,
 				98B67F36D5862F5F11AEE994 /* Heatmap.swift in Sources */,
 				A66CE409BB06035C16E77160 /* LearnArticleSheet.swift in Sources */,
+				FF78B023B6AF759194C870EC /* LoadState.swift in Sources */,
 				669B521E9E81BFA9EFFFBC60 /* MileBars.swift in Sources */,
 				47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */,
 				D92EA33FB4285F4A8AB859C9 /* NotificationsAppDelegate.swift in Sources */,

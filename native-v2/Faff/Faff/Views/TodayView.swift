@@ -44,6 +44,10 @@ struct TodayView: View {
     /// the day..."). The whole Faff Coach block hides when this is nil ·
     /// no hardcoded fallback. The empty state IS the honest signal.
     @State private var purpose: RunPurpose?
+    /// Async-fetch lifecycle for /api/plan/week (the primary signal for
+    /// this tab · drives hero + week strip + drag sheet). Banner shows
+    /// only when fetch errors AND no cached PlanWeek exists.
+    @State private var loadState: LoadState = AppCache.read(.planWeek, as: PlanWeek.self) == nil ? .idle : .loaded
 
     var body: some View {
         let mesh = selectedEffort.mesh
@@ -118,6 +122,12 @@ struct TodayView: View {
                 StravaReconnectBanner(status: stravaStatus)
                     .padding(.horizontal, 22)
                     .padding(.top, 10)
+
+                if let msg = loadState.failureMessage, plan == nil {
+                    FailedLoadBanner(message: msg, retry: { Task { await loadAll() } })
+                        .padding(.horizontal, 22)
+                        .padding(.top, 10)
+                }
 
                 heroBlock
                     .padding(.horizontal, 26)
@@ -692,7 +702,7 @@ struct TodayView: View {
     // MARK: - Loaders
 
     private func loadAll() async {
-        async let p = (try? await API.fetchPlanWeek())
+        if plan == nil { await MainActor.run { loadState = .loading } }
         async let w = (try? await API.fetchWatchWorkout())
         async let r = (try? await API.fetchReadiness())
         async let b = (try? await API.briefing(surface: "today", mode: nil))
@@ -701,7 +711,20 @@ struct TodayView: View {
         async let ss = (try? await API.fetchStravaStatus())
         async let pp = (try? await API.fetchTodayPurpose())
 
-        let (planWeek, watch, ready, brief, skip, prof) = await (p, w, r, b, s, pr)
+        // Primary fetch · plan drives the hero + week strip + drag sheet.
+        // Throws on network failure so we can flip loadState into the
+        // explicit failed state; secondary fetches stay try?-swallowed
+        // (their absence degrades gracefully via the existing UI).
+        let planWeek: PlanWeek?
+        let primaryFailure: String?
+        do {
+            planWeek = try await API.fetchPlanWeek()
+            primaryFailure = nil
+        } catch {
+            planWeek = nil
+            primaryFailure = loadFailureMessage(error)
+        }
+        let (watch, ready, brief, skip, prof) = await (w, r, b, s, pr)
         let stravaStat = await ss
         let pur = await pp
         // Weather baseline runs second-pass — it needs the workout type
@@ -718,7 +741,16 @@ struct TodayView: View {
             // something · a transient 401 / 5xx shouldn't wipe the
             // hero / week strip / drag sheet visually. `skipped` is a
             // boolean that's safe to overwrite (defaults to false).
-            if let planWeek { self.plan = planWeek }
+            if let planWeek {
+                self.plan = planWeek
+                self.loadState = .loaded
+            } else if let primaryFailure {
+                self.loadState = .failed(primaryFailure)
+            } else {
+                // 200 OK but JSON decode failed (post-lenient-sweep this
+                // should be nearly impossible; keep the branch honest).
+                self.loadState = .failed("Couldn't read today's plan.")
+            }
             if let watch { self.workout = watch }
             if let ready { self.readiness = ready }
             if let brief { self.briefing = brief }

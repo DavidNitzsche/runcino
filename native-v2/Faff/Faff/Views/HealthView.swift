@@ -11,13 +11,18 @@ struct HealthView: View {
 
     enum Lens: String, CaseIterable { case body, form }
 
-    @State private var state: HealthState?
-    @State private var readiness: ReadinessSnapshot?
+    @State private var state: HealthState? =
+        AppCache.read(.healthState, as: HealthState.self)
+    @State private var readiness: ReadinessSnapshot? =
+        AppCache.read(.readiness, as: ReadinessSnapshot.self)
     @State private var healthFacts: CoachFactsBlock?
     @State private var lens: Lens = .body
     @State private var metric: String = "hrv"
     @State private var sheet: Bool = false
     @State private var scrubReadout: String?
+    /// Async-fetch lifecycle for /api/health · drives the FailedLoadBanner
+    /// shown when the fetch errors AND there's no cached HealthState.
+    @State private var loadState: LoadState = AppCache.read(.healthState, as: HealthState.self) == nil ? .idle : .loaded
 
     var body: some View {
         ZStack {
@@ -29,6 +34,11 @@ struct HealthView: View {
                                rightLabel: todayLabel,
                                avatarInitials: nil)
                         .padding(.horizontal, 24).padding(.top, 12)
+
+                    if let msg = loadState.failureMessage, state == nil {
+                        FailedLoadBanner(message: msg, retry: { Task { await reload() } })
+                            .padding(.horizontal, 22).padding(.top, 12)
+                    }
 
                     heroBlock
                         .padding(.horizontal, 24).padding(.top, 14)
@@ -98,14 +108,30 @@ struct HealthView: View {
     }
 
     private func reload() async {
-        async let s = (try? await API.fetchHealthState())
+        if state == nil { await MainActor.run { loadState = .loading } }
         async let r = (try? await API.fetchReadiness())
         async let f = (try? await API.fetchCoachFacts(surface: "health"))
-        let (st, rd, fc) = await (s, r, f)
-        await MainActor.run {
-            self.state = st
-            self.readiness = rd
-            self.healthFacts = fc
+        do {
+            let st = try await API.fetchHealthState()
+            let (rd, fc) = await (r, f)
+            await MainActor.run {
+                if let st {
+                    self.state = st
+                    self.loadState = .loaded
+                } else {
+                    self.loadState = .failed("Couldn't read health data.")
+                }
+                if let rd { self.readiness = rd }
+                if let fc { self.healthFacts = fc }
+            }
+        } catch {
+            let msg = loadFailureMessage(error)
+            let (rd, fc) = await (r, f)
+            await MainActor.run {
+                self.loadState = .failed(msg)
+                if let rd { self.readiness = rd }
+                if let fc { self.healthFacts = fc }
+            }
         }
     }
 
