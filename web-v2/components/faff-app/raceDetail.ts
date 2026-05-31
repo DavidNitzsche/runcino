@@ -5,13 +5,20 @@
  *  - course_geometry JSONB (elevation profile, polyline)
  *  - profile.physiology (lthr + zones → drives projected pace/HR)
  *
+ * AUTH (2026-05-30 P1 SSR fix): the per-user race lookup is keyed
+ * off the `faff_session` cookie. When no session is present we return
+ * null — RaceView treats null as "not found" and triggers notFound()
+ * (a 404), which is the right surface for "you don't have a race
+ * with that slug" + the right surface for "you aren't signed in".
+ * Previously this silently loaded David's races, so any unauthenticated
+ * visitor with a known slug would see his goal time / location / etc.
+ *
  * Falls back to neutral CIM-style defaults for fields with no backend.
  */
 
 import type { RaceDetailSeed } from './views/RaceView';
 import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
-
-const DEFAULT_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { userIdFromCookies } from '@/lib/auth/session';
 
 type CourseGeom = {
   trackPoints?: Array<{ lat: number; lon: number; ele: number | null }>;
@@ -229,15 +236,21 @@ function routePathFromGeometry(geom: CourseGeom | null): {
 
 export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | null> {
   try {
+    // P1 SSR-leak fix (2026-05-30): resolve runner from cookie. Without
+    // a session we return null → RaceView shows 404. This is the same
+    // surface unauthenticated visitors got for slugs that don't match
+    // their own races, so no information disclosure either way.
+    const userId = await userIdFromCookies();
+    if (!userId) return null;
     const [{ loadRacesState }, { pool }] = await Promise.all([
       import('@/lib/coach/races-state'),
       import('@/lib/db/pool'),
     ]);
     const [races, geoRow] = await Promise.all([
-      loadRacesState(DEFAULT_USER_ID),
+      loadRacesState(userId),
       pool.query(
-        `SELECT course_geometry, course_source, meta FROM races WHERE slug = $1`,
-        [slug]
+        `SELECT course_geometry, course_source, meta FROM races WHERE slug = $1 AND user_uuid = $2`,
+        [slug, userId]
       ).catch(() => ({ rows: [] as Array<{ course_geometry: CourseGeom | null; course_source: string | null; meta: Record<string, unknown> | null }> })),
     ]);
     const row = geoRow.rows[0] ?? null;

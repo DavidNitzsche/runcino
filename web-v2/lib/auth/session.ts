@@ -127,6 +127,99 @@ export async function requireAuth(req: Request | { headers: Headers }): Promise<
   return r.user_uuid;
 }
 
+/**
+ * SSR-side counterpart to `userIdFromRequest`. React server components
+ * + page loaders don't have a NextRequest in scope — they read cookies
+ * via `next/headers` instead. Same `faff_session=<token>` cookie that
+ * the API helpers accept; resolves it to a user_uuid against the
+ * `sessions` table.
+ *
+ * As of 2026-05-30 we ALSO honor a `DEV_USER_UUID` env override when
+ * NODE_ENV !== 'production'. This is the dev-only escape hatch for
+ * David's local browser session (which doesn't have a real Apple
+ * sign-in cookie yet — the iPhone client uses Bearer auth and we
+ * haven't wired SignInWithAppleButton on the web). The fallback never
+ * fires in production, so prod traffic without a cookie still returns
+ * null and surfaces never leak.
+ *
+ * Returns null when no valid session is present. SSR callers MUST
+ * treat null as "render the empty/sign-in state" — falling back to a
+ * default user is the bug we just fixed (see seed.ts / raceDetail.ts).
+ */
+export async function userIdFromCookies(): Promise<string | null> {
+  // Dynamic import so this module stays usable in non-Next contexts
+  // (e.g. scripts/, test harnesses) where `next/headers` would throw.
+  let cookieStore: { get: (n: string) => { value: string } | undefined };
+  try {
+    const { cookies } = await import('next/headers');
+    cookieStore = await cookies();
+  } catch {
+    return resolveDevFallback();
+  }
+  const tok = cookieStore.get('faff_session')?.value;
+  if (!tok) return resolveDevFallback();
+  const tokenHash = hashToken(tok);
+  try {
+    const r = (await pool.query(
+      `SELECT COALESCE(user_uuid, user_id)::text AS user_uuid
+         FROM sessions
+        WHERE session_token = $1
+          AND expires_at > NOW()
+          AND revoked_at IS NULL
+        LIMIT 1`,
+      [tokenHash],
+    )).rows[0];
+    if (r?.user_uuid) {
+      void pool.query(
+        `UPDATE sessions SET last_used_at = NOW() WHERE session_token = $1`,
+        [tokenHash],
+      ).catch(() => {});
+      return r.user_uuid;
+    }
+  } catch (e: any) {
+    console.error('[auth] SSR session lookup failed:', e?.message);
+  }
+  // Token present but invalid — STILL fall through to dev fallback in
+  // dev (e.g. cookie left over from a wiped sessions table) so local
+  // dev doesn't hard-401 mid-iteration. In prod this returns null.
+  return resolveDevFallback();
+}
+
+/**
+ * Convenience wrapper for SSR loaders that must either return a real
+ * user_uuid or trigger a redirect to the sign-in surface. Symmetric to
+ * `requireUserId` for API routes — but where the API path returns a
+ * NextResponse 401, this throws an `AuthRedirect` that the page can
+ * catch and forward to `redirect('/onboarding')` (or render a sign-in
+ * shell directly).
+ *
+ * Most callers prefer to handle the null case inline (render an empty
+ * seed, show a "please sign in" panel) rather than redirect, so this
+ * is opt-in. Use `userIdFromCookies()` + manual null-check for the
+ * common case.
+ */
+export async function requireUserIdFromCookies(): Promise<string> {
+  const id = await userIdFromCookies();
+  if (!id) throw new AuthError('no SSR session');
+  return id;
+}
+
+/**
+ * Dev-only env-var fallback. Returns a UUID when:
+ *   - NODE_ENV !== 'production'
+ *   - DEV_USER_UUID is set
+ * Returns null in production (or when unset). Never falls back to a
+ * hardcoded UUID — that was the bug.
+ */
+function resolveDevFallback(): string | null {
+  if (process.env.NODE_ENV === 'production') return null;
+  const dev = process.env.DEV_USER_UUID;
+  if (dev && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dev)) {
+    return dev;
+  }
+  return null;
+}
+
 export class AuthError extends Error {
   status = 401;
   constructor(msg: string) { super(msg); this.name = 'AuthError'; }

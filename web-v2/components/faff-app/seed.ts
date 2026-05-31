@@ -3,7 +3,13 @@
  * web-v2's real data loaders. Returns a FaffSeed envelope the Shell
  * + every view reads from.
  *
- * Single user via DEFAULT_USER_ID env (David's UUID by default).
+ * AUTH (2026-05-30 P1 SSR fix): per-user data is keyed off the
+ * `faff_session` cookie via `userIdFromCookies()`. When the visitor
+ * is not signed in we return an EMPTY seed envelope — the previous
+ * behavior of silently defaulting to David's UUID was a cross-user
+ * leak waiting on user #2 (any unauthenticated browser visiting
+ * /faff would render David's plan, races, health, etc. via SSR).
+ *
  * Every loader is wrapped in try/catch so the page renders even if
  * a single signal is unavailable (e.g. Strava reauth needed, plan
  * not yet authored, HealthKit hasn't synced today).
@@ -16,8 +22,7 @@ import type {
 } from './types';
 import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
-
-const DEFAULT_USER_ID = process.env.DEFAULT_USER_ID ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
+import { userIdFromCookies } from '@/lib/auth/session';
 
 /* ─────────────────────────  Pure helpers  ───────────────────────── */
 
@@ -76,18 +81,18 @@ async function safe<T>(fn: () => Promise<T>): Promise<LoadResult<T>> {
   catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
 }
 
-async function loadGlance()   { return safe(async () => (await import('@/lib/coach/glance-state')).loadGlanceState(DEFAULT_USER_ID)); }
-async function loadHealth()   { return safe(async () => (await import('@/lib/coach/health-state')).loadHealthState(DEFAULT_USER_ID)); }
-async function loadTraining() { return safe(async () => (await import('@/lib/coach/training-state')).loadTrainingState(DEFAULT_USER_ID)); }
-async function loadRaces()    { return safe(async () => (await import('@/lib/coach/races-state')).loadRacesState(DEFAULT_USER_ID)); }
-async function loadLog()      { return safe(async () => (await import('@/lib/coach/log-state')).loadLogState(DEFAULT_USER_ID, { filters: { source: null, type: null, phase: null, shoe: null } })); }
-async function loadProfile()  { return safe(async () => (await import('@/lib/coach/profile-state')).loadProfileState(DEFAULT_USER_ID)); }
+async function loadGlance(uid: string)   { return safe(async () => (await import('@/lib/coach/glance-state')).loadGlanceState(uid)); }
+async function loadHealth(uid: string)   { return safe(async () => (await import('@/lib/coach/health-state')).loadHealthState(uid)); }
+async function loadTraining(uid: string) { return safe(async () => (await import('@/lib/coach/training-state')).loadTrainingState(uid)); }
+async function loadRaces(uid: string)    { return safe(async () => (await import('@/lib/coach/races-state')).loadRacesState(uid)); }
+async function loadLog(uid: string)      { return safe(async () => (await import('@/lib/coach/log-state')).loadLogState(uid, { filters: { source: null, type: null, phase: null, shoe: null } })); }
+async function loadProfile(uid: string)  { return safe(async () => (await import('@/lib/coach/profile-state')).loadProfileState(uid)); }
 
 /** Form-metric series straight from health_samples. Pulls 30-day series
  *  for the running-form signals HealthKit ships (cadence, GCT, vertical
  *  oscillation, stride length, vertical ratio) plus 30-day VO2 if present.
  *  The Faff Health view renders these in the FORM strip. */
-async function loadFormMetrics() {
+async function loadFormMetrics(uid: string) {
   return safe(async () => {
     const { pool } = await import('@/lib/db/pool');
     const rows = await pool.query(
@@ -97,7 +102,7 @@ async function loadFormMetrics() {
           AND sample_type IN ('cadence','ground_contact_time','vertical_oscillation','stride_length','vertical_ratio')
           AND sample_date >= NOW() - interval '30 days'
         ORDER BY sample_date ASC`,
-      [DEFAULT_USER_ID]
+      [uid]
     );
     const acc: Record<string, Array<{ date: string; value: number }>> = {};
     for (const r of rows.rows) {
@@ -115,7 +120,7 @@ type Form = Awaited<ReturnType<typeof loadFormMetrics>>;
 /** Per-day skip rows for the current Mon-Sun window. Returns a Set of
  *  ISO dates the runner has explicitly skipped via /api/today/skip.
  *  Drives the .skipped flag on week[i] + the .day card grayscale. */
-async function loadWeekSkips(): Promise<{ ok: true; value: Set<string> }> {
+async function loadWeekSkips(uid: string): Promise<{ ok: true; value: Set<string> }> {
   try {
     const { pool } = await import('@/lib/db/pool');
     // Same -7h offset as state-loader, so Monday-of-this-week matches.
@@ -129,7 +134,7 @@ async function loadWeekSkips(): Promise<{ ok: true; value: Set<string> }> {
       `SELECT date_iso FROM day_actions
         WHERE user_id = $1 AND action = 'skip'
           AND date_iso BETWEEN $2 AND $3`,
-      [DEFAULT_USER_ID, monday, sunday]
+      [uid, monday, sunday]
     ).catch(() => ({ rows: [] as Array<{ date_iso: string }> }));
     return { ok: true, value: new Set(r.rows.map((x) => x.date_iso)) };
   } catch {
@@ -140,7 +145,7 @@ async function loadWeekSkips(): Promise<{ ok: true; value: Set<string> }> {
 /** Plan adaptations from coach_intents (P1 #8). Pulls every plan_adapt_*
  *  row in the active plan window, resolves workout_id → date_iso so we can
  *  attribute each adapt to a week. Used by TrainView's KEY WORKOUTS list. */
-async function loadPlanAdapts(planId: string | null): Promise<{ ok: true; value: Array<{ workoutId: string; dateIso: string; kind: string; newType?: string; newDate?: string; shaveFraction?: number; why: string; ts: string }> }> {
+async function loadPlanAdapts(uid: string, planId: string | null): Promise<{ ok: true; value: Array<{ workoutId: string; dateIso: string; kind: string; newType?: string; newDate?: string; shaveFraction?: number; why: string; ts: string }> }> {
   if (!planId) return { ok: true, value: [] };
   try {
     const { pool } = await import('@/lib/db/pool');
@@ -152,7 +157,7 @@ async function loadPlanAdapts(planId: string | null): Promise<{ ok: true; value:
           AND ci.reason LIKE 'plan_adapt_%'
           AND pw.plan_id = $2
         ORDER BY ci.ts ASC`,
-      [DEFAULT_USER_ID, planId]
+      [uid, planId]
     ).catch(() => ({ rows: [] as Array<{ workout_id: string; reason: string; value: string; ts: Date | string; date_iso: string }> }));
     const out = r.rows.map((row) => {
       let parsed: { kind?: string; newType?: string; newDate?: string; shaveFraction?: number; why?: string } = {};
@@ -178,7 +183,7 @@ async function loadPlanAdapts(planId: string | null): Promise<{ ok: true; value:
 /** Per-day shoe assignment from day_actions (action='shoe', note=shoe_id).
  *  Returns the shoe_id (numeric or string) for today's row if present,
  *  else null. Errors swallowed — UI falls back to recommended shoe. */
-async function loadTodayShoe(): Promise<{ ok: true; value: number | null }> {
+async function loadTodayShoe(uid: string): Promise<{ ok: true; value: number | null }> {
   try {
     const { pool } = await import('@/lib/db/pool');
     // Same PDT-shifted today computation as state-loader.ts §state.today.
@@ -187,7 +192,7 @@ async function loadTodayShoe(): Promise<{ ok: true; value: number | null }> {
       `SELECT note FROM day_actions
         WHERE user_id = $1 AND date_iso = $2 AND action = 'shoe'
         LIMIT 1`,
-      [DEFAULT_USER_ID, today]
+      [uid, today]
     ).catch(() => ({ rows: [] as Array<{ note: string | null }> }));
     const note = r.rows[0]?.note ?? null;
     const id = note != null ? Number(note) : null;
@@ -1016,9 +1021,70 @@ function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['
 
 /* ─────────────────────────  Public entry point  ───────────────────────── */
 
+/**
+ * Build an empty FaffSeed envelope — every per-user signal is null,
+ * every list empty, the Shell renders the public/sign-in shell. This
+ * is what unauthenticated SSR requests receive (instead of David's
+ * data, which is what the pre-2026-05-30 code returned).
+ */
+function emptySeed(): FaffSeed {
+  const { week, todayIdx, results } = adaptWeek(null, undefined);
+  const readiness = adaptReadiness(null, null);
+  return {
+    todayISO: new Date().toISOString(),
+    topDate: todayLabel(),
+    weekOf: '·',
+    user: {
+      name: 'Guest',
+      city: '',
+      initial: 'G',
+      pro: false,
+      experienceLevel: null,
+      subscriptionLabel: 'Sign in',
+    },
+    week, todayIdx, results,
+    readiness,
+    goalRace: null,
+    volumeBars: [],
+    thisWeekMiles: 0,
+    weeklyAvg: 0,
+    form: { fitness: 0, fatigue: 0, delta: 0, label: 'STEADY' },
+    season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [] },
+    health: { readiness, body: [], form: [] },
+    prs: [],
+    races: [],
+    activity: {
+      ranges: {
+        month: { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], recs: [], heat: [], heatLabels: [], facts: [] },
+        year:  { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], recs: [], heat: [], heatLabels: [], facts: [] },
+        all:   { eyebrow: 'SIGN IN', big: '·', sub: '', totals: [], volT: '', volS: '', vol: [], mix: [], recs: [], heat: [], heatLabels: [], facts: [] },
+      },
+      recent: [],
+    },
+    shoes: [],
+    todayShoeId: null,
+    shoeRecByType: {},
+    connections: [
+      { id: 'health',     nm: 'Apple Health', sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#ff5a6e,#ff2d55)', gl: '♥',  on: false },
+      { id: 'strava',     nm: 'Strava',       sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#fc7e3c,#fc4c02)', gl: '▲',  on: false },
+      { id: 'watch',      nm: 'Apple Watch',  sub: 'Sign in to connect', bg: 'linear-gradient(135deg,#3aa0e0,#0a66a8)', gl: '⌚', on: false },
+      { id: 'finalsurge', nm: 'FinalSurge',   sub: 'Coming soon',        bg: 'linear-gradient(135deg,#5b8def,#2a5fd0)', gl: 'FS', on: false },
+    ],
+  };
+}
+
 export async function buildSeed(): Promise<FaffSeed> {
+  // P1 SSR-leak fix (2026-05-30): resolve the runner from the
+  // `faff_session` cookie, NOT from a hardcoded UUID. When the
+  // visitor isn't signed in we return an empty seed — the previous
+  // behavior of returning David's data was a cross-user leak.
+  const userId = await userIdFromCookies();
+  if (!userId) return emptySeed();
+
   const [gRes, hRes, tRes, rRes, lRes, pRes, fRes, sRes, skRes] = await Promise.all([
-    loadGlance(), loadHealth(), loadTraining(), loadRaces(), loadLog(), loadProfile(), loadFormMetrics(), loadTodayShoe(), loadWeekSkips(),
+    loadGlance(userId), loadHealth(userId), loadTraining(userId), loadRaces(userId),
+    loadLog(userId), loadProfile(userId), loadFormMetrics(userId), loadTodayShoe(userId),
+    loadWeekSkips(userId),
   ]);
   const glance   = gRes.ok ? gRes.value : null;
   const health   = hRes.ok ? hRes.value : null;
@@ -1035,7 +1101,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const goalRace = adaptGoalRace(glance, races, profile, training);
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
   // Load plan adapts AFTER training so we have plan_id to scope the query.
-  const planAdapts = await loadPlanAdapts(training?.plan_id ?? null);
+  const planAdapts = await loadPlanAdapts(userId, training?.plan_id ?? null);
   const season = adaptSeason(training, planAdapts.value);
   const healthSnapshot = adaptHealth(health, formMetrics);
   healthSnapshot.readiness = readiness;

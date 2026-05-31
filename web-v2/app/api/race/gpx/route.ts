@@ -10,6 +10,7 @@ import { pool } from '@/lib/db/pool';
 import { parseGPX } from '@/lib/race/gpx-parser';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { promoteCourseFromRace } from '@/lib/courses/promote-from-race';
 
 export const maxDuration = 30;
 
@@ -60,6 +61,21 @@ export async function POST(req: NextRequest) {
     // Race-detail and races-page coaches frame the season; a fresh course
     // changes the elevation/grade context. Bust + warm.
     await bustBriefingCacheForEvent(userId, 'race_crud');
+
+    // L1 → L2: promote the (genericized) geometry into the shared
+    // course_library so the next runner with this slug gets a real route
+    // instead of a slug-only stub. Best-effort: log on failure but don't
+    // fail the upload — the daily promote-courses cron will catch it.
+    let promotion: { action: string; source: string | null; contributor_count: number } | null = null;
+    try {
+      const r = await promoteCourseFromRace({ userUuid: userId, raceId: slug });
+      promotion = {
+        action: r.action, source: r.source, contributor_count: r.contributor_count,
+      };
+    } catch (e: any) {
+      console.error('[race/gpx] promotion failed (non-fatal):', e?.message ?? e);
+    }
+
     return NextResponse.json({
       ok: true,
       slug,
@@ -68,6 +84,7 @@ export async function POST(req: NextRequest) {
         distance_mi: geometry.distance_mi,
         elevation_gain_ft: geometry.elevation_gain_ft,
       },
+      promotion,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
