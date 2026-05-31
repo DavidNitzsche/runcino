@@ -331,23 +331,35 @@ struct HealthView: View {
             if let read = scrubReadout {
                 SpecLabel(text: read, size: 11, tracking: 1, color: Color(hex: 0x9AF0BF))
             }
-            ScrubbableTrace(points: series, labels: [], color: Color(hex: 0x62E08A), fill: true, target: nil, band: nil, readout: $scrubReadout)
-                .frame(height: 180)
-                .padding(.top, 6)
-            HStack {
-                let labels = xAxisLabels(for: metric)
-                Text(labels.0).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
-                Spacer()
-                Text(labels.1).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
-                Spacer()
-                Text(labels.2).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+            if series.isEmpty {
+                Text("No \(metricShort(metric).lowercased()) data yet · keep your watch + Apple Health connected and trends fill in over the first 14 days.")
+                    .font(.body(13, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.55))
+                    .lineSpacing(3)
+                    .padding(.top, 18).padding(.bottom, 18)
+            } else {
+                ScrubbableTrace(points: series, labels: [], color: Color(hex: 0x62E08A), fill: true, target: nil, band: nil, readout: $scrubReadout)
+                    .frame(height: 180)
+                    .padding(.top, 6)
+                HStack {
+                    let labels = xAxisLabels(for: metric)
+                    Text(labels.0).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                    Spacer()
+                    Text(labels.1).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                    Spacer()
+                    Text(labels.2).font(.display(9, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.45))
+                }
+                .padding(.top, 4)
             }
-            .padding(.top, 4)
         }
     }
 
+    /// Series for the selected metric · empty when no state has loaded
+    /// instead of a 30-zero array that drew a flatline-at-zero chart
+    /// regardless of the metric. The focusChart now renders an "no data
+    /// yet" copy when the series is empty.
     private func seriesFor(_ k: String) -> [Double] {
-        guard let s = state else { return Array(repeating: 0, count: 30) }
+        guard let s = state else { return [] }
         switch k {
         case "rhr":    return s.rhrSeries.map { Double($0.bpm) }
         case "hrv":    return s.hrvSeries.map { Double($0.ms) }
