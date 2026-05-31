@@ -58,7 +58,7 @@ try {
   check('daily_checkin', 0, (await q(`SELECT id FROM daily_checkin WHERE user_uuid = $1`, [SYNTH])).length);
 
   console.log('\n=== /log ===');
-  check('strava_activities', 0, (await q(`SELECT id FROM strava_activities WHERE user_uuid = $1`, [SYNTH])).length);
+  check('strava_activities', 0, (await q(`SELECT id FROM runs WHERE user_uuid = $1`, [SYNTH])).length);
   check('workout_completions', 0, (await q(`SELECT id FROM workout_completions WHERE user_id = $1`, [SYNTH])).length);
   check('workout_routes', 0, (await q(`SELECT id FROM workout_routes WHERE user_id = $1`, [SYNTH])).length);
   check('skipped_workouts', 0, (await q(`SELECT id FROM skipped_workouts WHERE user_uuid = $1`, [SYNTH])).length);

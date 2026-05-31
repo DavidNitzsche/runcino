@@ -321,7 +321,7 @@ export async function fetchDayForecast(
 export async function resolveHomeLatLng(userId: string): Promise<{ lat: number; lng: number } | null> {
   const r = (await pool.query(
     `SELECT data
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (
@@ -445,7 +445,7 @@ export async function upsertWeatherCache(
  */
 export async function enrichOneActivity(activityId: string | number): Promise<RunWeather | null> {
   const row = (await pool.query(
-    `SELECT id, data FROM strava_activities WHERE id = $1::BIGINT LIMIT 1`,
+    `SELECT id, data FROM runs WHERE id = $1::BIGINT LIMIT 1`,
     [String(activityId)],
   )).rows[0];
   if (!row) return null;
@@ -473,7 +473,7 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
     // marker; data.weather stays absent so consumers correctly hide
     // the weather card for these rows.
     await pool.query(
-      `UPDATE strava_activities SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`,
+      `UPDATE runs SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`,
       [String(activityId)],
     ).catch(() => {});
     return null;
@@ -495,14 +495,14 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
   if (!w) {
     // Still mark attempted so we don't re-poll forever
     await pool.query(
-      `UPDATE strava_activities SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`,
+      `UPDATE runs SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`,
       [String(activityId)],
     );
     return null;
   }
 
   await pool.query(
-    `UPDATE strava_activities
+    `UPDATE runs
         SET data = jsonb_set(jsonb_set(data, '{weather}', $1::jsonb), '{tempF}', to_jsonb($2::numeric)),
             weather_enriched_at = NOW()
       WHERE id = $3::BIGINT`,
@@ -545,7 +545,7 @@ export async function enrichRecent(daysBack: number = 14, batchSize: number = 20
   // enrichOneActivity to bail at pickLatLng. Filter on the value
   // shape (array, or real flat scalars) to skip them at the source.
   const rows = (await pool.query(
-    `SELECT id FROM strava_activities
+    `SELECT id FROM runs
       WHERE (data->>'date')::date >= CURRENT_DATE - $1::int
         AND data ? 'startLocal'
         AND (

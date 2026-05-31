@@ -145,7 +145,7 @@ export async function loadLogState(
             sa.shoe_id,
             s.brand AS shoe_brand,
             s.model AS shoe_model
-       FROM strava_activities sa
+       FROM runs sa
        LEFT JOIN shoes s ON s.id = sa.shoe_id
       WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')

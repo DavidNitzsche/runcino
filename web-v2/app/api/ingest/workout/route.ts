@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     // the existing row first; if it has warmupAddedManually=true,
     // re-apply the warmup bonus to the new data before insert.
     const existing = (await pool.query(
-      `SELECT data FROM strava_activities
+      `SELECT data FROM runs
         WHERE user_uuid = $1
           AND data->>'client_workout_id' = $2
         LIMIT 1`,
@@ -154,13 +154,13 @@ export async function POST(req: NextRequest) {
     }
 
     await pool.query(
-      `DELETE FROM strava_activities
+      `DELETE FROM runs
         WHERE user_uuid = $1
           AND data->>'client_workout_id' = $2`,
       [userId, body.client_workout_id]
     );
     await pool.query(
-      `INSERT INTO strava_activities (id, user_uuid, data)
+      `INSERT INTO runs (id, user_uuid, data)
        VALUES ($1::bigint, $2, $3)`,
       [stableId, userId, data]
     );
@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
             // Re-write with weather. INSERT happened just above with the
             // pre-weather data; UPDATE the row we just wrote.
             await pool.query(
-              `UPDATE strava_activities
+              `UPDATE runs
                   SET data = $1, weather_enriched_at = NOW()
                 WHERE user_uuid = $2
                   AND data->>'client_workout_id' = $3`,

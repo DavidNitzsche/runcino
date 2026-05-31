@@ -98,13 +98,13 @@ export async function POST(req: NextRequest) {
   let stravaWriteErr: string | null = null;
   try {
     await pool.query(
-      `DELETE FROM strava_activities
+      `DELETE FROM runs
         WHERE user_uuid = $1
           AND data->>'client_workout_id' = $2`,
       [userId, body.workoutId]
     );
     await pool.query(
-      `INSERT INTO strava_activities (id, user_uuid, data) VALUES ($1, $2, $3)`,
+      `INSERT INTO runs (id, user_uuid, data) VALUES ($1, $2, $3)`,
       [stableId, userId, data]
     );
   } catch (e: any) {

@@ -13,7 +13,7 @@ const today = '2026-05-26';
 const userId = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 const row = (await pool.query(
-  `SELECT id, data FROM strava_activities
+  `SELECT id, data FROM runs
     WHERE (user_uuid = $1 OR user_uuid IS NULL)
       AND data->>'date' = $2
       AND NOT (data ? 'mergedIntoId')
@@ -140,7 +140,7 @@ const patch = {
 };
 
 await pool.query(
-  `UPDATE strava_activities SET data = $1 WHERE id = $2`,
+  `UPDATE runs SET data = $1 WHERE id = $2`,
   [patch, row.id]
 );
 console.log('Update OK.');

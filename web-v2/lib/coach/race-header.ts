@@ -206,7 +206,7 @@ async function loadCurrentVdot(userId: string, today: string, asOfDate?: string)
   const candidateRuns = earliestDate
     ? (await pool
         .query(
-          `SELECT data FROM strava_activities
+          `SELECT data FROM runs
             WHERE user_uuid = $1
               AND NOT (data ? 'mergedIntoId')
               AND (data->>'distanceMi')::numeric > 2.5
@@ -266,7 +266,7 @@ async function loadCurrentVdot(userId: string, today: string, asOfDate?: string)
        (sa.data->>'distanceMi')::numeric AS distance_mi,
        (sa.data->>'movingTimeS')::numeric AS finish_seconds,
        (sa.data->>'avgHr')::numeric AS avg_hr
-       FROM strava_activities sa
+       FROM runs sa
       WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2

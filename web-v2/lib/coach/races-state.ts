@@ -80,7 +80,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
   if (past.length > 0) {
     const earliestPast = past[past.length - 1].date;
     const candidates = (await pool.query(
-      `SELECT data FROM strava_activities
+      `SELECT data FROM runs
         WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'distanceMi')::numeric > 2.5

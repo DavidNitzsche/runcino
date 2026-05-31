@@ -97,7 +97,7 @@ function distanceMiOf(meta: any): number {
 async function recentWeeklyMileage(userId: string): Promise<number> {
   const r = await pool.query(
     `SELECT COALESCE(SUM((data->>'distanceMi')::numeric), 0) AS mi
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text

@@ -34,13 +34,13 @@ async function main() {
   // 1. Total canonical rows
   const totalRow = await pool.query(
     `SELECT COUNT(*) AS canonical
-       FROM strava_activities
+       FROM runs
       WHERE absorbed_into_canonical_at IS NULL
         AND (data ? 'mergedIntoId') = false`,
   );
   const losersRow = await pool.query(
     `SELECT COUNT(*) AS losers
-       FROM strava_activities
+       FROM runs
       WHERE data ? 'mergedIntoId'`,
   );
   console.log(`Canonical rows:  ${totalRow.rows[0].canonical}`);
@@ -49,7 +49,7 @@ async function main() {
   // 2. Losers all stamped absorbed
   const stranded = await pool.query(
     `SELECT COUNT(*) AS n
-       FROM strava_activities
+       FROM runs
       WHERE data ? 'mergedIntoId'
         AND absorbed_into_canonical_at IS NULL`,
   );
@@ -63,7 +63,7 @@ async function main() {
   // 3. Every canonical has non-empty provenance
   const emptyProv = await pool.query(
     `SELECT COUNT(*) AS n
-       FROM strava_activities
+       FROM runs
       WHERE absorbed_into_canonical_at IS NULL
         AND (data ? 'mergedIntoId') = false
         AND (provenance = '{}'::jsonb OR provenance IS NULL)`,
@@ -79,7 +79,7 @@ async function main() {
   console.log('\nProvenance source breakdown (top values across all canonical rows):');
   const provBreakdown = await pool.query(`
     SELECT v AS source, COUNT(*) AS n
-      FROM strava_activities, jsonb_each_text(provenance) AS p(k, v)
+      FROM runs, jsonb_each_text(provenance) AS p(k, v)
      WHERE absorbed_into_canonical_at IS NULL
        AND (data ? 'mergedIntoId') = false
      GROUP BY v
@@ -102,7 +102,7 @@ async function main() {
              ) AS started,
              COALESCE((data->>'distanceMi')::numeric, (data->>'distance_mi')::numeric, 0) AS dist_mi,
              data->>'source' AS source
-        FROM strava_activities
+        FROM runs
        WHERE absorbed_into_canonical_at IS NULL
          AND (data ? 'mergedIntoId') = false
          AND (data ? 'date' OR data ? 'startLocal' OR data ? 'startDate')
@@ -140,7 +140,7 @@ async function main() {
       COUNT(*) FILTER (WHERE data ? 'tempF' OR data ? 'weather') AS has_weather,
       COUNT(*) FILTER (WHERE shoe_id IS NOT NULL) AS has_shoe,
       COUNT(*) AS total
-      FROM strava_activities
+      FROM runs
      WHERE absorbed_into_canonical_at IS NULL
        AND (data ? 'mergedIntoId') = false`);
   const c = coverage.rows[0];

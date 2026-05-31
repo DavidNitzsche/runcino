@@ -28,7 +28,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // LATEST ACTIVITY (most recent strava run ≤ today)
   const recent = await pool.query(
     `SELECT data
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) <= $2
@@ -55,7 +55,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // RECENT RUNS (last 7 days, deduped, all sources) — fed into coach
   // prompt to prevent hallucination about runs that didn't happen.
   const recentRows = (await pool.query(
-    `SELECT data FROM strava_activities
+    `SELECT data FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric > 0.5

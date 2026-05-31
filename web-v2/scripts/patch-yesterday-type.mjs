@@ -13,7 +13,7 @@ const pool = new pg.Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnau
 const userId = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 const row = (await pool.query(
-  `SELECT id, data FROM strava_activities
+  `SELECT id, data FROM runs
     WHERE (user_uuid = $1 OR user_uuid IS NULL)
       AND data->>'date' = '2026-05-26'
       AND NOT (data ? 'mergedIntoId')
@@ -37,7 +37,7 @@ const patched = {
   typeLockedAt: new Date().toISOString(),
 };
 
-await pool.query(`UPDATE strava_activities SET data = $1 WHERE id = $2`, [patched, row.id]);
+await pool.query(`UPDATE runs SET data = $1 WHERE id = $2`, [patched, row.id]);
 console.log(`Patched 2026-05-26 row: type=${patched.type}, name=${patched.name}`);
 
 const cb = await pool.query(`DELETE FROM briefings WHERE user_id::text = $1`, [userId]);

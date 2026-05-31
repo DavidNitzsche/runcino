@@ -63,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // First try the direct match (real Strava activityId in data.id /
       // data.activityId, or the table's row id).
       let updated = await pool.query(
-        `UPDATE strava_activities
+        `UPDATE runs
             SET shoe_id = $1::int
           WHERE user_uuid = $2
             AND (data->>'id' = $3 OR data->>'activityId' = $3 OR id::text = $3)
@@ -81,7 +81,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (m) {
           const [, date, mi] = m;
           updated = await pool.query(
-            `UPDATE strava_activities
+            `UPDATE runs
                 SET shoe_id = $1::int
               WHERE user_uuid = $2
                 AND NOT (data ? 'mergedIntoId')
@@ -103,7 +103,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const dateMatch = id.match(/(\d{4}-\d{2}-\d{2})$/);
         if (dateMatch) {
           updated = await pool.query(
-            `UPDATE strava_activities
+            `UPDATE runs
                 SET shoe_id = $1::int
               WHERE user_uuid = $2
                 AND NOT (data ? 'mergedIntoId')
@@ -141,7 +141,7 @@ async function recomputeShoeMileage(userId: string): Promise<void> {
         SET mileage = COALESCE(t.total_mi, 0)
        FROM (
          SELECT shoe_id, SUM((data->>'distanceMi')::numeric) AS total_mi
-           FROM strava_activities
+           FROM runs
           WHERE user_uuid = $1
             AND shoe_id IS NOT NULL
             AND NOT (data ? 'mergedIntoId')

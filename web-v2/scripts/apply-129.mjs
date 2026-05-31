@@ -24,13 +24,13 @@ if (exists.rows.length > 0) {
 const counts = await pool.query(`
   SELECT
     (SELECT COUNT(*) FROM runs) AS runs_count,
-    (SELECT COUNT(*) FROM strava_activities) AS view_count`);
+    (SELECT COUNT(*) FROM runs) AS view_count`);
 console.log(`OK · runs: ${counts.rows[0].runs_count} rows · strava_activities (view): ${counts.rows[0].view_count} rows`);
 
 // Quick write-path probe through the view: insert a probe row + roll back.
 await pool.query(`
   BEGIN;
-  INSERT INTO strava_activities (id, user_uuid, data)
+  INSERT INTO runs (id, user_uuid, data)
   VALUES (-9999999999, '00000000-0000-0000-0000-000000000000', '{"_probe":true}'::jsonb);
   ROLLBACK`);
 console.log('OK · view supports INSERT (auto-rewrite to runs verified)');

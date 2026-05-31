@@ -51,14 +51,14 @@ try {
   `);
   console.log(`strava_activities weather-ish columns: ${wxCols.map(r => r.column_name).join(', ') || '(none)'}`);
 
-  const stravaCount = await one(`SELECT COUNT(*)::int n FROM strava_activities WHERE user_uuid = $1`, [DAVID]);
+  const stravaCount = await one(`SELECT COUNT(*)::int n FROM runs WHERE user_uuid = $1`, [DAVID]);
   console.log(`strava_activities: ${stravaCount.n}`);
 
   // Weather coverage — pull most common weather-ish column
   for (const col of wxCols.map(r => r.column_name)) {
     try {
       const cov = await one(
-        `SELECT COUNT(*)::int n FROM strava_activities WHERE user_uuid = $1 AND ${col} IS NOT NULL`,
+        `SELECT COUNT(*)::int n FROM runs WHERE user_uuid = $1 AND ${col} IS NOT NULL`,
         [DAVID]
       );
       console.log(`  strava_activities.${col} non-null: ${cov.n}`);
@@ -239,7 +239,7 @@ try {
   box('User population');
   const allUsers = await one(`SELECT COUNT(*)::int n FROM users`);
   const usersWithPlans = await one(`SELECT COUNT(DISTINCT user_uuid)::int n FROM training_plans WHERE user_uuid IS NOT NULL`);
-  const usersWithStrava = await one(`SELECT COUNT(DISTINCT user_uuid)::int n FROM strava_activities WHERE user_uuid IS NOT NULL`);
+  const usersWithStrava = await one(`SELECT COUNT(DISTINCT user_uuid)::int n FROM runs WHERE user_uuid IS NOT NULL`);
   console.log(`users total: ${allUsers.n}`);
   console.log(`distinct user_uuid in training_plans: ${usersWithPlans.n}`);
   console.log(`distinct user_uuid in strava_activities: ${usersWithStrava.n}`);

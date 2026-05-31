@@ -20,7 +20,7 @@ console.log(JSON.stringify(plan, null, 2));
 
 console.log('\n═══ STORED RUN ROW ═══');
 const run = (await pool.query(
-  `SELECT data FROM strava_activities
+  `SELECT data FROM runs
     WHERE (user_uuid = $1 OR user_uuid IS NULL)
       AND data->>'date' = $2
       AND NOT (data ? 'mergedIntoId')

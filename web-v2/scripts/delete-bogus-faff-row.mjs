@@ -8,7 +8,7 @@ const pool = new pg.Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnau
 
 const target = await pool.query(
   `SELECT id, data->>'date' AS date, data->>'durationSec' AS dur, data->>'distanceMi' AS dist, data->>'name' AS name
-     FROM strava_activities
+     FROM runs
     WHERE data->>'date' = '2026-05-26'
       AND data->>'source' = 'watch'
       AND (data->>'distanceMi')::numeric < 0.5
@@ -28,7 +28,7 @@ if (target.rows.length > 1) {
 }
 const id = target.rows[0].id;
 console.log(`\nDeleting id=${id} …`);
-const del = await pool.query(`DELETE FROM strava_activities WHERE id = $1`, [id]);
+const del = await pool.query(`DELETE FROM runs WHERE id = $1`, [id]);
 console.log(`Deleted ${del.rowCount} row(s).`);
 
 // Also bust briefing cache for David so /today re-generates next open.

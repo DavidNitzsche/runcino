@@ -132,7 +132,7 @@ async function findCanonicalRow({ userUuid, startISO: startIso, distMi }) {
   if (!startIso) return null;
   const r = await pool.query(
     `SELECT id::text AS id, data, provenance, shoe_id
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND absorbed_into_canonical_at IS NULL
         AND NOT (data ? 'mergedIntoId')
@@ -237,7 +237,7 @@ async function enhanceCanonical(canonical, stravaPayload, incomingSource = 'stra
     const shoeId = await tryShoeFromGear({ userUuid: DAVID, gear: stravaPayload.gear });
     if (shoeId != null) {
       await pool.query(
-        `UPDATE strava_activities SET shoe_id = $1 WHERE id = $2::BIGINT AND shoe_id IS NULL`,
+        `UPDATE runs SET shoe_id = $1 WHERE id = $2::BIGINT AND shoe_id IS NULL`,
         [shoeId, canonical.id],
       );
       shoeAttributed = shoeId;
@@ -268,7 +268,7 @@ async function enhanceCanonical(canonical, stravaPayload, incomingSource = 'stra
 
   if (fieldsAdded.some(f => f !== 'shoe_id' && f !== 'post_run_rpe')) {
     await pool.query(
-      `UPDATE strava_activities SET data = $1::jsonb, provenance = $2::jsonb
+      `UPDATE runs SET data = $1::jsonb, provenance = $2::jsonb
         WHERE id = $3::BIGINT`,
       [JSON.stringify(updatedData), JSON.stringify(updatedProv), canonical.id],
     );
@@ -334,7 +334,7 @@ async function main() {
         shoeId = await tryShoeFromGear({ userUuid: DAVID, gear: payload.gear });
       }
       await pool.query(
-        `INSERT INTO strava_activities (id, user_uuid, data, provenance, shoe_id, fetched_at)
+        `INSERT INTO runs (id, user_uuid, data, provenance, shoe_id, fetched_at)
          VALUES ($1::BIGINT, $2, $3::jsonb, $4::jsonb, $5, NOW())
          ON CONFLICT (id) DO NOTHING`,
         [newId, DAVID, JSON.stringify(payload), JSON.stringify(provenance), shoeId],

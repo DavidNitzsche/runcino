@@ -26,7 +26,7 @@ try {
     { name: 'profile row', sql: `SELECT user_uuid, height_cm, lthr, experience_level FROM profile WHERE user_uuid=$1` },
     { name: 'user_prefs row', sql: `SELECT user_uuid, long_run_dow FROM user_prefs WHERE user_uuid=$1` },
     { name: 'training_plans active', sql: `SELECT id, mode FROM training_plans WHERE user_uuid=$1 AND archived_iso IS NULL` },
-    { name: 'strava_activities', sql: `SELECT COUNT(*)::int AS n FROM strava_activities WHERE user_uuid=$1` },
+    { name: 'strava_activities', sql: `SELECT COUNT(*)::int AS n FROM runs WHERE user_uuid=$1` },
     { name: 'health_samples', sql: `SELECT COUNT(*)::int AS n FROM health_samples WHERE user_id=$1` },
     { name: 'races', sql: `SELECT slug FROM races WHERE user_uuid=$1` },
     { name: 'connector_tokens', sql: `SELECT provider FROM connector_tokens WHERE user_id=$1` },

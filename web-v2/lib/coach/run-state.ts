@@ -176,7 +176,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // run id, or a synthesized "YYYY-MM-DD-mi.mi" id (state-loader fallback
   // when the activity has no first-party id, e.g. watch-synced runs).
   let row = (await pool.query(
-    `SELECT data, shoe_id FROM strava_activities
+    `SELECT data, shoe_id FROM runs
       WHERE user_uuid = $1
         AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
@@ -189,7 +189,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     if (m) {
       const [, date, mi] = m;
       const fb = (await pool.query(
-        `SELECT data, shoe_id FROM strava_activities
+        `SELECT data, shoe_id FROM runs
           WHERE user_uuid = $1
             AND NOT (data ? 'mergedIntoId')
             AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $2

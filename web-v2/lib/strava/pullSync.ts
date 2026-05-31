@@ -200,7 +200,7 @@ async function findCanonicalRow(args: {
     shoe_id: number | null;
   }>(
     `SELECT id::text AS id, data, provenance, shoe_id
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND absorbed_into_canonical_at IS NULL
         AND (data ? 'mergedIntoId') = false
@@ -344,7 +344,7 @@ export async function pullSyncOneUser(args: {
         }
         if (added > 0) {
           await pool.query(
-            `UPDATE strava_activities SET data = $1::jsonb, provenance = $2::jsonb
+            `UPDATE runs SET data = $1::jsonb, provenance = $2::jsonb
               WHERE id = $3::BIGINT`,
             [JSON.stringify(updatedData), JSON.stringify(updatedProv), match.id],
           );
@@ -355,7 +355,7 @@ export async function pullSyncOneUser(args: {
           const shoeId = await tryShoeFromGear({ userUuid, gear: payload.gear });
           if (shoeId != null) {
             await pool.query(
-              `UPDATE strava_activities SET shoe_id = $1, shoe_auto_assigned_at = NOW()
+              `UPDATE runs SET shoe_id = $1, shoe_auto_assigned_at = NOW()
                 WHERE id = $2::BIGINT AND shoe_id IS NULL`,
               [shoeId, match.id],
             );
@@ -393,7 +393,7 @@ export async function pullSyncOneUser(args: {
         let shoeId: number | null = null;
         if (payload.gear) shoeId = await tryShoeFromGear({ userUuid, gear: payload.gear });
         await pool.query(
-          `INSERT INTO strava_activities (id, user_uuid, data, provenance, shoe_id, fetched_at)
+          `INSERT INTO runs (id, user_uuid, data, provenance, shoe_id, fetched_at)
            VALUES ($1::BIGINT, $2, $3::jsonb, $4::jsonb, $5, NOW())
            ON CONFLICT (id) DO NOTHING`,
           [String(act.id), userUuid, JSON.stringify(payload), JSON.stringify(provenance), shoeId],

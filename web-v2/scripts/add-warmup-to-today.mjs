@@ -23,7 +23,7 @@ const WARMUP_MI  = 1.7;     // 15 min @ ~8:50/mi
 const WARMUP_SEC = 15 * 60; // 900s
 
 const rows = (await pool.query(
-  `SELECT id, data FROM strava_activities
+  `SELECT id, data FROM runs
     WHERE user_uuid = $1
       AND data->>'date' = '2026-05-26'
       AND (data->>'distanceMi')::numeric > 1.0
@@ -91,7 +91,7 @@ console.log(`  distance ${oldDist}mi → ${newDist}mi (+${WARMUP_MI})`);
 console.log(`  duration ${oldDur}s → ${newDur}s (+${WARMUP_SEC})`);
 console.log(`  pace was ${row.data.avgPaceMinPerMi ?? '?'} → ${newAvgPace}`);
 
-await pool.query(`UPDATE strava_activities SET data = $1 WHERE id = $2`, [patch, row.id]);
+await pool.query(`UPDATE runs SET data = $1 WHERE id = $2`, [patch, row.id]);
 console.log('Update OK.');
 
 const cb = await pool.query(`DELETE FROM briefings WHERE user_id::text = $1`, [userId]);

@@ -218,7 +218,7 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
   if (aspectType === 'delete') {
     try {
       await pool.query(
-        `DELETE FROM strava_activities
+        `DELETE FROM runs
           WHERE user_uuid = $1
             AND id = $2::bigint`,
         [userId, String(objectId)]
@@ -367,12 +367,12 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
   // everywhere else in this codebase. Both create and update collapse
   // to the same upsert — dedupe handled.
   await pool.query(
-    `DELETE FROM strava_activities
+    `DELETE FROM runs
       WHERE id = $1::bigint`,
     [String(id)]
   );
   await pool.query(
-    `INSERT INTO strava_activities (id, user_uuid, data)
+    `INSERT INTO runs (id, user_uuid, data)
      VALUES ($1::bigint, $2, $3)`,
     [String(id), userId, data]
   );

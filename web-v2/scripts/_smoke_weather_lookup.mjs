@@ -38,7 +38,7 @@ const row = (await pool.query(`
          data->'startLatLng' AS sll,
          data->'weather'->>'temp_f' AS w_temp,
          data->>'tempF' AS tempF
-   FROM strava_activities
+   FROM runs
   WHERE user_uuid = $1 AND data ? 'startLatLng'
   ORDER BY (data->>'date') DESC LIMIT 1
 `, [DAVID])).rows[0];
@@ -57,7 +57,7 @@ console.log(`baselineTempF(${lat}, ${lon}, '${today}', 14) → ${b}`);
 const home = (await pool.query(`
   SELECT (data->'startLatLng'->>0)::text AS lat,
          (data->'startLatLng'->>1)::text AS lng
-   FROM strava_activities
+   FROM runs
   WHERE user_uuid = $1 AND data ? 'startLatLng'
   ORDER BY (data->>'date') DESC LIMIT 1
 `, [DAVID])).rows[0];

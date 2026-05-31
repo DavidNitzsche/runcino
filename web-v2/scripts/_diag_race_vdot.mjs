@@ -17,7 +17,7 @@ try {
 
   console.log('\n=== Strava activities near the race dates (for match-fallback) ===');
   for (const r of recent) {
-    const around = await q(`SELECT id, data->>'date' AS date, data->>'name' AS name, (data->>'distanceMi')::numeric AS mi, (data->>'movingTimeS')::numeric AS sec FROM strava_activities WHERE (user_uuid=$1 OR user_uuid IS NULL) AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) BETWEEN ($2::date - 1)::text AND ($2::date + 1)::text ORDER BY data->>'date'`, [DAVID, r.date]);
+    const around = await q(`SELECT id, data->>'date' AS date, data->>'name' AS name, (data->>'distanceMi')::numeric AS mi, (data->>'movingTimeS')::numeric AS sec FROM runs WHERE (user_uuid=$1 OR user_uuid IS NULL) AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) BETWEEN ($2::date - 1)::text AND ($2::date + 1)::text ORDER BY data->>'date'`, [DAVID, r.date]);
     console.log(`${r.slug} (${r.date}): ${around.length} candidate runs`);
     for (const a of around.slice(0,3)) console.log(`  ${a.date} · ${a.name} · ${a.mi}mi · ${a.sec}s`);
   }

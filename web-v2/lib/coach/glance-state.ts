@@ -185,7 +185,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     ? (await pool.query(
         `SELECT id::text AS row_id, data->>'id' AS strava_id,
                 COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day
-           FROM strava_activities
+           FROM runs
           WHERE id::text = ANY($1::text[])`,
         [allCanonicalIds],
       )).rows
@@ -290,7 +290,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
                           AND  data->>'date' <  ($1::date + interval '1 day')::text
                           THEN (data->>'distanceMi')::numeric ELSE 0 END), 0)::numeric AS chronic_sum,
         COUNT(*) FILTER (WHERE data->>'date' >= ($1::date - interval '28 days')::text)::int AS runs28
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $2
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'distanceMi')::numeric > 0.3`,

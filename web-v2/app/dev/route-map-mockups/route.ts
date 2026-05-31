@@ -67,7 +67,7 @@ async function loadRun(userId: string, activityId: string | null): Promise<RunSu
             (data->>'durationSec')::numeric AS dur,
             COALESCE(data->>'summaryPolyline', data->>'routePolyline') AS poly,
             data->'splits' AS splits
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         ${where}
       ${order}`,

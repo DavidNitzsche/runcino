@@ -5,6 +5,6 @@ const pool = new pg.Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnau
 const sql = fs.readFileSync('db/migrations/128_run_provenance.sql','utf8');
 console.log('Applying migration 128 (run provenance)…');
 await pool.query(sql);
-const c = await pool.query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE provenance != '{}'::jsonb) AS with_provenance FROM strava_activities");
+const c = await pool.query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE provenance != '{}'::jsonb) AS with_provenance FROM runs");
 console.log(`OK · ${c.rows[0].with_provenance}/${c.rows[0].total} rows have provenance backfilled`);
 await pool.end();

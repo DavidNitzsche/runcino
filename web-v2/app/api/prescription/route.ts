@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
                 (data->>'startLng')::text AS start_lng,
                 (data->'startLatLng'->>0)::text AS sll_lat,
                 (data->'startLatLng'->>1)::text AS sll_lng
-           FROM strava_activities
+           FROM runs
           WHERE user_uuid = $1
             AND NOT (data ? 'mergedIntoId')
             AND (data ? 'startLat' OR data ? 'startLatLng')

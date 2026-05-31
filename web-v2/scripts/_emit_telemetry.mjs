@@ -98,7 +98,7 @@ async function sectionSystemHealth() {
                  OR (data ? 'startLat' AND data ? 'startLng')
             ) AS has_gps,
             COUNT(*) AS total
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1`,
     [DAVID],
   )).rows[0];
@@ -143,7 +143,7 @@ async function sectionRunIntegrity() {
          data ? 'hrSamples'                                     AS has_hr_samples,
          weather_enriched_at                                    AS weather_attempt,
          shoe_id IS NOT NULL                                    AS has_shoe
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'date')::date >= CURRENT_DATE - 30
@@ -337,7 +337,7 @@ async function sectionWhatsMissing() {
             COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date_iso,
             sa.data->>'name' AS name,
             (sa.data->>'distanceMi')::numeric AS distance_mi
-       FROM strava_activities sa
+       FROM runs sa
       WHERE sa.user_uuid = $1
         AND NOT (sa.data ? 'mergedIntoId')
         AND (sa.data->>'date')::date >= CURRENT_DATE - 14
@@ -355,7 +355,7 @@ async function sectionWhatsMissing() {
             COALESCE(data->>'date', LEFT(data->>'startLocal',10)) AS date_iso,
             data->>'name' AS name,
             weather_enriched_at IS NOT NULL AS attempted
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'date')::date >= CURRENT_DATE - 14
@@ -379,7 +379,7 @@ async function sectionWhatsMissing() {
         AND pw.is_quality
         AND pw.date_iso::date BETWEEN CURRENT_DATE - 14 AND CURRENT_DATE - 1
         AND NOT EXISTS (
-          SELECT 1 FROM strava_activities sa
+          SELECT 1 FROM runs sa
            WHERE sa.user_uuid = $1
              AND NOT (sa.data ? 'mergedIntoId')
              AND (sa.data->>'date')::date BETWEEN pw.date_iso::date - 1 AND pw.date_iso::date + 1

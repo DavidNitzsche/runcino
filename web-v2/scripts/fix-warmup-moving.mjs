@@ -6,7 +6,7 @@ const pool = new pg.Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnau
 const userId = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
 const r = (await pool.query(
-  `SELECT id, data FROM strava_activities
+  `SELECT id, data FROM runs
     WHERE user_uuid = $1
       AND data->>'date' = '2026-05-26'
       AND (data->>'warmupAddedManually')::boolean = true
@@ -30,7 +30,7 @@ const patch = {
   durationSec: dur,
   movingSec: mov,
 };
-await pool.query(`UPDATE strava_activities SET data = $1 WHERE id = $2`, [patch, r.id]);
+await pool.query(`UPDATE runs SET data = $1 WHERE id = $2`, [patch, r.id]);
 console.log(`Patched timeMoving=${patch.timeMoving} movingTimeS=${mov}`);
 
 const cb = await pool.query(`DELETE FROM briefings WHERE user_id::text = $1`, [userId]);

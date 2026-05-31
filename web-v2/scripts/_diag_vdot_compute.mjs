@@ -81,7 +81,7 @@ try {
 
     // Strava match
     const candidateRuns = (await pool.query(
-      `SELECT data FROM strava_activities
+      `SELECT data FROM runs
         WHERE (user_uuid=$1 OR user_uuid IS NULL)
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'distanceMi')::numeric > 2.5

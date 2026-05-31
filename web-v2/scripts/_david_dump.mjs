@@ -36,8 +36,8 @@ async function main() {
 
   out.shoes = await q(`SELECT id, brand, model, color, run_types, mileage, mileage_cap, retired, preferred FROM shoes WHERE user_uuid=$1 ORDER BY retired, id`, [DAVID]);
 
-  out.recent_strava = await q(`SELECT id, data->>'date' AS date, data->>'name' AS name, (data->>'distanceMi')::numeric AS mi, (data->>'movingTimeS')::numeric AS sec FROM strava_activities WHERE user_uuid=$1 ORDER BY (data->>'date') DESC LIMIT 5`, [DAVID]);
-  out.strava_total = (await q(`SELECT COUNT(*)::int AS c FROM strava_activities WHERE user_uuid=$1`, [DAVID]))[0].c;
+  out.recent_strava = await q(`SELECT id, data->>'date' AS date, data->>'name' AS name, (data->>'distanceMi')::numeric AS mi, (data->>'movingTimeS')::numeric AS sec FROM runs WHERE user_uuid=$1 ORDER BY (data->>'date') DESC LIMIT 5`, [DAVID]);
+  out.strava_total = (await q(`SELECT COUNT(*)::int AS c FROM runs WHERE user_uuid=$1`, [DAVID]))[0].c;
 
   out.recent_health_samples = await q(`SELECT sample_type, sample_date, value, source FROM health_samples WHERE user_id=$1 ORDER BY sample_date DESC, sample_type LIMIT 20`, [DAVID]);
   out.health_sample_types = await q(`SELECT sample_type, COUNT(*)::int AS n, MIN(sample_date) AS first, MAX(sample_date) AS last FROM health_samples WHERE user_id=$1 GROUP BY sample_type ORDER BY n DESC`, [DAVID]);

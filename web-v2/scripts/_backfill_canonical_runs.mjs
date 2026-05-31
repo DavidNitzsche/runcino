@@ -118,7 +118,7 @@ async function processOneAbsorbed(absorbed, canonical) {
     });
     if (shoeId != null) {
       await pool.query(
-        `UPDATE strava_activities SET shoe_id = $1 WHERE id = $2::BIGINT AND shoe_id IS NULL`,
+        `UPDATE runs SET shoe_id = $1 WHERE id = $2::BIGINT AND shoe_id IS NULL`,
         [shoeId, canonical.id],
       );
       shoeAttributed = shoeId;
@@ -149,7 +149,7 @@ async function processOneAbsorbed(absorbed, canonical) {
   // Commit data + provenance update
   if (fieldsAdded.some(f => f !== 'shoe_id' && f !== 'post_run_rpe')) {
     await pool.query(
-      `UPDATE strava_activities SET data = $1::jsonb, provenance = $2::jsonb
+      `UPDATE runs SET data = $1::jsonb, provenance = $2::jsonb
         WHERE id = $3::BIGINT`,
       [JSON.stringify(updatedData), JSON.stringify(updatedProv), canonical.id],
     );
@@ -157,7 +157,7 @@ async function processOneAbsorbed(absorbed, canonical) {
 
   // Stamp absorbed
   await pool.query(
-    `UPDATE strava_activities SET absorbed_into_canonical_at = NOW()
+    `UPDATE runs SET absorbed_into_canonical_at = NOW()
       WHERE id = $1::BIGINT AND absorbed_into_canonical_at IS NULL`,
     [absorbed.id],
   );
@@ -171,7 +171,7 @@ async function main() {
   // Pull all not-yet-absorbed mergedIntoId rows
   const losers = (await pool.query(
     `SELECT id::text AS id, user_uuid, data
-       FROM strava_activities
+       FROM runs
       WHERE data ? 'mergedIntoId'
         AND absorbed_into_canonical_at IS NULL`,
   )).rows;
@@ -190,7 +190,7 @@ async function main() {
 
     const canonical = (await pool.query(
       `SELECT id::text AS id, user_uuid, data, provenance, shoe_id
-         FROM strava_activities
+         FROM runs
         WHERE id = $1::BIGINT`,
       [canonicalId],
     )).rows[0];

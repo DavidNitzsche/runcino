@@ -112,7 +112,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
                 NULLIF(data->>'movingTimeS','')::numeric AS moving_s,
                 NULLIF(data->>'avgHr','')::numeric AS avg_hr,
                 data->'splits' AS splits
-           FROM strava_activities
+           FROM runs
           WHERE user_uuid = $1 AND NOT (data ? 'mergedIntoId')
             AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text`,
         [userId, planRangeStart, planRangeEnd]
@@ -207,7 +207,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   const weekRuns = await pool.query(
     `SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day,
             SUM((data->>'distanceMi')::numeric) AS mi
-       FROM strava_activities
+       FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))

@@ -61,7 +61,7 @@ async function loadState() {
   )).rows[0] ?? null;
 
   const r = (await pool.query(
-    `SELECT data FROM strava_activities
+    `SELECT data FROM runs
       WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) <= $2::text
       ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC LIMIT 1`,
@@ -130,7 +130,7 @@ async function loadState() {
   const cadenceBaseline = cad?.avg ? Math.round(Number(cad.avg)) : null;
 
   const weekRuns = await pool.query(
-    `SELECT SUM((data->>'distanceMi')::numeric) AS mi FROM strava_activities
+    `SELECT SUM((data->>'distanceMi')::numeric) AS mi FROM runs
       WHERE (user_uuid = $1 OR user_uuid IS NULL) AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))
             BETWEEN to_char(date_trunc('week', $2::date), 'YYYY-MM-DD') AND $2::text`,

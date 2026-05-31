@@ -53,7 +53,7 @@ async function main() {
   // ── 2. Pre-state
   const beforeStrava = await pool.query(
     `SELECT id, data->>'name' AS name, data->>'date' AS date, data->>'distanceMi' AS miles
-       FROM strava_activities WHERE user_uuid IS NULL`,
+       FROM runs WHERE user_uuid IS NULL`,
   );
   const beforeShoes = await pool.query(
     `SELECT id, brand, model, mileage::float AS miles, preferred
@@ -83,12 +83,12 @@ async function main() {
   // mergedIntoId check is the strongest evidence link — if that target
   // moved or was deleted, we'd want a human to look before stamping.
   const stravaUpdate = await pool.query(
-    `UPDATE strava_activities sa
+    `UPDATE runs sa
         SET user_uuid = $1::uuid
       WHERE sa.user_uuid IS NULL
         AND sa.id = 18589376553
         AND EXISTS (
-          SELECT 1 FROM strava_activities target
+          SELECT 1 FROM runs target
            WHERE target.id = (sa.data->>'mergedIntoId')::bigint
              AND target.user_uuid = $1::uuid
         )
@@ -116,7 +116,7 @@ async function main() {
 
   // ── 5. Post-state verification
   const afterStrava = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM strava_activities WHERE user_uuid IS NULL`,
+    `SELECT COUNT(*)::int AS n FROM runs WHERE user_uuid IS NULL`,
   );
   const afterShoes = await pool.query(
     `SELECT COUNT(*)::int AS n FROM shoes WHERE user_uuid IS NULL`,

@@ -125,7 +125,7 @@ async function main() {
   // (e.g. HK with home-fallback enrichment) — skip those.
   const enriched = (await pool.query(`
     SELECT id, data
-      FROM strava_activities
+      FROM runs
      WHERE data ? 'weather'
        AND (data ? 'startLatLng' OR data ? 'startLat' OR data ? 'start_lat')
   `)).rows;
@@ -146,7 +146,7 @@ async function main() {
   // write back to strava_activities AND mirror into cache.
   const needFetch = (await pool.query(`
     SELECT id, user_uuid, data
-      FROM strava_activities
+      FROM runs
      WHERE NOT (data ? 'weather')
        AND (data ? 'startLatLng' OR data ? 'startLat' OR data ? 'start_lat')
        AND (data ? 'date' OR data ? 'startLocal')
@@ -170,10 +170,10 @@ async function main() {
     )).rows[0];
     if (existing?.temperature_f != null) {
       // Still mark activity attempted so the cron leaves it alone.
-      await pool.query(`UPDATE strava_activities SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`, [String(row.id)]);
+      await pool.query(`UPDATE runs SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`, [String(row.id)]);
       // And write tempF back on the activity for the post-run lookup.
       await pool.query(
-        `UPDATE strava_activities
+        `UPDATE runs
             SET data = jsonb_set(data, '{tempF}', to_jsonb($1::numeric))
           WHERE id = $2::BIGINT`,
         [Number(existing.temperature_f), String(row.id)],
@@ -184,13 +184,13 @@ async function main() {
 
     const w = await fetchRunWeather(coords.lat, coords.lng, startISO);
     if (!w) {
-      await pool.query(`UPDATE strava_activities SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`, [String(row.id)]);
+      await pool.query(`UPDATE runs SET weather_enriched_at = NOW() WHERE id = $1::BIGINT`, [String(row.id)]);
       pass2Skip++;
       continue;
     }
     pass2Fetch++;
     await pool.query(
-      `UPDATE strava_activities
+      `UPDATE runs
           SET data = jsonb_set(jsonb_set(data, '{weather}', $1::jsonb), '{tempF}', to_jsonb($2::numeric)),
               weather_enriched_at = NOW()
         WHERE id = $3::BIGINT`,

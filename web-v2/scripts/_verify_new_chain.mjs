@@ -116,7 +116,7 @@ async function loadCurrentVdot(pool, userId, today, asOfDate) {
        (sa.data->>'distanceMi')::numeric AS distance_mi,
        (sa.data->>'movingTimeS')::numeric AS finish_seconds,
        (sa.data->>'avgHr')::numeric AS avg_hr
-       FROM strava_activities sa
+       FROM runs sa
       WHERE (sa.user_uuid = $1 OR sa.user_uuid IS NULL)
         AND NOT (sa.data ? 'mergedIntoId')
         AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2

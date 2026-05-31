@@ -20,7 +20,7 @@ const r = await pool.query(`
          data->>'type' AS type,
          data->>'source' AS data_source,
          jsonb_object_keys(data) AS k
-    FROM strava_activities
+    FROM runs
    WHERE (data->>'date' = '2026-05-26' OR data->>'startLocal' LIKE '2026-05-26%' OR data->>'startLocal' LIKE '2026-05-25%')
    ORDER BY data->>'startLocal' DESC NULLS LAST`);
 const byId = new Map();

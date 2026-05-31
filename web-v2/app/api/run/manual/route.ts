@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     const stableId = (-n).toString();
 
     await pool.query(
-      `INSERT INTO strava_activities (id, user_uuid, data)
+      `INSERT INTO runs (id, user_uuid, data)
        VALUES ($1::bigint, $2, $3)`,
       [stableId, userId, data]
     );

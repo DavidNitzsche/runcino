@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
       ? (await pool.query(
           `SELECT id::text AS row_id, data->>'id' AS strava_id,
                   COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day
-             FROM strava_activities
+             FROM runs
             WHERE id::text = ANY($1::text[])`,
           [allCanonicalIds],
         )).rows
