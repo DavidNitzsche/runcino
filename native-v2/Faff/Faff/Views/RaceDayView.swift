@@ -154,7 +154,49 @@ struct RaceDayView: View {
             }
             .padding(.top, 8)
 
-            if goalTime != "—" {
+            // Past race · swap goal hero for the actual finish time.
+            // PR-marked when pb=true. Tapping the row pushes the matched
+            // Strava run via the run-detail destination so the runner can
+            // dig into splits / HR / cadence on race day.
+            if let finish = detail?.race.finishTime, detail?.race.is_past == true {
+                let isPB = detail?.race.pb == true
+                let pbHex: UInt32 = 0xF5C518
+                VStack(alignment: .leading, spacing: 9) {
+                    Text(finish)
+                        .font(.display(58, weight: .bold))
+                        .tracking(-2.5)
+                        .foregroundStyle(isPB ? Color(hex: pbHex) : Theme.txt)
+                        .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
+                    HStack(spacing: 8) {
+                        SpecLabel(text: "FINISHED", size: 11, tracking: 2,
+                                  color: Theme.txt.opacity(0.78))
+                        if isPB {
+                            Text("PERSONAL BEST")
+                                .font(.label(10)).tracking(1.5)
+                                .foregroundStyle(Color(hex: pbHex))
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(Color(hex: pbHex).opacity(0.18),
+                                            in: RoundedRectangle(cornerRadius: 5))
+                                .overlay(RoundedRectangle(cornerRadius: 5)
+                                    .stroke(Color(hex: pbHex).opacity(0.45), lineWidth: 1))
+                        }
+                    }
+                    if let mr = detail?.race.matchedRun,
+                       let aid = mr.activity_id, !aid.isEmpty {
+                        NavigationLink(value: FaffRoute.runDetail(id: aid)) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(matchedRunMetaLine(mr))
+                                    .font(.display(11, weight: .semibold))
+                            }
+                            .foregroundStyle(Theme.txt.opacity(0.82))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 20)
+            } else if goalTime != "—" {
                 VStack(alignment: .leading, spacing: 9) {
                     Text(goalTime)
                         .font(.display(58, weight: .bold))
@@ -190,6 +232,17 @@ struct RaceDayView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Compact meta string under the past-race finish · pace, HR, elev
+    /// pulled from the matched Strava run. Each field hides individually
+    /// when null so the line collapses gracefully for sparser races.
+    private func matchedRunMetaLine(_ mr: RaceMatchedRun) -> String {
+        var parts: [String] = []
+        if let p = mr.pace { parts.append("\(p)/mi") }
+        if let bpm = mr.avg_hr { parts.append("\(bpm) bpm") }
+        if let ft = mr.elev_gain_ft { parts.append("\(ft) ft") }
+        return parts.isEmpty ? "View the run" : "View the run · " + parts.joined(separator: " · ")
     }
 
     /// "77 DAYS OUT" / "RACE WEEK" / etc. — derives from race.days +

@@ -194,20 +194,30 @@ struct ProfileView: View {
     private var connectionsCard: some View {
         GlassTile(padding: 0) {
             VStack(spacing: 0) {
-                connectionRow("Apple Health", sub: "workouts · heart · sleep", on: profile?.connections.appleHealth.connected ?? false)
+                connectionRow("Apple Health", state: profile?.connections.appleHealth)
                 Divider().background(Color.white.opacity(0.08))
-                connectionRow("Strava", sub: "activity history", on: profile?.connections.strava.connected ?? false)
+                connectionRow("Strava", state: profile?.connections.strava)
                 Divider().background(Color.white.opacity(0.08))
-                connectionRow("Apple Watch", sub: "live workouts", on: profile?.connections.appleWatch.connected ?? false)
+                connectionRow("Apple Watch", state: profile?.connections.appleWatch)
             }
         }
     }
 
-    private func connectionRow(_ name: String, sub: String, on: Bool) -> some View {
-        HStack {
+    /// One connection row · renders the server-supplied note (e.g.
+    /// "Last sync 4h ago" / "Connect for auto-sync") instead of the
+    /// previous static "workouts · heart · sleep" copy. State pill on
+    /// the right flips green/SYNCED for connected, muted/CONNECT for
+    /// not. lastSync ISO timestamp could power a stale-warning later;
+    /// today we just trust the server's `note` string.
+    private func connectionRow(_ name: String, state: ProfileConnectionState?) -> some View {
+        let on = state?.connected ?? false
+        return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.body(15, weight: .extraBold)).foregroundStyle(Theme.txt)
-                Text(sub).font(.display(11, weight: .semibold)).foregroundStyle(Theme.txt.opacity(0.6))
+                Text(state?.note ?? "—")
+                    .font(.display(11, weight: .semibold))
+                    .foregroundStyle(Theme.txt.opacity(0.6))
+                    .lineLimit(1)
             }
             Spacer()
             Text(on ? "SYNCED" : "CONNECT")
