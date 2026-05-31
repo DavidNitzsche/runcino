@@ -1225,6 +1225,11 @@ struct ProfileConnectionState: Decodable {
 // colliding with the simpler PlanWeek (Mon-Sun day strip) used by
 // /api/plan/week + WeekStripView.
 
+// Lenient decoder (doctrine 2026-05-31 round 2). TrainingState was strict;
+// a single missing/null `today` or per-week `phase` field would have
+// dropped the whole TrainingState · the Train tab and the season-arc
+// bars + phase headline + this-week panel all read off this. Same fix
+// shape as LogState/ProfileState.
 struct TrainingState: Decodable {
     let plan_id: String?
     let today: String
@@ -1236,11 +1241,26 @@ struct TrainingState: Decodable {
     let nextQuality: TrainingNextQuality?
     let weekDone: Double
     let weekPlanned: Double?
-    /// ISO timestamp of the last run-adaptations cron pass. Drives the
-    /// "Plan refreshed Xh ago" freshness line on the Train tab so the
-    /// runner knows the plan is alive. Optional — null when the cron
-    /// hasn't run yet for this plan. New 2026-05-30 audit.
     let last_adapted_at: String?
+
+    enum CodingKeys: String, CodingKey {
+        case plan_id, today, race, phases, weeks, currentPhase, currentWeekIdx
+        case nextQuality, weekDone, weekPlanned, last_adapted_at
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.plan_id = try c.decodeIfPresent(String.self, forKey: .plan_id)
+        self.today = try c.decodeIfPresent(String.self, forKey: .today) ?? ""
+        self.race = try? c.decode(TrainingRace.self, forKey: .race)
+        self.phases = (try? c.decode([TrainingPlanPhase].self, forKey: .phases)) ?? []
+        self.weeks = (try? c.decode([TrainingPlanWeek].self, forKey: .weeks)) ?? []
+        self.currentPhase = try c.decodeIfPresent(String.self, forKey: .currentPhase)
+        self.currentWeekIdx = try c.decodeIfPresent(Int.self, forKey: .currentWeekIdx)
+        self.nextQuality = try? c.decode(TrainingNextQuality.self, forKey: .nextQuality)
+        self.weekDone = try c.decodeIfPresent(Double.self, forKey: .weekDone) ?? 0
+        self.weekPlanned = try c.decodeIfPresent(Double.self, forKey: .weekPlanned)
+        self.last_adapted_at = try c.decodeIfPresent(String.self, forKey: .last_adapted_at)
+    }
 }
 
 struct TrainingRace: Decodable {
@@ -1249,15 +1269,31 @@ struct TrainingRace: Decodable {
     let date: String
     let goal: String?
     let days_to_race: Int
+
+    enum CodingKeys: String, CodingKey { case slug, name, date, goal, days_to_race }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.slug = try c.decodeIfPresent(String.self, forKey: .slug) ?? ""
+        self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.goal = try c.decodeIfPresent(String.self, forKey: .goal)
+        self.days_to_race = try c.decodeIfPresent(Int.self, forKey: .days_to_race) ?? 0
+    }
 }
 
 struct TrainingPlanPhase: Decodable, Identifiable {
     let label: String
     let startWeekIdx: Int
     let endWeekIdx: Int
-    /// Use the label + start/end index as the stable id so SwiftUI's
-    /// ForEach doesn't redraw the strip when the row order is stable.
     var id: String { "\(label)|\(startWeekIdx)-\(endWeekIdx)" }
+
+    enum CodingKeys: String, CodingKey { case label, startWeekIdx, endWeekIdx }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.startWeekIdx = try c.decodeIfPresent(Int.self, forKey: .startWeekIdx) ?? 0
+        self.endWeekIdx = try c.decodeIfPresent(Int.self, forKey: .endWeekIdx) ?? 0
+    }
 }
 
 struct TrainingPlanWeek: Decodable, Identifiable {
@@ -1268,6 +1304,17 @@ struct TrainingPlanWeek: Decodable, Identifiable {
     let days: [TrainingPlanDay]
     let isCurrent: Bool
     var id: Int { idx }
+
+    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.idx = try c.decodeIfPresent(Int.self, forKey: .idx) ?? 0
+        self.phase = try c.decodeIfPresent(String.self, forKey: .phase) ?? ""
+        self.startDate = try c.decodeIfPresent(String.self, forKey: .startDate) ?? ""
+        self.plannedMi = try c.decodeIfPresent(Double.self, forKey: .plannedMi) ?? 0
+        self.days = (try? c.decode([TrainingPlanDay].self, forKey: .days)) ?? []
+        self.isCurrent = try c.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
+    }
 }
 
 struct TrainingPlanDay: Decodable, Identifiable {
@@ -1279,6 +1326,18 @@ struct TrainingPlanDay: Decodable, Identifiable {
     let doneMi: Double
     let activityId: String?
     var id: String { date }
+
+    enum CodingKeys: String, CodingKey { case date, dow, type, mi, label, doneMi, activityId }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.dow = try c.decodeIfPresent(Int.self, forKey: .dow) ?? 0
+        self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
+        self.mi = try c.decodeIfPresent(Double.self, forKey: .mi) ?? 0
+        self.label = try c.decodeIfPresent(String.self, forKey: .label)
+        self.doneMi = try c.decodeIfPresent(Double.self, forKey: .doneMi) ?? 0
+        self.activityId = try c.decodeIfPresent(String.self, forKey: .activityId)
+    }
 }
 
 struct TrainingNextQuality: Decodable {
@@ -1287,6 +1346,16 @@ struct TrainingNextQuality: Decodable {
     let type: String
     let label: String?
     let mi: Double
+
+    enum CodingKeys: String, CodingKey { case date, dow, type, label, mi }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.dow = try c.decodeIfPresent(Int.self, forKey: .dow) ?? 0
+        self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
+        self.label = try c.decodeIfPresent(String.self, forKey: .label)
+        self.mi = try c.decodeIfPresent(Double.self, forKey: .mi) ?? 0
+    }
 }
 
 // MARK: - HealthState (iPhone /health)
@@ -1294,6 +1363,11 @@ struct TrainingNextQuality: Decodable {
 // Mirrors web-v2/lib/coach/health-state.ts. 30-day daily series for
 // each metric so the iPhone can draw a sparkline next to the current
 // value + delta, plus a summary block.
+//
+// Lenient decoder (doctrine 2026-05-31 round 2). A single null on any
+// HealthDay row used to throw, cascade up through `[HealthDayBpm]`, and
+// drop the whole HealthState · the Health tab would render as empty
+// even though /api/health returned 200 with most metrics present.
 
 struct HealthState: Decodable {
     let today: String
@@ -1309,25 +1383,153 @@ struct HealthState: Decodable {
     let vo2: Vo2Summary
     let watchMode: String              // 'steady' / 'watch-amber' / 'watch-red' / 'green'
     let watchItems: [WatchItem]
+
+    enum CodingKeys: String, CodingKey {
+        case today, sleepSeries, rhrSeries, hrvSeries, weightSeries
+        case sleep, rhr, hrv, weight, cadence, vo2, watchMode, watchItems
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.today = try c.decodeIfPresent(String.self, forKey: .today) ?? ""
+        self.sleepSeries = (try? c.decode([HealthDayHours].self, forKey: .sleepSeries)) ?? []
+        self.rhrSeries = (try? c.decode([HealthDayBpm].self, forKey: .rhrSeries)) ?? []
+        self.hrvSeries = (try? c.decode([HealthDayMs].self, forKey: .hrvSeries)) ?? []
+        self.weightSeries = (try? c.decode([HealthDayLb].self, forKey: .weightSeries)) ?? []
+        self.sleep = (try? c.decode(SleepSummary.self, forKey: .sleep))
+            ?? SleepSummary(avg7n: nil, avg30n: nil, deficit7: 0)
+        self.rhr = (try? c.decode(RhrSummary.self, forKey: .rhr))
+            ?? RhrSummary(current: nil, baseline: nil, delta: nil)
+        self.hrv = (try? c.decode(HrvSummary.self, forKey: .hrv))
+            ?? HrvSummary(current: nil, baseline: nil, pctAboveBaseline: nil)
+        self.weight = (try? c.decode(WeightSummary.self, forKey: .weight))
+            ?? WeightSummary(current: nil, delta30: nil)
+        self.cadence = (try? c.decode(CadenceSummary.self, forKey: .cadence))
+            ?? CadenceSummary(baseline: nil)
+        self.vo2 = (try? c.decode(Vo2Summary.self, forKey: .vo2))
+            ?? Vo2Summary(current: nil)
+        self.watchMode = try c.decodeIfPresent(String.self, forKey: .watchMode) ?? "steady"
+        self.watchItems = (try? c.decode([WatchItem].self, forKey: .watchItems)) ?? []
+    }
 }
 
-struct HealthDayHours: Decodable { let date: String; let hours: Double }
-struct HealthDayBpm:   Decodable { let date: String; let bpm: Int }
-struct HealthDayMs:    Decodable { let date: String; let ms: Int }
-struct HealthDayLb:    Decodable { let date: String; let lb: Double }
+struct HealthDayHours: Decodable {
+    let date: String; let hours: Double
+    enum CodingKeys: String, CodingKey { case date, hours }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.hours = try c.decodeIfPresent(Double.self, forKey: .hours) ?? 0
+    }
+}
+struct HealthDayBpm: Decodable {
+    let date: String; let bpm: Int
+    enum CodingKeys: String, CodingKey { case date, bpm }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.bpm = try c.decodeIfPresent(Int.self, forKey: .bpm) ?? 0
+    }
+}
+struct HealthDayMs: Decodable {
+    let date: String; let ms: Int
+    enum CodingKeys: String, CodingKey { case date, ms }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.ms = try c.decodeIfPresent(Int.self, forKey: .ms) ?? 0
+    }
+}
+struct HealthDayLb: Decodable {
+    let date: String; let lb: Double
+    enum CodingKeys: String, CodingKey { case date, lb }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.lb = try c.decodeIfPresent(Double.self, forKey: .lb) ?? 0
+    }
+}
 
-struct SleepSummary:   Decodable { let avg7n: Double?; let avg30n: Double?; let deficit7: Double }
-struct RhrSummary:     Decodable { let current: Int?; let baseline: Int?; let delta: Int? }
-struct HrvSummary:     Decodable { let current: Int?; let baseline: Int?; let pctAboveBaseline: Double? }
-struct WeightSummary:  Decodable { let current: Double?; let delta30: Double? }
-struct CadenceSummary: Decodable { let baseline: Int? }
-struct Vo2Summary:     Decodable { let current: Double? }
+struct SleepSummary: Decodable {
+    let avg7n: Double?; let avg30n: Double?; let deficit7: Double
+    init(avg7n: Double?, avg30n: Double?, deficit7: Double) {
+        self.avg7n = avg7n; self.avg30n = avg30n; self.deficit7 = deficit7
+    }
+    enum CodingKeys: String, CodingKey { case avg7n, avg30n, deficit7 }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.avg7n = try c.decodeIfPresent(Double.self, forKey: .avg7n)
+        self.avg30n = try c.decodeIfPresent(Double.self, forKey: .avg30n)
+        self.deficit7 = try c.decodeIfPresent(Double.self, forKey: .deficit7) ?? 0
+    }
+}
+struct RhrSummary: Decodable {
+    let current: Int?; let baseline: Int?; let delta: Int?
+    init(current: Int?, baseline: Int?, delta: Int?) {
+        self.current = current; self.baseline = baseline; self.delta = delta
+    }
+    enum CodingKeys: String, CodingKey { case current, baseline, delta }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Int.self, forKey: .current)
+        self.baseline = try c.decodeIfPresent(Int.self, forKey: .baseline)
+        self.delta = try c.decodeIfPresent(Int.self, forKey: .delta)
+    }
+}
+struct HrvSummary: Decodable {
+    let current: Int?; let baseline: Int?; let pctAboveBaseline: Double?
+    init(current: Int?, baseline: Int?, pctAboveBaseline: Double?) {
+        self.current = current; self.baseline = baseline; self.pctAboveBaseline = pctAboveBaseline
+    }
+    enum CodingKeys: String, CodingKey { case current, baseline, pctAboveBaseline }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Int.self, forKey: .current)
+        self.baseline = try c.decodeIfPresent(Int.self, forKey: .baseline)
+        self.pctAboveBaseline = try c.decodeIfPresent(Double.self, forKey: .pctAboveBaseline)
+    }
+}
+struct WeightSummary: Decodable {
+    let current: Double?; let delta30: Double?
+    init(current: Double?, delta30: Double?) { self.current = current; self.delta30 = delta30 }
+    enum CodingKeys: String, CodingKey { case current, delta30 }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Double.self, forKey: .current)
+        self.delta30 = try c.decodeIfPresent(Double.self, forKey: .delta30)
+    }
+}
+struct CadenceSummary: Decodable {
+    let baseline: Int?
+    init(baseline: Int?) { self.baseline = baseline }
+    enum CodingKeys: String, CodingKey { case baseline }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.baseline = try c.decodeIfPresent(Int.self, forKey: .baseline)
+    }
+}
+struct Vo2Summary: Decodable {
+    let current: Double?
+    init(current: Double?) { self.current = current }
+    enum CodingKeys: String, CodingKey { case current }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.current = try c.decodeIfPresent(Double.self, forKey: .current)
+    }
+}
 
 struct WatchItem: Decodable, Identifiable {
     let label: String
     let status: String      // 'amber' / 'red'
     let note: String
     var id: String { label + status }
+
+    enum CodingKeys: String, CodingKey { case label, status, note }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.status = try c.decodeIfPresent(String.self, forKey: .status) ?? "amber"
+        self.note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
 }
 
 // MARK: - Race list (iPhone /races)
