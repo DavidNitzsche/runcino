@@ -72,8 +72,16 @@ export async function lookupTempForActivity(activity: {
   const direct = data.tempF;
   if (typeof direct === 'number' && isFinite(direct)) return direct;
 
-  const lat = Number(data.startLat ?? data.start_latitude);
-  const lon = Number(data.startLng ?? data.start_longitude);
+  // Strava-native shape is `startLatLng: [lat, lng]`; older sync paths
+  // produced flat scalar pairs (kept here for back-compat).
+  const sll = (data as any).startLatLng;
+  let lat: number, lon: number;
+  if (Array.isArray(sll) && sll.length >= 2) {
+    lat = Number(sll[0]); lon = Number(sll[1]);
+  } else {
+    lat = Number(data.startLat ?? data.start_latitude);
+    lon = Number(data.startLng ?? data.start_longitude);
+  }
   const date = (data.date as string) || String(data.startLocal ?? '').slice(0, 10);
   if (!isFinite(lat) || !isFinite(lon) || !date) return null;
   return lookupTempF(lat, lon, date);

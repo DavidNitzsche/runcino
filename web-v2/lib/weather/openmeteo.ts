@@ -170,27 +170,81 @@ export async function resolveHomeLatLng(userId: string): Promise<{ lat: number; 
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (
-              (data ? 'startLat'    AND data ? 'startLng')    OR
-              (data ? 'start_lat'   AND data ? 'start_lng')   OR
+              (data ? 'startLatLng')                            OR
+              (data ? 'startLat'    AND data ? 'startLng')      OR
+              (data ? 'start_lat'   AND data ? 'start_lng')     OR
               (data ? 'routeStartLat' AND data ? 'routeStartLng')
             )
       ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal',10)) DESC
       LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
-  if (!r?.data) return null;
-  const d = r.data;
-  const lat = Number(d.startLat ?? d.start_lat ?? d.routeStartLat);
-  const lng = Number(d.startLng ?? d.start_lng ?? d.routeStartLng);
-  if (!isFinite(lat) || !isFinite(lng)) return null;
-  return { lat, lng };
+  return pickLatLng(r?.data);
 }
 
 /**
- * Enrich one strava_activities row. Reads start GPS from the route
- * polyline's first coord (fall back to nothing if no route — we can't
- * geo-locate the run without it). Updates data.weather + sets
- * weather_enriched_at so the nightly job doesn't redo it.
+ * Pull a (lat, lng) pair off a Strava activity's `data` blob, tolerating
+ * the three shapes we've seen in the wild:
+ *   - flat scalar pair: `startLat` / `startLng`  (legacy)
+ *   - snake_case scalar pair: `start_lat` / `start_lng`
+ *   - array form: `startLatLng` = [lat, lng]    (Strava's native shape)
+ *   - polyline-derived: `routeStartLat` / `routeStartLng`
+ *
+ * Returns null when no usable coord is present (HK workouts with no GPS).
+ */
+function pickLatLng(data: any): { lat: number; lng: number } | null {
+  if (!data) return null;
+  const sll = data.startLatLng ?? data.start_latlng;
+  let lat: any, lng: any;
+  if (Array.isArray(sll) && sll.length >= 2) {
+    lat = sll[0]; lng = sll[1];
+  } else {
+    lat = data.startLat ?? data.start_lat ?? data.routeStartLat;
+    lng = data.startLng ?? data.start_lng ?? data.routeStartLng;
+  }
+  const nlat = Number(lat); const nlng = Number(lng);
+  if (!isFinite(nlat) || !isFinite(nlng)) return null;
+  return { lat: nlat, lng: nlng };
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/**
+ * Mirror an enriched weather sample into `workout_weather_cache` so the
+ * pre-run heat-adjustment lookup (lib/weather/lookup.ts) finds something
+ * for the same lat/lon-bucket + date. Idempotent — primary key is
+ * (lat_round, lon_round, date) so re-running just refreshes fetched_at.
+ *
+ * Called from `enrichOneActivity` after a successful Open-Meteo fetch,
+ * and from the one-time backfill script that walks existing enriched runs.
+ */
+export async function upsertWeatherCache(
+  lat: number,
+  lng: number,
+  dateISO: string,
+  tempF: number | null,
+): Promise<void> {
+  if (tempF == null || !isFinite(lat) || !isFinite(lng)) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return;
+  await pool.query(
+    `INSERT INTO workout_weather_cache (lat_round, lon_round, date, temperature_f, fetched_at)
+     VALUES ($1::numeric(4,1), $2::numeric(5,1), $3::date, $4::integer, NOW())
+     ON CONFLICT (lat_round, lon_round, date)
+     DO UPDATE SET temperature_f = EXCLUDED.temperature_f,
+                   fetched_at    = NOW()`,
+    [round1(lat), round1(lng), dateISO, Math.round(tempF)],
+  );
+}
+
+/**
+ * Enrich one strava_activities row. Reads start GPS from the activity's
+ * `startLatLng` array (Strava-native), with fall-backs to flat scalar
+ * pairs for older synced data; HK workouts without GPS return null.
+ * Writes weather blob + tempF onto strava_activities AND mirrors the
+ * temp into `workout_weather_cache` so the pre-run prescription can
+ * read it back via lookup.ts.
  */
 export async function enrichOneActivity(activityId: string | number): Promise<RunWeather | null> {
   const row = (await pool.query(
@@ -198,15 +252,23 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
     [String(activityId)],
   )).rows[0];
   if (!row) return null;
-  if (row.data?.weather) return row.data.weather as RunWeather;
 
-  const lat = row.data?.startLat ?? row.data?.start_lat ?? row.data?.routeStartLat;
-  const lng = row.data?.startLng ?? row.data?.start_lng ?? row.data?.routeStartLng;
+  const coords = pickLatLng(row.data);
   const startISO: string | undefined = row.data?.startLocal ?? row.data?.start_local ?? row.data?.startISO;
+  const dateISO: string = (row.data?.date as string) || (startISO ? startISO.slice(0, 10) : '');
 
-  if (lat == null || lng == null || !startISO) return null;
+  // Already-enriched row: skip the fetch but still ensure the cache row exists.
+  if (row.data?.weather) {
+    const cached = row.data.weather as RunWeather;
+    if (coords && dateISO && cached.temp_f != null) {
+      await upsertWeatherCache(coords.lat, coords.lng, dateISO, cached.temp_f);
+    }
+    return cached;
+  }
 
-  const w = await fetchRunWeather(Number(lat), Number(lng), startISO);
+  if (!coords || !startISO) return null;
+
+  const w = await fetchRunWeather(coords.lat, coords.lng, startISO);
   if (!w) {
     // Still mark attempted so we don't re-poll forever
     await pool.query(
@@ -223,6 +285,12 @@ export async function enrichOneActivity(activityId: string | number): Promise<Ru
       WHERE id = $3::BIGINT`,
     [JSON.stringify(w), w.temp_f ?? null, String(activityId)],
   );
+
+  // Mirror into the per-grid-cell cache for the pre-run lookup path.
+  if (dateISO) {
+    await upsertWeatherCache(coords.lat, coords.lng, dateISO, w.temp_f);
+  }
+
   return w;
 }
 
