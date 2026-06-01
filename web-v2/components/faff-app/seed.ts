@@ -1219,15 +1219,43 @@ function adaptConnections(profile: Profile | null): ConnectionRow[] {
     { id: 'finalsurge', nm: 'FinalSurge',   sub: 'Coming soon',                                                       bg: 'linear-gradient(135deg,#5b8def,#2a5fd0)', gl: 'FS', on: false, lastSyncIso: null },
   ];
 }
-function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['form'] {
+/**
+ * 2026-06-01 · adaptForm now reads REAL Banister TSB from
+ * lib/coach/training-form.ts (CTL 42d EWMA / ATL 7d EWMA / TSB
+ * = CTL - ATL). Previously this used a placeholder formula:
+ *   fitness = avg planned weekly miles
+ *   fatigue = this-week's done miles
+ *   delta   = fitness - fatigue (meaningless · reset every Monday)
+ * which mislabeled "+39 OVER-REACH" simultaneously (the +39 said
+ * "very fresh" but the label said "overreached" · contradictory).
+ *
+ * The new model uses the canonical Coggan operationalization of
+ * Banister's impulse-response framework · same model TrainingPeaks /
+ * Runalyze / Intervals.icu use. Returned fields:
+ *   · fitness  = CTL (chronic training load, 42d EWMA)
+ *   · fatigue  = ATL (acute training load, 7d EWMA)
+ *   · delta    = TSB (CTL - ATL · signed · negative = fatigued, positive = fresh)
+ *   · label    = banded by TSB · OVERREACH / LOADED / PRODUCTIVE / RACE-READY / DETRAINING
+ *   · acwr     = retained for back-compat
+ */
+async function adaptForm(userId: string, glance: Glance | null): Promise<FaffSeed['form']> {
+  try {
+    const { computeTrainingForm } = await import('@/lib/coach/training-form');
+    const tf = await computeTrainingForm(userId);
+    if (tf) {
+      return {
+        fitness: tf.ctl,
+        fatigue: tf.atl,
+        delta: tf.tsb,
+        label: tf.label,
+        acwr: tf.acwr,
+      };
+    }
+  } catch {/* fall through to cold-start */}
+
+  // Cold start · no recoverable run history yet
   const acwr = glance?.loadAcwr ?? null;
-  const fitness = training?.weeks ? Math.round(training.weeks.reduce((s, w) => s + (w.plannedMi || 0), 0) / Math.max(1, training.weeks.length)) : 0;
-  const fatigue = Math.round(glance?.weekDone ?? 0);
-  const delta = fitness - fatigue;
-  const label = acwr != null
-    ? (acwr > 1.5 ? 'OVER-REACH' : acwr > 1.1 ? 'BUILDING' : acwr > 0.7 ? 'STEADY' : 'FRESH')
-    : (delta > 5 ? 'BUILDING' : delta < -5 ? 'LOADED' : 'STEADY');
-  return { fitness, fatigue, delta, label, acwr };
+  return { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr };
 }
 
 /**
@@ -1509,7 +1537,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const shoes = adaptShoes(profile);
   const shoeRecByType = await buildShoeRecByType(profile);
   const connections = adaptConnections(profile);
-  const form = adaptForm(training, glance);
+  const form = await adaptForm(userId, glance);
   // 2026-05-31: pending coach_proposals (illness / injury). Dead-code rescue
   // from 2026-05-30 audit — adapt.ts writes these rows; until now the web
   // had no loader. Today view renders accept/decline cards above the
