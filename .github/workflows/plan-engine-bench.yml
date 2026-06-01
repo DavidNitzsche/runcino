@@ -1,0 +1,84 @@
+# Plan engine cross-runner test bench.
+#
+# Runs the synthetic-runner persona bench (lib/plan/plan-engine.test.ts)
+# on every PR + push that touches the plan engine. Required check
+# before merge to main.
+#
+# Validates 6 personas (beginner 5K, intermediate HM, advanced
+# marathon, advanced+ ultra, returning-from-injury, sleep-debt-prone)
+# end-to-end: simulator coherence, trajectory monotonicity, plateau
+# respect, confidence band sanity, risk-flag firing. 44 assertions.
+#
+# Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 3.3
+
+name: Plan engine bench
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web-v2/lib/plan/**'
+      - 'web-v2/lib/coach/readiness**'
+      - 'web-v2/lib/coach/runner-calibration**'
+      - 'web-v2/lib/training/vdot.ts'
+      - 'web-v2/lib/training/projection-snapshots.ts'
+      - 'docs/PLAN_ENGINE_ARCHITECTURE.md'
+      - '.github/workflows/plan-engine-bench.yml'
+  pull_request:
+    paths:
+      - 'web-v2/lib/plan/**'
+      - 'web-v2/lib/coach/readiness**'
+      - 'web-v2/lib/coach/runner-calibration**'
+      - 'web-v2/lib/training/vdot.ts'
+      - 'web-v2/lib/training/projection-snapshots.ts'
+      - 'docs/PLAN_ENGINE_ARCHITECTURE.md'
+      - '.github/workflows/plan-engine-bench.yml'
+  workflow_dispatch: {}
+
+jobs:
+  bench:
+    name: Run synthetic-runner bench
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web-v2/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web-v2
+        run: npm ci
+
+      - name: Typecheck plan-engine surface
+        working-directory: web-v2
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Run plan-engine bench
+        working-directory: web-v2
+        run: npx vitest run lib/plan/plan-engine.test.ts
+
+      - name: Bench summary
+        if: always()
+        working-directory: web-v2
+        run: |
+          echo "## Plan engine bench results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Personas validated:" >> $GITHUB_STEP_SUMMARY
+          echo "- beginner-5k (12 mpw → 25:00 5K · 10 weeks)" >> $GITHUB_STEP_SUMMARY
+          echo "- intermediate-hm (35 mpw → 1:30:00 HM · 12 weeks)" >> $GITHUB_STEP_SUMMARY
+          echo "- advanced-marathon (60 mpw → 3:00:00 M · 16 weeks)" >> $GITHUB_STEP_SUMMARY
+          echo "- advanced-plus-ultra (85 mpw → 4:30:00 50K · 20 weeks)" >> $GITHUB_STEP_SUMMARY
+          echo "- returning-from-injury (20 mpw → 1:45:00 HM · 14 weeks)" >> $GITHUB_STEP_SUMMARY
+          echo "- sleep-debt-prone (30 mpw → 1:40:00 HM · 12 weeks)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Doctrine asserted per persona:" >> $GITHUB_STEP_SUMMARY
+          echo "- Trajectory monotonic across BUILD phase" >> $GITHUB_STEP_SUMMARY
+          echo "- Final projection in plausible band for distance" >> $GITHUB_STEP_SUMMARY
+          echo "- VDOT respects plateau ceiling + global 85 cap" >> $GITHUB_STEP_SUMMARY
+          echo "- Confidence decreases for further-out weeks" >> $GITHUB_STEP_SUMMARY
+          echo "- Risk flags fire on density >=3 quality/wk" >> $GITHUB_STEP_SUMMARY

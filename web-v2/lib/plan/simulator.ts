@@ -198,7 +198,10 @@ function computeWeeklyGain(
   const qualityStimulus = wk.qualitySessions * cal.vdotPerQuality;
   const longRunRatio = wk.weeklyMi > 0 ? wk.longRunMi / wk.weeklyMi : 0;
   const longRunContrib = longRunRatio * cal.longRunWeight * baseGain;
-  const plateauPenalty = Math.max(0.1, 1 - (curVdot - 50) / (cal.plateauVdot - 50));
+  // Plateau math · safe against zero headroom (beginners with plateauVdot=50)
+  // and capped at 1.0 so being below plateau gives full gain, not a boost
+  const plateauHeadroom = Math.max(1, cal.plateauVdot - 50);
+  const plateauPenalty = Math.max(0.1, Math.min(1, 1 - (curVdot - 50) / plateauHeadroom));
   const raw = (qualityStimulus + longRunContrib) * cal.recoveryMult * plateauPenalty;
 
   // Diminishing returns above 2 quality/wk (Daniels)
