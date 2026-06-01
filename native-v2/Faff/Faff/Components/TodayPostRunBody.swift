@@ -76,17 +76,18 @@ struct TodayPostRunBody: View {
         }
     }
 
-    /// Win line · prefer backend's `recap.win` when shipped; else fall
-    /// back to a verdict-derived synthesis. Doctrine 2026-06-01 brief
-    /// run-recap-win-line-brief.md.
+    /// Win line · read straight from `recap.win`. Composer ships per-
+    /// type 4-10 word coach voice (lib/coach/run-win.ts · backend
+    /// commits cd091124 + 9fd07cdf). The composer returns null when
+    /// the run was off-plan, DNF, or had insufficient data to claim a
+    /// win · the iPhone hides the green check + line in that case
+    /// (the rest of the post-run sheet still renders).
     private var winLineText: String? {
-        // Once the backend ships `win`, this Swift code reads it
-        // verbatim. Until then, derive from verdict + first fact.
-        let verdict = (recap?.verdict ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let firstFact = recap?.facts.first ?? ""
-        if verdict.isEmpty && firstFact.isEmpty { return nil }
-        if !firstFact.isEmpty { return "\(verdict.dropTrailingPeriod) · \(firstFact)" }
-        return verdict.isEmpty ? nil : verdict
+        guard let w = recap?.win?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !w.isEmpty else {
+            return nil
+        }
+        return w
     }
 
     // MARK: - 2. Stats trio · Distance / Avg pace / Moving time
@@ -551,13 +552,5 @@ private func normalize(points: [(Double, Double)], size: CGSize, padding: CGFloa
     }
 }
 
-// MARK: - String helper
-
-private extension String {
-    /// Strip a trailing period for splice-style sentences ("On plan." +
-    /// fact → "On plan · fact" not "On plan. · fact").
-    var dropTrailingPeriod: String {
-        guard hasSuffix(".") else { return self }
-        return String(dropLast())
-    }
-}
+// (dropTrailingPeriod helper retired 2026-06-01 · the verdict + facts
+//  fallback for the win line is gone, recap.win is the source of truth.)

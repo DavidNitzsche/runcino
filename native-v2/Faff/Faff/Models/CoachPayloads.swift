@@ -71,10 +71,17 @@ struct RunRecap: Decodable {
     let facts: [String]
     let coach_tip: String?
     let conditions_note: String?
+    /// 2026-06-01 · coach-voice "win line" composed by lib/coach/run-win.ts
+    /// (backend commits cd091124 + 9fd07cdf). 4-10 words, type-specific
+    /// signals (negative-split detection, pace CV, work-split paces for
+    /// intervals, etc.). Null when verdict gates off-plan/DNF or when
+    /// data is insufficient · iPhone hides the green check + win line
+    /// and falls back to just the verdict.
+    let win: String?
 
     enum CodingKeys: String, CodingKey {
         case ok, runId, date, type, phase
-        case verdict, facts, coach_tip, conditions_note
+        case verdict, facts, coach_tip, conditions_note, win
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -87,5 +94,6 @@ struct RunRecap: Decodable {
         self.facts = (try? c.decode([String].self, forKey: .facts)) ?? []
         self.coach_tip = try c.decodeIfPresent(String.self, forKey: .coach_tip)
         self.conditions_note = try c.decodeIfPresent(String.self, forKey: .conditions_note)
+        self.win = try c.decodeIfPresent(String.self, forKey: .win)
     }
 }
