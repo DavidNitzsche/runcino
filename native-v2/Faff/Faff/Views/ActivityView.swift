@@ -180,6 +180,20 @@ struct ActivityView: View {
             ], valueFont: 20, keyColor: Theme.txt.opacity(0.55))
             .padding(.horizontal, 22).padding(.top, 22)
 
+            // SOURCE MIX · per-source ingestion breakdown for the range.
+            // Sums every LogRun by source and renders a tiny stacked bar +
+            // legend. Tells the runner where their data is coming from
+            // and surfaces gaps (e.g. zero "watch" rows on a runner who
+            // has a watch likely means watch sync broke).
+            if !sourceMix.isEmpty {
+                SectionLabel(title: "Source mix")
+                    .padding(.horizontal, 22).padding(.top, 26)
+                sourceMixBar
+                    .padding(.horizontal, 22).padding(.top, 12)
+                sourceMixLegend
+                    .padding(.horizontal, 22).padding(.top, 8)
+            }
+
             SectionLabel(title: "Personal records")
                 .padding(.horizontal, 22).padding(.top, 26)
             recordsGrid
@@ -586,5 +600,63 @@ struct ActivityView: View {
         let parts = iso.split(separator: "-")
         guard parts.count == 3 else { return iso }
         return "\(parts[1])/\(parts[2])"
+    }
+
+    // MARK: - Source mix · per-source ingestion breakdown
+
+    /// Map of source → run count for every loaded run, across all weeks.
+    /// Empty when no log has loaded yet (header hides via `!isEmpty`).
+    private var sourceMix: [(source: RunSource, count: Int)] {
+        guard let log else { return [] }
+        var counts: [RunSource: Int] = [:]
+        for week in log.weeks {
+            for r in week.runs {
+                counts[RunSource.from(r.source), default: 0] += 1
+            }
+        }
+        let total = counts.values.reduce(0, +)
+        guard total > 0 else { return [] }
+        // Stable ordering for the bar/legend · most common first.
+        return counts
+            .sorted { $0.value > $1.value }
+            .map { (source: $0.key, count: $0.value) }
+    }
+
+    /// Stacked horizontal bar · each segment width proportional to that
+    /// source's share of the total run count.
+    private var sourceMixBar: some View {
+        let total = max(1, sourceMix.reduce(0) { $0 + $1.count })
+        return GeometryReader { geo in
+            HStack(spacing: 2) {
+                ForEach(Array(sourceMix.enumerated()), id: \.offset) { _, entry in
+                    let frac = CGFloat(entry.count) / CGFloat(total)
+                    Rectangle()
+                        .fill(entry.source.color)
+                        .frame(width: max(2, frac * (geo.size.width - CGFloat(2 * (sourceMix.count - 1)))))
+                }
+            }
+            .frame(height: 10)
+            .clipShape(Capsule())
+        }
+        .frame(height: 10)
+    }
+
+    private var sourceMixLegend: some View {
+        let total = max(1, sourceMix.reduce(0) { $0 + $1.count })
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(Array(sourceMix.enumerated()), id: \.offset) { _, entry in
+                    HStack(spacing: 5) {
+                        Circle().fill(entry.source.color).frame(width: 7, height: 7)
+                        Text(entry.source.label.uppercased())
+                            .font(.body(10, weight: .extraBold)).tracking(1)
+                            .foregroundStyle(Theme.txt)
+                        Text("\(entry.count) · \(Int(round(100 * Double(entry.count) / Double(total))))%")
+                            .font(.display(11, weight: .bold)).monospacedDigit()
+                            .foregroundStyle(Theme.mute)
+                    }
+                }
+            }
+        }
     }
 }

@@ -285,4 +285,129 @@ extension API {
         f.timeZone = TimeZone(identifier: "UTC")
         return f.string(from: Date())
     }
+
+    // MARK: - Pending coach proposals (Today stack)
+
+    static func fetchPendingProposals() async throws -> [PendingProposal] {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/coach/proposals"))
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return [] }
+        let env = try? JSONDecoder().decode(ProposalsResponse.self, from: data)
+        return env?.proposals ?? []
+    }
+
+    // MARK: - Notification inbox
+
+    static func fetchNotificationInbox(days: Int = 14, limit: Int = 50) async throws -> [NotifInboxItem] {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/notifications/inbox"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "days", value: "\(days)"),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return [] }
+        let env = try? JSONDecoder().decode(NotifInboxResponse.self, from: data)
+        return env?.items ?? []
+    }
+
+    // MARK: - Strava push history
+
+    static func fetchStravaPushes() async throws -> [StravaPushRow] {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/strava/pushes"))
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return [] }
+        let env = try? JSONDecoder().decode(StravaPushesResponse.self, from: data)
+        return env?.pushes ?? []
+    }
+
+    // MARK: - LLM usage rollup
+
+    static func fetchUsage(days: Int = 14) async throws -> UsageResponse? {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/usage"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "days", value: "\(days)")]
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(UsageResponse.self, from: data)
+    }
+
+    // MARK: - Per-day shoe override
+
+    @discardableResult
+    static func setShoeForDay(date: String, shoeId: Int?) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/today/shoe"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "date": date,
+            "shoe_id": shoeId as Any
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
+    // MARK: - Move / edit a planned workout
+
+    /// PATCH /api/plan/workout · move or re-type a planned workout in
+    /// place. Pass new_date_iso to "move" the workout to another calendar
+    /// slot; pass type / distance / sub_label to edit it.
+    @discardableResult
+    static func patchPlannedWorkout(planId: String,
+                                    dateIso: String,
+                                    newDateIso: String? = nil,
+                                    type: String? = nil,
+                                    distanceMi: Double? = nil,
+                                    subLabel: String? = nil) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/plan/workout"))
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "plan_id": planId,
+            "date_iso": dateIso
+        ]
+        if let n = newDateIso { body["new_date_iso"] = n }
+        if let t = type { body["type"] = t }
+        if let d = distanceMi { body["distance_mi"] = d }
+        if let s = subLabel { body["sub_label"] = s }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
+    // MARK: - GPX upload for a race course
+
+    @discardableResult
+    static func uploadRaceGPX(slug: String, gpxData: Data, filename: String = "course.gpx") async throws -> Bool {
+        let boundary = "FaffBoundary-\(UUID().uuidString)"
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/race/gpx"))
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        func append(_ s: String) { body.append(s.data(using: .utf8)!) }
+        // slug field
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"slug\"\r\n\r\n")
+        append("\(slug)\r\n")
+        // file
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+        append("Content-Type: application/gpx+xml\r\n\r\n")
+        body.append(gpxData)
+        append("\r\n--\(boundary)--\r\n")
+        req.httpBody = body
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
 }

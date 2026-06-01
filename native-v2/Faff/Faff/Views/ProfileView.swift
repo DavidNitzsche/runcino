@@ -20,6 +20,10 @@ struct ProfileView: View {
     /// the NotificationPrefsList exposes alongside the 7 categories. Plus
     /// the LTHR / HRmax / VDOT physiology values for the PHYSIOLOGY block.
     @State private var profileFields: ProfileFields?
+    /// Strava push history sheet · last 10 pushes from /api/strava/pushes.
+    @State private var showStravaPushes: Bool = false
+    /// LLM spend rollup sheet · /api/usage. Lives under a small DEV link.
+    @State private var showUsage: Bool = false
 
     var body: some View {
         ZStack {
@@ -108,12 +112,49 @@ struct ProfileView: View {
                         .padding(.horizontal, 22).padding(.top, 13)
                     settingsCard
                         .padding(.horizontal, 22).padding(.top, 10)
+
+                    // DEV · small affordances for power users to peek
+                    // under the hood. Strava push history surfaces
+                    // queued/succeeded/failed pushes; LLM spend surfaces
+                    // the 14-day rollup for cost monitoring.
+                    devLinks
+                        .padding(.horizontal, 22).padding(.top, 24)
                 }
                 .padding(.bottom, 80)
             }
         }
         .task { await reload() }
         .refreshable { await reload() }
+        .sheet(isPresented: $showStravaPushes) {
+            StravaPushHistorySheet().presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showUsage) {
+            UsageSheet().presentationDetents([.medium, .large])
+        }
+    }
+
+    private var devLinks: some View {
+        HStack(spacing: 8) {
+            devButton("Strava pushes", icon: "bolt.fill") { showStravaPushes = true }
+            devButton("LLM spend",     icon: "dollarsign.circle") { showUsage = true }
+            Spacer()
+        }
+    }
+    private func devButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.mute)
+                Text(title.uppercased())
+                    .font(.body(10, weight: .extraBold)).tracking(1.2)
+                    .foregroundStyle(Theme.txt)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Theme.Glass.fill, in: Capsule())
+            .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func reload() async {

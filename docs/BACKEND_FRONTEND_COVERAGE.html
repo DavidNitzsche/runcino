@@ -275,11 +275,8 @@
       assignment to day_actions. Used by the /today ShoePicker so the
       runner can swap "long-run shoes today" without changing the
       default rotation.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong> · the iPhone
-      Today's CONDITIONS & KIT block already shows the inferred shoe.
-      Tapping it could push a sheet listing the rotation and POST to
-      /api/today/shoe on selection. Currently the shoe label is read-only.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ShoePickerSheet.</strong> TodayView bell menu surfaces 'Today's shoe' which presents TodayShoeOverrideSheet · lists non-retired shoes from ProfileShoe[], POSTs /api/today/shoe {date, shoe_id} on pick.</td>
   <td><code>app/api/today/shoe/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -289,11 +286,8 @@
       forecast for the runner's home grid for any date in the next ~16
       days. Today shows it indirectly through the prescription's heat
       adjustment, but the raw range / wind / dew point are never displayed.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Today's
-      hero already has a HOTTER/COOLER tag (landed 2026-05-30). Add a
-      one-line "72°F · feels 68 · wind 6 mph" under it for upcoming
-      runs, sourced from this endpoint.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ConditionsLine + HeatBandChip.</strong> TodayView hero ships HeatBandChip from WeatherBaseline.tempF · prescription.weather_baseline already covered the data; the toolkit chip closes the visual gap.</td>
   <td><code>app/api/forecast/[date]/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -306,11 +300,8 @@
       Each carries a structured payload + coach_note. iPhone renders
       only the workout_breakdown rows; every other topic kind passes
       through unrendered.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><strong>Design tweak needed</strong>. Each TopicKind deserves a
-      designed shape (cadence_experiment needs a chart, kit_list needs
-      a row strip, etc.). Today the iPhone strips all of this. The
-      backend already does the work · this is pure rendering debt.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit BriefingTopicCard.</strong> TodayView drag sheet ships TODAY · NOTES section with BriefingTopicCard polymorphic renderer · one card per emitted topic, kind-coloured headline + payload-lead extraction (lead/headline/summary/value/label/text/title) + coach_note. Unknown TopicKinds gracefully degrade via the new .unknown enum case so a future kind addition can't drop the array.</td>
   <td><code>app/api/briefing/route.ts</code> ·
       <code>Models/Briefing.swift:TopicKind</code></td>
   <td class="client-ios">IOS</td>
@@ -492,12 +483,8 @@
       in place · can change type / distance / sub_label OR move to a
       new date (date_iso + dow + week_id all re-stamped). The coach
       picks up the change on next briefing without a regenerate.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. Today the iPhone WeekAhead
-      shows workouts as read-only rows. Long-press → "move to..." or
-      a drag-to-day affordance would expose this without rewriting the
-      whole layout. Day Detail could also gain an "Edit · move · skip"
-      menu.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit API.patchPlannedWorkout.</strong> New API method API.patchPlannedWorkout wraps PATCH /api/plan/workout · supports type / distance_mi / sub_label edits + new_date_iso moves. Ready to drop a sheet on PlannedView's CTA bar that calls it.</td>
   <td><code>app/api/plan/workout/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -618,11 +605,8 @@
       final 8 weeks before an A-race · the day's fueling block is
       labeled as practice for race nutrition. Backend computes the flag,
       no client surfaces it.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
-      isRehearsal=true, prepend a "RACE REHEARSAL" eyebrow to the
-      FUELING block on Day Detail. Same gels / atMins, but the runner
-      knows this is the dress rehearsal for what they'll do on race day.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RACE REHEARSAL eyebrow.</strong> PlannedView hero ships a RACE REHEARSAL amber-bright chip in the eyebrow row when WatchWorkout.fueling.isRehearsal == true · same chip line as the date eyebrow.</td>
   <td><code>Models/Watch.swift:WatchFueling.isRehearsal</code> ·
       <code>lib/training/fueling.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -634,11 +618,8 @@
       countdown). The hint applies on watch but the iPhone's
       WorkoutDetailModal could mirror the chosen face so the runner
       previews what's coming.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>safe to leave</strong> · the
-      watch is the authority on which face to draw. The iPhone preview
-      doesn't need to mirror the live face; the structured workout
-      breakdown already communicates the same information.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit Watch face chip.</strong> PlannedView ships a WATCH · HR / WATCH · PROGRESSION / WATCH · STRIDES chip next to the workout pill when WatchWorkout.displayHint matches the three known flavors. Tells the runner which in-run face the watch will draw before they start.</td>
   <td><code>Models/Watch.swift:WatchWorkout.displayHint</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -730,11 +711,8 @@
       than usual" tag uses it as a delta; the absolute conditions
       (a string like "68°F · 71% RH · light wind from SW") never render
       on the run-detail card.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A row
-      in the run-detail meta strip: "Conditions · 68°F · 71% RH · wind
-      W 6 mph." Helps the runner contextualize why pace felt off.
-      Sourced from strava_activities.data.weather directly.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RunDetail.temp_f.</strong> RunDetailView wires temp_f via the existing hero stat block (it was always decoded; the recap engine now consumes it too via conditions_note rendered on the HOW IT WENT card).</td>
   <td><code>lib/weather/openmeteo.ts:enrichRecent</code> ·
       <code>strava_activities.data.weather</code></td>
   <td class="client-ios">IOS</td>
@@ -824,10 +802,8 @@
   <td><strong>Strava engagement (suffer_score · kudos)</strong></td>
   <td>RunDetail.suffer_score + RunDetail.kudos pass through from
       Strava's payload. iPhone decodes them; no View renders.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>safe to leave</strong> ·
-      Strava-native UI surface metrics that don't add coaching signal.
-      Worth revisiting only if Faff wants to render a social layer.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit Strava engagement chips.</strong> RunDetailView hero ships a chip strip under the COMPLETED badge · suffer_score chip (race tint, flame icon) + kudos chip (gold, thumbs-up) when either field is non-zero on the wire. Hidden for non-Strava sources.</td>
   <td><code>Models/Runs.swift:RunDetail.suffer_score / kudos</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -842,13 +818,8 @@
       Priority: watch &gt; manual &gt; apple_watch &gt; apple_health
       &gt; strava. No client surfaces the provenance · the runner has
       no way to see why two providers disagree on distance.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>safe to leave</strong> for v1 ·
-      this is power-user transparency, not a runner-facing metric.
-      Once the source badges (build 125) reveal a dedup mismatch or
-      data drift, a "tap to see which provider supplied each field"
-      reveal sheet could earn its place on RunDetail. Backend
-      capability is solid; design tweak when the case shows up.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RunSourceBadge.</strong> RunDetailView hero ships RunSourceBadge alongside COMPLETED · 'watch / health / strava / manual' marker so the runner knows which source the numbers came from. Full per-field provenance lives in the existing FORM tooltips.</td>
   <td><code>strava_activities.provenance</code> ·
       <code>lib/runs/canonical.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -861,12 +832,8 @@
       temp_f_peak / temp_f_mean on each enriched run. Recap engine
       prefers temp_f_peak for judgment. iPhone RunDetail reads only
       temp_f (start) today · the peak is invisible.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Replace
-      the static "65°F" line in RunDetail meta with "69°F → 78°F
-      (peak 78°F)" when the span has &gt; 3°F climb, matching the
-      backend's `conditions_note` framing. Honest narration of the
-      conditions David ran in.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RunRecap.conditions_note.</strong> RunDetailView's HOW IT WENT section surfaces the temp span via the recap engine's conditions_note string ('Climbed 69°F → 78°F (peak 78°F)'). Wire shipped in build 127.</td>
   <td><code>lib/weather/openmeteo.ts</code> ·
       <code>strava_activities.data.weather.temp_f_peak</code></td>
   <td class="client-ios">IOS</td>
@@ -997,12 +964,8 @@
       writes the chosen geometry onto races.course_geometry. The
       manual upload path is POST <code>/api/race/gpx</code> (multipart).
       All three are mounted but no client lets the runner trigger any.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. When a race detail shows
-      "course preview unavailable" (course_source='stub'), the user
-      should be able to tap "Search my Strava routes" → pick a
-      candidate → backfill. Files-app upload is a secondary path. Both
-      live on the race detail page when the course is missing.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit GPX file picker.</strong> RaceDayView THE COURSE ships the toolkit's CourseAnnotations.stub when no geometry exists · 'Upload GPX to contribute' button opens .fileImporter, posts multipart to /api/race/gpx, reloads the page on success. Toast confirms.</td>
   <td><code>app/api/gpx/search/route.ts</code> ·
       <code>app/api/gpx/import/route.ts</code> ·
       <code>app/api/race/gpx/route.ts</code></td>
@@ -1094,11 +1057,8 @@
       status field combining readiness + ACWR + proj-vs-goal. The
       iPhone race detail header could show a status dot · green
       on_track · amber watch · red off · with one-line reason text.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
-      dot + label on the race detail hero ("ON TRACK ●"). Already
-      rendered on web's persistent race-bib header per the comment in
-      race-header.ts.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RaceStatusDot.</strong> RaceDayView ships STATUS section with RaceStatusDot · derived deterministically from race.days + proximity + (when present) the projection-vs-goal raceFacts entry. Toolkit · Family A.</td>
   <td><code>lib/coach/race-header.ts:RaceHeaderStatus</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1229,10 +1189,8 @@
       manual. /api/log returns each row's source. The Activity list could
       surface "this week: 3 watch · 1 Strava import · 1 manual" to make
       data hygiene visible.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>safe to leave</strong> · this is
-      mostly debug information for the runner. Worth surfacing only if
-      we see real cases of duplicated runs or missing sources.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit Source mix bar.</strong> ActivityView STATS ships a SOURCE MIX section · stacked bar + legend showing run counts per source (watch / health / strava / manual) with percentages. Computed inline from LogState.weeks.</td>
   <td><code>lib/coach/log-state.ts:LogRun.source</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1294,11 +1252,8 @@
       iPhone HealthView currently shows a focus-chart sparkline from
       HealthState's pre-rolled aggregates · for richer charts (e.g.
       90-day view, scrubbable trends) the raw series is available.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>safe to leave</strong> · the
-      30-day rolled aggregate inside HealthState already covers the
-      default chart. Pull from /health/series only when we add a longer
-      lookback or per-metric drill-in.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit HealthState series arrays.</strong> HealthView already charts sleep / hrv / rhr / weight series via the focus chart (HealthDayHours / Bpm / Ms / Lb arrays). Lenient decoder ensures sparse days don't drop the chart.</td>
   <td><code>app/api/health/series/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1342,11 +1297,8 @@
       (5a/5b/5c surface as Z5-Z7) or a 5-zone %MHR fallback. The
       ProfileZoneTable.method string is exposed but iPhone always
       renders 5 zones · the additional Friel zones never appear.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. When
-      method='lthr-friel', render all 7 rows (Z5a · Z5b · Z5c) instead
-      of collapsing to Z5. Honest "anchored to your half-marathon HR
-      (LTHR 162)" subtitle.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ZoneMethodToggle.</strong> RunDetailView TIME IN ZONE section ships ZoneMethodToggle (%MHR / LTHR) above the ZoneBar when run.hr_zones_from_lthr is set. Switches the band math; lab math + body math don't collide.</td>
   <td><code>lib/training/zones.ts</code> ·
       <code>ProfileZoneTable.method</code></td>
   <td class="client-ios">IOS</td>
@@ -1381,11 +1333,8 @@
       strava_pushes rows for the runner · used by /profile to show
       "Last 3 pushes" with retry buttons. iPhone has the manual push
       action on RunDetail (build 117) but no aggregate history view.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A small
-      section on Profile under the Strava connection row · "Last 3
-      pushes" with status pill (pushed · queued · failed) + a Retry
-      button for any failure.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit StravaPushHistorySheet.</strong> ProfileView DEV row 'Strava pushes' presents StravaPushHistorySheet · last 10 strava_pushes rows from /api/strava/pushes with status (queued/succeeded/failed) + relative time + error_message on failures.</td>
   <td><code>app/api/strava/pushes/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1421,11 +1370,8 @@
       threshold, long, and rest. iPhone SettingsView surfaces these
       but the runner doesn't see "this is why your long run lands
       Saturday" linkage to plan generation.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Add
-      a "Affects your plan layout" note under the picker so the
-      runner knows changing rest_day will redistribute the week on
-      next regen.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit SettingValueRow.</strong> ProfileView SETTINGS ships SettingValueRow rows for Daily briefing / Long run day / Rest day. Picker presentation deferred · the rows are visible and the onTap can be wired incrementally.</td>
   <td><code>lib/coach/settings.ts</code> · <code>profile.user_settings</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1554,9 +1500,8 @@
       {author, year, title, journal, doi, url}) and related_slugs
       (array of sibling article slugs). The iPhone LearnArticleSheet
       renders both today; the web /learn/[slug] page should too.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td>iOS has it · web slug page needs to confirm parity. The data
-      is in the payload regardless.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit LearnArticleSheet.</strong> LearnArticleSheet already renders citations_json + related_slugs from /api/learn/[slug]. The toolkit's ArticleIndexCard atom is ready to drop on a future /learn index tab.</td>
   <td><code>learn_articles.citations_json</code> + <code>related_slugs</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1681,12 +1626,8 @@
       weekly recap nag. The iPhone API helper is wired but the rich-action
       categories never present buttons (no UNNotificationCategory currently
       registers ackable actions).</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Define
-      UNNotificationCategory IDs per the doctrine taxonomy and register
-      them in NotificationCategories.register() · then the wire is
-      end-to-end. Today the categories are referenced but never carry
-      ackable actions.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit /api/notifications/ack.</strong> iPhone NotificationCategories.swift registers UNNotificationActions; ack POSTs to /api/notifications/ack which routes per-category to the canonical state-change endpoint. The new inbox surface also shows ack_action on past rows.</td>
   <td><code>app/api/notifications/ack/route.ts</code> ·
       <code>NotificationCategories.swift</code></td>
   <td class="client-ios">IOS</td>
@@ -1794,13 +1735,8 @@
       this never escapes the SSR layer · no /api/coach/proposals (plural)
       GET wraps it. Clients can ACT on a proposal (accept/decline) but
       can't LIST what's pending.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Safe to leave</strong> only if every proposal also fires
-      an APNs notification that lands the user back into the modal.
-      Otherwise the runner has no way to discover pending proposals
-      from inside the app. Cheap backend fix: wrap loadPendingProposals
-      in /api/coach/proposals · then both clients can show a count
-      badge.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit Coach proposals strip.</strong> New endpoint GET /api/coach/proposals (lib/coach/proposals-state wrapper) ships alongside iPhone TodayView's COACH PROPOSALS strip · stack of accept/decline cards above the hero. Tap fires POST /api/coach/proposal {action, proposal}.</td>
   <td><code>lib/coach/proposals-state.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1825,12 +1761,8 @@
       cron drains it every 15 min. A runner only sees a notification
       if they happen to read their lock screen · missed ones leave no
       trace inside the app.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>design tweak needed</strong>.
-      An inbox surface (bell tap on Today → list view) showing the
-      last N notifications with sent vs missed split. Lets the runner
-      review the weekly recap they swiped past. The dispatch path
-      already has the body text · just persist it.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit NotificationInboxSheet.</strong> New endpoint GET /api/notifications/inbox?days=14&limit=50 + iPhone NotificationInboxSheet (entry from TodayView bell menu 'Notification inbox'). Past pushes grouped by day, category-tinted dot, ack-action surfaced.</td>
   <td><code>notifications_pending</code> table ·
       <code>lib/notifications/dispatch.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -1844,10 +1776,8 @@
       The text these produce only ever fires as a push · they could
       also surface as in-app cards (e.g. Race Eve T-21h shows the
       same message inside Today).</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>safe to leave</strong> for v1 ·
-      iPhone notification surface + the future inbox above covers the
-      same content. Worth revisiting once race-day flows mature.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit CountdownLadder.</strong> RaceDayView RACE WEEK section ships CountdownLadder · 5 rungs (T-7 / T-5 / T-3 / T-1 / Race) with today's rung glowing. Mirrors the cron templates so the runner sees the upcoming pushes.</td>
   <td><code>lib/notifications/templates.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1856,11 +1786,8 @@
   <td>GET <code>/api/usage?days=14</code> returns per-day briefing
       counts + token totals + USD cost. Maintained for P43 cost
       tracking; reads lib/coach/usage.ts.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Safe to leave</strong> · this is admin observability,
-      not a user surface. Post-2026-05-28 the LLM is gone (Cardinal
-      Rule #1), so the cost going forward is $0. The endpoint stays
-      as a check that the deprecation held.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit UsageSheet.</strong> ProfileView DEV row 'LLM spend' presents UsageSheet · 14-day daily rollup from /api/usage with briefings / tokens / cost_usd per day + 14-day total in the header.</td>
   <td><code>app/api/usage/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>

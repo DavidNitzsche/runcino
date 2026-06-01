@@ -20,6 +20,12 @@ struct RaceDayView: View {
     /// fueling strip on race-week. nil when no workout is scheduled or
     /// the race is past.
     @State private var raceWatchWorkout: WatchWorkout?
+    /// GPX file-picker toggle · drives the .fileImporter sheet under the
+    /// CourseAnnotations.stub upload affordance.
+    @State private var showGpxPicker: Bool = false
+    /// Banner shown after a successful GPX upload · reloads the detail
+    /// in the background so the new course geometry pops in.
+    @State private var gpxUploadStatus: String?
 
     var body: some View {
         let mesh = FaffEffort.race.mesh
@@ -61,6 +67,26 @@ struct RaceDayView: View {
                                         .padding(.top, 4)
                                 }
                             }
+                        }
+                        .padding(.top, 26)
+                    } else if detail?.race.is_past != true {
+                        // No course geometry yet · let the runner upload a
+                        // GPX file. Multipart-form POSTs to /api/race/gpx
+                        // which parses + stores + promotes to the library.
+                        // Toolkit · CourseAnnotations.stub variant.
+                        section(title: "THE COURSE", right: nil) {
+                            CourseAnnotations(variant: .stub(onUpload: { showGpxPicker = true }))
+                        }
+                        .padding(.top, 26)
+                    }
+
+                    // RaceStatusDot · derived from race proximity + goal
+                    // tracking. Surfaces on_track / watch / off so the
+                    // runner has a deterministic readout of where the
+                    // race plan stands. Toolkit · Family A.
+                    if let status = derivedRaceStatus {
+                        section(title: "STATUS", right: nil) {
+                            RaceStatusDot(status: status.dot, reason: status.reason)
                         }
                         .padding(.top, 26)
                     }
@@ -150,6 +176,50 @@ struct RaceDayView: View {
             }
         }
         .task { await load() }
+        .fileImporter(isPresented: $showGpxPicker,
+                      allowedContentTypes: [.xml, .data],
+                      allowsMultipleSelection: false) { result in
+            handleGpxPick(result)
+        }
+        .overlay(alignment: .top) {
+            if let msg = gpxUploadStatus {
+                Text(msg)
+                    .font(.body(12, weight: .extraBold))
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Theme.Glass.fill, in: Capsule())
+                    .overlay(Capsule().stroke(Theme.Accent.mintReady.opacity(0.40), lineWidth: 1))
+                    .foregroundStyle(Theme.Accent.mintReady)
+                    .padding(.top, 10)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private func handleGpxPick(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            Task {
+                // Security-scoped access for files-app URLs.
+                let gained = url.startAccessingSecurityScopedResource()
+                defer { if gained { url.stopAccessingSecurityScopedResource() } }
+                guard let data = try? Data(contentsOf: url) else {
+                    await MainActor.run { gpxUploadStatus = "Couldn't read that file." }
+                    return
+                }
+                let ok = (try? await API.uploadRaceGPX(slug: raceSlug,
+                                                       gpxData: data,
+                                                       filename: url.lastPathComponent)) ?? false
+                await MainActor.run {
+                    gpxUploadStatus = ok ? "Course uploaded · refreshing" : "Upload failed."
+                }
+                if ok { await load() }
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                await MainActor.run { gpxUploadStatus = nil }
+            }
+        case .failure:
+            gpxUploadStatus = "Couldn't open the picker."
+        }
     }
 
     /// Topbar label · "RACE DAY" / "RACE WEEK" / "BUILDING" derived from
@@ -465,6 +535,30 @@ struct RaceDayView: View {
     /// Gel mile points from the watch workout payload · race-only fueling
     /// hint. `nil` when no race-week workout has loaded yet.
     private var raceGelsMi: [Double]? { raceWatchWorkout?.gelsMi }
+
+    // MARK: - Race header status (RaceStatusDot)
+
+    /// Deterministic on_track / watch / off classification derived from
+    /// proximity + days_to_race + (when present) a projection-vs-goal
+    /// gap from raceFacts. Hidden for past races. Toolkit · Family A.
+    private var derivedRaceStatus: (dot: RaceStatus, reason: String)? {
+        guard detail?.race.is_past != true,
+              let days = detail?.race.days else { return nil }
+        // Days-out heuristic · plenty of time = on track until a signal
+        // says otherwise. The reason copy stays runner-facing.
+        if days > 60 {
+            return (.on_track, "Base phase. Plenty of runway before the race.")
+        }
+        // Look at the projection-vs-goal fact when the coach surfaced it.
+        let projGap = raceFacts?.facts.first(where: { $0.label.uppercased().contains("PROJECTION") || $0.label.uppercased().contains("PROJ") })
+        if let gap = projGap?.meta ?? projGap?.value, gap.contains("over") || gap.contains("slower") {
+            return (.off, gap)
+        }
+        if days <= 14 {
+            return (.watch, "Race week is close · the next two weeks are taper math, not fitness math.")
+        }
+        return (.on_track, "Building toward race week. Hit the easy days and the quality lands.")
+    }
 
     /// Normalised 0..1 elevation profile for the GelMileMarkers strip.
     /// Pulls from course_geometry.trackPoints when present; returns nil

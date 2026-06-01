@@ -131,3 +131,149 @@ struct CheckinResponse: Decodable {
         self.coach_reply = try c.decodeIfPresent(String.self, forKey: .coach_reply) ?? ""
     }
 }
+
+// MARK: - Coach proposals (pending stack)
+
+struct PendingProposal: Decodable, Identifiable {
+    let id: Int
+    let proposal_type: String      // "injury_adjust" | "illness_adjust" | "swap"
+    let reason: String
+    let suggested: String
+    let created_at: String
+
+    enum CodingKeys: String, CodingKey { case id, proposal_type, reason, suggested, created_at }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(Int.self, forKey: .id) ?? 0
+        self.proposal_type = try c.decodeIfPresent(String.self, forKey: .proposal_type) ?? ""
+        self.reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        self.suggested = try c.decodeIfPresent(String.self, forKey: .suggested) ?? ""
+        self.created_at = try c.decodeIfPresent(String.self, forKey: .created_at) ?? ""
+    }
+}
+
+struct ProposalsResponse: Decodable {
+    let ok: Bool
+    let proposals: [PendingProposal]
+
+    enum CodingKeys: String, CodingKey { case ok, proposals }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ok = try c.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        self.proposals = (try? c.decode([PendingProposal].self, forKey: .proposals)) ?? []
+    }
+}
+
+// MARK: - Notification inbox
+
+struct NotifInboxItem: Decodable, Identifiable {
+    let id: Int
+    let category: String
+    let title: String
+    let body: String
+    let fired_at: String
+    let delivered: Bool?
+    let ack_action: String?
+    let ack_at: String?
+    let dedup_key: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, category, title, body, fired_at, delivered, ack_action, ack_at, dedup_key
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(Int.self, forKey: .id) ?? 0
+        self.category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
+        self.title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        self.body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+        self.fired_at = try c.decodeIfPresent(String.self, forKey: .fired_at) ?? ""
+        self.delivered = try? c.decode(Bool.self, forKey: .delivered)
+        self.ack_action = try? c.decode(String.self, forKey: .ack_action)
+        self.ack_at = try? c.decode(String.self, forKey: .ack_at)
+        self.dedup_key = try? c.decode(String.self, forKey: .dedup_key)
+    }
+}
+
+struct NotifInboxResponse: Decodable {
+    let ok: Bool
+    let items: [NotifInboxItem]
+
+    enum CodingKeys: String, CodingKey { case ok, items }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ok = try c.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        self.items = (try? c.decode([NotifInboxItem].self, forKey: .items)) ?? []
+    }
+}
+
+// MARK: - Strava push history
+
+struct StravaPushRow: Decodable, Identifiable {
+    let id: Int
+    let run_id: String?
+    let status: String          // "queued" | "succeeded" | "failed"
+    let strava_activity_id: String?
+    let title: String?
+    let privacy: String?
+    let error_message: String?
+    let pushed_at: String?
+    let completed_at: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, run_id, status, strava_activity_id, title, privacy
+        case error_message, pushed_at, completed_at
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(Int.self, forKey: .id) ?? 0
+        self.run_id = try? c.decode(String.self, forKey: .run_id)
+        self.status = try c.decodeIfPresent(String.self, forKey: .status) ?? ""
+        self.strava_activity_id = try? c.decode(String.self, forKey: .strava_activity_id)
+        self.title = try? c.decode(String.self, forKey: .title)
+        self.privacy = try? c.decode(String.self, forKey: .privacy)
+        self.error_message = try? c.decode(String.self, forKey: .error_message)
+        self.pushed_at = try? c.decode(String.self, forKey: .pushed_at)
+        self.completed_at = try? c.decode(String.self, forKey: .completed_at)
+    }
+}
+
+struct StravaPushesResponse: Decodable {
+    let pushes: [StravaPushRow]
+
+    enum CodingKeys: String, CodingKey { case pushes }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.pushes = (try? c.decode([StravaPushRow].self, forKey: .pushes)) ?? []
+    }
+}
+
+// MARK: - LLM spend rollup
+
+struct UsageDayRow: Decodable, Identifiable {
+    let date: String
+    let briefings: Int
+    let tokens: Int
+    let cost_usd: Double
+
+    var id: String { date }
+    enum CodingKeys: String, CodingKey { case date, briefings, tokens, cost_usd }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.briefings = try c.decodeIfPresent(Int.self, forKey: .briefings) ?? 0
+        self.tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
+        self.cost_usd = try c.decodeIfPresent(Double.self, forKey: .cost_usd) ?? 0
+    }
+}
+
+struct UsageResponse: Decodable {
+    let days: [UsageDayRow]
+    let totalCostUsd: Double
+
+    enum CodingKeys: String, CodingKey { case days, totalCostUsd }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.days = (try? c.decode([UsageDayRow].self, forKey: .days)) ?? []
+        self.totalCostUsd = try c.decodeIfPresent(Double.self, forKey: .totalCostUsd) ?? 0
+    }
+}

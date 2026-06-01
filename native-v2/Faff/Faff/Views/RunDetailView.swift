@@ -322,20 +322,64 @@ struct RunDetailView: View {
             // "COMPLETED · FELT STRONG" claimed a strong RPE on every run
             // regardless of whether the runner logged one. Drop "FELT
             // STRONG" until the model exposes post_run_rpe.
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x9AF0BF))
-                Text("COMPLETED")
-                    .font(.label(10)).tracking(1)
-                    .foregroundStyle(Color(hex: 0x9AF0BF))
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                    Text("COMPLETED")
+                        .font(.label(10)).tracking(1)
+                        .foregroundStyle(Color(hex: 0x9AF0BF))
+                }
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(Color(hex: 0x9AF0BF).opacity(0.2), in: Capsule())
+                .overlay(Capsule().stroke(Color(hex: 0x9AF0BF).opacity(0.4), lineWidth: 1))
+
+                // RunSourceBadge · "watch / health / strava / manual"
+                // marker so the runner knows where a run's numbers came
+                // from. Toolkit · Family I (atom shipped earlier).
+                if let raw = run?.source, !raw.isEmpty {
+                    RunSourceBadge(source: RunSource.from(raw), compact: false)
+                }
+                Spacer()
             }
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Color(hex: 0x9AF0BF).opacity(0.2), in: Capsule())
-            .overlay(Capsule().stroke(Color(hex: 0x9AF0BF).opacity(0.4), lineWidth: 1))
             .padding(.top, 16)
+
+            // STRAVA ENGAGEMENT · suffer_score + kudos chip strip when
+            // either field is set on the wire (Strava-source runs only).
+            // Surfaces social signal honestly while leaving the
+            // coaching-grade verdict to the toolkit's HOW IT WENT card.
+            if hasStravaEngagement {
+                HStack(spacing: 8) {
+                    if let s = run?.suffer_score, s > 0 {
+                        Label("\(s) Strava suffer", systemImage: "flame.fill")
+                            .font(.body(11, weight: .extraBold)).tracking(0.4)
+                            .foregroundStyle(Theme.race)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Theme.race.opacity(0.14), in: Capsule())
+                            .overlay(Capsule().stroke(Theme.race.opacity(0.40), lineWidth: 1))
+                    }
+                    if let k = run?.kudos, k > 0 {
+                        Label("\(k) kudos", systemImage: "hand.thumbsup.fill")
+                            .font(.body(11, weight: .extraBold)).tracking(0.4)
+                            .foregroundStyle(Theme.Accent.amberGold)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Theme.Accent.amberGold.opacity(0.14), in: Capsule())
+                            .overlay(Capsule().stroke(Theme.Accent.amberGold.opacity(0.40), lineWidth: 1))
+                    }
+                    Spacer()
+                }
+                .padding(.top, 8)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// True when the wire has either of the Strava engagement fields set
+    /// to a non-zero value · drives the source-tinted chips just under
+    /// the hero stat row.
+    private var hasStravaEngagement: Bool {
+        ((run?.suffer_score ?? 0) > 0) || ((run?.kudos ?? 0) > 0)
     }
 
     private func heroStat(value: String, key: String) -> some View {

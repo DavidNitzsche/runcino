@@ -115,7 +115,19 @@ struct PlannedView: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SpecLabel(text: eyebrowText, size: 11, tracking: 2.5, color: Theme.txt.opacity(0.7))
+            // RACE REHEARSAL eyebrow · fires when the watch payload's
+            // fueling.isRehearsal flag is set. Same line carries the
+            // workout's date-context eyebrow when not rehearsing.
+            HStack(spacing: 8) {
+                SpecLabel(text: eyebrowText, size: 11, tracking: 2.5, color: Theme.txt.opacity(0.7))
+                if workout?.fueling?.isRehearsal == true {
+                    Text("RACE REHEARSAL")
+                        .font(.body(9, weight: .extraBold)).tracking(1.4)
+                        .foregroundStyle(Theme.bg)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Theme.Accent.amberBright, in: Capsule())
+                }
+            }
             Text(workoutTitle)
                 .displayRecipe(size: 44, weight: .bold)
                 .foregroundStyle(Theme.txt)
@@ -129,11 +141,37 @@ struct PlannedView: View {
             }
             .padding(.top, 18)
 
-            Pill(text: pillText, color: Color.white.opacity(0.16), textColor: Theme.txt, size: 10, tracking: 1)
-                .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
-                .padding(.top, 15)
+            HStack(spacing: 8) {
+                Pill(text: pillText, color: Color.white.opacity(0.16), textColor: Theme.txt, size: 10, tracking: 1)
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                // WATCH FACE hint · "WATCH · HR", "WATCH · PROGRESSION",
+                // "WATCH · STRIDES" so the runner knows which in-run
+                // face the watch will draw before they start. Hidden
+                // when the server didn't pick a flavor.
+                if let hint = watchFaceHint {
+                    Text("WATCH · \(hint)")
+                        .font(.body(9, weight: .extraBold)).tracking(1.4)
+                        .foregroundStyle(Theme.txt)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Theme.Glass.fill, in: Capsule())
+                        .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
+                }
+            }
+            .padding(.top, 15)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Uppercase watch-face label from WatchWorkout.displayHint, mapped
+    /// to the three known flavors. Nil → no chip rendered.
+    private var watchFaceHint: String? {
+        guard let raw = workout?.displayHint?.lowercased() else { return nil }
+        switch raw {
+        case "hr": return "HR"
+        case "progression": return "PROGRESSION"
+        case "strides": return "STRIDES"
+        default: return nil
+        }
     }
 
     private func heroStat(value: String, key: String) -> some View {

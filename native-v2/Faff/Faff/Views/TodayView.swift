@@ -56,6 +56,13 @@ struct TodayView: View {
     @State private var showSymptomSheet: Bool = false
     /// Log non-run sheet toggle (Strength | Cross-train).
     @State private var showLogNonRunSheet: Bool = false
+    /// Pending coach proposals stack · drives the COACH PROPOSALS strip
+    /// above the hero. Each card opens NudgeSheet for accept/decline.
+    @State private var pendingProposals: [PendingProposal] = []
+    /// Per-day shoe picker · POSTs the override to /api/today/shoe.
+    @State private var showShoePicker: Bool = false
+    /// Notification inbox sheet (past pushes + acks).
+    @State private var showInbox: Bool = false
     /// Async-fetch lifecycle for /api/plan/week (the primary signal for
     /// this tab · drives hero + week strip + drag sheet). Banner shows
     /// only when fetch errors AND no cached PlanWeek exists.
@@ -95,10 +102,12 @@ struct TodayView: View {
                         // as the primary action so the bell behaves the
                         // way runners expect.
                         Button("View nudges") { showNudge = true }
+                        Button("Notification inbox") { showInbox = true }
                         Divider()
                         // Toolkit entry points (David's spec: bell/nudge menu).
                         Button("Log a niggle or sick day") { showSymptomSheet = true }
                         Button("Log a non-run session")     { showLogNonRunSheet = true }
+                        Button("Today's shoe")             { showShoePicker = true }
                     } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "bell.fill")
@@ -153,6 +162,15 @@ struct TodayView: View {
                 // AdaptationCard · only when an adaptation fired in the last 24h.
                 if let intent = adaptationIntent, isWithinLast24h(intent.when_iso) {
                     AdaptationCard(intent: intent, onTapDetail: nil)
+                        .padding(.horizontal, 22)
+                        .padding(.top, 10)
+                }
+
+                // COACH PROPOSALS strip · stack of pending swap/injury/
+                // illness proposals from /api/coach/proposals. Tap accept
+                // or decline routes through /api/coach/proposal (singular).
+                ForEach(pendingProposals) { p in
+                    proposalCard(p)
                         .padding(.horizontal, 22)
                         .padding(.top, 10)
                 }
@@ -247,6 +265,86 @@ struct TodayView: View {
         .sheet(isPresented: $showLogNonRunSheet) {
             LogNonRunSheet(onSubmitted: { Task { await loadAll() } })
                 .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showShoePicker) {
+            TodayShoeOverrideSheet(
+                profile: profile,
+                date: selectedDayID.isEmpty ? todayISO : selectedDayID,
+                onPicked: { _ in Task { await loadAll() } }
+            )
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showInbox) {
+            NotificationInboxSheet()
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    // MARK: - Coach proposal card
+
+    /// Minimal accept/decline card for one pending proposal. Tap accept
+    /// to POST /api/coach/proposal action="accept"; decline POSTs
+    /// action="decline". Both bust the briefing cache; reload after.
+    private func proposalCard(_ p: PendingProposal) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("PROPOSAL")
+                .font(.body(9, weight: .extraBold))
+                .tracking(1.5)
+                .foregroundStyle(Theme.bg)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Theme.Accent.amberBright, in: Capsule())
+            VStack(alignment: .leading, spacing: 6) {
+                Text(p.suggested.isEmpty ? proposalTitle(p.proposal_type) : p.suggested)
+                    .font(.body(13.5, weight: .extraBold))
+                    .foregroundStyle(Theme.txt)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !p.reason.isEmpty {
+                    Text(p.reason)
+                        .font(.body(11.5, weight: .medium))
+                        .foregroundStyle(Theme.txt.opacity(0.82))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 8) {
+                    Button("ACCEPT") { decideProposal(p, action: "accept") }
+                        .font(.body(11, weight: .extraBold))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.bg)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Theme.Accent.mintReady, in: Capsule())
+                    Button("DECLINE") { decideProposal(p, action: "decline") }
+                        .font(.body(11, weight: .extraBold))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.txt)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Theme.Glass.fill, in: Capsule())
+                        .overlay(Capsule().stroke(Theme.Glass.line, lineWidth: 1))
+                }
+            }
+        }
+        .padding(14)
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rCard, style: .continuous).stroke(Theme.Accent.amberBright.opacity(0.35), lineWidth: 1))
+    }
+    private func proposalTitle(_ t: String) -> String {
+        switch t {
+        case "injury_adjust":  return "Proposed: ease the plan around your niggle"
+        case "illness_adjust": return "Proposed: pause the plan while you recover"
+        case "swap":           return "Proposed: swap today's workout"
+        default:               return "Coach has a proposal"
+        }
+    }
+    private func decideProposal(_ p: PendingProposal, action: String) {
+        Task {
+            var req = URLRequest(url: API.baseURL.appendingPathComponent("api/coach/proposal"))
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let body: [String: Any] = [
+                "action": action,
+                "proposal": ["id": p.id, "type": p.proposal_type]
+            ]
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            _ = try? await API.authedSend(req)
+            await loadAll()
         }
     }
 
@@ -461,6 +559,21 @@ struct TodayView: View {
                 }
                 .background(Color(hex: 0xEEE7DA))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+
+            // BRIEFING TOPICS · polymorphic dispatcher across the 27
+            // TopicKinds the server emits. Each kind gets a card with
+            // a kind-headline + payload lead + coach_note. Unknown
+            // kinds gracefully degrade to a kind-label row.
+            let renderable = (briefing?.topics ?? []).filter { isWorthShowing($0) }
+            if !renderable.isEmpty {
+                pBlock(title: "TODAY · NOTES") {
+                    VStack(spacing: 8) {
+                        ForEach(Array(renderable.enumerated()), id: \.offset) { _, t in
+                            BriefingTopicCard(topic: t)
+                        }
+                    }
+                }
             }
 
             // Faff Coach · driven by /api/today/purpose ("WHY THIS RUN").
@@ -767,9 +880,11 @@ struct TodayView: View {
         async let pr = (try? await API.fetchProfileState())
         async let ss = (try? await API.fetchStravaStatus())
         async let pp = (try? await API.fetchTodayPurpose())
-        // Toolkit additions · adaptation intent + active niggle.
+        // Toolkit additions · adaptation intent + active niggle +
+        // pending coach proposals.
         async let ai = (try? await API.fetchCoachIntents(limit: 1, reasonLike: "plan_adapt_%"))
         async let an = (try? await API.fetchActiveNiggle())
+        async let pp2 = (try? await API.fetchPendingProposals())
 
         // Primary fetch · plan drives the hero + week strip + drag sheet.
         // Throws on network failure so we can flip loadState into the
@@ -789,6 +904,7 @@ struct TodayView: View {
         let pur = await pp
         let adaptList = (await ai) ?? []
         let activeN   = await an
+        let proposals = (await pp2) ?? []
         // Weather baseline runs second-pass — it needs the workout type
         // and weekly mileage from the plan/workout. Fire-and-forget; the
         // HOTTER THAN USUAL tag silently hides if the lookup fails.
@@ -827,6 +943,7 @@ struct TodayView: View {
             self.skipped = skip
             self.adaptationIntent = adaptList.first
             self.activeNiggle = activeN
+            self.pendingProposals = proposals
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }
         }
@@ -836,6 +953,21 @@ struct TodayView: View {
 
     /// True when an ISO timestamp falls within the last 24 hours · drives
     /// AdaptationCard visibility on Today.
+    /// True when a briefing topic actually has something to render. A
+    /// topic with no payload AND no coach_note is just noise · skip it.
+    /// Also skip topics already surfaced elsewhere (workout_breakdown
+    /// is rendered as PRESCRIPTION above; next_workout is the hero).
+    private func isWorthShowing(_ t: Topic) -> Bool {
+        switch t.kind {
+        case .next_workout, .weather_chip:
+            return false   // already covered by the hero + HeatBandChip
+        case .unknown:
+            return (t.coach_note ?? "").isEmpty == false
+        default:
+            return (t.payload?.isEmpty == false) || (t.coach_note ?? "").isEmpty == false
+        }
+    }
+
     private func isWithinLast24h(_ iso: String) -> Bool {
         let fmt = ISO8601DateFormatter()
         fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

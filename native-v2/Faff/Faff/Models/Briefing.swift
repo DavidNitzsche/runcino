@@ -66,6 +66,9 @@ struct PosterBreakdownRow: Codable, Identifiable {
 }
 
 /// Topic kind discriminator. Mirrors web-v2/lib/topics/*.
+/// `unknown` is the lenient fallback for any kind we haven't yet built
+/// a renderer for · keeps the [Topic] decode from collapsing when the
+/// server adds a 28th kind ahead of an iPhone release.
 enum TopicKind: String, Codable {
     case run_recap, sleep_deficit, sleep_trend, hrv_trend, rhr_trend, weight_trend
     case next_workout, race_horizon, race_trajectory
@@ -74,14 +77,36 @@ enum TopicKind: String, Codable {
     case shoe_status, shoe_race_fit, shoe_rotation
     case plan_arc, phase_context, next_quality, volume_delta
     case weather_chip, fueling_plan, kit_list, race_morning_schedule
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = TopicKind(rawValue: raw) ?? .unknown
+    }
 }
 
 /// Polymorphic topic envelope. Concrete payload lives in `.payload` (decoded
-/// per `kind` by the topic-rendering layer).
+/// per `kind` by the topic-rendering layer). The kind enum tolerates
+/// unknown values so a server-side topic addition can't drop the whole
+/// topics array.
 struct Topic: Codable {
     let kind: TopicKind
     let payload: [String: AnyCodable]?
     let coach_note: String?
+
+    enum CodingKeys: String, CodingKey { case kind, payload, coach_note }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.kind = (try? c.decode(TopicKind.self, forKey: .kind)) ?? .unknown
+        self.payload = try? c.decode([String: AnyCodable].self, forKey: .payload)
+        self.coach_note = try? c.decode(String.self, forKey: .coach_note)
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(kind, forKey: .kind)
+        try c.encodeIfPresent(payload, forKey: .payload)
+        try c.encodeIfPresent(coach_note, forKey: .coach_note)
+    }
 }
 
 /// Generic value wrapper for the polymorphic topic payload.
