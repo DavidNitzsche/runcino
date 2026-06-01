@@ -8,6 +8,8 @@ import {
   CoachActivityTimeline,
   ConnectionRow as ToolkitConnectionRow,
   NotificationPrefsList,
+  ProvenanceLine,
+  StatTile,
   ToggleRow,
 } from '../toolkit';
 
@@ -122,6 +124,14 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       <button className="shoe-add" onClick={() => setEditing(-1)}>
         <span>+</span> Add a shoe
       </button>
+
+      {/* Physiology block · LTHR / HRmax / VDOT / RHR with provenance.
+          Closes coverage row 1480 (HRmax + LTHR provenance) and gives
+          ProvenanceLine its primary home on the WEB. */}
+      <div className="fll" style={{ marginTop: 30 }}>PHYSIOLOGY</div>
+      <div style={{ marginTop: 6 }}>
+        <PhysiologyBlock />
+      </div>
 
       <div className="fll" style={{ marginTop: 30 }}>DOCTRINE</div>
       <div className="setlist">
@@ -294,6 +304,104 @@ function ProfileToggleRows() {
       />
       {err ? <p className="fa-prov" style={{ color: 'var(--over)', padding: '8px 16px' }}>{err}</p> : null}
     </>
+  );
+}
+
+/* ============================================================
+   PhysiologyBlock · LTHR / HRmax / RHR / VDOT readout with
+   ProvenanceLine sublines. Lazy-fetches /api/profile.
+   Closes coverage row 1480 (HRmax + LTHR provenance).
+   ============================================================ */
+interface ProfilePhysiology {
+  lthr: number | null;
+  hrmax: number | null;
+  hrmax_observed: number | null;
+  rhr: number | null;
+  lthr_method: string | null;
+  lthr_set_at: string | null;
+  vdot?: number | null;
+}
+
+function PhysiologyBlock() {
+  const [p, setP] = useState<ProfilePhysiology | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/profile')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!alive || !j) return;
+        setP({
+          lthr: typeof j.lthr === 'number' ? j.lthr : null,
+          hrmax: typeof j.hrmax === 'number' ? j.hrmax : null,
+          hrmax_observed: typeof j.hrmax_observed === 'number' ? j.hrmax_observed : null,
+          rhr: typeof j.rhr === 'number' ? j.rhr : null,
+          lthr_method: typeof j.lthr_method === 'string' ? j.lthr_method : null,
+          lthr_set_at: typeof j.lthr_set_at === 'string' ? j.lthr_set_at : null,
+          vdot: typeof j.vdot === 'number' ? j.vdot : null,
+        });
+      })
+      .catch(() => { /* fail soft */ })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  if (loading) {
+    return <div className="fa-rows" style={{ padding: 14, color: 'var(--fa-mute)' }}>Loading…</div>;
+  }
+  if (!p) {
+    return <div className="fa-rows" style={{ padding: 14, color: 'var(--fa-mute)' }}>Sign in to see your physiology.</div>;
+  }
+
+  // Resolve provenance + freshness for each metric. Stale at >120d.
+  const lthrSetDate = p.lthr_set_at ? new Date(p.lthr_set_at) : null;
+  const lthrSetLabel = lthrSetDate && Number.isFinite(lthrSetDate.getTime())
+    ? lthrSetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+  const lthrStale = lthrSetDate
+    ? Date.now() - lthrSetDate.getTime() > 120 * 86400000
+    : false;
+  const lthrMethodLabel = (() => {
+    switch (p.lthr_method) {
+      case 'race_half':    return 'From a half marathon';
+      case 'race_full':    return 'From a marathon';
+      case 'race_marathon':return 'From a marathon';
+      case 'manual':       return 'Entered manually';
+      default:             return p.lthr_method ?? 'Source unknown';
+    }
+  })();
+  const hrmaxLabel = p.hrmax_observed ? 'Watch-observed peak' : p.hrmax ? 'Estimated from formula' : 'Not set';
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+      <div>
+        <StatTile value={p.lthr ?? '·'} unit={p.lthr ? 'bpm' : ''} label="LTHR" />
+        <div style={{ padding: '0 16px 12px' }}>
+          {p.lthr
+            ? <ProvenanceLine set={lthrSetLabel ?? undefined} method={lthrMethodLabel} stale={lthrStale} />
+            : <ProvenanceLine method="Run a half or marathon to anchor this." />}
+        </div>
+      </div>
+      <div>
+        <StatTile value={p.hrmax_observed ?? p.hrmax ?? '·'} unit={(p.hrmax_observed || p.hrmax) ? 'bpm' : ''} label="HRmax" />
+        <div style={{ padding: '0 16px 12px' }}>
+          <ProvenanceLine method={hrmaxLabel} />
+        </div>
+      </div>
+      <div>
+        <StatTile value={p.rhr ?? '·'} unit={p.rhr ? 'bpm' : ''} label="RHR" />
+        <div style={{ padding: '0 16px 12px' }}>
+          <ProvenanceLine method={p.rhr ? 'Daily from Apple Health' : 'Connect a source for daily RHR.'} />
+        </div>
+      </div>
+      <div>
+        <StatTile value={p.vdot ?? '·'} label="VDOT" />
+        <div style={{ padding: '0 16px 12px' }}>
+          <ProvenanceLine method={p.vdot ? 'Daniels formula · derived from your best recent race' : 'Run a race to anchor this.'} />
+        </div>
+      </div>
+    </div>
   );
 }
 

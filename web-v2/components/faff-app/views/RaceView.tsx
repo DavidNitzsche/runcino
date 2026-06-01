@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { FaffSeed } from '../types';
-import { CountdownLadder, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
+import { CountdownLadder, CourseAnnotations, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
 
 interface RecalcResult {
   vdotBefore?: number | null;
@@ -75,6 +75,13 @@ export type RaceDetailSeed = {
    *  uploads — surface that on the route panel as social proof. */
   courseSource: string | null;
   contributorCount: number;
+  /** Editorial annotations from course_library (the 4 curated rows:
+   *  americas-finest-city, big-sur-marathon, cim, sombrero-half).
+   *  Null on crowd-sourced + stub courses. Drives CourseAnnotations
+   *  toolkit render under THE COURSE block. */
+  courseStartLabel?: string | null;
+  courseFinishLabel?: string | null;
+  courseNotes?: string | null;
 };
 
 const FALLBACK: RaceDetailSeed = {
@@ -343,6 +350,18 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             <span>↗ {r.gainFt.toLocaleString()} FT GAIN</span>
           </div>
         </div>
+        {/* Course editorial annotations · start/finish labels + "what to
+            expect" notes from course_library. Renders only on the 4
+            editorial rows (curated by Faff). Closes coverage row 1185. */}
+        {(r.courseStartLabel || r.courseFinishLabel || r.courseNotes) ? (
+          <div style={{ marginTop: 14 }}>
+            <CourseAnnotations
+              startLabel={r.courseStartLabel}
+              finishLabel={r.courseFinishLabel}
+              notes={r.courseNotes}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="rp-2col" style={{ marginTop: 16 }}>

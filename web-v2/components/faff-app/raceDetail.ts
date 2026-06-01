@@ -255,10 +255,14 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       // course_library row for the same slug — has provenance fields after
       // migration 127. When source='promoted' and contributor_count > 1,
       // RaceView surfaces a "Crowd-sourced by N runners" indicator.
+      // 2026-05-31: also pull editorial annotations (start_label,
+      // finish_label, notes) so RaceView can render CourseAnnotations
+      // when source='editorial'. Closes coverage row 1185.
       pool.query(
-        `SELECT source, contributor_count FROM course_library WHERE slug = $1`,
+        `SELECT source, contributor_count, start_label, finish_label, notes
+           FROM course_library WHERE slug = $1`,
         [slug]
-      ).catch(() => ({ rows: [] as Array<{ source: string | null; contributor_count: number | null }> })),
+      ).catch(() => ({ rows: [] as Array<{ source: string | null; contributor_count: number | null; start_label: string | null; finish_label: string | null; notes: string | null }> })),
     ]);
     const row = geoRow.rows[0] ?? null;
     const geom = row?.course_geometry ?? null;
@@ -266,6 +270,9 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     const lib = courseLibRow.rows[0] ?? null;
     const courseSource = lib?.source ?? null;
     const contributorCount = Number(lib?.contributor_count ?? 0) || 0;
+    const courseStartLabel = (lib as { start_label?: string | null } | null)?.start_label ?? null;
+    const courseFinishLabel = (lib as { finish_label?: string | null } | null)?.finish_label ?? null;
+    const courseNotes = (lib as { notes?: string | null } | null)?.notes ?? null;
 
     const race = [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs, ...races.past].find(r => r?.slug === slug);
     if (!race) return null;
@@ -336,6 +343,14 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       // multi-contributor.
       courseSource,
       contributorCount,
+      // 2026-05-31: editorial annotations from course_library (closes
+      // coverage row 1185 · "Course editorial annotations"). Null on
+      // crowd-sourced + stub courses; populated on the 4 editorial
+      // rows (americas-finest-city, big-sur-marathon, cim,
+      // sombrero-half).
+      courseStartLabel,
+      courseFinishLabel,
+      courseNotes,
     };
   } catch {
     return null;

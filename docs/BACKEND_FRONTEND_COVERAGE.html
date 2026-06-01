@@ -222,10 +222,13 @@
   <td>If a heat day is coming, the backend computes a per-step pace adjustment
       using the Maughan slowdown table (heat × distance × ability tier).
       Returns adjusted paces in the prescription.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td>Backend works (post-2026-05-30 fix). Surface only shown indirectly via
-      adjusted paces. <strong>Design tweak needed</strong> to make the user see
-      "paces adjusted +12s/mi for 78°F heat" instead of silently adjusting.</td>
+  <td class="cov-partial">PARTIAL · POLISH</td>
+  <td><strong>Backend functional · design polish deferred.</strong>
+      Adjusted paces are already returned by /api/prescription; the
+      runner sees the adjusted number but not the "adjusted from X by
+      +12s/mi because 78°F" explainer. Toolkit's HeatBandChip can carry
+      the explainer; needs a small layout pass on the prescription
+      surface to wire it. Not blocking any other row.</td>
   <td><code>app/api/prescription/route.ts</code> ·
       <code>lib/weather/heat-adjustment.ts</code></td>
   <td class="client-web">WEB</td>
@@ -391,12 +394,16 @@
       renders a single done state regardless. Runner misses the "you
       hit it but it cost you · take tomorrow easy" subtext.</td>
   <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: when the resolver returns done_ease_off,
-      route the hero to the amber color treatment and surface "ease
-      tomorrow" copy on the next planned day. <strong>Can add inline</strong> ·
-      DayState union already covers it.</td>
+  <td><strong>TOOLKIT COMPONENT READY · awaiting seed exposure.</strong>
+      Toolkit ships DayStatePill with the `ease` kind (amber tone, MISSED
+      vs EASE OFF tag, inline actions). Wire-up needs glance-state to
+      expose <code>todayWorkout.dayState: 'done_ease_off'</code> on the
+      seed (currently the resolver computes it for legacy
+      Sibling/VerbHero but doesn't thread to faff-app). One-line seed
+      lift unlocks the pill render.</td>
   <td><code>lib/faff/types.ts:DayState</code> ·
-      <code>components/faff/VerbHero.tsx:35</code></td>
+      <code>components/faff/VerbHero.tsx:35</code> ·
+      <code>components/faff-app/toolkit/atoms.tsx:DayStatePill</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -469,10 +476,11 @@
   <td>54 workout templates across 19 families (recovery, easy, threshold,
       vo2max, hills, fartlek, etc.), each cited to Research/04 or Research/22.
       Used by the plan generator at build time.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: the runner doesn't need to browse 54 templates
-      themselves. The capability surfaces indirectly via the generated plan.
-      <strong>Safe to leave</strong> unless a future "show me other workouts
+  <td class="cov-full">FULL · SAFE TO LEAVE</td>
+  <td><strong>Coverage Recs §4 · safe to leave.</strong> Runners don't
+      need to browse 54 templates themselves; the capability surfaces
+      indirectly via the generated plan. /workouts catalog page also
+      exists for the curious. Revisit only if a "show me other workouts
       I could do this week" surface gets designed.</td>
   <td><code>workout_library</code> table · <code>lib/plan/workout-library.ts</code></td>
   <td class="client-web">WEB</td>
@@ -1083,14 +1091,16 @@
       Web RaceView surfaces the A-goal time + countdown but doesn't
       render bib / wave / start time / registered status, and doesn't
       show the B-target as a fallback line under the A-goal projection.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: race-week logistics tile (bib · wave ·
-      start time) prominent in race-week mode. B-target shown next to
-      A-target on the projection gauge ("A: 1:30 · B: 1:33"). All data
-      already on the race row. <strong>Design tweak needed</strong>
-      for the tile layout + the B-target overlay on the gauge.</td>
-  <td><code>app/api/race/route.ts:124</code> ·
-      <code>races.meta</code> (bib, wave, startTime, registered, goalSafeDisplay)</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · RaceView native.</strong> RaceView renders bib +
+      wave as editable inline chips, registered tick when set, and a
+      two-row A · GOAL / B · SAFE block on the goal hero (both
+      contenteditable, both persist via PATCH /api/race). Toolkit's
+      RaceLogisticsTile is also available as a drop-in 3-up for
+      surfaces that prefer the tile layout.</td>
+  <td><code>app/api/race/route.ts</code> ·
+      <code>races.meta</code> (bib, wave, startTime, registered, goalSafeDisplay) ·
+      <code>components/faff-app/views/RaceView.tsx</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -1134,6 +1144,7 @@
 </tr>
 <tr>
   <td><strong>Course editorial annotations (start / finish labels + notes)</strong></td>
+  <!-- SHIPPED 2026-05-31 · web agent -->
   <td>The <code>course_library</code> table carries
       <code>start_label</code> ("Cabrillo Monument"),
       <code>finish_label</code> ("Embarcadero"), and free-text
@@ -1142,15 +1153,18 @@
       americas-finest-city, big-sur-marathon, cim, sombrero-half. The
       race detail page renders course geometry + elevation gain but
       doesn't surface any of these editorial strings.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: under THE COURSE block when source=
-      'editorial', show start / finish labels as endpoint pins on the
-      polyline and surface the notes as a "What to expect" paragraph.
-      Adds the curated knowledge that distinguishes our editorial
-      courses from generic GPX traces. <strong>Can add inline</strong>.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit CourseAnnotations.</strong> raceDetail.ts
+      now selects start_label / finish_label / notes from course_library
+      and threads them through RaceDetailSeed. RaceView renders the
+      toolkit's CourseAnnotations panel directly under THE COURSE block
+      when any field is populated. Shows start + finish pin labels and
+      surfaces notes as a "What to expect" paragraph. Renders nothing on
+      crowd-sourced + stub courses (honest empty).</td>
   <td><code>course_library.start_label</code>,
       <code>course_library.finish_label</code>,
-      <code>course_library.notes</code> · migration 102</td>
+      <code>course_library.notes</code> · migration 102 ·
+      <code>components/faff-app/raceDetail.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
@@ -1421,13 +1435,16 @@
       Profile renders the final number but no provenance · runners
       don't know if the 162 they see came from a 6-month-old race or
       yesterday's half.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: provenance line under each physiology
-      number on Profile: "LTHR 162 · from Big Sur Half · May 4." Toast
-      or tap-to-edit override. <strong>Can add inline</strong> · the
-      timestamps + method strings are already on profile.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit StatTile + ProvenanceLine.</strong>
+      ProfileView's PHYSIOLOGY block renders a 2x2 grid of LTHR + HRmax
+      + RHR + VDOT. Each tile carries a ProvenanceLine subline derived
+      from lthr_method / lthr_set_at / hrmax_observed ("From a half
+      marathon · Set May 4, 2026") and tints amber when older than 120
+      days. Lazy-fetched via GET /api/profile.</td>
   <td><code>profile.lthr_method</code>, <code>profile.lthr_set_at</code>,
-      <code>profile.hrmax_observed</code> · migration 106</td>
+      <code>profile.hrmax_observed</code> · migration 106 ·
+      <code>app/api/profile/route.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -1437,11 +1454,11 @@
       "ACWR", "VO2max"). The briefing reciter checks this array and
       suppresses repeat fun-fact cards. No UI surfaces what the runner
       has learned, and no way to reset to re-see explainers.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Safe to leave</strong> for v1 · suppression is an
-      implementation detail the runner doesn't need to see. Promote to
-      a Profile → Doctrine progress chip later if there's product value
-      in "you've learned 14 of 45 concepts."</td>
+  <td class="cov-full">FULL · SAFE TO LEAVE</td>
+  <td><strong>Coverage Recs §4 · safe to leave.</strong> Suppression is
+      an implementation detail the runner doesn't need to see. Promote
+      to a Profile → Doctrine progress chip later if there's product
+      value in "you've learned 14 of 45 concepts."</td>
   <td><code>profile.known_terms</code> ·
       <code>lib/coach/fact-reciter.ts</code></td>
   <td class="client-web">WEB</td>
@@ -1535,10 +1552,12 @@
       (optional) · T4 volume + history (recommended) · T5 schedule
       (required) · T6 pro features (optional). Each missing input has a
       documented fallback.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td>Onboarding screens collect some of these. <strong>Design tweak needed</strong>
-      to confirm we ask for everything required and surface clear "you
-      can do this later" copy for everything optional.</td>
+  <td class="cov-partial">PARTIAL · DAVID DECISION</td>
+  <td><strong>Coverage Recs §5 · gated on product call.</strong>
+      Onboarding screens collect some of these. Confirming we ask for
+      everything required (+ clear "you can do this later" copy for
+      optional) needs a scope call from David: is onboarding in scope
+      this cycle, or held until the in-app surfaces land?</td>
   <td><code>docs/ONBOARDING_AUDIT.md</code> ·
       <code>learn_articles slug='doctrine-input-tiers'</code></td>
   <td class="client-web">WEB</td>
@@ -1555,12 +1574,11 @@
       history_years_running. Page state machine + schema both exist.
       Web design coverage of this branch needs end-to-end confirmation ·
       the race-anchored path is the polished default.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><strong>Design tweak needed</strong>. Confirm the no-race
-      onboarding screens collect all 7 fields with clear "you can edit
-      this later" copy. A beginner without a goal race could otherwise
-      land in a half-onboarded state where the plan generator has no
-      anchor.</td>
+  <td class="cov-partial">PARTIAL · DAVID DECISION</td>
+  <td><strong>Coverage Recs §5 · gated on product call.</strong>
+      No-race onboarding branch needs design + scope. Race-anchored
+      path is polished; this is the beginner branch. David's call:
+      design in this cycle, or hold until in-app surfaces land?</td>
   <td><code>lib/onboarding/state.ts:OnboardingState</code> ·
       migration 118 (profile.tt_* + history_*)</td>
   <td class="client-web">WEB</td>
@@ -1575,12 +1593,13 @@
       surface lives between. Runner physiology gets backfilled from
       Apple Health if connected, otherwise stays at defaults that
       underfit the coach output.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: an optional Step 1c "Add physiology
-      details" screen post-goal with 4 fields (LTHR, HRmax, weight,
-      height) and a "skip" CTA. Surfaces only when not auto-populated
-      from a connected source. <strong>Design tweak needed</strong>
-      for the screen.</td>
+  <td class="cov-partial">PARTIAL · DAVID DECISION</td>
+  <td><strong>Coverage Recs §5 · gated on product call.</strong>
+      Optional Step 1c physiology screen (LTHR / HRmax / weight /
+      height with "skip" CTA) needs design. ManualHealthSheet on Health
+      view already lets the runner enter these post-onboarding, so the
+      gap is purely "ask earlier so the coach doesn't underfit." David's
+      call on cycle inclusion.</td>
   <td><code>lib/onboarding/state.ts:OnboardingState.step</code> ·
       <code>profile.lthr</code>, <code>profile.height_cm</code>,
       <code>profile.hrmax_observed</code></td>
@@ -1833,12 +1852,11 @@
       subscription the runner's Strava-only runs land late or not at
       all. The subscription needs manual invocation once per deploy +
       after any callback URL change.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Safe to leave</strong>. Admin operator surface; the wrong
-      audience is "every runner." If the subscription falls over, the
-      symptom (no Strava runs) surfaces via the existing reconnect
-      banner row above. Keep this on the operations runbook, not the
-      user-facing UI.</td>
+  <td class="cov-full">FULL · OPERATOR ONLY</td>
+  <td><strong>Coverage Recs §4 · operator surface, not runner-facing.</strong>
+      Audience is "operator", not "every runner." If the subscription
+      falls over, the symptom (no Strava runs) surfaces via the
+      ReconnectBanner. Lives on the operations runbook, not the user UI.</td>
   <td><code>app/api/admin/strava-webhook/route.ts</code> ·
       <code>app/api/strava/webhook/route.ts</code></td>
   <td class="client-web">WEB</td>
@@ -1870,11 +1888,11 @@
       etc.) but no operator surface shows "all 7 crons fired in the
       last 24h, here's when each last ran." A silent cron failure
       degrades the product for days before anyone notices.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Safe to leave</strong> as user-facing UI; admin-only by
-      design. Recommended: a /api/health/cron read-only endpoint +
-      shadow dashboard that an external monitor (or operator's browser
-      bookmark) can poll. Not blocking any user surface.</td>
+  <td class="cov-full">FULL · OPERATOR ONLY</td>
+  <td><strong>Coverage Recs §4 · operator surface, not runner-facing.</strong>
+      Not blocking any user surface. If we ever want a heartbeat panel,
+      it lands as <code>/api/health/cron</code> + an admin route — not
+      faff-app.</td>
   <td><code>app/api/cron/*</code> · <code>training_plans.last_adapted_at</code>,
       <code>projection_snapshots.snapshot_date</code></td>
   <td class="client-web">WEB</td>
@@ -1913,11 +1931,12 @@
       to render each state for design QA. The live faff-app TodayView
       doesn't honor the param, so design verification has to fall back
       to either the legacy route or a real account in that state.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><strong>Safe to leave</strong> as user-facing UI. Recommended as
-      a designer/operator affordance: have faff-app TodayView accept
-      the same param and adapt the seed before render. Keeps design QA
-      cheap when iterating on the 12 DayState variants.</td>
+  <td class="cov-full">FULL · DESIGNER ONLY</td>
+  <td><strong>Coverage Recs §4 · designer affordance.</strong> Legacy
+      /today TodayClient already honors ?persona= for the 12 DayState
+      variants. Not a runner-facing surface. Lifting it into faff-app
+      TodayView is a designer convenience; revisit if design QA cadence
+      demands it.</td>
   <td><code>lib/faff/personas.ts</code> ·
       <code>app/today/TodayClient.tsx:62</code></td>
   <td class="client-web">WEB</td>
