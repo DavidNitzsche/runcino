@@ -110,6 +110,48 @@ async function recentWeeklyMileage(userId: string): Promise<number> {
 }
 
 /**
+ * 2026-06-01 · runner's actual easy-day median over the last 14 days.
+ *
+ * Drives the easy-day distance floor in layoutWeek · prevents the
+ * generator from authoring 4.5 mi easy days when the runner has been
+ * comfortably running 6+ mi easy. The volume_drift cron only fires at
+ * >40% deviation · this floor catches the silent 20-30% gap that the
+ * runner notices ("my easy runs are usually 5-6 miles · why is the
+ * plan asking for 4.5?") well before drift trips.
+ *
+ * "Easy" = any run that:
+ *   - is between 3 and 9 mi (excludes warmups, race-pace work, long runs)
+ *   - is NOT a duplicate (mergedIntoId not set)
+ *
+ * Returns the median (more robust than mean to one big outlier) ·
+ * rounds to the nearest 0.5 mi to match the rest of the generator's
+ * distance rounding doctrine.
+ *
+ * Returns 0 when there's no recoverable easy-day data · caller falls
+ * back to the existing math floor of 3 mi.
+ */
+async function easyDayMedianMi(userId: string): Promise<number> {
+  const r = await pool.query<{ med: string | null }>(
+    `WITH easy_runs AS (
+       SELECT (data->>'distanceMi')::numeric AS mi
+         FROM runs
+        WHERE user_uuid = $1
+          AND NOT (data ? 'mergedIntoId')
+          AND (data->>'distanceMi')::numeric BETWEEN 3 AND 9
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
+              >= (NOW() - interval '14 days')::date::text
+     )
+     SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
+       FROM easy_runs`,
+    [userId],
+  ).catch(() => ({ rows: [{ med: null }] }));
+  const m = Number(r.rows[0]?.med);
+  if (!Number.isFinite(m) || m <= 0) return 0;
+  // Round to nearest 0.5 mi per the distance-rounding doctrine.
+  return Math.round(m * 2) / 2;
+}
+
+/**
  * 2026-06-01 · detect whether the runner is mid-block · has been doing
  * quality work in the last 28 days. Two signals (either is enough):
  *
@@ -393,12 +435,17 @@ async function resolvePrescriptions(
 }
 
 function layoutWeek({
-  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx,
+  phase, weekIdx, totalWeeks, weeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor,
 }: {
   phase: string; weekIdx: number; totalWeeks: number;
   weeklyMi: number; longRunDow: DOW; qualityDows: DOW[]; restDow: DOW;
   isRaceWeek: boolean; raceDow: DOW | null; raceDistanceMi: number;
   rx: ResolvedPrescriptions;
+  /** 2026-06-01 · runner's actual 14-day easy-day median. Floors the
+   *  per-easy distance in non-race weeks so the plan never asks for a
+   *  4.5-mi easy day when the runner is comfortably running 6+ mi
+   *  easy. Pass 0 to skip the floor (falls back to historical math). */
+  easyMileFloor?: number;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -490,12 +537,34 @@ function layoutWeek({
   }
 
   // Fill remaining slots with easy.
+  //
+  // 2026-06-01 · `perEasy` is now floored by the runner's actual 14-day
+  // easy-day median when available (`easyMileFloor`). This closes a
+  // generator gap: the volume_drift cron fires at >40% deviation, but
+  // a runner whose real easy-day baseline is 6+ mi will silently be
+  // asked for 4.5 mi easy days when week budget math comes in low ·
+  // a 25-30% gap that's invisible to drift detection but obvious to
+  // the runner ("my easy runs are usually 5-6 miles · why is the
+  // plan asking for 4.5?"). The floor catches this case.
+  //
+  // Race-week distances stay template-controlled · taper math overrides
+  // the floor (handled by the early return for isRaceWeek above).
   const allocated = slots.filter(Boolean).reduce((s, d) => s + (d!.distanceMi || 0), 0);
   const remainingMi = Math.max(0, weeklyMi - allocated);
   const easySlots = slots
     .map((s, i) => ({ slot: s, dow: i as DOW }))
     .filter((x) => x.slot == null);
-  const perEasy = easySlots.length > 0 ? Math.max(3, Math.round(remainingMi / easySlots.length)) : 0;
+  const mathFloor = 3;
+  const baselineFloor = easyMileFloor && easyMileFloor > 0 ? easyMileFloor : 0;
+  // BASE and CUTBACK weeks may legitimately step down · don't over-floor
+  // a deliberate deload. CUTBACK = 4th week per volumeCurve.
+  // Otherwise floor to the runner's real baseline rounded to .5.
+  const isDeloadOrBase = phase === 'BASE';
+  const effectiveFloor = isDeloadOrBase
+    ? mathFloor
+    : Math.max(mathFloor, baselineFloor);
+  const perEasyRaw = easySlots.length > 0 ? Math.round(remainingMi / easySlots.length) : 0;
+  const perEasy = Math.max(effectiveFloor, perEasyRaw);
   for (const { dow } of easySlots) {
     slots[dow] = {
       dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false,
@@ -658,6 +727,9 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   const isMidBlock = await detectMidBlock(userId);
   const blocks = sizeBlocks(totalWeeks, raceDistanceMi, isMidBlock);
   const recentMi = await recentWeeklyMileage(userId);
+  // 2026-06-01 · runner's real easy-day baseline · floors `perEasy` in
+  // layoutWeek so the generator never authors silently-low easy days.
+  const easyFloor = await easyDayMedianMi(userId);
 
   // Read experience_level for volume-curve scaling (Q-01 / SIM-02 fix).
   // Falls back to 'intermediate' shape when unknown.
@@ -708,6 +780,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       raceDow,
       raceDistanceMi,
       rx,
+      easyMileFloor: easyFloor,
     });
     // P34 — relabel the rest day with cross-training activity when opted
     // in. Rotates through enabled modes across weeks so the runner gets
