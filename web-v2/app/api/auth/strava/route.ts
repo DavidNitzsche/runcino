@@ -49,8 +49,14 @@ async function connectURL(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const clientId = process.env.STRAVA_CLIENT_ID;
+  // 2026-06-01 fix: callback now lives on a dedicated PATH, not as
+  // a query param on this route. Strava's OAuth handler doesn't
+  // reliably preserve query params in the redirect_uri · the legacy
+  // `?action=callback` URL landed users on a 404 after consent
+  // because the appended &code=...&state=... mangled the path
+  // resolution. Clean path · no query string on redirect_uri itself.
   const redirect = process.env.STRAVA_OAUTH_REDIRECT
-    ?? `${req.nextUrl.origin}/api/auth/strava?action=callback`;
+    ?? `${req.nextUrl.origin}/api/auth/strava/callback`;
   if (!clientId) {
     return NextResponse.json({ error: 'STRAVA_CLIENT_ID not set' }, { status: 503 });
   }
