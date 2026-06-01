@@ -7,6 +7,7 @@ import { EFF, SEGS, KIT, ROLECOL } from '../constants';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { CoachProposalCard } from '../cards/CoachProposalCard';
 import { PlanProposalCard } from '../cards/PlanProposalCard';
+import { ReadinessBriefPanel } from '../cards/ReadinessBriefPanel';
 import { RouteMap } from '../RouteMap';
 import {
   AdaptationCard,
@@ -225,6 +226,16 @@ export function TodayView({
             .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
         </div>
       ) : null}
+
+      {/* Morning readiness brief · the 5-pillar context layer behind
+          today's readiness score. Self-renders null when seed has no
+          brief (no-data band or fresh user with no HK sync). Surfaced
+          beneath the actionable card stack so the runner sees actions
+          first, then the why-context. See
+          designs/briefs/readiness-brief-backend-landed.md for the full
+          contract + UI rules (no prescription, state both numbers, no
+          derived deltas). */}
+      <ReadinessBriefPanel brief={seed.readinessBrief} />
 
       <div className="weeklab">THIS WEEK</div>
       <div className="week">
