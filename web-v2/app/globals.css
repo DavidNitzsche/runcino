@@ -465,6 +465,25 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .strstatus-icn svg{width:13px;height:13px;display:block;}
 .strstatus-tx{line-height:1;}
 
+/* Standing recommendation advisory · 2026-06-01 · per
+   designs/briefs/standing-recommendation-after-override-landed.md.
+   Sits below the PlannedHero when the engine would currently recommend
+   a different prescription than the active row. Forward counsel ·
+   distinct from amber "was X" history (which is .wc-meta + .wc-was-*).
+   Cooler tone · slate-blue left edge for advisory severity, warm
+   amber for firm. No card chrome that competes with the hero. */
+.standrec{margin:14px 0 0;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:3px solid rgba(180,200,230,.65);}
+.standrec.sev-firm{border-left-color:#ffce8a;background:rgba(255,206,138,.06);}
+.standrec-row{display:flex;align-items:flex-start;gap:12px;}
+.standrec-icn{width:18px;height:18px;flex:0 0 auto;color:rgba(180,200,230,.85);margin-top:1px;}
+.standrec.sev-firm .standrec-icn{color:#ffce8a;}
+.standrec-icn svg{width:18px;height:18px;display:block;}
+.standrec-body{flex:1 1 auto;min-width:0;}
+.standrec-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.8px;color:rgba(180,200,230,.85);text-transform:uppercase;margin-bottom:4px;}
+.standrec.sev-firm .standrec-eyebrow{color:#ffce8a;}
+.standrec-copy{font-size:14px;font-weight:600;line-height:1.45;color:rgba(255,255,255,.88);}
+.standrec-sug{margin-top:6px;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.55);}
+
 /* ── Train view v2 (Train Options · Direction A · 2026-05-31) ──
    Hero + interactive 13-week ramp + lower dashboard grid (phase
    breakdown, this-week list, projection, key workouts). Coexists

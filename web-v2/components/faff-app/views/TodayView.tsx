@@ -397,17 +397,63 @@ export function TodayView({
           persistShoe={curDay === seed.todayIdx}
         />
       ) : !isRest ? (
-        <PlannedHeroV2
-          d={d}
-          shoes={seed.shoes}
-          seedShoe={(seed.todayShoeId != null
-            ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-            : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
-          persistShoe={curDay === seed.todayIdx}
-          cadenceBaseline={seed.health.body.find(m => m.k === 'cadence')?.current ?? null}
-          skipped={dSkipped}
-          onToggleSkip={setSkippedFor}
-        />
+        <>
+          <PlannedHeroV2
+            d={d}
+            shoes={seed.shoes}
+            seedShoe={(seed.todayShoeId != null
+              ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
+              : null) ?? seed.shoeRecByType[d.type] ?? KIT[d.type].shoe}
+            persistShoe={curDay === seed.todayIdx}
+            cadenceBaseline={seed.health.body.find(m => m.k === 'cadence')?.current ?? null}
+            skipped={dSkipped}
+            onToggleSkip={setSkippedFor}
+          />
+
+          {/* 2026-06-01 · standing recommendation advisory · per
+              designs/briefs/standing-recommendation-after-override-landed.md.
+              Live engine re-evaluation against today's readiness · only
+              renders when the engine would currently recommend a different
+              prescription than the active row. Forward counsel, not history.
+              Cooler tone than the amber "was X" history banner. Severity
+              styles the left edge (advisory = blue, firm = warn). Read-only
+              for now · the dedicated Accept endpoint is queued in a separate
+              brief and will land the action wiring. */}
+          {(() => {
+            const rec = d.standingRecommendation;
+            if (!rec || dSkipped) return null;
+            const sug = rec.suggestion;
+            const sugParts: string[] = [];
+            if (sug?.proposedType) sugParts.push(sug.proposedType.toUpperCase());
+            if (sug?.proposedDistanceMi != null) sugParts.push(`${sug.proposedDistanceMi} mi`);
+            if (sug?.proposedDateIso) {
+              try {
+                const dt = new Date(sug.proposedDateIso + 'T12:00:00');
+                sugParts.push(dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }));
+              } catch { /* ignore */ }
+            }
+            const sugLine = sugParts.length ? `Coach suggests · ${sugParts.join(' · ')}` : null;
+            return (
+              <div className={`standrec sev-${rec.severity}`} role="note">
+                <div className="standrec-row">
+                  <span className="standrec-icn" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 8v4M12 16h.01"/>
+                      <circle cx="12" cy="12" r="9"/>
+                    </svg>
+                  </span>
+                  <div className="standrec-body">
+                    <div className="standrec-eyebrow">
+                      {rec.severity === 'firm' ? 'STANDING ADVICE' : 'COACH NOTE'}
+                    </div>
+                    <div className="standrec-copy">{rec.copy}</div>
+                    {sugLine ? <div className="standrec-sug">{sugLine}</div> : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </>
       ) : (
         <div className="hero">
           <div className="hmain">
