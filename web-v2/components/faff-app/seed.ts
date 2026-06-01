@@ -1753,6 +1753,8 @@ export async function buildSeed(): Promise<FaffSeed> {
       })()
     : [];
   const healthSnapshot = adaptHealth(health, formMetrics);
+  // Stamp the real readiness on top · honestReadiness overrides the
+  // stale HRV-baseline-as-readiness-baseline below in the main return.
   healthSnapshot.readiness = readiness;
   const prs = adaptPRs(races, log);
   const racesList = adaptRaces(races);
@@ -1814,13 +1816,29 @@ export async function buildSeed(): Promise<FaffSeed> {
     ? `Week ${season.nowIdx + 1} of ${Math.max(1, season.raceIdx + 1)} · ${(glance?.phaseLabel ?? 'Active block')}`
     : (glance?.phaseLabel ?? 'Active training');
 
+  // 2026-06-01 · honest baseline fix. adaptReadiness was setting
+  // `readiness.baseline = health.hrv.baseline ?? 60` · the HRV
+  // value in milliseconds mislabeled as a readiness baseline. UI
+  // then rendered "Baseline 53 · today 42 · −11" mixing two
+  // metrics into a meaningless delta.
+  //
+  // Override with the real readiness baseline (mean of past 14d
+  // readiness scores) when available via composition. Falls back
+  // to today's score (delta 0 · honest first-day state) when no
+  // history yet.
+  const honestReadiness = readinessBrief?.composition
+    ? { ...readiness, baseline: readinessBrief.composition.baseline }
+    : { ...readiness, baseline: readiness.score };
+  // Apply to the embedded healthSnapshot too · single source of truth.
+  healthSnapshot.readiness = honestReadiness;
+
   return {
     todayISO: new Date().toISOString(),
     topDate: todayLabel(),
     weekOf,
     user,
     week, todayIdx, results,
-    readiness,
+    readiness: honestReadiness,
     readinessBrief,
     planProposals,
     strengthRecommendation: glance?.strengthRecommendation ?? null,
