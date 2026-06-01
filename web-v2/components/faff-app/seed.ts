@@ -1247,6 +1247,14 @@ export async function buildSeed(): Promise<FaffSeed> {
           goalRace.conditionsSource = conditions.source;
         }
       }
+
+      // §2.3 · Execution chunk · per-runner pacing buffer (CV-based).
+      // Always populated · 30s default when fewer than 2 typed
+      // race/tempo/threshold runs in the 90-day window.
+      const { computePacingDiscipline } = await import('@/lib/coach/pacing-discipline');
+      const pacing = await computePacingDiscipline(userId, 90);
+      goalRace.executionBufferSec = pacing.bufferSec;
+      goalRace.executionSource = pacing.source;
     } catch {
       // Enrichment is best-effort · the panel falls back to doctrine
       // placeholders when these fields are absent.

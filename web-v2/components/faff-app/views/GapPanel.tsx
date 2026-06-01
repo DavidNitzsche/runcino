@@ -141,7 +141,13 @@ function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] 
     ? Math.max(0, Math.round(goal.conditionsImpactSec))
     : Math.min(90, Math.round(goalSec * 0.018));
   const conditionsHasReal = goal.conditionsImpactSec != null;
-  const TRAIN_EXEC = 30;
+  // 2026-05-31 · Execution chunk reads goal.executionBufferSec
+  // (CV across the runner's race-effort splits). Always populated
+  // by the seed · 30s default when fewer than 2 typed runs.
+  const TRAIN_EXEC = goal.executionBufferSec != null
+    ? Math.max(0, Math.round(goal.executionBufferSec))
+    : 30;
+  const executionHasReal = goal.executionSource === 'observed';
   const baseline = FIXED_COURSE + PARTLY_COND + TRAIN_EXEC;
   const fitness = Math.max(0, totalGap - baseline);
   return [
@@ -185,10 +191,31 @@ function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] 
       nm: 'Execution',
       sec: TRAIN_EXEC,
       tag: 'Trainable',
-      doctrine: `A ${fmtDelta(TRAIN_EXEC)} buffer for honest pacing. Go out 10s/mi too hot and the back half costs you double. The most winnable seconds on the list.`,
-      src: 'Research/04 · pacing discipline',
+      doctrine: executionHasReal
+        ? executionDoctrineCopy(TRAIN_EXEC)
+        : `A ${fmtDelta(TRAIN_EXEC)} buffer for honest pacing. Go out 10s/mi too hot and the back half costs you double. The most winnable seconds on the list. (Your race-effort pacing pattern hasn't been observed yet · the chunk lights up with your own number after a few typed tempo/threshold runs.)`,
+      src: executionHasReal
+        ? 'Research/04 · observed pacing CV across your recent race efforts'
+        : 'Research/04 · pacing discipline (doctrine default)',
     },
   ];
+}
+
+/** Doctrine copy when executionBufferSec is real (observed CV). */
+function executionDoctrineCopy(sec: number): string {
+  if (sec <= 15) {
+    return `Your race-effort splits are tight · CV under 2%. ` +
+      `A ${fmtDelta(sec)} buffer is enough · you don't blow up on pace ` +
+      `discipline. Trust the plan.`;
+  }
+  if (sec <= 30) {
+    return `Your race-effort splits are typical · CV around 3%. ` +
+      `Plan for ${fmtDelta(sec)} of pacing buffer. Go out 10s/mi too ` +
+      `hot and the back half costs you double.`;
+  }
+  return `Your race-effort splits drift · CV above 4%. A ${fmtDelta(sec)} ` +
+    `buffer accounts for it · but this is the most winnable chunk on ` +
+    `the list. Hold even mile-1 pace and you claim 30 seconds back.`;
 }
 
 /** Doctrine copy when conditionsImpactSec is real (per-race). */
