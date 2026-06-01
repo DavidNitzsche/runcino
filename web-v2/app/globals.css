@@ -519,10 +519,16 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .ramp .bar{flex:1;border-radius:5px 5px 0 0;position:relative;cursor:pointer;transition:transform .15s,filter .15s,box-shadow .15s;display:flex;align-items:flex-start;justify-content:center;min-width:0;}
 .train2 .ramp .bar:hover{filter:brightness(1.12);transform:translateY(-3px);}
 .train2 .ramp .bar.cur{box-shadow:0 0 0 2px rgba(255,255,255,.9),0 0 22px rgba(255,255,255,.35);}
-.train2 .ramp .bar.race{background:transparent !important;border:2px dashed rgba(255,255,255,.5);background-image:repeating-conic-gradient(rgba(255,255,255,.16) 0% 25%, transparent 0% 50%) !important;background-size:14px 14px !important;}
+/* Race bar · checkered finish-line flag per design handoff 2026-06-01.
+   Was a transparent dashed placeholder that read as "TBD" not "race".
+   Now a solid black/white checker pattern with a thin gold inset · the
+   finish line, unambiguous. */
+.train2 .ramp .bar.race{border:none !important;background-color:rgba(8,12,14,.6) !important;background-image:repeating-conic-gradient(rgba(255,255,255,.9) 0% 25%, rgba(10,14,16,.92) 0% 50%) !important;background-size:11px 11px !important;box-shadow:inset 0 0 0 1.5px rgba(243,173,56,.6);}
 .train2 .ramp .bar .bmi{font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;opacity:0;margin-top:-20px;transition:opacity .15s;white-space:nowrap;}
 .train2 .ramp .bar:hover .bmi,.train2 .ramp .bar.cur .bmi{opacity:.95;}
-.train2 .ramp .bar.cur::after{content:'NOW';position:absolute;top:-34px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:800;letter-spacing:1px;color:#fff;background:rgba(0,0,0,.4);padding:3px 6px;border-radius:5px;}
+/* "NOW" label removed per design handoff 2026-06-01 · the current week
+   is already marked by the white ring + its mileage number, so the
+   doubled-up text was visual noise. */
 .train2 .ramp-nums{display:flex;gap:6px;margin-top:8px;}
 .train2 .ramp-nums span{flex:1;text-align:center;font-size:10px;font-weight:600;opacity:.5;}
 .train2 .ramp-phases{display:flex;margin-top:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:9px;}
@@ -566,16 +572,54 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .train2 .twr.skipped{opacity:.55;}
 .train2 .twr.skipped .tnm,.train2 .twr.skipped .tmeta{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.35);}
 
-/* projection */
+/* projection · redesigned 2026-06-01 per
+   designs/from Design agent/train-page README §5+6.
+   Old .pjbar / .pjrow were an unlabeled progress fill · replaced by
+   .pjtrack, a labeled SLOWER/FASTER axis with goal at center, today
+   offset by gap magnitude, segment + chip on the slow/fast side. */
 .train2 .proj{display:flex;flex-direction:column;gap:0;}
 .train2 .proj .pjbig{font-family:'Oswald',sans-serif;font-size:46px;font-weight:600;line-height:.9;}
+/* §6 · projected finish solid white (was gold gradient that fought
+   the rest of the app · "behind" meaning carried by the chip + bar). */
+.train2 .proj .pjbig.amber{background:none;color:#F6F7F8;-webkit-text-fill-color:#F6F7F8;}
 .train2 .proj .pjlab{font-size:10px;font-weight:700;letter-spacing:1px;opacity:.6;margin-top:8px;}
-.train2 .proj .pjbar{height:8px;border-radius:5px;background:rgba(255,255,255,.12);margin-top:16px;overflow:hidden;position:relative;}
-.train2 .proj .pjbar i{position:absolute;left:0;top:0;height:100%;border-radius:5px;background:linear-gradient(90deg,#3FB6B0,#3EBD41);}
-.train2 .proj .pjbar .goalmark{position:absolute;top:-4px;width:2px;height:16px;background:#fff;opacity:.85;}
-.train2 .proj .pjrow{display:flex;justify-content:space-between;margin-top:11px;font-size:11px;font-weight:600;opacity:.78;}
-.train2 .proj .pjrow b{color:#86efa0;}
 .train2 .proj .pjnote{font-size:12.5px;font-weight:500;line-height:1.5;opacity:.85;margin-top:14px;}
+
+/* §5 · projection track · SLOWER/FASTER axis. Goal sits at the
+   center white tick; the today dot offsets to the slow or fast side
+   based on gap magnitude; an amber segment spans goal->today with a
+   chip showing the delta. */
+.train2 .proj .pjtrack{position:relative;height:6px;border-radius:4px;background:rgba(255,255,255,.08);margin-top:42px;margin-bottom:44px;}
+.train2 .proj .pjzone{position:absolute;top:0;bottom:0;}
+.train2 .proj .pjzone.slow{left:0;width:50%;border-radius:4px 0 0 4px;background:linear-gradient(90deg,rgba(243,173,56,.05),rgba(243,173,56,.14));}
+.train2 .proj .pjzone.fast{left:50%;width:50%;border-radius:0 4px 4px 0;background:linear-gradient(90deg,rgba(62,189,65,.14),rgba(62,189,65,.05));}
+.train2 .proj .pjseg{position:absolute;top:0;bottom:0;background:linear-gradient(90deg,#F3AD38,#FF8847);}
+.train2 .proj .pjtick{position:absolute;top:50%;transform:translate(-50%,-50%);}
+.train2 .proj .pjtick.goal{width:3px;height:22px;border-radius:2px;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.45);}
+.train2 .proj .pjtick.proj{width:14px;height:14px;border-radius:50%;background:#FF8847;border:2.5px solid #0c2b24;box-shadow:0 0 10px rgba(255,136,71,.6);}
+.train2 .proj .pjchip{position:absolute;top:-33px;transform:translateX(-50%);font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;color:#FFCE8A;background:rgba(243,173,56,.14);border:1px solid rgba(243,173,56,.28);border-radius:20px;padding:3px 10px;white-space:nowrap;}
+.train2 .proj .pjend{position:absolute;top:-16px;font-size:8.5px;font-weight:800;letter-spacing:1px;opacity:.5;}
+.train2 .proj .pjend.left{left:1px;color:#FFCE8A;}
+.train2 .proj .pjend.right{right:1px;color:#86efa0;}
+.train2 .proj .pjlbl{position:absolute;top:16px;transform:translateX(-50%);text-align:center;font-size:9px;font-weight:800;letter-spacing:.6px;opacity:.6;white-space:nowrap;}
+.train2 .proj .pjlbl b{display:block;font-family:'Oswald',sans-serif;font-size:13.5px;font-weight:600;letter-spacing:0;margin-top:3px;opacity:1;color:#fff;}
+.train2 .proj .pjlbl.proj{color:#FFCE8A;opacity:.9;}
+.train2 .proj .pjlbl.proj b{color:#FFCE8A;}
+
+/* §4 · what closes it · folded inline (no inner bordered card).
+   Each lever is a row with a trend-up glyph + the action + an
+   optional delta chip. Delta chip support requires backend to ship
+   per-lever quantified deltas (e.g. "15-30s / wk") · until then the
+   chip stays absent and the row reads as text + glyph. */
+.train2 .proj .gap{margin-top:10px;}
+.train2 .proj .gap-lbl{font-size:10px;font-weight:800;letter-spacing:1.5px;opacity:.5;margin:18px 0 10px;}
+.train2 .proj .gap-list{display:flex;flex-direction:column;gap:8px;}
+.train2 .proj .lever{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px 13px;transition:.15s;}
+.train2 .proj .lever:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);}
+.train2 .proj .lever .lv-ic{width:28px;height:28px;border-radius:8px;background:rgba(243,173,56,.14);color:#FFCE8A;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.train2 .proj .lever .lv-ic svg{width:15px;height:15px;}
+.train2 .proj .lever .lv-t{flex:1;font-size:13px;font-weight:500;line-height:1.4;}
+.train2 .proj .lever .lv-d{flex:0 0 auto;font-family:'Oswald',sans-serif;font-size:12.5px;font-weight:600;color:#FFCE8A;background:rgba(243,173,56,.12);border:1px solid rgba(243,173,56,.22);border-radius:20px;padding:5px 11px;white-space:nowrap;}
 
 /* key workouts */
 .train2 .miles{display:flex;flex-direction:column;}

@@ -22,7 +22,6 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { WhatChangedExpander } from '../toolkit';
-import { GapReportCard } from '../overlays/Drawer';
 import { buildAdaptText } from '../adapt-text';
 
 interface PhaseMeta {
@@ -349,18 +348,16 @@ export function TrainView({
 
   return (
     <div className="train2">
-      {/* Header */}
+      {/* Header · de-cluttered per designs/from Design agent/train-page
+          (2026-06-01). Removed: .t-kicker (BASE PHASE · WEEK 5 + race
+          name/location/date repeating downstream) and the .sline
+          (BASE · WEEKS 1-6, duplicating phase info already in .t-ptitle
+          and in the ramp axis). Each fact, phase / race / week / date,
+          now appears once. */}
       <div className="t-htop">
         <div>
-          <div className="t-kicker">
-            <span style={{ opacity: 0.92 }}>{(curPhaseMeta?.name ?? '—').toUpperCase()} PHASE · WEEK {focusIdx + 1}</span>
-            <br />
-            <span style={{ opacity: 0.74, letterSpacing: 1, fontWeight: 600 }}>
-              {goal ? `${goal.name}${goal.location ? ' · ' + goal.location : ''} · ${formatDate(goal.date)}` : 'No goal race set'}
-            </span>
-          </div>
           <div className="t-eyebrow">
-            ROAD TO <b>{(goal?.name ?? 'GOAL').split(' ')[0].toUpperCase()}</b>{goal ? ` · SUB ${goal.goal}` : ''}
+            {goal ? <>{goal.name.toUpperCase()} · <b>SUB {goal.goal}</b></> : 'NO GOAL RACE SET'}
           </div>
           <div className="t-ptitle">{isRace ? 'RACE DAY' : (curPhaseMeta?.name ?? '—')}</div>
           <div className="t-focus">
@@ -373,9 +370,8 @@ export function TrainView({
             <span className="dot" style={{ background: phaseColor(curPhase), boxShadow: `0 0 8px ${phaseColor(curPhase)}` }} />
             WK {focusIdx + 1} · {miles[focusIdx]} MI
           </span>
-          <span className="sline">{(curPhaseMeta?.name ?? '—').toUpperCase()} · {(curPhaseMeta?.lab ?? '').toUpperCase()}</span>
           <span className="cd">
-            {isRace ? <>Race day. It&rsquo;s here.</> : <><b>{daysOut}</b> days to the start line</>}
+            {isRace ? <>Race day. It&rsquo;s here.</> : goal ? <><b>{daysOut}</b> days to {formatDate(goal.date)}</> : <><b>{daysOut}</b> days to go</>}
           </span>
         </div>
       </div>
@@ -488,47 +484,97 @@ export function TrainView({
             </div>
           </div>
 
-          {/* PROJECTION card · 2026-06-01 · now hosts the full
-              gap-report (status-tinted headline · confidence band ·
-              what closes it · realistic outcomes with renegotiation
-              · plan risks) when seed.readinessBrief.gapReport is
-              non-null. The big-number-and-bar visuals stay above
-              the rich gap-report content so the runner sees the
-              headline answer at a glance + the actionable layers
-              underneath. Falls back to the legacy projection note
-              when no gap-report is on the seed (cold start, no
-              goal race). */}
+          {/* PROJECTION card · redesigned 2026-06-01 per
+              designs/from Design agent/train-page README §4-6.
+              · §4 What-closes-it folded directly into the panel (no
+                inner bordered card) as .gap/.lever rows
+              · §5 Projection bar replaced by a labeled SLOWER/FASTER
+                axis with goal at center, today offset, and a chip on
+                the segment
+              · §6 Big projected time is solid white (was a gold
+                gradient that fought the rest of the app)
+              The richer gap-report content (confidence band,
+              alternative ranges, plan risks) is intentionally NOT in
+              this card per design · those have other surfaces if
+              David wants them later. */}
           <div className="card proj">
             <div className="ch">
               <span className="ct">PROJECTION</span>
               <span className="cx">{goal ? `vs Sub ${goal.goal}` : '—'}</span>
             </div>
-            {goal?.projected ? (
-              <>
-                <div className="pjbig" style={{ color: goal.onTrack ? '#86efa0' : '#FFCE8A' }}>{goal.projected}</div>
-                <div className="pjlab">PROJECTED FINISH TODAY</div>
-                <div className="pjbar">
-                  <i style={{ width: `${Math.min(100, goal.goalPct ?? 80)}%` }} />
-                  <span className="goalmark" style={{ left: '92%' }} />
-                </div>
-                <div className="pjrow">
-                  <span>Goal {goal.goal}</span>
-                  <span><b>{goal.delta}</b></span>
-                </div>
-                {seed.readinessBrief?.gapReport ? (
-                  <GapReportCard
-                    report={seed.readinessBrief.gapReport}
-                    goalSlug={goal ? (seed.goalRace?.slug ?? null) : null}
-                  />
-                ) : (
-                  <div className="pjnote">
-                    {goal.onTrack
-                      ? 'On track. The threshold work in Build is what closes the last 100 seconds. Hold the easy days easy.'
-                      : 'Behind goal. The next threshold blocks close the gap. Protect them.'}
+            {goal?.projected ? (() => {
+              // Bar positions · prefer numeric seconds from the
+              // gap-report when available; fall back to parsing the
+              // formatted strings. Schematic 50/50 when neither parses.
+              const goalSec = seed.readinessBrief?.gapReport?.goalSec
+                ?? parseClockTime(goal.goal) ?? 0;
+              const projSec = seed.readinessBrief?.gapReport?.trajectorySec
+                ?? parseClockTime(goal.projected) ?? 0;
+              const gapSec = (projSec && goalSec) ? projSec - goalSec : 0;
+              // Cap offset at 28% from center so the dot stays in the
+              // visible zone for big deltas. Floor at 4% so a tiny
+              // delta is still readably offset from the goal tick.
+              const mag = goalSec > 0
+                ? Math.min(28, Math.max(gapSec === 0 ? 0 : 4, Math.abs(gapSec) / goalSec * 100))
+                : 0;
+              const behind = gapSec > 0;
+              const projLeftPct = mag === 0 ? 50 : (behind ? 50 - mag : 50 + mag);
+              const segLeft = Math.min(50, projLeftPct);
+              const segWidth = Math.abs(50 - projLeftPct);
+              const chipLeft = (50 + projLeftPct) / 2;
+              const levers = (goal.levers ?? []).slice(0, 3);
+              const fallbackLines = !levers.length
+                ? (seed.readinessBrief?.gapReport?.whatClosesIt ?? []).slice(0, 3)
+                : [];
+
+              const leverIcon = (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 17L17 7M9 7h8v8" />
+                </svg>
+              );
+
+              return (
+                <>
+                  <div className="pjbig amber">{goal.projected}</div>
+                  <div className="pjlab">PROJECTED FINISH TODAY</div>
+                  <div className="pjtrack">
+                    <span className="pjzone slow" />
+                    <span className="pjzone fast" />
+                    {segWidth > 0 ? (
+                      <span className="pjseg" style={{ left: `${segLeft}%`, width: `${segWidth}%` }} />
+                    ) : null}
+                    <span className="pjend left">SLOWER</span>
+                    <span className="pjend right">FASTER</span>
+                    {goal.delta && mag > 0 ? (
+                      <span className="pjchip" style={{ left: `${chipLeft}%` }}>{goal.delta}</span>
+                    ) : null}
+                    <span className="pjtick goal" style={{ left: '50%' }} />
+                    <span className="pjtick proj" style={{ left: `${projLeftPct}%` }} />
+                    <span className="pjlbl" style={{ left: '50%' }}>GOAL<b>{goal.goal}</b></span>
+                    <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b>{goal.projected}</b></span>
                   </div>
-                )}
-              </>
-            ) : (
+                  {(levers.length > 0 || fallbackLines.length > 0) ? (
+                    <div className="gap">
+                      <div className="gap-lbl">WHAT CLOSES IT</div>
+                      <div className="gap-list">
+                        {levers.map((lv, i) => (
+                          <div key={`l-${i}`} className="lever">
+                            <span className="lv-ic">{leverIcon}</span>
+                            <span className="lv-t">{lv.title}</span>
+                          </div>
+                        ))}
+                        {fallbackLines.map((line, i) => (
+                          <div key={`f-${i}`} className="lever">
+                            <span className="lv-ic">{leverIcon}</span>
+                            <span className="lv-t">{line}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              );
+            })() : (
               <>
                 <div className="pjbig" style={{ opacity: 0.55 }}>—</div>
                 <div className="pjlab">NO RACE GOAL SET</div>
@@ -906,4 +952,16 @@ function formatDate(iso: string): string {
   if (!iso) return '·';
   const d = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+}
+
+/** Parse "H:MM:SS" or "M:SS" clock string to total seconds.
+ *  Returns null when the string isn't parseable · caller falls back
+ *  to schematic positioning on the projection track. */
+function parseClockTime(s: string): number | null {
+  if (!s) return null;
+  const parts = s.trim().split(':').map(x => parseInt(x, 10));
+  if (parts.some(p => Number.isNaN(p))) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
 }
