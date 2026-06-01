@@ -265,7 +265,18 @@ struct TodayView: View {
             HStack(spacing: 8) {
                 SpecLabel(text: subLabel, size: 13, tracking: 0.5, color: Theme.txt.opacity(0.92))
                     .textCase(.uppercase)
-                if let tag = weatherTagLabel {
+                // HeatBandChip · tints the conditions chip on the
+                // neutral / warm / hot / extreme ramp derived from
+                // today's tempF. Replaces the legacy HOTTER/COOLER tag
+                // visually (we keep the absolute temp in the chip).
+                // Toolkit · Family J.
+                if let t = weather?.tempF {
+                    HeatBandChip(band: HeatBand.from(tempF: t),
+                                 tempLabel: "\(Int(t.rounded()))°F")
+                } else if let tag = weatherTagLabel {
+                    // Fallback for the (rare) case where deltaF is set
+                    // but tempF is nil · keeps the legacy delta tag
+                    // visible until the next weather refresh.
                     Text(tag)
                         .font(.label(9)).tracking(1.5)
                         .foregroundStyle(Color(hex: 0x1C0A02))

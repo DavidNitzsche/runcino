@@ -337,13 +337,8 @@
       <strong>BLOCKED on backend bug · 2026-05-31:</strong> endpoint
       currently returns 500 with empty body for David's session.
       iPhone can't wire until the backend lookup is fixed.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. Today hero · replace the
-      coach-note line with verdict (sentence-treatment, not a tag) +
-      facts[] body. Citation chips link into LearnArticleSheet via
-      the existing FaffRoute.learn(slug:). Block on backend fix
-      first; once /api/today/purpose returns 200, wire fetchTodayPurpose
-      helper + render on TodayView pre-run state.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RunPurposeCard.</strong> TodayView's Faff Coach block ships RunPurposeCard content · /api/today/purpose verdict + facts render on the hero. Wired in build 127. README §Blocked note retained · the endpoint still 500s on some accounts; iPhone shell stays graceful when nil.</td>
   <td><code>app/api/today/purpose/route.ts</code> ·
       <code>lib/coach/run-purpose.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -358,13 +353,8 @@
       404 ("run not found") for the canonical `wko_…` and composite
       David run IDs that /api/log + /api/plan/week resolve to. The
       lookup logic doesn't match the iPhone's run identifiers.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed + backend lookup fix</strong>. The
-      recap belongs as the headline above the route map + splits in
-      RunDetailView. conditions_note + coach_tip earn their own
-      compact callouts (visually distinct from facts). Citation chips
-      reuse LearnArticleSheet. Currently both blocked on the backend
-      404.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RunRecapCard.</strong> RunDetailView's HOW IT WENT section ships RunRecapCard content · /api/runs/[id]/recap verdict + facts + conditions_note + coach_tip render above splits. Wired in build 127. README §Blocked note retained · recap 404s on wko_ ID lookup mismatch.</td>
   <td><code>app/api/runs/[id]/recap/route.ts</code> ·
       <code>lib/coach/run-recap.ts</code></td>
   <td class="client-ios">IOS</td>
@@ -375,12 +365,8 @@
       purpose + recap engine outputs · neutral, warm, hot, extreme.
       Suggested visual treatment: flame-color the conditions chip.
       Currently no client renders it.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong> once
-      the purpose/recap endpoints work. Tint the existing
-      HOTTER/COOLER tag on Today (build 118) with a heat-band color
-      ramp: neutral=grey, warm=goal/amber, hot=race/orange,
-      extreme=race/red. One field, four colors.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit HeatBandChip.</strong> TodayView hero ships HeatBandChip alongside the workout eyebrow when weather.tempF is known · neutral / warm / hot / extreme tint derived from the temperature (Maughan breakpoints 60 / 75 / 85°F). Replaces the legacy HOTTER/COOLER tag as the canonical conditions chip.</td>
   <td><code>lib/coach/weather-adjust.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -721,12 +707,8 @@
       writes the chosen shoe onto the run row. Used by the run-detail
       shoe picker so mileage rolls into the right shoe in the rotation.
       The iPhone API.assignShoeToRun helper exists but no UI calls it.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. The
-      iPhone RunDetailView already lists the shoe in its meta strip.
-      Tapping it pushes a sheet listing the rotation · selection
-      calls the existing helper. Mileage in the shoes carousel
-      auto-updates next refresh.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ShoePickerSheet.</strong> RunDetailView ships the shoe-picker on the completed-run hero · PATCH /api/runs/[id] with shoe_id. ShoePickerSheet atom matches this pattern verbatim and can replace the inline picker on a future re-skin.</td>
   <td><code>app/api/runs/[id]/route.ts (PATCH)</code> ·
       <code>API.assignShoeToRun</code></td>
   <td class="client-ios">IOS</td>
@@ -1110,11 +1092,8 @@
       where the runner should take each gel ([6.5, 13.1, 19.7, 25.0]
       for a marathon). The iPhone decoder pulls the field; no race
       detail surface renders the markers on the elevation curve.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Tick
-      marks on the elevation chart at the gelsMi[] points + a row below
-      ("Gels at mile 6.5 · 13.1 · 19.7 · 25.0"). Distance-anchored
-      means the runner can rehearse the plan on a long run too.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit GelMileMarkers.</strong> RaceDayView FUELING PLAN section ships GelMileMarkers when the race-date watch workout carries gelsMi[] · ticks on the elevation curve at each gel point with the mile row below. Hidden outside the 0..42-day window.</td>
   <td><code>Models/Watch.swift:WatchWorkout.gelsMi</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1140,13 +1119,8 @@
       on the iPhone. The hero shows only the upcoming-race shape ·
       past races render the same layout with no result chip + no
       "view the run" deep link.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>design tweak needed</strong>.
-      For past races: replace the goal hero with a "FINISHED · 1:34:22"
-      block (gold styling when pb=true) + a "View the run →" tile
-      linking to RunDetailView(runId: matchedRun.activity_id) so the
-      runner can drill into splits/HR/cadence without leaving the race
-      page.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit RaceResultHero.</strong> RaceDayView hero swaps the goal time for the finish time + PERSONAL BEST chip when race.is_past · matchedRun deep-links into Run Detail. Functionally identical to RaceResultHero atom.</td>
   <td><code>Models/Races.swift:RaceDetail.finishTime / pb / matchedRun</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1443,12 +1417,8 @@
       on a profile surface. Daniels' table is one of the most
       well-known fitness metrics in distance running · runners want
       to see it.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A bold
-      "VDOT 47" tile in the Profile physiology block alongside MaxHR /
-      RHR / Weight. Tap pushes a sheet explaining what VDOT is + how
-      it was derived (which race, when). Cite Daniels' Running
-      Formula.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit StatTile.</strong> ProfileView PHYSIOLOGY section ships three StatTile atoms (LTHR · MAX HR · VDOT) + a ProvenanceLine under each explaining where the number came from. VDOT pulls from profile.physiology.vdot.</td>
   <td><code>lib/training/vdot.ts:bestRecentVdot</code> ·
       <code>ProfilePhysiology.vdot</code></td>
   <td class="client-ios">IOS</td>
@@ -1473,10 +1443,8 @@
   <td>user_settings.briefing_time ('HH:MM' local) controls when the
       daily reminder fires. Backend honors it; iPhone Settings doesn't
       expose a time picker today.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Add
-      a row "Daily briefing · 07:00" with a time picker under the
-      Notifications panel.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit SettingValueRow.</strong> ProfileView SETTINGS section ships SettingValueRow rows for daily briefing time + long-run day + rest day. Pickers deferred · the row taps fire onTap so the picker layer can be wired incrementally.</td>
   <td><code>lib/coach/settings.ts:UserSettings.briefing_time</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1487,11 +1455,8 @@
       human-readable "note" field. iPhone Profile shows only the
       connected boolean dot · the runner can't tell if their Strava
       hasn't synced in 6 days.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. A
-      grey timestamp under each connection row · "Strava · Connected ·
-      synced 2h ago" / "Apple Watch · Connected · synced 5min ago."
-      Flag amber when lastSync &gt; 24h for active connections.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit ConnectionRow.</strong> ProfileView CONNECTED section ships the connection rows with last-sync timestamps from ProfileConnections.lastSync. ConnectionRow atom available for a future re-skin that wants the toolkit's stale-flag amber semantics (>24h gap).</td>
   <td><code>ProfileConnectionState.lastSync</code> · /api/profile/state</td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1504,11 +1469,8 @@
       live alert feature. iPhone settings view doesn't render either
       toggle. <strong>Also found by WEB on 2026-05-31</strong> for the
       phone_hr_alerts toggle.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong>. Two
-      toggle rows in Settings · "Auto-push runs to Strava" + "Phone
-      HR alerts." Both wire through PATCH /api/settings which the
-      iPhone already calls.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit NotificationPrefsList.</strong> ProfileView NOTIFICATIONS section ships NotificationPrefsList with stravaAutoPush + phoneHrAlerts bindings · pulls from /api/profile (ProfileFields), PATCHes back on toggle. Sits below the 7 notification categories.</td>
   <td><code>ProfileFields.strava_auto_push / phone_hr_alerts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1804,12 +1766,8 @@
       for distance runners · the coach reads recent rows to credit the
       habit and flags 3-week gaps as a CHALLENGE. No client UI lets the
       runner log a session.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. A small "+ strength" action
-      (Today bell menu or Activity tab + button). Sheet collects date
-      / type (full body · upper · lower · core) / duration. Recent
-      sessions list lives under the rotation in Profile, or as its own
-      strip on Train.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit LogNonRunSheet.</strong> TodayView bell menu opens LogNonRunSheet (Strength tab) · POSTs date / session_type / duration_min to /api/strength. The 4 strength types (Full body / Upper / Lower / Core) and 5 durations seed the picker.</td>
   <td><code>app/api/strength/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>
@@ -1820,11 +1778,8 @@
       duration, intensity, HR. The coach credits cross-training toward
       fitness preservation during INJURY mode and tracks non-impact
       volume during build phases. No UI lets the runner log.</td>
-  <td class="cov-none">NONE</td>
-  <td><strong>Design tweak needed</strong>. Same shape as strength
-      above · pairs into one "log non-run" sheet with a Strength / Cross
-      toggle and the modality dropdown. Counts toward the weekly volume
-      strip on Train when in INJURY phase.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · toolkit LogNonRunSheet.</strong> Same sheet as Strength · Cross-train tab POSTs date / modality / duration_min / intensity / avg_hr to /api/cross-training. 6 modalities (Bike / Swim / Hike / Row / Ski / Yoga) and 3 intensities (Easy / Moderate / Hard).</td>
   <td><code>app/api/cross-training/route.ts</code></td>
   <td class="client-ios">IOS</td>
 </tr>

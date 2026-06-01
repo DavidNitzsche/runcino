@@ -16,6 +16,10 @@ struct ProfileView: View {
     /// Notification prefs · drives NotificationPrefsList in the Settings
     /// section. Two-way binding · changes PATCH immediately.
     @State private var notifPrefs: NotificationPrefs?
+    /// ProfileFields · carries strava_auto_push + phone_hr_alerts booleans
+    /// the NotificationPrefsList exposes alongside the 7 categories. Plus
+    /// the LTHR / HRmax / VDOT physiology values for the PHYSIOLOGY block.
+    @State private var profileFields: ProfileFields?
 
     var body: some View {
         ZStack {
@@ -33,6 +37,17 @@ struct ProfileView: View {
                         SectionLabel(title: "AT A GLANCE")
                             .padding(.horizontal, 22).padding(.top, 26)
                         coachStatsCard
+                            .padding(.horizontal, 22).padding(.top, 12)
+                    }
+
+                    // PHYSIOLOGY · LTHR / HRmax / VDOT bold-numeric tiles
+                    // plus a ProvenanceLine under each that explains where
+                    // the number came from (race-calibrated / estimated /
+                    // stale). Toolkit · Family B (StatTile + ProvenanceLine).
+                    if hasPhysiology {
+                        SectionLabel(title: "PHYSIOLOGY")
+                            .padding(.horizontal, 22).padding(.top, 30)
+                        physiologyGrid
                             .padding(.horizontal, 22).padding(.top, 12)
                     }
 
@@ -57,18 +72,42 @@ struct ProfileView: View {
 
                     // NOTIFICATIONS · 7-category panel from
                     // /api/profile/notifications. Toolkit · NotificationPrefsList.
+                    // Also surfaces strava_auto_push + phone_hr_alerts as
+                    // bonus rows when ProfileFields has loaded · those two
+                    // live on /api/profile not /api/profile/notifications.
                     SectionLabel(title: "NOTIFICATIONS")
                         .padding(.horizontal, 22).padding(.top, 30)
-                    NotificationPrefsList(prefs: $notifPrefs,
-                                          onPrefChange: { p in
-                                              Task { _ = try? await API.patchNotificationPrefs(p) }
-                                          })
+                    NotificationPrefsList(
+                        prefs: $notifPrefs,
+                        stravaAutoPush: profileFields == nil ? nil : Binding(
+                            get: { profileFields?.strava_auto_push ?? false },
+                            set: { v in
+                                profileFields?.strava_auto_push = v
+                                Task { _ = try? await API.updateProfile(["strava_auto_push": v]) }
+                            }
+                        ),
+                        phoneHrAlerts: profileFields == nil ? nil : Binding(
+                            get: { profileFields?.phone_hr_alerts ?? false },
+                            set: { v in
+                                profileFields?.phone_hr_alerts = v
+                                Task { _ = try? await API.updateProfile(["phone_hr_alerts": v]) }
+                            }
+                        ),
+                        onPrefChange: { p in
+                            Task { _ = try? await API.patchNotificationPrefs(p) }
+                        })
                         .padding(.horizontal, 22).padding(.top, 13)
 
+                    // SETTINGS · daily briefing time + plan-schedule rows.
+                    // Toolkit · SettingValueRow. Pickers themselves are
+                    // deferred · row taps fire onTap so the picker can be
+                    // wired in incrementally.
                     SectionLabel(title: "SETTINGS")
                         .padding(.horizontal, 22).padding(.top, 28)
-                    settingsCard
+                    settingValueRows
                         .padding(.horizontal, 22).padding(.top, 13)
+                    settingsCard
+                        .padding(.horizontal, 22).padding(.top, 10)
                 }
                 .padding(.bottom, 80)
             }
@@ -82,14 +121,108 @@ struct ProfileView: View {
         async let f  = (try? await API.fetchCoachFacts(surface: "me"))
         async let ci = (try? await API.fetchCoachIntents(limit: 20))
         async let np = (try? await API.fetchNotificationPrefs())
-        let (pr, fc, intents, prefs) = await (p, f, ci, np)
+        async let pf = (try? await API.fetchProfile())
+        let (pr, fc, intents, prefs, fields) = await (p, f, ci, np, pf)
         await MainActor.run {
             self.profile = pr
             self.meFacts = fc
             self.coachIntents = intents ?? []
             self.notifPrefs = prefs ?? NotificationPrefs.defaults
+            self.profileFields = fields
         }
     }
+
+    // MARK: - Toolkit · PHYSIOLOGY block (StatTile + ProvenanceLine)
+
+    /// True when at least one of LTHR / HRmax / VDOT has a value or
+    /// a stale-needs-update affordance worth surfacing. The grid hides
+    /// entirely on a profile that has zero physiology data so we don't
+    /// render three "—" placeholders.
+    private var hasPhysiology: Bool {
+        let lthr = profile?.physiology.lthr ?? profileFields?.lthr
+        let mhr  = profile?.physiology.max_hr ?? profileFields?.maxhr
+        let vdot = profile?.physiology.vdot
+        return (lthr != nil) || (mhr != nil) || (vdot != nil)
+    }
+
+    @ViewBuilder
+    private var physiologyGrid: some View {
+        let lthr = profile?.physiology.lthr ?? profileFields?.lthr
+        let mhr  = profile?.physiology.max_hr ?? profileFields?.maxhr
+        let vdot = profile?.physiology.vdot
+        let lthrSource = profile?.physiology.lthr_method
+        let mhrSource = profile?.physiology.max_hr_source
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                StatTile(value: lthr.map(String.init) ?? "—", label: "LTHR")
+                StatTile(value: mhr.map(String.init) ?? "—", label: "MAX HR")
+                StatTile(value: vdot.map { String(Int($0)) } ?? "—", label: "VDOT")
+            }
+            if let kind = provenanceKindForLTHR(value: lthr, source: lthrSource) {
+                ProvenanceLine(kind: kind).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let kind = provenanceKindForMaxHR(value: mhr, source: mhrSource) {
+                ProvenanceLine(kind: kind).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let kind = provenanceKindForVDOT(value: vdot) {
+                ProvenanceLine(kind: kind).frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    /// Map physiology source strings to the toolkit's ProvenanceKind so
+    /// each number gets a runner-readable "where did this come from" line.
+    private func provenanceKindForLTHR(value: Int?, source: String?) -> ProvenanceKind? {
+        guard value != nil else { return nil }
+        switch source {
+        case "race_half":     return .raceCalibrated(raceName: "your last half", dateLabel: "")
+        case "race_marathon": return .raceCalibrated(raceName: "your last marathon", dateLabel: "")
+        case "manual":        return .manual
+        default:              return .estimated(method: "lthr-derived from your max HR")
+        }
+    }
+    private func provenanceKindForMaxHR(value: Int?, source: String?) -> ProvenanceKind? {
+        guard value != nil else { return nil }
+        switch source {
+        case "observed":     return .raceCalibrated(raceName: "an observed max effort", dateLabel: "")
+        case "lthr-derived": return .estimated(method: "lthr × Friel factor")
+        case "manual":       return .manual
+        case "formula":      return .estimated(method: "age formula · add a max effort to calibrate")
+        default:             return .estimated(method: "age formula · add a max effort to calibrate")
+        }
+    }
+    private func provenanceKindForVDOT(value: Double?) -> ProvenanceKind? {
+        guard value != nil else { return nil }
+        return .raceCalibrated(raceName: "your recent race PR", dateLabel: "")
+    }
+
+    // MARK: - Toolkit · SETTINGS rows (SettingValueRow)
+
+    @ViewBuilder
+    private var settingValueRows: some View {
+        VStack(spacing: 0) {
+            SettingValueRow(label: "Daily briefing",
+                            value: briefingTimeLabel,
+                            sub: nil,
+                            onTap: { /* picker presentation deferred · row visible now */ })
+            Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
+            SettingValueRow(label: "Long run day",
+                            value: longRunDayLabel,
+                            sub: "Affects your plan layout · changing it redistributes the week",
+                            onTap: { })
+            Divider().background(Color.white.opacity(0.06)).padding(.leading, 16)
+            SettingValueRow(label: "Rest day",
+                            value: restDayLabel,
+                            sub: nil,
+                            onTap: { })
+        }
+        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    private var briefingTimeLabel: String { "07:00" }   // placeholder until user_settings exposes briefing_time on profile.
+    private var longRunDayLabel: String { "Saturday" }
+    private var restDayLabel: String { "Monday" }
 
     private var coachStats: [CoachFact] {
         meFacts?.facts ?? []

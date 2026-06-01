@@ -897,8 +897,11 @@ struct ProfileFields: Decodable {
     let strava_connected_at: String?
     let health_connected_at: String?
     let onboarded_at: String?
-    let strava_auto_push: Bool?
-    let phone_hr_alerts: Bool?
+    /// `var` (not `let`) so ProfileView can flip these via the
+    /// NotificationPrefsList toggle bindings · the PATCH back to
+    /// /api/profile lives at the call site.
+    var strava_auto_push: Bool?
+    var phone_hr_alerts: Bool?
 }
 
 // MARK: - ProfileState (full /profile rendering)

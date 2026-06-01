@@ -16,6 +16,10 @@ struct RaceDayView: View {
     /// runner has a fitness baseline. Loaded in parallel with /api/race.
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
+    /// Watch workout payload for the race date · carries gelsMi for the
+    /// fueling strip on race-week. nil when no workout is scheduled or
+    /// the race is past.
+    @State private var raceWatchWorkout: WatchWorkout?
 
     var body: some View {
         let mesh = FaffEffort.race.mesh
@@ -89,6 +93,22 @@ struct RaceDayView: View {
                        detail?.race.is_past != true {
                         section(title: "WHAT VDOT \(Int(vdot)) PREDICTS", right: nil) {
                             VDOTPredictionTable(rows: vdotPredictionRows(for: vdot))
+                        }
+                        .padding(.top, 26)
+                    }
+
+                    // GelMileMarkers · distance-anchored fueling strip,
+                    // ticks on the elevation curve at the gel mile points.
+                    // Renders only when the watch workout payload carries
+                    // gelsMi AND the race has a distance to anchor against.
+                    // Toolkit · Family H.
+                    if let gels = raceGelsMi, !gels.isEmpty,
+                       let totalMi = detail?.race.distance_mi, totalMi > 0,
+                       detail?.race.is_past != true {
+                        section(title: "FUELING PLAN", right: nil) {
+                            GelMileMarkers(gelsMi: gels,
+                                           totalMi: totalMi,
+                                           elevationPoints: courseElevationNormalized)
                         }
                         .padding(.top, 26)
                     }
@@ -429,9 +449,36 @@ struct RaceDayView: View {
             self.detail = rd; self.raceFacts = fc
             if let pr { self.profile = pr }
         }
+        // Pull the watch workout for the race date so we can read
+        // gelsMi for GelMileMarkers. Fires only when the race is
+        // upcoming AND within ~6 weeks (avoid the cost on far-out races).
+        if let date = rd?.race.date,
+           rd?.race.is_past != true,
+           let days = rd?.race.days, days >= 0, days <= 42 {
+            let w = try? await API.fetchWatchWorkout(date: date)
+            await MainActor.run { self.raceWatchWorkout = w }
+        }
     }
 
-    // MARK: - Toolkit helpers (CountdownLadder + VDOTPredictionTable)
+    // MARK: - Toolkit helpers (CountdownLadder + VDOTPredictionTable + GelMileMarkers)
+
+    /// Gel mile points from the watch workout payload · race-only fueling
+    /// hint. `nil` when no race-week workout has loaded yet.
+    private var raceGelsMi: [Double]? { raceWatchWorkout?.gelsMi }
+
+    /// Normalised 0..1 elevation profile for the GelMileMarkers strip.
+    /// Pulls from course_geometry.trackPoints when present; returns nil
+    /// so GelMileMarkers can render a flat baseline.
+    private var courseElevationNormalized: [Double]? {
+        guard let pts = detail?.course_geometry?.trackPoints, pts.count > 5 else { return nil }
+        let eles = pts.compactMap { $0.ele }
+        guard !eles.isEmpty else { return nil }
+        let lo = eles.min() ?? 0
+        let hi = eles.max() ?? 1
+        let span = max(hi - lo, 1)
+        return eles.map { ($0 - lo) / span }
+    }
+
 
     /// VDOT from the cached profile state. Used to drive the prediction
     /// table when known; the section is hidden otherwise so we never
