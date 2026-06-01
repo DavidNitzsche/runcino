@@ -312,12 +312,15 @@ export function TodayView({
                 </span>
               </div>
 
-              {/* Run name · effort dot + name */}
+              {/* Run name · effort dot + name. Normalize to title case
+                  so backend-uppercase labels like "THRESHOLD" render as
+                  "Threshold" matching design. Multi-word names (e.g.
+                  "Long Run") capitalize each word. */}
               <div className="wc-name">
                 {isRest ? null : (
                   <span className="effdot" style={{ background: EFF[day.type].dot }} aria-hidden="true" />
                 )}
-                <span className="wc-nm">{isRest ? 'Rest' : day.name}</span>
+                <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(day.name)}</span>
               </div>
 
               {/* Metrics · "{dist} · {pace}" or "rest" */}
@@ -424,7 +427,7 @@ export function TodayView({
             if (!rec || dSkipped) return null;
             const sug = rec.suggestion;
             const sugParts: string[] = [];
-            if (sug?.proposedType) sugParts.push(sug.proposedType.toUpperCase());
+            if (sug?.proposedType) sugParts.push(toTitleCase(sug.proposedType));
             if (sug?.proposedDistanceMi != null) sugParts.push(`${sug.proposedDistanceMi} mi`);
             if (sug?.proposedDateIso) {
               try {
@@ -659,6 +662,19 @@ function paceToSec(p: string): number {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   return 0;
+}
+
+/** Title-case a workout label. Backend ships some names all-caps
+ *  ("THRESHOLD", "TEMPO RUN", "LONG"); design wants "Threshold",
+ *  "Tempo Run", "Long". Preserves intentional acronyms · words 1-2
+ *  chars stay as authored ("VO2", "PR" survive). */
+function toTitleCase(s: string): string {
+  if (!s) return s;
+  return s.split(/(\s+)/).map(w => {
+    if (!w.trim()) return w;
+    if (w.length <= 2) return w; // preserve VO2 / PR / 5K etc.
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join('');
 }
 
 /* ───────────────  PlannedHeroV2 (Run Detail Planned · Easy)  ───────────────

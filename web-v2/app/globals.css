@@ -418,42 +418,46 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
    top-right glyph chip.
    ============================================================ */
 .week.wkstrip-v2{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;}
-.wc{position:relative;height:152px;padding:15px 15px 14px;display:flex;flex-direction:column;text-align:left;cursor:pointer;border-radius:16px;background:rgba(6,26,28,.4);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--txt);transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;font:inherit;text-shadow:none;}
+.wc{position:relative;height:120px;padding:12px 14px 11px;display:flex;flex-direction:column;text-align:left;cursor:pointer;border-radius:16px;background:rgba(6,26,28,.4);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--txt);transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;font:inherit;text-shadow:none;}
 .wc:hover{background:rgba(8,28,30,.52);}
 .wc.on{background:rgba(8,28,30,.66);border-color:rgba(255,255,255,.42);box-shadow:0 0 0 1px rgba(255,255,255,.12),0 14px 32px -16px rgba(0,0,0,.6);}
 .wc.today{background:rgba(4,16,18,.66);border-color:rgba(255,255,255,.32);box-shadow:0 0 0 1px rgba(255,136,71,.18),0 12px 30px -16px rgba(0,0,0,.55);}
 .wc.on.today{border-color:rgba(255,136,71,.55);}
 
-.wc-top{display:flex;align-items:center;justify-content:space-between;min-height:18px;}
-.wc-day{display:flex;align-items:baseline;gap:8px;}
-.wc-dw{font-size:11px;font-weight:800;letter-spacing:.8px;color:rgba(255,255,255,.5);}
-.wc.today .wc-dw{color:#FF8847;}
-.wc-dn{font-family:'Inter',sans-serif;font-size:14px;font-weight:700;color:var(--txt);letter-spacing:0;}
+/* All wc-* rules are scoped under .wkstrip-v2 so they win against
+   the legacy .wc-day (volume-bar chart) rules further down in this
+   file. Same-specificity, later-in-source-order would lose · scoping
+   tightens our selectors by one level so source order doesn't bite. */
+.wkstrip-v2 .wc-top{display:flex;align-items:center;justify-content:space-between;min-height:18px;}
+.wkstrip-v2 .wc-day{display:flex;align-items:baseline;gap:6px;flex-direction:row;justify-content:flex-start;height:auto;flex:0 0 auto;}
+.wkstrip-v2 .wc-dw{font-size:11px;font-weight:800;letter-spacing:.8px;color:rgba(255,255,255,.5);text-transform:uppercase;}
+.wkstrip-v2 .wc.today .wc-dw{color:#FF8847;}
+.wkstrip-v2 .wc-dn{font-family:'Inter',sans-serif;font-size:13px;font-weight:800;color:var(--txt);letter-spacing:0;line-height:1;}
 
-.wc-ic{display:flex;align-items:center;gap:6px;}
-.wc-ic .gly{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
-.wc-ic .gly svg{width:13px;height:13px;}
-.wc-ic .gly.str{background:rgba(243,173,56,.16);color:#ffce8a;}
-.wc-ic .gly.done{background:rgba(62,189,65,.18);color:#62e08a;}
+.wkstrip-v2 .wc-ic{display:flex;align-items:center;gap:6px;}
+.wkstrip-v2 .wc-ic .gly{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.wkstrip-v2 .wc-ic .gly svg{width:13px;height:13px;}
+.wkstrip-v2 .wc-ic .gly.str{background:rgba(243,173,56,.16);color:#ffce8a;}
+.wkstrip-v2 .wc-ic .gly.done{background:rgba(62,189,65,.18);color:#62e08a;}
 
-.wc-name{font-size:19px;font-weight:700;letter-spacing:-.3px;line-height:1;margin-top:13px;display:flex;align-items:center;gap:9px;}
-.wc.rest .wc-name{font-weight:600;opacity:.78;}
-.wc-name .effdot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
-.wc-name .wc-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0;}
+.wkstrip-v2 .wc-name{font-size:18px;font-weight:700;letter-spacing:-.3px;line-height:1;margin-top:11px;display:flex;align-items:center;gap:8px;}
+.wkstrip-v2 .wc.rest .wc-name{font-weight:600;opacity:.78;}
+.wkstrip-v2 .wc-name .effdot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.wkstrip-v2 .wc-name .wc-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0;}
 
-.wc-met{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.78);margin-top:8px;}
-.wc-met .wc-met-rest{opacity:.55;font-weight:500;}
+.wkstrip-v2 .wc-met{font-size:12px;font-weight:600;color:rgba(255,255,255,.78);margin-top:6px;}
+.wkstrip-v2 .wc-met .wc-met-rest{opacity:.55;font-weight:500;}
 
-.wc-grow{flex:1 1 auto;}
+.wkstrip-v2 .wc-grow{flex:1 1 auto;}
 
-.wc-meta{height:16px;margin-top:10px;display:flex;align-items:center;gap:8px;}
-.wc-meta .wc-was-icn{width:11px;height:11px;flex:0 0 auto;}
-.wc-meta .wc-was-tx{font-size:10px;font-weight:800;letter-spacing:.6px;color:#ffce8a;text-transform:uppercase;}
-.wc-meta .wc-skipped{font-size:10px;font-weight:800;letter-spacing:.8px;color:rgba(255,255,255,.55);text-transform:uppercase;}
+.wkstrip-v2 .wc-meta{height:14px;margin-top:6px;display:flex;align-items:center;gap:6px;}
+.wkstrip-v2 .wc-meta .wc-was-icn{width:11px;height:11px;flex:0 0 auto;}
+.wkstrip-v2 .wc-meta .wc-was-tx{font-size:10px;font-weight:800;letter-spacing:.6px;color:#ffce8a;text-transform:uppercase;}
+.wkstrip-v2 .wc-meta .wc-skipped{font-size:10px;font-weight:800;letter-spacing:.8px;color:rgba(255,255,255,.55);text-transform:uppercase;}
 
 /* Skipped state · grayscale + opacity + strike on the name */
-.wc.skipped{filter:grayscale(.85);opacity:.5;}
-.wc.skipped .wc-name .wc-nm{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.4);}
+.wkstrip-v2 .wc.skipped{filter:grayscale(.85);opacity:.5;}
+.wkstrip-v2 .wc.skipped .wc-name .wc-nm{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.4);}
 
 /* Strength weekly status chip · 2026-06-01 · per
    designs/briefs/strength-hk-web-consumer-brief.md. Sits directly
