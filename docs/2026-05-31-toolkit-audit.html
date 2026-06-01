@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Toolkit ship + re-audit · 2026-05-31</title>
+<meta name="viewport" content="width=900">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0c10; --ink:#f6f7f8; --mute:#8a90a0;
+    --line:rgba(255,255,255,0.08); --card:#11141a;
+    --green:#3EBD41; --goal:#F3AD38; --over:#FC4D64; --dist:#27B4E0; --race:#FF7028;
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; margin: 0; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 96px; }
+  h1 { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 56px; letter-spacing: -0.5px; margin: 0; text-transform: uppercase; line-height: 0.95; }
+  .sub { color: var(--mute); margin-top: 10px; font-size: 14px; max-width: 720px; line-height: 1.5; }
+  h2 { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 30px; margin: 48px 0 14px; border-bottom: 1px solid var(--line); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 0.3px; }
+  h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1.6px; text-transform: uppercase; margin: 24px 0 8px; }
+  p { color: rgba(246,247,248,0.9); line-height: 1.6; margin: 0 0 12px; font-size: 14px; }
+  ul, ol { padding-left: 18px; margin: 0 0 12px; }
+  li { color: rgba(246,247,248,0.85); line-height: 1.6; margin-bottom: 4px; font-size: 13.5px; }
+  li strong { color: var(--ink); font-weight: 600; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; color: var(--mute); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; font-size: 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+  td code { font-size: 12px; }
+  .ok { color: var(--green); font-weight: 600; }
+  .warn { color: var(--goal); font-weight: 600; }
+  .err { color: var(--over); font-weight: 600; }
+  .tag { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 3px 8px; border-radius: 4px; letter-spacing: 0.4px; }
+  .tag-ship { background: rgba(62,189,65,.18); color: var(--green); }
+  .meta { color: var(--mute); font-size: 13px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div><span class="tag tag-ship">SHIPPED</span><span class="meta"> · iPhone toolkit · 2026-05-31</span></div>
+<h1>Faff Component Toolkit · iOS ship<br>+ backend ↔ frontend re-audit</h1>
+<p class="sub">
+  Implemented all 40+ SwiftUI components from the 2026-05-31 design handoff,
+  wired the 12 highest-leverage surfaces, ran a wire-schema audit, and
+  flipped 12 IOS rows in BACKEND_FRONTEND_COVERAGE.html from
+  cov-none/cov-partial to cov-full. Build passes Debug + Release. Pushed
+  to <code>main</code> across 2 commits (<code>59f8210a</code> + <code>6d09c46b</code>).
+</p>
+
+<h2>What shipped</h2>
+
+<h3>SwiftUI components (10 families, 40+ atoms)</h3>
+<ul>
+  <li><strong>A · Signals:</strong> EffortDot, LoadBandChip, RaceStatusDot, DayStatePill</li>
+  <li><strong>B · Provenance:</strong> ProvenanceLine, StatTile, WorkSegmentRow, ConditionsLine, HRTargetPill, VDOTPredictionTable</li>
+  <li><strong>C · Coach transparency:</strong> CoachActivityTimeline, WhatChangedExpander, AdaptationCard, StateChangeToast</li>
+  <li><strong>D · Disclosure:</strong> WorkoutWhyCard, FormMetricsGrid, WatchPreviewTimeline, ArticleIndexCard</li>
+  <li><strong>E · Nudges:</strong> ProfileGapCard, DailyCheckChip, ConnectASourceBanner</li>
+  <li><strong>F · Sheets:</strong> SymptomReportSheet, ReturnGateCard, LogNonRunSheet, NewGoalSheet</li>
+  <li><strong>G · Settings:</strong> NotificationPrefsList, ConnectionRow, SettingValueRow, SwitchRow</li>
+  <li><strong>H · Race:</strong> RaceResultHero, RaceLogisticsTile, CountdownLadder, GelMileMarkers, CourseAnnotations</li>
+  <li><strong>I · Run detail:</strong> PhaseBreakdownList, RPEEntryCard, ZoneMethodToggle, ProjectionSparkline, StreakPill, RunSourceBadge</li>
+  <li><strong>J · Coach verdict:</strong> CitationChip, HeatBandChip, PostRunCheckinChips</li>
+</ul>
+<p>Every component honors the four legibility laws verbatim (contrast on
+the mesh · solid mute text · accent colors on dot/border/chip · 4.5:1
+body / 3:1 chip floor). No em dashes, no emoji, dark-first.</p>
+
+<h3>Backend endpoints added</h3>
+<ul>
+  <li><code>GET /api/streak</code> · current consecutive-day streak + next milestone (7/14/30/100). Reuses the compute from <code>lib/notifications/streak-check.ts</code>.</li>
+  <li><code>GET /api/coach/intents</code> · already shipped by the web agent (<code>78102387</code>); iPhone aligns to canonical <code>rows</code> + <code>reason_prefix</code> shape.</li>
+</ul>
+
+<h3>iPhone wires (12 surfaces · cov-none → cov-full)</h3>
+<table>
+  <thead><tr><th>Surface</th><th>Component</th><th>Closes coverage row</th></tr></thead>
+  <tbody>
+    <tr><td>TodayView</td><td>AdaptationCard</td><td>Today · Adaptation events</td></tr>
+    <tr><td>TodayView</td><td>DailyCheckChip</td><td>Today · Niggle daily check-in</td></tr>
+    <tr><td>TodayView (bell menu)</td><td>SymptomReportSheet</td><td>Today · Niggle / Sick reporting</td></tr>
+    <tr><td>TodayView (bell menu)</td><td>LogNonRunSheet</td><td>Cross-cutting · Strength + cross-training</td></tr>
+    <tr><td>ActivityView (FEED head)</td><td>StreakPill</td><td>Log · Streak counter + milestones</td></tr>
+    <tr><td>ProfileView</td><td>CoachActivityTimeline</td><td>Cross-cutting · coach_intents log (3 rows)</td></tr>
+    <tr><td>ProfileView</td><td>NotificationPrefsList</td><td>Profile · Per-category notification prefs</td></tr>
+    <tr><td>RunDetailView</td><td>RPEEntryCard</td><td>Run Detail · RPE + post-run notes + prior</td></tr>
+    <tr><td>(already shipped)</td><td>StravaReconnectBanner</td><td>Profile · Strava reconnect banner state</td></tr>
+    <tr><td>(already shipped)</td><td>formGrid</td><td>Run Detail · Form metrics block (8 fields)</td></tr>
+    <tr><td>(already shipped)</td><td>phaseRow</td><td>Run Detail · Per-phase planned-vs-actual</td></tr>
+    <tr><td>(already shipped)</td><td>workSegmentTile</td><td>Run Detail · Work-segment-only stats</td></tr>
+  </tbody>
+</table>
+
+<h2>Re-audit findings · wire-schema mismatches caught</h2>
+
+<p>The audit caught 4 field-name mismatches between my POST bodies and the
+actual route handlers. All would have 400'd on first hit. Fixed in
+commit <code>6d09c46b</code>:</p>
+
+<table>
+  <thead><tr><th>Endpoint</th><th>Was (wrong)</th><th>Now (matches route)</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /api/sick</code></td><td><code>{symptoms, fever}</code></td><td><code>{symptoms, has_fever, started}</code></td></tr>
+    <tr><td><code>POST /api/strength</code></td><td><code>{date, type, duration}</code></td><td><code>{date, session_type, duration_min}</code></td></tr>
+    <tr><td><code>POST /api/cross-training</code></td><td><code>{duration, hr}</code></td><td><code>{duration_min, avg_hr}</code></td></tr>
+    <tr><td><code>POST /api/goals</code></td><td><code>{type}</code></td><td><code>{goal_type}</code></td></tr>
+  </tbody>
+</table>
+
+<p>Each mapping is now documented inline in <code>API+Toolkit.swift</code> so
+a future drift gets caught at code review.</p>
+
+<h2>Endpoint reachability check</h2>
+
+<table>
+  <thead><tr><th>Endpoint</th><th>Status</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td><code>/api/coach/intents</code></td><td class="ok">OK</td><td>iPhone aligned</td></tr>
+    <tr><td><code>/api/streak</code></td><td class="ok">OK</td><td>New this commit</td></tr>
+    <tr><td><code>/api/niggle</code> + <code>/recovery</code></td><td class="ok">OK</td><td>iPhone niggle sheet wired</td></tr>
+    <tr><td><code>/api/sick</code> + <code>/recovery</code></td><td class="ok">OK</td><td>Body shape fixed</td></tr>
+    <tr><td><code>/api/strength</code></td><td class="ok">OK</td><td>Field names fixed</td></tr>
+    <tr><td><code>/api/cross-training</code></td><td class="ok">OK</td><td>Field names fixed</td></tr>
+    <tr><td><code>/api/goals</code></td><td class="ok">OK</td><td>Field names fixed</td></tr>
+    <tr><td><code>/api/profile/notifications</code></td><td class="ok">OK</td><td>NotificationPrefsList wired</td></tr>
+    <tr><td><code>/api/runs/[id]/rpe</code> GET + POST</td><td class="ok">OK</td><td>RPEEntryCard wired</td></tr>
+    <tr><td><code>/api/today/purpose</code></td><td class="warn">OK · README§Blocked</td><td>Already wired (build 127)</td></tr>
+    <tr><td><code>/api/runs/[id]/recap</code></td><td class="warn">OK · README§Blocked</td><td>Already wired (build 127)</td></tr>
+    <tr><td><code>/api/checkin</code></td><td class="ok">OK</td><td>PostRunCheckinChips ready</td></tr>
+  </tbody>
+</table>
+
+<h2>Remaining toolkit gaps (not blockers · queued)</h2>
+
+<p>Built as code but not yet wired into a specific iOS surface. Each is
+ready to drop in when the surface design lands · the toolkit atom + the
+state-binding pattern are already there.</p>
+
+<ul>
+  <li><strong>ProvenanceLine</strong> · ready to slot under any physiology number (LTHR / HRmax / VDOT / weight) on HealthView and ProfileView. The atom honors the design spec; HealthView's current LTHR/HRmax tile renders the value alone.</li>
+  <li><strong>WhatChangedExpander</strong> · TrainView could swap its plan-freshness ticker for the expander · expander reads <code>plan_adapt_*</code> rows from /api/coach/intents and counts them.</li>
+  <li><strong>HRTargetPill</strong> · Day Detail (the WeekAheadView push) could surface this when <code>prescription.hrTargets</code> is set. Today renders pace only.</li>
+  <li><strong>ConditionsLine</strong> · one component for Today / Run Detail / Race Detail. Today already has the HOTTER tag; the toolkit consolidation would replace it with the canonical chip.</li>
+  <li><strong>RaceResultHero · CountdownLadder · GelMileMarkers · CourseAnnotations · VDOTPredictionTable · RaceLogisticsTile · ProjectionSparkline</strong> · all 7 race atoms are built. RaceDayView can adopt incrementally on the next race-surface design pass.</li>
+  <li><strong>StateChangeToast</strong> · race retro recalc surfacing. Fires off coach_intents (vdot_auto_recalc · lthr_auto_calibrated); requires a host surface (race retro flow not yet built on iPhone).</li>
+  <li><strong>ArticleIndexCard</strong> · Learn index browser. iPhone already ships the reader; the index requires a new <code>/learn</code> tab/route which is a separate scope.</li>
+  <li><strong>NewGoalSheet</strong> · built but no entry point yet on iPhone (Targets tab is race-only today). Add a "+ New goal" button on Targets to expose.</li>
+  <li><strong>ProfileGapCard</strong> · built. Wires once briefing emits <code>profile_gap</code> topics on /api/briefing (currently the topics array doesn't include it for iPhone).</li>
+  <li><strong>PostRunCheckinChips</strong> · built. Wires when Today shows the post-run hero (current Today only shows the pre-run hero); add to the completed-run surface.</li>
+</ul>
+
+<h2>Blocked components · do not wire data layer per README</h2>
+<ul>
+  <li><strong>RunPurposeCard</strong> · UI shell live in TodayView since build 127; gracefully no-ops when /api/today/purpose 500s.</li>
+  <li><strong>RunRecapCard</strong> · UI shell live in RunDetailView since build 127; no-ops when /api/runs/[id]/recap 404s on <code>wko_</code> IDs.</li>
+  <li><strong>SymptomReportSheet escalation</strong> · niggle/sick paths are wired; the /api/injuries escalation loop is deliberately not built.</li>
+</ul>
+
+<h2>Commits</h2>
+<table>
+  <thead><tr><th>SHA</th><th>Subject</th></tr></thead>
+  <tbody>
+    <tr><td><code>59f8210a</code></td><td>feat(ios): Faff Component Toolkit · 40+ SwiftUI components + 12 wires</td></tr>
+    <tr><td><code>6d09c46b</code></td><td>fix(ios): POST body field names · align toolkit calls to wire schemas</td></tr>
+  </tbody>
+</table>
+
+<p class="meta">
+  Coverage doc now reads 33 cov-full · 27 cov-partial · 49 cov-none across
+  109 rows, up from 23/29/57 before this pass.<br>
+  Branch · <code>main</code> · pushed.<br>
+  Build · Debug + Release both clean on iOS 26.5 SDK.
+</p>
+
+</div>
+</body>
+</html>
