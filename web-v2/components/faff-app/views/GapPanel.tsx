@@ -123,13 +123,17 @@ function deriveStatus(projSec: number | null, goalSec: number | null): Status {
  *   · Course ≈ 24s for rolling, ~0s for flat (course_library will own)
  *   · Execution ≈ 30s pacing buffer (Research/04)
  */
-function deriveSegs(goalSec: number, projSec: number): GapSeg[] {
+function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] {
   const totalGap = Math.max(0, projSec - goalSec);
-  // Heuristic split: fitness owns the difference between projection
-  // and a "perfect day" reference. We model perfect day = goal × 0.985.
-  // Anything beyond that we attribute to the three controllable buckets.
-  const FIXED_COURSE = 24;
-  const PARTLY_COND = Math.min(90, Math.round(goalSec * 0.018)); // ~1.8% heat penalty
+  // 2026-05-31: Course + Conditions + Execution now read per-race seeds
+  // when the backend has computed them; fall back to doctrine defaults
+  // when null (cold start, stub course, foreign race outside climate
+  // normals). See designs/briefs/targets-gap-panel-backend-brief.md §2.
+  const FIXED_COURSE = goal.courseImpactSec != null
+    ? Math.max(0, Math.round(goal.courseImpactSec))
+    : 24;
+  const courseHasReal = goal.courseImpactSec != null;
+  const PARTLY_COND = Math.min(90, Math.round(goalSec * 0.018)); // ~1.8% heat penalty (placeholder)
   const TRAIN_EXEC = 30;
   const baseline = FIXED_COURSE + PARTLY_COND + TRAIN_EXEC;
   const fitness = Math.max(0, totalGap - baseline);
@@ -158,8 +162,12 @@ function deriveSegs(goalSec: number, projSec: number): GapSeg[] {
       nm: 'Course',
       sec: FIXED_COURSE,
       tag: 'Fixed',
-      doctrine: `Rolling profiles cost ~${fmtDelta(FIXED_COURSE)} versus a flat reference. Plan for it, don't fight it. course_library editorial annotations will tighten this number once they ship per race.`,
-      src: 'course_library · editorial',
+      doctrine: courseHasReal
+        ? courseDoctrineCopy(FIXED_COURSE, goal)
+        : `Rolling profiles cost ~${fmtDelta(FIXED_COURSE)} versus a flat reference. Plan for it, don't fight it. course_library editorial annotations will tighten this number once they ship per race.`,
+      src: courseHasReal
+        ? `course_library · ${goal.courseSource ?? 'editorial'} (${goal.courseElevGainFtPerMi ?? 0} ft/mi)`
+        : 'course_library · editorial',
     },
     {
       key: 'execution',
@@ -170,6 +178,24 @@ function deriveSegs(goalSec: number, projSec: number): GapSeg[] {
       src: 'Research/04 · pacing discipline',
     },
   ];
+}
+
+/** Doctrine copy when courseImpactSec is real (per-race). */
+function courseDoctrineCopy(sec: number, goal: GoalRace): string {
+  const gpm = goal.courseElevGainFtPerMi ?? 0;
+  if (sec === 0) {
+    return `${goal.name}'s profile is a non-factor against the goal · the net ` +
+      `gives back as much as the gross fatigue costs. Plan for an honest ` +
+      `effort, not free time.`;
+  }
+  const grossDesc = gpm < 25 ? 'essentially flat'
+                  : gpm < 60 ? 'rolling'
+                  : gpm < 100 ? 'hilly'
+                  : 'genuinely mountainous';
+  return `${goal.name}'s profile (${gpm.toFixed(0)} ft/mi gross · ${grossDesc}) ` +
+    `adds about ${fmtDelta(sec)} to a flat-reference projection. Daniels' ` +
+    `correction · ~+10 s/mi per 100 ft/mi net climb, ~−7 s/mi per 100 ft/mi ` +
+    `net drop, plus a small fatigue tax for the gross gain.`;
 }
 
 function deriveHits(segs: GapSeg[], goalSec: number, projSec: number): Hit[] {
@@ -290,8 +316,8 @@ export function GapPanel({ goal, series }: GapPanelProps) {
   const status = deriveStatus(projSec, goalSec);
   const segs = useMemo(() => {
     if (goalSec == null || projSec == null) return [];
-    return deriveSegs(goalSec, projSec);
-  }, [goalSec, projSec]);
+    return deriveSegs(goalSec, projSec, goal);
+  }, [goalSec, projSec, goal]);
   const totalGapSec = useMemo(
     () => segs.reduce((acc, s) => acc + s.sec, 0),
     [segs],

@@ -143,6 +143,52 @@ export type GoalRace = {
   // projection_snapshots (which keys by distance_mi). Null when the goal
   // race row hasn't been resolved to a real distance yet.
   distanceMi: number | null;
+
+  // ─── GapPanel chunks · per-race, per-runner adjusters ───
+  // Targets the four placeholder chunks in views/GapPanel.tsx with
+  // honest backend numbers. See designs/briefs/targets-gap-panel-
+  // backend-brief.md §2 for the contract per chunk + fallback rules.
+
+  // 2.2 · Course chunk · elevation impact in seconds.
+  // Null when course_library has no elevation data (stub) · the panel
+  // hides the Course chunk gracefully in that case. 0 means the course
+  // is a non-factor (net-downhill credit floored at 0) — the doctrine
+  // drawer surfaces the upside in copy instead of a negative chunk.
+  courseImpactSec?: number | null;
+  /** Course-library provenance for the doctrine drawer. */
+  courseSource?: 'editorial' | 'crowd' | 'stub' | null;
+  /** Per-mile gross gain — surfaced in the doctrine drawer for context
+   *  ("16 ft/mi · essentially flat"). */
+  courseElevGainFtPerMi?: number;
+
+  // 2.1 · Conditions chunk · race-day weather impact in seconds.
+  // Null when no forecast (>16d out) AND no climate-normals fallback hit
+  // (e.g. foreign race we haven't editorialized). Panel hides the chunk.
+  conditionsImpactSec?: number | null;
+  conditionsSource?: 'forecast' | 'climate' | null;
+
+  // 2.3 · Execution chunk · runner-specific pacing buffer in seconds.
+  // Always populated · 30s default when fewer than 2 qualifying runs
+  // exist in the runner's recent window. source flips from 'default' →
+  // 'observed' as soon as the runner accumulates eligible races/tempos.
+  executionBufferSec?: number;
+  executionSource?: 'observed' | 'default';
+
+  // 2.4 · Hit list · cheapest 2-3 levers to move the projection.
+  // Empty array when the gap is small / mostly held — panel hides the
+  // hit-list section in that case.
+  levers?: Array<{
+    icon: 'flag' | 'bolt' | 'clock' | 'shield' | 'spark';
+    kind: 'tune_up_race' | 'threshold_block' | 'vo2_block' | 'cooler_corral'
+        | 'goal_pace_block' | 'hold_fitness' | 'set_b_target' | 'sharpen';
+    title: string;
+    detail: string;
+    projectedTime: string;
+    deltaSec: number;       // negative = faster than current projection
+    controllability: 'Trainable' | 'Logistics' | 'Smart';
+    linkTo?: string;
+    lvtag: string;
+  }>;
 };
 export type VolumeBar = { mi: number; label: string; current: boolean };
 export type PR = { k: string; v: string; date: string };

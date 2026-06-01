@@ -1183,6 +1183,39 @@ export async function buildSeed(): Promise<FaffSeed> {
   }
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
+  // 2026-05-31 · enrich the GoalRace with per-race-per-runner GapPanel
+  // chunks. See designs/briefs/targets-gap-panel-backend-brief.md §2.
+  // Each chunk is null-tolerant · GapPanel hides chunks with null impact.
+  if (goalRace && goalRace.slug && goalRace.distanceMi) {
+    try {
+      const goalSecLocal = parseRaceTime(goalRace.goal) ?? 0;
+      // §2.2 · Course chunk · per-race elevation impact
+      const { pool: _pool } = await import('@/lib/db/pool');
+      const courseLibRow = (await _pool.query(
+        `SELECT source, elevation_gain_ft, net_elevation_ft
+           FROM course_library WHERE slug = $1`,
+        [goalRace.slug],
+      ).catch(() => ({ rows: [] as Array<{ source: string | null; elevation_gain_ft: number | null; net_elevation_ft: number | null }> }))).rows[0];
+      if (goalSecLocal > 0) {
+        const { computeCourseImpact } = await import('@/lib/training/course-impact');
+        const courseImpact = computeCourseImpact(
+          {
+            distanceMi: goalRace.distanceMi,
+            goalSec: goalSecLocal,
+            elevationGainFt: courseLibRow?.elevation_gain_ft ?? null,
+            netElevationFt: courseLibRow?.net_elevation_ft ?? null,
+          },
+          (courseLibRow?.source as 'editorial' | 'crowd' | 'stub' | null) ?? null,
+        );
+        goalRace.courseImpactSec = courseImpact.seconds;
+        goalRace.courseSource = courseImpact.source;
+        goalRace.courseElevGainFtPerMi = courseImpact.elevGainFtPerMi;
+      }
+    } catch {
+      // Enrichment is best-effort · the panel falls back to doctrine
+      // placeholders when these fields are absent.
+    }
+  }
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);
   // Load plan adapts AFTER training so we have plan_id to scope the query.
   const planAdapts = await loadPlanAdapts(userId, training?.plan_id ?? null);
