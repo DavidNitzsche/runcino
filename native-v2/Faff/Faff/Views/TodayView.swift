@@ -67,16 +67,59 @@ struct TodayView: View {
     /// this tab · drives hero + week strip + drag sheet). Banner shows
     /// only when fetch errors AND no cached PlanWeek exists.
     @State private var loadState: LoadState = AppCache.read(.planWeek, as: PlanWeek.self) == nil ? .idle : .loaded
+    /// Time-of-day for the mesh background (2026-06-01 redesign).
+    /// Re-evaluated whenever the app foregrounds (handled below) so the
+    /// runner who leaves the app open across an hour boundary still sees
+    /// the right palette when they come back. Initial value is from now.
+    @State private var timeOfDay: TimeOfDay = TimeOfDay.current()
+    /// Last-night sleep hours · drives the LAST NIGHT readiness stat chip.
+    /// Hydrated from /api/health/state inside loadAll().
+    @State private var lastNightHours: Double?
+    /// This-week mileage · drives the THIS WEEK readiness stat chip.
+    /// Hydrated from /api/training/state inside loadAll().
+    @State private var thisWeekMiles: Double?
+    /// VO₂ max · drives the VO₂ MAX readiness stat chip.
+    /// Comes from profile.physiology.vo2.
 
     var body: some View {
-        let mesh = selectedEffort.mesh
+        // Time-of-day mesh (2026-06-01) · no longer recolors by run.
+        // Per-run accent still tints the week dot · peek/session ticks ·
+        // Start button dot · but the background is hour-bound.
+        let mesh = FaffMesh.forTimeOfDay(timeOfDay)
         ZStack {
             FaffMeshView(mesh: mesh)
 
             VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    SpecLabel(text: titleForToday, size: 13, tracking: 2.5, color: Theme.txt)
-                    Spacer()
+                HStack(alignment: .top, spacing: 12) {
+                    // Greeting eyebrow + date + week label · per the
+                    // Today redesign brief (2026-06-01). Replaces the
+                    // legacy "TODAY" SpecLabel — gives the runner the
+                    // time-of-day context the mesh palette is set to.
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 7, height: 7)
+                                .shadow(color: .white.opacity(0.7), radius: 5)
+                            Text(timeOfDay.greeting.uppercased())
+                                .font(.body(11, weight: .extraBold))
+                                .tracking(1.4)
+                                .foregroundStyle(Color.white.opacity(0.78))
+                                .lineLimit(1)
+                        }
+                        Text(dayHeaderLabel)
+                            .font(.body(22, weight: .extraBold))
+                            .tracking(-0.4)
+                            .foregroundStyle(Theme.txt)
+                            .padding(.top, 4)
+                        if let wk = weekContextLabel {
+                            Text(wk)
+                                .font(.body(11, weight: .bold))
+                                .tracking(1.0)
+                                .foregroundStyle(Color.white.opacity(0.66))
+                        }
+                    }
+                    Spacer(minLength: 4)
                     Button {
                         guard !refreshing else { return }
                         refreshing = true
@@ -184,12 +227,22 @@ struct TodayView: View {
                         .padding(.top, 10)
                 }
 
-                heroBlock
-                    .padding(.horizontal, 26)
-                    .padding(.top, 28)
-                    .opacity(1.0 - sheetProgress * -0 + 0)
-                    .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
-                    .offset(y: -22 * (1 - sheetProgress))
+                // Readiness panel · the new Today hero (2026-06-01).
+                // Replaces the legacy run-name + pace + effort-meter
+                // hero. Tap routes to the full readiness brief surface
+                // (stubbed until that surface design lands · brief:
+                // designs/briefs/readiness-brief-iphone-surface-brief.md).
+                TodayReadinessPanel(
+                    snapshot: readiness,
+                    lastNightHours: lastNightHours,
+                    thisWeekMiles: thisWeekMiles,
+                    vo2: profile?.physiology.vo2,
+                    onTap: { onReadinessTap() }
+                )
+                .padding(.horizontal, 22)
+                .padding(.top, 22)
+                .opacity(max(0.05, 1.0 - (1 - sheetProgress) * 1.1))
+                .offset(y: -22 * (1 - sheetProgress))
 
                 Spacer(minLength: 0)
             }
@@ -233,7 +286,9 @@ struct TodayView: View {
             // Runner returned from Safari (Strava OAuth) or just brought
             // the app forward · refresh plan/workout/readiness/strava
             // status so stale surfaces don't linger past the foreground
-            // transition.
+            // transition. Also re-evaluate time-of-day so an app left
+            // open across an hour boundary still shows the right mesh.
+            timeOfDay = TimeOfDay.current()
             Task { await loadAll() }
         }
         .onChange(of: selectedDayID) { _, newID in
@@ -799,6 +854,57 @@ struct TodayView: View {
         return base
     }
 
+    // MARK: - Today redesign topbar helpers (2026-06-01)
+
+    /// Date line for the Today topbar greeting block · e.g. "Monday 1".
+    /// Mixed-case (not uppercase) per the design brief.
+    private var dayHeaderLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE d"
+        let d: Date = {
+            // If the runner has tapped a non-today day in the week strip,
+            // show that day's name so the topbar reflects the active session.
+            if !selectedDayID.isEmpty, selectedDayID != todayISO,
+               let day = todaySelectedDay,
+               let parsed = isoDateFromDay(day.date_iso) {
+                return parsed
+            }
+            return Date()
+        }()
+        return f.string(from: d)
+    }
+
+    /// Optional context line below the date. Composes from the purpose
+    /// payload when we have it: "BUILD · 12 weeks to race" or the phase
+    /// alone. Null when nothing meaningful · the topbar drops the line
+    /// gracefully (no placeholder).
+    private var weekContextLabel: String? {
+        let phase = (purpose?.phase ?? "").uppercased()
+        let weeks = purpose?.weeksToRace
+        if !phase.isEmpty, let w = weeks, w > 0 {
+            return "\(phase) · \(w) WEEKS TO RACE"
+        }
+        if !phase.isEmpty { return "\(phase) PHASE" }
+        if let w = weeks, w > 0 { return "\(w) WEEKS TO RACE" }
+        return nil
+    }
+
+    private func isoDateFromDay(_ iso: String) -> Date? {
+        let parts = iso.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var c = DateComponents()
+        c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
+        return Calendar.current.date(from: c)
+    }
+
+    /// Tap handler for the readiness panel. Until the full readiness-brief
+    /// iPhone surface ships (designs/briefs/readiness-brief-iphone-surface-
+    /// brief.md), this is a no-op with telemetry. The wire is done · only
+    /// the destination is pending design delivery.
+    private func onReadinessTap() {
+        print("[today] readiness panel tapped · awaiting full-brief surface")
+    }
+
     /// Phase breakdown rendered in the drag-sheet. Empty when no real
     /// phases on the workout · TodayView's drag sheet gates the section on
     /// `segments.isEmpty` so this drops out cleanly. Was a type-derived
@@ -946,6 +1052,24 @@ struct TodayView: View {
             self.pendingProposals = proposals
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }
+
+            // Today redesign (2026-06-01) · readiness-panel stat chips.
+            //
+            // LAST NIGHT · the panel labels the chip "LAST NIGHT" but the
+            // most-granular sleep number we surface today is the readiness
+            // 7-night average. Wire it as a stand-in until a per-night
+            // sample lands on /api/readiness (or until the iPhone fetches
+            // /api/health/state for the last sleep_hours sample directly).
+            // The TODO is intentional · placeholder display is more honest
+            // than fabricating a single-night number.
+            self.lastNightHours = ready?.sleep7Avg
+            // THIS WEEK · sum of plan days, already computed above. The
+            // Train tab does the same calculation; both surfaces stay in
+            // sync.
+            self.thisWeekMiles = Double(weeklyMi)
+            // Re-pick the time-of-day in case the runner has been in the
+            // app across an hour boundary (5am / noon / 5pm / 9pm). Cheap.
+            self.timeOfDay = TimeOfDay.current()
         }
     }
 

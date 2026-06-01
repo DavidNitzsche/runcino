@@ -301,6 +301,40 @@ struct FaffMesh: Equatable {
         }
     }
 
+    // MARK: - Time-of-day mesh (Today tab redesign · 2026-06-01)
+    //
+    // The Today tab no longer recolors its background by the selected run's
+    // effort. Instead the mesh tracks LOCAL HOUR — morning teal-green,
+    // afternoon sky, evening sunset, night indigo. Per-run accent color
+    // still tints the week dot · peek/session ticks · Start button dot,
+    // but the mesh itself stays time-bound.
+    //
+    // Doctrine: this set is ADDITIVE to the locked ViewMesh palettes. The
+    // other tabs (Activity / Train / Health / Profile / Targets) keep
+    // their existing forView(_:) palettes. Today opts in via forTimeOfDay.
+
+    /// Mesh for the Today tab, driven by local hour.
+    static func forTimeOfDay(_ p: TimeOfDay) -> FaffMesh {
+        switch p {
+        case .morning:
+            // teal-green → warm amber · the look David approved
+            return FaffMesh(c1: 0x62E3D4, c2: 0x2FAF7C, c3: 0xFFD98A,
+                            c4: 0x1F8A68, c5: 0x0F6A5A, base: 0x0A3A2E)
+        case .afternoon:
+            // sky → teal blue
+            return FaffMesh(c1: 0x8FD0FF, c2: 0x34B6D6, c3: 0x5FD0C4,
+                            c4: 0x2A86B8, c5: 0x1C6F9A, base: 0x0A2F44)
+        case .evening:
+            // sunset orange → pink → violet
+            return FaffMesh(c1: 0xFFCF8A, c2: 0xFF8E6A, c3: 0xF2673A,
+                            c4: 0xC0457A, c5: 0x7A3A86, base: 0x2A142E)
+        case .night:
+            // deep indigo
+            return FaffMesh(c1: 0x7E8AD8, c2: 0x5360B4, c3: 0x3A4A8E,
+                            c4: 0x2A2F6E, c5: 0x181F54, base: 0x0B0E26)
+        }
+    }
+
     /// Phase mesh for the Train scrubber. Lerps between adjacent phase
     /// meshes as the user scrubs.
     static func forPhase(_ p: TrainPhase) -> FaffMesh {
@@ -340,6 +374,39 @@ struct FaffMesh: Equatable {
 
 enum ViewMesh: String, CaseIterable, Hashable {
     case train, activity, health, targets, profile, spectator, race
+}
+
+/// Local-hour bucket for the Today tab background + greeting copy.
+/// Periods · per the Today redesign brief (2026-06-01):
+///   hour < 5  → night
+///   hour < 12 → morning
+///   hour < 17 → afternoon
+///   hour < 21 → evening
+///   else      → night
+enum TimeOfDay: String, CaseIterable, Hashable {
+    case morning, afternoon, evening, night
+
+    /// Pick the bucket from a Date (defaults to now).
+    static func current(_ now: Date = Date()) -> TimeOfDay {
+        let h = Calendar.current.component(.hour, from: now)
+        switch h {
+        case 0..<5:   return .night
+        case 5..<12:  return .morning
+        case 12..<17: return .afternoon
+        case 17..<21: return .evening
+        default:      return .night
+        }
+    }
+
+    /// Greeting eyebrow copy. Used on the Today topbar.
+    var greeting: String {
+        switch self {
+        case .morning:   return "Good morning"
+        case .afternoon: return "Good afternoon"
+        case .evening:   return "Good evening"
+        case .night:     return "Late night"
+        }
+    }
 }
 
 enum TrainPhase: String, CaseIterable, Hashable {
