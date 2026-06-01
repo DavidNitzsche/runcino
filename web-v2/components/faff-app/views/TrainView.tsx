@@ -712,11 +712,19 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
             // 2026-06-01: small adaptation glyph + "was X" subline when
             // the row was mutated by the auto-adapter (backend commit
             // a54c7069). Glyph is a 6px amber dot inline with the day
-            // number; subline is uppercase strikethrough underneath.
-            const adapted = w.adaptation?.wasAdapted;
-            const wasLabel = adapted
+            // number; subline is uppercase plain text (was strikethrough
+            // pre 2026-06-01 · David call: removed visual noise).
+            // No-op suppression · when the original collapses to the
+            // current name/type, don't render the dot or subline.
+            const adaptedRaw = w.adaptation?.wasAdapted;
+            const wasLabelRaw = adaptedRaw
               ? (w.adaptation!.originalSubLabel || w.adaptation!.originalType)
               : null;
+            const cellCurForCompare = (w.name || w.type || '').toString().toUpperCase().trim();
+            const cellFromForCompare = (wasLabelRaw ?? '').toString().toUpperCase().trim();
+            const cellIsNoOp = !!adaptedRaw && !!cellFromForCompare && cellFromForCompare === cellCurForCompare;
+            const adapted = adaptedRaw && !cellIsNoOp;
+            const wasLabel = adapted ? wasLabelRaw : null;
             body = (
               <div className="cwk">
                 <span className="ctag" style={tint(c)}>
@@ -741,8 +749,6 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
                     fontSize: 8, fontWeight: 700, letterSpacing: '1px',
                     textTransform: 'uppercase',
                     color: 'rgba(255,206,138,0.72)',
-                    textDecoration: 'line-through',
-                    textDecorationColor: 'rgba(255,206,138,0.45)',
                   }}>
                     was {wasLabel}
                   </div>

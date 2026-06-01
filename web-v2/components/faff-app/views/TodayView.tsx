@@ -305,22 +305,32 @@ export function TodayView({
                   {day.dist === ' · ' ? 'rest' : `${day.dist} mi · ${day.pace}`}
                 </span>
               </div>
-              {/* "was X" strikethrough subline · only renders when adapter
-                  changed the workout. Uses originalSubLabel when present
-                  (more specific), falls back to originalType (e.g.
-                  "THRESHOLD") on historical backfilled rows. */}
-              {day.adaptation?.wasAdapted && (day.adaptation.originalSubLabel || day.adaptation.originalType) ? (
-                <div style={{
-                  marginTop: 4,
-                  fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px',
-                  textTransform: 'uppercase',
-                  color: 'rgba(255,206,138,0.72)',
-                  textDecoration: 'line-through',
-                  textDecorationColor: 'rgba(255,206,138,0.45)',
-                }}>
-                  was {day.adaptation.originalSubLabel || day.adaptation.originalType}
-                </div>
-              ) : null}
+              {/* "was X" subline · only renders when the adapter
+                  meaningfully changed the workout. 2026-06-01: no-op
+                  suppression added · when originalSubLabel /
+                  originalType collapses to the current label/type
+                  (the "Adjusted from EASY" → still EASY case), the
+                  subline hides. Strikethrough removed 2026-06-01
+                  (David call) · was visual noise without adding
+                  meaning. */}
+              {(() => {
+                if (!day.adaptation?.wasAdapted) return null;
+                const fromLabel = day.adaptation.originalSubLabel || day.adaptation.originalType;
+                if (!fromLabel) return null;
+                const curForCompare = (day.subLabel || day.name || day.type || '').toString().toUpperCase().trim();
+                const fromForCompare = fromLabel.toString().toUpperCase().trim();
+                if (curForCompare === fromForCompare) return null;
+                return (
+                  <div style={{
+                    marginTop: 4,
+                    fontSize: 9.5, fontWeight: 700, letterSpacing: '1.2px',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,206,138,0.72)',
+                  }}>
+                    was {fromLabel}
+                  </div>
+                );
+              })()}
               {/* Strength-day suggestion · backend-owned as of
                   2026-06-01 (strength-recommender, commit 34bff2a0).
                   PlannedDay.strengthSuggested is set in seed.ts by
