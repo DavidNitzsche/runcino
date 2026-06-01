@@ -1,0 +1,65 @@
+# Daily readiness snapshot per active user.
+#
+# Why this workflow exists: the morning brief in
+# lib/coach/readiness-brief.ts renders a 14-day score trend +
+# day-vs-yesterday mover detection + 3-day streak persistence per
+# pillar. All three need a written history we can query cheaply ·
+# recomputing the historical readiness from raw health_samples every
+# render would mean reconstructing ACWR + the per-pillar baselines
+# day-by-day for the last 14 days on every page load.
+#
+# What the route does (per web-v2/app/api/cron/readiness-snapshot/route.ts):
+#   For each active user:
+#     1. Load CoachState (current HRV/RHR/sleep/load)
+#     2. Compute readiness breakdown
+#     3. Skip if all pillars are no-data (brand-new user)
+#     4. UPSERT readiness_snapshots row · per-pillar JSONB + active streaks
+#
+# Schedule: 08:15 UTC daily = 01:15 PT — runs AFTER snapshot-projections
+# (07:30 UTC) so any VDOT/ACWR change from that snapshot is reflected
+# in the readiness load pillar.
+#
+# Manual trigger: Actions tab > "Snapshot readiness" > Run workflow.
+
+name: Snapshot readiness
+
+on:
+  schedule:
+    - cron: '15 8 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hit /api/cron/readiness-snapshot
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 120 \
+            https://www.faff.run/api/cron/readiness-snapshot)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Snapshot failed with HTTP $status"
+            exit 1
+          fi
+
+          errors=$(echo "$body" | python3 -c 'import sys,json; d=json.loads(sys.stdin.read()); print(d.get("errors", 0))' 2>/dev/null || echo "0")
+          if [ "$errors" != "0" ]; then
+            echo "::warning::$errors user(s) errored during snapshot — see body above"
+          fi

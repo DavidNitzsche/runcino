@@ -1110,6 +1110,7 @@ function emptySeed(): FaffSeed {
     },
     week, todayIdx, results,
     readiness,
+    readinessBrief: null,
     goalRace: null,
     volumeBars: [],
     thisWeekMiles: 0,
@@ -1334,6 +1335,22 @@ export async function buildSeed(): Promise<FaffSeed> {
     } catch { return []; }
   })();
 
+  // 2026-05-31 · daily readiness brief envelope. Composed from CoachState
+  // + 60-day health history + readiness_snapshots trend. Returns null when
+  // the runner has no recoverable signal (brand-new user). See
+  // designs/briefs/readiness-brief-backend-landed.md for the contract.
+  const readinessBrief = await (async () => {
+    try {
+      const [{ loadCoachState }, { loadReadinessBrief }] = await Promise.all([
+        import('@/lib/coach/state-loader'),
+        import('@/lib/coach/readiness-brief'),
+      ]);
+      const state = await loadCoachState(userId);
+      if (!state) return null;
+      return await loadReadinessBrief(userId, state);
+    } catch { return null; }
+  })();
+
   const fullName = profile?.identity.full_name ?? glance?.greetingName ?? null;
   const user = {
     name: fullName ? fullName.split(' ')[0] : 'You',
@@ -1356,6 +1373,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     user,
     week, todayIdx, results,
     readiness,
+    readinessBrief,
     goalRace,
     volumeBars,
     thisWeekMiles,

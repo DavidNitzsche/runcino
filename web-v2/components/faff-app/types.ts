@@ -30,6 +30,10 @@ export type FaffSeed = {
   todayIdx: number;                // index of "today" in week
   results: Record<number, CompletedRun | undefined>; // by week idx
   readiness: Readiness;
+  /** 2026-05-31 · daily morning brief envelope · score + trend + per-pillar
+   *  tiles + streaks + movers + confounders. Null when the runner has no
+   *  recoverable health-data signal yet (brand-new user before any HK sync). */
+  readinessBrief: ReadinessBriefSeed | null;
   goalRace: GoalRace | null;
   volumeBars: VolumeBar[];         // 8-week strip
   thisWeekMiles: number;
@@ -192,6 +196,48 @@ export type GoalRace = {
 };
 export type VolumeBar = { mi: number; label: string; current: boolean };
 export type PR = { k: string; v: string; date: string };
+
+// 2026-05-31 · ReadinessBrief envelope · the morning brief structure
+// the design agent renders. Composed by lib/coach/readiness-brief.ts.
+// Doctrine-grounded · see designs/briefs/readiness-brief-backend-landed.md.
+export type ReadinessBriefSeed = {
+  date: string;                 // YYYY-MM-DD
+  score: number;
+  band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
+  label: string;                // 'READY'
+  headline: string;             // one-line plain-language framing
+  oneLineMover: string | null;  // "HRV down 8 pts vs yesterday"
+  scoreTrend: Array<{ date: string; score: number; band: string }>;
+  pillars: Array<{
+    key: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
+    label: string;
+    weightPct: number;
+    observedValue: string;
+    observedSub: string;
+    baseline: string;
+    band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data';
+    weightContribution: number;
+    meaning: string;
+    confounders: Array<{ pillar: string; explanation: string; likely: boolean }>;
+    trend: Array<{ date: string; value: number }>;
+    citation: string;
+  }>;
+  streaks: Array<{
+    pillar: string;
+    direction: 'above' | 'below';
+    days: number;
+    startDate: string;
+    meaning: string;
+  }>;
+  movers: Array<{ pillar: string; deltaPts: number; label: string }>;
+  subjectiveOverride: {
+    subjectiveScore: number;
+    objectiveScore: number;
+    deltaAbs: number;
+    advice: string;
+  } | null;
+  watchTomorrow: string[];
+};
 export type RaceLite = { slug: string; name: string; meta: string; tag: 'GOAL'|'TUNE-UP'|'PAST'; days: string };
 
 export type HealthSnapshot = {
