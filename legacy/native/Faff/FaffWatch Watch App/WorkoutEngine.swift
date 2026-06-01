@@ -835,6 +835,9 @@ final class WorkoutEngine: ObservableObject {
         let iso = ISO8601DateFormatter()
         let dist = tracker?.distanceMi ?? 0
         let maxHr = tracker?.maxHr ?? 0
+        // HK-derived active energy total · piped through so resolveCalories
+        // tier 1 picks the real number over the estimator (brief 2026-06-01).
+        let kcal = tracker?.activeEnergyKcal ?? 0
         return WatchCompletion(
             workoutId: workout.workoutId,
             startedAt: iso.string(from: workoutStart),
@@ -845,6 +848,7 @@ final class WorkoutEngine: ObservableObject {
             avgHr: tracker?.avgHr,
             maxHr: maxHr > 0 ? maxHr : nil,
             avgCadence: tracker?.avgCadence,
+            kcal: kcal > 0 ? kcal : nil,
             phases: results
         )
     }

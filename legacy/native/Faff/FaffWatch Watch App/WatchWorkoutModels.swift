@@ -259,6 +259,15 @@ struct WatchCompletion: Encodable {
     let avgHr: Int?
     let maxHr: Int?
     var avgCadence: Int? = nil
+    /// Total active calories burned during the run, from HK's
+    /// HKLiveWorkoutBuilder activeEnergyBurned aggregate. Sent to the
+    /// backend so resolveCalories() tier 1 uses this real number
+    /// instead of the distance × weight × 1.04 × hr_multiplier
+    /// estimator fallback. Optional · `nil` when HK didn't report any
+    /// energy samples (e.g. very short run, sensor glitch).
+    /// Doctrine: designs/briefs/iphone-calories-and-absorption-brief.md
+    /// (2026-06-01).
+    var kcal: Int? = nil
     let phases: [WatchCompletionPhase]
 }
 
