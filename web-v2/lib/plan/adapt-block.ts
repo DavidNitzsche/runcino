@@ -117,7 +117,7 @@ async function wrapWithBlockReasoning(
           kind: 'reschedule',
           workoutIds: [nextQuality.id],
           newDate: addDays(nextQuality.dateISO, 1),
-          why: `Shifted to preserve 48h hard-easy spacing after today's downgrade. Research/04 §hard-easy-rule.`,
+          why: `Shifted to preserve 48h hard-easy spacing after today's downgrade.`,
         });
         citations.push('Research/04-workouts-and-progressions.md §hard-easy-rule');
         rationale += ` · Cascade: shifted next quality day to preserve 48h spacing.`;

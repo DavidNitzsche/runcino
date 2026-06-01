@@ -49,7 +49,6 @@ export interface GapReport {
   daysToRenegotiate: number | null;
   /** Risk flags from the simulator (volume ramps, density issues). */
   riskFlags: string[];
-  citation: string;
 }
 
 /**
@@ -123,7 +122,6 @@ export async function composeGapReport(userUuid: string): Promise<GapReport | nu
     weeksRemaining: gap.weeksRemaining,
     daysToRenegotiate,
     riskFlags: sim?.riskFlags ?? [],
-    citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.3',
   };
 }
 

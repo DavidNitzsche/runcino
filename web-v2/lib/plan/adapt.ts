@@ -914,7 +914,7 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
             evidence: t.evidence,
             suggested:
               t.severity === 'override'
-                ? 'Walk-run scaffold + cross-train. Pain-monitor in-session, 24h, location (per Research/05). Suspend running ≥ 5/10 pain.'
+                ? 'Walk-run scaffold + cross-train. Pain-monitor in-session, 24h, location. Suspend running ≥ 5/10 pain.'
                 : 'Easy mileage only; daily pain check before each session. Drop quality. Reassess after 7 days.',
           })],
         );

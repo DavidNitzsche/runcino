@@ -69,6 +69,8 @@ export async function POST(req: NextRequest) {
       original_date_iso: string | null;
       race_id: string | null;
     }>(
+      // plan_workouts.id is TEXT (legacy schema), not UUID · do not cast.
+      // training_plans.user_uuid IS uuid so $2::uuid is correct.
       `SELECT pw.id, pw.plan_id, pw.type, pw.sub_label, pw.distance_mi::text,
               pw.date_iso::text, pw.is_quality, pw.workout_spec,
               pw.original_type, pw.original_sub_label,
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest) {
               tp.race_id
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
-        WHERE pw.id = $1::uuid
+        WHERE pw.id = $1
           AND tp.user_uuid = $2::uuid
           AND tp.archived_iso IS NULL
         LIMIT 1`,
@@ -138,6 +140,7 @@ export async function POST(req: NextRequest) {
     // 6. UPDATE · promote originals back + clear original_* + restore quality
     //    flag + re-derive spec.
     await client.query(
+      // plan_workouts.id is TEXT · do not cast $1 to uuid.
       `UPDATE plan_workouts
           SET type                  = $2::text,
               sub_label             = $3,
@@ -150,7 +153,7 @@ export async function POST(req: NextRequest) {
               original_sub_label    = NULL,
               original_distance_mi  = NULL,
               original_date_iso     = NULL
-        WHERE id = $1::uuid`,
+        WHERE id = $1`,
       [
         workoutId,
         restoredType,

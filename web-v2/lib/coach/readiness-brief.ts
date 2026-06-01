@@ -153,7 +153,6 @@ export interface ReadinessBrief {
     weeksRemaining: number;
     daysToRenegotiate: number | null;
     riskFlags: string[];
-    citation: string;
   } | null;
 }
 
@@ -163,12 +162,17 @@ const PILLAR_LABEL: Record<PillarKey, string> = {
 const PILLAR_WEIGHT: Record<PillarKey, number> = {
   sleep: 28, hrv: 28, rhr: 24, load: 15, hr_recovery: 5,
 };
+// 2026-06-01 · Pillar "citation" field stripped of Research/ pointers
+// per the locked "no citations anywhere" rule. The value is still
+// populated for backwards compat (do-not-render contract with frontend)
+// but no longer carries doctrine identifiers that could leak to the runner.
+// The underlying doctrine still lives in code comments + Research/ files.
 const PILLAR_CITATION: Record<PillarKey, string> = {
-  sleep: 'Research/00b §Sleep · 7-9h healthy band, 8h+ under high training load',
-  hrv: 'Research/15 §HRV · Plews approach · 7-day rolling LnRMSSD vs SWC',
-  rhr: 'Research/15 §RHR · 60-day nocturnal baseline, ±5 bpm range',
-  load: 'Research/15 §ACWR · directional sanity check (per Impellizzeri critique, NOT a stop-light)',
-  hr_recovery: 'Research/15 §HR Recovery · 60s post-workout drop',
+  sleep: 'Sleep · 7-9h healthy band, 8h+ under high training load',
+  hrv: 'HRV · 7-day rolling vs smallest-worthwhile-change',
+  rhr: 'RHR · 60-day nocturnal baseline, ±5 bpm range',
+  load: 'Load · directional sanity check, not a stop-light',
+  hr_recovery: 'HR Recovery · 60s post-workout drop',
 };
 
 const STREAK_MIN_DAYS = 3;
@@ -397,8 +401,8 @@ function detectStreaks(
       startDate: history.sleep.at(-sleepStreak.length)?.date ?? '',
       short: `Sleep below target ${sleepStreak.length} nights running.`,
       meaning: `Sleep below the 7.5h target ${sleepStreak.length} nights running. ` +
-        `Cumulative debt compounds · Research/00b says single short nights don't ` +
-        `matter, sustained dips do.`,
+        `Cumulative debt compounds · single short nights don't matter, ` +
+        `sustained dips do.`,
     });
   }
 
@@ -412,9 +416,8 @@ function detectStreaks(
         days: drops,
         startDate: history.hrv.at(-drops)?.date ?? '',
         short: `HRV below baseline ${drops} days running.`,
-        meaning: `HRV rolling-7 below SWC ${drops} days in a row. Per Plews, ` +
-          `this is the early-functional-overreach flag · reduce intensity ` +
-          `24-72h and re-check.`,
+        meaning: `HRV rolling-7 below baseline ${drops} days in a row · early ` +
+          `functional-overreach signal. Reduce intensity 24-72h and re-check.`,
       });
     }
   } else if (history.hrv.length >= STREAK_MIN_DAYS) {
@@ -691,8 +694,8 @@ function buildWatchTomorrow(
   }
   // CV rising · Plews early-overreach
   if (history.hrvPlews?.cv != null && history.hrvPlews.cv > 5) {
-    out.push(`HRV rolling-CV is at ${history.hrvPlews.cv.toFixed(1)}% · early-` +
-      `destabilization band per Plews. Worth reducing one hard session if it persists.`);
+    out.push(`HRV rolling-CV is at ${history.hrvPlews.cv.toFixed(1)}% · early ` +
+      `destabilization signal. Worth reducing one hard session if it persists.`);
   }
   return out;
 }
@@ -755,9 +758,9 @@ function computeSubjectiveOverride(
   const subjectiveLower = subjective100 < objective;
   const advice = subjectiveLower
     ? `Your read is lower than the numbers (${subjective100} vs ${objective}). ` +
-      `Per Saw et al., your subjective state wins · ease the day.`
+      `When subjective and objective disagree, your read wins · ease the day.`
     : `Your read is higher than the numbers (${subjective100} vs ${objective}). ` +
-      `Per Saw et al., your subjective state wins · proceed as planned.`;
+      `When subjective and objective disagree, your read wins · proceed as planned.`;
 
   return {
     subjectiveScore: subjective100,
@@ -923,7 +926,6 @@ async function loadGapReport(userId: string): Promise<ReadinessBrief['gapReport'
       weeksRemaining: r.weeksRemaining,
       daysToRenegotiate: r.daysToRenegotiate,
       riskFlags: r.riskFlags,
-      citation: r.citation,
     };
   } catch {
     return null;

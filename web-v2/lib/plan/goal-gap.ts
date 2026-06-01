@@ -127,7 +127,10 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
     weeksRemaining,
     whatClosesIt,
     consecutiveWideningDays,
-    citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.1 + Research/22 §projection-feedback-loop',
+    // Internal audit field · never surfaces to runner per the locked
+    // "no citations anywhere" rule. Kept on the envelope so adapter/
+    // simulator consumers can introspect the source.
+    citation: 'goal-gap engine v1',
   };
 }
 

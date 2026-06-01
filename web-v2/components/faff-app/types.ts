@@ -352,7 +352,6 @@ export type ReadinessBriefSeed = {
     weeksRemaining: number;
     daysToRenegotiate: number | null;
     riskFlags: string[];
-    citation: string;
   } | null;
 };
 export type RaceLite = { slug: string; name: string; meta: string; tag: 'GOAL'|'TUNE-UP'|'PAST'; days: string };
