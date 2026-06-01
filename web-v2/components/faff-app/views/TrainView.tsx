@@ -17,7 +17,7 @@
  *       row 2: THIS WEEK list  ·  PROJECTION card  ·  KEY WORKOUTS
  *   - full-plan modal (Month ↔ Weeks toggle)
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FaffSeed } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { WhatChangedExpander } from '../toolkit';
@@ -594,6 +594,18 @@ function PlanModal({
 function MonthCalendar({ seed }: { seed: FaffSeed }) {
   const goal = seed.goalRace;
   const today = new Date();
+  // Auto-scroll the calendar to today's row when the modal opens. Each
+  // today cell is tagged id="cal-today"; on mount we walk up to its
+  // calmonth row and scroll it to the top of the visible viewport.
+  // Closes David's "the top should be the current week" ask from the
+  // FULL PLAN screenshot.
+  const calRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const t = calRef.current?.querySelector('#cal-today');
+    if (t && typeof (t as HTMLElement).scrollIntoView === 'function') {
+      (t as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
+    }
+  }, []);
   // Build all plan days into a Map<YYYY-MM-DD, day>
   const planMap = new Map<string, { type: string; name: string; mi: number; paceSec: number | null }>();
   // weekDays now carry `date` directly (fixed 2026-05-31 · the seed
@@ -606,10 +618,31 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
     });
   });
 
-  // Pick months that overlap the plan range — use today ± 3 months as a sensible window.
+  // 2026-05-31: pick months from today forward through the race month.
+  // Original window was today-1 → today+2 which surfaced backdated empty
+  // months when the plan hadn't started yet (e.g. April was empty on May
+  // 31 because David's plan begins next week). The fix is to anchor the
+  // calendar on today's month and extend forward only — past the race if
+  // there's no race set, otherwise stop at the race month.
+  //
+  // We compute the last month from goal.date when present (with a 1-month
+  // floor to always show at least the current + next month even on
+  // maintenance plans without a race anchor). When the plan extends well
+  // past the race we still want the runner to see the months they're
+  // training in, not arbitrary calendar fluff after.
   const months: Array<{ y: number; m: number; nm: string }> = [];
-  for (let off = -1; off <= 2; off++) {
-    const dt = new Date(today.getFullYear(), today.getMonth() + off, 1);
+  const startY = today.getFullYear();
+  const startM = today.getMonth();
+  const goalDateRaw = goal?.date ? new Date(goal.date) : null;
+  const goalY = goalDateRaw && Number.isFinite(goalDateRaw.getTime()) ? goalDateRaw.getFullYear() : startY;
+  const goalM = goalDateRaw && Number.isFinite(goalDateRaw.getTime()) ? goalDateRaw.getMonth() : startM + 1;
+  // Total months from today's month → race month (inclusive). Floor at 2
+  // so we always render at least current + next month, ceiling at 8 so
+  // a 6-month-out race doesn't render 7 months of empty cells either.
+  const rawMonthsToRace = (goalY - startY) * 12 + (goalM - startM);
+  const monthCount = Math.max(2, Math.min(8, rawMonthsToRace + 1));
+  for (let off = 0; off < monthCount; off++) {
+    const dt = new Date(startY, startM + off, 1);
     months.push({
       y: dt.getFullYear(),
       m: dt.getMonth(),
@@ -620,7 +653,7 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
   const tint = (c: string) => ({ background: `${c}38`, color: c });
 
   return (
-    <div className="cal">
+    <div className="cal" ref={calRef}>
       {months.map((mo) => {
         const first = new Date(mo.y, mo.m, 1);
         const lead = (first.getDay() + 6) % 7;
@@ -658,7 +691,7 @@ function MonthCalendar({ seed }: { seed: FaffSeed }) {
             );
           }
           cells.push(
-            <div key={`d-${dd}`} className={cls}>
+            <div key={`d-${dd}`} className={cls} id={isToday ? 'cal-today' : undefined}>
               <div className="cd">{dd}</div>
               {body}
             </div>
