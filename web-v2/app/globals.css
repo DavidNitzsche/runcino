@@ -1867,3 +1867,48 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .rb-checkin-note{font-size:11px;font-style:italic;opacity:.55;line-height:1.45;}
 .rb-checkin-err{margin-top:8px;font-size:11px;color:var(--over,#FC4D64);}
 .rb-checkin-done .rb-checkin-msg{font-size:13px;line-height:1.5;opacity:.92;}
+
+/* ============================================================
+   Gap report card · Drawer.tsx · GapReportCard
+   "Am I on track for my goal?" · status-tinted, 6 sections.
+   ============================================================ */
+.rb-gap{margin-top:18px;border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:16px 16px 14px;background:rgba(255,255,255,.02);}
+.rb-gap-headline{font-family:'Inter',sans-serif;font-size:14.5px;font-weight:700;line-height:1.4;margin-bottom:14px;}
+
+/* Confidence band · 3 stops on a horizontal axis */
+.rb-gap-band{margin-bottom:14px;}
+.rb-gap-band-label{margin:0 0 8px;}
+.rb-gap-band-row{display:flex;align-items:center;gap:8px;}
+.rb-gap-band-stop{display:flex;flex-direction:column;align-items:center;min-width:0;flex:0 0 auto;}
+.rb-gap-band-stop .t{font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;line-height:1;color:var(--txt);opacity:.78;}
+.rb-gap-band-stop .k{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:.48;margin-top:4px;}
+.rb-gap-band-stop.rb-gap-band-mid .t{opacity:1;}
+.rb-gap-band-line{flex:1;height:2px;border-radius:2px;}
+
+/* What closes it · authored bullets */
+.rb-gap-closes{margin-bottom:14px;}
+.rb-gap-closes .dcl{margin:0 0 8px;}
+.rb-gap-bullet{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.45;padding:3px 0;}
+.rb-gap-bullet .dot{flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:var(--mute);margin-top:7px;}
+.rb-gap-bullet .rb-gap-risk-dot{background:#FFB24D;}
+
+/* Alternative ranges · informational or with Choose buttons */
+.rb-gap-ranges{margin-bottom:14px;}
+.rb-gap-ranges-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;}
+.rb-gap-ranges-h .dcl{margin:0;}
+.rb-gap-ranges-hint{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;opacity:.48;}
+.rb-gap-range-row{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:12.5px;line-height:1.3;}
+.rb-gap-range-k{flex:0 0 22px;font-family:'Oswald',sans-serif;font-size:13px;font-weight:700;opacity:.62;}
+.rb-gap-range-t{font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;color:var(--txt);min-width:62px;}
+.rb-gap-range-l{flex:1;opacity:.78;}
+.rb-gap-choose{background:transparent;border:1px solid rgba(255,255,255,.18);color:var(--txt);border-radius:7px;padding:6px 12px;font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;transition:background .12s ease,border-color .12s ease;}
+.rb-gap-choose:hover:not(:disabled){background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.28);}
+.rb-gap-choose:disabled{opacity:.55;cursor:wait;}
+.rb-gap-err{margin-top:8px;font-size:11px;color:#FC4D64;}
+
+/* Risk flags */
+.rb-gap-risks{margin-bottom:14px;}
+.rb-gap-risks .dcl{margin:0 0 8px;}
+
+/* Citation footer · small */
+.rb-gap-cite{font-size:9.5px;font-weight:500;opacity:.32;letter-spacing:.3px;font-family:'Inter',sans-serif;}

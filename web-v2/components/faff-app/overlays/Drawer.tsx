@@ -39,6 +39,7 @@
  */
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { FaffSeed, ReadinessBriefSeed } from '../types';
 
 type Band = ReadinessBriefSeed['band'];
@@ -98,8 +99,17 @@ function fmtSignedPts(n: number): string {
   return '0';
 }
 
+/** Format seconds → "1:34:54" or "34:54" depending on length. */
+function fmtTimeFromSec(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.round(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export function Drawer({
-  open, onClose, brief, fallbackReadiness, onViewFullHealth,
+  open, onClose, brief, fallbackReadiness, goalSlug, onViewFullHealth,
 }: {
   open: boolean;
   onClose: () => void;
@@ -107,6 +117,11 @@ export function Drawer({
   /** Legacy seed.readiness · used only when brief is null AND we still
    *  want a basic score render. Not the full diagnostic surface. */
   fallbackReadiness?: FaffSeed['readiness'];
+  /** Goal race slug · enables the gap-report renegotiation flow
+   *  (Choose A/B/C → PATCH /api/race/[slug]). Null on runners with
+   *  no active goal race · the gap report itself won't render either,
+   *  so this is only the slug for the action target. */
+  goalSlug?: string | null;
   onViewFullHealth: () => void;
 }) {
   const [expandedPillars, setExpandedPillars] = useState<Set<string>>(new Set());
@@ -171,6 +186,15 @@ export function Drawer({
 
             {/* 2 · Hero · score ring + band eyebrow + headline + mover. */}
             <Hero brief={brief} />
+
+            {/* 2.5 · Gap report · the headline answer to "am I on
+                track for my goal?" Backend ships the full envelope
+                (commit 237be875). Renders nothing when null (no plan
+                + race + goal). Sits hero-adjacent · above the trend
+                + pillars · because it's the runner's first question. */}
+            {brief.gapReport ? (
+              <GapReportCard report={brief.gapReport} goalSlug={goalSlug ?? null} />
+            ) : null}
 
             {/* 3 · 14-day score trend. When the runner has fewer than
                 4 days of history the bar chart is misleading (one bar
@@ -700,6 +724,166 @@ function MorningCheckin() {
         When your read disagrees with the numbers, yours wins.
       </div>
       {err ? <div className="rb-checkin-err">Could not save · {err}</div> : null}
+    </div>
+  );
+}
+
+/* ============================================================
+   GapReportCard · "am I on track for my race goal?"
+   Backend ships gapReport on every brief load (commit 237be875).
+   6 sections, conditionally rendered:
+     1. Headline · always · status-tinted
+     2. Confidence band · when confidenceBand is non-null
+     3. What closes it · always · 1-3 authored bullets
+     4. Alternative ranges · when alternativeRanges is non-null ·
+        interactive Choose buttons when daysToRenegotiate === 0
+     5. Risk flags · when riskFlags has entries
+     6. Citation footer · always · small
+   Doctrine source: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.3
+   ============================================================ */
+type GapReport = NonNullable<ReadinessBriefSeed['gapReport']>;
+
+const GAP_STATUS_COLOR: Record<GapReport['status'], string> = {
+  closing:    '#3EBD41',
+  static:     '#8A90A0',
+  widening:   '#F3AD38',
+  unclosable: '#FC4D64',
+};
+
+function GapReportCard({ report, goalSlug }: {
+  report: GapReport;
+  goalSlug: string | null;
+}) {
+  const router = useRouter();
+  const accent = GAP_STATUS_COLOR[report.status];
+  const renegotiateNow = report.daysToRenegotiate === 0;
+
+  // Renegotiation flow · click a Choose button → PATCH the race goal
+  // → backend fires fireAutoRebuild → router.refresh re-pulls the seed
+  // → the gap report reflects the new goal on next render.
+  const [choosing, setChoosing] = useState<'a' | 'b' | 'c' | null>(null);
+  const [chooseErr, setChooseErr] = useState<string | null>(null);
+  async function chooseGoal(option: 'a' | 'b' | 'c') {
+    if (!goalSlug || !report.alternativeRanges) return;
+    const target = report.alternativeRanges[option];
+    if (!target) return;
+    setChoosing(option);
+    setChooseErr(null);
+    try {
+      const r = await fetch(`/api/race/${encodeURIComponent(goalSlug)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goalSec: target.sec, source: 'renegotiate' }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !(j as { ok?: boolean }).ok) {
+        throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+      }
+      router.refresh();
+    } catch (e) {
+      setChooseErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setChoosing(null);
+    }
+  }
+
+  return (
+    <div className="rb-gap" style={{ borderColor: `${accent}55` }}>
+      {/* Section 1 · Headline · status-tinted */}
+      <div className="rb-gap-headline" style={{ color: accent }}>
+        {stripCitations(report.headline)}
+      </div>
+
+      {/* Section 2 · Confidence band · 3 stops on a horizontal axis */}
+      {report.confidenceBand ? (
+        <div className="rb-gap-band">
+          <div className="dcl rb-gap-band-label">CONFIDENCE BAND</div>
+          <div className="rb-gap-band-row">
+            <div className="rb-gap-band-stop">
+              <div className="t">{fmtTimeFromSec(report.confidenceBand.p25Sec)}</div>
+              <div className="k">p25</div>
+            </div>
+            <div className="rb-gap-band-line" style={{ background: `${accent}55` }} />
+            <div className="rb-gap-band-stop rb-gap-band-mid">
+              <div className="t">{fmtTimeFromSec(report.confidenceBand.medianSec)}</div>
+              <div className="k">median</div>
+            </div>
+            <div className="rb-gap-band-line" style={{ background: `${accent}55` }} />
+            <div className="rb-gap-band-stop">
+              <div className="t">{fmtTimeFromSec(report.confidenceBand.p75Sec)}</div>
+              <div className="k">p75</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Section 3 · What closes it · authored bullets */}
+      {report.whatClosesIt.length > 0 ? (
+        <div className="rb-gap-closes">
+          <div className="dcl">WHAT CLOSES IT</div>
+          {report.whatClosesIt.map((line, i) => (
+            <div className="rb-gap-bullet" key={i}>
+              <span className="dot" /> <span>{stripCitations(line)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Section 4 · Alternative ranges · informational or interactive */}
+      {report.alternativeRanges ? (
+        <div className="rb-gap-ranges">
+          <div className="rb-gap-ranges-h">
+            <div className="dcl">REALISTIC OUTCOMES</div>
+            {renegotiateNow && goalSlug ? (
+              <span className="rb-gap-ranges-hint">Adjust goal →</span>
+            ) : null}
+          </div>
+          {(['a', 'b', 'c'] as const).map((key) => {
+            const opt = report.alternativeRanges![key];
+            return (
+              <div className="rb-gap-range-row" key={key}>
+                <span className="rb-gap-range-k">{key.toUpperCase()}</span>
+                <span className="rb-gap-range-t">{fmtTimeFromSec(opt.sec)}</span>
+                <span className="rb-gap-range-l">{opt.label}</span>
+                {renegotiateNow && goalSlug ? (
+                  <button
+                    type="button"
+                    className="rb-gap-choose"
+                    disabled={choosing !== null}
+                    onClick={() => chooseGoal(key)}
+                  >
+                    {choosing === key ? 'Setting…' : 'Choose'}
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+          {chooseErr ? (
+            <div className="rb-gap-err">Could not update goal · {chooseErr}</div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Section 5 · Risk flags */}
+      {report.riskFlags.length > 0 ? (
+        <div className="rb-gap-risks">
+          <div className="dcl">PLAN RISKS</div>
+          {report.riskFlags.map((line, i) => (
+            <div className="rb-gap-bullet" key={i}>
+              <span className="dot rb-gap-risk-dot" /> <span>{stripCitations(line)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Section 6 · Citation footer · small. Note · this is the
+          PLAN_ENGINE_ARCHITECTURE citation, not a Research/XX
+          citation · those are stripped from rendered prose. This
+          one stays because the brief explicitly asks for it as a
+          "trust contract" footer. */}
+      {report.citation ? (
+        <div className="rb-gap-cite">{report.citation}</div>
+      ) : null}
     </div>
   );
 }

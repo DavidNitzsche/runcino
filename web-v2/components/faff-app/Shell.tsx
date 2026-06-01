@@ -198,6 +198,7 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
         onClose={() => setOpenOverlay(null)}
         brief={seed.readinessBrief}
         fallbackReadiness={seed.readiness}
+        goalSlug={seed.goalRace?.slug ?? null}
         onViewFullHealth={() => { setOpenOverlay(null); navigate('health'); }}
       />
       {typeof openOverlay === 'object' && openOverlay?.type === 'wk' && (
