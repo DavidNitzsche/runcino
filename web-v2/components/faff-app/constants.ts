@@ -85,6 +85,12 @@ export type PlannedDay = {
   /** Runner explicitly skipped this day (day_actions.action='skip'). When
    *  true: week-strip card grayscales, hero swaps to SKIPPED state. */
   skipped?: boolean;
+  /** Per Research/07 doctrine, the 2 best days each week for an
+   *  ad-hoc strength session. Picked client-side from the week shape
+   *  (avoid hard-on-hard, prefer easy/recovery, never adjacent to
+   *  long-run quality). Surfaces as a "STRENGTH" annotation on the
+   *  week strip + a coach hint on TodayView when today matches. */
+  strengthSuggested?: boolean;
 };
 
 export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: string[] }> = {

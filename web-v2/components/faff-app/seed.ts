@@ -1036,6 +1036,51 @@ function adaptForm(training: Training | null, glance: Glance | null): FaffSeed['
   return { fitness, fatigue, delta, label, acwr };
 }
 
+/**
+ * Pick 2 strength days for the week per Research/07 doctrine.
+ *
+ * Decision (locked 2026-05-31, David): cross + strength are NOT scheduled
+ * by the plan generator. Runner logs them ad-hoc via LogNonRunSheet. To
+ * keep the doctrine visible, the week strip annotates the 2 best days
+ * for strength so the runner knows when to slot a session.
+ *
+ * Doctrine (Research/07):
+ *   · 2 sessions per week for distance runners
+ *   · Avoid hard-on-hard: don't put strength same day as quality
+ *   · Best days are easy or recovery (low neuromuscular cost)
+ *   · Not the day before long run (preserve long-run quality)
+ *   · Not the day after long run (let endocrine recovery happen)
+ *
+ * Returns up to 2 indices into the week array. Empty when the week has
+ * no eligible days (race week, all-rest, injured).
+ */
+function pickStrengthDays(week: PlannedDay[]): number[] {
+  const QUALITY = new Set(['tempo', 'intervals', 'long', 'race']);
+  // Score each day; lower is better (better fit for strength)
+  const scored = week.map((d, idx) => {
+    if (d.type === 'rest' || QUALITY.has(d.type)) return { idx, score: Infinity };
+    let score = 0;
+    // Prefer easy/recovery days
+    if (d.type === 'recovery') score -= 3;
+    if (d.type === 'easy') score -= 2;
+    // Penalty for being adjacent to a long run or quality day
+    const prev = idx > 0 ? week[idx - 1] : null;
+    const next = idx < week.length - 1 ? week[idx + 1] : null;
+    if (prev && QUALITY.has(prev.type)) score += 2;
+    if (next && QUALITY.has(next.type)) score += 4; // worse to strength the day before quality
+    if (next && next.type === 'long') score += 6; // never before a long run
+    // Done days are too late (already logged) — only score un-done days
+    if (d.done) score = Infinity;
+    return { idx, score };
+  });
+  return scored
+    .filter((s) => Number.isFinite(s.score))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 2)
+    .map((s) => s.idx)
+    .sort((a, b) => a - b);
+}
+
 /* ─────────────────────────  Public entry point  ───────────────────────── */
 
 /**
@@ -1125,6 +1170,13 @@ export async function buildSeed(): Promise<FaffSeed> {
   const weekSkips: Set<string> = skRes.value;
 
   const { week, todayIdx, results } = adaptWeek(glance, weekSkips);
+  // Annotate the 2 best strength days per Research/07 doctrine. These
+  // are runner-logged ad-hoc (not generator-authored), but surfacing
+  // the picks keeps the doctrine visible. See pickStrengthDays() above.
+  const strengthIdx = new Set(pickStrengthDays(week));
+  for (let i = 0; i < week.length; i++) {
+    week[i].strengthSuggested = strengthIdx.has(i);
+  }
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training);

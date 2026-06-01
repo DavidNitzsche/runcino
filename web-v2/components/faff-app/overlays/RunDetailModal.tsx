@@ -29,8 +29,17 @@ type RunDetail = {
    *  vs baseline from workout_weather_cache and stamps a one-liner when
    *  the delta is meaningful (≥8°F). null otherwise. */
   weather_context: { message: string; hr_bump_bpm: number } | null;
+  /** Span-aware temp arc · "65°F → 77°F (peak 78°F)" rendering. Null on
+   *  legacy single-point rows or runs without GPS. */
+  temp_range_f?: { start: number | null; end: number | null; peak: number | null; mean: number | null } | null;
+  /** Total calories. Strava > HK active_energy fallback. Null when
+   *  neither writer had a value. */
+  calories_kcal?: number | null;
+  /** HR-vs-baseline delta at today's pace bucket. ≥5 bpm = meaningful
+   *  for steady efforts. Null when no comparable baseline. */
+  hr_on_pace_delta_bpm?: number | null;
   power_avg_w: number | null;
-  splits: Array<{ mile: number; pace: string | null; hr: number | null; elev_change_ft: number | null }>;
+  splits: Array<{ mile: number; pace: string | null; hr: number | null; elev_change_ft: number | null; phase?: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown' | null }>;
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
   has_route: boolean;
   route_polyline: string | null;
@@ -176,6 +185,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                 const maxFill = Math.max(...data.splits.map(s => paceToSec(s.pace ?? '') || 0));
                 const minFill = Math.min(...data.splits.filter(s => paceToSec(s.pace ?? '') > 0).map(s => paceToSec(s.pace!) || 0));
                 const span = Math.max(1, maxFill - minFill);
+                const hasPhase = data.splits.some(s => s.phase && s.phase !== 'unknown');
                 return (
                   <>
                     <div className="fll" style={{ marginTop: 8 }}>MILE SPLITS</div>
@@ -183,15 +193,48 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                       {data.splits.map((s, i) => {
                         const sec = paceToSec(s.pace ?? '');
                         const fillPct = sec > 0 ? Math.round(40 + (1 - (sec - minFill) / span) * 55) : 30;
+                        const phaseColor = phaseColorFor(s.phase);
+                        // When phase data is present, color the bar by phase
+                        // (warmup → green / work → amber / recovery → blue /
+                        // cooldown → mute) so MP-finish miles read distinctly
+                        // from the easy build. Falls back to pace-buckets when
+                        // phase data is unknown (Strava-only / apple_watch).
+                        const barColor = hasPhase && phaseColor
+                          ? phaseColor
+                          : ZC[Math.min(4, Math.max(0, Math.round((sec - minFill) / span * 4)))];
                         return (
                           <div className="spr" key={i}>
                             <span className="spm">{s.mile}</span>
-                            <div className="sptrk"><div className="spf" style={{ width: `${fillPct}%`, background: ZC[Math.min(4, Math.max(0, Math.round((sec - minFill) / span * 4)))] }} /></div>
+                            <div className="sptrk"><div className="spf" style={{ width: `${fillPct}%`, background: barColor }} /></div>
                             <span className="spp">{s.pace ?? '·'}<small>/mi</small></span>
                           </div>
                         );
                       })}
                     </div>
+                    {hasPhase ? (
+                      <div style={{
+                        marginTop: 6, display: 'flex', gap: 12,
+                        fontSize: 9, fontWeight: 700, letterSpacing: '1.2px',
+                        textTransform: 'uppercase', color: 'var(--fa-mute, #D6DAE2)',
+                      }}>
+                        <span><i style={{
+                          display: 'inline-block', width: 8, height: 8, background: 'var(--eff-easy, #14C08C)',
+                          borderRadius: 2, marginRight: 5, verticalAlign: 'middle',
+                        }} />Warmup</span>
+                        <span><i style={{
+                          display: 'inline-block', width: 8, height: 8, background: 'var(--eff-tempo, #FF8847)',
+                          borderRadius: 2, marginRight: 5, verticalAlign: 'middle',
+                        }} />Work</span>
+                        <span><i style={{
+                          display: 'inline-block', width: 8, height: 8, background: 'var(--eff-recovery, #27B4E0)',
+                          borderRadius: 2, marginRight: 5, verticalAlign: 'middle',
+                        }} />Recovery</span>
+                        <span><i style={{
+                          display: 'inline-block', width: 8, height: 8, background: 'rgba(255,255,255,.3)',
+                          borderRadius: 2, marginRight: 5, verticalAlign: 'middle',
+                        }} />Cooldown</span>
+                      </div>
+                    ) : null}
                   </>
                 );
               })()}
@@ -216,12 +259,16 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
               )}
               <div className="fll" style={{ marginTop: 22 }}>CONDITIONS &amp; KIT</div>
               <div className="wk-grid">
-                <div className="i"><div className="k">WEATHER</div><div className="v">{data.temp_f != null ? `${Math.round(data.temp_f)}°F` : '·'}</div></div>
+                <div className="i">
+                  <div className="k">WEATHER</div>
+                  <div className="v">{renderTempRange(data) || '·'}</div>
+                </div>
                 <div className="i"><div className="k">CADENCE</div><div className="v">{data.cadence_avg ? `${Math.round(data.cadence_avg)} spm` : '·'}</div></div>
                 <div className="i"><div className="k">MAX HR</div><div className="v">{data.hr_max ? `${data.hr_max} bpm` : '·'}</div></div>
                 {data.power_avg_w != null && (
                   <div className="i"><div className="k">AVG POWER</div><div className="v">{data.power_avg_w}<small> W</small></div></div>
                 )}
+                <div className="i"><div className="k">CALORIES</div><div className="v">{data.calories_kcal != null ? `${data.calories_kcal}` : '·'}{data.calories_kcal != null ? <small> kcal</small> : null}</div></div>
                 <div className="i"><div className="k">SHOE</div><div className="v">{currentShoeName(data) || '·'}</div></div>
               </div>
               {data.weather_context && (
@@ -236,6 +283,26 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                     color: '#FFCE8A', border: '1px solid rgba(255,206,138,.4)', borderRadius: 4, padding: '2px 6px',
                   }}>HEAT</span>
                   {data.weather_context.message}
+                </div>
+              )}
+              {/* HR-on-pace delta vs baseline · only surface when the
+                  signal is meaningful (|delta| ≥ 5 bpm for steady runs).
+                  Closes coverage row 1015 ("How it went" heat-aware verdict). */}
+              {data.hr_on_pace_delta_bpm != null && Math.abs(data.hr_on_pace_delta_bpm) >= 5 && (
+                <div style={{
+                  marginTop: 10, padding: '12px 14px',
+                  background: data.hr_on_pace_delta_bpm > 0 ? 'rgba(252,77,100,.07)' : 'rgba(123,232,160,.07)',
+                  border: data.hr_on_pace_delta_bpm > 0 ? '1px solid rgba(252,77,100,.28)' : '1px solid rgba(123,232,160,.28)',
+                  borderRadius: 10, fontSize: 13, fontWeight: 500, lineHeight: 1.5,
+                  color: 'rgba(255,255,255,0.88)',
+                }}>
+                  <span style={{
+                    display: 'inline-block', marginRight: 8, fontSize: 9, fontWeight: 800, letterSpacing: 1,
+                    color: data.hr_on_pace_delta_bpm > 0 ? '#FF9088' : '#7BE8A0',
+                    border: data.hr_on_pace_delta_bpm > 0 ? '1px solid rgba(252,77,100,.4)' : '1px solid rgba(123,232,160,.4)',
+                    borderRadius: 4, padding: '2px 6px',
+                  }}>HR vs USUAL</span>
+                  HR ran <b>{data.hr_on_pace_delta_bpm > 0 ? '+' : ''}{data.hr_on_pace_delta_bpm} bpm</b> {data.hr_on_pace_delta_bpm > 0 ? 'above' : 'below'} your typical at this pace.
                 </div>
               )}
               {/* RPE entry (Borg CR10) · post-run subjective rating. The
@@ -334,10 +401,36 @@ function currentShoeName(d: RunDetail): string {
   const s = d.shoes.find(x => x.id === d.shoe_id);
   return s ? `${s.brand} ${s.model}`.trim() : '';
 }
+/**
+ * Render the temp range as "65°F → 77°F" when the span shifted ≥3°F,
+ * otherwise fall back to the single start temp.
+ *
+ * Closes coverage row 945 (single-point temp) and row 904 (PARTIAL
+ * temp_f_peak surfacing) on the WEB Run Detail surface.
+ */
+function renderTempRange(d: RunDetail): string {
+  const tr = d.temp_range_f;
+  if (tr && tr.start != null && tr.end != null && Math.abs(tr.end - tr.start) >= 3) {
+    return `${Math.round(tr.start)}°F → ${Math.round(tr.end)}°F`;
+  }
+  if (d.temp_f != null) return `${Math.round(d.temp_f)}°F`;
+  return '';
+}
 function formatHeroDate(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso + 'T12:00:00Z');
   return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(d).toUpperCase();
+}
+/** Map a split's phase tag to its accent color. Null when phase data
+ *  is absent or unknown (Strava / apple_watch source paths). */
+function phaseColorFor(phase: string | null | undefined): string | null {
+  switch (phase) {
+    case 'warmup':   return 'var(--eff-easy, #14C08C)';
+    case 'work':     return 'var(--eff-tempo, #FF8847)';
+    case 'recovery': return 'var(--eff-recovery, #27B4E0)';
+    case 'cooldown': return 'rgba(255,255,255,.3)';
+    default:         return null;
+  }
 }
 function paceToSec(p: string): number {
   if (!p) return 0;

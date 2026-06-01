@@ -198,6 +198,23 @@ export function TodayView({
                   {day.dist === ' · ' ? 'rest' : `${day.dist} mi · ${day.pace}`}
                 </span>
               </div>
+              {/* Strength-day suggestion · Research/07 doctrine. The
+                  generator does NOT author "Tuesday: strength" rows;
+                  the runner logs it ad-hoc via LogNonRunSheet. This
+                  annotation tells them which 2 days each week make
+                  sense. Closes coverage line 2101 (cross/strength as
+                  scheduled workout types · David decision 2026-05-31:
+                  stay ad-hoc, hint days). */}
+              {day.strengthSuggested && !day.done && !skipped ? (
+                <div style={{
+                  marginTop: 6,
+                  fontSize: 8.5, fontWeight: 800, letterSpacing: '1.4px',
+                  textTransform: 'uppercase',
+                  color: '#FFCE8A',
+                  borderTop: '1px solid rgba(255,206,138,.25)',
+                  paddingTop: 5,
+                }}>+ STRENGTH</div>
+              ) : null}
             </div>
           );
         })}

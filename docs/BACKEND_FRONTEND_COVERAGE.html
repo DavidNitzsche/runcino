@@ -904,18 +904,16 @@
       that falls back to "·" forever because nothing populates it.
       Discovered 2026-05-31 after David flagged a long-run hero with
       no calorie value.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>backend gap</strong> · two
-      writers + one reader.
-      (1) Strava sync writes <code>data.calories</code> from the
-      activity payload when present.
-      (2) run-state.ts reads <code>active_energy</code> samples for
-      the run's date window when no Strava value, sums them.
-      (3) Expose as <code>calories_kcal</code> on the RunDetail
-      response. TodayView already has a CALORIES tile · just needs
-      the data flowing.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · backend writer + run-state reader + UI tile
+      wired.</strong> Strava sync writes <code>data.calories</code>;
+      run-state.ts <code>resolveCalories()</code> two-tier reader
+      (Strava → HK active_energy fallback); <code>calories_kcal</code>
+      exposed on /api/runs/[id]; RunDetailModal CONDITIONS &amp; KIT
+      grid renders the CALORIES tile.</td>
   <td>Strava API · activity.calories ·
-      <code>app/api/ingest/health · 'active_energy'</code> · no current writer</td>
+      <code>lib/coach/run-state.ts:resolveCalories</code> ·
+      <code>lib/strava/pullSync.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -928,16 +926,14 @@
       chip uses this point value to compute its delta, so a run that
       heated up mid-session can read "normal" even when the back half
       was brutal.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>backend gap</strong> · pull
-      the hourly forecast for the run's full duration (start_hour
-      through ceil(start_hour + duration_hr)) and store min / max /
-      avg temp in <code>data.weather.tempRangeF</code>. Frontend
-      renders "65°F → 77°F" or "65-77°F avg 71" instead of a single
-      number. Weather-context chip recomputes against the avg or
-      max, not the start point.</td>
-  <td><code>lib/weather/openmeteo.ts:enrichRecent</code> ·
-      <code>data.weather.tempF</code> single point</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · span enrichment + temp_range_f field + UI
+      renderer.</strong> /api/runs/[id] now exposes
+      <code>temp_range_f.{start,end,peak,mean}</code>. RunDetailModal
+      renders "65°F → 77°F" when the span shifted ≥3°F, otherwise
+      falls back to the single start temp.</td>
+  <td><code>lib/weather/openmeteo.ts</code> span enrichment ·
+      <code>strava_activities.data.weather.temp_f_{start,end,peak,mean}</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -950,18 +946,15 @@
       reported 4684 ft (389 ft/mi · mountain territory). 2026-05-31
       WEB render-time fix flags &gt;200 ft/mi as APPROX in the tile;
       the underlying number stays wrong in the DB.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>backend gap</strong> · during
-      ingest, validate <code>elev_gain_ft</code> against
-      <code>distance_mi</code>. When the ratio exceeds a doctrine
-      threshold (250 ft/mi as the realistic urban cap) AND a GPS
-      polyline is present, recompute the gain from the per-mile
-      elev_change_ft splits (less prone to barometric drift) and use
-      the lower number. Stamp <code>data.elevGainSource =
-      'recomputed'</code> for audit. The runner sees a credible
-      number instead of "(approx)".</td>
-  <td><code>lib/runs/merge.ts · ingest path</code> ·
-      <code>strava_activities.data.elevGainFt</code></td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · lib/runs/elev-sanity.ts at ingest.</strong>
+      <code>sanitizeElevGain()</code> runs at Strava pull-sync time:
+      when ratio &gt; 250 ft/mi AND GPS exists, recomputes from
+      per-mile splits and stamps <code>data.elevGainSource</code>
+      ('raw' | 'recomputed' | 'absent'). Read-side fallback in
+      run-state.ts kept for legacy rows ingested before this commit.</td>
+  <td><code>lib/runs/elev-sanity.ts</code> ·
+      <code>lib/strava/pullSync.ts</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -975,17 +968,15 @@
       doesn't tag which were in the work block. David's MP-finish
       split (sub-7 pace mile 9-12) reads the same as the easy miles
       visually.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>can add inline</strong> ·
-      run-state.ts already has the work/recovery boundaries from
-      <code>phase_breakdown</code> (for watch runs) or from
-      <code>computeWorkAverages</code>'s split selection. Return a
-      per-split <code>phase: 'warmup' | 'work' | 'recovery' |
-      'cooldown'</code> tag on the splits array; the splits renderer
-      colors the bar accordingly. iOS pass 3's
-      "Per-phase planned-vs-actual breakdown" row covers the bigger
-      version of this; this is the lightweight inline cue.</td>
-  <td><code>lib/coach/run-state.ts:computeWorkAverages</code> ·
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · per-split phase field + UI color band.</strong>
+      RunSplit.phase resolves to warmup/work/recovery/cooldown/unknown.
+      <code>tagSplitsWithPhases()</code> walks the phaseBreakdown's
+      cumulative-distance map and tags each mile by midpoint.
+      RunDetailModal MILE SPLITS bar colors per phase (warmup green ·
+      work amber · recovery blue · cooldown grey) with an inline
+      legend when phase data is present.</td>
+  <td><code>lib/coach/run-state.ts:tagSplitsWithPhases</code> ·
       <code>plan_workouts.workout_spec</code></td>
   <td class="client-web">WEB</td>
 </tr>
@@ -1001,15 +992,14 @@
       fatigue. We have the data (recent HR series, prior long runs,
       heat baseline) but no aggregate "was today's HR-on-pace
       consistent with your baseline" computation.</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><em>Recommendation</em>: <strong>backend gap</strong> · add a
-      helper in run-state.ts that compares today's avg HR at a given
-      pace bucket against the runner's last 4 same-effort runs.
-      Return an <code>hr_on_pace_delta_bpm</code> field. Frontend
-      folds it into the verdict copy: "Held the long-run line. HR up
-      9 bpm vs typical · the heat earned that one." Cite Research/03
-      cardiac drift section.</td>
-  <td><code>lib/coach/run-state.ts</code> · no current helper</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · computeHrOnPaceDelta + UI callout.</strong>
+      <code>hr_on_pace_delta_bpm</code> compares today's avg HR against
+      median of last 4 same-effort runs at same pace bucket (±10 s/mi).
+      Returns null when fewer than 2 comparable runs exist (no honest
+      baseline). RunDetailModal surfaces an "HR vs USUAL" callout
+      when |delta| ≥ 5 bpm, tinted green when low / red when high.</td>
+  <td><code>lib/coach/run-state.ts:computeHrOnPaceDelta</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>
@@ -2029,16 +2019,20 @@
       directly · the only path is escalation from a niggle, which
       isn't wired. So buildInjuryPlan is dead code unless rows arrive
       via DB-direct admin inserts.</td>
-  <td class="cov-none">NONE</td>
-  <td><em>Recommendation</em>: <strong>backend gap, not a design tweak</strong>.
-      Either wire niggle → injury escalation when severity hits ≥7 for
-      N days, or build a POST /api/injuries route + UI to log an injury
-      directly. Until either lands, the entire INJURY mode pipeline
-      (proposal → accept → buildInjuryPlan → walk-run scaffold) can't
-      fire in production.</td>
-  <td><code>lib/plan/injury-builder.ts</code> ·
-      <code>lib/plan/adapt.ts:detectInjuryActive</code> ·
-      no <code>/api/injuries</code> route</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>SHIPPED · /api/injuries CRUD + SymptomReportSheet
+      escalation.</strong> Backend: GET/POST/PATCH/DELETE on
+      <code>/api/injuries</code> + <code>/api/injuries/[id]</code>.
+      1-10 pain scale → minor/moderate/major enum mapping (1-3 minor,
+      4-6 moderate, 7-10 major) per Research/05. body_part + side →
+      DB's single <code>site</code> column. SymptomReportSheet now
+      escalates niggles with severity ≥7 by also POSTing
+      /api/injuries, so the INJURY mode pipeline (proposal → accept →
+      buildInjuryPlan → walk-run scaffold) can fire.</td>
+  <td><code>app/api/injuries/route.ts</code> ·
+      <code>app/api/injuries/[id]/route.ts</code> ·
+      <code>lib/plan/injury-builder.ts</code> ·
+      <code>lib/plan/adapt.ts:detectInjuryActive</code></td>
   <td class="client-web">WEB</td>
 </tr>
 <tr>
@@ -2069,15 +2063,20 @@
       tracked via the separate /api/cross-training and /api/strength
       tables (also unsurfaced · see LOG section). Plans don't
       pre-schedule "Tuesday: strength" or "Friday: 45min bike."</td>
-  <td class="cov-partial">PARTIAL</td>
-  <td><strong>Design tweak needed</strong>. Either teach the plan
-      generator to author cross + strength rows (so they show up on
-      /plan and /today like a real workout), or document the rule that
-      these are runner-logged ad hoc and remove the type-union entries
-      that hint otherwise. The current half-state confuses both human
-      designers and the type checker.</td>
+  <td class="cov-full">FULL</td>
+  <td><strong>DECISION LOCKED 2026-05-31 (David): ad-hoc, plus a
+      doctrine-driven hint on the week strip.</strong> The plan
+      generator does NOT author "Tuesday: strength" rows. Strength +
+      cross-training stay runner-logged via LogNonRunSheet (POST
+      /api/strength or /api/cross-training). To keep the doctrine
+      visible: <code>pickStrengthDays(week)</code> picks the 2 best
+      days per Research/07 (avoid hard-on-hard, prefer easy/recovery,
+      never adjacent to long-run quality), and TodayView's week strip
+      annotates those days with a "+ STRENGTH" subline. The type-union
+      entries can be removed in a future cleanup pass.</td>
   <td><code>lib/faff/types.ts:WorkoutType</code> ·
-      <code>lib/plan/generate.ts</code></td>
+      <code>lib/plan/generate.ts</code> ·
+      <code>components/faff-app/seed.ts:pickStrengthDays</code></td>
   <td class="client-web">WEB</td>
 </tr>
 </table>

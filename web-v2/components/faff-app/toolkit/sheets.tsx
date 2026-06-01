@@ -403,6 +403,22 @@ export function SymptomReportSheet({ onSaved, onClose }: { onSaved?: () => void;
           body: JSON.stringify({ body_part: bodyPart, side, severity }),
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        // Doctrine escalation · Research/05 "pain ≥4/10 stops the
+        // session." Severity ≥7 (major bucket) ALSO writes a runner_injuries
+        // row so the adaptation engine flips into INJURY mode and the
+        // walk-run scaffold can fire. Best-effort: niggle save already
+        // succeeded, escalation failure is non-fatal.
+        if (severity >= 7) {
+          fetch('/api/injuries', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              body_part: bodyPart,
+              side,
+              severity, // 1-10 scale, the backend maps to {minor,moderate,major}
+            }),
+          }).catch(() => { /* silent */ });
+        }
       } else {
         if (symptoms.length === 0) { setErr('Pick at least one symptom.'); setBusy(false); return; }
         const r = await fetch('/api/sick', {
