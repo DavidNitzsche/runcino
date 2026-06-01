@@ -239,7 +239,10 @@ struct ActivityView: View {
     }
 
     private var displayMiles: String {
-        let miles = Int(log?.totalMi ?? 0)
+        // Range picker was cosmetic — number was always all-time even when
+        // the runner picked MONTH or YEAR. Sum the filtered run set so the
+        // hero number matches the label below it.
+        let miles = Int(rangeRuns.reduce(0.0) { $0 + $1.distance_mi })
         return miles.formatted(.number.grouping(.automatic))
     }
 
@@ -249,6 +252,37 @@ struct ActivityView: View {
         case .year:  return "THIS YEAR"
         case .all:   return "ALL TIME"
         }
+    }
+
+    /// Calendar cutoff for the selected range. `.all` returns nil so the
+    /// filter passes every run through.
+    private var rangeCutoff: Date? {
+        let cal = Calendar.current
+        switch range {
+        case .month: return cal.date(byAdding: .day, value: -30, to: Date())
+        case .year:  return cal.date(byAdding: .day, value: -365, to: Date())
+        case .all:   return nil
+        }
+    }
+
+    /// All runs from the cached log, filtered to the selected range. Used
+    /// by every stats readout (hero miles, totals, records) so the numbers
+    /// match the picker.
+    private var rangeRuns: [LogRun] {
+        let all = (log?.weeks ?? []).flatMap { $0.runs }
+        guard let cutoff = rangeCutoff else { return all }
+        let cutoffISO = isoFmt.string(from: cutoff)
+        return all.filter { $0.date >= cutoffISO }
+    }
+
+    /// Same filter applied at the week level — used for the biggest-week
+    /// PR so a single huge week from two years ago doesn't dominate the
+    /// "THIS MONTH" view.
+    private var rangeWeeks: [LogWeek] {
+        let all = log?.weeks ?? []
+        guard let cutoff = rangeCutoff else { return all }
+        let cutoffISO = isoFmt.string(from: cutoff)
+        return all.filter { week in week.runs.contains(where: { $0.date >= cutoffISO }) }
     }
 
     private var recordsGrid: some View {
@@ -264,20 +298,22 @@ struct ActivityView: View {
     private struct PR { let key: String; let value: String; let caption: String; let color: Color; let unit: String? }
 
     private func computeRecords() -> [PR] {
-        let runs = (log?.weeks ?? []).flatMap { $0.runs }
+        // Honor the range picker — PRs were always all-time even when the
+        // runner picked THIS MONTH. Now records reflect the selected window.
+        let runs = rangeRuns
         guard !runs.isEmpty else { return [] }
 
-        // Fastest pace overall (any run, smallest pace)
+        // Fastest pace in range (any run, smallest pace)
         let fastestPace = runs.compactMap { r -> (LogRun, Int)? in
             guard let secs = paceSeconds(r.pace) else { return nil }
             return (r, secs)
         }.min(by: { $0.1 < $1.1 })
 
-        // Longest run (biggest distance_mi)
+        // Longest run in range (biggest distance_mi)
         let longestRun = runs.max(by: { $0.distance_mi < $1.distance_mi })
 
-        // Biggest week (sum distance_mi across weeks)
-        let biggestWeek = (log?.weeks ?? []).max(by: { $0.totalMi < $1.totalMi })
+        // Biggest week in range (sum distance_mi across weeks)
+        let biggestWeek = rangeWeeks.max(by: { $0.totalMi < $1.totalMi })
 
         // Average pace for tempo / threshold runs
         let temposLast = runs.first(where: { ($0.workoutType ?? "").lowercased().contains("threshold") || ($0.workoutType ?? "").lowercased().contains("tempo") })
@@ -306,17 +342,17 @@ struct ActivityView: View {
             prs.append(PR(key: "LAST THRESHOLD", value: p,
                           caption: shortDate(t.date), color: Color(hex: 0xFF8847), unit: "/mi"))
         }
-        if let totalMi = log?.totalMi, totalMi > 0 {
-            prs.append(PR(key: "RANGE TOTAL", value: String(format: "%.0f", totalMi),
+        let rangeTotalMi = runs.reduce(0.0) { $0 + $1.distance_mi }
+        if rangeTotalMi > 0 {
+            prs.append(PR(key: "RANGE TOTAL", value: String(format: "%.0f", rangeTotalMi),
                           caption: rangeLabel.capitalized, color: Color(hex: 0xFF8847), unit: "mi"))
         }
         return prs
     }
 
     private var totalTimeLabel: String {
-        // Sum time_moving from runs; format as "Xh Ym" if total > 1h, else "Mm".
-        let runs = (log?.weeks ?? []).flatMap { $0.runs }
-        let totalSecs = runs.compactMap { paceTimeSeconds($0.time_moving) }.reduce(0, +)
+        // Range-filtered like displayMiles · numbers match the picker label.
+        let totalSecs = rangeRuns.compactMap { paceTimeSeconds($0.time_moving) }.reduce(0, +)
         if totalSecs == 0 { return "—" }
         let h = totalSecs / 3600
         let m = (totalSecs % 3600) / 60
@@ -324,8 +360,7 @@ struct ActivityView: View {
     }
 
     private var totalElevLabel: String {
-        let runs = (log?.weeks ?? []).flatMap { $0.runs }
-        let total = runs.compactMap { $0.elev_gain_ft }.reduce(0, +)
+        let total = rangeRuns.compactMap { $0.elev_gain_ft }.reduce(0, +)
         guard total > 0 else { return "—" }
         if total >= 1000 { return String(format: "%.1fk", Double(total) / 1000) }
         return "\(total)"
