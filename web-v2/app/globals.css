@@ -1755,7 +1755,8 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .rb-streak-k{font-size:10.5px;font-weight:700;letter-spacing:1.2px;}
 .rb-streak-dir{font-size:11px;font-weight:700;color:var(--over);}
 .rb-streak-up .rb-streak-dir{color:#3EBD41;}
-.rb-streak-body{font-size:13px;font-weight:400;line-height:1.45;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);opacity:.78;}
+.rb-streak-short{font-size:13px;font-weight:500;line-height:1.45;margin-top:8px;}
+.rb-streak-body{font-size:12.5px;font-weight:400;line-height:1.5;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);opacity:.72;}
 
 /* Chevron · used by streak + pillar rows */
 .rb-chev{margin-left:auto;display:flex;align-items:center;justify-content:center;opacity:.55;transition:transform .18s ease;width:18px;height:18px;}
@@ -1829,5 +1830,18 @@ border:1px solid rgba(255,233,176,.34);border-radius:14px;padding:14px 18px;marg
 .rb-cold-n small{font-size:10px;font-weight:700;letter-spacing:1.4px;opacity:.45;text-transform:uppercase;margin-top:2px;}
 .rb-cold-h{font-family:'Inter',sans-serif;font-size:23px;font-weight:700;margin:0 0 10px;line-height:1.2;}
 .rb-cold-p{font-size:13px;line-height:1.55;opacity:.7;max-width:280px;margin:0 0 18px;}
+.rb-cold-rem{font-size:10px;font-weight:700;letter-spacing:1.4px;opacity:.55;text-transform:uppercase;margin:0 0 18px;}
 .rb-cold-cta{background:transparent;border:1px solid var(--line);color:var(--txt);padding:10px 16px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;}
 .rb-cold-cta:hover{background:rgba(255,255,255,.04);}
+
+/* Morning check-in section · Section 8 of the redesigned drawer. */
+.rb-checkin{margin-top:26px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:13px;padding:18px 16px;}
+.rb-checkin .dcl{margin:0 0 8px;}
+.rb-checkin-q{font-size:15px;font-weight:600;line-height:1.4;margin-bottom:12px;}
+.rb-checkin-scale{display:flex;gap:8px;margin-bottom:10px;}
+.rb-checkin-btn{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:12px 0;font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .12s ease,border-color .12s ease;}
+.rb-checkin-btn:hover:not(:disabled){background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);}
+.rb-checkin-btn:disabled{opacity:.4;cursor:wait;}
+.rb-checkin-note{font-size:11px;font-style:italic;opacity:.55;line-height:1.45;}
+.rb-checkin-err{margin-top:8px;font-size:11px;color:var(--over,#FC4D64);}
+.rb-checkin-done .rb-checkin-msg{font-size:13px;line-height:1.5;opacity:.92;}

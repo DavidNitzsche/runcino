@@ -111,27 +111,12 @@ export function Drawer({
     setExpandedStreaks(next);
   };
 
-  // Composition derivation · BASELINE = average of scoreTrend excluding
-  // today, NET = today - baseline, TODAY = score. Backend doesn't ship
-  // this as a structured field yet (queued); derive here so the panel
-  // shows the math.
-  const composition = (() => {
-    if (!brief || brief.scoreTrend.length < 2) return null;
-    const past = brief.scoreTrend.slice(0, -1);
-    const baseline = Math.round(past.reduce((s, p) => s + p.score, 0) / past.length);
-    const net = brief.score - baseline;
-    return { baseline, net, today: brief.score };
-  })();
-
-  const trendNoteText = (() => {
-    if (!brief || brief.scoreTrend.length < 4) return null;
-    const past = brief.scoreTrend.slice(0, -1);
-    const priorAvg = Math.round(past.reduce((s, p) => s + p.score, 0) / past.length);
-    const delta = brief.score - priorAvg;
-    if (Math.abs(delta) <= 2) return `Holding around ${priorAvg}. Steady week.`;
-    if (delta > 0) return `Up from a ${priorAvg} average. Trending into a peak.`;
-    return `Down from a ${priorAvg} average. Watch the load.`;
-  })();
+  // 2026-06-01 · composition and trendNote now ship from backend
+  // (commit 463d4a4c). Previously derived client-side; the backend
+  // versions compose against streak + mover context and use the
+  // composer's authoritative baseline math.
+  const composition = brief?.composition ?? null;
+  const trendNoteText = brief?.trendNote ?? null;
 
   // Cold-start / no-data short-circuit. Replaces the body with an
   // encouraging empty state (per README §"Special state: cold start").
@@ -151,7 +136,10 @@ export function Drawer({
         </div>
 
         {isColdStart ? (
-          <ColdStart score={fallbackReadiness?.score ?? brief?.score ?? 0} onConnect={onViewFullHealth} />
+          <ColdStart
+            coldStart={brief?.coldStart ?? null}
+            onConnect={onViewFullHealth}
+          />
         ) : brief ? (
           <>
             {/* 1 · Subjective override callout · renders first and loud. */}
@@ -223,10 +211,14 @@ export function Drawer({
               </Section>
             ) : null}
 
-            {/* 8 · Morning check-in · deferred until backend ships the
-                subjectiveCheckin capture (open question #6). When ready
-                I'll add a new section here gated on
-                brief.subjectiveCheckin?.answered === false. */}
+            {/* 8 · Morning check-in · renders when today's subjective
+                rating hasn't been logged yet. POST resolves the answer +
+                returns whether it disagrees with objective ≥15 pts
+                (willTriggerOverride). Backend-shipped 2026-06-01 at
+                commit 463d4a4c. */}
+            {brief.subjectiveCheckin && brief.subjectiveCheckin.answered === false ? (
+              <MorningCheckin />
+            ) : null}
 
             {/* 9 · View full health link. */}
             <div className="dlink" onClick={onViewFullHealth} role="button" tabIndex={0}>
@@ -374,10 +366,9 @@ function ScoreTrend({ trend }: { trend: ReadinessBriefSeed['scoreTrend'] }) {
 }
 
 /* ============================================================
-   StreakRow · banner with optional tap-to-expand meaning.
-   Backend ships only `meaning` (no `short`) so default state shows
-   the full meaning; tap-to-expand is a no-op visually but still
-   present for future short-vs-meaning separation.
+   StreakRow · banner showing `short` by default, expanding to
+   `meaning` on tap. Both fields ship from backend at commit
+   463d4a4c.
    ============================================================ */
 function StreakRow({ streak, open, onToggle }: {
   streak: ReadinessBriefSeed['streaks'][number];
@@ -404,7 +395,10 @@ function StreakRow({ streak, open, onToggle }: {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
         </span>
       </button>
-      <div className="rb-streak-body">{streak.meaning}</div>
+      <div className="rb-streak-short">{streak.short}</div>
+      {open ? (
+        <div className="rb-streak-body">{streak.meaning}</div>
+      ) : null}
     </div>
   );
 }
@@ -554,27 +548,137 @@ function PillarHistory({ trend, observedValue, accent }: {
 }
 
 /* ============================================================
-   ColdStart · band==='no-data' or null brief. Simple variant
-   (full coldStart envelope with nightsLogged/nightsNeeded is
-   deferred backend-side).
+   ColdStart · band==='no-data' or null brief. Backend ships the
+   coldStart envelope with nightsLogged / nightsNeeded / note /
+   healthConnected as of commit 463d4a4c. The ring shows progress
+   toward `nightsNeeded` (7); the note is composer-authored coach
+   voice; the CTA only renders when HealthKit isn't connected.
    ============================================================ */
-function ColdStart({ score, onConnect }: { score: number; onConnect: () => void }) {
+function ColdStart({ coldStart, onConnect }: {
+  coldStart: NonNullable<ReadinessBriefSeed['coldStart']> | null;
+  onConnect: () => void;
+}) {
+  const logged = coldStart?.nightsLogged ?? 0;
+  const needed = coldStart?.nightsNeeded ?? 7;
+  const remaining = Math.max(0, needed - logged);
+  const note = coldStart?.note ??
+    'A few more nights of sleep + HRV data and the morning brief will fill in.';
+  const healthConnected = coldStart?.healthConnected ?? false;
+  // Progress ring: stroke goes around as nights accumulate.
+  const r = 50;
+  const circ = 2 * Math.PI * r;
+  const pct = needed > 0 ? Math.min(1, logged / needed) : 0;
+  const offset = circ - circ * pct;
   return (
     <div className="rb-cold">
       <div className="rb-cold-ring">
         <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
-          <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="8" />
+          <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="8" />
+          {pct > 0 ? (
+            <circle
+              cx="60" cy="60" r={r}
+              fill="none"
+              stroke="#48B3B5"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={circ}
+              strokeDashoffset={offset}
+              transform="rotate(-90 60 60)"
+            />
+          ) : null}
         </svg>
-        <div className="rb-cold-n"><b>{score || '·'}</b><small>building</small></div>
+        <div className="rb-cold-n">
+          <b>{logged}</b>
+          <small>of {needed}</small>
+        </div>
       </div>
       <h2 className="rb-cold-h">Building your baseline.</h2>
-      <p className="rb-cold-p">
-        A few more nights of sleep + HRV data and the morning brief will fill in.
-        Heart rate variability needs a stable baseline before the read is honest.
-      </p>
-      <button type="button" className="rb-cold-cta" onClick={onConnect}>
-        Connect Apple Health to skip the wait
-      </button>
+      <p className="rb-cold-p">{note}</p>
+      {remaining > 0 ? (
+        <div className="rb-cold-rem">
+          {remaining} MORE NIGHT{remaining === 1 ? '' : 'S'} TO YOUR FIRST READINESS SCORE
+        </div>
+      ) : null}
+      {!healthConnected ? (
+        <button type="button" className="rb-cold-cta" onClick={onConnect}>
+          Connect Apple Health to skip the wait
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/* ============================================================
+   MorningCheckin · captures the runner's 1-10 wellness reading.
+   POSTs to /api/readiness/subjective; when willTriggerOverride is
+   true, the next brief refresh will surface the subjective override
+   block at the top of the drawer. Per Saw et al. doctrine,
+   subjective beats objective when they disagree by ≥15 pts.
+   ============================================================ */
+function MorningCheckin() {
+  const [saving, setSaving] = useState<number | null>(null);
+  const [done, setDone] = useState<{ rating: number; willOverride: boolean } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(rating: number) {
+    setSaving(rating);
+    setErr(null);
+    try {
+      const r = await fetch('/api/readiness/subjective', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ rating }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok && !(j as { ok?: boolean }).ok) {
+        throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+      }
+      setDone({
+        rating,
+        willOverride: !!(j as { willTriggerOverride?: boolean }).willTriggerOverride,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="rb-checkin rb-checkin-done">
+        <div className="dcl">MORNING CHECK-IN</div>
+        <div className="rb-checkin-msg">
+          Logged · <b>{done.rating}/10</b>.
+          {done.willOverride
+            ? ' Your read disagrees with the numbers — yours wins on the next refresh.'
+            : ' In line with today\'s read.'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rb-checkin">
+      <div className="dcl">MORNING CHECK-IN</div>
+      <div className="rb-checkin-q">How do you feel this morning?</div>
+      <div className="rb-checkin-scale">
+        {[2, 4, 6, 8, 10].map((n) => (
+          <button
+            key={n}
+            type="button"
+            className="rb-checkin-btn"
+            disabled={saving !== null}
+            onClick={() => submit(n)}
+          >
+            {saving === n ? '…' : n}
+          </button>
+        ))}
+      </div>
+      <div className="rb-checkin-note">
+        When your read disagrees with the numbers, yours wins.
+      </div>
+      {err ? <div className="rb-checkin-err">Could not save · {err}</div> : null}
     </div>
   );
 }
