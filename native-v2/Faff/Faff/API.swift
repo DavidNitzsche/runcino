@@ -445,6 +445,21 @@ enum API {
         return decoded
     }
 
+    /// /api/readiness/brief · full envelope for the redesigned full
+    /// readiness brief sheet. Drives ReadinessBriefSheet. Same composer
+    /// (loadReadinessBrief) the web seed reads · iPhone + web stay in
+    /// sync on numbers/copy/streaks/movers.
+    ///
+    /// Returns nil when the runner has no CoachState (brand-new user) ·
+    /// the sheet renders its cold-start variant.
+    static func fetchReadinessBrief() async throws -> ReadinessBriefSeed? {
+        let url = baseURL.appendingPathComponent("api/readiness/brief")
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        let envelope = try? JSONDecoder().decode(ReadinessBriefResponse.self, from: data)
+        return envelope?.brief
+    }
+
     // MARK: - P-SKIP · Skip Today (Phase 12, 2026-05-28)
     //
     // Mirrors web-v2/app/api/today/skip/route.ts (POST + DELETE + GET).

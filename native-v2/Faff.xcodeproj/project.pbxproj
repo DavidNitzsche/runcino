@@ -14,6 +14,7 @@
 		097BBD3A01CCAB65AC7F4F60 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894094955F354E1174579A70 /* RootTabView.swift */; };
 		0C7CECA6722DD1B30C6C89EB /* WatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91FC1DB4EC397EFC1B67BFE9 /* WatchTheme.swift */; };
 		0FE433223DC5369A657B77E7 /* WeekAheadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6429EC123205552CF65614 /* WeekAheadView.swift */; };
+		14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */; };
 		14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81938656B7079C01BB12693C /* ColdStartView.swift */; };
 		16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139264554EDD5A64F64E384F /* Assets.xcassets */; };
 		2189B652FD2C7FD8E493C601 /* WeeklySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53011C0480C6AA66CB9D2FA8 /* WeeklySheet.swift */; };
@@ -117,6 +118,7 @@
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
 		EAF8355DE9CD72C8C10FFD51 /* A_Signals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */; };
+		EB4A118FB7E42C2751A6709D /* ReadinessBriefSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CF1EF57B25870ED0684678F /* ReadinessBriefSeed.swift */; };
 		EC866FAAF92DEEFE295EA715 /* SignInWithAppleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */; };
 		ED3DBAEF3FFB60390FE0317B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */; };
 		ED8A185C9C02773FFC2E41D6 /* StickyCTABar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8638CFAB477DCF206DEFD0EA /* StickyCTABar.swift */; };
@@ -244,6 +246,7 @@
 		944DFB34C4D7EF128D8D0F0E /* PRSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PRSheet.swift; sourceTree = "<group>"; };
 		9883A181E1656DBDC8F3FAFC /* Tips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tips.swift; sourceTree = "<group>"; };
 		9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaReconnectBanner.swift; sourceTree = "<group>"; };
+		9CF1EF57B25870ED0684678F /* ReadinessBriefSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSeed.swift; sourceTree = "<group>"; };
 		9DBDD89E184A2A60C766D18F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		9DDE304E9C6471D398E2D102 /* Briefing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Briefing.swift; sourceTree = "<group>"; };
 		9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -290,6 +293,7 @@
 		F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRootView.swift; sourceTree = "<group>"; };
 		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
+		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -311,6 +315,7 @@
 				C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */,
 				ADEF9EEB865458FD9FBA9054 /* FaffPayloads.swift */,
 				174FE8C6F00184359AC974B6 /* Races.swift */,
+				9CF1EF57B25870ED0684678F /* ReadinessBriefSeed.swift */,
 				761D6D9F643EAA00C64D9BBC /* Runs.swift */,
 				9883A181E1656DBDC8F3FAFC /* Tips.swift */,
 				1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */,
@@ -359,6 +364,7 @@
 				0E832B4905DEB6F14ADB19D0 /* MileBars.swift */,
 				B0E2C05E3027A3C1CB45AEDD /* PageHeader.swift */,
 				2E0F934EAB1B1CC2AD163825 /* Primitives.swift */,
+				FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */,
 				0FC065B278966D7AAA360355 /* ScrubbableTrace.swift */,
 				ADD08DB3E4484B1FC6C0C0F8 /* ShoeView.swift */,
 				C362A89A498D921AD6A117B0 /* SignInWithAppleView.swift */,
@@ -747,6 +753,8 @@
 				58C73FAA4F3A621C91A48076 /* RaceDayView.swift in Sources */,
 				EEC673F6BECB80E471270414 /* RaceName.swift in Sources */,
 				7A0F250BA4DA7F45225E8030 /* Races.swift in Sources */,
+				EB4A118FB7E42C2751A6709D /* ReadinessBriefSeed.swift in Sources */,
+				14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */,
 				C1961C2571F61331D7688A9F /* RolePickView.swift in Sources */,
 				097BBD3A01CCAB65AC7F4F60 /* RootTabView.swift in Sources */,
 				E05B05674D1FD82CFD0AC965 /* RunDetailView.swift in Sources */,

@@ -80,6 +80,10 @@ struct TodayView: View {
     @State private var thisWeekMiles: Double?
     /// VO₂ max · drives the VO₂ MAX readiness stat chip.
     /// Comes from profile.physiology.vo2.
+    /// Toggles the full readiness brief sheet (2026-06-01) · tap on the
+    /// readiness panel hero presents this. Sheet hydrates from
+    /// /api/readiness/brief inside its own .task.
+    @State private var showReadinessBrief: Bool = false
 
     var body: some View {
         // Time-of-day mesh (2026-06-01) · no longer recolors by run.
@@ -332,6 +336,16 @@ struct TodayView: View {
         .sheet(isPresented: $showInbox) {
             NotificationInboxSheet()
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showReadinessBrief) {
+            // Full readiness brief sheet · 2026-06-01 redesign.
+            // Presents full-height by default; the SwiftUI .large detent
+            // matches the spec's full-screen-with-64pt-peek model when
+            // the parent Today still renders behind via the mesh.
+            ReadinessBriefSheet(timeOfDay: timeOfDay)
+                .presentationDetents([.large])
+                .presentationBackground(.clear)
+                .presentationDragIndicator(.hidden)   // sheet draws its own grabber
         }
     }
 
@@ -897,12 +911,12 @@ struct TodayView: View {
         return Calendar.current.date(from: c)
     }
 
-    /// Tap handler for the readiness panel. Until the full readiness-brief
-    /// iPhone surface ships (designs/briefs/readiness-brief-iphone-surface-
-    /// brief.md), this is a no-op with telemetry. The wire is done · only
-    /// the destination is pending design delivery.
+    /// Tap handler for the readiness panel · presents the full readiness
+    /// brief sheet (2026-06-01). The sheet hydrates from
+    /// /api/readiness/brief and renders the full envelope (score trend +
+    /// pillars + streaks + watchTomorrow + cold-start when applicable).
     private func onReadinessTap() {
-        print("[today] readiness panel tapped · awaiting full-brief surface")
+        showReadinessBrief = true
     }
 
     /// Phase breakdown rendered in the drag-sheet. Empty when no real
