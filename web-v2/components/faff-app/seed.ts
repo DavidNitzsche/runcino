@@ -251,7 +251,37 @@ function paceFromSpec(spec: import('@/lib/faff/types').WorkoutSpec | null | unde
 
 /* ─────────────────────────  Adapters  ───────────────────────── */
 
-function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: PlannedDay[]; todayIdx: number; results: Record<number, CompletedRun | undefined> } {
+/**
+ * Thin wrapper · resolves a cadence target for a workout EffortKey
+ * using the backend's canonical prescription (lib/coach/cadence-target.ts).
+ * Lazy import to avoid pulling the backend module into seed when not needed.
+ */
+function cadenceTargetForEffort(
+  type: EffortKey,
+  baseline: number | null,
+): PlannedDay['cadenceTarget'] {
+  // Inline the canonical ranges so the seed doesn't need a dynamic
+  // import per row. Mirrors lib/coach/cadence-target.ts CANONICAL_RANGE.
+  const CANONICAL: Record<string, { lo: number; hi: number; cue: string }> = {
+    easy:        { lo: 165, hi: 175, cue: 'relaxed turnover' },
+    recovery:    { lo: 162, hi: 172, cue: 'easy turnover' },
+    long:        { lo: 168, hi: 178, cue: 'sustainable rhythm' },
+    tempo:       { lo: 172, hi: 182, cue: 'drive turnover' },
+    intervals:   { lo: 180, hi: 190, cue: 'crisp + quick' },
+    rest:        { lo: 0,   hi: 0,   cue: 'rest day' },
+  };
+  const c = CANONICAL[type] ?? CANONICAL.easy;
+  if (c.lo === 0 && c.hi === 0) return { low: 0, high: 0, copy: c.cue };
+  let lo = c.lo, hi = c.hi;
+  if (baseline != null && baseline > 130 && baseline < 220) {
+    const shift = Math.round(baseline - 170);
+    lo = Math.max(150, Math.min(200, lo + shift));
+    hi = Math.max(155, Math.min(205, hi + shift));
+  }
+  return { low: lo, high: hi, copy: `${lo}-${hi} spm · ${c.cue}` };
+}
+
+function adaptWeek(glance: Glance | null, skipSet?: Set<string>, cadenceBaseline?: number | null): { week: PlannedDay[]; todayIdx: number; results: Record<number, CompletedRun | undefined> } {
   if (!glance || !glance.weekDays?.length) {
     return { week: FALLBACK_WEEK, todayIdx: 1, results: {} };
   }
@@ -325,6 +355,13 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>): { week: Planne
       activityId: d.activityId,
       hrCap,
       skipped: skipSet ? skipSet.has(d.date) : false,
+      // 2026-06-01 · backend cadence prescription. Lives on the day so
+      // every workout chip can render a real number range (e.g.
+      // "172-180 spm · drive turnover") instead of the previous
+      // frontend-invented "relaxed" / "drive turnover" placeholders.
+      // Personal-baseline-shifted when cadenceBaseline is known;
+      // canonical otherwise.
+      cadenceTarget: cadenceTargetForEffort(eff, cadenceBaseline ?? null),
     };
   });
   const todayIdx = Math.max(0, week.findIndex(w => w.today));
@@ -1373,7 +1410,7 @@ export async function buildSeed(): Promise<FaffSeed> {
   const todayShoeId: number | null = sRes.value;
   const weekSkips: Set<string> = skRes.value;
 
-  const { week, todayIdx, results } = adaptWeek(glance, weekSkips);
+  const { week, todayIdx, results } = adaptWeek(glance, weekSkips, health?.cadence.baseline ?? null);
 
   // 2026-06-01 · enrich `results` with real per-run data so the Today
   // EASY/DONE card and week-strip render real weather, calories,

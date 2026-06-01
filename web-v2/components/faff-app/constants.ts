@@ -119,6 +119,16 @@ export type PlannedDay = {
     adaptedAt: string | null;
     kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
   } | null;
+  /** 2026-06-01 · backend-owned cadence prescription for this workout.
+   *  Replaces the frontend's invented "relaxed" / "drive turnover"
+   *  fallback strings with a real number range. low=high=0 means rest
+   *  day (no target). Personal-baseline-shifted when the runner has
+   *  cadence history; canonical otherwise. See lib/coach/cadence-target.ts. */
+  cadenceTarget?: {
+    low: number;
+    high: number;
+    copy: string;
+  };
 };
 
 export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: string[] }> = {

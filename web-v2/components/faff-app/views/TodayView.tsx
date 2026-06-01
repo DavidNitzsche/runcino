@@ -645,16 +645,39 @@ function planEffortLabel(t: string): { copy: string; ratio: string } {
     default:          return { copy: 'By feel',                ratio: '— / 10' };
   }
 }
-function planCadenceTarget(t: string, baseline: number | null | undefined): string {
-  const base = baseline && baseline > 0 ? `${Math.round(baseline)} spm` : 'relaxed';
-  switch (t) {
-    case 'easy':      return base;
-    case 'long':      return base;
-    case 'tempo':     return baseline ? `${Math.round(baseline) + 4} spm` : 'drive turnover';
-    case 'intervals': return baseline ? `${Math.round(baseline) + 8} spm` : 'high turnover';
-    case 'recovery':  return base;
-    default:          return base;
+/**
+ * 2026-06-01 · Cadence target now comes from the seed
+ * (PlannedDay.cadenceTarget) populated by backend. This wrapper
+ * reads the seed-provided range when available, falls back to the
+ * canonical static range when the field isn't populated (older
+ * seeds, FALLBACK_WEEK rendering, etc).
+ *
+ * Replaces the old "relaxed" / "drive turnover" vague strings with
+ * real number ranges like "172-180 spm · drive turnover" for every
+ * workout type.
+ */
+function planCadenceTarget(
+  t: string,
+  baseline: number | null | undefined,
+  seedTarget?: { low: number; high: number; copy: string } | undefined,
+): string {
+  if (seedTarget?.copy) return seedTarget.copy;
+  // Fallback canonical range when seed is empty (mirrors backend)
+  const CANONICAL: Record<string, { lo: number; hi: number; cue: string }> = {
+    easy:      { lo: 165, hi: 175, cue: 'relaxed turnover' },
+    long:      { lo: 168, hi: 178, cue: 'sustainable rhythm' },
+    tempo:     { lo: 172, hi: 182, cue: 'drive turnover' },
+    intervals: { lo: 180, hi: 190, cue: 'crisp + quick' },
+    recovery:  { lo: 162, hi: 172, cue: 'easy turnover' },
+  };
+  const c = CANONICAL[t] ?? CANONICAL.easy;
+  let lo = c.lo, hi = c.hi;
+  if (baseline && baseline > 130 && baseline < 220) {
+    const shift = Math.round(baseline - 170);
+    lo = Math.max(150, Math.min(200, lo + shift));
+    hi = Math.max(155, Math.min(205, hi + shift));
   }
+  return `${lo}-${hi} spm · ${c.cue}`;
 }
 function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: string } {
   if (d.hrCap != null) {
@@ -682,7 +705,7 @@ function PlannedHeroV2({
   const weatherLabel = formatForecast(forecast) ?? '—';
   const effortLbl = planEffortLabel(d.type);
   const hr = hrTargetLabel(d);
-  const cadenceTgt = planCadenceTarget(d.type, cadenceBaseline);
+  const cadenceTgt = planCadenceTarget(d.type, cadenceBaseline, d.cadenceTarget);
 
   // Body-level class drains the Shell mesh to grayscale when this day is
   // viewed in skipped state. Cleanup on unmount/day-change prevents the

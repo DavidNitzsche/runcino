@@ -79,10 +79,29 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
         ORDER BY sample_date ASC`,
       [userId, today]
     ).then((r) => r.rows),
+    // 2026-06-01 · cadence baseline now prefers `runs.avgCadence`
+    // (actual running cadence) over `health_samples.cadence` (daily
+    // average · includes walking · drags baseline down by ~6-10 spm).
+    // Falls back to health_samples when runs has no avgCadence yet
+    // (manual entry, Strava-only ingest, brand-new runner).
     pool.query(
-      `SELECT AVG(value)::numeric AS avg FROM health_samples
-        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'cadence'
-          AND sample_date >= ($2::date - interval '60 days')`,
+      `WITH run_cadence AS (
+         SELECT AVG((data->>'avgCadence')::numeric)::numeric AS avg
+           FROM runs
+          WHERE user_uuid = $1::uuid
+            AND NOT (data ? 'mergedIntoId')
+            AND data->>'avgCadence' IS NOT NULL
+            AND (data->>'avgCadence')::numeric BETWEEN 130 AND 220
+            AND (data->>'date')::date >= ($2::date - interval '60 days')
+       ),
+       hk_cadence AS (
+         SELECT AVG(value)::numeric AS avg FROM health_samples
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND sample_type = 'cadence'
+            AND sample_date >= ($2::date - interval '60 days')
+       )
+       SELECT COALESCE(rc.avg, hc.avg) AS avg
+         FROM run_cadence rc, hk_cadence hc`,
       [userId, today]
     ).then((r) => r.rows[0]),
     pool.query(
