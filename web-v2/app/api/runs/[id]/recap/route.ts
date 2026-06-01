@@ -24,6 +24,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { deriveRecap } from '@/lib/coach/run-recap';
+import { deriveWin } from '@/lib/coach/run-win';
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
 
 export const dynamic = 'force-dynamic';
@@ -136,6 +137,22 @@ export async function GET(
     } : null,
   });
 
+  // 2026-06-01 · iPhone brief · synthesized win line.
+  // 4-10 word coach-voice sentence summarizing how the run went.
+  // Returns null when off-plan / DNF / no usable signal.
+  const win = deriveWin({
+    type,
+    phase,
+    plannedMi,
+    plannedPaceSPerMi: planRow?.pace_target_s ?? null,
+    plannedHrCap: planRow?.hr_cap ?? null,
+    actualMi: Number(data.distanceMi) || 0,
+    actualPaceSPerMi: Number(data.paceSPerMi) || null,
+    actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
+    splits: Array.isArray(data.splits) ? data.splits as any[] : undefined,
+    verdict: recap.verdict,
+  });
+
   return NextResponse.json({
     ok: true,
     runId: runRow.id,
@@ -143,5 +160,6 @@ export async function GET(
     type,
     phase,
     ...recap,
+    win,
   });
 }
